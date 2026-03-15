@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter --version)",
+      "Bash(flutter create:*)",
+      "Bash(flutter pub:*)",
+      "WebSearch",
+      "Bash(dart run:*)",
+      "Bash(dart analyze:*)",
+      "Bash(flutter test:*)",
+      "Bash(flutter build:*)",
+      "Bash(xcodebuild -runFirstLaunch)",
+      "Bash(brew list:*)",
+      "Bash(flutter upgrade:*)",
+      "Bash(pkill -f asset_manager)",
+      "Bash(flutter run:*)",
+      "Bash(pkill -f asset_manager.app)",
+      "Bash(pkill -f 'flutter run')",
+      "Read(//Users/marco/Library/Logs/**)",
+      "Bash(open /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/asset_manager.app)",
+      "Bash(sqlite3 * \"SELECT *)",
+      "Bash(ls -la ~/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/*.sqlite)",
+      "Bash(sqlite3 ~/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db \"PRAGMA integrity_check;\")",
+      "Bash(timeout 5 sqlite3 ~/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db \".indices transactions\")",
+      "Bash(timeout 30 sqlite3 ~/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db \"CREATE INDEX IF NOT EXISTS idx_transactions_account_date_id ON transactions\\(account_id, operation_date DESC, id DESC\\);\")",
+      "Bash(python3 -c \"from PIL import Image; print\\(''Pillow OK''\\)\")",
+      "Bash(~/.pyenv/versions/assetmanager/bin/python gen_icon.py)",
+      "Bash(/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/asset_manager.app)",
+      "Bash(killall Dock)",
+      "Bash(pkill -f FinanceCopilot)",
+      "Bash(/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/FinanceCopilot.app)",
+      "Bash(open /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/FinanceCopilot.app)"
+    ]
+  }
+}

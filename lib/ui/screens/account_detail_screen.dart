@@ -1,0 +1,778 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart' hide Column;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../../database/database.dart';
+import '../../services/import_service.dart';
+import '../../services/providers.dart';
+import '../../utils/logger.dart';
+import 'import_screen.dart';
+import 'transaction_edit_screen.dart';
+
+final _log = getLogger('AccountDetailScreen');
+
+/// Shows transactions for a single account, with search/filter and edit/delete.
+class AccountDetailScreen extends ConsumerStatefulWidget {
+  final Account account;
+  const AccountDetailScreen({super.key, required this.account});
+
+  @override
+  ConsumerState<AccountDetailScreen> createState() => _AccountDetailScreenState();
+}
+
+class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final txStream = ref.watch(accountTransactionsProvider(widget.account.id));
+    final dateFmt = DateFormat('dd/MM/yyyy');
+    final amtFmt = NumberFormat.currency(locale: 'it_IT', symbol: widget.account.currency);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.account.name),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_upload),
+            tooltip: 'Import File',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => ImportScreen(preselectedAccountId: widget.account.id)),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.fingerprint),
+            tooltip: 'Reindex Dedup Keys',
+            onPressed: () => _showReindexDialog(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet),
+            tooltip: 'Recalculate Balance',
+            onPressed: () => _showBalanceDialog(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Add Transaction',
+            onPressed: () => _addTransaction(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit Account',
+            onPressed: () => _editAccount(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Wipe Transactions',
+            onPressed: () => _confirmWipeTransactions(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Delete Account',
+            color: Colors.red,
+            onPressed: () => _confirmDeleteAccount(context),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search transactions...',
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                isDense: true,
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+            ),
+          ),
+          // Transaction list
+          Expanded(
+            child: txStream.when(
+              data: (transactions) {
+                final filtered = _searchQuery.isEmpty
+                    ? transactions
+                    : transactions.where((t) {
+                        return t.description.toLowerCase().contains(_searchQuery) ||
+                            (t.descriptionFull?.toLowerCase().contains(_searchQuery) ?? false) ||
+                            t.amount.toString().contains(_searchQuery);
+                      }).toList();
+
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Text(
+                      transactions.isEmpty
+                          ? 'No transactions yet.\nImport a file to add transactions.'
+                          : 'No matching transactions.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final tx = filtered[i];
+                    final isPositive = tx.amount >= 0;
+                    return ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: isPositive
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : Colors.red.withValues(alpha: 0.1),
+                        child: Icon(
+                          isPositive ? Icons.arrow_downward : Icons.arrow_upward,
+                          size: 16,
+                          color: isPositive ? Colors.green : Colors.red,
+                        ),
+                      ),
+                      title: Text(
+                        tx.description.isNotEmpty ? tx.description : '(no description)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(dateFmt.format(tx.operationDate), style: const TextStyle(fontSize: 12)),
+                      trailing: Text(
+                        amtFmt.format(tx.amount),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      onTap: () => _openTransaction(tx),
+                    );
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+            ),
+          ),
+          // Summary bar
+          txStream.when(
+            data: (transactions) {
+              if (transactions.isEmpty) return const SizedBox();
+              // Use the last imported row (highest id) as the final balance,
+              // since balance is computed in CSV row order during import.
+              final balance = transactions
+                  .reduce((a, b) => a.id > b.id ? a : b)
+                  .balanceAfter;
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('${transactions.length} transactions', style: const TextStyle(fontSize: 13)),
+                    Text(
+                      balance != null
+                          ? 'Balance: ${amtFmt.format(balance)}'
+                          : '${transactions.length} records',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: balance != null && balance >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const SizedBox(),
+            error: (_, __) => const SizedBox(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openTransaction(Transaction tx) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TransactionEditScreen(
+          transaction: tx,
+          account: widget.account,
+        ),
+      ),
+    );
+  }
+
+  void _addTransaction() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TransactionEditScreen(account: widget.account),
+      ),
+    );
+  }
+
+  Future<void> _confirmWipeTransactions(BuildContext context) async {
+    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).valueOrNull?.length ?? 0;
+    if (txCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No transactions to wipe.')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wipe All Transactions?'),
+        content: Text(
+          'This will delete all $txCount transactions from "${widget.account.name}" '
+          'but keep the account and its import configuration (column mappings, '
+          'dedup keys, balance settings).\n\nThis cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Wipe'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _log.warning('wiping transactions for account ${widget.account.id}');
+      final deleted = await ref.read(transactionServiceProvider).deleteByAccount(widget.account.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Wiped $deleted transactions. Import config preserved.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).valueOrNull?.length ?? 0;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Account?'),
+        content: Text(
+          txCount > 0
+              ? 'This will permanently delete "${widget.account.name}" and all $txCount transactions. This cannot be undone.'
+              : 'This will permanently delete "${widget.account.name}". This cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _log.warning('deleting account id=${widget.account.id} name=${widget.account.name}');
+      await ref.read(accountServiceProvider).delete(widget.account.id);
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
+  Future<void> _editAccount(BuildContext context) async {
+    final nameCtrl = TextEditingController(text: widget.account.name);
+    var currencyCtrl = TextEditingController(text: widget.account.currency);
+    var institutionCtrl = TextEditingController(text: widget.account.institution);
+    var isActive = widget.account.isActive;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Edit Account'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: currencyCtrl,
+                  decoration: const InputDecoration(labelText: 'Currency', hintText: 'EUR'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: institutionCtrl,
+                  decoration: const InputDecoration(labelText: 'Institution'),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('Active'),
+                  value: isActive,
+                  onChanged: (v) => setDialogState(() => isActive = v),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty) return;
+                await ref.read(accountServiceProvider).update(
+                  widget.account.id,
+                  AccountsCompanion(
+                    name: Value(nameCtrl.text.trim()),
+                    currency: Value(currencyCtrl.text.trim()),
+                    institution: Value(institutionCtrl.text.trim()),
+                    isActive: Value(isActive),
+                    updatedAt: Value(DateTime.now()),
+                  ),
+                );
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showReindexDialog(BuildContext context) async {
+    // Get all transactions with rawMetadata to discover available columns
+    final txs = await ref.read(transactionServiceProvider).getByAccount(widget.account.id);
+    final withMeta = txs.where((t) => t.rawMetadata != null && t.rawMetadata!.isNotEmpty).toList();
+
+    if (withMeta.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No imported transactions with metadata found.')),
+        );
+      }
+      return;
+    }
+
+    // Discover columns from first transaction's rawMetadata
+    final firstMeta = jsonDecode(withMeta.first.rawMetadata!) as Map<String, dynamic>;
+    final allColumns = firstMeta.keys.toList();
+
+    // Load current hash columns from saved config
+    final config = await ref.read(importConfigServiceProvider).getByAccount(widget.account.id);
+    final currentHashCols = config != null
+        ? (jsonDecode(config.hashColumnsJson) as List<dynamic>).cast<String>()
+        : <String>[];
+
+    final selectedCols = Set<String>.from(currentHashCols.where((c) => allColumns.contains(c)));
+    if (selectedCols.isEmpty) selectedCols.addAll(allColumns);
+
+    if (!context.mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Reindex Dedup Keys'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${withMeta.length} transactions with metadata.', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  const Text('Select columns for dedup hash:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  const Text('The hash uniquely identifies a row. Duplicates with the same hash will be removed.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 0,
+                    children: allColumns.map((col) {
+                      final selected = selectedCols.contains(col);
+                      return FilterChip(
+                        label: Text(col, style: const TextStyle(fontSize: 12)),
+                        selected: selected,
+                        onSelected: (v) => setDialogState(() {
+                          if (v) { selectedCols.add(col); } else { selectedCols.remove(col); }
+                        }),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  // Preview: show hash for first row with old and new
+                  if (selectedCols.isNotEmpty) ...[
+                    const Text('Preview (first row):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Builder(builder: (_) {
+                      final meta = jsonDecode(withMeta.first.rawMetadata!) as Map<String, dynamic>;
+                      final row = meta.map((k, v) => MapEntry(k, v.toString()));
+                      final sortedCols = selectedCols.toList()..sort((a, b) => allColumns.indexOf(a).compareTo(allColumns.indexOf(b)));
+                      final newHash = ImportService.hashRow(row, sortedCols);
+                      final oldHash = withMeta.first.importHash ?? '(none)';
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Values: ${sortedCols.map((c) => row[c] ?? '').join(' | ')}',
+                              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'), maxLines: 2, overflow: TextOverflow.ellipsis),
+                          Text('Old hash: ${oldHash.substring(0, oldHash.length > 16 ? 16 : oldHash.length)}…',
+                              style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+                          Text('New hash: ${newHash.substring(0, 16)}…',
+                              style: TextStyle(fontSize: 11, fontFamily: 'monospace',
+                                  color: newHash == oldHash ? Colors.green : Colors.orange)),
+                        ],
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: selectedCols.isEmpty
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      await _executeReindex(withMeta, allColumns, selectedCols.toList());
+                    },
+              child: const Text('Reindex & Remove Duplicates'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _executeReindex(List<Transaction> transactions, List<String> allColumns, List<String> hashCols) async {
+    // Sort hash columns in original column order
+    hashCols.sort((a, b) => allColumns.indexOf(a).compareTo(allColumns.indexOf(b)));
+
+    _log.info('reindex: ${transactions.length} transactions, hash cols: $hashCols');
+
+    // Save config FIRST so it's never lost even if user navigates away
+    final existingConfig = await ref.read(importConfigServiceProvider).getByAccount(widget.account.id);
+    await ref.read(importConfigServiceProvider).save(
+          accountId: widget.account.id,
+          skipRows: existingConfig?.skipRows ?? 0,
+          mappings: existingConfig != null
+              ? (jsonDecode(existingConfig.mappingsJson) as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String?))
+              : {},
+          formula: existingConfig != null
+              ? (jsonDecode(existingConfig.formulaJson) as List<dynamic>)
+                  .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String)))
+                  .toList()
+              : [],
+          hashColumns: hashCols,
+        );
+    _log.info('reindex: saved config with hashCols=$hashCols');
+
+    // Batch-compute all new hashes
+    final updates = <int, String>{}; // id → newHash
+    for (final tx in transactions) {
+      if (tx.rawMetadata == null) continue;
+      final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+      final row = meta.map((k, v) => MapEntry(k, v.toString()));
+      final newHash = ImportService.hashRow(row, hashCols);
+      if (newHash != tx.importHash) {
+        updates[tx.id] = newHash;
+      }
+    }
+    _log.info('reindex: ${updates.length} hashes to update');
+
+    // Batch update all hashes in a single DB transaction
+    final txSvc = ref.read(transactionServiceProvider);
+    await txSvc.batchUpdateHashes(updates);
+    _log.info('reindex: batch-updated ${updates.length} hashes');
+
+    // Now remove duplicates
+    final deleted = await txSvc.removeDuplicates(widget.account.id);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reindexed ${updates.length} hashes. Removed $deleted duplicates.')),
+      );
+    }
+  }
+
+  Future<void> _showBalanceDialog(BuildContext context) async {
+    // Get all transactions with rawMetadata to discover available columns
+    final txs = await ref.read(transactionServiceProvider).getByAccount(widget.account.id);
+    if (txs.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No transactions to recalculate.')),
+        );
+      }
+      return;
+    }
+
+    // Discover columns from rawMetadata
+    final allColumns = <String>{};
+    for (final tx in txs) {
+      if (tx.rawMetadata != null) {
+        final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+        allColumns.addAll(meta.keys);
+      }
+    }
+    final columns = allColumns.toList()..sort();
+
+    // Load saved config for current balance mode
+    final savedConfig = await ref.read(importConfigServiceProvider).getByAccount(widget.account.id);
+    Map<String, dynamic> savedMappings = {};
+    if (savedConfig != null) {
+      savedMappings = jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic>;
+    }
+
+    var balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'none';
+    String? filterColumn = savedMappings['__balanceFilterColumn'] as String?;
+    if (filterColumn != null && !columns.contains(filterColumn)) filterColumn = null;
+    final filterInclude = <String>{};
+    if (savedMappings.containsKey('__balanceFilterInclude')) {
+      filterInclude.addAll(
+        (jsonDecode(savedMappings['__balanceFilterInclude'] as String) as List<dynamic>).cast<String>(),
+      );
+    }
+    // Get unique values for filter column from rawMetadata
+    List<String> uniqueValues(String col) {
+      final vals = <String>{};
+      for (final tx in txs) {
+        if (tx.rawMetadata == null) continue;
+        final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+        final v = (meta[col]?.toString() ?? '').trim();
+        if (v.isNotEmpty) vals.add(v);
+      }
+      return vals.toList()..sort();
+    }
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Recalculate Balance'),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Choose how to compute balanceAfter for each transaction.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'none', label: Text('None')),
+                      ButtonSegment(value: 'cumulative', label: Text('Cumulative sum')),
+                      ButtonSegment(value: 'filtered', label: Text('Filtered sum')),
+                    ],
+                    selected: {balanceMode},
+                    onSelectionChanged: (v) => setDialogState(() {
+                      balanceMode = v.first;
+                      if (balanceMode != 'filtered') {
+                        filterColumn = null;
+                        filterInclude.clear();
+                      }
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (balanceMode == 'cumulative')
+                    const Text(
+                      'Balance = running sum of amount from oldest to newest',
+                      style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                    ),
+
+                  if (balanceMode == 'filtered') ...[
+                    const Text('Filter column:', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    DropdownButtonFormField<String>(
+                      value: filterColumn,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('— None —', style: TextStyle(color: Colors.grey))),
+                        ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+                      ],
+                      onChanged: (v) => setDialogState(() {
+                        filterColumn = v;
+                        filterInclude.clear();
+                        if (v != null) filterInclude.addAll(uniqueValues(v));
+                      }),
+                    ),
+                    if (filterColumn != null) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Text('Include values:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => setDialogState(() => filterInclude.addAll(uniqueValues(filterColumn!))),
+                            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                            child: const Text('All', style: TextStyle(fontSize: 11)),
+                          ),
+                          TextButton(
+                            onPressed: () => setDialogState(() => filterInclude.clear()),
+                            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                            child: const Text('None', style: TextStyle(fontSize: 11)),
+                          ),
+                        ],
+                      ),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 0,
+                        children: uniqueValues(filterColumn!).map((val) {
+                          final selected = filterInclude.contains(val);
+                          return FilterChip(
+                            label: Text(val, style: const TextStyle(fontSize: 12)),
+                            selected: selected,
+                            onSelected: (v) => setDialogState(() {
+                              if (v) { filterInclude.add(val); } else { filterInclude.remove(val); }
+                            }),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ],
+
+
+
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: balanceMode == 'none' || (balanceMode == 'filtered' && filterColumn == null)
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      await _executeBalanceRecalc(txs, balanceMode, filterColumn, filterInclude);
+                      // Update saved config with new balance mode
+                      final updatedMappings = Map<String, dynamic>.from(savedMappings);
+                      updatedMappings['__balanceMode'] = balanceMode;
+                      if (filterColumn != null) {
+                        updatedMappings['__balanceFilterColumn'] = filterColumn;
+                      } else {
+                        updatedMappings.remove('__balanceFilterColumn');
+                      }
+                      if (filterInclude.isNotEmpty) {
+                        updatedMappings['__balanceFilterInclude'] = jsonEncode(filterInclude.toList());
+                      } else {
+                        updatedMappings.remove('__balanceFilterInclude');
+                      }
+                      await ref.read(importConfigServiceProvider).save(
+                        accountId: widget.account.id,
+                        skipRows: savedConfig?.skipRows ?? 0,
+                        mappings: updatedMappings.map((k, v) => MapEntry(k, v as String?)),
+                        formula: savedConfig != null
+                            ? (jsonDecode(savedConfig.formulaJson) as List<dynamic>)
+                                .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String)))
+                                .toList()
+                            : [],
+                        hashColumns: savedConfig != null
+                            ? (jsonDecode(savedConfig.hashColumnsJson) as List<dynamic>).cast<String>()
+                            : [],
+                      );
+                    },
+              child: const Text('Recalculate'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _executeBalanceRecalc(
+    List<Transaction> transactions,
+    String balanceMode,
+    String? filterColumn,
+    Set<String> filterInclude,
+  ) async {
+    _log.info('balanceRecalc: mode=$balanceMode, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
+    final txSvc = ref.read(transactionServiceProvider);
+
+    // Sort by ID (insertion order = original CSV row order).
+    final sorted = List.of(transactions)..sort((a, b) => a.id.compareTo(b.id));
+
+    // All arithmetic in integer cents to avoid floating point errors
+    int toCents(double v) => (v * 100).round();
+    double fromCents(int c) => c / 100;
+
+    int balanceCents = 0;
+    final updates = <int, double?>{}; // id → newBalance
+
+    for (final tx in sorted) {
+      double? newBalance;
+
+      if (balanceMode == 'cumulative') {
+        balanceCents += toCents(tx.amount);
+        newBalance = fromCents(balanceCents);
+      } else if (balanceMode == 'filtered') {
+        String filterVal = '';
+        if (filterColumn != null && tx.rawMetadata != null) {
+          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+          filterVal = (meta[filterColumn]?.toString() ?? '').trim();
+        }
+        final included = filterInclude.isEmpty || filterInclude.contains(filterVal);
+        if (included) {
+          balanceCents += toCents(tx.amount);
+        }
+        newBalance = fromCents(balanceCents);
+      }
+
+      if (newBalance != tx.balanceAfter) {
+        updates[tx.id] = newBalance;
+      }
+    }
+
+    // Batch update
+    await txSvc.batchUpdateBalances(updates);
+
+    _log.info('balanceRecalc: updated ${updates.length} transactions, final balance=${fromCents(balanceCents)}');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Recalculated ${updates.length} balances. Final: ${fromCents(balanceCents)}')),
+      );
+    }
+  }
+}
