@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,35 @@ class ImportScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<ImportScreen> createState() => _ImportScreenState();
+}
+
+/// Remember last directory across navigations and app restarts.
+String? _lastDirectory;
+
+Future<String?> _loadLastDirectory() async {
+  if (_lastDirectory != null) return _lastDirectory;
+  try {
+    final prefsDir = Directory(p.join(
+      Platform.environment['HOME'] ?? '',
+      'Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager',
+    ));
+    final file = File(p.join(prefsDir.path, '.last_import_dir'));
+    if (await file.exists()) {
+      _lastDirectory = (await file.readAsString()).trim();
+    }
+  } catch (_) {}
+  return _lastDirectory;
+}
+
+Future<void> _saveLastDirectory(String dir) async {
+  _lastDirectory = dir;
+  try {
+    final prefsDir = Directory(p.join(
+      Platform.environment['HOME'] ?? '',
+      'Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager',
+    ));
+    await File(p.join(prefsDir.path, '.last_import_dir')).writeAsString(dir);
+  } catch (_) {}
 }
 
 class _ImportScreenState extends ConsumerState<ImportScreen> {
@@ -54,7 +85,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   ImportResult? _result;
   bool _importing = false;
-  bool _picking = false;
+  bool _parsing = false;
   int _importedSoFar = 0;
   int _importTotal = 0;
   String? _error;
@@ -132,21 +163,26 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_picking)
-            const CircularProgressIndicator()
-          else ...[
-            if (_error != null) ...[
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 16),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-              const SizedBox(height: 16),
-            ],
+          if (_error != null) ...[
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+          ],
+          if (_parsing)
+            const Column(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Reading file...', style: TextStyle(color: Colors.grey)),
+              ],
+            )
+          else
             FilledButton.icon(
               icon: const Icon(Icons.folder_open),
               label: const Text('Pick File'),
               onPressed: _pickFile,
             ),
-          ],
         ],
       ),
     );
@@ -154,14 +190,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   Future<void> _pickFile() async {
     _log.info('_pickFile: opening file picker');
-    setState(() => _picking = true);
-    // Wait for the spinner frame to paint before the platform channel blocks the thread
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await _loadLastDirectory();
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['csv', 'xlsx', 'xls', 'tsv'],
+      initialDirectory: _lastDirectory,
     );
-    if (mounted) setState(() => _picking = false);
 
     if (result == null || result.files.single.path == null) {
       _log.info('_pickFile: cancelled by user');
@@ -170,10 +204,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
 
     final path = result.files.single.path!;
+    await _saveLastDirectory(p.dirname(path));
     _log.info('_pickFile: selected $path');
     setState(() {
       _error = null;
       _filePath = path;
+      _parsing = true;
     });
 
     try {
@@ -214,7 +250,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       await _loadSavedConfig(preview.columns);
     } catch (e, stack) {
       _log.severe('_pickFile: error reading file', e, stack);
-      setState(() => _error = 'Error reading file: $e');
+      setState(() {
+        _error = 'Error reading file: $e';
+        _parsing = false;
+      });
     }
   }
 
@@ -1742,7 +1781,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _mappings.clear();
     _result = null;
     _error = null;
-    _picking = false;
+    _parsing = false;
     _importedSoFar = 0;
     _importTotal = 0;
     _hashColumns.clear();

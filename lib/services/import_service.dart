@@ -804,10 +804,14 @@ class ImportService {
       return;
     }
 
-    // Use original CSV row order (csvIndex) — this preserves the sequence
-    // from the source file, which is how bank statements compute their balance.
+    // Sort chronologically (date ASC, csvIndex ASC) so cumulative balance
+    // accumulates from oldest to newest, regardless of CSV row order.
     final indexed = List.generate(rows.length, (i) => i);
-    indexed.sort((a, b) => rows[a].csvIndex.compareTo(rows[b].csvIndex));
+    indexed.sort((a, b) {
+      final cmp = rows[a].date.compareTo(rows[b].date);
+      if (cmp != 0) return cmp;
+      return rows[a].csvIndex.compareTo(rows[b].csvIndex);
+    });
 
     // All arithmetic in integer cents to avoid floating point errors
     int _toCents(double v) => (v * 100).round();

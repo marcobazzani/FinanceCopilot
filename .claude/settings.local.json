@@ -29,7 +29,9 @@
       "Bash(killall Dock)",
       "Bash(pkill -f FinanceCopilot)",
       "Bash(/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/FinanceCopilot.app)",
-      "Bash(open /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/FinanceCopilot.app)"
+      "Bash(open /Users/marco/Project/AssetManager/build/macos/Build/Products/Release/FinanceCopilot.app)",
+      "Bash(timeout 5 sqlite3 ~/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db \".schema import_configs\")",
+      "Bash(open build/macos/Build/Products/Release/FinanceCopilot.app)"
     ]
   }
 }

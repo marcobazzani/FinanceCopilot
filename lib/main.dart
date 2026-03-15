@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
+import 'ui/screens/dashboard_screen.dart';
 import 'ui/screens/import_screen.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -65,7 +66,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _body() {
     return switch (_selectedIndex) {
-      0 => const _DashboardPlaceholder(),
+      0 => const DashboardScreen(),
       1 => const AccountsScreen(),
       2 => const AssetsScreen(),
       _ => const SizedBox(),
@@ -140,31 +141,3 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-class _DashboardPlaceholder extends StatelessWidget {
-  const _DashboardPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.dashboard, size: 64, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(height: 16),
-          const Text('Dashboard', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text('Import data to see your financial overview.', style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            icon: const Icon(Icons.file_upload),
-            label: const Text('Import File'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ImportScreen()),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
