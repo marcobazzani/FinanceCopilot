@@ -597,8 +597,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(value: 'none', label: Text('None')),
-                      ButtonSegment(value: 'cumulative', label: Text('Cumulative sum')),
-                      ButtonSegment(value: 'filtered', label: Text('Filtered sum')),
+                      ButtonSegment(value: 'column', label: Text('From column')),
+                      ButtonSegment(value: 'cumulative', label: Text('Cumulative')),
+                      ButtonSegment(value: 'filtered', label: Text('Filtered')),
                     ],
                     selected: {balanceMode},
                     onSelectionChanged: (v) => setDialogState(() {
@@ -610,6 +611,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     }),
                   ),
                   const SizedBox(height: 12),
+
+                  if (balanceMode == 'column')
+                    const Text(
+                      'Balance is read from the imported CSV column (set during import)',
+                      style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                    ),
 
                   if (balanceMode == 'cumulative')
                     const Text(
@@ -682,11 +689,13 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: balanceMode == 'none' || (balanceMode == 'filtered' && filterColumn == null)
+              onPressed: balanceMode == 'none' ||
+                      (balanceMode == 'filtered' && filterColumn == null) ||
+                      (balanceMode == 'column' && savedMappings['balanceAfter'] == null)
                   ? null
                   : () async {
                       Navigator.pop(ctx);
-                      await _executeBalanceRecalc(txs, balanceMode, filterColumn, filterInclude);
+                      await _executeBalanceRecalc(txs, balanceMode, filterColumn, filterInclude, savedMappings);
                       // Update saved config with new balance mode
                       final updatedMappings = Map<String, dynamic>.from(savedMappings);
                       updatedMappings['__balanceMode'] = balanceMode;
@@ -722,17 +731,54 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     );
   }
 
+  /// Parse an amount/balance string. Handles European (1.234,56) and standard (1,234.56).
+  double? _tryParseAmount(String? s) {
+    if (s == null) return null;
+    s = s.trim();
+    if (s.isEmpty) return null;
+
+    // Remove currency symbols
+    s = s.replaceAll(RegExp(r'[€$£¥]'), '').trim();
+
+    if (s.contains(',') && s.contains('.')) {
+      final lastComma = s.lastIndexOf(',');
+      final lastDot = s.lastIndexOf('.');
+      if (lastComma > lastDot) {
+        // European: dots are thousands, comma is decimal
+        s = s.replaceAll('.', '').replaceAll(',', '.');
+      } else {
+        // Standard: commas are thousands, dot is decimal
+        s = s.replaceAll(',', '');
+      }
+    } else if (s.contains(',')) {
+      final parts = s.split(',');
+      if (parts.last.length <= 2) {
+        s = s.replaceAll(',', '.');
+      } else {
+        s = s.replaceAll(',', '');
+      }
+    }
+
+    return double.tryParse(s);
+  }
+
   Future<void> _executeBalanceRecalc(
     List<Transaction> transactions,
     String balanceMode,
     String? filterColumn,
     Set<String> filterInclude,
+    Map<String, dynamic> mappings,
   ) async {
     _log.info('balanceRecalc: mode=$balanceMode, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
     final txSvc = ref.read(transactionServiceProvider);
 
-    // Sort by ID (insertion order = original CSV row order).
-    final sorted = List.of(transactions)..sort((a, b) => a.id.compareTo(b.id));
+    // Sort chronologically (date ASC, id ASC) so cumulative balance
+    // accumulates from oldest to newest, regardless of CSV import order.
+    final sorted = List.of(transactions)..sort((a, b) {
+      final cmp = a.operationDate.compareTo(b.operationDate);
+      if (cmp != 0) return cmp;
+      return a.id.compareTo(b.id);
+    });
 
     // All arithmetic in integer cents to avoid floating point errors
     int toCents(double v) => (v * 100).round();
@@ -740,11 +786,19 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
     int balanceCents = 0;
     final updates = <int, double?>{}; // id → newBalance
+    final balanceColumn = mappings['balanceAfter'] as String?;
 
     for (final tx in sorted) {
       double? newBalance;
 
-      if (balanceMode == 'cumulative') {
+      if (balanceMode == 'column') {
+        // Read balance from the original CSV column stored in rawMetadata
+        if (balanceColumn != null && tx.rawMetadata != null) {
+          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+          final raw = meta[balanceColumn]?.toString() ?? '';
+          newBalance = _tryParseAmount(raw);
+        }
+      } else if (balanceMode == 'cumulative') {
         balanceCents += toCents(tx.amount);
         newBalance = fromCents(balanceCents);
       } else if (balanceMode == 'filtered') {
