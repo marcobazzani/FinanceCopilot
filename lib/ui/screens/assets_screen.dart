@@ -6,6 +6,7 @@ import '../../database/database.dart';
 import '../../services/asset_service.dart';
 import '../../services/providers.dart';
 import 'asset_detail_screen.dart';
+import 'dashboard_screen.dart' show currencySymbol;
 
 final _amtFormat = NumberFormat('#,##0.00', 'it_IT');
 final _qtyFormat = NumberFormat('#,##0.####', 'it_IT');
@@ -17,6 +18,8 @@ class AssetsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final assetsAsync = ref.watch(assetsProvider);
     final statsAsync = ref.watch(assetStatsProvider);
+    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final convertedStats = ref.watch(convertedAssetStatsProvider).valueOrNull ?? {};
 
     return Scaffold(
       body: assetsAsync.when(
@@ -50,6 +53,8 @@ class AssetsScreen extends ConsumerWidget {
                 key: ValueKey(asset.id),
                 asset: asset,
                 stats: stat,
+                convertedInvested: convertedStats[asset.id],
+                baseCurrency: baseCurrency,
                 index: i,
                 onTap: () => Navigator.push(
                   context,
@@ -162,6 +167,8 @@ class AssetsScreen extends ConsumerWidget {
 class _AssetTile extends StatelessWidget {
   final Asset asset;
   final AssetStats? stats;
+  final double? convertedInvested;
+  final String baseCurrency;
   final int index;
   final VoidCallback onTap;
 
@@ -169,6 +176,8 @@ class _AssetTile extends StatelessWidget {
     super.key,
     required this.asset,
     required this.stats,
+    this.convertedInvested,
+    required this.baseCurrency,
     required this.index,
     required this.onTap,
   });
@@ -275,6 +284,16 @@ class _AssetTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (asset.currency != baseCurrency && convertedInvested != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '≈ ${_amtFormat.format(convertedInvested!)} ${currencySymbol(baseCurrency)}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: Colors.grey,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
                   Text(
