@@ -11,6 +11,7 @@ import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/amount_parser.dart' as amt;
 import '../utils/logger.dart';
+import 'isin_lookup_service.dart';
 
 final _log = getLogger('ImportService');
 
@@ -479,6 +480,7 @@ class ImportService {
     required List<ColumnMapping> mappings,
     void Function(int processed, int total)? onProgress,
     bool computeFee = false,
+    IsinLookupService? isinLookup,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -535,24 +537,34 @@ class ImportService {
       }
     }
 
+    // Batch-lookup all new ISINs via OpenFIGI
+    final newIsins = isinToRows.keys.where((i) => !existingByIsin.containsKey(i)).toList();
+    final lookupResults = isinLookup != null && newIsins.isNotEmpty
+        ? await isinLookup.lookupBatch(newIsins)
+        : <String, IsinLookupResult>{};
+
     for (final isin in isinToRows.keys) {
       if (existingByIsin.containsKey(isin)) {
         assetsByIsin[isin] = existingByIsin[isin]!;
         _log.fine('importAssetEventsGrouped: reusing asset id=${existingByIsin[isin]} for ISIN=$isin');
       } else {
-        // Derive asset name from description of first row
-        final firstRow = preview.rows[isinToRows[isin]!.first];
-        final desc = descMapping != null ? (_resolveMapping(descMapping, firstRow) ?? isin) : isin;
-        final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, firstRow) ?? 'EUR') : 'EUR';
+        // Use ISIN lookup result for name/ticker; fall back to ISIN code
+        final lookup = lookupResults[isin];
+        final name = lookup?.name ?? isin;
+        final ticker = lookup?.ticker;
+        final currency = currencyMapping != null
+            ? (_resolveMapping(currencyMapping, preview.rows[isinToRows[isin]!.first]) ?? 'EUR')
+            : 'EUR';
         final assetId = await _db.into(_db.assets).insert(AssetsCompanion.insert(
-          name: desc.length > 100 ? desc.substring(0, 100) : desc,
+          name: name.length > 200 ? name.substring(0, 200) : name,
           assetType: AssetType.stockEtf,
           valuationMethod: ValuationMethod.eventDriven,
+          ticker: Value(ticker),
           isin: Value(isin),
           currency: Value(currency),
         ));
         assetsByIsin[isin] = assetId;
-        _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$desc');
+        _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker');
       }
     }
 

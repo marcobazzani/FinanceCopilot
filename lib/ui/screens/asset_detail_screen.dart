@@ -50,13 +50,11 @@ class AssetDetailScreen extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      Chip(label: Text(asset.assetType.name)),
-                      const SizedBox(width: 8),
-                      Chip(label: Text(asset.valuationMethod.name)),
                       if (asset.ticker != null) ...[
-                        const SizedBox(width: 8),
                         Chip(label: Text(asset.ticker!), avatar: const Icon(Icons.label, size: 16)),
+                        const SizedBox(width: 8),
                       ],
+                      Chip(label: Text(asset.currency)),
                     ],
                   ),
                   if (asset.isin != null)
@@ -183,8 +181,6 @@ class AssetDetailScreen extends ConsumerWidget {
     final tickerCtrl = TextEditingController(text: asset.ticker ?? '');
     final isinCtrl = TextEditingController(text: asset.isin ?? '');
     final taxRateCtrl = TextEditingController(text: asset.taxRate?.toString() ?? '');
-    var selectedType = asset.assetType;
-    var selectedValuation = asset.valuationMethod;
     var isActive = asset.isActive;
 
     await showDialog(
@@ -200,20 +196,10 @@ class AssetDetailScreen extends ConsumerWidget {
                 const SizedBox(height: 8),
                 TextField(controller: tickerCtrl, decoration: const InputDecoration(labelText: 'Ticker')),
                 const SizedBox(height: 8),
-                TextField(controller: isinCtrl, decoration: const InputDecoration(labelText: 'ISIN')),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<AssetType>(
-                  value: selectedType,
-                  decoration: const InputDecoration(labelText: 'Type'),
-                  items: AssetType.values.map((t) => DropdownMenuItem(value: t, child: Text(t.name))).toList(),
-                  onChanged: (v) => setDialogState(() => selectedType = v!),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<ValuationMethod>(
-                  value: selectedValuation,
-                  decoration: const InputDecoration(labelText: 'Valuation'),
-                  items: ValuationMethod.values.map((t) => DropdownMenuItem(value: t, child: Text(t.name))).toList(),
-                  onChanged: (v) => setDialogState(() => selectedValuation = v!),
+                TextField(
+                  controller: isinCtrl,
+                  decoration: const InputDecoration(labelText: 'ISIN'),
+                  textCapitalization: TextCapitalization.characters,
                 ),
                 const SizedBox(height: 8),
                 TextField(
@@ -242,9 +228,7 @@ class AssetDetailScreen extends ConsumerWidget {
                   AssetsCompanion(
                     name: Value(nameCtrl.text.trim()),
                     ticker: Value(tickerCtrl.text.isNotEmpty ? tickerCtrl.text.trim() : null),
-                    isin: Value(isinCtrl.text.isNotEmpty ? isinCtrl.text.trim() : null),
-                    assetType: Value(selectedType),
-                    valuationMethod: Value(selectedValuation),
+                    isin: Value(isinCtrl.text.isNotEmpty ? isinCtrl.text.trim().toUpperCase() : null),
                     taxRate: Value(taxRateCtrl.text.isNotEmpty ? double.tryParse(taxRateCtrl.text) : null),
                     isActive: Value(isActive),
                     updatedAt: Value(DateTime.now()),

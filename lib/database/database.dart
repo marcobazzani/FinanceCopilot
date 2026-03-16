@@ -44,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +66,10 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 4) {
             await _createIndexes();
+          }
+          if (from < 5) {
+            await customStatement('ALTER TABLE assets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+            await customStatement('UPDATE assets SET sort_order = id');
           }
         },
       );
