@@ -75,6 +75,13 @@ class ImportResult {
 /// Target entity type for import.
 enum ImportTarget { transaction, assetEvent }
 
+/// Result of an asset import that groups by ISIN.
+class AssetImportResult {
+  final ImportResult result;
+  final Map<String, int> assetsByIsin; // ISIN → asset ID
+  const AssetImportResult({required this.result, required this.assetsByIsin});
+}
+
 // ──────────────────────────────────────────────
 // Top-level functions for isolate parsing
 // ──────────────────────────────────────────────
@@ -464,57 +471,101 @@ class ImportService {
     );
   }
 
-  /// Import rows as AssetEvents.
-  Future<ImportResult> importAssetEvents({
+  /// Import rows as AssetEvents, grouped by ISIN.
+  /// Auto-creates Asset entries for each unique ISIN found in the data.
+  /// Returns the import result plus a map of created/reused asset IDs by ISIN.
+  Future<AssetImportResult> importAssetEventsGrouped({
     required FilePreview preview,
     required List<ColumnMapping> mappings,
-    required int assetId,
-    Set<String>? hashColumns,
     void Function(int processed, int total)? onProgress,
   }) async {
-    final dedupCols = (hashColumns != null && hashColumns.isNotEmpty)
-        ? preview.columns.where((c) => hashColumns.contains(c)).toList()
-        : preview.columns;
-    _log.info('importAssetEvents: assetId=$assetId, ${preview.totalRows} rows, ${mappings.length} mappings, ${dedupCols.length} hash cols');
+    _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
+    final isinMapping = mappingByField['isin'];
 
-    if (dateMapping == null || amountMapping == null) {
-      _log.severe('importAssetEvents: missing required mappings');
-      return const ImportResult(
-        totalRows: 0, importedRows: 0, skippedDuplicates: 0, errorRows: 0,
-        errors: ['date and amount columns are required'],
+    if (dateMapping == null || amountMapping == null || isinMapping == null) {
+      _log.severe('importAssetEventsGrouped: missing required mappings');
+      return AssetImportResult(
+        result: const ImportResult(
+          totalRows: 0, importedRows: 0, skippedDuplicates: 0, errorRows: 0,
+          errors: ['date, amount, and ISIN columns are required'],
+        ),
+        assetsByIsin: {},
       );
     }
-
-    // Get existing hashes for this asset
-    final existingHashes = await _getExistingEventHashes(assetId);
-
-    var imported = 0;
-    var skipped = 0;
-    var errorCount = 0;
-    final errors = <String>[];
 
     // Pre-resolve field mappings once
     final typeMapping = mappingByField['type'];
     final qtyMapping = mappingByField['quantity'];
     final priceMapping = mappingByField['price'];
     final currencyMapping = mappingByField['currency'];
+    final exchangeRateMapping = mappingByField['exchangeRate'];
     final commMapping = mappingByField['commission'];
-    final notesMapping = mappingByField['notes'];
+    final descMapping = mappingByField['description'];
 
+    var imported = 0;
+    var errorCount = 0;
+    final errors = <String>[];
+
+    // First pass: collect unique ISINs and find/create assets
+    final isinToRows = <String, List<int>>{};
+    for (var i = 0; i < preview.rows.length; i++) {
+      final row = preview.rows[i];
+      final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
+      if (isin.isEmpty) {
+        errorCount++;
+        errors.add('Row ${i + 1}: empty ISIN');
+        continue;
+      }
+      isinToRows.putIfAbsent(isin, () => []).add(i);
+    }
+
+    _log.info('importAssetEventsGrouped: found ${isinToRows.length} unique ISINs');
+
+    // Find or create asset for each ISIN
+    final assetsByIsin = <String, int>{};
+    final existingAssets = await _db.select(_db.assets).get();
+    final existingByIsin = <String, int>{};
+    for (final a in existingAssets) {
+      if (a.isin != null && a.isin!.isNotEmpty) {
+        existingByIsin[a.isin!.toUpperCase()] = a.id;
+      }
+    }
+
+    for (final isin in isinToRows.keys) {
+      if (existingByIsin.containsKey(isin)) {
+        assetsByIsin[isin] = existingByIsin[isin]!;
+        _log.fine('importAssetEventsGrouped: reusing asset id=${existingByIsin[isin]} for ISIN=$isin');
+      } else {
+        // Derive asset name from description of first row
+        final firstRow = preview.rows[isinToRows[isin]!.first];
+        final desc = descMapping != null ? (_resolveMapping(descMapping, firstRow) ?? isin) : isin;
+        final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, firstRow) ?? 'EUR') : 'EUR';
+        final assetId = await _db.into(_db.assets).insert(AssetsCompanion.insert(
+          name: desc.length > 100 ? desc.substring(0, 100) : desc,
+          assetType: AssetType.stockEtf,
+          valuationMethod: ValuationMethod.eventDriven,
+          isin: Value(isin),
+          currency: Value(currency),
+        ));
+        assetsByIsin[isin] = assetId;
+        _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$desc');
+      }
+    }
+
+    // Second pass: build event companions
     final companions = <AssetEventsCompanion>[];
     const progressInterval = 100;
 
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
-      final hash = _hashRow(row, dedupCols);
-
-      if (existingHashes.contains(hash)) {
-        skipped++;
+      final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
+      final assetId = assetsByIsin[isin];
+      if (assetId == null) {
         if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
-        continue;
+        continue; // already counted as error in first pass
       }
 
       try {
@@ -523,7 +574,6 @@ class ImportService {
         final date = _parseDate(dateStr);
         final amount = _parseAmount(amountStr);
 
-        // Store entire row as raw metadata
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
           rawMetadata[col] = row[col] ?? '';
@@ -540,36 +590,37 @@ class ImportService {
           quantity: Value(qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null),
           price: Value(priceMapping != null ? _tryParseAmount(_resolveMapping(priceMapping, row)) : null),
           currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? 'EUR') : 'EUR'),
+          exchangeRate: Value(exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null),
           commission: Value(commMapping != null ? _tryParseAmount(_resolveMapping(commMapping, row)) : null),
-          notes: Value(notesMapping != null ? _resolveMapping(notesMapping, row) : null),
+          notes: Value(descMapping != null ? _resolveMapping(descMapping, row) : null),
           rawMetadata: Value(jsonEncode(rawMetadata)),
-          importHash: Value(hash),
         ));
         imported++;
       } catch (e, stack) {
         errorCount++;
         errors.add('Row ${i + 1}: $e');
-        _log.warning('importAssetEvents: row ${i + 1} error: $e', e, stack);
+        _log.warning('importAssetEventsGrouped: row ${i + 1} error: $e', e, stack);
       }
       if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
     }
 
-    // Report parsing complete, starting DB write
     onProgress?.call(preview.rows.length, preview.rows.length);
 
-    // Batch insert all rows in a single DB transaction
-    _log.info('importAssetEvents: batch-inserting ${companions.length} rows');
+    _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events');
     await _db.batch((batch) {
       batch.insertAll(_db.assetEvents, companions);
     });
 
-    _log.info('importAssetEvents: done — imported=$imported, skipped=$skipped, errors=$errorCount');
-    return ImportResult(
-      totalRows: preview.totalRows,
-      importedRows: imported,
-      skippedDuplicates: skipped,
-      errorRows: errorCount,
-      errors: errors,
+    _log.info('importAssetEventsGrouped: done — imported=$imported, errors=$errorCount, assets=${assetsByIsin.length}');
+    return AssetImportResult(
+      result: ImportResult(
+        totalRows: preview.totalRows,
+        importedRows: imported,
+        skippedDuplicates: 0,
+        errorRows: errorCount,
+        errors: errors,
+      ),
+      assetsByIsin: assetsByIsin,
     );
   }
 
@@ -744,10 +795,15 @@ class ImportService {
 
   EventType _parseEventType(String s) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
-    return EventType.values.firstWhere(
-      (e) => e.name.toUpperCase() == normalized,
-      orElse: () => EventType.buy,
-    );
+    // Direct enum match
+    final direct = EventType.values.where((e) => e.name.toUpperCase() == normalized).firstOrNull;
+    if (direct != null) return direct;
+    // Common aliases
+    const sellAliases = {'SELL', 'VENDITA', 'VENDI', 'S', 'V', 'VERKAUF', 'VENTE'};
+    const buyAliases = {'BUY', 'ACQUISTO', 'COMPRA', 'B', 'A', 'KAUF', 'ACHAT'};
+    if (sellAliases.contains(normalized)) return EventType.sell;
+    if (buyAliases.contains(normalized)) return EventType.buy;
+    return EventType.buy;
   }
 
   /// Compute balanceAfter for parsed rows based on the selected mode.

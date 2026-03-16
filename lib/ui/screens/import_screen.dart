@@ -90,11 +90,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   int _importTotal = 0;
   String? _error;
 
-  List<String> get _requiredFields => ['date', 'amount', 'description'];
+  List<String> get _requiredFields => _target == ImportTarget.transaction
+      ? ['date', 'amount', 'description']
+      : ['date', 'isin', 'type', 'amount', 'quantity', 'price', 'currency', 'exchangeRate', 'commission'];
 
   List<String> get _optionalFields => _target == ImportTarget.transaction
       ? ['currency', 'valueDate', 'status']
-      : ['type', 'quantity', 'price', 'currency', 'commission', 'notes'];
+      : ['description'];
 
   // Multi-column mappings for optional fields: field → [col1, col2, ...]
   final Map<String, List<String>> _multiMappings = {};
@@ -282,26 +284,32 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     final lowerCols = {for (final c in columns) c.toLowerCase(): c};
 
-    // Date
-    for (final key in ['date', 'data', 'data_operazione', 'data di inizio', 'operation_date']) {
-      if (lowerCols.containsKey(key)) {
-        _mappings['date'] = lowerCols[key];
-        break;
+    /// Try to map a target field by trying a list of common column names.
+    void tryMap(String field, List<String> keys) {
+      for (final key in keys) {
+        if (lowerCols.containsKey(key)) {
+          _mappings[field] = lowerCols[key];
+          return;
+        }
       }
     }
-    // Amount
-    for (final key in ['amount', 'importo', 'entrate', 'uscite', 'controvalore']) {
-      if (lowerCols.containsKey(key)) {
-        _mappings['amount'] = lowerCols[key];
-        break;
-      }
-    }
-    // Description
-    for (final key in ['description', 'descrizione', 'causale', 'memo', 'note', 'notes', 'oggetto', 'dettagli']) {
-      if (lowerCols.containsKey(key)) {
-        _mappings['description'] = lowerCols[key];
-        break;
-      }
+
+    // Shared
+    tryMap('date', ['date', 'data', 'data_operazione', 'data di inizio', 'operation_date']);
+    tryMap('description', ['description', 'descrizione', 'causale', 'memo', 'note', 'notes', 'oggetto', 'dettagli']);
+
+    if (_target == ImportTarget.transaction) {
+      tryMap('amount', ['amount', 'importo', 'entrate', 'uscite', 'controvalore']);
+    } else {
+      // Asset event fields
+      tryMap('isin', ['isin', 'codice isin', 'isin code']);
+      tryMap('type', ['type', 'tipo', 'operazione', 'buy/sell', 'operation']);
+      tryMap('quantity', ['quantity', 'quantità', 'quantita', 'qty', 'nominale']);
+      tryMap('price', ['price', 'prezzo', 'corso', 'prezzo unitario', 'unit price']);
+      tryMap('currency', ['currency', 'valuta', 'divisa', 'ccy']);
+      tryMap('exchangeRate', ['exchange rate', 'cambio', 'tasso di cambio', 'fx rate', 'tasso']);
+      tryMap('amount', ['amount', 'controvalore', 'equivalent value', 'importo', 'total']);
+      tryMap('commission', ['fee', 'commission', 'commissione', 'commissioni', 'spese']);
     }
   }
 
@@ -629,8 +637,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             children: [
               // Required fields
               _buildMappingRow('date', preview.columns, required: true),
-              _buildAmountFormulaRow(preview.columns),
-              _buildMappingRow('description', preview.columns, required: true, multiColumn: true),
+              if (_target == ImportTarget.transaction)
+                _buildAmountFormulaRow(preview.columns)
+              else
+                _buildMappingRow('amount', preview.columns, required: true),
+              ..._requiredFields
+                  .where((f) => f != 'date' && f != 'amount')
+                  .map((f) => _buildMappingRow(f, preview.columns, required: true, multiColumn: f == 'description')),
               const SizedBox(height: 12),
               // Optional fields
               const Text('Optional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -640,29 +653,29 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               if (_target == ImportTarget.transaction) ...[
                 const Divider(),
                 _buildBalanceModeSection(preview),
-              ],
-              const Divider(),
+                const Divider(),
 
-              // Dedup hash column selector
-              const SizedBox(height: 8),
-              const Text('Dedup key columns', style: TextStyle(fontWeight: FontWeight.bold)),
-              const Text('Select which columns identify a unique row (duplicates will be skipped)',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                runSpacing: 0,
-                children: preview.columns.map((col) {
-                  final selected = _hashColumns.contains(col);
-                  return FilterChip(
-                    label: Text(col, style: const TextStyle(fontSize: 12)),
-                    selected: selected,
-                    onSelected: (v) => setState(() {
-                      if (v) { _hashColumns.add(col); } else { _hashColumns.remove(col); }
-                    }),
-                  );
-                }).toList(),
-              ),
+                // Dedup hash column selector
+                const SizedBox(height: 8),
+                const Text('Dedup key columns', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Select which columns identify a unique row (duplicates will be skipped)',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 0,
+                  children: preview.columns.map((col) {
+                    final selected = _hashColumns.contains(col);
+                    return FilterChip(
+                      label: Text(col, style: const TextStyle(fontSize: 12)),
+                      selected: selected,
+                      onSelected: (v) => setState(() {
+                        if (v) { _hashColumns.add(col); } else { _hashColumns.remove(col); }
+                      }),
+                    );
+                  }).toList(),
+                ),
+              ],
               const Divider(),
 
               // Data preview table
@@ -1352,6 +1365,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_mappings['date'] == null) return false;
     // amount: either simple mapping, formula, or balance-diff
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null) return false;
+    // Asset events also require ISIN
+    if (_target == ImportTarget.assetEvent && _mappings['isin'] == null) return false;
     return true;
   }
 
@@ -1359,17 +1374,29 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // Step 2: Select target + confirm
   // ──────────────────────────────────────────────
 
+  /// Extract unique ISINs from preview data for the asset import summary.
+  Map<String, int> _getIsinSummary() {
+    if (_preview == null || _mappings['isin'] == null) return {};
+    final isinCol = _mappings['isin']!;
+    final counts = <String, int>{};
+    for (final row in _preview!.rows) {
+      final isin = (row[isinCol] ?? '').trim().toUpperCase();
+      if (isin.isNotEmpty) {
+        counts[isin] = (counts[isin] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+
   Widget _buildConfirm() {
+    final isAssetImport = _target == ImportTarget.assetEvent;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.preselectedAccountId == null) ...[
-          Text(
-            _target == ImportTarget.transaction ? 'Select Account' : 'Select Asset',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
+        if (!isAssetImport && widget.preselectedAccountId == null) ...[
+          const Text('Select Account', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-          _target == ImportTarget.transaction ? _buildAccountSelector() : _buildAssetSelector(),
+          _buildAccountSelector(),
           const SizedBox(height: 24),
         ],
 
@@ -1384,7 +1411,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 const SizedBox(height: 8),
                 Text('File: ${_filePath?.split('/').last}'),
                 Text('Rows: ${_preview?.totalRows}'),
-                Text('Target: ${_target == ImportTarget.transaction ? "Transaction" : "Asset Event"}'),
+                Text('Target: ${isAssetImport ? "Asset Events" : "Transactions"}'),
                 const SizedBox(height: 8),
                 const Text('Mappings:', style: TextStyle(fontWeight: FontWeight.bold)),
                 ..._mappings.entries
@@ -1392,6 +1419,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                     .map((e) => Text('  ${e.key} ← ${e.value}')),
                 if (_amountFormula.isNotEmpty)
                   Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
+                if (isAssetImport) ...[
+                  const SizedBox(height: 12),
+                  const Text('Assets to create/update:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ..._getIsinSummary().entries.map((e) =>
+                    Text('  ${e.key} — ${e.value} events', style: const TextStyle(fontSize: 13)),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1436,7 +1470,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               FilledButton.icon(
                 icon: const Icon(Icons.check),
                 label: const Text('Import'),
-                onPressed: _targetId != null ? _executeImport : null,
+                onPressed: (isAssetImport || _targetId != null) ? _executeImport : null,
               ),
             ],
           ),
@@ -1670,13 +1704,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
         );
       } else {
-        result = await importer.importAssetEvents(
+        final assetResult = await importer.importAssetEventsGrouped(
           preview: _preview!,
           mappings: mappings,
-          assetId: _targetId!,
-          hashColumns: _hashColumns.isNotEmpty ? _hashColumns : null,
           onProgress: onProgress,
         );
+        result = assetResult.result;
       }
 
       _log.info('_executeImport: complete — imported=${result.importedRows}, duplicates=${result.skippedDuplicates}, errors=${result.errorRows}');
