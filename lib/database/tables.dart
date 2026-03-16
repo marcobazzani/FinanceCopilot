@@ -130,6 +130,7 @@ class Assets extends Table {
   TextColumn get valuationMethod => textEnum<ValuationMethod>()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get includeInNetWorth => boolean().withDefault(const Constant(true))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();

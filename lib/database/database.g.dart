@@ -2732,6 +2732,18 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
   late final GeneratedColumn<String> notes = GeneratedColumn<String>(
@@ -2783,6 +2795,7 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     valuationMethod,
     isActive,
     includeInNetWorth,
+    sortOrder,
     notes,
     createdAt,
     updatedAt,
@@ -2885,6 +2898,12 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         ),
       );
     }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
     if (data.containsKey('notes')) {
       context.handle(
         _notesMeta,
@@ -2980,6 +2999,10 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         DriftSqlType.bool,
         data['${effectivePrefix}include_in_net_worth'],
       )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
       notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
@@ -3025,6 +3048,7 @@ class Asset extends DataClass implements Insertable<Asset> {
   final ValuationMethod valuationMethod;
   final bool isActive;
   final bool includeInNetWorth;
+  final int sortOrder;
   final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -3045,6 +3069,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.valuationMethod,
     required this.isActive,
     required this.includeInNetWorth,
+    required this.sortOrder,
     this.notes,
     required this.createdAt,
     required this.updatedAt,
@@ -3092,6 +3117,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     }
     map['is_active'] = Variable<bool>(isActive);
     map['include_in_net_worth'] = Variable<bool>(includeInNetWorth);
+    map['sort_order'] = Variable<int>(sortOrder);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
     }
@@ -3130,6 +3156,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       valuationMethod: Value(valuationMethod),
       isActive: Value(isActive),
       includeInNetWorth: Value(includeInNetWorth),
+      sortOrder: Value(sortOrder),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
@@ -3164,6 +3191,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       ),
       isActive: serializer.fromJson<bool>(json['isActive']),
       includeInNetWorth: serializer.fromJson<bool>(json['includeInNetWorth']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -3193,6 +3221,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       ),
       'isActive': serializer.toJson<bool>(isActive),
       'includeInNetWorth': serializer.toJson<bool>(includeInNetWorth),
+      'sortOrder': serializer.toJson<int>(sortOrder),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -3216,6 +3245,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     ValuationMethod? valuationMethod,
     bool? isActive,
     bool? includeInNetWorth,
+    int? sortOrder,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -3236,6 +3266,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     valuationMethod: valuationMethod ?? this.valuationMethod,
     isActive: isActive ?? this.isActive,
     includeInNetWorth: includeInNetWorth ?? this.includeInNetWorth,
+    sortOrder: sortOrder ?? this.sortOrder,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -3264,6 +3295,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       includeInNetWorth: data.includeInNetWorth.present
           ? data.includeInNetWorth.value
           : this.includeInNetWorth,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -3289,6 +3321,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('valuationMethod: $valuationMethod, ')
           ..write('isActive: $isActive, ')
           ..write('includeInNetWorth: $includeInNetWorth, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -3314,6 +3347,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     valuationMethod,
     isActive,
     includeInNetWorth,
+    sortOrder,
     notes,
     createdAt,
     updatedAt,
@@ -3338,6 +3372,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.valuationMethod == this.valuationMethod &&
           other.isActive == this.isActive &&
           other.includeInNetWorth == this.includeInNetWorth &&
+          other.sortOrder == this.sortOrder &&
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -3360,6 +3395,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<ValuationMethod> valuationMethod;
   final Value<bool> isActive;
   final Value<bool> includeInNetWorth;
+  final Value<int> sortOrder;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -3380,6 +3416,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.valuationMethod = const Value.absent(),
     this.isActive = const Value.absent(),
     this.includeInNetWorth = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -3401,6 +3438,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     required ValuationMethod valuationMethod,
     this.isActive = const Value.absent(),
     this.includeInNetWorth = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -3424,6 +3462,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? valuationMethod,
     Expression<bool>? isActive,
     Expression<bool>? includeInNetWorth,
+    Expression<int>? sortOrder,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -3445,6 +3484,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (valuationMethod != null) 'valuation_method': valuationMethod,
       if (isActive != null) 'is_active': isActive,
       if (includeInNetWorth != null) 'include_in_net_worth': includeInNetWorth,
+      if (sortOrder != null) 'sort_order': sortOrder,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -3468,6 +3508,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<ValuationMethod>? valuationMethod,
     Value<bool>? isActive,
     Value<bool>? includeInNetWorth,
+    Value<int>? sortOrder,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -3489,6 +3530,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       valuationMethod: valuationMethod ?? this.valuationMethod,
       isActive: isActive ?? this.isActive,
       includeInNetWorth: includeInNetWorth ?? this.includeInNetWorth,
+      sortOrder: sortOrder ?? this.sortOrder,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -3550,6 +3592,9 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     if (includeInNetWorth.present) {
       map['include_in_net_worth'] = Variable<bool>(includeInNetWorth.value);
     }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
     }
@@ -3581,6 +3626,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('valuationMethod: $valuationMethod, ')
           ..write('isActive: $isActive, ')
           ..write('includeInNetWorth: $includeInNetWorth, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -16837,6 +16883,7 @@ typedef $$AssetsTableCreateCompanionBuilder =
       required ValuationMethod valuationMethod,
       Value<bool> isActive,
       Value<bool> includeInNetWorth,
+      Value<int> sortOrder,
       Value<String?> notes,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -16859,6 +16906,7 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<ValuationMethod> valuationMethod,
       Value<bool> isActive,
       Value<bool> includeInNetWorth,
+      Value<int> sortOrder,
       Value<String?> notes,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -17031,6 +17079,11 @@ class $$AssetsTableFilterComposer
 
   ColumnFilters<bool> get includeInNetWorth => $composableBuilder(
     column: $table.includeInNetWorth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17239,6 +17292,11 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get notes => $composableBuilder(
     column: $table.notes,
     builder: (column) => ColumnOrderings(column),
@@ -17318,6 +17376,9 @@ class $$AssetsTableAnnotationComposer
     column: $table.includeInNetWorth,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
@@ -17478,6 +17539,7 @@ class $$AssetsTableTableManager
                 Value<ValuationMethod> valuationMethod = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<bool> includeInNetWorth = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -17498,6 +17560,7 @@ class $$AssetsTableTableManager
                 valuationMethod: valuationMethod,
                 isActive: isActive,
                 includeInNetWorth: includeInNetWorth,
+                sortOrder: sortOrder,
                 notes: notes,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -17520,6 +17583,7 @@ class $$AssetsTableTableManager
                 required ValuationMethod valuationMethod,
                 Value<bool> isActive = const Value.absent(),
                 Value<bool> includeInNetWorth = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -17540,6 +17604,7 @@ class $$AssetsTableTableManager
                 valuationMethod: valuationMethod,
                 isActive: isActive,
                 includeInNetWorth: includeInNetWorth,
+                sortOrder: sortOrder,
                 notes: notes,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

@@ -1665,9 +1665,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   Future<void> _showCreateAssetDialog() async {
-    final nameCtrl = TextEditingController();
-    var selectedType = AssetType.stockEtf;
-    var selectedValuation = ValuationMethod.marketPrice;
+    final isinCtrl = TextEditingController();
+    String? resolvedName;
+    String? resolvedTicker;
+    bool looking = false;
 
     final created = await showDialog<bool>(
       context: context,
@@ -1678,41 +1679,65 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. iShares MSCI World'),
+                controller: isinCtrl,
+                decoration: const InputDecoration(labelText: 'ISIN', hintText: 'e.g. IE00B4L5Y983'),
+                textCapitalization: TextCapitalization.characters,
+                onChanged: (v) async {
+                  final isin = v.trim().toUpperCase();
+                  if (isin.length == 12) {
+                    setDialogState(() => looking = true);
+                    final result = await ref.read(isinLookupServiceProvider).lookup(isin);
+                    if (ctx.mounted) {
+                      setDialogState(() {
+                        resolvedName = result.name;
+                        resolvedTicker = result.ticker;
+                        looking = false;
+                      });
+                    }
+                  } else {
+                    setDialogState(() {
+                      resolvedName = null;
+                      resolvedTicker = null;
+                    });
+                  }
+                },
               ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<AssetType>(
-                value: selectedType,
-                decoration: const InputDecoration(labelText: 'Asset Type'),
-                items: AssetType.values
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => selectedType = v!),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<ValuationMethod>(
-                value: selectedValuation,
-                decoration: const InputDecoration(labelText: 'Valuation Method'),
-                items: ValuationMethod.values
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => selectedValuation = v!),
-              ),
+              const SizedBox(height: 12),
+              if (looking)
+                const Row(children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text('Looking up ISIN...', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ])
+              else if (resolvedName != null || resolvedTicker != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (resolvedName != null)
+                      Text(resolvedName!, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    if (resolvedTicker != null)
+                      Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                  ],
+                )
+              else if (isinCtrl.text.trim().length == 12)
+                const Text('ISIN not found', style: TextStyle(color: Colors.orange, fontSize: 13)),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                await ref.read(assetServiceProvider).create(
-                      name: nameCtrl.text.trim(),
-                      assetType: selectedType,
-                      valuationMethod: selectedValuation,
-                    );
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              },
+              onPressed: isinCtrl.text.trim().length == 12 && !looking
+                  ? () async {
+                      final isin = isinCtrl.text.trim().toUpperCase();
+                      final name = resolvedName ?? isin;
+                      await ref.read(assetServiceProvider).create(
+                            name: name,
+                            ticker: resolvedTicker,
+                            isin: isin,
+                          );
+                      if (ctx.mounted) Navigator.pop(ctx, true);
+                    }
+                  : null,
               child: const Text('Create'),
             ),
           ],
@@ -1785,6 +1810,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mappings: mappings,
           onProgress: onProgress,
           computeFee: _feeMode == 'computed',
+          isinLookup: ref.read(isinLookupServiceProvider),
         );
         result = assetResult.result;
       }
