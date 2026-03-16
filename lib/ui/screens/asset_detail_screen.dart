@@ -32,6 +32,11 @@ class AssetDetailScreen extends ConsumerWidget {
             onPressed: () => _editAsset(context, ref),
           ),
           IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Wipe Events',
+            onPressed: () => _confirmWipeEvents(context, ref),
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
             tooltip: 'Delete Asset',
             onPressed: () => _confirmDeleteAsset(context, ref),
@@ -242,6 +247,43 @@ class AssetDetailScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _confirmWipeEvents(BuildContext context, WidgetRef ref) async {
+    final evCount = ref.read(assetEventsProvider(asset.id)).valueOrNull?.length ?? 0;
+    if (evCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No events to wipe.')),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wipe All Events?'),
+        content: Text(
+          'This will delete all $evCount events from "${asset.name}" '
+          'but keep the asset itself.\n\nThis cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Wipe'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      _log.warning('wiping events for asset ${asset.id}');
+      final deleted = await ref.read(assetEventServiceProvider).deleteByAsset(asset.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Wiped $deleted events.')),
+        );
+      }
+    }
   }
 
   Future<void> _confirmDeleteAsset(BuildContext context, WidgetRef ref) async {
