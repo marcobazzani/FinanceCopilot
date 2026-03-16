@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
+import '../../utils/amount_parser.dart' as amt;
 import '../../utils/logger.dart';
 import 'import_screen.dart';
 import 'transaction_edit_screen.dart';
@@ -180,11 +181,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           txStream.when(
             data: (transactions) {
               if (transactions.isEmpty) return const SizedBox();
-              // Use the last imported row (highest id) as the final balance,
-              // since balance is computed in CSV row order during import.
-              final balance = transactions
-                  .reduce((a, b) => a.id > b.id ? a : b)
-                  .balanceAfter;
+              // Use the last transaction in chronological order (latest date, then highest id)
+              // to match balance computation order.
+              final lastTx = transactions.reduce((a, b) {
+                final cmp = a.operationDate.compareTo(b.operationDate);
+                if (cmp != 0) return cmp > 0 ? a : b;
+                return a.id > b.id ? a : b;
+              });
+              final balance = lastTx.balanceAfter;
               return Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -731,37 +735,6 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     );
   }
 
-  /// Parse an amount/balance string. Handles European (1.234,56) and standard (1,234.56).
-  double? _tryParseAmount(String? s) {
-    if (s == null) return null;
-    s = s.trim();
-    if (s.isEmpty) return null;
-
-    // Remove currency symbols
-    s = s.replaceAll(RegExp(r'[€$£¥]'), '').trim();
-
-    if (s.contains(',') && s.contains('.')) {
-      final lastComma = s.lastIndexOf(',');
-      final lastDot = s.lastIndexOf('.');
-      if (lastComma > lastDot) {
-        // European: dots are thousands, comma is decimal
-        s = s.replaceAll('.', '').replaceAll(',', '.');
-      } else {
-        // Standard: commas are thousands, dot is decimal
-        s = s.replaceAll(',', '');
-      }
-    } else if (s.contains(',')) {
-      final parts = s.split(',');
-      if (parts.last.length <= 2) {
-        s = s.replaceAll(',', '.');
-      } else {
-        s = s.replaceAll(',', '');
-      }
-    }
-
-    return double.tryParse(s);
-  }
-
   Future<void> _executeBalanceRecalc(
     List<Transaction> transactions,
     String balanceMode,
@@ -796,7 +769,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         if (balanceColumn != null && tx.rawMetadata != null) {
           final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
           final raw = meta[balanceColumn]?.toString() ?? '';
-          newBalance = _tryParseAmount(raw);
+          newBalance = amt.tryParseAmount(raw);
         }
       } else if (balanceMode == 'cumulative') {
         balanceCents += toCents(tx.amount);

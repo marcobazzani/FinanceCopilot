@@ -16,6 +16,18 @@ class AccountStats {
   const AccountStats({required this.count, this.firstDate, this.lastDate, this.balance});
 }
 
+/// SQL to get the latest balance per account: the balance_after from the
+/// transaction with the latest date, tiebroken by highest id within that date.
+const _latestBalanceSql =
+    'SELECT t.account_id, t.balance_after FROM transactions t '
+    'INNER JOIN ('
+    '  SELECT account_id, MAX(operation_date) AS max_date FROM transactions GROUP BY account_id'
+    ') md ON t.account_id = md.account_id AND t.operation_date = md.max_date '
+    'WHERE t.id = ('
+    '  SELECT MAX(id) FROM transactions t2 '
+    '  WHERE t2.account_id = t.account_id AND t2.operation_date = md.max_date'
+    ')';
+
 class AccountService {
   final AppDatabase _db;
 
@@ -71,7 +83,6 @@ class AccountService {
   }
 
   /// Reorder accounts by updating sortOrder for each account.
-  /// [orderedIds] is the list of account IDs in the desired display order.
   Future<void> reorder(List<int> orderedIds) async {
     _log.info('reorder: ${orderedIds.length} accounts');
     await _db.batch((batch) {
@@ -85,73 +96,53 @@ class AccountService {
     });
   }
 
-  /// Get transaction stats (count, first date, last date, latest balance) for all accounts.
+  /// Get transaction stats for all accounts.
   Future<Map<int, AccountStats>> getStatsForAll() async {
-    final results = await _db.customSelect(
+    final statsRows = await _db.customSelect(
       'SELECT account_id, COUNT(*) AS cnt, '
       'MIN(operation_date) AS first_date, MAX(operation_date) AS last_date '
       'FROM transactions GROUP BY account_id',
     ).get();
-
-    // Latest balance: the last imported row (highest id) per account holds the final balance
-    final balanceRows = await _db.customSelect(
-      'SELECT account_id, balance_after FROM transactions '
-      'WHERE id IN (SELECT MAX(id) FROM transactions GROUP BY account_id)',
-    ).get();
-    final balances = <int, double?>{};
-    for (final row in balanceRows) {
-      balances[row.read<int>('account_id')] = row.readNullable<double>('balance_after');
-    }
-
-    final stats = <int, AccountStats>{};
-    for (final row in results) {
-      final accountId = row.read<int>('account_id');
-      final count = row.read<int>('cnt');
-      final firstEpoch = row.readNullable<int>('first_date');
-      final lastEpoch = row.readNullable<int>('last_date');
-      stats[accountId] = AccountStats(
-        count: count,
-        firstDate: firstEpoch != null ? DateTime.fromMillisecondsSinceEpoch(firstEpoch * 1000) : null,
-        lastDate: lastEpoch != null ? DateTime.fromMillisecondsSinceEpoch(lastEpoch * 1000) : null,
-        balance: balances[accountId],
-      );
-    }
-    return stats;
+    final balances = await _fetchLatestBalances();
+    return _buildStats(statsRows, balances);
   }
 
-  /// Watch transaction stats reactively (re-emits when transactions table changes).
+  /// Watch transaction stats reactively.
   Stream<Map<int, AccountStats>> watchStatsForAll() {
-    // Watch for any change in transactions table, then compute stats
     return _db.customSelect(
       'SELECT account_id, COUNT(*) AS cnt, '
       'MIN(operation_date) AS first_date, MAX(operation_date) AS last_date '
       'FROM transactions GROUP BY account_id',
       readsFrom: {_db.transactions},
-    ).watch().asyncMap((rows) async {
-      // Latest balance: the last imported row (highest id) per account holds the final balance
-      final balanceRows = await _db.customSelect(
-        'SELECT account_id, balance_after FROM transactions '
-        'WHERE id IN (SELECT MAX(id) FROM transactions GROUP BY account_id)',
-      ).get();
-      final balances = <int, double?>{};
-      for (final bRow in balanceRows) {
-        balances[bRow.read<int>('account_id')] = bRow.readNullable<double>('balance_after');
-      }
-
-      final stats = <int, AccountStats>{};
-      for (final row in rows) {
-        final accountId = row.read<int>('account_id');
-        final count = row.read<int>('cnt');
-        final firstEpoch = row.readNullable<int>('first_date');
-        final lastEpoch = row.readNullable<int>('last_date');
-        stats[accountId] = AccountStats(
-          count: count,
-          firstDate: firstEpoch != null ? DateTime.fromMillisecondsSinceEpoch(firstEpoch * 1000) : null,
-          lastDate: lastEpoch != null ? DateTime.fromMillisecondsSinceEpoch(lastEpoch * 1000) : null,
-          balance: balances[accountId],
-        );
-      }
-      return stats;
+    ).watch().asyncMap((statsRows) async {
+      final balances = await _fetchLatestBalances();
+      return _buildStats(statsRows, balances);
     });
   }
+
+  Future<Map<int, double?>> _fetchLatestBalances() async {
+    final rows = await _db.customSelect(_latestBalanceSql).get();
+    return {
+      for (final row in rows)
+        row.read<int>('account_id'): row.readNullable<double>('balance_after'),
+    };
+  }
+
+  Map<int, AccountStats> _buildStats(
+    List<QueryRow> statsRows,
+    Map<int, double?> balances,
+  ) {
+    return {
+      for (final row in statsRows)
+        row.read<int>('account_id'): AccountStats(
+          count: row.read<int>('cnt'),
+          firstDate: _epochToDate(row.readNullable<int>('first_date')),
+          lastDate: _epochToDate(row.readNullable<int>('last_date')),
+          balance: balances[row.read<int>('account_id')],
+        ),
+    };
+  }
+
+  static DateTime? _epochToDate(int? epochSec) =>
+      epochSec != null ? DateTime.fromMillisecondsSinceEpoch(epochSec * 1000) : null;
 }
