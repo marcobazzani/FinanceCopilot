@@ -6,6 +6,7 @@ import '../../database/database.dart';
 import '../../services/account_service.dart';
 import '../../services/providers.dart';
 import 'account_detail_screen.dart';
+import 'dashboard_screen.dart' show currencySymbol;
 
 final _balanceFormat = NumberFormat('#,##0.00', 'it_IT');
 
@@ -16,6 +17,8 @@ class AccountsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final accountsAsync = ref.watch(accountsProvider);
     final statsAsync = ref.watch(accountStatsProvider);
+    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final convertedStats = ref.watch(convertedAccountStatsProvider).valueOrNull ?? {};
 
     return Scaffold(
       body: accountsAsync.when(
@@ -49,6 +52,8 @@ class AccountsScreen extends ConsumerWidget {
                 key: ValueKey(account.id),
                 account: account,
                 stats: stat,
+                convertedBalance: convertedStats[account.id],
+                baseCurrency: baseCurrency,
                 index: i,
                 onTap: () => Navigator.push(
                   context,
@@ -106,6 +111,8 @@ class AccountsScreen extends ConsumerWidget {
 class _AccountTile extends StatelessWidget {
   final Account account;
   final AccountStats? stats;
+  final double? convertedBalance;
+  final String baseCurrency;
   final int index;
   final VoidCallback onTap;
 
@@ -113,6 +120,8 @@ class _AccountTile extends StatelessWidget {
     super.key,
     required this.account,
     required this.stats,
+    this.convertedBalance,
+    required this.baseCurrency,
     required this.index,
     required this.onTap,
   });
@@ -194,7 +203,7 @@ class _AccountTile extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (stats?.balance != null)
+                if (stats?.balance != null) ...[
                   Text(
                     '${_balanceFormat.format(stats!.balance!)} ${account.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -205,8 +214,18 @@ class _AccountTile extends StatelessWidget {
                               : theme.colorScheme.error)
                           : Colors.grey,
                     ),
-                  )
-                else
+                  ),
+                  // Show converted balance if currency differs from base
+                  if (account.currency != baseCurrency && convertedBalance != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '≈ ${_balanceFormat.format(convertedBalance!)} ${currencySymbol(baseCurrency)}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ],
+                ] else
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

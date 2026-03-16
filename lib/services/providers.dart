@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/database.dart';
@@ -5,6 +6,7 @@ import '../database/providers.dart';
 import 'account_service.dart';
 import 'asset_event_service.dart';
 import 'asset_service.dart';
+import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
 import 'import_service.dart';
 import 'isin_lookup_service.dart';
@@ -40,7 +42,19 @@ final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
   return IsinLookupService();
 });
 
+final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
+  return ExchangeRateService(ref.watch(databaseProvider));
+});
+
 // ── Reactive stream providers ──
+
+/// Base currency from AppConfigs, reactive. Defaults to EUR.
+final baseCurrencyProvider = StreamProvider<String>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('BASE_CURRENCY')))
+      .watchSingleOrNull()
+      .map((row) => row?.value ?? 'EUR');
+});
 
 final accountsProvider = StreamProvider<List<Account>>((ref) {
   return ref.watch(accountServiceProvider).watchAll();
@@ -56,6 +70,83 @@ final assetsProvider = StreamProvider<List<Asset>>((ref) {
 
 final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
   return ref.watch(assetServiceProvider).watchStatsForAll();
+});
+
+/// Account stats with balances converted to base currency using live rates.
+final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
+  final accounts = await ref.watch(accountsProvider.future);
+  final stats = await ref.watch(accountStatsProvider.future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+
+  final result = <int, double?>{};
+  for (final account in accounts) {
+    final stat = stats[account.id];
+    if (stat == null || stat.balance == null) continue;
+    if (account.currency == baseCurrency) {
+      result[account.id] = stat.balance;
+    } else {
+      result[account.id] = await rateService.convertLive(
+        stat.balance!, account.currency, baseCurrency,
+      );
+    }
+  }
+  return result;
+});
+
+/// Asset stats with totalInvested converted to base currency.
+/// Sums per-event conversions using each event's stored rate for accuracy.
+final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
+  final assets = await ref.watch(assetsProvider.future);
+  final stats = await ref.watch(assetStatsProvider.future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final eventService = ref.watch(assetEventServiceProvider);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+
+  final result = <int, double?>{};
+  for (final asset in assets) {
+    final stat = stats[asset.id];
+    if (stat == null || stat.totalInvested == 0) continue;
+    if (asset.currency == baseCurrency) {
+      result[asset.id] = stat.totalInvested;
+      continue;
+    }
+    // Sum each event's base-currency equivalent using its own stored rate
+    final events = await eventService.getByAsset(asset.id);
+    var total = 0.0;
+    for (final ev in events) {
+      if (ev.currency == baseCurrency) {
+        total += ev.amount;
+      } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
+        total += ev.amount / ev.exchangeRate!;
+      } else {
+        total += await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+      }
+    }
+    result[asset.id] = total;
+  }
+  return result;
+});
+
+/// Converted event amounts for an asset (live rate for current value display).
+/// Uses stored exchangeRate (BASE/ASSET format) if available, otherwise live rate.
+final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, int>((ref, assetId) async {
+  final events = await ref.watch(assetEventsProvider(assetId).future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+
+  final result = <int, double>{};
+  for (final ev in events) {
+    if (ev.currency == baseCurrency) {
+      result[ev.id] = ev.amount;
+    } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
+      // Stored rate is BASE/ASSET, so divide to get base currency amount
+      result[ev.id] = ev.amount / ev.exchangeRate!;
+    } else {
+      result[ev.id] = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+    }
+  }
+  return result;
 });
 
 /// Transactions for a specific account (pass accountId as family parameter).

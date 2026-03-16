@@ -9,6 +9,7 @@ import 'package:drift/drift.dart' show OrderingTerm;
 
 import '../../database/database.dart';
 import '../../database/providers.dart';
+import '../../services/providers.dart';
 import '../../utils/logger.dart';
 
 final _log = getLogger('DashboardScreen');
@@ -19,12 +20,14 @@ class _ChartData {
   final List<_AccountSeries> accounts;
   final List<FlSpot> totalSpots;
   final double currentTotal;
+  final String baseCurrency;
 
   const _ChartData({
     required this.firstDate,
     required this.accounts,
     required this.totalSpots,
     required this.currentTotal,
+    required this.baseCurrency,
   });
 }
 
@@ -33,12 +36,6 @@ class _AccountSeries {
   final Color color;
   final List<FlSpot> spots;
   const _AccountSeries({required this.name, required this.color, required this.spots});
-}
-
-class _DayBalance {
-  final DateTime date;
-  final double balance;
-  const _DayBalance(this.date, this.balance);
 }
 
 final _chartColors = [
@@ -52,9 +49,23 @@ final _chartColors = [
   Colors.cyan,
 ];
 
-/// Provider that fetches daily balance per active account.
+/// Currency symbol lookup for display.
+String currencySymbol(String code) {
+  return switch (code) {
+    'EUR' => '€',
+    'USD' => '\$',
+    'GBP' => '£',
+    'JPY' => '¥',
+    'CHF' => 'CHF',
+    _ => code,
+  };
+}
+
+/// Provider that fetches daily balance per active account, converted to base currency.
 final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   final db = ref.watch(databaseProvider);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rateService = ref.watch(exchangeRateServiceProvider);
 
   // Get active accounts
   final activeAccounts = await (db.select(db.accounts)
@@ -76,7 +87,6 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   if (rows.isEmpty) return null;
 
   // Build per-account daily balance series
-  // For each transaction, update that account's balance for that day
   final perAccount = <int, Map<int, double>>{}; // accountId -> {dayKey -> balance}
   final allDayKeys = <int>{};
 
@@ -96,15 +106,21 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   final sortedDays = allDayKeys.toList()..sort();
   final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
 
+  // Rate cache to avoid redundant DB lookups
+  final rateCache = <String, double>{};
+  Future<double> getCachedRate(String from, int dayKey) async {
+    if (from == baseCurrency) return 1.0;
+    final key = '$from:$dayKey';
+    if (rateCache.containsKey(key)) return rateCache[key]!;
+    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+    final rate = await rateService.getRate(from, baseCurrency, date);
+    rateCache[key] = rate ?? 1.0;
+    return rate ?? 1.0;
+  }
 
-
-  // Build FlSpot series per account (carry forward last known balance)
+  // Build FlSpot series per account (carry forward, convert to base currency)
   final accountSeries = <_AccountSeries>[];
   var colorIdx = 0;
-  final lastKnown = <int, double>{}; // accountId -> last known balance
-
-  // For total line
-  final totalByDay = <int, double>{};
 
   for (final account in activeAccounts) {
     if (!perAccount.containsKey(account.id)) continue;
@@ -117,12 +133,11 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       if (dayMap.containsKey(dayKey)) {
         running = dayMap[dayKey];
       }
-      // Only add spots once the account has data
       if (running != null) {
+        final rate = await getCachedRate(account.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, running));
-        lastKnown[account.id] = running;
+        spots.add(FlSpot(x, running * rate));
       }
     }
 
@@ -134,17 +149,19 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     colorIdx++;
   }
 
-  // Build total line: sum of all accounts' last known balance at each day
-  final runningPerAccount = <int, double>{};
+  // Build total line: sum of all accounts' converted balance at each day
+  final runningConverted = <int, double>{}; // accountId -> last converted balance
+  final totalByDay = <int, double>{};
   for (final dayKey in sortedDays) {
     for (final account in activeAccounts) {
       if (perAccount.containsKey(account.id) &&
           perAccount[account.id]!.containsKey(dayKey)) {
-        runningPerAccount[account.id] = perAccount[account.id]![dayKey]!;
+        final rate = await getCachedRate(account.currency, dayKey);
+        runningConverted[account.id] = perAccount[account.id]![dayKey]! * rate;
       }
     }
     double total = 0;
-    for (final v in runningPerAccount.values) {
+    for (final v in runningConverted.values) {
       total += v;
     }
     totalByDay[dayKey] = total;
@@ -163,6 +180,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     accounts: accountSeries,
     totalSpots: totalSpots,
     currentTotal: currentTotal,
+    baseCurrency: baseCurrency,
   );
 });
 
@@ -183,6 +201,7 @@ class DashboardScreen extends ConsumerWidget {
                 style: TextStyle(color: Colors.grey)),
           );
         }
+        final symbol = currencySymbol(data.baseCurrency);
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -192,7 +211,7 @@ class DashboardScreen extends ConsumerWidget {
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(
-                NumberFormat.currency(locale: 'it_IT', symbol: '€')
+                NumberFormat.currency(locale: 'it_IT', symbol: symbol)
                     .format(data.currentTotal),
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
@@ -243,6 +262,7 @@ class _BalanceChart extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final gridColor = isDark ? Colors.white12 : Colors.black12;
     final textColor = isDark ? Colors.white54 : Colors.black54;
+    final symbol = currencySymbol(data.baseCurrency);
 
     // Compute Y range from total line
     final allY = data.totalSpots.map((s) => s.y);
@@ -255,7 +275,7 @@ class _BalanceChart extends StatelessWidget {
     final totalDays = data.totalSpots.isNotEmpty ? data.totalSpots.last.x : 1.0;
     final dateFmt = DateFormat('MMM yyyy');
     final fullFmt = DateFormat('dd MMM yyyy');
-    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: '€', decimalDigits: 0);
+    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
 
     // Build line bars: total FIRST (background), then per-account on top
     final lineBars = <LineChartBarData>[];

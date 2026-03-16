@@ -1,6 +1,11 @@
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'database/database.dart';
+import 'database/providers.dart';
+import 'services/exchange_rate_service.dart';
+import 'services/providers.dart';
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/dashboard_screen.dart';
@@ -42,14 +47,14 @@ class AssetManagerApp extends StatelessWidget {
 }
 
 /// Adaptive navigation shell: bottom nav on mobile, side rail on desktop.
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
 
   static const _destinations = [
@@ -63,6 +68,16 @@ class _AppShellState extends State<AppShell> {
     NavigationRailDestination(icon: Icon(Icons.account_balance), label: Text('Accounts')),
     NavigationRailDestination(icon: Icon(Icons.pie_chart), label: Text('Assets')),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Kick off exchange rate sync in background (non-blocking)
+    Future.microtask(() {
+      _log.info('Starting exchange rate sync...');
+      ref.read(exchangeRateServiceProvider).syncRates();
+    });
+  }
 
   Widget _body() {
     return switch (_selectedIndex) {
@@ -81,6 +96,11 @@ class _AppShellState extends State<AppShell> {
       appBar: AppBar(
         title: const Text('FinanceCopilot'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => _showSettingsDialog(context),
+          ),
           IconButton(
             icon: const Icon(Icons.file_upload),
             tooltip: 'Import File',
@@ -139,5 +159,45 @@ class _AppShellState extends State<AppShell> {
             ),
     );
   }
-}
 
+  Future<void> _showSettingsDialog(BuildContext context) async {
+    final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    var selected = baseCurrency;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selected,
+                decoration: const InputDecoration(labelText: 'Default Currency'),
+                items: ExchangeRateService.allCurrencies
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => selected = v!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                final db = ref.read(databaseProvider);
+                await (db.update(db.appConfigs)
+                      ..where((c) => c.key.equals('BASE_CURRENCY')))
+                    .write(AppConfigsCompanion(value: Value(selected)));
+                _log.info('Settings: base currency changed to $selected');
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

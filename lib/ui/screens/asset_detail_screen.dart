@@ -8,6 +8,7 @@ import '../../database/tables.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
+import 'dashboard_screen.dart' show currencySymbol;
 
 final _log = getLogger('AssetDetailScreen');
 
@@ -21,6 +22,12 @@ class AssetDetailScreen extends ConsumerWidget {
     final eventsStream = ref.watch(assetEventsProvider(asset.id));
     final dateFmt = DateFormat('dd/MM/yyyy');
     final amtFmt = NumberFormat.currency(locale: 'it_IT', symbol: asset.currency);
+    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final showConverted = asset.currency != baseCurrency;
+    final baseFmt = NumberFormat.currency(locale: 'it_IT', symbol: currencySymbol(baseCurrency));
+    final convertedAmounts = showConverted
+        ? ref.watch(convertedEventAmountsProvider(asset.id)).valueOrNull ?? {}
+        : <int, double>{};
 
     return Scaffold(
       appBar: AppBar(
@@ -135,13 +142,24 @@ class AssetDetailScreen extends ConsumerWidget {
                         ],
                       ),
                       subtitle: Text(dateFmt.format(ev.date), style: const TextStyle(fontSize: 12)),
-                      trailing: Text(
-                        amtFmt.format(ev.amount),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: ev.amount >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-                        ),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            amtFmt.format(ev.amount),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: ev.amount >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                            ),
+                          ),
+                          if (showConverted && convertedAmounts.containsKey(ev.id))
+                            Text(
+                              '≈ ${baseFmt.format(convertedAmounts[ev.id]!)}',
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                        ],
                       ),
                       onTap: () => Navigator.push(
                         context,
