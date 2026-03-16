@@ -478,6 +478,7 @@ class ImportService {
     required FilePreview preview,
     required List<ColumnMapping> mappings,
     void Function(int processed, int total)? onProgress,
+    bool computeFee = false,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -582,16 +583,29 @@ class ImportService {
         final eventTypeStr = typeMapping != null ? (_resolveMapping(typeMapping, row) ?? 'BUY') : 'BUY';
         final eventType = _parseEventType(eventTypeStr);
 
+        final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
+        final price = priceMapping != null ? _tryParseAmount(_resolveMapping(priceMapping, row)) : null;
+        final rate = exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null;
+
+        // Fee: from column or computed as |amount| - qty * price / rate
+        double? commission;
+        if (computeFee && qty != null && price != null) {
+          final effectiveRate = (rate != null && rate != 0) ? rate : 1.0;
+          commission = (amount.abs() - qty * price / effectiveRate).abs();
+        } else if (commMapping != null) {
+          commission = _tryParseAmount(_resolveMapping(commMapping, row));
+        }
+
         companions.add(AssetEventsCompanion.insert(
           assetId: assetId,
           date: date,
           type: eventType,
           amount: amount,
-          quantity: Value(qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null),
-          price: Value(priceMapping != null ? _tryParseAmount(_resolveMapping(priceMapping, row)) : null),
+          quantity: Value(qty),
+          price: Value(price),
           currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? 'EUR') : 'EUR'),
-          exchangeRate: Value(exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null),
-          commission: Value(commMapping != null ? _tryParseAmount(_resolveMapping(commMapping, row)) : null),
+          exchangeRate: Value(rate),
+          commission: Value(commission),
           notes: Value(descMapping != null ? _resolveMapping(descMapping, row) : null),
           rawMetadata: Value(jsonEncode(rawMetadata)),
         ));

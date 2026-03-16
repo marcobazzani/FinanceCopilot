@@ -92,7 +92,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   List<String> get _requiredFields => _target == ImportTarget.transaction
       ? ['date', 'amount', 'description']
-      : ['date', 'isin', 'type', 'amount', 'quantity', 'price', 'currency', 'exchangeRate', 'commission'];
+      : ['date', 'isin', 'type', 'amount', 'quantity', 'price', 'currency', 'exchangeRate'];
 
   List<String> get _optionalFields => _target == ImportTarget.transaction
       ? ['currency', 'valueDate', 'status']
@@ -109,6 +109,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String? _balanceFilterColumn;
   // For 'filtered' mode: included status values
   final Set<String> _balanceFilterInclude = {};
+
+  // Fee computation mode for asset imports: 'column' | 'computed'
+  // 'column' = map from a CSV column (default)
+  // 'computed' = fee = |amount| - quantity * price / exchangeRate
+  String _feeMode = 'column';
 
 
   @override
@@ -644,6 +649,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount')
                   .map((f) => _buildMappingRow(f, preview.columns, required: true, multiColumn: f == 'description')),
+              // Fee section for asset events
+              if (_target == ImportTarget.assetEvent) ...[
+                const SizedBox(height: 12),
+                _buildFeeModeSection(preview.columns),
+              ],
               const SizedBox(height: 12),
               // Optional fields
               const Text('Optional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -1051,6 +1061,72 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
       ],
     );
+  }
+
+  /// Build the fee computation mode selector for asset imports.
+  Widget _buildFeeModeSection(List<String> columns) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Fee / Commission', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'column', label: Text('From column')),
+            ButtonSegment(value: 'computed', label: Text('Computed')),
+          ],
+          selected: {_feeMode},
+          onSelectionChanged: (v) => setState(() {
+            _feeMode = v.first;
+            if (_feeMode == 'computed') {
+              _mappings.remove('commission');
+            }
+          }),
+        ),
+        const SizedBox(height: 8),
+        if (_feeMode == 'column')
+          _buildMappingRow('commission', columns, required: true),
+        if (_feeMode == 'computed') ...[
+          Text(
+            'fee = |amount| − quantity × price / exchangeRate',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+          ),
+          if (_preview != null && _preview!.rows.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Preview: ${_feeComputedPreview()}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  /// Preview first few computed fee values.
+  String _feeComputedPreview() {
+    if (_preview == null) return '';
+    final results = <String>[];
+    for (var i = 0; i < _preview!.rows.length && results.length < 3; i++) {
+      final row = _preview!.rows[i];
+      final amount = _tryResolveNumeric('amount', row);
+      final qty = _tryResolveNumeric('quantity', row);
+      final price = _tryResolveNumeric('price', row);
+      final rate = _tryResolveNumeric('exchangeRate', row) ?? 1.0;
+      if (amount != null && qty != null && price != null && rate != 0) {
+        final fee = amount.abs() - qty * price / rate;
+        results.add(fee.abs().toStringAsFixed(2));
+      }
+    }
+    return results.isEmpty ? 'N/A' : results.join(', ');
+  }
+
+  /// Try to resolve a mapped field as a numeric value from a row.
+  double? _tryResolveNumeric(String field, Map<String, String> row) {
+    final col = _mappings[field];
+    if (col == null) return null;
+    final raw = row[col] ?? '';
+    return double.tryParse(raw.replaceAll(RegExp(r'[€\$£¥\s]'), '').replaceAll(',', '.'));
   }
 
   /// Preview the result of combining multiple columns for a field.
@@ -1708,6 +1784,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           preview: _preview!,
           mappings: mappings,
           onProgress: onProgress,
+          computeFee: _feeMode == 'computed',
         );
         result = assetResult.result;
       }
@@ -1826,5 +1903,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _balanceMode = 'none';
     _balanceFilterColumn = null;
     _balanceFilterInclude.clear();
+    _feeMode = 'column';
   }
 }
