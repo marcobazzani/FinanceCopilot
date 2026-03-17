@@ -8381,6 +8381,17 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _expenseDateMeta = const VerificationMeta(
+    'expenseDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expenseDate = GeneratedColumn<DateTime>(
+    'expense_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _usefulLifeMonthsMeta = const VerificationMeta(
     'usefulLifeMonths',
   );
@@ -8403,6 +8414,19 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
         requiredDuringInsert: true,
       ).withConverter<DepreciationDirection>(
         $DepreciationSchedulesTable.$converterdirection,
+      );
+  @override
+  late final GeneratedColumnWithTypeConverter<StepFrequency, String>
+  stepFrequency =
+      GeneratedColumn<String>(
+        'step_frequency',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: Constant(StepFrequency.monthly.name),
+      ).withConverter<StepFrequency>(
+        $DepreciationSchedulesTable.$converterstepFrequency,
       );
   static const VerificationMeta _bufferIdMeta = const VerificationMeta(
     'bufferId',
@@ -8465,8 +8489,10 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
     method,
     startDate,
     endDate,
+    expenseDate,
     usefulLifeMonths,
     direction,
+    stepFrequency,
     bufferId,
     isActive,
     createdAt,
@@ -8547,6 +8573,15 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
       );
     } else if (isInserting) {
       context.missing(_endDateMeta);
+    }
+    if (data.containsKey('expense_date')) {
+      context.handle(
+        _expenseDateMeta,
+        expenseDate.isAcceptableOrUnknown(
+          data['expense_date']!,
+          _expenseDateMeta,
+        ),
+      );
     }
     if (data.containsKey('useful_life_months')) {
       context.handle(
@@ -8630,6 +8665,10 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
         DriftSqlType.dateTime,
         data['${effectivePrefix}end_date'],
       )!,
+      expenseDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expense_date'],
+      ),
       usefulLifeMonths: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}useful_life_months'],
@@ -8640,6 +8679,13 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
           data['${effectivePrefix}direction'],
         )!,
       ),
+      stepFrequency: $DepreciationSchedulesTable.$converterstepFrequency
+          .fromSql(
+            attachedDatabase.typeMapping.read(
+              DriftSqlType.string,
+              data['${effectivePrefix}step_frequency'],
+            )!,
+          ),
       bufferId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}buffer_id'],
@@ -8672,6 +8718,10 @@ class $DepreciationSchedulesTable extends DepreciationSchedules
   $converterdirection = const EnumNameConverter<DepreciationDirection>(
     DepreciationDirection.values,
   );
+  static JsonTypeConverter2<StepFrequency, String, String>
+  $converterstepFrequency = const EnumNameConverter<StepFrequency>(
+    StepFrequency.values,
+  );
 }
 
 class DepreciationSchedule extends DataClass
@@ -8685,8 +8735,10 @@ class DepreciationSchedule extends DataClass
   final DepreciationMethod method;
   final DateTime startDate;
   final DateTime endDate;
+  final DateTime? expenseDate;
   final int usefulLifeMonths;
   final DepreciationDirection direction;
+  final StepFrequency stepFrequency;
   final int? bufferId;
   final bool isActive;
   final DateTime createdAt;
@@ -8701,8 +8753,10 @@ class DepreciationSchedule extends DataClass
     required this.method,
     required this.startDate,
     required this.endDate,
+    this.expenseDate,
     required this.usefulLifeMonths,
     required this.direction,
+    required this.stepFrequency,
     this.bufferId,
     required this.isActive,
     required this.createdAt,
@@ -8726,10 +8780,20 @@ class DepreciationSchedule extends DataClass
     }
     map['start_date'] = Variable<DateTime>(startDate);
     map['end_date'] = Variable<DateTime>(endDate);
+    if (!nullToAbsent || expenseDate != null) {
+      map['expense_date'] = Variable<DateTime>(expenseDate);
+    }
     map['useful_life_months'] = Variable<int>(usefulLifeMonths);
     {
       map['direction'] = Variable<String>(
         $DepreciationSchedulesTable.$converterdirection.toSql(direction),
+      );
+    }
+    {
+      map['step_frequency'] = Variable<String>(
+        $DepreciationSchedulesTable.$converterstepFrequency.toSql(
+          stepFrequency,
+        ),
       );
     }
     if (!nullToAbsent || bufferId != null) {
@@ -8754,8 +8818,12 @@ class DepreciationSchedule extends DataClass
       method: Value(method),
       startDate: Value(startDate),
       endDate: Value(endDate),
+      expenseDate: expenseDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expenseDate),
       usefulLifeMonths: Value(usefulLifeMonths),
       direction: Value(direction),
+      stepFrequency: Value(stepFrequency),
       bufferId: bufferId == null && nullToAbsent
           ? const Value.absent()
           : Value(bufferId),
@@ -8782,10 +8850,13 @@ class DepreciationSchedule extends DataClass
       ),
       startDate: serializer.fromJson<DateTime>(json['startDate']),
       endDate: serializer.fromJson<DateTime>(json['endDate']),
+      expenseDate: serializer.fromJson<DateTime?>(json['expenseDate']),
       usefulLifeMonths: serializer.fromJson<int>(json['usefulLifeMonths']),
       direction: $DepreciationSchedulesTable.$converterdirection.fromJson(
         serializer.fromJson<String>(json['direction']),
       ),
+      stepFrequency: $DepreciationSchedulesTable.$converterstepFrequency
+          .fromJson(serializer.fromJson<String>(json['stepFrequency'])),
       bufferId: serializer.fromJson<int?>(json['bufferId']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -8807,9 +8878,15 @@ class DepreciationSchedule extends DataClass
       ),
       'startDate': serializer.toJson<DateTime>(startDate),
       'endDate': serializer.toJson<DateTime>(endDate),
+      'expenseDate': serializer.toJson<DateTime?>(expenseDate),
       'usefulLifeMonths': serializer.toJson<int>(usefulLifeMonths),
       'direction': serializer.toJson<String>(
         $DepreciationSchedulesTable.$converterdirection.toJson(direction),
+      ),
+      'stepFrequency': serializer.toJson<String>(
+        $DepreciationSchedulesTable.$converterstepFrequency.toJson(
+          stepFrequency,
+        ),
       ),
       'bufferId': serializer.toJson<int?>(bufferId),
       'isActive': serializer.toJson<bool>(isActive),
@@ -8828,8 +8905,10 @@ class DepreciationSchedule extends DataClass
     DepreciationMethod? method,
     DateTime? startDate,
     DateTime? endDate,
+    Value<DateTime?> expenseDate = const Value.absent(),
     int? usefulLifeMonths,
     DepreciationDirection? direction,
+    StepFrequency? stepFrequency,
     Value<int?> bufferId = const Value.absent(),
     bool? isActive,
     DateTime? createdAt,
@@ -8846,8 +8925,10 @@ class DepreciationSchedule extends DataClass
     method: method ?? this.method,
     startDate: startDate ?? this.startDate,
     endDate: endDate ?? this.endDate,
+    expenseDate: expenseDate.present ? expenseDate.value : this.expenseDate,
     usefulLifeMonths: usefulLifeMonths ?? this.usefulLifeMonths,
     direction: direction ?? this.direction,
+    stepFrequency: stepFrequency ?? this.stepFrequency,
     bufferId: bufferId.present ? bufferId.value : this.bufferId,
     isActive: isActive ?? this.isActive,
     createdAt: createdAt ?? this.createdAt,
@@ -8870,10 +8951,16 @@ class DepreciationSchedule extends DataClass
       method: data.method.present ? data.method.value : this.method,
       startDate: data.startDate.present ? data.startDate.value : this.startDate,
       endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      expenseDate: data.expenseDate.present
+          ? data.expenseDate.value
+          : this.expenseDate,
       usefulLifeMonths: data.usefulLifeMonths.present
           ? data.usefulLifeMonths.value
           : this.usefulLifeMonths,
       direction: data.direction.present ? data.direction.value : this.direction,
+      stepFrequency: data.stepFrequency.present
+          ? data.stepFrequency.value
+          : this.stepFrequency,
       bufferId: data.bufferId.present ? data.bufferId.value : this.bufferId,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -8893,8 +8980,10 @@ class DepreciationSchedule extends DataClass
           ..write('method: $method, ')
           ..write('startDate: $startDate, ')
           ..write('endDate: $endDate, ')
+          ..write('expenseDate: $expenseDate, ')
           ..write('usefulLifeMonths: $usefulLifeMonths, ')
           ..write('direction: $direction, ')
+          ..write('stepFrequency: $stepFrequency, ')
           ..write('bufferId: $bufferId, ')
           ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
@@ -8914,8 +9003,10 @@ class DepreciationSchedule extends DataClass
     method,
     startDate,
     endDate,
+    expenseDate,
     usefulLifeMonths,
     direction,
+    stepFrequency,
     bufferId,
     isActive,
     createdAt,
@@ -8934,8 +9025,10 @@ class DepreciationSchedule extends DataClass
           other.method == this.method &&
           other.startDate == this.startDate &&
           other.endDate == this.endDate &&
+          other.expenseDate == this.expenseDate &&
           other.usefulLifeMonths == this.usefulLifeMonths &&
           other.direction == this.direction &&
+          other.stepFrequency == this.stepFrequency &&
           other.bufferId == this.bufferId &&
           other.isActive == this.isActive &&
           other.createdAt == this.createdAt &&
@@ -8953,8 +9046,10 @@ class DepreciationSchedulesCompanion
   final Value<DepreciationMethod> method;
   final Value<DateTime> startDate;
   final Value<DateTime> endDate;
+  final Value<DateTime?> expenseDate;
   final Value<int> usefulLifeMonths;
   final Value<DepreciationDirection> direction;
+  final Value<StepFrequency> stepFrequency;
   final Value<int?> bufferId;
   final Value<bool> isActive;
   final Value<DateTime> createdAt;
@@ -8969,8 +9064,10 @@ class DepreciationSchedulesCompanion
     this.method = const Value.absent(),
     this.startDate = const Value.absent(),
     this.endDate = const Value.absent(),
+    this.expenseDate = const Value.absent(),
     this.usefulLifeMonths = const Value.absent(),
     this.direction = const Value.absent(),
+    this.stepFrequency = const Value.absent(),
     this.bufferId = const Value.absent(),
     this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -8986,8 +9083,10 @@ class DepreciationSchedulesCompanion
     required DepreciationMethod method,
     required DateTime startDate,
     required DateTime endDate,
+    this.expenseDate = const Value.absent(),
     required int usefulLifeMonths,
     required DepreciationDirection direction,
+    this.stepFrequency = const Value.absent(),
     this.bufferId = const Value.absent(),
     this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -9010,8 +9109,10 @@ class DepreciationSchedulesCompanion
     Expression<String>? method,
     Expression<DateTime>? startDate,
     Expression<DateTime>? endDate,
+    Expression<DateTime>? expenseDate,
     Expression<int>? usefulLifeMonths,
     Expression<String>? direction,
+    Expression<String>? stepFrequency,
     Expression<int>? bufferId,
     Expression<bool>? isActive,
     Expression<DateTime>? createdAt,
@@ -9027,8 +9128,10 @@ class DepreciationSchedulesCompanion
       if (method != null) 'method': method,
       if (startDate != null) 'start_date': startDate,
       if (endDate != null) 'end_date': endDate,
+      if (expenseDate != null) 'expense_date': expenseDate,
       if (usefulLifeMonths != null) 'useful_life_months': usefulLifeMonths,
       if (direction != null) 'direction': direction,
+      if (stepFrequency != null) 'step_frequency': stepFrequency,
       if (bufferId != null) 'buffer_id': bufferId,
       if (isActive != null) 'is_active': isActive,
       if (createdAt != null) 'created_at': createdAt,
@@ -9046,8 +9149,10 @@ class DepreciationSchedulesCompanion
     Value<DepreciationMethod>? method,
     Value<DateTime>? startDate,
     Value<DateTime>? endDate,
+    Value<DateTime?>? expenseDate,
     Value<int>? usefulLifeMonths,
     Value<DepreciationDirection>? direction,
+    Value<StepFrequency>? stepFrequency,
     Value<int?>? bufferId,
     Value<bool>? isActive,
     Value<DateTime>? createdAt,
@@ -9063,8 +9168,10 @@ class DepreciationSchedulesCompanion
       method: method ?? this.method,
       startDate: startDate ?? this.startDate,
       endDate: endDate ?? this.endDate,
+      expenseDate: expenseDate ?? this.expenseDate,
       usefulLifeMonths: usefulLifeMonths ?? this.usefulLifeMonths,
       direction: direction ?? this.direction,
+      stepFrequency: stepFrequency ?? this.stepFrequency,
       bufferId: bufferId ?? this.bufferId,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
@@ -9104,12 +9211,22 @@ class DepreciationSchedulesCompanion
     if (endDate.present) {
       map['end_date'] = Variable<DateTime>(endDate.value);
     }
+    if (expenseDate.present) {
+      map['expense_date'] = Variable<DateTime>(expenseDate.value);
+    }
     if (usefulLifeMonths.present) {
       map['useful_life_months'] = Variable<int>(usefulLifeMonths.value);
     }
     if (direction.present) {
       map['direction'] = Variable<String>(
         $DepreciationSchedulesTable.$converterdirection.toSql(direction.value),
+      );
+    }
+    if (stepFrequency.present) {
+      map['step_frequency'] = Variable<String>(
+        $DepreciationSchedulesTable.$converterstepFrequency.toSql(
+          stepFrequency.value,
+        ),
       );
     }
     if (bufferId.present) {
@@ -9139,8 +9256,10 @@ class DepreciationSchedulesCompanion
           ..write('method: $method, ')
           ..write('startDate: $startDate, ')
           ..write('endDate: $endDate, ')
+          ..write('expenseDate: $expenseDate, ')
           ..write('usefulLifeMonths: $usefulLifeMonths, ')
           ..write('direction: $direction, ')
+          ..write('stepFrequency: $stepFrequency, ')
           ..write('bufferId: $bufferId, ')
           ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
@@ -20507,8 +20626,10 @@ typedef $$DepreciationSchedulesTableCreateCompanionBuilder =
       required DepreciationMethod method,
       required DateTime startDate,
       required DateTime endDate,
+      Value<DateTime?> expenseDate,
       required int usefulLifeMonths,
       required DepreciationDirection direction,
+      Value<StepFrequency> stepFrequency,
       Value<int?> bufferId,
       Value<bool> isActive,
       Value<DateTime> createdAt,
@@ -20525,8 +20646,10 @@ typedef $$DepreciationSchedulesTableUpdateCompanionBuilder =
       Value<DepreciationMethod> method,
       Value<DateTime> startDate,
       Value<DateTime> endDate,
+      Value<DateTime?> expenseDate,
       Value<int> usefulLifeMonths,
       Value<DepreciationDirection> direction,
+      Value<StepFrequency> stepFrequency,
       Value<int?> bufferId,
       Value<bool> isActive,
       Value<DateTime> createdAt,
@@ -20664,6 +20787,11 @@ class $$DepreciationSchedulesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<DateTime> get expenseDate => $composableBuilder(
+    column: $table.expenseDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get usefulLifeMonths => $composableBuilder(
     column: $table.usefulLifeMonths,
     builder: (column) => ColumnFilters(column),
@@ -20676,6 +20804,12 @@ class $$DepreciationSchedulesTableFilterComposer
   >
   get direction => $composableBuilder(
     column: $table.direction,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<StepFrequency, StepFrequency, String>
+  get stepFrequency => $composableBuilder(
+    column: $table.stepFrequency,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
@@ -20822,6 +20956,11 @@ class $$DepreciationSchedulesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get expenseDate => $composableBuilder(
+    column: $table.expenseDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get usefulLifeMonths => $composableBuilder(
     column: $table.usefulLifeMonths,
     builder: (column) => ColumnOrderings(column),
@@ -20829,6 +20968,11 @@ class $$DepreciationSchedulesTableOrderingComposer
 
   ColumnOrderings<String> get direction => $composableBuilder(
     column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stepFrequency => $composableBuilder(
+    column: $table.stepFrequency,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -20913,6 +21057,11 @@ class $$DepreciationSchedulesTableAnnotationComposer
   GeneratedColumn<DateTime> get endDate =>
       $composableBuilder(column: $table.endDate, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get expenseDate => $composableBuilder(
+    column: $table.expenseDate,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get usefulLifeMonths => $composableBuilder(
     column: $table.usefulLifeMonths,
     builder: (column) => column,
@@ -20921,6 +21070,12 @@ class $$DepreciationSchedulesTableAnnotationComposer
   GeneratedColumnWithTypeConverter<DepreciationDirection, String>
   get direction =>
       $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<StepFrequency, String> get stepFrequency =>
+      $composableBuilder(
+        column: $table.stepFrequency,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<int> get bufferId =>
       $composableBuilder(column: $table.bufferId, builder: (column) => column);
@@ -21061,8 +21216,10 @@ class $$DepreciationSchedulesTableTableManager
                 Value<DepreciationMethod> method = const Value.absent(),
                 Value<DateTime> startDate = const Value.absent(),
                 Value<DateTime> endDate = const Value.absent(),
+                Value<DateTime?> expenseDate = const Value.absent(),
                 Value<int> usefulLifeMonths = const Value.absent(),
                 Value<DepreciationDirection> direction = const Value.absent(),
+                Value<StepFrequency> stepFrequency = const Value.absent(),
                 Value<int?> bufferId = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -21077,8 +21234,10 @@ class $$DepreciationSchedulesTableTableManager
                 method: method,
                 startDate: startDate,
                 endDate: endDate,
+                expenseDate: expenseDate,
                 usefulLifeMonths: usefulLifeMonths,
                 direction: direction,
+                stepFrequency: stepFrequency,
                 bufferId: bufferId,
                 isActive: isActive,
                 createdAt: createdAt,
@@ -21095,8 +21254,10 @@ class $$DepreciationSchedulesTableTableManager
                 required DepreciationMethod method,
                 required DateTime startDate,
                 required DateTime endDate,
+                Value<DateTime?> expenseDate = const Value.absent(),
                 required int usefulLifeMonths,
                 required DepreciationDirection direction,
+                Value<StepFrequency> stepFrequency = const Value.absent(),
                 Value<int?> bufferId = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -21111,8 +21272,10 @@ class $$DepreciationSchedulesTableTableManager
                 method: method,
                 startDate: startDate,
                 endDate: endDate,
+                expenseDate: expenseDate,
                 usefulLifeMonths: usefulLifeMonths,
                 direction: direction,
+                stepFrequency: stepFrequency,
                 bufferId: bufferId,
                 isActive: isActive,
                 createdAt: createdAt,

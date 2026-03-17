@@ -8,6 +8,7 @@ import 'services/exchange_rate_service.dart';
 import 'services/providers.dart';
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
+import 'ui/screens/capex_screen.dart';
 import 'ui/screens/dashboard_screen.dart';
 import 'ui/screens/import_screen.dart';
 import 'utils/logger.dart';
@@ -61,12 +62,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
     NavigationDestination(icon: Icon(Icons.account_balance), label: 'Accounts'),
     NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Assets'),
+    NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Adjustments'),
   ];
 
   static const _railDestinations = [
     NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Dashboard')),
     NavigationRailDestination(icon: Icon(Icons.account_balance), label: Text('Accounts')),
     NavigationRailDestination(icon: Icon(Icons.pie_chart), label: Text('Assets')),
+    NavigationRailDestination(icon: Icon(Icons.account_balance_wallet), label: Text('Adjustments')),
   ];
 
   @override
@@ -84,6 +87,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       0 => const DashboardScreen(),
       1 => const AccountsScreen(),
       2 => const AssetsScreen(),
+      3 => const CapexScreen(),
       _ => const SizedBox(),
     };
   }
