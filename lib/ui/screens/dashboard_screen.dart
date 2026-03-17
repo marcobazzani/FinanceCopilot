@@ -14,37 +14,41 @@ import '../../utils/logger.dart';
 
 final _log = getLogger('DashboardScreen');
 
-/// Unified series for both accounts and assets.
+/// Unified series for accounts, assets, and CAPEX.
 class _Series {
-  final String key; // unique id for toggling: "a:3" (account 3), "s:7" (asset 7)
+  final String key; // unique id for toggling: "a:3" (account), "s:7" (asset), "c:1" (capex)
   final String name;
   final Color color;
   final List<FlSpot> spots;
   final bool isAsset;
+  final bool isCapex;
   const _Series({
     required this.key,
     required this.name,
     required this.color,
     required this.spots,
     this.isAsset = false,
+    this.isCapex = false,
   });
 }
 
-/// All chart data: account series, asset series.
+/// All chart data: account series, asset series, CAPEX series.
 class _ChartData {
   final DateTime firstDate;
   final List<_Series> accounts;
   final List<_Series> assets;
+  final List<_Series> capex;
   final String baseCurrency;
 
   const _ChartData({
     required this.firstDate,
     required this.accounts,
     required this.assets,
+    required this.capex,
     required this.baseCurrency,
   });
 
-  List<_Series> get allSeries => [...accounts, ...assets];
+  List<_Series> get allSeries => [...accounts, ...assets, ...capex];
 }
 
 final _chartColors = [
@@ -76,6 +80,13 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
+
+  // Watch reactive streams so we rebuild when data changes
+  ref.watch(accountsProvider);
+  ref.watch(accountStatsProvider);
+  ref.watch(assetsProvider);
+  ref.watch(assetStatsProvider);
+  ref.watch(capexSchedulesProvider);
 
   // ── Shared helpers ──
   final allDayKeys = <int>{};
@@ -247,10 +258,93 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     colorIdx++;
   }
 
+  // ════════════════════════════════════════════════
+  // 3. CAPEX — re-add at expense date, remove during spread steps
+  //    At expenseDate: +totalAmount (neutralizes the bank dip)
+  //    At each entry date: −stepAmount (gradually spread)
+  //    At each reimbursement: −reimbursement (someone else paid back)
+  // ════════════════════════════════════════════════
+  final activeSchedules = await (db.select(db.depreciationSchedules)
+        ..where((s) => s.isActive.equals(true)))
+      .get();
+
+  final capexSeries = <_Series>[];
+
+  for (final schedule in activeSchedules) {
+    final entries = await (db.select(db.depreciationEntries)
+          ..where((e) => e.scheduleId.equals(schedule.id))
+          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+        .get();
+
+    // Build delta map: dayKey → amount change
+    final deltaMap = <int, double>{};
+
+    // 1. At expense date: re-add the full amount
+    if (schedule.expenseDate != null) {
+      final expDayKey = toDayKey(schedule.expenseDate!);
+      deltaMap[expDayKey] = (deltaMap[expDayKey] ?? 0) + schedule.totalAmount;
+      allDayKeys.add(expDayKey);
+    }
+
+    // 2. At each spread step: remove the step amount
+    for (final entry in entries) {
+      final dayKey = toDayKey(entry.date);
+      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - entry.amount;
+      allDayKeys.add(dayKey);
+    }
+
+    // 3. Reimbursements: reduce the CAPEX adjustment
+    if (schedule.bufferId != null) {
+      final reimbursements = await (db.select(db.bufferTransactions)
+            ..where((t) => t.bufferId.equals(schedule.bufferId!))
+            ..where((t) => t.isReimbursement.equals(true)))
+          .get();
+      for (final r in reimbursements) {
+        final dayKey = toDayKey(r.operationDate);
+        deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
+        allDayKeys.add(dayKey);
+      }
+    }
+
+    if (deltaMap.isEmpty) continue;
+
+    // Walk sorted days, accumulate, build spots.
+    // Insert "hold" points before jumps so the line stays flat
+    // (step-like) instead of drawing diagonals across gaps.
+    final capexDays = deltaMap.keys.toList()..sort();
+    final spots = <FlSpot>[];
+    var cumulative = 0.0;
+    double? prevY;
+
+    for (final dayKey in capexDays) {
+      final rate = await getCachedRate(schedule.currency, dayKey);
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = dt.difference(firstDate).inDays.toDouble();
+      // Hold previous value just before this point to avoid diagonal
+      if (prevY != null && x > (spots.last.x + 1)) {
+        spots.add(FlSpot(x - 0.5, prevY));
+      }
+      cumulative += deltaMap[dayKey]!;
+      final y = cumulative * rate;
+      spots.add(FlSpot(x, y));
+      prevY = y;
+    }
+
+    capexSeries.add(_Series(
+      key: 'c:${schedule.id}',
+      name: schedule.assetName,
+      color: _chartColors[colorIdx % _chartColors.length],
+      spots: spots,
+      isCapex: true,
+    ));
+    colorIdx++;
+  }
+
   return _ChartData(
     firstDate: firstDate,
     accounts: accountSeries,
     assets: assetSeries,
+    capex: capexSeries,
     baseCurrency: baseCurrency,
   );
 });
@@ -340,33 +434,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
               ),
               const SizedBox(height: 8),
-              // Toggleable legend
-              Wrap(
-                spacing: 12,
-                runSpacing: 4,
-                children: [
-                  for (final s in allSeries)
-                    _ToggleLegendItem(
-                      color: s.color,
-                      label: s.name,
-                      dashed: s.isAsset,
-                      enabled: !_hidden.contains(s.key),
-                      onTap: () => setState(() {
-                        if (_hidden.contains(s.key)) {
-                          _hidden.remove(s.key);
-                        } else {
-                          _hidden.add(s.key);
-                        }
-                      }),
-                    ),
-                  _ToggleLegendItem(
-                    color: Colors.white,
-                    label: 'Total',
-                    bold: true,
-                    enabled: true,
-                    onTap: null,
-                  ),
-                ],
+              // Toggleable legend grouped by type
+              _GroupedLegend(
+                accounts: data.accounts,
+                assets: data.assets,
+                adjustments: data.capex,
+                hidden: _hidden,
+                onToggle: (key) => setState(() {
+                  if (_hidden.contains(key)) {
+                    _hidden.remove(key);
+                  } else {
+                    _hidden.add(key);
+                  }
+                }),
+                onToggleGroup: (keys) => setState(() {
+                  final allHidden = keys.every(_hidden.contains);
+                  if (allHidden) {
+                    _hidden.removeAll(keys);
+                  } else {
+                    _hidden.addAll(keys);
+                  }
+                }),
               ),
               const SizedBox(height: 12),
               Expanded(
@@ -383,6 +471,98 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
       },
     );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Grouped legend: Accounts | Assets | Adjustments | Total
+// ════════════════════════════════════════════════════
+
+class _GroupedLegend extends StatelessWidget {
+  final List<_Series> accounts;
+  final List<_Series> assets;
+  final List<_Series> adjustments;
+  final Set<String> hidden;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<Set<String>> onToggleGroup;
+
+  const _GroupedLegend({
+    required this.accounts,
+    required this.assets,
+    required this.adjustments,
+    required this.hidden,
+    required this.onToggle,
+    required this.onToggleGroup,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        if (accounts.isNotEmpty)
+          ..._buildGroup(context, 'Accounts', accounts, false),
+        if (assets.isNotEmpty)
+          ..._buildGroup(context, 'Assets', assets, true),
+        if (adjustments.isNotEmpty)
+          ..._buildGroup(context, 'Adjustments', adjustments, true),
+        _ToggleLegendItem(
+          color: Colors.white,
+          label: 'Total',
+          bold: true,
+          enabled: true,
+          onTap: null,
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildGroup(BuildContext context, String label, List<_Series> series, bool dashed) {
+    final keys = series.map((s) => s.key).toSet();
+    final allHidden = keys.every(hidden.contains);
+    final groupEnabled = !allHidden;
+
+    return [
+      // Group header — tapping toggles all in the group
+      GestureDetector(
+        onTap: () => onToggleGroup(keys),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              color: groupEnabled
+                  ? Theme.of(context).colorScheme.surfaceContainerHighest
+                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: groupEnabled
+                    ? Theme.of(context).colorScheme.onSurface
+                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                decoration: groupEnabled ? null : TextDecoration.lineThrough,
+              ),
+            ),
+          ),
+        ),
+      ),
+      // Individual items
+      for (final s in series)
+        _ToggleLegendItem(
+          color: s.color,
+          label: s.name,
+          dashed: dashed,
+          enabled: !hidden.contains(s.key),
+          onTap: () => onToggle(s.key),
+        ),
+      // Separator
+      const SizedBox(width: 4),
+    ];
   }
 }
 
@@ -534,7 +714,7 @@ class _BalanceChart extends StatelessWidget {
         barWidth: 2,
         dotData: const FlDotData(show: false),
         belowBarData: BarAreaData(show: false),
-        dashArray: s.isAsset ? [6, 3] : null,
+        dashArray: s.isCapex ? [3, 4] : s.isAsset ? [6, 3] : null,
       ));
     }
 

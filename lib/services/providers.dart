@@ -6,6 +6,8 @@ import '../database/providers.dart';
 import 'account_service.dart';
 import 'asset_event_service.dart';
 import 'asset_service.dart';
+import 'buffer_service.dart';
+import 'capex_service.dart';
 import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
 import 'import_service.dart';
@@ -157,4 +159,34 @@ final accountTransactionsProvider = StreamProvider.family<List<Transaction>, int
 /// Asset events for a specific asset (pass assetId as family parameter).
 final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, assetId) {
   return ref.watch(assetEventServiceProvider).watchByAsset(assetId);
+});
+
+// ── CAPEX / Buffer providers ──
+
+final capexServiceProvider = Provider<CapexService>((ref) {
+  return CapexService(ref.watch(databaseProvider));
+});
+
+final bufferServiceProvider = Provider<BufferService>((ref) {
+  return BufferService(ref.watch(databaseProvider));
+});
+
+final capexSchedulesProvider = StreamProvider<List<DepreciationSchedule>>((ref) {
+  return ref.watch(capexServiceProvider).watchAll();
+});
+
+final capexStatsProvider = StreamProvider<Map<int, CapexStats>>((ref) {
+  return ref.watch(capexServiceProvider).watchStatsForAll();
+});
+
+final capexScheduleProvider = StreamProvider.family<DepreciationSchedule, int>((ref, scheduleId) {
+  return ref.watch(capexServiceProvider).watchById(scheduleId);
+});
+
+final capexEntriesProvider = StreamProvider.family<List<DepreciationEntry>, int>((ref, scheduleId) {
+  return ref.watch(capexServiceProvider).watchEntries(scheduleId);
+});
+
+final bufferTransactionsProvider = StreamProvider.family<List<BufferTransaction>, int>((ref, bufferId) {
+  return ref.watch(bufferServiceProvider).watchByBuffer(bufferId);
 });

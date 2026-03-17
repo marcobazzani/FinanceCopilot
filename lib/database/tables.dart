@@ -47,6 +47,8 @@ enum DepreciationMethod { linear, decliningBalance, custom }
 
 enum DepreciationDirection { forward, backward }
 
+enum StepFrequency { weekly, monthly, quarterly, yearly }
+
 enum RegisteredEventType {
   stipendio,
   entrata,
@@ -259,8 +261,10 @@ class DepreciationSchedules extends Table {
   TextColumn get method => textEnum<DepreciationMethod>()();
   DateTimeColumn get startDate => dateTime()();
   DateTimeColumn get endDate => dateTime()();
+  DateTimeColumn get expenseDate => dateTime().nullable()();
   IntColumn get usefulLifeMonths => integer()();
   TextColumn get direction => textEnum<DepreciationDirection>()();
+  TextColumn get stepFrequency => textEnum<StepFrequency>().withDefault(Constant(StepFrequency.monthly.name))();
   IntColumn get bufferId => integer().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
