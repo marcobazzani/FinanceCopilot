@@ -14,28 +14,37 @@ import '../../utils/logger.dart';
 
 final _log = getLogger('DashboardScreen');
 
-/// Per-account daily balance series + total.
+/// Unified series for both accounts and assets.
+class _Series {
+  final String key; // unique id for toggling: "a:3" (account 3), "s:7" (asset 7)
+  final String name;
+  final Color color;
+  final List<FlSpot> spots;
+  final bool isAsset;
+  const _Series({
+    required this.key,
+    required this.name,
+    required this.color,
+    required this.spots,
+    this.isAsset = false,
+  });
+}
+
+/// All chart data: account series, asset series.
 class _ChartData {
   final DateTime firstDate;
-  final List<_AccountSeries> accounts;
-  final List<FlSpot> totalSpots;
-  final double currentTotal;
+  final List<_Series> accounts;
+  final List<_Series> assets;
   final String baseCurrency;
 
   const _ChartData({
     required this.firstDate,
     required this.accounts,
-    required this.totalSpots,
-    required this.currentTotal,
+    required this.assets,
     required this.baseCurrency,
   });
-}
 
-class _AccountSeries {
-  final String name;
-  final Color color;
-  final List<FlSpot> spots;
-  const _AccountSeries({required this.name, required this.color, required this.spots});
+  List<_Series> get allSeries => [...accounts, ...assets];
 }
 
 final _chartColors = [
@@ -61,52 +70,16 @@ String currencySymbol(String code) {
   };
 }
 
-/// Provider that fetches daily balance per active account, converted to base currency.
+/// Provider that fetches daily balance per active account + cumulative asset
+/// invested value, all converted to base currency.
 final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
 
-  // Get active accounts
-  final activeAccounts = await (db.select(db.accounts)
-        ..where((a) => a.isActive.equals(true))
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-      .get();
-  if (activeAccounts.isEmpty) return null;
-  final activeIds = activeAccounts.map((a) => a.id).toSet();
-
-  // Fetch all transactions for active accounts
-  final rows = await db.customSelect(
-    'SELECT account_id, operation_date, balance_after '
-    'FROM transactions '
-    'WHERE account_id IN (${activeIds.join(",")}) '
-    'AND balance_after IS NOT NULL '
-    'ORDER BY operation_date ASC, id ASC',
-  ).get();
-
-  if (rows.isEmpty) return null;
-
-  // Build per-account daily balance series
-  final perAccount = <int, Map<int, double>>{}; // accountId -> {dayKey -> balance}
+  // ── Shared helpers ──
   final allDayKeys = <int>{};
 
-  for (final row in rows) {
-    final accountId = row.read<int>('account_id');
-    final epochSec = row.read<int>('operation_date');
-    final balance = row.read<double>('balance_after');
-
-    final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
-    final dayKey = DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
-
-    perAccount.putIfAbsent(accountId, () => {});
-    perAccount[accountId]![dayKey] = balance;
-    allDayKeys.add(dayKey);
-  }
-
-  final sortedDays = allDayKeys.toList()..sort();
-  final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
-
-  // Rate cache to avoid redundant DB lookups
   final rateCache = <String, double>{};
   Future<double> getCachedRate(String from, int dayKey) async {
     if (from == baseCurrency) return 1.0;
@@ -118,21 +91,113 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     return rate ?? 1.0;
   }
 
-  // Build FlSpot series per account (carry forward, convert to base currency)
-  final accountSeries = <_AccountSeries>[];
+  int toDayKey(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+
+  // ════════════════════════════════════════════════
+  // 1. ACCOUNTS — daily balance from transactions
+  // ════════════════════════════════════════════════
+  final activeAccounts = await (db.select(db.accounts)
+        ..where((a) => a.isActive.equals(true))
+        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+      .get();
+  final activeIds = activeAccounts.map((a) => a.id).toSet();
+
+  final perAccount = <int, Map<int, double>>{};
+  if (activeIds.isNotEmpty) {
+    final rows = await db.customSelect(
+      'SELECT account_id, operation_date, balance_after '
+      'FROM transactions '
+      'WHERE account_id IN (${activeIds.join(",")}) '
+      'AND balance_after IS NOT NULL '
+      'ORDER BY operation_date ASC, id ASC',
+    ).get();
+
+    for (final row in rows) {
+      final accountId = row.read<int>('account_id');
+      final epochSec = row.read<int>('operation_date');
+      final balance = row.read<double>('balance_after');
+      final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
+      final dayKey = toDayKey(dt);
+      perAccount.putIfAbsent(accountId, () => {});
+      perAccount[accountId]![dayKey] = balance;
+      allDayKeys.add(dayKey);
+    }
+  }
+
+  // ════════════════════════════════════════════════
+  // 2. ASSETS — cumulative invested value from events
+  // ════════════════════════════════════════════════
+  final activeAssets = await (db.select(db.assets)
+        ..where((a) => a.isActive.equals(true))
+        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+      .get();
+  final assetIds = activeAssets.map((a) => a.id).toSet();
+
+  final perAssetDeltas = <int, Map<int, double>>{};
+
+  if (assetIds.isNotEmpty) {
+    final evRows = await db.customSelect(
+      'SELECT asset_id, date, type, amount, currency, exchange_rate '
+      'FROM asset_events '
+      'WHERE asset_id IN (${assetIds.join(",")}) '
+      'ORDER BY date ASC',
+    ).get();
+
+    for (final row in evRows) {
+      final assetId = row.read<int>('asset_id');
+      final epochSec = row.read<int>('date');
+      final type = row.read<String>('type');
+      final amount = row.read<double>('amount');
+      final currency = row.read<String>('currency');
+      final storedRate = row.readNullable<double>('exchange_rate');
+
+      double sign;
+      if (type == 'buy' || type == 'contribute') {
+        sign = 1.0;
+      } else if (type == 'sell') {
+        sign = -1.0;
+      } else {
+        continue;
+      }
+
+      final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
+      final dayKey = toDayKey(dt);
+
+      double baseAmount;
+      if (currency == baseCurrency) {
+        baseAmount = amount.abs();
+      } else if (storedRate != null && storedRate > 0) {
+        baseAmount = amount.abs() / storedRate;
+      } else {
+        final rate = await getCachedRate(currency, dayKey);
+        baseAmount = amount.abs() * rate;
+      }
+
+      perAssetDeltas.putIfAbsent(assetId, () => {});
+      perAssetDeltas[assetId]![dayKey] =
+          (perAssetDeltas[assetId]![dayKey] ?? 0) + sign * baseAmount;
+      allDayKeys.add(dayKey);
+    }
+  }
+
+  if (allDayKeys.isEmpty) return null;
+
+  final sortedDays = allDayKeys.toList()..sort();
+  final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
+
+  // ── Build account series ──
+  final accountSeries = <_Series>[];
   var colorIdx = 0;
 
   for (final account in activeAccounts) {
     if (!perAccount.containsKey(account.id)) continue;
-
     final dayMap = perAccount[account.id]!;
     final spots = <FlSpot>[];
     double? running;
 
     for (final dayKey in sortedDays) {
-      if (dayMap.containsKey(dayKey)) {
-        running = dayMap[dayKey];
-      }
+      if (dayMap.containsKey(dayKey)) running = dayMap[dayKey];
       if (running != null) {
         final rate = await getCachedRate(account.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
@@ -141,7 +206,8 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       }
     }
 
-    accountSeries.add(_AccountSeries(
+    accountSeries.add(_Series(
+      key: 'a:${account.id}',
       name: account.name,
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
@@ -149,46 +215,95 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     colorIdx++;
   }
 
-  // Build total line: sum of all accounts' converted balance at each day
-  final runningConverted = <int, double>{}; // accountId -> last converted balance
-  final totalByDay = <int, double>{};
-  for (final dayKey in sortedDays) {
-    for (final account in activeAccounts) {
-      if (perAccount.containsKey(account.id) &&
-          perAccount[account.id]!.containsKey(dayKey)) {
-        final rate = await getCachedRate(account.currency, dayKey);
-        runningConverted[account.id] = perAccount[account.id]![dayKey]! * rate;
+  // ── Build asset series (cumulative) ──
+  final assetSeries = <_Series>[];
+
+  for (final asset in activeAssets) {
+    if (!perAssetDeltas.containsKey(asset.id)) continue;
+    final deltaMap = perAssetDeltas[asset.id]!;
+    final spots = <FlSpot>[];
+    var cumulative = 0.0;
+    var started = false;
+
+    for (final dayKey in sortedDays) {
+      if (deltaMap.containsKey(dayKey)) {
+        cumulative += deltaMap[dayKey]!;
+        started = true;
+      }
+      if (started) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+        final x = dt.difference(firstDate).inDays.toDouble();
+        spots.add(FlSpot(x, cumulative));
       }
     }
-    double total = 0;
-    for (final v in runningConverted.values) {
-      total += v;
-    }
-    totalByDay[dayKey] = total;
+
+    assetSeries.add(_Series(
+      key: 's:${asset.id}',
+      name: asset.name,
+      color: _chartColors[colorIdx % _chartColors.length],
+      spots: spots,
+      isAsset: true,
+    ));
+    colorIdx++;
   }
-
-  final totalSpots = sortedDays.map((dayKey) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-    final x = dt.difference(firstDate).inDays.toDouble();
-    return FlSpot(x, totalByDay[dayKey]!);
-  }).toList();
-
-  final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
 
   return _ChartData(
     firstDate: firstDate,
     accounts: accountSeries,
-    totalSpots: totalSpots,
-    currentTotal: currentTotal,
+    assets: assetSeries,
     baseCurrency: baseCurrency,
   );
 });
 
-class DashboardScreen extends ConsumerWidget {
+// ════════════════════════════════════════════════════
+// Dashboard screen with toggleable legend
+// ════════════════════════════════════════════════════
+
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  final _hidden = <String>{}; // keys of hidden series
+
+  /// Build the total line from visible series using carry-forward.
+  /// Each series may start at a different x; before it starts, its contribution is 0.
+  /// After it starts, its last known y value is carried forward to fill gaps.
+  List<FlSpot> _buildTotal(List<_Series> visible) {
+    if (visible.isEmpty) return [];
+
+    // Build {x → y} lookup per series, and collect all x values
+    final allX = <double>{};
+    final lookups = <Map<double, double>>[];
+    for (final s in visible) {
+      final m = <double, double>{};
+      for (final spot in s.spots) {
+        m[spot.x] = spot.y;
+        allX.add(spot.x);
+      }
+      lookups.add(m);
+    }
+
+    final sortedX = allX.toList()..sort();
+    final running = List<double>.filled(lookups.length, 0.0);
+
+    return sortedX.map((x) {
+      var total = 0.0;
+      for (var i = 0; i < lookups.length; i++) {
+        if (lookups[i].containsKey(x)) {
+          running[i] = lookups[i][x]!;
+        }
+        total += running[i];
+      }
+      return FlSpot(x, total);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final chartAsync = ref.watch(_chartDataProvider);
 
     return chartAsync.when(
@@ -197,53 +312,72 @@ class DashboardScreen extends ConsumerWidget {
       data: (data) {
         if (data == null) {
           return const Center(
-            child: Text('No balance data yet. Import transactions to get started.',
+            child: Text('No data yet. Import transactions or add assets to get started.',
                 style: TextStyle(color: Colors.grey)),
           );
         }
+
+        final allSeries = data.allSeries;
+        final visible = allSeries.where((s) => !_hidden.contains(s.key)).toList();
+        // Total always includes ALL series, toggle only hides individual lines
+        final totalSpots = _buildTotal(allSeries);
+        final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
         final symbol = currencySymbol(data.baseCurrency);
+
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Total Balance',
+              Text('Total Net Worth',
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(
                 NumberFormat.currency(locale: 'it_IT', symbol: symbol)
-                    .format(data.currentTotal),
+                    .format(currentTotal),
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
               ),
               const SizedBox(height: 8),
-              // Legend
+              // Toggleable legend
               Wrap(
-                spacing: 16,
+                spacing: 12,
                 runSpacing: 4,
                 children: [
-                  for (final s in data.accounts)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(width: 12, height: 3, color: s.color),
-                        const SizedBox(width: 4),
-                        Text(s.name, style: const TextStyle(fontSize: 11)),
-                      ],
+                  for (final s in allSeries)
+                    _ToggleLegendItem(
+                      color: s.color,
+                      label: s.name,
+                      dashed: s.isAsset,
+                      enabled: !_hidden.contains(s.key),
+                      onTap: () => setState(() {
+                        if (_hidden.contains(s.key)) {
+                          _hidden.remove(s.key);
+                        } else {
+                          _hidden.add(s.key);
+                        }
+                      }),
                     ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 12, height: 3, color: Colors.white),
-                      const SizedBox(width: 4),
-                      const Text('Total', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                    ],
+                  _ToggleLegendItem(
+                    color: Colors.white,
+                    label: 'Total',
+                    bold: true,
+                    enabled: true,
+                    onTap: null,
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-              Expanded(child: _BalanceChart(data: data)),
+              Expanded(
+                child: totalSpots.length >= 2
+                    ? _BalanceChart(
+                        data: data,
+                        visible: visible,
+                        totalSpots: totalSpots,
+                      )
+                    : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
+              ),
             ],
           ),
         );
@@ -252,9 +386,102 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
+// ════════════════════════════════════════════════════
+// Legend item with tap-to-toggle
+// ════════════════════════════════════════════════════
+
+class _ToggleLegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  final bool dashed;
+  final bool bold;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  const _ToggleLegendItem({
+    required this.color,
+    required this.label,
+    this.dashed = false,
+    this.bold = false,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = enabled ? color : color.withValues(alpha: 0.3);
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (dashed)
+              SizedBox(
+                width: 12,
+                height: 3,
+                child: CustomPaint(painter: _DashedLinePainter(effectiveColor)),
+              )
+            else
+              Container(width: 12, height: 3, color: effectiveColor),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+                color: enabled ? null : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                decoration: enabled ? null : TextDecoration.lineThrough,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  final Color color;
+  _DashedLinePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2;
+    const dashWidth = 3.0;
+    const gap = 2.0;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(
+        Offset(x, size.height / 2),
+        Offset(min(x + dashWidth, size.width), size.height / 2),
+        paint,
+      );
+      x += dashWidth + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ════════════════════════════════════════════════════
+// Chart widget
+// ════════════════════════════════════════════════════
+
 class _BalanceChart extends StatelessWidget {
   final _ChartData data;
-  const _BalanceChart({required this.data});
+  final List<_Series> visible;
+  final List<FlSpot> totalSpots;
+
+  const _BalanceChart({
+    required this.data,
+    required this.visible,
+    required this.totalSpots,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -265,24 +492,24 @@ class _BalanceChart extends StatelessWidget {
     final symbol = currencySymbol(data.baseCurrency);
 
     // Compute Y range from total line
-    final allY = data.totalSpots.map((s) => s.y);
+    final allY = totalSpots.map((s) => s.y);
     final minY = allY.reduce(min);
     final maxY = allY.reduce(max);
     final yRange = maxY - minY;
     final chartMinY = yRange > 0 ? minY - yRange * 0.05 : minY - 100;
     final chartMaxY = yRange > 0 ? maxY + yRange * 0.05 : maxY + 100;
 
-    final totalDays = data.totalSpots.isNotEmpty ? data.totalSpots.last.x : 1.0;
+    final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
     final dateFmt = DateFormat('MMM yyyy');
     final fullFmt = DateFormat('dd MMM yyyy');
     final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
 
-    // Build line bars: total FIRST (background), then per-account on top
+    // Build line bars: total FIRST (background), then visible series on top
     final lineBars = <LineChartBarData>[];
 
-    // Total line first (drawn behind account lines)
+    // Total line
     lineBars.add(LineChartBarData(
-      spots: data.totalSpots,
+      spots: totalSpots,
       isCurved: true,
       preventCurveOverShooting: true,
       curveSmoothness: 0.15,
@@ -296,8 +523,8 @@ class _BalanceChart extends StatelessWidget {
       ),
     ));
 
-    // Account lines on top
-    for (final s in data.accounts) {
+    // Visible series lines
+    for (final s in visible) {
       lineBars.add(LineChartBarData(
         spots: s.spots,
         isCurved: true,
@@ -307,6 +534,7 @@ class _BalanceChart extends StatelessWidget {
         barWidth: 2,
         dotData: const FlDotData(show: false),
         belowBarData: BarAreaData(show: false),
+        dashArray: s.isAsset ? [6, 3] : null,
       ));
     }
 
@@ -357,23 +585,25 @@ class _BalanceChart extends StatelessWidget {
             getTooltipItems: (spots) {
               return spots.map((spot) {
                 final barIndex = spot.barIndex;
-                final isTotal = barIndex == 0; // Total is first line
-                final accountIdx = barIndex - 1;
-                final label = isTotal ? 'Total' : data.accounts[accountIdx].name;
+                final isTotal = barIndex == 0;
+                final seriesIdx = barIndex - 1;
                 final date = data.firstDate.add(Duration(days: spot.x.toInt()));
+
                 if (isTotal) {
                   return LineTooltipItem(
-                    '${fullFmt.format(date)}\n$label: ${currFmt.format(spot.y)}',
+                    '${fullFmt.format(date)}\nTotal: ${currFmt.format(spot.y)}',
                     const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                   );
                 }
-                return LineTooltipItem(
-                  '$label: ${currFmt.format(spot.y)}',
-                  TextStyle(
-                    color: data.accounts[accountIdx].color,
-                    fontSize: 11,
-                  ),
-                );
+
+                if (seriesIdx >= 0 && seriesIdx < visible.length) {
+                  final s = visible[seriesIdx];
+                  return LineTooltipItem(
+                    '${s.name}: ${currFmt.format(spot.y)}',
+                    TextStyle(color: s.color, fontSize: 11),
+                  );
+                }
+                return null;
               }).toList();
             },
           ),
