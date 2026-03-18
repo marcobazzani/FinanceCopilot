@@ -36,6 +36,12 @@ dependencies:
   # HTTP (market data)
   dio: ^5.8.0
 
+  # Google Sheets (price data via GOOGLEFINANCE, CSV export)
+  url_launcher: ^6.3.1
+
+  # Headless WebView (Cloudflare cookie solving for Investing.com)
+  flutter_inappwebview: ^6.1.5
+
   # Hashing (import dedup)
   crypto: ^3.0.6
 

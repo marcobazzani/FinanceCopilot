@@ -57,6 +57,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
+  bool _isSyncing = false;
 
   static const _destinations = [
     NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
@@ -80,6 +81,21 @@ class _AppShellState extends ConsumerState<AppShell> {
       _log.info('Starting exchange rate sync...');
       ref.read(exchangeRateServiceProvider).syncRates();
     });
+    // Kick off market price sync in background
+    Future.microtask(() => _syncPrices());
+  }
+
+  Future<void> _syncPrices({bool forceToday = false}) async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    try {
+      _log.info('Starting market price sync (forceToday=$forceToday)...');
+      await ref.read(marketPriceServiceProvider).syncPrices(forceToday: forceToday);
+      // Bump refresh counter so chart providers rebuild with new prices
+      ref.read(priceRefreshCounter.notifier).state++;
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
   }
 
   Widget _body() {
@@ -100,6 +116,18 @@ class _AppShellState extends ConsumerState<AppShell> {
       appBar: AppBar(
         title: const Text('FinanceCopilot'),
         actions: [
+          // Refresh market prices button
+          IconButton(
+            icon: _isSyncing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Refresh Market Prices',
+            onPressed: _isSyncing ? null : () => _syncPrices(forceToday: true),
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
@@ -165,36 +193,41 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _showSettingsDialog(BuildContext context) async {
+    final db = ref.read(databaseProvider);
     final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
-    var selected = baseCurrency;
+
+    var selectedCurrency = baseCurrency;
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Settings'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: selected,
-                decoration: const InputDecoration(labelText: 'Default Currency'),
-                items: ExchangeRateService.allCurrencies
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => selected = v!),
-              ),
-            ],
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedCurrency,
+                  decoration: const InputDecoration(labelText: 'Default Currency'),
+                  items: ExchangeRateService.allCurrencies
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => selectedCurrency = v!),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
               onPressed: () async {
-                final db = ref.read(databaseProvider);
-                await (db.update(db.appConfigs)
-                      ..where((c) => c.key.equals('BASE_CURRENCY')))
-                    .write(AppConfigsCompanion(value: Value(selected)));
-                _log.info('Settings: base currency changed to $selected');
+                await db.into(db.appConfigs).insertOnConflictUpdate(
+                  AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),
+                );
+                _log.info('Settings saved: currency=$selectedCurrency');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('Save'),

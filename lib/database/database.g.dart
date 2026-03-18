@@ -2644,6 +2644,17 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _yahooTickerMeta = const VerificationMeta(
+    'yahooTicker',
+  );
+  @override
+  late final GeneratedColumn<String> yahooTicker = GeneratedColumn<String>(
+    'yahoo_ticker',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _countryMeta = const VerificationMeta(
     'country',
   );
@@ -2787,6 +2798,7 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     assetGroup,
     currency,
     exchange,
+    yahooTicker,
     country,
     region,
     sector,
@@ -2851,6 +2863,15 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
       context.handle(
         _exchangeMeta,
         exchange.isAcceptableOrUnknown(data['exchange']!, _exchangeMeta),
+      );
+    }
+    if (data.containsKey('yahoo_ticker')) {
+      context.handle(
+        _yahooTickerMeta,
+        yahooTicker.isAcceptableOrUnknown(
+          data['yahoo_ticker']!,
+          _yahooTickerMeta,
+        ),
       );
     }
     if (data.containsKey('country')) {
@@ -2965,6 +2986,10 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         DriftSqlType.string,
         data['${effectivePrefix}exchange'],
       ),
+      yahooTicker: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}yahoo_ticker'],
+      ),
       country: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}country'],
@@ -3040,6 +3065,7 @@ class Asset extends DataClass implements Insertable<Asset> {
   final String assetGroup;
   final String currency;
   final String? exchange;
+  final String? yahooTicker;
   final String? country;
   final String? region;
   final String? sector;
@@ -3061,6 +3087,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.assetGroup,
     required this.currency,
     this.exchange,
+    this.yahooTicker,
     this.country,
     this.region,
     this.sector,
@@ -3094,6 +3121,9 @@ class Asset extends DataClass implements Insertable<Asset> {
     map['currency'] = Variable<String>(currency);
     if (!nullToAbsent || exchange != null) {
       map['exchange'] = Variable<String>(exchange);
+    }
+    if (!nullToAbsent || yahooTicker != null) {
+      map['yahoo_ticker'] = Variable<String>(yahooTicker);
     }
     if (!nullToAbsent || country != null) {
       map['country'] = Variable<String>(country);
@@ -3140,6 +3170,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       exchange: exchange == null && nullToAbsent
           ? const Value.absent()
           : Value(exchange),
+      yahooTicker: yahooTicker == null && nullToAbsent
+          ? const Value.absent()
+          : Value(yahooTicker),
       country: country == null && nullToAbsent
           ? const Value.absent()
           : Value(country),
@@ -3181,6 +3214,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetGroup: serializer.fromJson<String>(json['assetGroup']),
       currency: serializer.fromJson<String>(json['currency']),
       exchange: serializer.fromJson<String?>(json['exchange']),
+      yahooTicker: serializer.fromJson<String?>(json['yahooTicker']),
       country: serializer.fromJson<String?>(json['country']),
       region: serializer.fromJson<String?>(json['region']),
       sector: serializer.fromJson<String?>(json['sector']),
@@ -3211,6 +3245,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       'assetGroup': serializer.toJson<String>(assetGroup),
       'currency': serializer.toJson<String>(currency),
       'exchange': serializer.toJson<String?>(exchange),
+      'yahooTicker': serializer.toJson<String?>(yahooTicker),
       'country': serializer.toJson<String?>(country),
       'region': serializer.toJson<String?>(region),
       'sector': serializer.toJson<String?>(sector),
@@ -3237,6 +3272,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     String? assetGroup,
     String? currency,
     Value<String?> exchange = const Value.absent(),
+    Value<String?> yahooTicker = const Value.absent(),
     Value<String?> country = const Value.absent(),
     Value<String?> region = const Value.absent(),
     Value<String?> sector = const Value.absent(),
@@ -3258,6 +3294,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetGroup: assetGroup ?? this.assetGroup,
     currency: currency ?? this.currency,
     exchange: exchange.present ? exchange.value : this.exchange,
+    yahooTicker: yahooTicker.present ? yahooTicker.value : this.yahooTicker,
     country: country.present ? country.value : this.country,
     region: region.present ? region.value : this.region,
     sector: sector.present ? sector.value : this.sector,
@@ -3283,6 +3320,9 @@ class Asset extends DataClass implements Insertable<Asset> {
           : this.assetGroup,
       currency: data.currency.present ? data.currency.value : this.currency,
       exchange: data.exchange.present ? data.exchange.value : this.exchange,
+      yahooTicker: data.yahooTicker.present
+          ? data.yahooTicker.value
+          : this.yahooTicker,
       country: data.country.present ? data.country.value : this.country,
       region: data.region.present ? data.region.value : this.region,
       sector: data.sector.present ? data.sector.value : this.sector,
@@ -3313,6 +3353,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
+          ..write('yahooTicker: $yahooTicker, ')
           ..write('country: $country, ')
           ..write('region: $region, ')
           ..write('sector: $sector, ')
@@ -3330,7 +3371,7 @@ class Asset extends DataClass implements Insertable<Asset> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     ticker,
@@ -3339,6 +3380,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetGroup,
     currency,
     exchange,
+    yahooTicker,
     country,
     region,
     sector,
@@ -3351,7 +3393,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     notes,
     createdAt,
     updatedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3364,6 +3406,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.assetGroup == this.assetGroup &&
           other.currency == this.currency &&
           other.exchange == this.exchange &&
+          other.yahooTicker == this.yahooTicker &&
           other.country == this.country &&
           other.region == this.region &&
           other.sector == this.sector &&
@@ -3387,6 +3430,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<String> assetGroup;
   final Value<String> currency;
   final Value<String?> exchange;
+  final Value<String?> yahooTicker;
   final Value<String?> country;
   final Value<String?> region;
   final Value<String?> sector;
@@ -3408,6 +3452,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
+    this.yahooTicker = const Value.absent(),
     this.country = const Value.absent(),
     this.region = const Value.absent(),
     this.sector = const Value.absent(),
@@ -3430,6 +3475,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
+    this.yahooTicker = const Value.absent(),
     this.country = const Value.absent(),
     this.region = const Value.absent(),
     this.sector = const Value.absent(),
@@ -3454,6 +3500,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? assetGroup,
     Expression<String>? currency,
     Expression<String>? exchange,
+    Expression<String>? yahooTicker,
     Expression<String>? country,
     Expression<String>? region,
     Expression<String>? sector,
@@ -3476,6 +3523,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (assetGroup != null) 'asset_group': assetGroup,
       if (currency != null) 'currency': currency,
       if (exchange != null) 'exchange': exchange,
+      if (yahooTicker != null) 'yahoo_ticker': yahooTicker,
       if (country != null) 'country': country,
       if (region != null) 'region': region,
       if (sector != null) 'sector': sector,
@@ -3500,6 +3548,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<String>? assetGroup,
     Value<String>? currency,
     Value<String?>? exchange,
+    Value<String?>? yahooTicker,
     Value<String?>? country,
     Value<String?>? region,
     Value<String?>? sector,
@@ -3522,6 +3571,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       assetGroup: assetGroup ?? this.assetGroup,
       currency: currency ?? this.currency,
       exchange: exchange ?? this.exchange,
+      yahooTicker: yahooTicker ?? this.yahooTicker,
       country: country ?? this.country,
       region: region ?? this.region,
       sector: sector ?? this.sector,
@@ -3565,6 +3615,9 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     }
     if (exchange.present) {
       map['exchange'] = Variable<String>(exchange.value);
+    }
+    if (yahooTicker.present) {
+      map['yahoo_ticker'] = Variable<String>(yahooTicker.value);
     }
     if (country.present) {
       map['country'] = Variable<String>(country.value);
@@ -3618,6 +3671,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
+          ..write('yahooTicker: $yahooTicker, ')
           ..write('country: $country, ')
           ..write('region: $region, ')
           ..write('sector: $sector, ')
@@ -16994,6 +17048,7 @@ typedef $$AssetsTableCreateCompanionBuilder =
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
+      Value<String?> yahooTicker,
       Value<String?> country,
       Value<String?> region,
       Value<String?> sector,
@@ -17017,6 +17072,7 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
+      Value<String?> yahooTicker,
       Value<String?> country,
       Value<String?> region,
       Value<String?> sector,
@@ -17157,6 +17213,11 @@ class $$AssetsTableFilterComposer
 
   ColumnFilters<String> get exchange => $composableBuilder(
     column: $table.exchange,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get yahooTicker => $composableBuilder(
+    column: $table.yahooTicker,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17371,6 +17432,11 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get yahooTicker => $composableBuilder(
+    column: $table.yahooTicker,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get country => $composableBuilder(
     column: $table.country,
     builder: (column) => ColumnOrderings(column),
@@ -17466,6 +17532,11 @@ class $$AssetsTableAnnotationComposer
 
   GeneratedColumn<String> get exchange =>
       $composableBuilder(column: $table.exchange, builder: (column) => column);
+
+  GeneratedColumn<String> get yahooTicker => $composableBuilder(
+    column: $table.yahooTicker,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get country =>
       $composableBuilder(column: $table.country, builder: (column) => column);
@@ -17650,6 +17721,7 @@ class $$AssetsTableTableManager
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
+                Value<String?> yahooTicker = const Value.absent(),
                 Value<String?> country = const Value.absent(),
                 Value<String?> region = const Value.absent(),
                 Value<String?> sector = const Value.absent(),
@@ -17671,6 +17743,7 @@ class $$AssetsTableTableManager
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
+                yahooTicker: yahooTicker,
                 country: country,
                 region: region,
                 sector: sector,
@@ -17694,6 +17767,7 @@ class $$AssetsTableTableManager
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
+                Value<String?> yahooTicker = const Value.absent(),
                 Value<String?> country = const Value.absent(),
                 Value<String?> region = const Value.absent(),
                 Value<String?> sector = const Value.absent(),
@@ -17715,6 +17789,7 @@ class $$AssetsTableTableManager
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
+                yahooTicker: yahooTicker,
                 country: country,
                 region: region,
                 sector: sector,

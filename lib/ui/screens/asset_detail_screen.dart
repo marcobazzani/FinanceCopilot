@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
+import '../../services/market_price_service.dart' show supportedExchanges;
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
@@ -200,10 +201,11 @@ class AssetDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _editAsset(BuildContext context, WidgetRef ref) async {
-    final nameCtrl = TextEditingController(text: asset.name);
-    final tickerCtrl = TextEditingController(text: asset.ticker ?? '');
     final isinCtrl = TextEditingController(text: asset.isin ?? '');
-    final taxRateCtrl = TextEditingController(text: asset.taxRate?.toString() ?? '');
+    String? resolvedName = asset.name;
+    String? resolvedTicker = asset.ticker;
+    bool looking = false;
+    String selectedExchange = asset.exchange ?? 'MIL';
     var isActive = asset.isActive;
 
     await showDialog(
@@ -215,20 +217,66 @@ class AssetDetailScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
-                const SizedBox(height: 8),
-                TextField(controller: tickerCtrl, decoration: const InputDecoration(labelText: 'Ticker')),
-                const SizedBox(height: 8),
                 TextField(
                   controller: isinCtrl,
-                  decoration: const InputDecoration(labelText: 'ISIN'),
+                  decoration: const InputDecoration(
+                    labelText: 'ISIN',
+                    hintText: 'e.g. IE00B4L5Y983',
+                  ),
                   textCapitalization: TextCapitalization.characters,
+                  onChanged: (v) async {
+                    final isin = v.trim().toUpperCase();
+                    if (isin.length == 12) {
+                      setDialogState(() => looking = true);
+                      final result = await ref.read(isinLookupServiceProvider).lookup(isin);
+                      if (ctx.mounted) {
+                        setDialogState(() {
+                          resolvedName = result.name;
+                          resolvedTicker = result.ticker;
+                          looking = false;
+                        });
+                      }
+                    } else {
+                      setDialogState(() {
+                        resolvedName = null;
+                        resolvedTicker = null;
+                      });
+                    }
+                  },
                 ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: taxRateCtrl,
-                  decoration: const InputDecoration(labelText: 'Tax Rate (e.g. 0.26)'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                const SizedBox(height: 12),
+                if (looking)
+                  const Row(children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 8),
+                    Text('Looking up ISIN...', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ])
+                else if (resolvedName != null || resolvedTicker != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (resolvedName != null)
+                        Text(resolvedName!, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      if (resolvedTicker != null)
+                        Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                    ],
+                  )
+                else if (isinCtrl.text.trim().length == 12)
+                  const Text('ISIN not found — will keep current name',
+                      style: TextStyle(color: Colors.orange, fontSize: 13)),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedExchange,
+                  decoration: const InputDecoration(
+                    labelText: 'Stock Exchange',
+                    isDense: true,
+                  ),
+                  items: supportedExchanges.entries
+                      .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setDialogState(() => selectedExchange = v);
+                  },
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(
@@ -243,22 +291,25 @@ class AssetDetailScreen extends ConsumerWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                _log.info('saving asset id=${asset.id}, name=${nameCtrl.text.trim()}');
-                await ref.read(assetServiceProvider).update(
-                  asset.id,
-                  AssetsCompanion(
-                    name: Value(nameCtrl.text.trim()),
-                    ticker: Value(tickerCtrl.text.isNotEmpty ? tickerCtrl.text.trim() : null),
-                    isin: Value(isinCtrl.text.isNotEmpty ? isinCtrl.text.trim().toUpperCase() : null),
-                    taxRate: Value(taxRateCtrl.text.isNotEmpty ? double.tryParse(taxRateCtrl.text) : null),
-                    isActive: Value(isActive),
-                    updatedAt: Value(DateTime.now()),
-                  ),
-                );
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
+              onPressed: isinCtrl.text.trim().length == 12 && !looking
+                  ? () async {
+                      final isin = isinCtrl.text.trim().toUpperCase();
+                      final name = resolvedName ?? asset.name;
+                      _log.info('saving asset id=${asset.id}, isin=$isin');
+                      await ref.read(assetServiceProvider).update(
+                        asset.id,
+                        AssetsCompanion(
+                          name: Value(name),
+                          ticker: Value(resolvedTicker),
+                          isin: Value(isin),
+                          exchange: Value(selectedExchange),
+                          isActive: Value(isActive),
+                          updatedAt: Value(DateTime.now()),
+                        ),
+                      );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    }
+                  : null,
               child: const Text('Save'),
             ),
           ],

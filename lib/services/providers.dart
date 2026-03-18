@@ -10,8 +10,10 @@ import 'buffer_service.dart';
 import 'capex_service.dart';
 import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
+import 'investing_com_service.dart';
 import 'import_service.dart';
 import 'isin_lookup_service.dart';
+import 'market_price_service.dart';
 import 'transaction_service.dart';
 
 // ── Service providers ──
@@ -47,6 +49,14 @@ final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
 final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
   return ExchangeRateService(ref.watch(databaseProvider));
 });
+
+final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
+  final db = ref.watch(databaseProvider);
+  return InvestingComService(db);
+});
+
+/// Bumped after market price sync to trigger chart rebuilds.
+final priceRefreshCounter = StateProvider<int>((ref) => 0);
 
 // ── Reactive stream providers ──
 
@@ -126,6 +136,30 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
       }
     }
     result[asset.id] = total;
+  }
+  return result;
+});
+
+/// Market value per asset: qty * lastPrice * fxRate → base currency.
+final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
+  final assets = await ref.watch(assetsProvider.future);
+  final stats = await ref.watch(assetStatsProvider.future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final priceService = ref.watch(marketPriceServiceProvider);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+
+  final result = <int, double>{};
+  final now = DateTime.now();
+  for (final asset in assets) {
+    final stat = stats[asset.id];
+    if (stat == null || stat.totalQuantity == 0) continue;
+    final price = await priceService.getPrice(asset.id, now);
+    if (price == null) continue;
+    double fxRate = 1.0;
+    if (asset.currency != baseCurrency) {
+      fxRate = await rateService.getRate(asset.currency, baseCurrency, now) ?? 1.0;
+    }
+    result[asset.id] = stat.totalQuantity * price * fxRate;
   }
   return result;
 });

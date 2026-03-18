@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import 'package:drift/drift.dart' show OrderingTerm;
+import 'package:drift/drift.dart' show OrderingTerm, Variable;
 
 import '../../database/database.dart';
 import '../../database/providers.dart';
@@ -87,6 +87,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   ref.watch(assetsProvider);
   ref.watch(assetStatsProvider);
   ref.watch(capexSchedulesProvider);
+  ref.watch(priceRefreshCounter);
 
   // ── Shared helpers ──
   final allDayKeys = <int>{};
@@ -250,7 +251,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
 
     assetSeries.add(_Series(
       key: 's:${asset.id}',
-      name: asset.name,
+      name: asset.ticker ?? asset.name,
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
       isAsset: true,
@@ -350,6 +351,241 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
 });
 
 // ════════════════════════════════════════════════════
+// Investment chart: Invested vs Market Value per asset
+// ════════════════════════════════════════════════════
+
+/// One asset's invested + market value series.
+class _InvestmentPair {
+  final String assetName;
+  final Color color;
+  final List<FlSpot> investedSpots;
+  final List<FlSpot> marketSpots;
+  final String key; // "i:20" for asset id 20
+
+  const _InvestmentPair({
+    required this.assetName,
+    required this.color,
+    required this.investedSpots,
+    required this.marketSpots,
+    required this.key,
+  });
+}
+
+class _InvestmentChartData {
+  final DateTime firstDate;
+  final List<_InvestmentPair> pairs;
+  final List<FlSpot> totalInvestedSpots;
+  final List<FlSpot> totalMarketSpots;
+  final String baseCurrency;
+
+  const _InvestmentChartData({
+    required this.firstDate,
+    required this.pairs,
+    required this.totalInvestedSpots,
+    required this.totalMarketSpots,
+    required this.baseCurrency,
+  });
+}
+
+final _investmentChartDataProvider = FutureProvider<_InvestmentChartData?>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+  final marketPriceService = ref.watch(marketPriceServiceProvider);
+
+  // Watch reactive streams
+  ref.watch(assetsProvider);
+  ref.watch(assetStatsProvider);
+  ref.watch(priceRefreshCounter);
+
+  int toDayKey(DateTime dt) =>
+      DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+
+  final rateCache = <String, double>{};
+  Future<double> getCachedRate(String from, int dayKey) async {
+    if (from == baseCurrency) return 1.0;
+    final cacheKey = '$from:$dayKey';
+    if (rateCache.containsKey(cacheKey)) return rateCache[cacheKey]!;
+    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+    final rate = await rateService.getRate(from, baseCurrency, date);
+    rateCache[cacheKey] = rate ?? 1.0;
+    return rate ?? 1.0;
+  }
+
+  final activeAssets = await (db.select(db.assets)
+        ..where((a) => a.isActive.equals(true))
+        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+      .get();
+
+  if (activeAssets.isEmpty) return null;
+
+  final pairs = <_InvestmentPair>[];
+  var colorIdx = 0;
+  final eventDayKeys = <int>{}; // only event dates — determines chart start
+
+  // Collect all data per asset
+  for (final asset in activeAssets) {
+    // Load events
+    final events = await db.customSelect(
+      'SELECT date, type, amount, quantity, currency, exchange_rate '
+      'FROM asset_events WHERE asset_id = ? ORDER BY date ASC',
+      variables: [Variable.withInt(asset.id)],
+    ).get();
+    if (events.isEmpty) continue;
+
+    // Load market prices
+    final prices = await marketPriceService.getPriceHistory(asset.id);
+    final priceMap = <int, double>{}; // dayKey → close price
+    for (final p in prices) {
+      priceMap[toDayKey(p.key)] = p.value;
+    }
+
+    // Build invested delta map and quantity delta map
+    final investedDelta = <int, double>{};
+    final quantityDelta = <int, double>{};
+
+    for (final ev in events) {
+      final epochSec = ev.read<int>('date');
+      final type = ev.read<String>('type');
+      final amount = ev.read<double>('amount');
+      final quantity = ev.readNullable<double>('quantity') ?? 0;
+      final currency = ev.read<String>('currency');
+      final storedRate = ev.readNullable<double>('exchange_rate');
+      final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
+      final dayKey = toDayKey(dt);
+
+      double sign;
+      if (type == 'buy' || type == 'contribute') {
+        sign = 1.0;
+      } else if (type == 'sell') {
+        sign = -1.0;
+      } else {
+        continue;
+      }
+
+      double baseAmount;
+      if (currency == baseCurrency) {
+        baseAmount = amount.abs();
+      } else if (storedRate != null && storedRate > 0) {
+        baseAmount = amount.abs() / storedRate;
+      } else {
+        final rate = await getCachedRate(currency, dayKey);
+        baseAmount = amount.abs() * rate;
+      }
+
+      investedDelta[dayKey] = (investedDelta[dayKey] ?? 0) + sign * baseAmount;
+      quantityDelta[dayKey] = (quantityDelta[dayKey] ?? 0) + sign * quantity.abs();
+      eventDayKeys.add(dayKey);
+    }
+
+    // Find first event date for this asset — only plot from here
+    final firstEventKey = investedDelta.keys.reduce(min);
+
+    // Merge event + price day keys, but only prices AFTER first event
+    final assetDays = <int>{
+      ...investedDelta.keys,
+      ...priceMap.keys.where((dk) => dk >= firstEventKey),
+    }.toList()..sort();
+
+    final investedSpots = <FlSpot>[];
+    final marketSpots = <FlSpot>[];
+    var cumInvested = 0.0;
+    var cumQuantity = 0.0;
+    double? lastPrice;
+    var started = false;
+
+    for (final dayKey in assetDays) {
+      if (investedDelta.containsKey(dayKey)) {
+        cumInvested += investedDelta[dayKey]!;
+        cumQuantity += quantityDelta[dayKey] ?? 0;
+        started = true;
+      }
+      if (priceMap.containsKey(dayKey)) {
+        lastPrice = priceMap[dayKey]!;
+      }
+      if (!started) continue;
+
+      // x will be recomputed after we know global firstDate
+      investedSpots.add(FlSpot(dayKey.toDouble(), cumInvested));
+      if (lastPrice != null && cumQuantity > 0) {
+        final fxRate = await getCachedRate(asset.currency, dayKey);
+        final marketValue = cumQuantity * lastPrice * fxRate;
+        marketSpots.add(FlSpot(dayKey.toDouble(), marketValue));
+      }
+    }
+
+    if (investedSpots.isEmpty) continue;
+
+    pairs.add(_InvestmentPair(
+      assetName: asset.ticker ?? asset.name,
+      color: _chartColors[colorIdx % _chartColors.length],
+      investedSpots: investedSpots,
+      marketSpots: marketSpots,
+      key: 'i:${asset.id}',
+    ));
+    colorIdx++;
+  }
+
+  if (pairs.isEmpty || eventDayKeys.isEmpty) return null;
+
+  // Now rebase x values to days since firstDate (first buy event)
+  final sortedAll = eventDayKeys.toList()..sort();
+  final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedAll.first * 1000);
+
+  double toX(double dayKeyD) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(dayKeyD.toInt() * 1000);
+    return dt.difference(firstDate).inDays.toDouble();
+  }
+
+  for (final pair in pairs) {
+    for (var i = 0; i < pair.investedSpots.length; i++) {
+      final s = pair.investedSpots[i];
+      pair.investedSpots[i] = FlSpot(toX(s.x), s.y);
+    }
+    for (var i = 0; i < pair.marketSpots.length; i++) {
+      final s = pair.marketSpots[i];
+      pair.marketSpots[i] = FlSpot(toX(s.x), s.y);
+    }
+  }
+
+  // Build total lines using carry-forward
+  List<FlSpot> buildTotal(List<List<FlSpot>> allSpots) {
+    if (allSpots.isEmpty) return [];
+    final allX = <double>{};
+    final lookups = <Map<double, double>>[];
+    for (final spots in allSpots) {
+      final m = <double, double>{};
+      for (final s in spots) {
+        m[s.x] = s.y;
+        allX.add(s.x);
+      }
+      lookups.add(m);
+    }
+    final sorted = allX.toList()..sort();
+    final running = List<double>.filled(lookups.length, 0.0);
+    return sorted.map((x) {
+      var total = 0.0;
+      for (var i = 0; i < lookups.length; i++) {
+        if (lookups[i].containsKey(x)) running[i] = lookups[i][x]!;
+        total += running[i];
+      }
+      return FlSpot(x, total);
+    }).toList();
+  }
+
+  final totalInvested = buildTotal(pairs.map((p) => p.investedSpots).toList());
+  final totalMarket = buildTotal(pairs.where((p) => p.marketSpots.isNotEmpty).map((p) => p.marketSpots).toList());
+
+  return _InvestmentChartData(
+    firstDate: firstDate,
+    pairs: pairs,
+    totalInvestedSpots: totalInvested,
+    totalMarketSpots: totalMarket,
+    baseCurrency: baseCurrency,
+  );
+});
+
+// ════════════════════════════════════════════════════
 // Dashboard screen with toggleable legend
 // ════════════════════════════════════════════════════
 
@@ -361,20 +597,21 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  final _hidden = <String>{}; // keys of hidden series
+  final _hidden = <String>{}; // keys of hidden series (net worth chart)
+  final _hiddenInv = <String>{}; // keys of hidden series (investment chart)
+  bool _hideInvested = false; // hide all invested/dashed lines
+  double? _zoomMinX; // null = no zoom (show all)
+  double? _zoomMaxX;
 
   /// Build the total line from visible series using carry-forward.
-  /// Each series may start at a different x; before it starts, its contribution is 0.
-  /// After it starts, its last known y value is carried forward to fill gaps.
-  List<FlSpot> _buildTotal(List<_Series> visible) {
-    if (visible.isEmpty) return [];
+  static List<FlSpot> buildTotal(List<List<FlSpot>> allSpots) {
+    if (allSpots.isEmpty) return [];
 
-    // Build {x → y} lookup per series, and collect all x values
     final allX = <double>{};
     final lookups = <Map<double, double>>[];
-    for (final s in visible) {
+    for (final spots in allSpots) {
       final m = <double, double>{};
-      for (final spot in s.spots) {
+      for (final spot in spots) {
         m[spot.x] = spot.y;
         allX.add(spot.x);
       }
@@ -387,9 +624,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return sortedX.map((x) {
       var total = 0.0;
       for (var i = 0; i < lookups.length; i++) {
-        if (lookups[i].containsKey(x)) {
-          running[i] = lookups[i][x]!;
-        }
+        if (lookups[i].containsKey(x)) running[i] = lookups[i][x]!;
         total += running[i];
       }
       return FlSpot(x, total);
@@ -399,6 +634,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final chartAsync = ref.watch(_chartDataProvider);
+    final invChartAsync = ref.watch(_investmentChartDataProvider);
 
     return chartAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -411,18 +647,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           );
         }
 
+        final invData = invChartAsync.valueOrNull;
+
+        // Compute shared firstDate for aligned X axes
+        final sharedFirstDate = (invData != null && invData.firstDate.isBefore(data.firstDate))
+            ? invData.firstDate
+            : data.firstDate;
+
+        // Offset net worth spots if shared first date is earlier
+        final nwOffset = data.firstDate.difference(sharedFirstDate).inDays.toDouble();
+        List<FlSpot> offsetSpots(List<FlSpot> spots) =>
+            nwOffset == 0 ? spots : spots.map((s) => FlSpot(s.x + nwOffset, s.y)).toList();
+
         final allSeries = data.allSeries;
         final visible = allSeries.where((s) => !_hidden.contains(s.key)).toList();
-        // Total always includes ALL series, toggle only hides individual lines
-        final totalSpots = _buildTotal(allSeries);
+        final offsetAll = allSeries.map((s) => offsetSpots(s.spots)).toList();
+        final totalSpots = buildTotal(offsetAll);
         final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
         final symbol = currencySymbol(data.baseCurrency);
+
+        // Offset visible series
+        final offsetVisible = visible.map((s) => _Series(
+          key: s.key, name: s.name, color: s.color,
+          spots: offsetSpots(s.spots), isAsset: s.isAsset, isCapex: s.isCapex,
+        )).toList();
+
+        // Investment chart offset
+        final invOffset = invData != null
+            ? invData.firstDate.difference(sharedFirstDate).inDays.toDouble()
+            : 0.0;
 
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Net Worth Chart ──
               Text('Total Net Worth',
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
@@ -434,37 +694,91 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
               ),
               const SizedBox(height: 8),
-              // Toggleable legend grouped by type
               _GroupedLegend(
                 accounts: data.accounts,
                 assets: data.assets,
                 adjustments: data.capex,
                 hidden: _hidden,
                 onToggle: (key) => setState(() {
-                  if (_hidden.contains(key)) {
-                    _hidden.remove(key);
-                  } else {
-                    _hidden.add(key);
-                  }
+                  _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
                 }),
                 onToggleGroup: (keys) => setState(() {
-                  final allHidden = keys.every(_hidden.contains);
-                  if (allHidden) {
-                    _hidden.removeAll(keys);
-                  } else {
-                    _hidden.addAll(keys);
-                  }
+                  keys.every(_hidden.contains) ? _hidden.removeAll(keys) : _hidden.addAll(keys);
                 }),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
+              // Zoom controls
+              _ZoomControls(
+                totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 0,
+                zoomMinX: _zoomMinX,
+                onZoom: (minX, maxX) => setState(() {
+                  _zoomMinX = minX;
+                  _zoomMaxX = maxX;
+                }),
+              ),
+              const SizedBox(height: 8),
               Expanded(
                 child: totalSpots.length >= 2
                     ? _BalanceChart(
-                        data: data,
-                        visible: visible,
+                        data: _ChartData(
+                          firstDate: sharedFirstDate,
+                          accounts: data.accounts,
+                          assets: data.assets,
+                          capex: data.capex,
+                          baseCurrency: data.baseCurrency,
+                        ),
+                        visible: offsetVisible,
                         totalSpots: totalSpots,
+                        showTotal: !_hidden.contains('_total'),
+                        zoomMinX: _zoomMinX,
+                        zoomMaxX: _zoomMaxX,
                       )
                     : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
+              ),
+
+              // ── Investment Chart ──
+              const Divider(height: 24),
+              Expanded(
+                child: invChartAsync.when(
+                  loading: () => const Center(child: Text('Loading investment data...', style: TextStyle(color: Colors.grey))),
+                  error: (e, _) => Center(child: Text('Error: $e')),
+                  data: (invData) {
+                    if (invData == null || invData.pairs.isEmpty) {
+                      return const Center(child: Text('No market price data yet. Prices sync on startup.',
+                          style: TextStyle(color: Colors.grey)));
+                    }
+                    // Apply offset for aligned X axis
+                    final alignedData = invOffset == 0 ? invData : _InvestmentChartData(
+                      firstDate: sharedFirstDate,
+                      pairs: invData.pairs.map((p) => _InvestmentPair(
+                        assetName: p.assetName,
+                        color: p.color,
+                        investedSpots: p.investedSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
+                        marketSpots: p.marketSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
+                        key: p.key,
+                      )).toList(),
+                      totalInvestedSpots: invData.totalInvestedSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
+                      totalMarketSpots: invData.totalMarketSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
+                      baseCurrency: invData.baseCurrency,
+                    );
+                    return _InvestmentChartSection(
+                      data: alignedData,
+                      hidden: _hiddenInv,
+                      hideInvested: _hideInvested,
+                      zoomMinX: _zoomMinX,
+                      zoomMaxX: _zoomMaxX,
+                      onToggle: (key) => setState(() {
+                        _hiddenInv.contains(key) ? _hiddenInv.remove(key) : _hiddenInv.add(key);
+                      }),
+                      onToggleGroup: (keys) => setState(() {
+                        keys.every(_hiddenInv.contains)
+                            ? _hiddenInv.removeAll(keys)
+                            : _hiddenInv.addAll(keys);
+                      }),
+                      onToggleInvested: () => setState(() => _hideInvested = !_hideInvested),
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -511,8 +825,8 @@ class _GroupedLegend extends StatelessWidget {
           color: Colors.white,
           label: 'Total',
           bold: true,
-          enabled: true,
-          onTap: null,
+          enabled: !hidden.contains('_total'),
+          onTap: () => onToggle('_total'),
         ),
       ],
     );
@@ -649,6 +963,93 @@ class _DashedLinePainter extends CustomPainter {
 }
 
 // ════════════════════════════════════════════════════
+// Zoom controls (time range selector)
+// ════════════════════════════════════════════════════
+
+class _ZoomControls extends StatelessWidget {
+  final double totalDays;
+  final double? zoomMinX;
+  final void Function(double? minX, double? maxX) onZoom;
+
+  const _ZoomControls({
+    required this.totalDays,
+    required this.zoomMinX,
+    required this.onZoom,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final ranges = [
+      ('6M', 182),
+      ('1Y', 365),
+      ('2Y', 730),
+      ('5Y', 1825),
+      ('All', -1),
+    ];
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (label, days) in ranges)
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: _ZoomChip(
+              label: label,
+              selected: days == -1
+                  ? zoomMinX == null
+                  : zoomMinX != null && (totalDays - zoomMinX!).round() == days,
+              onTap: () {
+                if (days == -1) {
+                  onZoom(null, null);
+                } else if (totalDays > days) {
+                  onZoom(totalDays - days, totalDays);
+                }
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ZoomChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ZoomChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: selected
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
 // Chart widget
 // ════════════════════════════════════════════════════
 
@@ -656,11 +1057,17 @@ class _BalanceChart extends StatelessWidget {
   final _ChartData data;
   final List<_Series> visible;
   final List<FlSpot> totalSpots;
+  final bool showTotal;
+  final double? zoomMinX;
+  final double? zoomMaxX;
 
   const _BalanceChart({
     required this.data,
     required this.visible,
     required this.totalSpots,
+    this.showTotal = true,
+    this.zoomMinX,
+    this.zoomMaxX,
   });
 
   @override
@@ -671,14 +1078,6 @@ class _BalanceChart extends StatelessWidget {
     final textColor = isDark ? Colors.white54 : Colors.black54;
     final symbol = currencySymbol(data.baseCurrency);
 
-    // Compute Y range from total line
-    final allY = totalSpots.map((s) => s.y);
-    final minY = allY.reduce(min);
-    final maxY = allY.reduce(max);
-    final yRange = maxY - minY;
-    final chartMinY = yRange > 0 ? minY - yRange * 0.05 : minY - 100;
-    final chartMaxY = yRange > 0 ? maxY + yRange * 0.05 : maxY + 100;
-
     final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
     final dateFmt = DateFormat('MMM yyyy');
     final fullFmt = DateFormat('dd MMM yyyy');
@@ -688,20 +1087,22 @@ class _BalanceChart extends StatelessWidget {
     final lineBars = <LineChartBarData>[];
 
     // Total line
-    lineBars.add(LineChartBarData(
-      spots: totalSpots,
-      isCurved: true,
-      preventCurveOverShooting: true,
-      curveSmoothness: 0.15,
-      color: isDark ? Colors.white : theme.colorScheme.primary,
-      barWidth: 2.5,
-      dotData: const FlDotData(show: false),
-      belowBarData: BarAreaData(
-        show: true,
-        color: (isDark ? Colors.white : theme.colorScheme.primary)
-            .withValues(alpha: 0.08),
-      ),
-    ));
+    if (showTotal) {
+      lineBars.add(LineChartBarData(
+        spots: totalSpots,
+        isCurved: true,
+        preventCurveOverShooting: true,
+        curveSmoothness: 0.15,
+        color: isDark ? Colors.white : theme.colorScheme.primary,
+        barWidth: 2.5,
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(
+          show: true,
+          color: (isDark ? Colors.white : theme.colorScheme.primary)
+              .withValues(alpha: 0.08),
+        ),
+      ));
+    }
 
     // Visible series lines
     for (final s in visible) {
@@ -718,10 +1119,25 @@ class _BalanceChart extends StatelessWidget {
       ));
     }
 
+    // Compute Y range from visible lines only
+    final visibleY = lineBars.expand((b) => b.spots.map((s) => s.y));
+    final minY = visibleY.isEmpty ? 0.0 : visibleY.reduce(min);
+    final maxY = visibleY.isEmpty ? 100.0 : visibleY.reduce(max);
+    final yRange = maxY - minY;
+    final chartMinY = yRange > 0 ? minY - yRange * 0.05 : minY - 100;
+    final chartMaxY = yRange > 0 ? maxY + yRange * 0.05 : maxY + 100;
+
+    final xMin = zoomMinX ?? 0;
+    final xMax = zoomMaxX ?? totalDays;
+    final xRange = xMax - xMin;
+
     return LineChart(
       LineChartData(
+        minX: xMin,
+        maxX: xMax,
         minY: chartMinY,
         maxY: chartMaxY,
+        clipData: const FlClipData.all(),
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
@@ -736,7 +1152,7 @@ class _BalanceChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 28,
-              interval: totalDays > 0 ? totalDays / 5 : 1,
+              interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
                 final date = data.firstDate.add(Duration(days: value.toInt()));
                 return Padding(
@@ -765,8 +1181,8 @@ class _BalanceChart extends StatelessWidget {
             getTooltipItems: (spots) {
               return spots.map((spot) {
                 final barIndex = spot.barIndex;
-                final isTotal = barIndex == 0;
-                final seriesIdx = barIndex - 1;
+                final isTotal = showTotal && barIndex == 0;
+                final seriesIdx = barIndex - (showTotal ? 1 : 0);
                 final date = data.firstDate.add(Duration(days: spot.x.toInt()));
 
                 if (isTotal) {
@@ -781,6 +1197,412 @@ class _BalanceChart extends StatelessWidget {
                   return LineTooltipItem(
                     '${s.name}: ${currFmt.format(spot.y)}',
                     TextStyle(color: s.color, fontSize: 11),
+                  );
+                }
+                return null;
+              }).toList();
+            },
+          ),
+        ),
+        lineBarsData: lineBars,
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Investment chart section (Invested vs Market Value)
+// ════════════════════════════════════════════════════
+
+class _InvestmentChartSection extends StatelessWidget {
+  final _InvestmentChartData data;
+  final Set<String> hidden;
+  final bool hideInvested;
+  final double? zoomMinX;
+  final double? zoomMaxX;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<Set<String>> onToggleGroup;
+  final VoidCallback onToggleInvested;
+
+  const _InvestmentChartSection({
+    required this.data,
+    required this.hidden,
+    required this.hideInvested,
+    this.zoomMinX,
+    this.zoomMaxX,
+    required this.onToggle,
+    required this.onToggleGroup,
+    required this.onToggleInvested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final symbol = currencySymbol(data.baseCurrency);
+    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
+    final currentInvested = data.totalInvestedSpots.isNotEmpty ? data.totalInvestedSpots.last.y : 0.0;
+    final currentMarket = data.totalMarketSpots.isNotEmpty ? data.totalMarketSpots.last.y : 0.0;
+    final gain = currentMarket - currentInvested;
+    final gainPct = currentInvested > 0 ? (gain / currentInvested * 100) : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('Invested vs Market Value',
+                style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            GestureDetector(
+              onTap: onToggleInvested,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      hideInvested ? Icons.visibility_off : Icons.visibility,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      hideInvested ? 'Show Invested' : 'Hide Invested',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            if (!hideInvested) ...[
+              Text(
+                'Invested: ${currFmt.format(currentInvested)}',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+              ),
+              const SizedBox(width: 16),
+            ],
+            Text(
+              'Market: ${currFmt.format(currentMarket)}',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Text(
+              '${gain >= 0 ? '+' : ''}${currFmt.format(gain)} (${gainPct.toStringAsFixed(1)}%)',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: gain >= 0 ? Colors.green : Colors.red,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Legend
+        _InvestmentLegend(
+          pairs: data.pairs,
+          hidden: hidden,
+          onToggle: onToggle,
+          onToggleGroup: onToggleGroup,
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _InvestmentChart(data: data, hidden: hidden, hideInvested: hideInvested, zoomMinX: zoomMinX, zoomMaxX: zoomMaxX),
+        ),
+      ],
+    );
+  }
+}
+
+class _InvestmentLegend extends StatelessWidget {
+  final List<_InvestmentPair> pairs;
+  final Set<String> hidden;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<Set<String>> onToggleGroup;
+
+  const _InvestmentLegend({
+    required this.pairs,
+    required this.hidden,
+    required this.onToggle,
+    required this.onToggleGroup,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final keys = pairs.map((p) => p.key).toSet();
+    final allHidden = keys.isNotEmpty && keys.every(hidden.contains);
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        // Group header
+        GestureDetector(
+          onTap: () => onToggleGroup(keys),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                color: !allHidden
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              ),
+              child: Text(
+                'Assets',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: !allHidden
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Per-asset items: solid = market, dashed = invested
+        for (final pair in pairs)
+          GestureDetector(
+            onTap: () => onToggle(pair.key),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Solid line (market)
+                  Container(
+                    width: 8, height: 3,
+                    color: hidden.contains(pair.key)
+                        ? pair.color.withValues(alpha: 0.3)
+                        : pair.color,
+                  ),
+                  // Dashed line (invested)
+                  SizedBox(
+                    width: 8, height: 3,
+                    child: CustomPaint(
+                      painter: _DashedLinePainter(
+                        hidden.contains(pair.key)
+                            ? pair.color.withValues(alpha: 0.3)
+                            : pair.color,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    pair.assetName,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: hidden.contains(pair.key)
+                          ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)
+                          : null,
+                      decoration: hidden.contains(pair.key) ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        // Total labels
+        _ToggleLegendItem(color: Colors.white, label: 'Total Invested', dashed: true, bold: true, enabled: !hidden.contains('_totalInvested'), onTap: () => onToggle('_totalInvested')),
+        _ToggleLegendItem(color: Colors.white, label: 'Total Market', bold: true, enabled: !hidden.contains('_totalMarket'), onTap: () => onToggle('_totalMarket')),
+      ],
+    );
+  }
+}
+
+class _InvestmentChart extends StatelessWidget {
+  final _InvestmentChartData data;
+  final Set<String> hidden;
+  final bool hideInvested;
+  final double? zoomMinX;
+  final double? zoomMaxX;
+
+  const _InvestmentChart({required this.data, required this.hidden, this.hideInvested = false, this.zoomMinX, this.zoomMaxX});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gridColor = isDark ? Colors.white12 : Colors.black12;
+    final textColor = isDark ? Colors.white54 : Colors.black54;
+    final symbol = currencySymbol(data.baseCurrency);
+
+    // Use all spots for X range / fallback check
+    final allSpots = [...data.totalInvestedSpots, ...data.totalMarketSpots];
+    if (allSpots.length < 2) {
+      return const Center(child: Text('Not enough data', style: TextStyle(color: Colors.grey)));
+    }
+
+    final totalDays = allSpots.map((s) => s.x).reduce(max);
+    final dateFmt = DateFormat('MMM yyyy');
+    final fullFmt = DateFormat('dd MMM yyyy');
+    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
+
+    final lineBars = <LineChartBarData>[];
+
+    final showTotalInvested = !hidden.contains('_totalInvested') && !hideInvested;
+    final showTotalMarket = !hidden.contains('_totalMarket');
+
+    // Total invested (dashed white)
+    if (showTotalInvested && data.totalInvestedSpots.length >= 2) {
+      lineBars.add(LineChartBarData(
+        spots: data.totalInvestedSpots,
+        isCurved: true,
+        preventCurveOverShooting: true,
+        curveSmoothness: 0.15,
+        color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.6),
+        barWidth: 2,
+        dotData: const FlDotData(show: false),
+        dashArray: [6, 3],
+        belowBarData: BarAreaData(show: false),
+      ));
+    }
+
+    // Total market (solid white)
+    if (showTotalMarket && data.totalMarketSpots.length >= 2) {
+      lineBars.add(LineChartBarData(
+        spots: data.totalMarketSpots,
+        isCurved: true,
+        preventCurveOverShooting: true,
+        curveSmoothness: 0.15,
+        color: isDark ? Colors.white : theme.colorScheme.primary,
+        barWidth: 2.5,
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(
+          show: true,
+          color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.08),
+        ),
+      ));
+    }
+
+    // Per-asset lines
+    for (final pair in data.pairs) {
+      if (hidden.contains(pair.key)) continue;
+      // Invested (dashed) — skip when hideInvested
+      if (!hideInvested && pair.investedSpots.length >= 2) {
+        lineBars.add(LineChartBarData(
+          spots: pair.investedSpots,
+          isCurved: true,
+          preventCurveOverShooting: true,
+          curveSmoothness: 0.15,
+          color: pair.color.withValues(alpha: 0.6),
+          barWidth: 1.5,
+          dotData: const FlDotData(show: false),
+          dashArray: [6, 3],
+          belowBarData: BarAreaData(show: false),
+        ));
+      }
+      // Market (solid)
+      if (pair.marketSpots.length >= 2) {
+        lineBars.add(LineChartBarData(
+          spots: pair.marketSpots,
+          isCurved: true,
+          preventCurveOverShooting: true,
+          curveSmoothness: 0.15,
+          color: pair.color,
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ));
+      }
+    }
+
+    final xMin = zoomMinX ?? 0;
+    final xMax = zoomMaxX ?? totalDays;
+    final xRange = xMax - xMin;
+
+    // Compute Y range from visible lines only
+    final visibleY = lineBars.expand((b) => b.spots.map((s) => s.y));
+    final minY = visibleY.isEmpty ? 0.0 : visibleY.reduce(min);
+    final maxY = visibleY.isEmpty ? 100.0 : visibleY.reduce(max);
+    final yRange = maxY - minY;
+    final chartMinY = yRange > 0 ? minY - yRange * 0.05 : minY - 100;
+    final chartMaxY = yRange > 0 ? maxY + yRange * 0.05 : maxY + 100;
+
+    return LineChart(
+      LineChartData(
+        minX: xMin,
+        maxX: xMax,
+        minY: chartMinY,
+        maxY: chartMaxY,
+        clipData: const FlClipData.all(),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: yRange > 0 ? yRange / 4 : 100,
+          getDrawingHorizontalLine: (value) =>
+              FlLine(color: gridColor, strokeWidth: 0.5),
+        ),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 28,
+              interval: xRange > 0 ? xRange / 5 : 1,
+              getTitlesWidget: (value, meta) {
+                final date = data.firstDate.add(Duration(days: value.toInt()));
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(dateFmt.format(date),
+                      style: TextStyle(fontSize: 10, color: textColor)),
+                );
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 60,
+              interval: yRange > 0 ? yRange / 4 : 100,
+              getTitlesWidget: (value, meta) {
+                return Text(currFmt.format(value),
+                    style: TextStyle(fontSize: 10, color: textColor));
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipItems: (spots) {
+              // Build a map of barIndex → label/color
+              final labels = <int, (String, Color)>{};
+              var idx = 0;
+              if (showTotalInvested && data.totalInvestedSpots.length >= 2) {
+                labels[idx++] = ('Total Invested', Colors.white70);
+              }
+              if (showTotalMarket && data.totalMarketSpots.length >= 2) {
+                labels[idx++] = ('Total Market', Colors.white);
+              }
+              for (final pair in data.pairs) {
+                if (hidden.contains(pair.key)) continue;
+                if (pair.investedSpots.length >= 2) {
+                  labels[idx++] = ('${pair.assetName} inv.', pair.color.withValues(alpha: 0.7));
+                }
+                if (pair.marketSpots.length >= 2) {
+                  labels[idx++] = (pair.assetName, pair.color);
+                }
+              }
+
+              var dateShown = false;
+              return spots.map((spot) {
+                final date = data.firstDate.add(Duration(days: spot.x.toInt()));
+                final entry = labels[spot.barIndex];
+                final prefix = !dateShown ? '${fullFmt.format(date)}\n' : '';
+                dateShown = true;
+                if (entry != null) {
+                  return LineTooltipItem(
+                    '$prefix${entry.$1}: ${currFmt.format(spot.y)}',
+                    TextStyle(color: entry.$2, fontSize: 11),
                   );
                 }
                 return null;

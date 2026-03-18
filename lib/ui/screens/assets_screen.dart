@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/asset_service.dart';
+import '../../services/market_price_service.dart' show supportedExchanges;
 import '../../services/providers.dart';
 import 'asset_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
@@ -20,6 +21,7 @@ class AssetsScreen extends ConsumerWidget {
     final statsAsync = ref.watch(assetStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
     final convertedStats = ref.watch(convertedAssetStatsProvider).valueOrNull ?? {};
+    final marketValues = ref.watch(assetMarketValuesProvider).valueOrNull ?? {};
 
     return Scaffold(
       body: assetsAsync.when(
@@ -54,6 +56,7 @@ class AssetsScreen extends ConsumerWidget {
                 asset: asset,
                 stats: stat,
                 convertedInvested: convertedStats[asset.id],
+                marketValue: marketValues[asset.id],
                 baseCurrency: baseCurrency,
                 index: i,
                 onTap: () => Navigator.push(
@@ -81,6 +84,7 @@ class AssetsScreen extends ConsumerWidget {
     String? resolvedName;
     String? resolvedTicker;
     bool looking = false;
+    String selectedExchange = 'MIL'; // default Borsa Italiana
 
     await showDialog(
       context: context,
@@ -138,6 +142,20 @@ class AssetsScreen extends ConsumerWidget {
               else if (isinCtrl.text.trim().length == 12)
                 const Text('ISIN not found — will use ISIN as name',
                     style: TextStyle(color: Colors.orange, fontSize: 13)),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selectedExchange,
+                decoration: const InputDecoration(
+                  labelText: 'Stock Exchange',
+                  isDense: true,
+                ),
+                items: supportedExchanges.entries
+                    .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setDialogState(() => selectedExchange = v);
+                },
+              ),
             ],
           ),
           actions: [
@@ -151,6 +169,7 @@ class AssetsScreen extends ConsumerWidget {
                             name: name,
                             ticker: resolvedTicker,
                             isin: isin,
+                            exchange: selectedExchange,
                           );
                       if (ctx.mounted) Navigator.pop(ctx);
                     }
@@ -168,6 +187,7 @@ class _AssetTile extends StatelessWidget {
   final Asset asset;
   final AssetStats? stats;
   final double? convertedInvested;
+  final double? marketValue;
   final String baseCurrency;
   final int index;
   final VoidCallback onTap;
@@ -177,6 +197,7 @@ class _AssetTile extends StatelessWidget {
     required this.asset,
     required this.stats,
     this.convertedInvested,
+    this.marketValue,
     required this.baseCurrency,
     required this.index,
     required this.onTap,
@@ -255,11 +276,23 @@ class _AssetTile extends StatelessWidget {
                 ],
               ),
             ),
-            // Right side: invested value + quantity
+            // Right side: market value, gain/loss, invested
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (stats != null && stats!.totalInvested > 0)
+                if (marketValue != null) ...[
+                  Text(
+                    '${_amtFormat.format(marketValue!)} ${currencySymbol(baseCurrency)}',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: asset.isActive ? null : Colors.grey,
+                    ),
+                  ),
+                  if (convertedInvested != null && convertedInvested! > 0) ...[
+                    const SizedBox(height: 2),
+                    _buildGainLoss(theme),
+                  ],
+                ] else if (stats != null && stats!.totalInvested > 0)
                   Text(
                     '${_amtFormat.format(stats!.totalInvested)} ${asset.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -284,16 +317,6 @@ class _AssetTile extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (asset.currency != baseCurrency && convertedInvested != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    '≈ ${_amtFormat.format(convertedInvested!)} ${currencySymbol(baseCurrency)}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: Colors.grey,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -315,6 +338,23 @@ class _AssetTile extends StatelessWidget {
             const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildGainLoss(ThemeData theme) {
+    final invested = convertedInvested!;
+    final gain = marketValue! - invested;
+    final pct = (gain / invested) * 100;
+    final isPositive = gain >= 0;
+    final color = isPositive ? Colors.green : Colors.red;
+    final arrow = isPositive ? '\u25B2' : '\u25BC'; // ▲ ▼
+    return Text(
+      '$arrow ${_amtFormat.format(gain.abs())} (${pct.abs().toStringAsFixed(1)}%)',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: color,
+        fontWeight: FontWeight.w600,
+        fontSize: 11,
       ),
     );
   }

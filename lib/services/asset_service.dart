@@ -41,16 +41,18 @@ class AssetService {
     required String name,
     String? ticker,
     String? isin,
+    String? exchange,
     String currency = 'EUR',
     double? taxRate,
   }) {
-    _log.info('create: name=$name, ticker=$ticker, isin=$isin');
+    _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange');
     return _db.into(_db.assets).insert(AssetsCompanion.insert(
       name: name,
       assetType: AssetType.stockEtf,
       valuationMethod: ValuationMethod.eventDriven,
       ticker: Value(ticker),
       isin: Value(isin),
+      exchange: Value(exchange),
       currency: Value(currency),
       taxRate: Value(taxRate),
     ));
