@@ -15,3 +15,39 @@
 
 - Never duplicate code. Extract shared logic into utilities or service methods.
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
+
+
+
+# Navigation
+
+- Do NOT run `find` or exploratory commands to locate files — check the code directly.
+
+# Python
+
+- NEVER use `--break-system-packages` with pip. Use `python3 -m venv` for virtual environments instead.
+
+# Database
+
+- App DB path: `/Users/marco/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db`
+- Never use `assets.db` in the repo root (stale copy, gitignored).
+
+# Key Project Files
+
+- `lib/main.dart` — App shell, navigation, settings dialog
+- `lib/database/database.dart` — Drift DB definition, migrations
+- `lib/database/tables.dart` — All table definitions
+- `lib/database/providers.dart` — Database provider
+- `lib/services/providers.dart` — All Riverpod service/stream providers
+- `lib/services/market_price_service.dart` — Abstract market price service
+- `lib/services/google_sheets_price_service.dart` — Google Sheets price impl (CSV)
+- `lib/services/asset_service.dart` — Asset CRUD
+- `lib/services/asset_event_service.dart` — Asset events (buy/sell/dividend)
+- `lib/services/exchange_rate_service.dart` — FX rates
+- `lib/services/capex_service.dart` — Depreciation/adjustment schedules
+- `lib/services/buffer_service.dart` — Buffer management
+- `lib/ui/screens/dashboard_screen.dart` — Charts (net worth + investment)
+- `lib/ui/screens/assets_screen.dart` — Asset list + create dialog
+- `lib/ui/screens/accounts_screen.dart` — Account list
+- `lib/ui/screens/capex_screen.dart` — Adjustments screen
+- `lib/ui/screens/import_screen.dart` — CSV import
+- `lib/version.dart` — Version number

@@ -124,6 +124,7 @@ class Assets extends Table {
   TextColumn get assetGroup => text().withDefault(const Constant(''))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get exchange => text().nullable()();
+  TextColumn get yahooTicker => text().nullable()();
   TextColumn get country => text().nullable()();
   TextColumn get region => text().nullable()();
   TextColumn get sector => text().nullable()();

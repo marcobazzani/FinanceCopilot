@@ -44,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -80,6 +80,31 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await customStatement('ALTER TABLE depreciation_schedules ADD COLUMN expense_date INTEGER NULL');
+          }
+          if (from < 8) {
+            await customStatement('ALTER TABLE assets ADD COLUMN yahoo_ticker TEXT NULL');
+          }
+          if (from < 9) {
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "VALUES ('ALPHA_VANTAGE_API_KEY', '', 'Alpha Vantage API key (free: alphavantage.co/support/#api-key)')"
+            );
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "VALUES ('MARKET_PRICE_PROVIDER', 'alphavantage', 'Market price data provider: alphavantage or yahoo')"
+            );
+          }
+          if (from < 10) {
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "VALUES ('GOOGLE_SHEETS_ID', '', 'Google Sheets spreadsheet ID for market price data')"
+            );
+          }
+          if (from < 11) {
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "VALUES ('PRICE_PROVIDER', 'investing', 'Price data provider: investing or googlesheets')"
+            );
           }
         },
       );
