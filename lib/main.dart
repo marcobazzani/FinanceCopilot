@@ -10,6 +10,7 @@ import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/capex_screen.dart';
 import 'ui/screens/dashboard_screen.dart';
+import 'ui/screens/db_picker_screen.dart';
 import 'ui/screens/import_screen.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -23,11 +24,13 @@ Future<void> main() async {
   runApp(const ProviderScope(child: AssetManagerApp()));
 }
 
-class AssetManagerApp extends StatelessWidget {
+class AssetManagerApp extends ConsumerWidget {
   const AssetManagerApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dbPath = ref.watch(dbPathProvider);
+
     return MaterialApp(
       title: 'FinanceCopilot',
       debugShowCheckedModeBanner: false,
@@ -42,7 +45,7 @@ class AssetManagerApp extends StatelessWidget {
         brightness: Brightness.dark,
       ),
       themeMode: ThemeMode.system,
-      home: const AppShell(),
+      home: dbPath == null ? const DbPickerScreen() : const AppShell(),
     );
   }
 }
@@ -131,6 +134,11 @@ class _AppShellState extends ConsumerState<AppShell> {
                 : const Icon(Icons.refresh),
             tooltip: 'Refresh Market Prices',
             onPressed: _isSyncing ? null : () => _syncPrices(forceToday: true),
+          ),
+          IconButton(
+            icon: const Icon(Icons.swap_horiz),
+            tooltip: 'Change Database',
+            onPressed: () => ref.read(dbPathProvider.notifier).state = null,
           ),
           IconButton(
             icon: const Icon(Icons.settings),

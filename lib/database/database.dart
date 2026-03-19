@@ -30,15 +30,21 @@ final _log = getLogger('Database');
   HealthReimbursements,
   AppConfigs,
   ImportConfigs,
+  DashboardCharts,
+  IncomeAdjustments,
+  IncomeAdjustmentExpenses,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
+
+  /// Open a database at a specific file path.
+  AppDatabase.withPath(String path) : super(_openAtPath(path));
 
   /// For testing: inject a custom executor.
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -47,6 +53,7 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           await _createIndexes();
           await _seedAppConfig();
+          await _seedDefaultCharts();
           _log.info('Database schema created and seeded');
         },
         onUpgrade: (Migrator m, int from, int to) async {
@@ -109,6 +116,14 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('DROP TABLE IF EXISTS performance_summaries');
             await customStatement('DROP TABLE IF EXISTS calendar_days');
           }
+          if (from < 13) {
+            await m.createTable(dashboardCharts);
+            await _seedDefaultCharts();
+          }
+          if (from < 14) {
+            await m.createTable(incomeAdjustments);
+            await m.createTable(incomeAdjustmentExpenses);
+          }
         },
       );
 
@@ -141,6 +156,49 @@ class AppDatabase extends _$AppDatabase {
       ));
     }
   }
+
+  /// Seed two default dashboard charts matching the original hardcoded layout.
+  Future<void> _seedDefaultCharts() async {
+    // Gather all active accounts, assets, and adjustment schedules
+    final accounts = await (select(this.accounts)..where((a) => a.isActive.equals(true))).get();
+    final assets = await (select(this.assets)..where((a) => a.isActive.equals(true))).get();
+    final schedules = await (select(depreciationSchedules)..where((s) => s.isActive.equals(true))).get();
+
+    // Chart 1: Net Worth — all accounts + all assets (invested) + all adjustments
+    final nwSeries = <Map<String, dynamic>>[
+      for (final a in accounts) {'type': 'account', 'id': a.id},
+      for (final a in assets) {'type': 'asset_invested', 'id': a.id},
+      for (final s in schedules) {'type': 'adjustment', 'id': s.id},
+    ];
+    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Net Worth',
+      sortOrder: Value(0),
+      seriesJson: _encodeJson(nwSeries),
+    ));
+
+    // Chart 2: Invested vs Market — all assets (invested + market)
+    final invSeries = <Map<String, dynamic>>[
+      for (final a in assets) ...[
+        {'type': 'asset_invested', 'id': a.id},
+        {'type': 'asset_market', 'id': a.id},
+      ],
+    ];
+    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Invested vs Market Value',
+      sortOrder: Value(1),
+      seriesJson: _encodeJson(invSeries),
+    ));
+  }
+
+  static String _encodeJson(List<Map<String, dynamic>> list) {
+    // Manual JSON encoding to avoid importing dart:convert in this file
+    final items = list.map((m) {
+      final type = m['type'] as String;
+      final id = m['id'] as int;
+      return '{"type":"$type","id":$id}';
+    }).join(',');
+    return '[$items]';
+  }
 }
 
 LazyDatabase _openConnection() {
@@ -153,6 +211,19 @@ LazyDatabase _openConnection() {
     }
     final file = File(p.join(dbFolder.path, 'asset_manager.db'));
     _log.info('Opening database: ${file.path}');
+    return NativeDatabase.createInBackground(file);
+  });
+}
+
+LazyDatabase _openAtPath(String path) {
+  return LazyDatabase(() async {
+    final file = File(path);
+    final parent = file.parent;
+    if (!await parent.exists()) {
+      _log.info('Creating database directory: ${parent.path}');
+      await parent.create(recursive: true);
+    }
+    _log.info('Opening database at path: $path');
     return NativeDatabase.createInBackground(file);
   });
 }
