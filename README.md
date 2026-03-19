@@ -6,16 +6,13 @@ Track net worth, manage multi-currency portfolios, import bank transactions, and
 
 ## Features
 
-- **Dashboard** — Net worth tracking with 20+ indicators, trend charts with drag-to-zoom, customizable date ranges (1M/3M/6M/YTD/1Y/3Y/5Y/MAX)
+- **Dashboard** — Unlimited custom charts with drag-to-zoom (2D rectangular selection), per-chart series selection, resizable chart cards, and hide-components toggle
 - **Asset Management** — Unified tracker for stocks, ETFs, crypto, real estate, pensions, and liabilities via buy/sell/dividend events
 - **Multi-Currency** — Automatic FX rate sync across 12+ currencies with configurable base currency
-- **Market Data** — Real-time price sync from Alpha Vantage, Yahoo Finance, Investing.com, and Google Sheets
-- **CSV/Excel Import** — Fineco, Revolut, and MoneyMap transaction imports with auto-categorization and deduplication
-- **Tax-Aware** — Per-asset tax rates for liquidation P/L calculations
-- **CAPEX Tracking** — Depreciation schedules (linear, declining balance, custom) with income adjustments
+- **Market Data** — Price sync from Investing.com with Cloudflare bypass
+- **CSV/Excel Import** — Flexible column mapping for any bank/broker CSV or Excel file, with deduplication
+- **Adjustments** — Saving Spent (spread large expenses over time) and Donation Spent (subtract lump-sum income, add back as spent) with configurable step frequency (weekly, monthly, quarterly, yearly)
 - **Account Management** — Multi-account balance tracking across banks, brokers, and crypto platforms
-- **Buffer Management** — Liquid cash buffer tracking
-- **Database Picker** — Switch between multiple database files (e.g., test vs production)
 
 ## Tech Stack
 
