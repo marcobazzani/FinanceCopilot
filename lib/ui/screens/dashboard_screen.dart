@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
@@ -16,41 +17,47 @@ import '../../utils/logger.dart';
 
 final _log = getLogger('DashboardScreen');
 
+// ════════════════════════════════════════════════════
+// Data models
+// ════════════════════════════════════════════════════
+
 /// Unified series for accounts, assets, and CAPEX.
 class _Series {
   final String key; // unique id for toggling: "a:3" (account), "s:7" (asset), "c:1" (capex)
   final String name;
   final Color color;
   final List<FlSpot> spots;
-  final bool isAsset;
-  final bool isCapex;
+  final bool isDashed;
   const _Series({
     required this.key,
     required this.name,
     required this.color,
     required this.spots,
-    this.isAsset = false,
-    this.isCapex = false,
+    this.isDashed = false,
   });
 }
 
-/// All chart data: account series, asset series, CAPEX series.
-class _ChartData {
+/// All chart data: account series, asset series, CAPEX series, market value series.
+class _AllSeriesData {
   final DateTime firstDate;
-  final List<_Series> accounts;
-  final List<_Series> assets;
-  final List<_Series> capex;
+  final List<_Series> accounts;      // key: "account:<id>"
+  final List<_Series> assetInvested; // key: "asset_invested:<id>"
+  final List<_Series> assetMarket;   // key: "asset_market:<id>"
+  final List<_Series> adjustments;      // key: "adjustment:<id>"
+  final List<_Series> incomeAdjustments; // key: "income_adj:<id>"
   final String baseCurrency;
 
-  const _ChartData({
+  const _AllSeriesData({
     required this.firstDate,
     required this.accounts,
-    required this.assets,
-    required this.capex,
+    required this.assetInvested,
+    required this.assetMarket,
+    required this.adjustments,
+    required this.incomeAdjustments,
     required this.baseCurrency,
   });
 
-  List<_Series> get allSeries => [...accounts, ...assets, ...capex];
+  List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...adjustments, ...incomeAdjustments];
 }
 
 final _chartColors = [
@@ -62,6 +69,10 @@ final _chartColors = [
   Colors.red,
   Colors.amber,
   Colors.cyan,
+  Colors.indigo,
+  Colors.pink,
+  Colors.lime,
+  Colors.deepOrange,
 ];
 
 /// Convert a DateTime to a day-key (epoch seconds at midnight).
@@ -139,12 +150,15 @@ String currencySymbol(String code) {
   };
 }
 
-/// Provider that fetches daily balance per active account + cumulative asset
-/// invested value, all converted to base currency.
-final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
+// ════════════════════════════════════════════════════
+// Unified data provider — computes ALL series at once
+// ════════════════════════════════════════════════════
+
+final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  final marketPriceService = ref.watch(marketPriceServiceProvider);
 
   // Watch reactive streams so we rebuild when data changes
   ref.watch(accountsProvider);
@@ -152,11 +166,12 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   ref.watch(assetsProvider);
   ref.watch(assetStatsProvider);
   ref.watch(capexSchedulesProvider);
+  ref.watch(incomeAdjustmentsProvider);
   ref.watch(priceRefreshCounter);
 
-  // ── Shared helpers ──
   final allDayKeys = <int>{};
   final rates = _RateResolver(rateService, baseCurrency);
+  var colorIdx = 0;
 
   // ════════════════════════════════════════════════
   // 1. ACCOUNTS — daily balance from transactions
@@ -201,11 +216,12 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   final assetIds = activeAssets.map((a) => a.id).toSet();
 
   final perAssetDeltas = <int, Map<int, double>>{};
+  final perAssetQtyDeltas = <int, Map<int, double>>{};
 
   if (assetIds.isNotEmpty) {
     final assetPlaceholders = assetIds.map((_) => '?').join(',');
     final evRows = await db.customSelect(
-      'SELECT asset_id, date, type, amount, currency, exchange_rate '
+      'SELECT asset_id, date, type, amount, quantity, currency, exchange_rate '
       'FROM asset_events '
       'WHERE asset_id IN ($assetPlaceholders) '
       'ORDER BY date ASC',
@@ -217,6 +233,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       final epochSec = row.read<int>('date');
       final type = row.read<String>('type');
       final amount = row.read<double>('amount');
+      final quantity = row.readNullable<double>('quantity') ?? 0;
       final currency = row.read<String>('currency');
       final storedRate = row.readNullable<double>('exchange_rate');
 
@@ -240,6 +257,11 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       perAssetDeltas.putIfAbsent(assetId, () => {});
       perAssetDeltas[assetId]![dayKey] =
           (perAssetDeltas[assetId]![dayKey] ?? 0) + sign * baseAmount;
+
+      perAssetQtyDeltas.putIfAbsent(assetId, () => {});
+      perAssetQtyDeltas[assetId]![dayKey] =
+          (perAssetQtyDeltas[assetId]![dayKey] ?? 0) + sign * quantity.abs();
+
       allDayKeys.add(dayKey);
     }
   }
@@ -251,8 +273,6 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
 
   // ── Build account series ──
   final accountSeries = <_Series>[];
-  var colorIdx = 0;
-
   for (final account in activeAccounts) {
     if (!perAccount.containsKey(account.id)) continue;
     final dayMap = perAccount[account.id]!;
@@ -270,7 +290,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     }
 
     accountSeries.add(_Series(
-      key: 'a:${account.id}',
+      key: 'account:${account.id}',
       name: account.name,
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
@@ -278,9 +298,8 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     colorIdx++;
   }
 
-  // ── Build asset series (cumulative) ──
-  final assetSeries = <_Series>[];
-
+  // ── Build asset invested series (cumulative) ──
+  final assetInvestedSeries = <_Series>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final deltaMap = perAssetDeltas[asset.id]!;
@@ -300,27 +319,77 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       }
     }
 
-    assetSeries.add(_Series(
-      key: 's:${asset.id}',
-      name: asset.ticker ?? asset.name,
+    assetInvestedSeries.add(_Series(
+      key: 'asset_invested:${asset.id}',
+      name: '${asset.ticker ?? asset.name} inv.',
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
-      isAsset: true,
+      isDashed: true,
     ));
     colorIdx++;
   }
 
+  // ── Build asset market value series ──
+  final assetMarketSeries = <_Series>[];
+  for (final asset in activeAssets) {
+    if (!perAssetDeltas.containsKey(asset.id)) continue;
+    final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
+
+    // Load market prices
+    final prices = await marketPriceService.getPriceHistory(asset.id);
+    final priceMap = <int, double>{};
+    for (final p in prices) {
+      priceMap[toDayKey(p.key)] = p.value;
+    }
+
+    final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
+    final assetDays = <int>{
+      ...perAssetDeltas[asset.id]!.keys,
+      ...priceMap.keys.where((dk) => dk >= firstEventKey),
+    }.toList()..sort();
+
+    final spots = <FlSpot>[];
+    var cumQuantity = 0.0;
+    double? lastPrice;
+    var started = false;
+
+    for (final dayKey in assetDays) {
+      if (qtyDeltaMap.containsKey(dayKey)) {
+        cumQuantity += qtyDeltaMap[dayKey]!;
+        started = true;
+      }
+      if (priceMap.containsKey(dayKey)) {
+        lastPrice = priceMap[dayKey]!;
+      }
+      if (!started) continue;
+      if (lastPrice != null && cumQuantity > 0) {
+        final fxRate = await rates.getRate(asset.currency, dayKey);
+        final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+        final x = dt.difference(firstDate).inDays.toDouble();
+        spots.add(FlSpot(x, cumQuantity * lastPrice * fxRate));
+      }
+    }
+
+    // Use same color as invested counterpart
+    final investedIdx = assetInvestedSeries.indexWhere((s) => s.key == 'asset_invested:${asset.id}');
+    final color = investedIdx >= 0 ? assetInvestedSeries[investedIdx].color : _chartColors[colorIdx++ % _chartColors.length];
+
+    assetMarketSeries.add(_Series(
+      key: 'asset_market:${asset.id}',
+      name: asset.ticker ?? asset.name,
+      color: color,
+      spots: spots,
+    ));
+  }
+
   // ════════════════════════════════════════════════
   // 3. CAPEX — re-add at expense date, remove during spread steps
-  //    At expenseDate: +totalAmount (neutralizes the bank dip)
-  //    At each entry date: −stepAmount (gradually spread)
-  //    At each reimbursement: −reimbursement (someone else paid back)
   // ════════════════════════════════════════════════
   final activeSchedules = await (db.select(db.depreciationSchedules)
         ..where((s) => s.isActive.equals(true)))
       .get();
 
-  final capexSeries = <_Series>[];
+  final adjustmentSeries = <_Series>[];
 
   for (final schedule in activeSchedules) {
     final entries = await (db.select(db.depreciationEntries)
@@ -328,24 +397,18 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
           ..orderBy([(e) => OrderingTerm.asc(e.date)]))
         .get();
 
-    // Build delta map: dayKey → amount change
     final deltaMap = <int, double>{};
 
-    // 1. At expense date: re-add the full amount
     if (schedule.expenseDate != null) {
       final expDayKey = toDayKey(schedule.expenseDate!);
       deltaMap[expDayKey] = (deltaMap[expDayKey] ?? 0) + schedule.totalAmount;
-      allDayKeys.add(expDayKey);
     }
 
-    // 2. At each spread step: remove the step amount
     for (final entry in entries) {
       final dayKey = toDayKey(entry.date);
       deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - entry.amount;
-      allDayKeys.add(dayKey);
     }
 
-    // 3. Reimbursements: reduce the CAPEX adjustment
     if (schedule.bufferId != null) {
       final reimbursements = await (db.select(db.bufferTransactions)
             ..where((t) => t.bufferId.equals(schedule.bufferId!))
@@ -354,15 +417,11 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       for (final r in reimbursements) {
         final dayKey = toDayKey(r.operationDate);
         deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
-        allDayKeys.add(dayKey);
       }
     }
 
     if (deltaMap.isEmpty) continue;
 
-    // Walk sorted days, accumulate, build spots.
-    // Insert "hold" points before jumps so the line stays flat
-    // (step-like) instead of drawing diagonals across gaps.
     final capexDays = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
     var cumulative = 0.0;
@@ -372,8 +431,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       final rate = await rates.getRate(schedule.currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
-      // Hold previous value just before this point to avoid diagonal
-      if (prevY != null && x > (spots.last.x + 1)) {
+      if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
         spots.add(FlSpot(x - 0.5, prevY));
       }
       cumulative += deltaMap[dayKey]!;
@@ -382,220 +440,88 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       prevY = y;
     }
 
-    capexSeries.add(_Series(
-      key: 'c:${schedule.id}',
+    adjustmentSeries.add(_Series(
+      key: 'adjustment:${schedule.id}',
       name: schedule.assetName,
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
-      isCapex: true,
+      isDashed: true,
     ));
     colorIdx++;
   }
 
-  return _ChartData(
-    firstDate: firstDate,
-    accounts: accountSeries,
-    assets: assetSeries,
-    capex: capexSeries,
-    baseCurrency: baseCurrency,
-  );
-});
-
-// ════════════════════════════════════════════════════
-// Investment chart: Invested vs Market Value per asset
-// ════════════════════════════════════════════════════
-
-/// One asset's invested + market value series.
-class _InvestmentPair {
-  final String assetName;
-  final Color color;
-  final List<FlSpot> investedSpots;
-  final List<FlSpot> marketSpots;
-  final String key; // "i:20" for asset id 20
-
-  const _InvestmentPair({
-    required this.assetName,
-    required this.color,
-    required this.investedSpots,
-    required this.marketSpots,
-    required this.key,
-  });
-}
-
-class _InvestmentChartData {
-  final DateTime firstDate;
-  final List<_InvestmentPair> pairs;
-  final List<FlSpot> totalInvestedSpots;
-  final List<FlSpot> totalMarketSpots;
-  final String baseCurrency;
-
-  const _InvestmentChartData({
-    required this.firstDate,
-    required this.pairs,
-    required this.totalInvestedSpots,
-    required this.totalMarketSpots,
-    required this.baseCurrency,
-  });
-}
-
-final _investmentChartDataProvider = FutureProvider<_InvestmentChartData?>((ref) async {
-  final db = ref.watch(databaseProvider);
-  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
-  final rateService = ref.watch(exchangeRateServiceProvider);
-  final marketPriceService = ref.watch(marketPriceServiceProvider);
-
-  // Watch reactive streams
-  ref.watch(assetsProvider);
-  ref.watch(assetStatsProvider);
-  ref.watch(priceRefreshCounter);
-
-  final rates = _RateResolver(rateService, baseCurrency);
-
-  final activeAssets = await (db.select(db.assets)
-        ..where((a) => a.isActive.equals(true))
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+  // ════════════════════════════════════════════════
+  // 4. INCOME ADJUSTMENTS — subtract at income date, add back at expenses
+  // ════════════════════════════════════════════════
+  final activeIncomeAdj = await (db.select(db.incomeAdjustments)
+        ..where((a) => a.isActive.equals(true)))
       .get();
 
-  if (activeAssets.isEmpty) return null;
+  final incomeAdjSeries = <_Series>[];
 
-  final pairs = <_InvestmentPair>[];
-  var colorIdx = 0;
-  final eventDayKeys = <int>{}; // only event dates — determines chart start
+  for (final adj in activeIncomeAdj) {
+    final expenses = await (db.select(db.incomeAdjustmentExpenses)
+          ..where((e) => e.adjustmentId.equals(adj.id))
+          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+        .get();
 
-  // Collect all data per asset
-  for (final asset in activeAssets) {
-    // Load events
-    final events = await db.customSelect(
-      'SELECT date, type, amount, quantity, currency, exchange_rate '
-      'FROM asset_events WHERE asset_id = ? ORDER BY date ASC',
-      variables: [Variable.withInt(asset.id)],
-    ).get();
-    if (events.isEmpty) continue;
+    final deltaMap = <int, double>{};
 
-    // Load market prices
-    final prices = await marketPriceService.getPriceHistory(asset.id);
-    final priceMap = <int, double>{}; // dayKey → close price
-    for (final p in prices) {
-      priceMap[toDayKey(p.key)] = p.value;
+    // At income date: subtract the full amount
+    final incomeDayKey = toDayKey(adj.incomeDate);
+    deltaMap[incomeDayKey] = (deltaMap[incomeDayKey] ?? 0) - adj.totalAmount;
+    allDayKeys.add(incomeDayKey);
+
+    // At each expense date: add back the expense amount
+    for (final exp in expenses) {
+      final dayKey = toDayKey(exp.date);
+      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + exp.amount;
+      allDayKeys.add(dayKey);
     }
 
-    // Build invested delta map and quantity delta map
-    final investedDelta = <int, double>{};
-    final quantityDelta = <int, double>{};
+    if (deltaMap.isEmpty) continue;
 
-    for (final ev in events) {
-      final epochSec = ev.read<int>('date');
-      final type = ev.read<String>('type');
-      final amount = ev.read<double>('amount');
-      final quantity = ev.readNullable<double>('quantity') ?? 0;
-      final currency = ev.read<String>('currency');
-      final storedRate = ev.readNullable<double>('exchange_rate');
-      final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
-      final dayKey = toDayKey(dt);
+    final adjDays = deltaMap.keys.toList()..sort();
+    final spots = <FlSpot>[];
+    var cumulative = 0.0;
+    double? prevY;
 
-      double sign;
-      if (type == 'buy' || type == 'contribute') {
-        sign = 1.0;
-      } else if (type == 'sell') {
-        sign = -1.0;
-      } else {
-        continue;
+    for (final dayKey in adjDays) {
+      final rate = await rates.getRate(adj.currency, dayKey);
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = dt.difference(firstDate).inDays.toDouble();
+      if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
+        spots.add(FlSpot(x - 0.5, prevY));
       }
-
-      final baseAmount = await convertToBase(
-        amount: amount, currency: currency, baseCurrency: baseCurrency,
-        storedRate: storedRate, resolver: rates, dayKey: dayKey,
-      );
-
-      investedDelta[dayKey] = (investedDelta[dayKey] ?? 0) + sign * baseAmount;
-      quantityDelta[dayKey] = (quantityDelta[dayKey] ?? 0) + sign * quantity.abs();
-      eventDayKeys.add(dayKey);
+      cumulative += deltaMap[dayKey]!;
+      final y = cumulative * rate;
+      spots.add(FlSpot(x, y));
+      prevY = y;
     }
 
-    // Find first event date for this asset — only plot from here
-    final firstEventKey = investedDelta.keys.reduce(min);
-
-    // Merge event + price day keys, but only prices AFTER first event
-    final assetDays = <int>{
-      ...investedDelta.keys,
-      ...priceMap.keys.where((dk) => dk >= firstEventKey),
-    }.toList()..sort();
-
-    final investedSpots = <FlSpot>[];
-    final marketSpots = <FlSpot>[];
-    var cumInvested = 0.0;
-    var cumQuantity = 0.0;
-    double? lastPrice;
-    var started = false;
-
-    for (final dayKey in assetDays) {
-      if (investedDelta.containsKey(dayKey)) {
-        cumInvested += investedDelta[dayKey]!;
-        cumQuantity += quantityDelta[dayKey] ?? 0;
-        started = true;
-      }
-      if (priceMap.containsKey(dayKey)) {
-        lastPrice = priceMap[dayKey]!;
-      }
-      if (!started) continue;
-
-      // x will be recomputed after we know global firstDate
-      investedSpots.add(FlSpot(dayKey.toDouble(), cumInvested));
-      if (lastPrice != null && cumQuantity > 0) {
-        final fxRate = await rates.getRate(asset.currency, dayKey);
-        final marketValue = cumQuantity * lastPrice * fxRate;
-        marketSpots.add(FlSpot(dayKey.toDouble(), marketValue));
-      }
-    }
-
-    if (investedSpots.isEmpty) continue;
-
-    pairs.add(_InvestmentPair(
-      assetName: asset.ticker ?? asset.name,
+    incomeAdjSeries.add(_Series(
+      key: 'income_adj:${adj.id}',
+      name: adj.name,
       color: _chartColors[colorIdx % _chartColors.length],
-      investedSpots: investedSpots,
-      marketSpots: marketSpots,
-      key: 'i:${asset.id}',
+      spots: spots,
+      isDashed: true,
     ));
     colorIdx++;
   }
 
-  if (pairs.isEmpty || eventDayKeys.isEmpty) return null;
-
-  // Now rebase x values to days since firstDate (first buy event)
-  final sortedAll = eventDayKeys.toList()..sort();
-  final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedAll.first * 1000);
-
-  double toX(double dayKeyD) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(dayKeyD.toInt() * 1000);
-    return dt.difference(firstDate).inDays.toDouble();
-  }
-
-  for (final pair in pairs) {
-    for (var i = 0; i < pair.investedSpots.length; i++) {
-      final s = pair.investedSpots[i];
-      pair.investedSpots[i] = FlSpot(toX(s.x), s.y);
-    }
-    for (var i = 0; i < pair.marketSpots.length; i++) {
-      final s = pair.marketSpots[i];
-      pair.marketSpots[i] = FlSpot(toX(s.x), s.y);
-    }
-  }
-
-  final totalInvested = buildTotalSpots(pairs.map((p) => p.investedSpots).toList());
-  final totalMarket = buildTotalSpots(pairs.where((p) => p.marketSpots.isNotEmpty).map((p) => p.marketSpots).toList());
-
-  return _InvestmentChartData(
+  return _AllSeriesData(
     firstDate: firstDate,
-    pairs: pairs,
-    totalInvestedSpots: totalInvested,
-    totalMarketSpots: totalMarket,
+    accounts: accountSeries,
+    assetInvested: assetInvestedSeries,
+    assetMarket: assetMarketSeries,
+    adjustments: adjustmentSeries,
+    incomeAdjustments: incomeAdjSeries,
     baseCurrency: baseCurrency,
   );
 });
 
 // ════════════════════════════════════════════════════
-// Dashboard screen with toggleable legend
+// Dashboard screen with dynamic custom charts
 // ════════════════════════════════════════════════════
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -605,199 +531,657 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+class _ChartZoom {
+  double? minX, maxX, minY, maxY;
+}
+
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  final _hidden = <String>{}; // keys of hidden series (net worth chart)
-  final _hiddenInv = <String>{}; // keys of hidden series (investment chart)
-  bool _hideInvested = false; // hide all invested/dashed lines
-  double? _zoomMinX; // null = no zoom (show all)
-  double? _zoomMaxX;
+  final _hiddenPerChart = <int, Set<String>>{}; // chartId → hidden series keys
+  final _chartHeights = <int, double>{}; // chartId → user-set height
+  final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
+  final _hideComponents = <int, bool>{}; // chartId → hide individual lines
+
+  static const _defaultChartHeight = 420.0;
+  static const _minChartHeight = 200.0;
+  static const _maxChartHeight = 900.0;
+
+  Set<String> _hiddenFor(int chartId) =>
+      _hiddenPerChart.putIfAbsent(chartId, () => {});
+
+  double _heightFor(int chartId) =>
+      _chartHeights.putIfAbsent(chartId, () => _defaultChartHeight);
+
+  _ChartZoom _zoomFor(int chartId) =>
+      _chartZooms.putIfAbsent(chartId, () => _ChartZoom());
+
+  bool _hideComponentsFor(int chartId) =>
+      _hideComponents.putIfAbsent(chartId, () => false);
 
   @override
   Widget build(BuildContext context) {
-    final chartAsync = ref.watch(_chartDataProvider);
-    final invChartAsync = ref.watch(_investmentChartDataProvider);
+    final allDataAsync = ref.watch(_allSeriesDataProvider);
+    final chartsAsync = ref.watch(dashboardChartsProvider);
 
-    return chartAsync.when(
+    return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
-      data: (data) {
-        if (data == null) {
+      data: (allData) {
+        if (allData == null) {
           return const Center(
             child: Text('No data yet. Import transactions or add assets to get started.',
                 style: TextStyle(color: Colors.grey)),
           );
         }
 
-        final invData = invChartAsync.valueOrNull;
-
-        // Compute shared firstDate for aligned X axes
-        final sharedFirstDate = (invData != null && invData.firstDate.isBefore(data.firstDate))
-            ? invData.firstDate
-            : data.firstDate;
-
-        // Offset net worth spots if shared first date is earlier
-        final nwOffset = data.firstDate.difference(sharedFirstDate).inDays.toDouble();
-        List<FlSpot> offsetSpots(List<FlSpot> spots) =>
-            nwOffset == 0 ? spots : spots.map((s) => FlSpot(s.x + nwOffset, s.y)).toList();
-
-        final allSeries = data.allSeries;
-        final visible = allSeries.where((s) => !_hidden.contains(s.key)).toList();
-        final offsetAll = allSeries.map((s) => offsetSpots(s.spots)).toList();
-        final totalSpots = buildTotalSpots(offsetAll);
-        final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
-        final symbol = currencySymbol(data.baseCurrency);
-
-        // Offset visible series
-        final offsetVisible = visible.map((s) => _Series(
-          key: s.key, name: s.name, color: s.color,
-          spots: offsetSpots(s.spots), isAsset: s.isAsset, isCapex: s.isCapex,
-        )).toList();
-
-        // Investment chart offset
-        final invOffset = invData != null
-            ? invData.firstDate.difference(sharedFirstDate).inDays.toDouble()
-            : 0.0;
-
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Net Worth Chart ──
-              Text('Total Net Worth',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(
-                NumberFormat.currency(locale: 'it_IT', symbol: symbol)
-                    .format(currentTotal),
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              _GroupedLegend(
-                accounts: data.accounts,
-                assets: data.assets,
-                adjustments: data.capex,
-                hidden: _hidden,
-                onToggle: (key) => setState(() {
-                  _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
-                }),
-                onToggleGroup: (keys) => setState(() {
-                  keys.every(_hidden.contains) ? _hidden.removeAll(keys) : _hidden.addAll(keys);
-                }),
-              ),
-              const SizedBox(height: 8),
-              // Zoom controls
-              _ZoomControls(
-                totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 0,
-                zoomMinX: _zoomMinX,
-                onZoom: (minX, maxX) => setState(() {
-                  _zoomMinX = minX;
-                  _zoomMaxX = maxX;
-                }),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: totalSpots.length >= 2
-                    ? _DragZoomWrapper(
-                        xMin: _zoomMinX ?? 0,
-                        xMax: _zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
-                        firstDate: sharedFirstDate,
-                        onZoom: (minX, maxX) => setState(() {
-                          _zoomMinX = minX;
-                          _zoomMaxX = maxX;
-                        }),
-                        child: _BalanceChart(
-                          data: _ChartData(
-                            firstDate: sharedFirstDate,
-                            accounts: data.accounts,
-                            assets: data.assets,
-                            capex: data.capex,
-                            baseCurrency: data.baseCurrency,
+        return chartsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (charts) {
+            return Scaffold(
+              body: charts.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('No charts configured.', style: TextStyle(color: Colors.grey)),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => _showChartEditor(context, allData, null),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Chart'),
                           ),
-                          visible: offsetVisible,
-                          totalSpots: totalSpots,
-                          showTotal: !_hidden.contains('_total'),
-                          zoomMinX: _zoomMinX,
-                          zoomMaxX: _zoomMaxX,
-                        ),
-                      )
-                    : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
-              ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: charts.length,
+                      itemBuilder: (context, index) {
+                        final chart = charts[index];
+                        final seriesConfigs = _parseSeriesJson(chart.seriesJson);
+                        final filteredSeries = _filterSeries(allData, seriesConfigs);
+                        final hidden = _hiddenFor(chart.id);
+                        final zoom = _zoomFor(chart.id);
+                        final hideComp = _hideComponentsFor(chart.id);
 
-              // ── Investment Chart ──
-              const Divider(height: 24),
-              Expanded(
-                child: invChartAsync.when(
-                  loading: () => const Center(child: Text('Loading investment data...', style: TextStyle(color: Colors.grey))),
-                  error: (e, _) => Center(child: Text('Error: $e')),
-                  data: (invData) {
-                    if (invData == null || invData.pairs.isEmpty) {
-                      return const Center(child: Text('No market price data yet. Prices sync on startup.',
-                          style: TextStyle(color: Colors.grey)));
-                    }
-                    // Apply offset for aligned X axis
-                    final alignedData = invOffset == 0 ? invData : _InvestmentChartData(
-                      firstDate: sharedFirstDate,
-                      pairs: invData.pairs.map((p) => _InvestmentPair(
-                        assetName: p.assetName,
-                        color: p.color,
-                        investedSpots: p.investedSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
-                        marketSpots: p.marketSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
-                        key: p.key,
-                      )).toList(),
-                      totalInvestedSpots: invData.totalInvestedSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
-                      totalMarketSpots: invData.totalMarketSpots.map((s) => FlSpot(s.x + invOffset, s.y)).toList(),
-                      baseCurrency: invData.baseCurrency,
-                    );
-                    return _InvestmentChartSection(
-                      data: alignedData,
-                      hidden: _hiddenInv,
-                      hideInvested: _hideInvested,
-                      zoomMinX: _zoomMinX,
-                      zoomMaxX: _zoomMaxX,
-                      onToggle: (key) => setState(() {
-                        _hiddenInv.contains(key) ? _hiddenInv.remove(key) : _hiddenInv.add(key);
-                      }),
-                      onToggleGroup: (keys) => setState(() {
-                        keys.every(_hiddenInv.contains)
-                            ? _hiddenInv.removeAll(keys)
-                            : _hiddenInv.addAll(keys);
-                      }),
-                      onToggleInvested: () => setState(() => _hideInvested = !_hideInvested),
-                      onZoom: (minX, maxX) => setState(() {
-                        _zoomMinX = minX;
-                        _zoomMaxX = maxX;
-                      }),
-                    );
-                  },
-                ),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: _ChartCard(
+                            chart: chart,
+                            series: filteredSeries,
+                            allData: allData,
+                            hidden: hidden,
+                            hideComponents: hideComp,
+                            chartHeight: _heightFor(chart.id),
+                            zoomMinX: zoom.minX,
+                            zoomMaxX: zoom.maxX,
+                            zoomMinY: zoom.minY,
+                            zoomMaxY: zoom.maxY,
+                            onToggle: (key) => setState(() {
+                              hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+                            }),
+                            onToggleGroup: (keys) => setState(() {
+                              keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
+                            }),
+                            onToggleHideComponents: () => setState(() {
+                              _hideComponents[chart.id] = !hideComp;
+                            }),
+                            onZoom: (minX, maxX, minY, maxY) => setState(() {
+                              zoom.minX = minX;
+                              zoom.maxX = maxX;
+                              zoom.minY = minY;
+                              zoom.maxY = maxY;
+                            }),
+                            onHeightChanged: (h) => setState(() {
+                              _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
+                            }),
+                            onEdit: () => _showChartEditor(context, allData, chart),
+                            onDelete: () => _deleteChart(context, chart),
+                          ),
+                        );
+                      },
+                    ),
+              floatingActionButton: FloatingActionButton(
+                onPressed: () => _showChartEditor(context, allData, null),
+                child: const Icon(Icons.add),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
+    );
+  }
+
+  List<Map<String, dynamic>> _parseSeriesJson(String json) {
+    try {
+      return (jsonDecode(json) as List).cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  List<_Series> _filterSeries(_AllSeriesData allData, List<Map<String, dynamic>> configs) {
+    final result = <_Series>[];
+    for (final config in configs) {
+      final type = config['type'] as String?;
+      final id = config['id'] as int?;
+      if (type == null || id == null) continue;
+      final key = '$type:$id';
+      final match = allData.allSeries.where((s) => s.key == key);
+      if (match.isNotEmpty) result.add(match.first);
+    }
+    return result;
+  }
+
+  Future<void> _showChartEditor(BuildContext context, _AllSeriesData allData, DashboardChart? existing) async {
+    final result = await showDialog<_ChartEditorResult>(
+      context: context,
+      builder: (ctx) => _ChartEditorDialog(
+        allData: allData,
+        existing: existing,
+      ),
+    );
+    if (result == null) return;
+
+    final service = ref.read(dashboardChartServiceProvider);
+    final seriesJson = jsonEncode(result.selectedSeries);
+
+    if (existing != null) {
+      await service.update(existing.id, title: result.title, seriesJson: seriesJson);
+    } else {
+      await service.create(title: result.title, seriesJson: seriesJson);
+    }
+  }
+
+  Future<void> _deleteChart(BuildContext context, DashboardChart chart) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Chart'),
+        content: Text('Delete "${chart.title}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(dashboardChartServiceProvider).delete(chart.id);
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Chart editor dialog
+// ════════════════════════════════════════════════════
+
+class _ChartEditorResult {
+  final String title;
+  final List<Map<String, dynamic>> selectedSeries;
+  _ChartEditorResult({required this.title, required this.selectedSeries});
+}
+
+class _ChartEditorDialog extends StatefulWidget {
+  final _AllSeriesData allData;
+  final DashboardChart? existing;
+
+  const _ChartEditorDialog({required this.allData, this.existing});
+
+  @override
+  State<_ChartEditorDialog> createState() => _ChartEditorDialogState();
+}
+
+class _ChartEditorDialogState extends State<_ChartEditorDialog> {
+  late final TextEditingController _titleCtrl;
+  final _selected = <String>{}; // set of "type:id" keys
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
+    if (widget.existing != null) {
+      try {
+        final configs = (jsonDecode(widget.existing!.seriesJson) as List).cast<Map<String, dynamic>>();
+        for (final c in configs) {
+          final type = c['type'] as String?;
+          final id = c['id'] as int?;
+          if (type != null && id != null) _selected.add('$type:$id');
+        }
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.allData;
+
+    // Extract unique asset ids from invested + market series
+    final assetIds = <int>{};
+    for (final s in [...d.assetInvested, ...d.assetMarket]) {
+      final parts = s.key.split(':');
+      if (parts.length == 2) assetIds.add(int.parse(parts[1]));
+    }
+
+    return AlertDialog(
+      title: Text(widget.existing != null ? 'Edit Chart' : 'New Chart'),
+      content: SizedBox(
+        width: 400,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(labelText: 'Chart Title'),
+              ),
+              const SizedBox(height: 16),
+
+              // Accounts
+              if (d.accounts.isNotEmpty) ...[
+                _SectionHeader(
+                  label: 'Accounts',
+                  allSelected: d.accounts.every((s) => _selected.contains(s.key)),
+                  onToggleAll: () => _toggleGroup(d.accounts.map((s) => s.key).toSet()),
+                ),
+                for (final s in d.accounts)
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text(s.name, style: const TextStyle(fontSize: 13)),
+                    value: _selected.contains(s.key),
+                    onChanged: (_) => setState(() {
+                      _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
+                    }),
+                  ),
+              ],
+
+              // Assets (each with invested + market checkboxes)
+              if (assetIds.isNotEmpty) ...[
+                _SectionHeader(
+                  label: 'Assets',
+                  allSelected: assetIds.every((id) =>
+                      _selected.contains('asset_invested:$id') &&
+                      _selected.contains('asset_market:$id')),
+                  onToggleAll: () {
+                    final keys = <String>{};
+                    for (final id in assetIds) {
+                      keys.add('asset_invested:$id');
+                      keys.add('asset_market:$id');
+                    }
+                    _toggleGroup(keys);
+                  },
+                ),
+                for (final id in assetIds) ...[
+                  () {
+                    final inv = d.assetInvested.where((s) => s.key == 'asset_invested:$id');
+                    final mkt = d.assetMarket.where((s) => s.key == 'asset_market:$id');
+                    final name = mkt.isNotEmpty ? mkt.first.name : (inv.isNotEmpty ? inv.first.name : 'Asset $id');
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                          Row(
+                            children: [
+                              if (inv.isNotEmpty)
+                                Expanded(
+                                  child: CheckboxListTile(
+                                    dense: true,
+                                    title: const Text('Invested', style: TextStyle(fontSize: 12)),
+                                    value: _selected.contains('asset_invested:$id'),
+                                    onChanged: (_) => setState(() {
+                                      _selected.contains('asset_invested:$id')
+                                          ? _selected.remove('asset_invested:$id')
+                                          : _selected.add('asset_invested:$id');
+                                    }),
+                                  ),
+                                ),
+                              if (mkt.isNotEmpty)
+                                Expanded(
+                                  child: CheckboxListTile(
+                                    dense: true,
+                                    title: const Text('Market', style: TextStyle(fontSize: 12)),
+                                    value: _selected.contains('asset_market:$id'),
+                                    onChanged: (_) => setState(() {
+                                      _selected.contains('asset_market:$id')
+                                          ? _selected.remove('asset_market:$id')
+                                          : _selected.add('asset_market:$id');
+                                    }),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }(),
+                ],
+              ],
+
+              // Spread Adjustments
+              if (d.adjustments.isNotEmpty) ...[
+                _SectionHeader(
+                  label: 'Spread Adjustments',
+                  allSelected: d.adjustments.every((s) => _selected.contains(s.key)),
+                  onToggleAll: () => _toggleGroup(d.adjustments.map((s) => s.key).toSet()),
+                ),
+                for (final s in d.adjustments)
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text(s.name, style: const TextStyle(fontSize: 13)),
+                    value: _selected.contains(s.key),
+                    onChanged: (_) => setState(() {
+                      _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
+                    }),
+                  ),
+              ],
+
+              // Income Adjustments
+              if (d.incomeAdjustments.isNotEmpty) ...[
+                _SectionHeader(
+                  label: 'Income Adjustments',
+                  allSelected: d.incomeAdjustments.every((s) => _selected.contains(s.key)),
+                  onToggleAll: () => _toggleGroup(d.incomeAdjustments.map((s) => s.key).toSet()),
+                ),
+                for (final s in d.incomeAdjustments)
+                  CheckboxListTile(
+                    dense: true,
+                    title: Text(s.name, style: const TextStyle(fontSize: 13)),
+                    value: _selected.contains(s.key),
+                    onChanged: (_) => setState(() {
+                      _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
+                    }),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _selected.isEmpty || _titleCtrl.text.trim().isEmpty ? null : () {
+            final series = _selected.map((key) {
+              final parts = key.split(':');
+              return {'type': parts[0], 'id': int.parse(parts[1])};
+            }).toList();
+            Navigator.pop(context, _ChartEditorResult(
+              title: _titleCtrl.text.trim(),
+              selectedSeries: series,
+            ));
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+
+  void _toggleGroup(Set<String> keys) {
+    setState(() {
+      if (keys.every(_selected.contains)) {
+        _selected.removeAll(keys);
+      } else {
+        _selected.addAll(keys);
+      }
+    });
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  final bool allSelected;
+  final VoidCallback onToggleAll;
+
+  const _SectionHeader({required this.label, required this.allSelected, required this.onToggleAll});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const Spacer(),
+          TextButton(
+            onPressed: onToggleAll,
+            child: Text(allSelected ? 'Deselect All' : 'Select All', style: const TextStyle(fontSize: 11)),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ════════════════════════════════════════════════════
-// Grouped legend: Accounts | Assets | Adjustments | Total
+// Unified chart card widget
 // ════════════════════════════════════════════════════
 
-class _GroupedLegend extends StatelessWidget {
-  final List<_Series> accounts;
-  final List<_Series> assets;
-  final List<_Series> adjustments;
+class _ChartCard extends StatelessWidget {
+  final DashboardChart chart;
+  final List<_Series> series;
+  final _AllSeriesData allData;
+  final Set<String> hidden;
+  final bool hideComponents;
+  final double chartHeight;
+  final double? zoomMinX;
+  final double? zoomMaxX;
+  final double? zoomMinY;
+  final double? zoomMaxY;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<Set<String>> onToggleGroup;
+  final VoidCallback onToggleHideComponents;
+  final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
+  final ValueChanged<double> onHeightChanged;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _ChartCard({
+    required this.chart,
+    required this.series,
+    required this.allData,
+    required this.hidden,
+    this.hideComponents = false,
+    required this.chartHeight,
+    this.zoomMinX,
+    this.zoomMaxX,
+    this.zoomMinY,
+    this.zoomMaxY,
+    required this.onToggle,
+    required this.onToggleGroup,
+    required this.onToggleHideComponents,
+    required this.onZoom,
+    required this.onHeightChanged,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  /// Build total spots with smart asset handling:
+  /// If both invested and market are visible for the same asset, only sum market.
+  List<FlSpot> _buildSmartTotalSpots(List<_Series> visible) {
+    // Find asset IDs that have both invested AND market visible
+    final visibleInvestedIds = <int>{};
+    final visibleMarketIds = <int>{};
+    for (final s in visible) {
+      final parts = s.key.split(':');
+      if (parts.length != 2) continue;
+      final id = int.tryParse(parts[1]);
+      if (id == null) continue;
+      if (parts[0] == 'asset_invested') visibleInvestedIds.add(id);
+      if (parts[0] == 'asset_market') visibleMarketIds.add(id);
+    }
+    // Exclude invested series where market is also visible
+    final excludeFromTotal = <String>{};
+    for (final id in visibleInvestedIds) {
+      if (visibleMarketIds.contains(id)) {
+        excludeFromTotal.add('asset_invested:$id');
+      }
+    }
+    final spotsForTotal = visible
+        .where((s) => !excludeFromTotal.contains(s.key))
+        .map((s) => s.spots)
+        .toList();
+    return buildTotalSpots(spotsForTotal);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = series.where((s) => !hidden.contains(s.key)).toList();
+    final totalSpots = _buildSmartTotalSpots(visible);
+    final symbol = currencySymbol(allData.baseCurrency);
+    final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
+    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
+
+    // Series to actually draw (empty if hideComponents, but total is unaffected)
+    final drawnSeries = hideComponents ? <_Series>[] : visible;
+
+    // Group series by type for legend
+    final accountSeries = series.where((s) => s.key.startsWith('account:')).toList();
+    final investedSeries = series.where((s) => s.key.startsWith('asset_invested:')).toList();
+    final marketSeries = series.where((s) => s.key.startsWith('asset_market:')).toList();
+    final adjustmentSeries = series.where((s) => s.key.startsWith('adjustment:')).toList();
+    final incomeAdjSeries = series.where((s) => s.key.startsWith('income_adj:')).toList();
+
+    final hasZoom = zoomMinX != null || zoomMinY != null;
+
+    return SizedBox(
+      height: chartHeight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title bar
+          Row(
+            children: [
+              Expanded(
+                child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
+              ),
+              Text(currFmt.format(currentTotal),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(width: 4),
+              // Hide components toggle
+              IconButton(
+                icon: Icon(hideComponents ? Icons.visibility_off : Icons.visibility, size: 18),
+                onPressed: onToggleHideComponents,
+                tooltip: hideComponents ? 'Show components' : 'Hide components',
+              ),
+              if (hasZoom)
+                IconButton(
+                  icon: const Icon(Icons.zoom_out_map, size: 18),
+                  onPressed: () => onZoom(null, null, null, null),
+                  tooltip: 'Reset zoom',
+                ),
+              IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: onEdit, tooltip: 'Edit'),
+              IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: onDelete, tooltip: 'Delete'),
+            ],
+          ),
+          const SizedBox(height: 4),
+
+          // Legend
+          if (!hideComponents) ...[
+            _ChartLegend(
+              accountSeries: accountSeries,
+              investedSeries: investedSeries,
+              marketSeries: marketSeries,
+              adjustmentSeries: adjustmentSeries,
+              incomeAdjSeries: incomeAdjSeries,
+              hidden: hidden,
+              onToggle: onToggle,
+              onToggleGroup: onToggleGroup,
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          // Chart
+          Expanded(
+            child: totalSpots.length >= 2
+                ? Builder(builder: (context) {
+                    // Compute Y range so _DragZoomWrapper can map pixels to chart Y
+                    final allY = [
+                      ...totalSpots.map((s) => s.y),
+                      ...drawnSeries.expand((s) => s.spots.map((p) => p.y)),
+                    ];
+                    final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
+                    final autoMaxY = allY.isEmpty ? 100.0 : allY.reduce(max);
+                    final autoRange = autoMaxY - autoMinY;
+                    final effectiveMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
+                    final effectiveMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
+
+                    return _DragZoomWrapper(
+                      xMin: zoomMinX ?? 0,
+                      xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
+                      yMin: effectiveMinY,
+                      yMax: effectiveMaxY,
+                      firstDate: allData.firstDate,
+                      baseCurrency: allData.baseCurrency,
+                      onZoom: onZoom,
+                      child: _UnifiedChart(
+                        firstDate: allData.firstDate,
+                        visible: drawnSeries,
+                        totalSpots: totalSpots,
+                        showTotal: !hidden.contains('_total'),
+                        baseCurrency: allData.baseCurrency,
+                        zoomMinX: zoomMinX,
+                        zoomMaxX: zoomMaxX,
+                        zoomMinY: zoomMinY,
+                        zoomMaxY: zoomMaxY,
+                      ),
+                    );
+                  })
+                : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
+          ),
+
+          // Resize handle
+          GestureDetector(
+            onVerticalDragUpdate: (d) {
+              onHeightChanged(chartHeight + d.delta.dy);
+            },
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeRow,
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 6,
+                  margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Chart legend (grouped)
+// ════════════════════════════════════════════════════
+
+class _ChartLegend extends StatelessWidget {
+  final List<_Series> accountSeries;
+  final List<_Series> investedSeries;
+  final List<_Series> marketSeries;
+  final List<_Series> adjustmentSeries;
+  final List<_Series> incomeAdjSeries;
   final Set<String> hidden;
   final ValueChanged<String> onToggle;
   final ValueChanged<Set<String>> onToggleGroup;
 
-  const _GroupedLegend({
-    required this.accounts,
-    required this.assets,
-    required this.adjustments,
+  const _ChartLegend({
+    required this.accountSeries,
+    required this.investedSeries,
+    required this.marketSeries,
+    required this.adjustmentSeries,
+    required this.incomeAdjSeries,
     required this.hidden,
     required this.onToggle,
     required this.onToggleGroup,
@@ -809,12 +1193,14 @@ class _GroupedLegend extends StatelessWidget {
       spacing: 6,
       runSpacing: 4,
       children: [
-        if (accounts.isNotEmpty)
-          ..._buildGroup(context, 'Accounts', accounts, false),
-        if (assets.isNotEmpty)
-          ..._buildGroup(context, 'Assets', assets, true),
-        if (adjustments.isNotEmpty)
-          ..._buildGroup(context, 'Adjustments', adjustments, true),
+        if (accountSeries.isNotEmpty)
+          ..._buildGroup(context, 'Accounts', accountSeries),
+        if (investedSeries.isNotEmpty || marketSeries.isNotEmpty)
+          ..._buildAssetGroup(context),
+        if (adjustmentSeries.isNotEmpty)
+          ..._buildGroup(context, 'Spread Adj.', adjustmentSeries),
+        if (incomeAdjSeries.isNotEmpty)
+          ..._buildGroup(context, 'Income Adj.', incomeAdjSeries),
         _ToggleLegendItem(
           color: Colors.white,
           label: 'Total',
@@ -826,13 +1212,11 @@ class _GroupedLegend extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildGroup(BuildContext context, String label, List<_Series> series, bool dashed) {
+  List<Widget> _buildGroup(BuildContext context, String label, List<_Series> series) {
     final keys = series.map((s) => s.key).toSet();
     final allHidden = keys.every(hidden.contains);
-    final groupEnabled = !allHidden;
 
     return [
-      // Group header — tapping toggles all in the group
       GestureDetector(
         onTap: () => onToggleGroup(keys),
         child: MouseRegion(
@@ -841,36 +1225,93 @@ class _GroupedLegend extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(4),
-              color: groupEnabled
+              color: !allHidden
                   ? Theme.of(context).colorScheme.surfaceContainerHighest
                   : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: groupEnabled
-                    ? Theme.of(context).colorScheme.onSurface
-                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                decoration: groupEnabled ? null : TextDecoration.lineThrough,
-              ),
-            ),
+            child: Text(label, style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600,
+              color: !allHidden
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+              decoration: !allHidden ? null : TextDecoration.lineThrough,
+            )),
           ),
         ),
       ),
-      // Individual items
       for (final s in series)
         _ToggleLegendItem(
           color: s.color,
           label: s.name,
-          dashed: dashed,
+          dashed: s.isDashed,
           enabled: !hidden.contains(s.key),
           onTap: () => onToggle(s.key),
         ),
-      // Separator
       const SizedBox(width: 4),
     ];
+  }
+
+  List<Widget> _buildAssetGroup(BuildContext context) {
+    // Combine invested + market keys for group toggle
+    final allKeys = {...investedSeries.map((s) => s.key), ...marketSeries.map((s) => s.key)};
+    final allHidden = allKeys.isNotEmpty && allKeys.every(hidden.contains);
+
+    final widgets = <Widget>[
+      GestureDetector(
+        onTap: () => onToggleGroup(allKeys),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              color: !allHidden
+                  ? Theme.of(context).colorScheme.surfaceContainerHighest
+                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            ),
+            child: Text('Assets', style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600,
+              color: !allHidden
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+              decoration: !allHidden ? null : TextDecoration.lineThrough,
+            )),
+          ),
+        ),
+      ),
+    ];
+
+    // Show each unique asset with one legend item per series type present
+    final shownAssets = <int>{};
+    for (final s in [...marketSeries, ...investedSeries]) {
+      final id = int.tryParse(s.key.split(':').last);
+      if (id == null || !shownAssets.add(id)) continue;
+      final inv = investedSeries.where((s) => s.key == 'asset_invested:$id');
+      final mkt = marketSeries.where((s) => s.key == 'asset_market:$id');
+
+      // Show market value (solid) if present
+      if (mkt.isNotEmpty) {
+        widgets.add(_ToggleLegendItem(
+          color: mkt.first.color,
+          label: mkt.first.name,
+          enabled: !hidden.contains(mkt.first.key),
+          onTap: () => onToggle(mkt.first.key),
+        ));
+      }
+      // Show invested (dashed) if present
+      if (inv.isNotEmpty) {
+        widgets.add(_ToggleLegendItem(
+          color: inv.first.color,
+          label: inv.first.name,
+          dashed: true,
+          enabled: !hidden.contains(inv.first.key),
+          onTap: () => onToggle(inv.first.key),
+        ));
+      }
+    }
+
+    widgets.add(const SizedBox(width: 4));
+    return widgets;
   }
 }
 
@@ -957,93 +1398,6 @@ class _DashedLinePainter extends CustomPainter {
 }
 
 // ════════════════════════════════════════════════════
-// Zoom controls (time range selector)
-// ════════════════════════════════════════════════════
-
-class _ZoomControls extends StatelessWidget {
-  final double totalDays;
-  final double? zoomMinX;
-  final void Function(double? minX, double? maxX) onZoom;
-
-  const _ZoomControls({
-    required this.totalDays,
-    required this.zoomMinX,
-    required this.onZoom,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ranges = [
-      ('6M', 182),
-      ('1Y', 365),
-      ('2Y', 730),
-      ('5Y', 1825),
-      ('All', -1),
-    ];
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final (label, days) in ranges)
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: _ZoomChip(
-              label: label,
-              selected: days == -1
-                  ? zoomMinX == null
-                  : zoomMinX != null && (totalDays - zoomMinX!).round() == days,
-              onTap: () {
-                if (days == -1) {
-                  onZoom(null, null);
-                } else if (totalDays > days) {
-                  onZoom(totalDays - days, totalDays);
-                }
-              },
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _ZoomChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ZoomChip({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: selected
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: selected
-                  ? Theme.of(context).colorScheme.onPrimary
-                  : Theme.of(context).colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════
 // Drag-to-zoom wrapper (CloudWatch style)
 // ════════════════════════════════════════════════════
 
@@ -1051,16 +1405,24 @@ class _DragZoomWrapper extends StatefulWidget {
   final Widget child;
   final double xMin;
   final double xMax;
-  final double leftReserved; // left axis label width
+  final double yMin;
+  final double yMax;
+  final double leftReserved;
+  final double bottomReserved;
   final DateTime firstDate;
-  final void Function(double? minX, double? maxX) onZoom;
+  final String baseCurrency;
+  final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
   const _DragZoomWrapper({
     required this.child,
     required this.xMin,
     required this.xMax,
+    this.yMin = 0,
+    this.yMax = 1,
     this.leftReserved = 60,
+    this.bottomReserved = 28,
     required this.firstDate,
+    required this.baseCurrency,
     required this.onZoom,
   });
 
@@ -1069,12 +1431,19 @@ class _DragZoomWrapper extends StatefulWidget {
 }
 
 class _DragZoomWrapperState extends State<_DragZoomWrapper> {
-  double? _dragStartX;
-  double? _dragCurrentX;
+  Offset? _dragStart;
+  Offset? _dragCurrent;
+  bool _isDragging = false;
 
   double _pixelToChartX(double px, double chartWidth) {
     final fraction = (px - widget.leftReserved) / chartWidth;
     return widget.xMin + fraction * (widget.xMax - widget.xMin);
+  }
+
+  double _pixelToChartY(double py, double chartHeight) {
+    // Y is inverted: top of widget = max Y, bottom of chart area = min Y
+    final fraction = 1.0 - (py / chartHeight);
+    return widget.yMin + fraction * (widget.yMax - widget.yMin);
   }
 
   @override
@@ -1082,69 +1451,103 @@ class _DragZoomWrapperState extends State<_DragZoomWrapper> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final chartWidth = constraints.maxWidth - widget.leftReserved;
+        final chartHeight = constraints.maxHeight - widget.bottomReserved;
         final dateFmt = DateFormat('dd MMM yyyy');
+        final currFmt = NumberFormat.currency(
+          locale: 'it_IT',
+          symbol: currencySymbol(widget.baseCurrency),
+          decimalDigits: 0,
+        );
 
-        return GestureDetector(
+        return Listener(
           behavior: HitTestBehavior.translucent,
-          onDoubleTap: () => widget.onZoom(null, null),
-          onHorizontalDragStart: (d) {
+          onPointerDown: (e) {
             setState(() {
-              _dragStartX = d.localPosition.dx;
-              _dragCurrentX = d.localPosition.dx;
+              _dragStart = e.localPosition;
+              _dragCurrent = e.localPosition;
+              _isDragging = false;
             });
           },
-          onHorizontalDragUpdate: (d) {
-            setState(() => _dragCurrentX = d.localPosition.dx);
+          onPointerMove: (e) {
+            if (_dragStart == null) return;
+            final dist = (e.localPosition - _dragStart!).distance;
+            if (dist > 5) _isDragging = true;
+            if (_isDragging) {
+              setState(() => _dragCurrent = e.localPosition);
+            }
           },
-          onHorizontalDragEnd: (d) {
-            if (_dragStartX != null && _dragCurrentX != null) {
-              final x1 = _pixelToChartX(_dragStartX!, chartWidth);
-              final x2 = _pixelToChartX(_dragCurrentX!, chartWidth);
-              final lo = min(x1, x2);
-              final hi = max(x1, x2);
-              // Only zoom if dragged at least 10 days
-              if ((hi - lo) > 10) {
-                widget.onZoom(
-                  max(0, lo),
-                  min(widget.xMax, hi),
-                );
+          onPointerUp: (e) {
+            if (_isDragging && _dragStart != null && _dragCurrent != null) {
+              final x1 = _pixelToChartX(_dragStart!.dx, chartWidth);
+              final x2 = _pixelToChartX(_dragCurrent!.dx, chartWidth);
+              final y1 = _pixelToChartY(_dragStart!.dy, chartHeight);
+              final y2 = _pixelToChartY(_dragCurrent!.dy, chartHeight);
+              final xLo = min(x1, x2);
+              final xHi = max(x1, x2);
+              final yLo = min(y1, y2);
+              final yHi = max(y1, y2);
+
+              final xSpan = xHi - xLo;
+              final ySpan = yHi - yLo;
+              final yRange = widget.yMax - widget.yMin;
+
+              double? newMinX, newMaxX, newMinY, newMaxY;
+              if (xSpan > 10) {
+                newMinX = max(0, xLo);
+                newMaxX = min(widget.xMax, xHi);
+              }
+              if (yRange > 0 && ySpan > yRange * 0.05) {
+                newMinY = yLo;
+                newMaxY = yHi;
+              }
+              if (newMinX != null || newMinY != null) {
+                widget.onZoom(newMinX ?? widget.xMin, newMaxX ?? widget.xMax, newMinY, newMaxY);
               }
             }
             setState(() {
-              _dragStartX = null;
-              _dragCurrentX = null;
+              _dragStart = null;
+              _dragCurrent = null;
+              _isDragging = false;
             });
           },
-          child: Stack(
-            children: [
-              widget.child,
-              // Selection overlay
-              if (_dragStartX != null && _dragCurrentX != null)
-                Positioned(
-                  left: min(_dragStartX!, _dragCurrentX!),
-                  width: (_dragCurrentX! - _dragStartX!).abs(),
-                  top: 0,
-                  bottom: 28, // above x-axis labels
-                  child: IgnorePointer(
-                    child: Container(
-                      color: Colors.blue.withValues(alpha: 0.15),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.start,
-                        children: [
-                          Container(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onDoubleTap: () => widget.onZoom(null, null, null, null),
+            child: Stack(
+              children: [
+                widget.child,
+                if (_isDragging && _dragStart != null && _dragCurrent != null)
+                  Positioned(
+                    left: min(_dragStart!.dx, _dragCurrent!.dx),
+                    top: min(_dragStart!.dy, _dragCurrent!.dy),
+                    width: (_dragCurrent!.dx - _dragStart!.dx).abs(),
+                    height: (_dragCurrent!.dy - _dragStart!.dy).abs(),
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.12),
+                          border: Border.all(color: Colors.blue.withValues(alpha: 0.5), width: 1),
+                        ),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                             color: Colors.blue.withValues(alpha: 0.7),
                             child: Text(
-                              '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStartX!, _dragCurrentX!), chartWidth).toInt())))} – ${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStartX!, _dragCurrentX!), chartWidth).toInt())))}',
+                              '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))} – '
+                              '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))}\n'
+                              '${currFmt.format(_pixelToChartY(max(_dragStart!.dy, _dragCurrent!.dy), chartHeight))} – '
+                              '${currFmt.format(_pixelToChartY(min(_dragStart!.dy, _dragCurrent!.dy), chartHeight))}',
                               style: const TextStyle(color: Colors.white, fontSize: 10),
+                              textAlign: TextAlign.center,
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -1153,24 +1556,30 @@ class _DragZoomWrapperState extends State<_DragZoomWrapper> {
 }
 
 // ════════════════════════════════════════════════════
-// Chart widget
+// Unified chart widget
 // ════════════════════════════════════════════════════
 
-class _BalanceChart extends StatelessWidget {
-  final _ChartData data;
+class _UnifiedChart extends StatelessWidget {
+  final DateTime firstDate;
   final List<_Series> visible;
   final List<FlSpot> totalSpots;
   final bool showTotal;
+  final String baseCurrency;
   final double? zoomMinX;
   final double? zoomMaxX;
+  final double? zoomMinY;
+  final double? zoomMaxY;
 
-  const _BalanceChart({
-    required this.data,
+  const _UnifiedChart({
+    required this.firstDate,
     required this.visible,
     required this.totalSpots,
     this.showTotal = true,
+    required this.baseCurrency,
     this.zoomMinX,
     this.zoomMaxX,
+    this.zoomMinY,
+    this.zoomMaxY,
   });
 
   @override
@@ -1179,14 +1588,13 @@ class _BalanceChart extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final gridColor = isDark ? Colors.white12 : Colors.black12;
     final textColor = isDark ? Colors.white54 : Colors.black54;
-    final symbol = currencySymbol(data.baseCurrency);
+    final symbol = currencySymbol(baseCurrency);
 
     final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
     final dateFmt = DateFormat('MMM yyyy');
     final fullFmt = DateFormat('dd MMM yyyy');
     final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
 
-    // Build line bars: total FIRST (background), then visible series on top
     final lineBars = <LineChartBarData>[];
 
     // Total line
@@ -1201,8 +1609,7 @@ class _BalanceChart extends StatelessWidget {
         dotData: const FlDotData(show: false),
         belowBarData: BarAreaData(
           show: true,
-          color: (isDark ? Colors.white : theme.colorScheme.primary)
-              .withValues(alpha: 0.08),
+          color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.08),
         ),
       ));
     }
@@ -1215,20 +1622,21 @@ class _BalanceChart extends StatelessWidget {
         preventCurveOverShooting: true,
         curveSmoothness: 0.15,
         color: s.color,
-        barWidth: 2,
+        barWidth: s.isDashed ? 1.5 : 2,
         dotData: const FlDotData(show: false),
         belowBarData: BarAreaData(show: false),
-        dashArray: s.isCapex ? [3, 4] : s.isAsset ? [6, 3] : null,
+        dashArray: s.isDashed ? [6, 3] : null,
       ));
     }
 
     // Compute Y range from visible lines only
     final visibleY = lineBars.expand((b) => b.spots.map((s) => s.y));
-    final minY = visibleY.isEmpty ? 0.0 : visibleY.reduce(min);
-    final maxY = visibleY.isEmpty ? 100.0 : visibleY.reduce(max);
-    final yRange = maxY - minY;
-    final chartMinY = yRange > 0 ? minY - yRange * 0.05 : minY - 100;
-    final chartMaxY = yRange > 0 ? maxY + yRange * 0.05 : maxY + 100;
+    final autoMinY = visibleY.isEmpty ? 0.0 : visibleY.reduce(min);
+    final autoMaxY = visibleY.isEmpty ? 100.0 : visibleY.reduce(max);
+    final autoRange = autoMaxY - autoMinY;
+    final chartMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
+    final chartMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
+    final yRange = chartMaxY - chartMinY;
 
     final xMin = zoomMinX ?? 0;
     final xMax = zoomMaxX ?? totalDays;
@@ -1257,7 +1665,7 @@ class _BalanceChart extends StatelessWidget {
               reservedSize: 28,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
-                final date = data.firstDate.add(Duration(days: value.toInt()));
+                final date = firstDate.add(Duration(days: value.toInt()));
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(dateFmt.format(date),
@@ -1286,7 +1694,7 @@ class _BalanceChart extends StatelessWidget {
                 final barIndex = spot.barIndex;
                 final isTotal = showTotal && barIndex == 0;
                 final seriesIdx = barIndex - (showTotal ? 1 : 0);
-                final date = data.firstDate.add(Duration(days: spot.x.toInt()));
+                final date = firstDate.add(Duration(days: spot.x.toInt()));
 
                 if (isTotal) {
                   return LineTooltipItem(
@@ -1300,420 +1708,6 @@ class _BalanceChart extends StatelessWidget {
                   return LineTooltipItem(
                     '${s.name}: ${currFmt.format(spot.y)}',
                     TextStyle(color: s.color, fontSize: 11),
-                  );
-                }
-                return null;
-              }).toList();
-            },
-          ),
-        ),
-        lineBarsData: lineBars,
-      ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════
-// Investment chart section (Invested vs Market Value)
-// ════════════════════════════════════════════════════
-
-class _InvestmentChartSection extends StatelessWidget {
-  final _InvestmentChartData data;
-  final Set<String> hidden;
-  final bool hideInvested;
-  final double? zoomMinX;
-  final double? zoomMaxX;
-  final ValueChanged<String> onToggle;
-  final ValueChanged<Set<String>> onToggleGroup;
-  final VoidCallback onToggleInvested;
-  final void Function(double? minX, double? maxX) onZoom;
-
-  const _InvestmentChartSection({
-    required this.data,
-    required this.hidden,
-    required this.hideInvested,
-    this.zoomMinX,
-    this.zoomMaxX,
-    required this.onToggle,
-    required this.onToggleGroup,
-    required this.onToggleInvested,
-    required this.onZoom,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final symbol = currencySymbol(data.baseCurrency);
-    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
-    final currentInvested = data.totalInvestedSpots.isNotEmpty ? data.totalInvestedSpots.last.y : 0.0;
-    final currentMarket = data.totalMarketSpots.isNotEmpty ? data.totalMarketSpots.last.y : 0.0;
-    final gain = currentMarket - currentInvested;
-    final gainPct = currentInvested > 0 ? (gain / currentInvested * 100) : 0.0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('Invested vs Market Value',
-                style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            GestureDetector(
-              onTap: onToggleInvested,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      hideInvested ? Icons.visibility_off : Icons.visibility,
-                      size: 16,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      hideInvested ? 'Show Invested' : 'Hide Invested',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            if (!hideInvested) ...[
-              Text(
-                'Invested: ${currFmt.format(currentInvested)}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
-              ),
-              const SizedBox(width: 16),
-            ],
-            Text(
-              'Market: ${currFmt.format(currentMarket)}',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Text(
-              '${gain >= 0 ? '+' : ''}${currFmt.format(gain)} (${gainPct.toStringAsFixed(1)}%)',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: gain >= 0 ? Colors.green : Colors.red,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        // Legend
-        _InvestmentLegend(
-          pairs: data.pairs,
-          hidden: hidden,
-          onToggle: onToggle,
-          onToggleGroup: onToggleGroup,
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: _DragZoomWrapper(
-            xMin: zoomMinX ?? 0,
-            xMax: zoomMaxX ?? ([...data.totalInvestedSpots, ...data.totalMarketSpots].map((s) => s.x).fold(1.0, max)),
-            firstDate: data.firstDate,
-            onZoom: onZoom,
-            child: _InvestmentChart(data: data, hidden: hidden, hideInvested: hideInvested, zoomMinX: zoomMinX, zoomMaxX: zoomMaxX),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InvestmentLegend extends StatelessWidget {
-  final List<_InvestmentPair> pairs;
-  final Set<String> hidden;
-  final ValueChanged<String> onToggle;
-  final ValueChanged<Set<String>> onToggleGroup;
-
-  const _InvestmentLegend({
-    required this.pairs,
-    required this.hidden,
-    required this.onToggle,
-    required this.onToggleGroup,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final keys = pairs.map((p) => p.key).toSet();
-    final allHidden = keys.isNotEmpty && keys.every(hidden.contains);
-
-    return Wrap(
-      spacing: 6,
-      runSpacing: 4,
-      children: [
-        // Group header
-        GestureDetector(
-          onTap: () => onToggleGroup(keys),
-          child: MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                color: !allHidden
-                    ? Theme.of(context).colorScheme.surfaceContainerHighest
-                    : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              ),
-              child: Text(
-                'Assets',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: !allHidden
-                      ? Theme.of(context).colorScheme.onSurface
-                      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                ),
-              ),
-            ),
-          ),
-        ),
-        // Per-asset items: solid = market, dashed = invested
-        for (final pair in pairs)
-          GestureDetector(
-            onTap: () => onToggle(pair.key),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Solid line (market)
-                  Container(
-                    width: 8, height: 3,
-                    color: hidden.contains(pair.key)
-                        ? pair.color.withValues(alpha: 0.3)
-                        : pair.color,
-                  ),
-                  // Dashed line (invested)
-                  SizedBox(
-                    width: 8, height: 3,
-                    child: CustomPaint(
-                      painter: _DashedLinePainter(
-                        hidden.contains(pair.key)
-                            ? pair.color.withValues(alpha: 0.3)
-                            : pair.color,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    pair.assetName,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: hidden.contains(pair.key)
-                          ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)
-                          : null,
-                      decoration: hidden.contains(pair.key) ? TextDecoration.lineThrough : null,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        // Total labels
-        _ToggleLegendItem(color: Colors.white, label: 'Total Invested', dashed: true, bold: true, enabled: !hidden.contains('_totalInvested'), onTap: () => onToggle('_totalInvested')),
-        _ToggleLegendItem(color: Colors.white, label: 'Total Market', bold: true, enabled: !hidden.contains('_totalMarket'), onTap: () => onToggle('_totalMarket')),
-      ],
-    );
-  }
-}
-
-class _InvestmentChart extends StatelessWidget {
-  final _InvestmentChartData data;
-  final Set<String> hidden;
-  final bool hideInvested;
-  final double? zoomMinX;
-  final double? zoomMaxX;
-
-  const _InvestmentChart({required this.data, required this.hidden, this.hideInvested = false, this.zoomMinX, this.zoomMaxX});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final gridColor = isDark ? Colors.white12 : Colors.black12;
-    final textColor = isDark ? Colors.white54 : Colors.black54;
-    final symbol = currencySymbol(data.baseCurrency);
-
-    // Use all spots for X range / fallback check
-    final allSpots = [...data.totalInvestedSpots, ...data.totalMarketSpots];
-    if (allSpots.length < 2) {
-      return const Center(child: Text('Not enough data', style: TextStyle(color: Colors.grey)));
-    }
-
-    final totalDays = allSpots.map((s) => s.x).reduce(max);
-    final dateFmt = DateFormat('MMM yyyy');
-    final fullFmt = DateFormat('dd MMM yyyy');
-    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
-
-    final lineBars = <LineChartBarData>[];
-
-    final showTotalInvested = !hidden.contains('_totalInvested') && !hideInvested;
-    final showTotalMarket = !hidden.contains('_totalMarket');
-
-    // Total invested (dashed white)
-    if (showTotalInvested && data.totalInvestedSpots.length >= 2) {
-      lineBars.add(LineChartBarData(
-        spots: data.totalInvestedSpots,
-        isCurved: true,
-        preventCurveOverShooting: true,
-        curveSmoothness: 0.15,
-        color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.6),
-        barWidth: 2,
-        dotData: const FlDotData(show: false),
-        dashArray: [6, 3],
-        belowBarData: BarAreaData(show: false),
-      ));
-    }
-
-    // Total market (solid white)
-    if (showTotalMarket && data.totalMarketSpots.length >= 2) {
-      lineBars.add(LineChartBarData(
-        spots: data.totalMarketSpots,
-        isCurved: true,
-        preventCurveOverShooting: true,
-        curveSmoothness: 0.15,
-        color: isDark ? Colors.white : theme.colorScheme.primary,
-        barWidth: 2.5,
-        dotData: const FlDotData(show: false),
-        belowBarData: BarAreaData(
-          show: true,
-          color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.08),
-        ),
-      ));
-    }
-
-    // Per-asset lines
-    for (final pair in data.pairs) {
-      if (hidden.contains(pair.key)) continue;
-      // Invested (dashed) — skip when hideInvested
-      if (!hideInvested && pair.investedSpots.length >= 2) {
-        lineBars.add(LineChartBarData(
-          spots: pair.investedSpots,
-          isCurved: true,
-          preventCurveOverShooting: true,
-          curveSmoothness: 0.15,
-          color: pair.color.withValues(alpha: 0.6),
-          barWidth: 1.5,
-          dotData: const FlDotData(show: false),
-          dashArray: [6, 3],
-          belowBarData: BarAreaData(show: false),
-        ));
-      }
-      // Market (solid)
-      if (pair.marketSpots.length >= 2) {
-        lineBars.add(LineChartBarData(
-          spots: pair.marketSpots,
-          isCurved: true,
-          preventCurveOverShooting: true,
-          curveSmoothness: 0.15,
-          color: pair.color,
-          barWidth: 2,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(show: false),
-        ));
-      }
-    }
-
-    final xMin = zoomMinX ?? 0;
-    final xMax = zoomMaxX ?? totalDays;
-    final xRange = xMax - xMin;
-
-    // Compute Y range from visible lines only
-    final visibleY = lineBars.expand((b) => b.spots.map((s) => s.y));
-    final minY = visibleY.isEmpty ? 0.0 : visibleY.reduce(min);
-    final maxY = visibleY.isEmpty ? 100.0 : visibleY.reduce(max);
-    final yRange = maxY - minY;
-    final chartMinY = yRange > 0 ? minY - yRange * 0.05 : minY - 100;
-    final chartMaxY = yRange > 0 ? maxY + yRange * 0.05 : maxY + 100;
-
-    return LineChart(
-      LineChartData(
-        minX: xMin,
-        maxX: xMax,
-        minY: chartMinY,
-        maxY: chartMaxY,
-        clipData: const FlClipData.all(),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: yRange > 0 ? yRange / 4 : 100,
-          getDrawingHorizontalLine: (value) =>
-              FlLine(color: gridColor, strokeWidth: 0.5),
-        ),
-        titlesData: FlTitlesData(
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 28,
-              interval: xRange > 0 ? xRange / 5 : 1,
-              getTitlesWidget: (value, meta) {
-                final date = data.firstDate.add(Duration(days: value.toInt()));
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(dateFmt.format(date),
-                      style: TextStyle(fontSize: 10, color: textColor)),
-                );
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 60,
-              interval: yRange > 0 ? yRange / 4 : 100,
-              getTitlesWidget: (value, meta) {
-                return Text(currFmt.format(value),
-                    style: TextStyle(fontSize: 10, color: textColor));
-              },
-            ),
-          ),
-        ),
-        borderData: FlBorderData(show: false),
-        lineTouchData: LineTouchData(
-          touchTooltipData: LineTouchTooltipData(
-            getTooltipItems: (spots) {
-              // Build a map of barIndex → label/color
-              final labels = <int, (String, Color)>{};
-              var idx = 0;
-              if (showTotalInvested && data.totalInvestedSpots.length >= 2) {
-                labels[idx++] = ('Total Invested', Colors.white70);
-              }
-              if (showTotalMarket && data.totalMarketSpots.length >= 2) {
-                labels[idx++] = ('Total Market', Colors.white);
-              }
-              for (final pair in data.pairs) {
-                if (hidden.contains(pair.key)) continue;
-                if (pair.investedSpots.length >= 2) {
-                  labels[idx++] = ('${pair.assetName} inv.', pair.color.withValues(alpha: 0.7));
-                }
-                if (pair.marketSpots.length >= 2) {
-                  labels[idx++] = (pair.assetName, pair.color);
-                }
-              }
-
-              var dateShown = false;
-              return spots.map((spot) {
-                final date = data.firstDate.add(Duration(days: spot.x.toInt()));
-                final entry = labels[spot.barIndex];
-                final prefix = !dateShown ? '${fullFmt.format(date)}\n' : '';
-                dateShown = true;
-                if (entry != null) {
-                  return LineTooltipItem(
-                    '$prefix${entry.$1}: ${currFmt.format(spot.y)}',
-                    TextStyle(color: entry.$2, fontSize: 11),
                   );
                 }
                 return null;

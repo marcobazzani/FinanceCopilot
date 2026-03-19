@@ -8,6 +8,8 @@ import 'asset_event_service.dart';
 import 'asset_service.dart';
 import 'buffer_service.dart';
 import 'capex_service.dart';
+import 'dashboard_chart_service.dart';
+import 'income_adjustment_service.dart';
 import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
 import 'investing_com_service.dart';
@@ -197,6 +199,18 @@ final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, a
 
 // ── CAPEX / Buffer providers ──
 
+// ── Dashboard chart providers ──
+
+final dashboardChartServiceProvider = Provider<DashboardChartService>((ref) {
+  return DashboardChartService(ref.watch(databaseProvider));
+});
+
+final dashboardChartsProvider = StreamProvider<List<DashboardChart>>((ref) {
+  return ref.watch(dashboardChartServiceProvider).watchAll();
+});
+
+// ── CAPEX / Buffer providers ──
+
 final capexServiceProvider = Provider<CapexService>((ref) {
   return CapexService(ref.watch(databaseProvider));
 });
@@ -223,4 +237,22 @@ final capexEntriesProvider = StreamProvider.family<List<DepreciationEntry>, int>
 
 final bufferTransactionsProvider = StreamProvider.family<List<BufferTransaction>, int>((ref, bufferId) {
   return ref.watch(bufferServiceProvider).watchByBuffer(bufferId);
+});
+
+// ── Income adjustment providers ──
+
+final incomeAdjustmentServiceProvider = Provider<IncomeAdjustmentService>((ref) {
+  return IncomeAdjustmentService(ref.watch(databaseProvider));
+});
+
+final incomeAdjustmentsProvider = StreamProvider<List<IncomeAdjustment>>((ref) {
+  return ref.watch(incomeAdjustmentServiceProvider).watchAll();
+});
+
+final incomeAdjustmentProvider = StreamProvider.family<IncomeAdjustment, int>((ref, id) {
+  return ref.watch(incomeAdjustmentServiceProvider).watchById(id);
+});
+
+final incomeAdjustmentExpensesProvider = StreamProvider.family<List<IncomeAdjustmentExpense>, int>((ref, adjustmentId) {
+  return ref.watch(incomeAdjustmentServiceProvider).watchExpenses(adjustmentId);
 });

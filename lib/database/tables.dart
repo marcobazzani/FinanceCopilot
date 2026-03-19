@@ -291,6 +291,33 @@ class AppConfigs extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+class DashboardCharts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get title => text().withLength(min: 1, max: 200)();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  TextColumn get seriesJson => text()(); // JSON array of series configs
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class IncomeAdjustments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 200)();
+  RealColumn get totalAmount => real()();
+  TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  DateTimeColumn get incomeDate => dateTime()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class IncomeAdjustmentExpenses extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get adjustmentId => integer().references(IncomeAdjustments, #id)();
+  DateTimeColumn get date => dateTime()();
+  RealColumn get amount => real()();
+  TextColumn get description => text().withDefault(const Constant(''))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 /// Stores per-account import configuration (column mappings, skip rows, etc.)
 class ImportConfigs extends Table {
   IntColumn get id => integer().autoIncrement()();

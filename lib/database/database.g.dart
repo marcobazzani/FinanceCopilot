@@ -10511,6 +10511,1235 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
   }
 }
 
+class $DashboardChartsTable extends DashboardCharts
+    with TableInfo<$DashboardChartsTable, DashboardChart> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DashboardChartsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _seriesJsonMeta = const VerificationMeta(
+    'seriesJson',
+  );
+  @override
+  late final GeneratedColumn<String> seriesJson = GeneratedColumn<String>(
+    'series_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    sortOrder,
+    seriesJson,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dashboard_charts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DashboardChart> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('series_json')) {
+      context.handle(
+        _seriesJsonMeta,
+        seriesJson.isAcceptableOrUnknown(data['series_json']!, _seriesJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_seriesJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DashboardChart map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DashboardChart(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      seriesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}series_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DashboardChartsTable createAlias(String alias) {
+    return $DashboardChartsTable(attachedDatabase, alias);
+  }
+}
+
+class DashboardChart extends DataClass implements Insertable<DashboardChart> {
+  final int id;
+  final String title;
+  final int sortOrder;
+  final String seriesJson;
+  final DateTime createdAt;
+  const DashboardChart({
+    required this.id,
+    required this.title,
+    required this.sortOrder,
+    required this.seriesJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['title'] = Variable<String>(title);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['series_json'] = Variable<String>(seriesJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DashboardChartsCompanion toCompanion(bool nullToAbsent) {
+    return DashboardChartsCompanion(
+      id: Value(id),
+      title: Value(title),
+      sortOrder: Value(sortOrder),
+      seriesJson: Value(seriesJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DashboardChart.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DashboardChart(
+      id: serializer.fromJson<int>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      seriesJson: serializer.fromJson<String>(json['seriesJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'title': serializer.toJson<String>(title),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'seriesJson': serializer.toJson<String>(seriesJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DashboardChart copyWith({
+    int? id,
+    String? title,
+    int? sortOrder,
+    String? seriesJson,
+    DateTime? createdAt,
+  }) => DashboardChart(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    sortOrder: sortOrder ?? this.sortOrder,
+    seriesJson: seriesJson ?? this.seriesJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DashboardChart copyWithCompanion(DashboardChartsCompanion data) {
+    return DashboardChart(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      seriesJson: data.seriesJson.present
+          ? data.seriesJson.value
+          : this.seriesJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DashboardChart(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('seriesJson: $seriesJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, title, sortOrder, seriesJson, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DashboardChart &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.sortOrder == this.sortOrder &&
+          other.seriesJson == this.seriesJson &&
+          other.createdAt == this.createdAt);
+}
+
+class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
+  final Value<int> id;
+  final Value<String> title;
+  final Value<int> sortOrder;
+  final Value<String> seriesJson;
+  final Value<DateTime> createdAt;
+  const DashboardChartsCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.seriesJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  DashboardChartsCompanion.insert({
+    this.id = const Value.absent(),
+    required String title,
+    this.sortOrder = const Value.absent(),
+    required String seriesJson,
+    this.createdAt = const Value.absent(),
+  }) : title = Value(title),
+       seriesJson = Value(seriesJson);
+  static Insertable<DashboardChart> custom({
+    Expression<int>? id,
+    Expression<String>? title,
+    Expression<int>? sortOrder,
+    Expression<String>? seriesJson,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (seriesJson != null) 'series_json': seriesJson,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  DashboardChartsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? title,
+    Value<int>? sortOrder,
+    Value<String>? seriesJson,
+    Value<DateTime>? createdAt,
+  }) {
+    return DashboardChartsCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      sortOrder: sortOrder ?? this.sortOrder,
+      seriesJson: seriesJson ?? this.seriesJson,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (seriesJson.present) {
+      map['series_json'] = Variable<String>(seriesJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DashboardChartsCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('seriesJson: $seriesJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $IncomeAdjustmentsTable extends IncomeAdjustments
+    with TableInfo<$IncomeAdjustmentsTable, IncomeAdjustment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $IncomeAdjustmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _totalAmountMeta = const VerificationMeta(
+    'totalAmount',
+  );
+  @override
+  late final GeneratedColumn<double> totalAmount = GeneratedColumn<double>(
+    'total_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 3,
+      maxTextLength: 3,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('EUR'),
+  );
+  static const VerificationMeta _incomeDateMeta = const VerificationMeta(
+    'incomeDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> incomeDate = GeneratedColumn<DateTime>(
+    'income_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'is_active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    totalAmount,
+    currency,
+    incomeDate,
+    isActive,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'income_adjustments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<IncomeAdjustment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('total_amount')) {
+      context.handle(
+        _totalAmountMeta,
+        totalAmount.isAcceptableOrUnknown(
+          data['total_amount']!,
+          _totalAmountMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_totalAmountMeta);
+    }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
+    if (data.containsKey('income_date')) {
+      context.handle(
+        _incomeDateMeta,
+        incomeDate.isAcceptableOrUnknown(data['income_date']!, _incomeDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_incomeDateMeta);
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  IncomeAdjustment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return IncomeAdjustment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      totalAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}total_amount'],
+      )!,
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      )!,
+      incomeDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}income_date'],
+      )!,
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_active'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $IncomeAdjustmentsTable createAlias(String alias) {
+    return $IncomeAdjustmentsTable(attachedDatabase, alias);
+  }
+}
+
+class IncomeAdjustment extends DataClass
+    implements Insertable<IncomeAdjustment> {
+  final int id;
+  final String name;
+  final double totalAmount;
+  final String currency;
+  final DateTime incomeDate;
+  final bool isActive;
+  final DateTime createdAt;
+  const IncomeAdjustment({
+    required this.id,
+    required this.name,
+    required this.totalAmount,
+    required this.currency,
+    required this.incomeDate,
+    required this.isActive,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['total_amount'] = Variable<double>(totalAmount);
+    map['currency'] = Variable<String>(currency);
+    map['income_date'] = Variable<DateTime>(incomeDate);
+    map['is_active'] = Variable<bool>(isActive);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  IncomeAdjustmentsCompanion toCompanion(bool nullToAbsent) {
+    return IncomeAdjustmentsCompanion(
+      id: Value(id),
+      name: Value(name),
+      totalAmount: Value(totalAmount),
+      currency: Value(currency),
+      incomeDate: Value(incomeDate),
+      isActive: Value(isActive),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory IncomeAdjustment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return IncomeAdjustment(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      totalAmount: serializer.fromJson<double>(json['totalAmount']),
+      currency: serializer.fromJson<String>(json['currency']),
+      incomeDate: serializer.fromJson<DateTime>(json['incomeDate']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'totalAmount': serializer.toJson<double>(totalAmount),
+      'currency': serializer.toJson<String>(currency),
+      'incomeDate': serializer.toJson<DateTime>(incomeDate),
+      'isActive': serializer.toJson<bool>(isActive),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  IncomeAdjustment copyWith({
+    int? id,
+    String? name,
+    double? totalAmount,
+    String? currency,
+    DateTime? incomeDate,
+    bool? isActive,
+    DateTime? createdAt,
+  }) => IncomeAdjustment(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    totalAmount: totalAmount ?? this.totalAmount,
+    currency: currency ?? this.currency,
+    incomeDate: incomeDate ?? this.incomeDate,
+    isActive: isActive ?? this.isActive,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  IncomeAdjustment copyWithCompanion(IncomeAdjustmentsCompanion data) {
+    return IncomeAdjustment(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      totalAmount: data.totalAmount.present
+          ? data.totalAmount.value
+          : this.totalAmount,
+      currency: data.currency.present ? data.currency.value : this.currency,
+      incomeDate: data.incomeDate.present
+          ? data.incomeDate.value
+          : this.incomeDate,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IncomeAdjustment(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('totalAmount: $totalAmount, ')
+          ..write('currency: $currency, ')
+          ..write('incomeDate: $incomeDate, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    totalAmount,
+    currency,
+    incomeDate,
+    isActive,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is IncomeAdjustment &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.totalAmount == this.totalAmount &&
+          other.currency == this.currency &&
+          other.incomeDate == this.incomeDate &&
+          other.isActive == this.isActive &&
+          other.createdAt == this.createdAt);
+}
+
+class IncomeAdjustmentsCompanion extends UpdateCompanion<IncomeAdjustment> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<double> totalAmount;
+  final Value<String> currency;
+  final Value<DateTime> incomeDate;
+  final Value<bool> isActive;
+  final Value<DateTime> createdAt;
+  const IncomeAdjustmentsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.totalAmount = const Value.absent(),
+    this.currency = const Value.absent(),
+    this.incomeDate = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  IncomeAdjustmentsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required double totalAmount,
+    this.currency = const Value.absent(),
+    required DateTime incomeDate,
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : name = Value(name),
+       totalAmount = Value(totalAmount),
+       incomeDate = Value(incomeDate);
+  static Insertable<IncomeAdjustment> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<double>? totalAmount,
+    Expression<String>? currency,
+    Expression<DateTime>? incomeDate,
+    Expression<bool>? isActive,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (totalAmount != null) 'total_amount': totalAmount,
+      if (currency != null) 'currency': currency,
+      if (incomeDate != null) 'income_date': incomeDate,
+      if (isActive != null) 'is_active': isActive,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  IncomeAdjustmentsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<double>? totalAmount,
+    Value<String>? currency,
+    Value<DateTime>? incomeDate,
+    Value<bool>? isActive,
+    Value<DateTime>? createdAt,
+  }) {
+    return IncomeAdjustmentsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      totalAmount: totalAmount ?? this.totalAmount,
+      currency: currency ?? this.currency,
+      incomeDate: incomeDate ?? this.incomeDate,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (totalAmount.present) {
+      map['total_amount'] = Variable<double>(totalAmount.value);
+    }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
+    if (incomeDate.present) {
+      map['income_date'] = Variable<DateTime>(incomeDate.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IncomeAdjustmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('totalAmount: $totalAmount, ')
+          ..write('currency: $currency, ')
+          ..write('incomeDate: $incomeDate, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $IncomeAdjustmentExpensesTable extends IncomeAdjustmentExpenses
+    with TableInfo<$IncomeAdjustmentExpensesTable, IncomeAdjustmentExpense> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $IncomeAdjustmentExpensesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _adjustmentIdMeta = const VerificationMeta(
+    'adjustmentId',
+  );
+  @override
+  late final GeneratedColumn<int> adjustmentId = GeneratedColumn<int>(
+    'adjustment_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES income_adjustments (id)',
+    ),
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    adjustmentId,
+    date,
+    amount,
+    description,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'income_adjustment_expenses';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<IncomeAdjustmentExpense> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('adjustment_id')) {
+      context.handle(
+        _adjustmentIdMeta,
+        adjustmentId.isAcceptableOrUnknown(
+          data['adjustment_id']!,
+          _adjustmentIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_adjustmentIdMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  IncomeAdjustmentExpense map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return IncomeAdjustmentExpense(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      adjustmentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}adjustment_id'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $IncomeAdjustmentExpensesTable createAlias(String alias) {
+    return $IncomeAdjustmentExpensesTable(attachedDatabase, alias);
+  }
+}
+
+class IncomeAdjustmentExpense extends DataClass
+    implements Insertable<IncomeAdjustmentExpense> {
+  final int id;
+  final int adjustmentId;
+  final DateTime date;
+  final double amount;
+  final String description;
+  final DateTime createdAt;
+  const IncomeAdjustmentExpense({
+    required this.id,
+    required this.adjustmentId,
+    required this.date,
+    required this.amount,
+    required this.description,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['adjustment_id'] = Variable<int>(adjustmentId);
+    map['date'] = Variable<DateTime>(date);
+    map['amount'] = Variable<double>(amount);
+    map['description'] = Variable<String>(description);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  IncomeAdjustmentExpensesCompanion toCompanion(bool nullToAbsent) {
+    return IncomeAdjustmentExpensesCompanion(
+      id: Value(id),
+      adjustmentId: Value(adjustmentId),
+      date: Value(date),
+      amount: Value(amount),
+      description: Value(description),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory IncomeAdjustmentExpense.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return IncomeAdjustmentExpense(
+      id: serializer.fromJson<int>(json['id']),
+      adjustmentId: serializer.fromJson<int>(json['adjustmentId']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      amount: serializer.fromJson<double>(json['amount']),
+      description: serializer.fromJson<String>(json['description']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'adjustmentId': serializer.toJson<int>(adjustmentId),
+      'date': serializer.toJson<DateTime>(date),
+      'amount': serializer.toJson<double>(amount),
+      'description': serializer.toJson<String>(description),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  IncomeAdjustmentExpense copyWith({
+    int? id,
+    int? adjustmentId,
+    DateTime? date,
+    double? amount,
+    String? description,
+    DateTime? createdAt,
+  }) => IncomeAdjustmentExpense(
+    id: id ?? this.id,
+    adjustmentId: adjustmentId ?? this.adjustmentId,
+    date: date ?? this.date,
+    amount: amount ?? this.amount,
+    description: description ?? this.description,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  IncomeAdjustmentExpense copyWithCompanion(
+    IncomeAdjustmentExpensesCompanion data,
+  ) {
+    return IncomeAdjustmentExpense(
+      id: data.id.present ? data.id.value : this.id,
+      adjustmentId: data.adjustmentId.present
+          ? data.adjustmentId.value
+          : this.adjustmentId,
+      date: data.date.present ? data.date.value : this.date,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IncomeAdjustmentExpense(')
+          ..write('id: $id, ')
+          ..write('adjustmentId: $adjustmentId, ')
+          ..write('date: $date, ')
+          ..write('amount: $amount, ')
+          ..write('description: $description, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, adjustmentId, date, amount, description, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is IncomeAdjustmentExpense &&
+          other.id == this.id &&
+          other.adjustmentId == this.adjustmentId &&
+          other.date == this.date &&
+          other.amount == this.amount &&
+          other.description == this.description &&
+          other.createdAt == this.createdAt);
+}
+
+class IncomeAdjustmentExpensesCompanion
+    extends UpdateCompanion<IncomeAdjustmentExpense> {
+  final Value<int> id;
+  final Value<int> adjustmentId;
+  final Value<DateTime> date;
+  final Value<double> amount;
+  final Value<String> description;
+  final Value<DateTime> createdAt;
+  const IncomeAdjustmentExpensesCompanion({
+    this.id = const Value.absent(),
+    this.adjustmentId = const Value.absent(),
+    this.date = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.description = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  IncomeAdjustmentExpensesCompanion.insert({
+    this.id = const Value.absent(),
+    required int adjustmentId,
+    required DateTime date,
+    required double amount,
+    this.description = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : adjustmentId = Value(adjustmentId),
+       date = Value(date),
+       amount = Value(amount);
+  static Insertable<IncomeAdjustmentExpense> custom({
+    Expression<int>? id,
+    Expression<int>? adjustmentId,
+    Expression<DateTime>? date,
+    Expression<double>? amount,
+    Expression<String>? description,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (adjustmentId != null) 'adjustment_id': adjustmentId,
+      if (date != null) 'date': date,
+      if (amount != null) 'amount': amount,
+      if (description != null) 'description': description,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  IncomeAdjustmentExpensesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? adjustmentId,
+    Value<DateTime>? date,
+    Value<double>? amount,
+    Value<String>? description,
+    Value<DateTime>? createdAt,
+  }) {
+    return IncomeAdjustmentExpensesCompanion(
+      id: id ?? this.id,
+      adjustmentId: adjustmentId ?? this.adjustmentId,
+      date: date ?? this.date,
+      amount: amount ?? this.amount,
+      description: description ?? this.description,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (adjustmentId.present) {
+      map['adjustment_id'] = Variable<int>(adjustmentId.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IncomeAdjustmentExpensesCompanion(')
+          ..write('id: $id, ')
+          ..write('adjustmentId: $adjustmentId, ')
+          ..write('date: $date, ')
+          ..write('amount: $amount, ')
+          ..write('description: $description, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10538,6 +11767,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $HealthReimbursementsTable(this);
   late final $AppConfigsTable appConfigs = $AppConfigsTable(this);
   late final $ImportConfigsTable importConfigs = $ImportConfigsTable(this);
+  late final $DashboardChartsTable dashboardCharts = $DashboardChartsTable(
+    this,
+  );
+  late final $IncomeAdjustmentsTable incomeAdjustments =
+      $IncomeAdjustmentsTable(this);
+  late final $IncomeAdjustmentExpensesTable incomeAdjustmentExpenses =
+      $IncomeAdjustmentExpensesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10560,6 +11796,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     healthReimbursements,
     appConfigs,
     importConfigs,
+    dashboardCharts,
+    incomeAdjustments,
+    incomeAdjustmentExpenses,
   ];
 }
 
@@ -18470,6 +19709,937 @@ typedef $$ImportConfigsTableProcessedTableManager =
       ImportConfig,
       PrefetchHooks Function({bool accountId})
     >;
+typedef $$DashboardChartsTableCreateCompanionBuilder =
+    DashboardChartsCompanion Function({
+      Value<int> id,
+      required String title,
+      Value<int> sortOrder,
+      required String seriesJson,
+      Value<DateTime> createdAt,
+    });
+typedef $$DashboardChartsTableUpdateCompanionBuilder =
+    DashboardChartsCompanion Function({
+      Value<int> id,
+      Value<String> title,
+      Value<int> sortOrder,
+      Value<String> seriesJson,
+      Value<DateTime> createdAt,
+    });
+
+class $$DashboardChartsTableFilterComposer
+    extends Composer<_$AppDatabase, $DashboardChartsTable> {
+  $$DashboardChartsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get seriesJson => $composableBuilder(
+    column: $table.seriesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DashboardChartsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DashboardChartsTable> {
+  $$DashboardChartsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get seriesJson => $composableBuilder(
+    column: $table.seriesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DashboardChartsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DashboardChartsTable> {
+  $$DashboardChartsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get seriesJson => $composableBuilder(
+    column: $table.seriesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$DashboardChartsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DashboardChartsTable,
+          DashboardChart,
+          $$DashboardChartsTableFilterComposer,
+          $$DashboardChartsTableOrderingComposer,
+          $$DashboardChartsTableAnnotationComposer,
+          $$DashboardChartsTableCreateCompanionBuilder,
+          $$DashboardChartsTableUpdateCompanionBuilder,
+          (
+            DashboardChart,
+            BaseReferences<
+              _$AppDatabase,
+              $DashboardChartsTable,
+              DashboardChart
+            >,
+          ),
+          DashboardChart,
+          PrefetchHooks Function()
+        > {
+  $$DashboardChartsTableTableManager(
+    _$AppDatabase db,
+    $DashboardChartsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DashboardChartsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DashboardChartsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DashboardChartsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<String> seriesJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => DashboardChartsCompanion(
+                id: id,
+                title: title,
+                sortOrder: sortOrder,
+                seriesJson: seriesJson,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String title,
+                Value<int> sortOrder = const Value.absent(),
+                required String seriesJson,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => DashboardChartsCompanion.insert(
+                id: id,
+                title: title,
+                sortOrder: sortOrder,
+                seriesJson: seriesJson,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DashboardChartsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DashboardChartsTable,
+      DashboardChart,
+      $$DashboardChartsTableFilterComposer,
+      $$DashboardChartsTableOrderingComposer,
+      $$DashboardChartsTableAnnotationComposer,
+      $$DashboardChartsTableCreateCompanionBuilder,
+      $$DashboardChartsTableUpdateCompanionBuilder,
+      (
+        DashboardChart,
+        BaseReferences<_$AppDatabase, $DashboardChartsTable, DashboardChart>,
+      ),
+      DashboardChart,
+      PrefetchHooks Function()
+    >;
+typedef $$IncomeAdjustmentsTableCreateCompanionBuilder =
+    IncomeAdjustmentsCompanion Function({
+      Value<int> id,
+      required String name,
+      required double totalAmount,
+      Value<String> currency,
+      required DateTime incomeDate,
+      Value<bool> isActive,
+      Value<DateTime> createdAt,
+    });
+typedef $$IncomeAdjustmentsTableUpdateCompanionBuilder =
+    IncomeAdjustmentsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<double> totalAmount,
+      Value<String> currency,
+      Value<DateTime> incomeDate,
+      Value<bool> isActive,
+      Value<DateTime> createdAt,
+    });
+
+final class $$IncomeAdjustmentsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $IncomeAdjustmentsTable,
+          IncomeAdjustment
+        > {
+  $$IncomeAdjustmentsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $IncomeAdjustmentExpensesTable,
+    List<IncomeAdjustmentExpense>
+  >
+  _incomeAdjustmentExpensesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.incomeAdjustmentExpenses,
+        aliasName: $_aliasNameGenerator(
+          db.incomeAdjustments.id,
+          db.incomeAdjustmentExpenses.adjustmentId,
+        ),
+      );
+
+  $$IncomeAdjustmentExpensesTableProcessedTableManager
+  get incomeAdjustmentExpensesRefs {
+    final manager = $$IncomeAdjustmentExpensesTableTableManager(
+      $_db,
+      $_db.incomeAdjustmentExpenses,
+    ).filter((f) => f.adjustmentId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _incomeAdjustmentExpensesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$IncomeAdjustmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $IncomeAdjustmentsTable> {
+  $$IncomeAdjustmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get totalAmount => $composableBuilder(
+    column: $table.totalAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get incomeDate => $composableBuilder(
+    column: $table.incomeDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> incomeAdjustmentExpensesRefs(
+    Expression<bool> Function($$IncomeAdjustmentExpensesTableFilterComposer f)
+    f,
+  ) {
+    final $$IncomeAdjustmentExpensesTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.incomeAdjustmentExpenses,
+          getReferencedColumn: (t) => t.adjustmentId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$IncomeAdjustmentExpensesTableFilterComposer(
+                $db: $db,
+                $table: $db.incomeAdjustmentExpenses,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$IncomeAdjustmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $IncomeAdjustmentsTable> {
+  $$IncomeAdjustmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get totalAmount => $composableBuilder(
+    column: $table.totalAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get incomeDate => $composableBuilder(
+    column: $table.incomeDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$IncomeAdjustmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $IncomeAdjustmentsTable> {
+  $$IncomeAdjustmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get totalAmount => $composableBuilder(
+    column: $table.totalAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get incomeDate => $composableBuilder(
+    column: $table.incomeDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> incomeAdjustmentExpensesRefs<T extends Object>(
+    Expression<T> Function($$IncomeAdjustmentExpensesTableAnnotationComposer a)
+    f,
+  ) {
+    final $$IncomeAdjustmentExpensesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.incomeAdjustmentExpenses,
+          getReferencedColumn: (t) => t.adjustmentId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$IncomeAdjustmentExpensesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.incomeAdjustmentExpenses,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$IncomeAdjustmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $IncomeAdjustmentsTable,
+          IncomeAdjustment,
+          $$IncomeAdjustmentsTableFilterComposer,
+          $$IncomeAdjustmentsTableOrderingComposer,
+          $$IncomeAdjustmentsTableAnnotationComposer,
+          $$IncomeAdjustmentsTableCreateCompanionBuilder,
+          $$IncomeAdjustmentsTableUpdateCompanionBuilder,
+          (IncomeAdjustment, $$IncomeAdjustmentsTableReferences),
+          IncomeAdjustment,
+          PrefetchHooks Function({bool incomeAdjustmentExpensesRefs})
+        > {
+  $$IncomeAdjustmentsTableTableManager(
+    _$AppDatabase db,
+    $IncomeAdjustmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$IncomeAdjustmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$IncomeAdjustmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$IncomeAdjustmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double> totalAmount = const Value.absent(),
+                Value<String> currency = const Value.absent(),
+                Value<DateTime> incomeDate = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => IncomeAdjustmentsCompanion(
+                id: id,
+                name: name,
+                totalAmount: totalAmount,
+                currency: currency,
+                incomeDate: incomeDate,
+                isActive: isActive,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required double totalAmount,
+                Value<String> currency = const Value.absent(),
+                required DateTime incomeDate,
+                Value<bool> isActive = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => IncomeAdjustmentsCompanion.insert(
+                id: id,
+                name: name,
+                totalAmount: totalAmount,
+                currency: currency,
+                incomeDate: incomeDate,
+                isActive: isActive,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$IncomeAdjustmentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({incomeAdjustmentExpensesRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (incomeAdjustmentExpensesRefs) db.incomeAdjustmentExpenses,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (incomeAdjustmentExpensesRefs)
+                    await $_getPrefetchedData<
+                      IncomeAdjustment,
+                      $IncomeAdjustmentsTable,
+                      IncomeAdjustmentExpense
+                    >(
+                      currentTable: table,
+                      referencedTable: $$IncomeAdjustmentsTableReferences
+                          ._incomeAdjustmentExpensesRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$IncomeAdjustmentsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).incomeAdjustmentExpensesRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.adjustmentId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$IncomeAdjustmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $IncomeAdjustmentsTable,
+      IncomeAdjustment,
+      $$IncomeAdjustmentsTableFilterComposer,
+      $$IncomeAdjustmentsTableOrderingComposer,
+      $$IncomeAdjustmentsTableAnnotationComposer,
+      $$IncomeAdjustmentsTableCreateCompanionBuilder,
+      $$IncomeAdjustmentsTableUpdateCompanionBuilder,
+      (IncomeAdjustment, $$IncomeAdjustmentsTableReferences),
+      IncomeAdjustment,
+      PrefetchHooks Function({bool incomeAdjustmentExpensesRefs})
+    >;
+typedef $$IncomeAdjustmentExpensesTableCreateCompanionBuilder =
+    IncomeAdjustmentExpensesCompanion Function({
+      Value<int> id,
+      required int adjustmentId,
+      required DateTime date,
+      required double amount,
+      Value<String> description,
+      Value<DateTime> createdAt,
+    });
+typedef $$IncomeAdjustmentExpensesTableUpdateCompanionBuilder =
+    IncomeAdjustmentExpensesCompanion Function({
+      Value<int> id,
+      Value<int> adjustmentId,
+      Value<DateTime> date,
+      Value<double> amount,
+      Value<String> description,
+      Value<DateTime> createdAt,
+    });
+
+final class $$IncomeAdjustmentExpensesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $IncomeAdjustmentExpensesTable,
+          IncomeAdjustmentExpense
+        > {
+  $$IncomeAdjustmentExpensesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $IncomeAdjustmentsTable _adjustmentIdTable(_$AppDatabase db) =>
+      db.incomeAdjustments.createAlias(
+        $_aliasNameGenerator(
+          db.incomeAdjustmentExpenses.adjustmentId,
+          db.incomeAdjustments.id,
+        ),
+      );
+
+  $$IncomeAdjustmentsTableProcessedTableManager get adjustmentId {
+    final $_column = $_itemColumn<int>('adjustment_id')!;
+
+    final manager = $$IncomeAdjustmentsTableTableManager(
+      $_db,
+      $_db.incomeAdjustments,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_adjustmentIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$IncomeAdjustmentExpensesTableFilterComposer
+    extends Composer<_$AppDatabase, $IncomeAdjustmentExpensesTable> {
+  $$IncomeAdjustmentExpensesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$IncomeAdjustmentsTableFilterComposer get adjustmentId {
+    final $$IncomeAdjustmentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.adjustmentId,
+      referencedTable: $db.incomeAdjustments,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IncomeAdjustmentsTableFilterComposer(
+            $db: $db,
+            $table: $db.incomeAdjustments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$IncomeAdjustmentExpensesTableOrderingComposer
+    extends Composer<_$AppDatabase, $IncomeAdjustmentExpensesTable> {
+  $$IncomeAdjustmentExpensesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$IncomeAdjustmentsTableOrderingComposer get adjustmentId {
+    final $$IncomeAdjustmentsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.adjustmentId,
+      referencedTable: $db.incomeAdjustments,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IncomeAdjustmentsTableOrderingComposer(
+            $db: $db,
+            $table: $db.incomeAdjustments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$IncomeAdjustmentExpensesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $IncomeAdjustmentExpensesTable> {
+  $$IncomeAdjustmentExpensesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$IncomeAdjustmentsTableAnnotationComposer get adjustmentId {
+    final $$IncomeAdjustmentsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.adjustmentId,
+          referencedTable: $db.incomeAdjustments,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$IncomeAdjustmentsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.incomeAdjustments,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$IncomeAdjustmentExpensesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $IncomeAdjustmentExpensesTable,
+          IncomeAdjustmentExpense,
+          $$IncomeAdjustmentExpensesTableFilterComposer,
+          $$IncomeAdjustmentExpensesTableOrderingComposer,
+          $$IncomeAdjustmentExpensesTableAnnotationComposer,
+          $$IncomeAdjustmentExpensesTableCreateCompanionBuilder,
+          $$IncomeAdjustmentExpensesTableUpdateCompanionBuilder,
+          (IncomeAdjustmentExpense, $$IncomeAdjustmentExpensesTableReferences),
+          IncomeAdjustmentExpense,
+          PrefetchHooks Function({bool adjustmentId})
+        > {
+  $$IncomeAdjustmentExpensesTableTableManager(
+    _$AppDatabase db,
+    $IncomeAdjustmentExpensesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$IncomeAdjustmentExpensesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$IncomeAdjustmentExpensesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$IncomeAdjustmentExpensesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> adjustmentId = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => IncomeAdjustmentExpensesCompanion(
+                id: id,
+                adjustmentId: adjustmentId,
+                date: date,
+                amount: amount,
+                description: description,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int adjustmentId,
+                required DateTime date,
+                required double amount,
+                Value<String> description = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => IncomeAdjustmentExpensesCompanion.insert(
+                id: id,
+                adjustmentId: adjustmentId,
+                date: date,
+                amount: amount,
+                description: description,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$IncomeAdjustmentExpensesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({adjustmentId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (adjustmentId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.adjustmentId,
+                                referencedTable:
+                                    $$IncomeAdjustmentExpensesTableReferences
+                                        ._adjustmentIdTable(db),
+                                referencedColumn:
+                                    $$IncomeAdjustmentExpensesTableReferences
+                                        ._adjustmentIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$IncomeAdjustmentExpensesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $IncomeAdjustmentExpensesTable,
+      IncomeAdjustmentExpense,
+      $$IncomeAdjustmentExpensesTableFilterComposer,
+      $$IncomeAdjustmentExpensesTableOrderingComposer,
+      $$IncomeAdjustmentExpensesTableAnnotationComposer,
+      $$IncomeAdjustmentExpensesTableCreateCompanionBuilder,
+      $$IncomeAdjustmentExpensesTableUpdateCompanionBuilder,
+      (IncomeAdjustmentExpense, $$IncomeAdjustmentExpensesTableReferences),
+      IncomeAdjustmentExpense,
+      PrefetchHooks Function({bool adjustmentId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -18511,4 +20681,13 @@ class $AppDatabaseManager {
       $$AppConfigsTableTableManager(_db, _db.appConfigs);
   $$ImportConfigsTableTableManager get importConfigs =>
       $$ImportConfigsTableTableManager(_db, _db.importConfigs);
+  $$DashboardChartsTableTableManager get dashboardCharts =>
+      $$DashboardChartsTableTableManager(_db, _db.dashboardCharts);
+  $$IncomeAdjustmentsTableTableManager get incomeAdjustments =>
+      $$IncomeAdjustmentsTableTableManager(_db, _db.incomeAdjustments);
+  $$IncomeAdjustmentExpensesTableTableManager get incomeAdjustmentExpenses =>
+      $$IncomeAdjustmentExpensesTableTableManager(
+        _db,
+        _db.incomeAdjustmentExpenses,
+      );
 }
