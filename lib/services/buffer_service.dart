@@ -99,11 +99,10 @@ class BufferService {
   }
 
   Future<double> computeBalance(int bufferId) async {
-    final txns = await getByBuffer(bufferId);
-    var total = 0.0;
-    for (final t in txns) {
-      total += t.amount;
-    }
-    return total;
+    final row = await _db.customSelect(
+      'SELECT COALESCE(SUM(amount), 0.0) AS total FROM buffer_transactions WHERE buffer_id = ?',
+      variables: [Variable.withInt(bufferId)],
+    ).getSingle();
+    return row.read<double>('total');
   }
 }

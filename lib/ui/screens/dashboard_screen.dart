@@ -10,6 +10,7 @@ import 'package:drift/drift.dart' show OrderingTerm, Variable;
 
 import '../../database/database.dart';
 import '../../database/providers.dart';
+import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
 
@@ -63,6 +64,69 @@ final _chartColors = [
   Colors.cyan,
 ];
 
+/// Convert a DateTime to a day-key (epoch seconds at midnight).
+int toDayKey(DateTime dt) =>
+    DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+
+/// Build a carry-forward total line from multiple spot lists.
+List<FlSpot> buildTotalSpots(List<List<FlSpot>> allSpots) {
+  if (allSpots.isEmpty) return [];
+  final allX = <double>{};
+  final lookups = <Map<double, double>>[];
+  for (final spots in allSpots) {
+    final m = <double, double>{};
+    for (final s in spots) {
+      m[s.x] = s.y;
+      allX.add(s.x);
+    }
+    lookups.add(m);
+  }
+  final sorted = allX.toList()..sort();
+  final running = List<double>.filled(lookups.length, 0.0);
+  return sorted.map((x) {
+    var total = 0.0;
+    for (var i = 0; i < lookups.length; i++) {
+      if (lookups[i].containsKey(x)) running[i] = lookups[i][x]!;
+      total += running[i];
+    }
+    return FlSpot(x, total);
+  }).toList();
+}
+
+/// Cached exchange rate resolver for chart computations.
+class _RateResolver {
+  final ExchangeRateService _rateService;
+  final String _baseCurrency;
+  final _cache = <String, double>{};
+
+  _RateResolver(this._rateService, this._baseCurrency);
+
+  Future<double> getRate(String from, int dayKey) async {
+    if (from == _baseCurrency) return 1.0;
+    final key = '$from:$dayKey';
+    if (_cache.containsKey(key)) return _cache[key]!;
+    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+    final rate = await _rateService.getRate(from, _baseCurrency, date);
+    _cache[key] = rate ?? 1.0;
+    return rate ?? 1.0;
+  }
+}
+
+/// Convert an amount to base currency using stored rate or live fallback.
+Future<double> convertToBase({
+  required double amount,
+  required String currency,
+  required String baseCurrency,
+  required double? storedRate,
+  required _RateResolver resolver,
+  required int dayKey,
+}) async {
+  if (currency == baseCurrency) return amount.abs();
+  if (storedRate != null && storedRate > 0) return amount.abs() / storedRate;
+  final rate = await resolver.getRate(currency, dayKey);
+  return amount.abs() * rate;
+}
+
 /// Currency symbol lookup for display.
 String currencySymbol(String code) {
   return switch (code) {
@@ -92,20 +156,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
 
   // ── Shared helpers ──
   final allDayKeys = <int>{};
-
-  final rateCache = <String, double>{};
-  Future<double> getCachedRate(String from, int dayKey) async {
-    if (from == baseCurrency) return 1.0;
-    final key = '$from:$dayKey';
-    if (rateCache.containsKey(key)) return rateCache[key]!;
-    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-    final rate = await rateService.getRate(from, baseCurrency, date);
-    rateCache[key] = rate ?? 1.0;
-    return rate ?? 1.0;
-  }
-
-  int toDayKey(DateTime dt) =>
-      DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+  final rates = _RateResolver(rateService, baseCurrency);
 
   // ════════════════════════════════════════════════
   // 1. ACCOUNTS — daily balance from transactions
@@ -118,12 +169,14 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
 
   final perAccount = <int, Map<int, double>>{};
   if (activeIds.isNotEmpty) {
+    final placeholders = activeIds.map((_) => '?').join(',');
     final rows = await db.customSelect(
       'SELECT account_id, operation_date, balance_after '
       'FROM transactions '
-      'WHERE account_id IN (${activeIds.join(",")}) '
+      'WHERE account_id IN ($placeholders) '
       'AND balance_after IS NOT NULL '
       'ORDER BY operation_date ASC, id ASC',
+      variables: activeIds.map((id) => Variable.withInt(id)).toList(),
     ).get();
 
     for (final row in rows) {
@@ -150,11 +203,13 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
   final perAssetDeltas = <int, Map<int, double>>{};
 
   if (assetIds.isNotEmpty) {
+    final assetPlaceholders = assetIds.map((_) => '?').join(',');
     final evRows = await db.customSelect(
       'SELECT asset_id, date, type, amount, currency, exchange_rate '
       'FROM asset_events '
-      'WHERE asset_id IN (${assetIds.join(",")}) '
+      'WHERE asset_id IN ($assetPlaceholders) '
       'ORDER BY date ASC',
+      variables: assetIds.map((id) => Variable.withInt(id)).toList(),
     ).get();
 
     for (final row in evRows) {
@@ -177,15 +232,10 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
       final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
       final dayKey = toDayKey(dt);
 
-      double baseAmount;
-      if (currency == baseCurrency) {
-        baseAmount = amount.abs();
-      } else if (storedRate != null && storedRate > 0) {
-        baseAmount = amount.abs() / storedRate;
-      } else {
-        final rate = await getCachedRate(currency, dayKey);
-        baseAmount = amount.abs() * rate;
-      }
+      final baseAmount = await convertToBase(
+        amount: amount, currency: currency, baseCurrency: baseCurrency,
+        storedRate: storedRate, resolver: rates, dayKey: dayKey,
+      );
 
       perAssetDeltas.putIfAbsent(assetId, () => {});
       perAssetDeltas[assetId]![dayKey] =
@@ -212,7 +262,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     for (final dayKey in sortedDays) {
       if (dayMap.containsKey(dayKey)) running = dayMap[dayKey];
       if (running != null) {
-        final rate = await getCachedRate(account.currency, dayKey);
+        final rate = await rates.getRate(account.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
         spots.add(FlSpot(x, running * rate));
@@ -319,7 +369,7 @@ final _chartDataProvider = FutureProvider<_ChartData?>((ref) async {
     double? prevY;
 
     for (final dayKey in capexDays) {
-      final rate = await getCachedRate(schedule.currency, dayKey);
+      final rate = await rates.getRate(schedule.currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       // Hold previous value just before this point to avoid diagonal
@@ -399,19 +449,7 @@ final _investmentChartDataProvider = FutureProvider<_InvestmentChartData?>((ref)
   ref.watch(assetStatsProvider);
   ref.watch(priceRefreshCounter);
 
-  int toDayKey(DateTime dt) =>
-      DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
-
-  final rateCache = <String, double>{};
-  Future<double> getCachedRate(String from, int dayKey) async {
-    if (from == baseCurrency) return 1.0;
-    final cacheKey = '$from:$dayKey';
-    if (rateCache.containsKey(cacheKey)) return rateCache[cacheKey]!;
-    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-    final rate = await rateService.getRate(from, baseCurrency, date);
-    rateCache[cacheKey] = rate ?? 1.0;
-    return rate ?? 1.0;
-  }
+  final rates = _RateResolver(rateService, baseCurrency);
 
   final activeAssets = await (db.select(db.assets)
         ..where((a) => a.isActive.equals(true))
@@ -464,15 +502,10 @@ final _investmentChartDataProvider = FutureProvider<_InvestmentChartData?>((ref)
         continue;
       }
 
-      double baseAmount;
-      if (currency == baseCurrency) {
-        baseAmount = amount.abs();
-      } else if (storedRate != null && storedRate > 0) {
-        baseAmount = amount.abs() / storedRate;
-      } else {
-        final rate = await getCachedRate(currency, dayKey);
-        baseAmount = amount.abs() * rate;
-      }
+      final baseAmount = await convertToBase(
+        amount: amount, currency: currency, baseCurrency: baseCurrency,
+        storedRate: storedRate, resolver: rates, dayKey: dayKey,
+      );
 
       investedDelta[dayKey] = (investedDelta[dayKey] ?? 0) + sign * baseAmount;
       quantityDelta[dayKey] = (quantityDelta[dayKey] ?? 0) + sign * quantity.abs();
@@ -509,7 +542,7 @@ final _investmentChartDataProvider = FutureProvider<_InvestmentChartData?>((ref)
       // x will be recomputed after we know global firstDate
       investedSpots.add(FlSpot(dayKey.toDouble(), cumInvested));
       if (lastPrice != null && cumQuantity > 0) {
-        final fxRate = await getCachedRate(asset.currency, dayKey);
+        final fxRate = await rates.getRate(asset.currency, dayKey);
         final marketValue = cumQuantity * lastPrice * fxRate;
         marketSpots.add(FlSpot(dayKey.toDouble(), marketValue));
       }
@@ -549,33 +582,8 @@ final _investmentChartDataProvider = FutureProvider<_InvestmentChartData?>((ref)
     }
   }
 
-  // Build total lines using carry-forward
-  List<FlSpot> buildTotal(List<List<FlSpot>> allSpots) {
-    if (allSpots.isEmpty) return [];
-    final allX = <double>{};
-    final lookups = <Map<double, double>>[];
-    for (final spots in allSpots) {
-      final m = <double, double>{};
-      for (final s in spots) {
-        m[s.x] = s.y;
-        allX.add(s.x);
-      }
-      lookups.add(m);
-    }
-    final sorted = allX.toList()..sort();
-    final running = List<double>.filled(lookups.length, 0.0);
-    return sorted.map((x) {
-      var total = 0.0;
-      for (var i = 0; i < lookups.length; i++) {
-        if (lookups[i].containsKey(x)) running[i] = lookups[i][x]!;
-        total += running[i];
-      }
-      return FlSpot(x, total);
-    }).toList();
-  }
-
-  final totalInvested = buildTotal(pairs.map((p) => p.investedSpots).toList());
-  final totalMarket = buildTotal(pairs.where((p) => p.marketSpots.isNotEmpty).map((p) => p.marketSpots).toList());
+  final totalInvested = buildTotalSpots(pairs.map((p) => p.investedSpots).toList());
+  final totalMarket = buildTotalSpots(pairs.where((p) => p.marketSpots.isNotEmpty).map((p) => p.marketSpots).toList());
 
   return _InvestmentChartData(
     firstDate: firstDate,
@@ -603,34 +611,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   bool _hideInvested = false; // hide all invested/dashed lines
   double? _zoomMinX; // null = no zoom (show all)
   double? _zoomMaxX;
-
-  /// Build the total line from visible series using carry-forward.
-  static List<FlSpot> buildTotal(List<List<FlSpot>> allSpots) {
-    if (allSpots.isEmpty) return [];
-
-    final allX = <double>{};
-    final lookups = <Map<double, double>>[];
-    for (final spots in allSpots) {
-      final m = <double, double>{};
-      for (final spot in spots) {
-        m[spot.x] = spot.y;
-        allX.add(spot.x);
-      }
-      lookups.add(m);
-    }
-
-    final sortedX = allX.toList()..sort();
-    final running = List<double>.filled(lookups.length, 0.0);
-
-    return sortedX.map((x) {
-      var total = 0.0;
-      for (var i = 0; i < lookups.length; i++) {
-        if (lookups[i].containsKey(x)) running[i] = lookups[i][x]!;
-        total += running[i];
-      }
-      return FlSpot(x, total);
-    }).toList();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -663,7 +643,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         final allSeries = data.allSeries;
         final visible = allSeries.where((s) => !_hidden.contains(s.key)).toList();
         final offsetAll = allSeries.map((s) => offsetSpots(s.spots)).toList();
-        final totalSpots = buildTotal(offsetAll);
+        final totalSpots = buildTotalSpots(offsetAll);
         final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
         final symbol = currencySymbol(data.baseCurrency);
 

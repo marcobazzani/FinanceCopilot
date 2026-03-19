@@ -20,10 +20,6 @@ final _log = getLogger('Database');
   Assets,
   AssetEvents,
   AssetSnapshots,
-  Portfolios,
-  PortfolioAssets,
-  PortfolioModels,
-  DailySnapshots,
   DepreciationSchedules,
   DepreciationEntries,
   Buffers,
@@ -32,8 +28,6 @@ final _log = getLogger('Database');
   ExchangeRates,
   RegisteredEvents,
   HealthReimbursements,
-  PerformanceSummaries,
-  CalendarDays,
   AppConfigs,
   ImportConfigs,
 ])
@@ -44,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -105,6 +99,15 @@ class AppDatabase extends _$AppDatabase {
               "INSERT OR IGNORE INTO app_configs (key, value, description) "
               "VALUES ('PRICE_PROVIDER', 'investing', 'Price data provider: investing or googlesheets')"
             );
+          }
+          if (from < 12) {
+            // Drop unused tables
+            await customStatement('DROP TABLE IF EXISTS portfolio_models');
+            await customStatement('DROP TABLE IF EXISTS portfolio_assets');
+            await customStatement('DROP TABLE IF EXISTS portfolios');
+            await customStatement('DROP TABLE IF EXISTS daily_snapshots');
+            await customStatement('DROP TABLE IF EXISTS performance_summaries');
+            await customStatement('DROP TABLE IF EXISTS calendar_days');
           }
         },
       );

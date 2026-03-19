@@ -265,8 +265,16 @@ class InvestingComService extends MarketPriceService {
   @override
   Future<Map<DateTime, double>> fetchHistoricalPrices(
       String ticker, String currency, DateTime from) async {
-    // Not used directly — we override syncPrices for batch + cookie solving.
-    throw UnimplementedError('Use syncPrices() for batch operation');
+    // Look up the asset's exchange to resolve the CID
+    final row = await db.customSelect(
+      'SELECT exchange FROM assets WHERE ticker = ? LIMIT 1',
+      variables: [Variable.withString(ticker)],
+    ).getSingleOrNull();
+    final exchange = row?.readNullable<String>('exchange') ?? 'MIL';
+
+    final cid = await _searchCid(ticker, exchange);
+    if (cid == null) return {};
+    return _fetchByCid(cid, from);
   }
 
   @override
