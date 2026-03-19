@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -719,19 +720,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               const SizedBox(height: 8),
               Expanded(
                 child: totalSpots.length >= 2
-                    ? _BalanceChart(
-                        data: _ChartData(
-                          firstDate: sharedFirstDate,
-                          accounts: data.accounts,
-                          assets: data.assets,
-                          capex: data.capex,
-                          baseCurrency: data.baseCurrency,
+                    ? _DragZoomWrapper(
+                        xMin: _zoomMinX ?? 0,
+                        xMax: _zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
+                        firstDate: sharedFirstDate,
+                        onZoom: (minX, maxX) => setState(() {
+                          _zoomMinX = minX;
+                          _zoomMaxX = maxX;
+                        }),
+                        child: _BalanceChart(
+                          data: _ChartData(
+                            firstDate: sharedFirstDate,
+                            accounts: data.accounts,
+                            assets: data.assets,
+                            capex: data.capex,
+                            baseCurrency: data.baseCurrency,
+                          ),
+                          visible: offsetVisible,
+                          totalSpots: totalSpots,
+                          showTotal: !_hidden.contains('_total'),
+                          zoomMinX: _zoomMinX,
+                          zoomMaxX: _zoomMaxX,
                         ),
-                        visible: offsetVisible,
-                        totalSpots: totalSpots,
-                        showTotal: !_hidden.contains('_total'),
-                        zoomMinX: _zoomMinX,
-                        zoomMaxX: _zoomMaxX,
                       )
                     : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
               ),
@@ -776,6 +786,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             : _hiddenInv.addAll(keys);
                       }),
                       onToggleInvested: () => setState(() => _hideInvested = !_hideInvested),
+                      onZoom: (minX, maxX) => setState(() {
+                        _zoomMinX = minX;
+                        _zoomMaxX = maxX;
+                      }),
                     );
                   },
                 ),
@@ -1050,6 +1064,115 @@ class _ZoomChip extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════
+// Drag-to-zoom wrapper (CloudWatch style)
+// ════════════════════════════════════════════════════
+
+class _DragZoomWrapper extends StatefulWidget {
+  final Widget child;
+  final double xMin;
+  final double xMax;
+  final double leftReserved; // left axis label width
+  final DateTime firstDate;
+  final void Function(double? minX, double? maxX) onZoom;
+
+  const _DragZoomWrapper({
+    required this.child,
+    required this.xMin,
+    required this.xMax,
+    this.leftReserved = 60,
+    required this.firstDate,
+    required this.onZoom,
+  });
+
+  @override
+  State<_DragZoomWrapper> createState() => _DragZoomWrapperState();
+}
+
+class _DragZoomWrapperState extends State<_DragZoomWrapper> {
+  double? _dragStartX;
+  double? _dragCurrentX;
+
+  double _pixelToChartX(double px, double chartWidth) {
+    final fraction = (px - widget.leftReserved) / chartWidth;
+    return widget.xMin + fraction * (widget.xMax - widget.xMin);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final chartWidth = constraints.maxWidth - widget.leftReserved;
+        final dateFmt = DateFormat('dd MMM yyyy');
+
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onDoubleTap: () => widget.onZoom(null, null),
+          onHorizontalDragStart: (d) {
+            setState(() {
+              _dragStartX = d.localPosition.dx;
+              _dragCurrentX = d.localPosition.dx;
+            });
+          },
+          onHorizontalDragUpdate: (d) {
+            setState(() => _dragCurrentX = d.localPosition.dx);
+          },
+          onHorizontalDragEnd: (d) {
+            if (_dragStartX != null && _dragCurrentX != null) {
+              final x1 = _pixelToChartX(_dragStartX!, chartWidth);
+              final x2 = _pixelToChartX(_dragCurrentX!, chartWidth);
+              final lo = min(x1, x2);
+              final hi = max(x1, x2);
+              // Only zoom if dragged at least 10 days
+              if ((hi - lo) > 10) {
+                widget.onZoom(
+                  max(0, lo),
+                  min(widget.xMax, hi),
+                );
+              }
+            }
+            setState(() {
+              _dragStartX = null;
+              _dragCurrentX = null;
+            });
+          },
+          child: Stack(
+            children: [
+              widget.child,
+              // Selection overlay
+              if (_dragStartX != null && _dragCurrentX != null)
+                Positioned(
+                  left: min(_dragStartX!, _dragCurrentX!),
+                  width: (_dragCurrentX! - _dragStartX!).abs(),
+                  top: 0,
+                  bottom: 28, // above x-axis labels
+                  child: IgnorePointer(
+                    child: Container(
+                      color: Colors.blue.withValues(alpha: 0.15),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            color: Colors.blue.withValues(alpha: 0.7),
+                            child: Text(
+                              '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStartX!, _dragCurrentX!), chartWidth).toInt())))} – ${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStartX!, _dragCurrentX!), chartWidth).toInt())))}',
+                              style: const TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
 // Chart widget
 // ════════════════════════════════════════════════════
 
@@ -1223,6 +1346,7 @@ class _InvestmentChartSection extends StatelessWidget {
   final ValueChanged<String> onToggle;
   final ValueChanged<Set<String>> onToggleGroup;
   final VoidCallback onToggleInvested;
+  final void Function(double? minX, double? maxX) onZoom;
 
   const _InvestmentChartSection({
     required this.data,
@@ -1233,6 +1357,7 @@ class _InvestmentChartSection extends StatelessWidget {
     required this.onToggle,
     required this.onToggleGroup,
     required this.onToggleInvested,
+    required this.onZoom,
   });
 
   @override
@@ -1312,7 +1437,13 @@ class _InvestmentChartSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Expanded(
-          child: _InvestmentChart(data: data, hidden: hidden, hideInvested: hideInvested, zoomMinX: zoomMinX, zoomMaxX: zoomMaxX),
+          child: _DragZoomWrapper(
+            xMin: zoomMinX ?? 0,
+            xMax: zoomMaxX ?? ([...data.totalInvestedSpots, ...data.totalMarketSpots].map((s) => s.x).fold(1.0, max)),
+            firstDate: data.firstDate,
+            onZoom: onZoom,
+            child: _InvestmentChart(data: data, hidden: hidden, hideInvested: hideInvested, zoomMinX: zoomMinX, zoomMaxX: zoomMaxX),
+          ),
         ),
       ],
     );
