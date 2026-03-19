@@ -217,6 +217,34 @@ class CapexService {
 
   // ── Helpers (public for preview) ──
 
+  /// Advance a date by [months], clamping the day to the last day of the target month.
+  static DateTime _addMonths(DateTime dt, int months) {
+    final targetMonth = dt.month + months;
+    final targetYear = dt.year + (targetMonth - 1) ~/ 12;
+    final normalizedMonth = ((targetMonth - 1) % 12) + 1;
+    // Clamp day to last day of target month
+    final lastDay = DateTime(targetYear, normalizedMonth + 1, 0).day;
+    return DateTime(targetYear, normalizedMonth, dt.day.clamp(1, lastDay));
+  }
+
+  static DateTime _advanceStep(DateTime current, StepFrequency freq) {
+    return switch (freq) {
+      StepFrequency.weekly => current.add(const Duration(days: 7)),
+      StepFrequency.monthly => _addMonths(current, 1),
+      StepFrequency.quarterly => _addMonths(current, 3),
+      StepFrequency.yearly => _addMonths(current, 12),
+    };
+  }
+
+  static DateTime _retreatStep(DateTime current, StepFrequency freq) {
+    return switch (freq) {
+      StepFrequency.weekly => current.subtract(const Duration(days: 7)),
+      StepFrequency.monthly => _addMonths(current, -1),
+      StepFrequency.quarterly => _addMonths(current, -3),
+      StepFrequency.yearly => _addMonths(current, -12),
+    };
+  }
+
   static List<DateTime> computeStepDates(DateTime start, DateTime end, StepFrequency freq) {
     final dates = <DateTime>[];
     var current = DateTime(start.year, start.month, start.day);
@@ -224,12 +252,7 @@ class CapexService {
 
     while (!current.isAfter(endNorm)) {
       dates.add(current);
-      current = switch (freq) {
-        StepFrequency.weekly => current.add(const Duration(days: 7)),
-        StepFrequency.monthly => DateTime(current.year, current.month + 1, current.day),
-        StepFrequency.quarterly => DateTime(current.year, current.month + 3, current.day),
-        StepFrequency.yearly => DateTime(current.year + 1, current.month, current.day),
-      };
+      current = _advanceStep(current, freq);
     }
     return dates;
   }
@@ -237,12 +260,7 @@ class CapexService {
   static DateTime computeEndDate(DateTime start, int stepCount, StepFrequency freq) {
     var current = DateTime(start.year, start.month, start.day);
     for (var i = 0; i < stepCount - 1; i++) {
-      current = switch (freq) {
-        StepFrequency.weekly => current.add(const Duration(days: 7)),
-        StepFrequency.monthly => DateTime(current.year, current.month + 1, current.day),
-        StepFrequency.quarterly => DateTime(current.year, current.month + 3, current.day),
-        StepFrequency.yearly => DateTime(current.year + 1, current.month, current.day),
-      };
+      current = _advanceStep(current, freq);
     }
     return current;
   }
@@ -250,12 +268,7 @@ class CapexService {
   static DateTime computeStartDate(DateTime end, int stepCount, StepFrequency freq) {
     var current = DateTime(end.year, end.month, end.day);
     for (var i = 0; i < stepCount - 1; i++) {
-      current = switch (freq) {
-        StepFrequency.weekly => current.subtract(const Duration(days: 7)),
-        StepFrequency.monthly => DateTime(current.year, current.month - 1, current.day),
-        StepFrequency.quarterly => DateTime(current.year, current.month - 3, current.day),
-        StepFrequency.yearly => DateTime(current.year - 1, current.month, current.day),
-      };
+      current = _retreatStep(current, freq);
     }
     return current;
   }

@@ -176,82 +176,6 @@ class AssetSnapshots extends Table {
       ];
 }
 
-class Portfolios extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get name => text().withLength(min: 1, max: 200)();
-  TextColumn get description => text().nullable()();
-  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
-  IntColumn get modelId => integer().nullable()();
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-}
-
-class PortfolioAssets extends Table {
-  IntColumn get portfolioId => integer().references(Portfolios, #id)();
-  IntColumn get assetId => integer().references(Assets, #id)();
-
-  @override
-  Set<Column> get primaryKey => {portfolioId, assetId};
-}
-
-class PortfolioModels extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get name => text().withLength(min: 1, max: 100)();
-  TextColumn get description => text().nullable()();
-  TextColumn get allocations => text()(); // JSON
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-}
-
-class DailySnapshots extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  DateTimeColumn get date => dateTime().unique()();
-  TextColumn get accountBalances => text().withDefault(const Constant('{}'))(); // JSON
-  // Core aggregates
-  RealColumn get portfolioValue => real().withDefault(const Constant(0))();
-  RealColumn get investedAmount => real().withDefault(const Constant(0))();
-  RealColumn get liquidCash => real().withDefault(const Constant(0))();
-  RealColumn get totalSavings => real().withDefault(const Constant(0))();
-  RealColumn get totalAssets => real().withDefault(const Constant(0))();
-  RealColumn get liquidabile => real().withDefault(const Constant(0))();
-  // P/L
-  RealColumn get plEur => real().withDefault(const Constant(0))();
-  RealColumn get netPlEur => real().withDefault(const Constant(0))();
-  RealColumn get plAtPercent => real().withDefault(const Constant(0))();
-  RealColumn get plPtfPercent => real().withDefault(const Constant(0))();
-  RealColumn get periodPlEur => real().withDefault(const Constant(0))();
-  RealColumn get periodPlAtPercent => real().withDefault(const Constant(0))();
-  RealColumn get periodPlPtfPercent => real().withDefault(const Constant(0))();
-  RealColumn get logReturn => real().withDefault(const Constant(0))();
-  // Moving averages
-  RealColumn get smaSavings => real().withDefault(const Constant(0))();
-  RealColumn get smaExpenses => real().withDefault(const Constant(0))();
-  RealColumn get smaNetPl => real().withDefault(const Constant(0))();
-  RealColumn get annualizedVolatility => real().withDefault(const Constant(0))();
-  RealColumn get deltaSmaRt => real().withDefault(const Constant(0))();
-  // Income / Expense
-  RealColumn get income => real().withDefault(const Constant(0))();
-  RealColumn get expenses => real().withDefault(const Constant(0))();
-  RealColumn get cumulativeExpenses => real().withDefault(const Constant(0))();
-  RealColumn get expensesAdjusted => real().withDefault(const Constant(0))();
-  // Registered events
-  RealColumn get reimbursementsRegistered => real().withDefault(const Constant(0))();
-  RealColumn get incomeRegistered => real().withDefault(const Constant(0))();
-  RealColumn get gainsRegistered => real().withDefault(const Constant(0))();
-  RealColumn get salesRegistered => real().withDefault(const Constant(0))();
-  RealColumn get extraCash => real().withDefault(const Constant(0))();
-  // Velocity
-  RealColumn get spendingVelocity => real().withDefault(const Constant(0))();
-  RealColumn get savingsVelocity => real().withDefault(const Constant(0))();
-  RealColumn get profitVelocity => real().withDefault(const Constant(0))();
-  // Salary & ratios
-  RealColumn get dailyRal => real().withDefault(const Constant(0))();
-  RealColumn get euOverRal => real().withDefault(const Constant(0))();
-  // Pension & drawdown
-  RealColumn get pensionValue => real().withDefault(const Constant(0))();
-  RealColumn get diffHth => real().withDefault(const Constant(0))();
-  RealColumn get rtAtRatio => real().withDefault(const Constant(0))();
-}
-
 class DepreciationSchedules extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get transactionId => integer().nullable().references(Transactions, #id)();
@@ -356,35 +280,6 @@ class HealthReimbursements extends Table {
   RealColumn get reimbursementPercent => real()();
   IntColumn get processingDays => integer()();
   BoolColumn get isCovered => boolean()();
-}
-
-class PerformanceSummaries extends Table {
-  IntColumn get year => integer()();
-  IntColumn get month => integer().nullable()();
-  RealColumn get plAtPercent => real()();
-  RealColumn get plPtfPercent => real()();
-  RealColumn get eoyPlEur => real()();
-  RealColumn get yoyDiffEur => real()();
-  RealColumn get absoluteReturn => real()();
-  RealColumn get reverseCompound => real()();
-  BoolColumn get isYtd => boolean().withDefault(const Constant(false))();
-
-  @override
-  List<Set<Column>> get uniqueKeys => [
-        {year, month},
-      ];
-}
-
-class CalendarDays extends Table {
-  DateTimeColumn get date => dateTime()();
-  BoolColumn get isBankHoliday => boolean().withDefault(const Constant(false))();
-  BoolColumn get isCompanyHoliday => boolean().withDefault(const Constant(false))();
-  TextColumn get holidayName => text().nullable()();
-  BoolColumn get isWorkingDay => boolean().withDefault(const Constant(true))();
-  IntColumn get monthWorkingDays => integer().withDefault(const Constant(0))();
-
-  @override
-  Set<Column> get primaryKey => {date};
 }
 
 class AppConfigs extends Table {

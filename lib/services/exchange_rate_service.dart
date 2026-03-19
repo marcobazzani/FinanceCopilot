@@ -149,16 +149,28 @@ class ExchangeRateService {
   // Live rate (today)
   // ──────────────────────────────────────────────
 
-  /// In-memory cache for the current session's live rates.
+  /// In-memory cache for the current session's live rates (1-hour TTL).
   Map<String, double>? _liveRates;
+  DateTime? _liveRatesFetchedAt;
+  static const _liveRatesTtl = Duration(hours: 1);
 
   /// Fetch today's live rates from the API and cache them.
   /// Returns EUR→[currency] rate for today, or falls back to stored DB rate.
   Future<double?> getLiveRate(String from, String to) async {
     if (from == to) return 1.0;
 
+    // Invalidate cache after TTL
+    if (_liveRates != null &&
+        _liveRatesFetchedAt != null &&
+        DateTime.now().difference(_liveRatesFetchedAt!) > _liveRatesTtl) {
+      _liveRates = null;
+    }
+
     // Ensure live rates are fetched
-    _liveRates ??= await _fetchLiveRates();
+    if (_liveRates == null) {
+      _liveRates = await _fetchLiveRates();
+      _liveRatesFetchedAt = DateTime.now();
+    }
 
     double? eurToTarget(String currency) {
       if (currency == 'EUR') return 1.0;

@@ -77,8 +77,10 @@ class AccountService {
         .then((rows) => rows > 0);
   }
 
-  Future<int> delete(int id) {
-    _log.warning('delete: id=$id');
+  Future<int> delete(int id) async {
+    _log.warning('delete: id=$id (cascade: transactions, import configs)');
+    await (_db.delete(_db.transactions)..where((t) => t.accountId.equals(id))).go();
+    await (_db.delete(_db.importConfigs)..where((c) => c.accountId.equals(id))).go();
     return (_db.delete(_db.accounts)..where((a) => a.id.equals(id))).go();
   }
 
@@ -96,13 +98,14 @@ class AccountService {
     });
   }
 
-  /// Get transaction stats for all accounts.
-  Future<Map<int, AccountStats>> getStatsForAll() async {
-    final statsRows = await _db.customSelect(
+  static const _statsQuery =
       'SELECT account_id, COUNT(*) AS cnt, '
       'MIN(operation_date) AS first_date, MAX(operation_date) AS last_date '
-      'FROM transactions GROUP BY account_id',
-    ).get();
+      'FROM transactions GROUP BY account_id';
+
+  /// Get transaction stats for all accounts.
+  Future<Map<int, AccountStats>> getStatsForAll() async {
+    final statsRows = await _db.customSelect(_statsQuery).get();
     final balances = await _fetchLatestBalances();
     return _buildStats(statsRows, balances);
   }
@@ -110,10 +113,7 @@ class AccountService {
   /// Watch transaction stats reactively.
   Stream<Map<int, AccountStats>> watchStatsForAll() {
     return _db.customSelect(
-      'SELECT account_id, COUNT(*) AS cnt, '
-      'MIN(operation_date) AS first_date, MAX(operation_date) AS last_date '
-      'FROM transactions GROUP BY account_id',
-      readsFrom: {_db.transactions},
+      _statsQuery, readsFrom: {_db.transactions},
     ).watch().asyncMap((statsRows) async {
       final balances = await _fetchLatestBalances();
       return _buildStats(statsRows, balances);

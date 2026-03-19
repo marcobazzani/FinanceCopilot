@@ -65,8 +65,11 @@ class AssetService {
         .then((rows) => rows > 0);
   }
 
-  Future<int> delete(int id) {
-    _log.warning('delete: id=$id');
+  Future<int> delete(int id) async {
+    _log.warning('delete: id=$id (cascade: events, snapshots, prices)');
+    await (_db.delete(_db.assetEvents)..where((e) => e.assetId.equals(id))).go();
+    await (_db.delete(_db.assetSnapshots)..where((s) => s.assetId.equals(id))).go();
+    await (_db.delete(_db.marketPrices)..where((p) => p.assetId.equals(id))).go();
     return (_db.delete(_db.assets)..where((a) => a.id.equals(id))).go();
   }
 
@@ -83,53 +86,37 @@ class AssetService {
     });
   }
 
-  /// Get aggregated stats for all assets from their events.
-  Future<Map<int, AssetStats>> getStatsForAll() async {
-    final rows = await _db.customSelect(
+  static const _statsQuery =
       'SELECT asset_id, COUNT(*) AS cnt, '
       'MIN(date) AS first_date, MAX(date) AS last_date, '
       "SUM(CASE WHEN type IN ('buy', 'contribute') THEN ABS(amount) ELSE 0 END) AS total_invested, "
       "SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
       "         WHEN type = 'sell' THEN -COALESCE(quantity, 0) "
       '         ELSE 0 END) AS total_qty '
-      'FROM asset_events GROUP BY asset_id',
-      readsFrom: {_db.assetEvents},
-    ).get();
+      'FROM asset_events GROUP BY asset_id';
 
-    return {
-      for (final row in rows)
-        row.read<int>('asset_id'): AssetStats(
-          eventCount: row.read<int>('cnt'),
-          firstDate: row.readNullable<DateTime>('first_date'),
-          lastDate: row.readNullable<DateTime>('last_date'),
-          totalInvested: row.read<double>('total_invested'),
-          totalQuantity: row.read<double>('total_qty'),
-        ),
-    };
+  static AssetStats _rowToStats(QueryRow row) => AssetStats(
+        eventCount: row.read<int>('cnt'),
+        firstDate: row.readNullable<DateTime>('first_date'),
+        lastDate: row.readNullable<DateTime>('last_date'),
+        totalInvested: row.read<double>('total_invested'),
+        totalQuantity: row.read<double>('total_qty'),
+      );
+
+  /// Get aggregated stats for all assets from their events.
+  Future<Map<int, AssetStats>> getStatsForAll() async {
+    final rows = await _db.customSelect(
+      _statsQuery, readsFrom: {_db.assetEvents},
+    ).get();
+    return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
   }
 
   /// Stream of aggregated stats for all assets, updates on event changes.
   Stream<Map<int, AssetStats>> watchStatsForAll() {
     return _db.customSelect(
-      'SELECT asset_id, COUNT(*) AS cnt, '
-      'MIN(date) AS first_date, MAX(date) AS last_date, '
-      "SUM(CASE WHEN type IN ('buy', 'contribute') THEN ABS(amount) ELSE 0 END) AS total_invested, "
-      "SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-      "         WHEN type = 'sell' THEN -COALESCE(quantity, 0) "
-      '         ELSE 0 END) AS total_qty '
-      'FROM asset_events GROUP BY asset_id',
-      readsFrom: {_db.assetEvents},
+      _statsQuery, readsFrom: {_db.assetEvents},
     ).watch().map((rows) {
-      return {
-        for (final row in rows)
-          row.read<int>('asset_id'): AssetStats(
-            eventCount: row.read<int>('cnt'),
-            firstDate: row.readNullable<DateTime>('first_date'),
-            lastDate: row.readNullable<DateTime>('last_date'),
-            totalInvested: row.read<double>('total_invested'),
-            totalQuantity: row.read<double>('total_qty'),
-          ),
-      };
+      return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
     });
   }
 }

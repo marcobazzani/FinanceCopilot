@@ -77,9 +77,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     // Kick off exchange rate sync in background (non-blocking)
-    Future.microtask(() {
-      _log.info('Starting exchange rate sync...');
-      ref.read(exchangeRateServiceProvider).syncRates();
+    Future.microtask(() async {
+      try {
+        _log.info('Starting exchange rate sync...');
+        await ref.read(exchangeRateServiceProvider).syncRates();
+      } catch (e) {
+        _log.warning('Exchange rate sync failed: $e');
+      }
     });
     // Kick off market price sync in background
     Future.microtask(() => _syncPrices());
