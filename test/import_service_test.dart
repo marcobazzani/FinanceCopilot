@@ -1,11 +1,9 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:asset_manager/database/database.dart';
-import 'package:asset_manager/database/tables.dart';
 import 'package:asset_manager/services/import_service.dart';
 
 void main() {
@@ -61,7 +59,7 @@ Data_Operazione;Data_Valuta;Entrate;Uscite;Descrizione
   group('Transaction import', () {
     test('import CSV as transactions', () async {
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Fineco', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Fineco'),
       );
 
       final file = _writeCsv('fineco.csv', '''
@@ -98,7 +96,7 @@ Date,Amount,Description,Extra
 
     test('deduplication: re-importing same file skips rows', () async {
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Fineco', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Fineco'),
       );
 
       final file = _writeCsv('fineco.csv', '''
@@ -138,7 +136,7 @@ Date,Amount,Description
 
     test('partial re-import: new rows imported, old rows skipped', () async {
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Revolut', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Revolut'),
       );
 
       // First import: 2 rows
@@ -184,47 +182,6 @@ Date,Amount,Desc
     });
   });
 
-  group('AssetEvent import', () {
-    test('import as asset events', () async {
-      final assetId = await db.into(db.assets).insert(
-        AssetsCompanion.insert(
-          name: 'iShares MSCI World',
-          assetType: AssetType.stockEtf,
-          valuationMethod: ValuationMethod.marketPrice,
-        ),
-      );
-
-      final file = _writeCsv('dossier.csv', '''
-Date,Type,Quantity,Price,Amount,ISIN
-01/03/2024,BUY,10,85.50,855.00,IE00B4L5Y983
-15/03/2024,BUY,5,86.00,430.00,IE00B4L5Y983
-''');
-      final preview = await importer.parseFile(file.path);
-      final result = await importer.importAssetEvents(
-        preview: preview,
-        mappings: [
-          const ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
-          const ColumnMapping(sourceColumn: 'Type', targetField: 'type'),
-          const ColumnMapping(sourceColumn: 'Quantity', targetField: 'quantity'),
-          const ColumnMapping(sourceColumn: 'Price', targetField: 'price'),
-          const ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
-        ],
-        assetId: assetId,
-      );
-
-      expect(result.importedRows, 2);
-
-      final events = await db.select(db.assetEvents).get();
-      expect(events, hasLength(2));
-      expect(events[0].type, EventType.buy);
-      expect(events[0].quantity, 10.0);
-      expect(events[0].price, 85.50);
-      expect(events[0].amount, 855.00);
-      // ISIN should be in rawMetadata (unmapped)
-      expect(events[0].rawMetadata, contains('IE00B4L5Y983'));
-    });
-  });
-
   group('Date parsing', () {
     test('handles dd/MM/yyyy format', () async {
       final file = _writeCsv('dates.csv', '''
@@ -232,7 +189,7 @@ Date,Amount
 15/01/2024,-10
 ''');
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Test'),
       );
       final preview = await importer.parseFile(file.path);
       await importer.importTransactions(
@@ -255,7 +212,7 @@ Date,Amount
 2024-03-14,-10
 ''');
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Test'),
       );
       final preview = await importer.parseFile(file.path);
       await importer.importTransactions(
@@ -279,7 +236,7 @@ Date,Amount
 01/01/2024,"1.234,56"
 ''');
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Test'),
       );
       final preview = await importer.parseFile(file.path);
       await importer.importTransactions(

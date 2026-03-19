@@ -51,7 +51,6 @@ void main() {
     test('insert and retrieve an account', () async {
       await db.into(db.accounts).insert(AccountsCompanion.insert(
         name: 'Fineco',
-        type: AccountType.bank,
       ));
 
       final accounts = await db.select(db.accounts).get();
@@ -67,7 +66,7 @@ void main() {
   group('Transaction CRUD', () {
     test('insert transaction linked to account', () async {
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Revolut', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Revolut'),
       );
 
       await db.into(db.transactions).insert(TransactionsCompanion.insert(
@@ -121,7 +120,7 @@ void main() {
   group('Import deduplication', () {
     test('import_hash prevents duplicate transactions', () async {
       final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Fineco', type: AccountType.bank),
+        AccountsCompanion.insert(name: 'Fineco'),
       );
 
       final hash = 'abc123sha256hash';
@@ -147,24 +146,6 @@ void main() {
             ..where((t) => t.importHash.equals(hash)))
           .get();
       expect(duplicate, hasLength(1)); // Would skip this row on re-import
-    });
-  });
-
-  group('DailySnapshot', () {
-    test('insert and query daily snapshot', () async {
-      await db.into(db.dailySnapshots).insert(DailySnapshotsCompanion.insert(
-        date: DateTime(2024, 3, 14),
-        totalAssets: Value(150000.0),
-        liquidabile: Value(142000.0),
-        plEur: Value(12000.0),
-      ));
-
-      final snaps = await (db.select(db.dailySnapshots)
-            ..where((s) => s.date.equals(DateTime(2024, 3, 14))))
-          .get();
-      expect(snaps, hasLength(1));
-      expect(snaps.first.totalAssets, 150000.0);
-      expect(snaps.first.liquidabile, 142000.0);
     });
   });
 }

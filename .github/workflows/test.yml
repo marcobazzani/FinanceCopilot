@@ -1,14 +1,13 @@
-name: Build Windows
+name: Tests
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches: ['**']
+  pull_request:
 
 jobs:
-  build:
-    runs-on: windows-latest
+  test:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +24,3 @@ jobs:
 
       - name: Run tests
         run: flutter test
-
-      - name: Build Windows release
-        run: flutter build windows --release
-
-      - name: Archive build
-        uses: actions/upload-artifact@v4
-        with:
-          name: FinanceCopilot-windows
-          path: build/windows/x64/runner/Release/
