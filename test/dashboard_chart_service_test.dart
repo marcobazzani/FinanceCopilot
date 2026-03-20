@@ -15,9 +15,9 @@ void main() {
 
   tearDown(() async => await db.close());
 
-  // Note: AppDatabase.onCreate seeds two default charts ("Net Worth" and
-  // "Invested vs Market Value") with sortOrder 0 and 1.  Tests account for
-  // these seeded rows.
+  // Note: AppDatabase.onCreate seeds three default widgets ("Price Changes"
+  // card at sortOrder 0, "Net Worth" at 1, "Invested vs Market Value" at 2).
+  // Tests account for these seeded rows.
 
   group('Chart CRUD', () {
     test('create chart and retrieve', () async {
@@ -33,8 +33,8 @@ void main() {
     });
 
     test('create multiple charts, verify sortOrder auto-increment', () async {
-      // Database seeds 2 charts with sortOrder 0 and 1.
-      // Next created charts should get 2, 3, 4.
+      // Database seeds 3 widgets with sortOrder 0, 1, 2.
+      // Next created charts should get 3, 4, 5.
       final id1 = await service.create(title: 'A', seriesJson: '[]');
       final id2 = await service.create(title: 'B', seriesJson: '[]');
       final id3 = await service.create(title: 'C', seriesJson: '[]');
@@ -44,9 +44,9 @@ void main() {
       final b = charts.firstWhere((c) => c.id == id2);
       final c = charts.firstWhere((c) => c.id == id3);
 
-      expect(a.sortOrder, 2);
-      expect(b.sortOrder, 3);
-      expect(c.sortOrder, 4);
+      expect(a.sortOrder, 3);
+      expect(b.sortOrder, 4);
+      expect(c.sortOrder, 5);
     });
 
     test('update title', () async {
@@ -97,7 +97,7 @@ void main() {
 
   group('watchAll', () {
     test('watchAll ordered by sortOrder', () async {
-      // Seed charts have sortOrder 0, 1. Add more.
+      // Seed widgets have sortOrder 0, 1, 2. Add more.
       await service.create(title: 'Third', seriesJson: '[]');
       await service.create(title: 'Fourth', seriesJson: '[]');
 
