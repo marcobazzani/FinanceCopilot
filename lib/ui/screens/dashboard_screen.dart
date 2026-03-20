@@ -1238,6 +1238,7 @@ class _CombineChartsDialogState extends State<_CombineChartsDialog> {
               TextField(
                 controller: _titleCtrl,
                 decoration: const InputDecoration(labelText: 'Combined Chart Title'),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
               const Text('Select charts to combine (2+):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),

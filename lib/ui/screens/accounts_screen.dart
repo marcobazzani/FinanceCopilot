@@ -81,29 +81,33 @@ class AccountsScreen extends ConsumerWidget {
 
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Account'),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(
-              labelText: 'Name', hintText: 'e.g. Fineco'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty) return;
-              await ref.read(accountServiceProvider).create(
-                    name: nameCtrl.text.trim(),
-                  );
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Create'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('New Account'),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(
+                labelText: 'Name', hintText: 'e.g. Fineco'),
+            autofocus: true,
+            onChanged: (_) => setDialogState(() {}),
           ),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: nameCtrl.text.trim().isNotEmpty
+                  ? () async {
+                      await ref.read(accountServiceProvider).create(
+                            name: nameCtrl.text.trim(),
+                          );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    }
+                  : null,
+              child: const Text('Create'),
+            ),
+          ],
+        ),
       ),
     );
   }
