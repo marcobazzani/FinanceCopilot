@@ -19,7 +19,6 @@ import 'investing_com_service.dart';
 import 'import_service.dart';
 import 'isin_lookup_service.dart';
 import 'market_price_service.dart';
-import 'registered_event_service.dart';
 import 'transaction_service.dart';
 
 // ── Service providers ──
@@ -383,24 +382,4 @@ final incomeServiceProvider = Provider<IncomeService>((ref) {
 
 final incomesProvider = StreamProvider<List<Income>>((ref) {
   return ref.watch(incomeServiceProvider).watchAll();
-});
-
-// ── RegisteredEvent providers ──
-
-final registeredEventServiceProvider = Provider<RegisteredEventService>((ref) {
-  return RegisteredEventService(ref.watch(databaseProvider));
-});
-
-final registeredEventsProvider = StreamProvider<List<RegisteredEvent>>((ref) {
-  return ref.watch(registeredEventServiceProvider).watchAll();
-});
-
-// ── AppConfigs map provider ──
-
-/// Watches all AppConfigs rows and returns them as a Map<String, String>.
-final appConfigsMapProvider = StreamProvider<Map<String, String>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return db.select(db.appConfigs).watch().map((rows) {
-    return {for (final row in rows) row.key: row.value};
-  });
 });

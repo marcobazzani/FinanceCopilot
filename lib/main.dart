@@ -15,7 +15,6 @@ import 'ui/screens/dashboard_screen.dart';
 import 'ui/screens/db_picker_screen.dart';
 import 'ui/screens/import_screen.dart';
 import 'ui/screens/income_screen.dart';
-import 'ui/screens/registered_events_screen.dart';
 import 'utils/logger.dart';
 import 'version.dart';
 
@@ -91,7 +90,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Assets'),
     NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Adjustments'),
     NavigationDestination(icon: Icon(Icons.payments), label: 'Income'),
-    NavigationDestination(icon: Icon(Icons.event_note), label: 'Events'),
   ];
 
   static const _railDestinations = [
@@ -100,7 +98,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationRailDestination(icon: Icon(Icons.pie_chart), label: Text('Assets')),
     NavigationRailDestination(icon: Icon(Icons.account_balance_wallet), label: Text('Adjustments')),
     NavigationRailDestination(icon: Icon(Icons.payments), label: Text('Income')),
-    NavigationRailDestination(icon: Icon(Icons.event_note), label: Text('Events')),
   ];
 
   @override
@@ -139,7 +136,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       2 => const AssetsScreen(),
       3 => const CapexScreen(),
       4 => const IncomeScreen(),
-      5 => const RegisteredEventsScreen(),
       _ => const SizedBox(),
     };
   }
