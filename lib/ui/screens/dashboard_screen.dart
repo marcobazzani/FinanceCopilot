@@ -11,7 +11,6 @@ import '../../utils/formatters.dart' as fmt;
 
 import '../../database/database.dart';
 import '../../database/providers.dart';
-import '../../services/derived_metrics_service.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
@@ -38,7 +37,7 @@ class _Series {
   });
 }
 
-/// All chart data: account series, asset series, CAPEX series, market value series, derived metrics.
+/// All chart data: account series, asset series, CAPEX series, market value series.
 class _AllSeriesData {
   final DateTime firstDate;
   final List<_Series> accounts;      // key: "account:<id>"
@@ -46,10 +45,7 @@ class _AllSeriesData {
   final List<_Series> assetMarket;   // key: "asset_market:<id>"
   final List<_Series> adjustments;      // key: "adjustment:<id>"
   final List<_Series> incomeAdjustments; // key: "income_adj:<id>"
-  final List<_Series> derivedSeries; // key: "derived:<name>"
   final String baseCurrency;
-  final DerivedMetrics? derivedMetrics;
-  final List<YearlyStats> yearlyStats;
 
   const _AllSeriesData({
     required this.firstDate,
@@ -58,13 +54,10 @@ class _AllSeriesData {
     required this.assetMarket,
     required this.adjustments,
     required this.incomeAdjustments,
-    this.derivedSeries = const [],
     required this.baseCurrency,
-    this.derivedMetrics,
-    this.yearlyStats = const [],
   });
 
-  List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...adjustments, ...incomeAdjustments, ...derivedSeries];
+  List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...adjustments, ...incomeAdjustments];
 }
 
 final _chartColors = [
@@ -158,10 +151,10 @@ String currencySymbol(String code) {
 }
 
 // ════════════════════════════════════════════════════
-// Raw time-series provider — extracts raw day-keyed maps
+// Unified data provider — computes ALL series at once
 // ════════════════════════════════════════════════════
 
-final _rawTimeSeriesProvider = FutureProvider<RawTimeSeriesData?>((ref) async {
+final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
@@ -178,13 +171,13 @@ final _rawTimeSeriesProvider = FutureProvider<RawTimeSeriesData?>((ref) async {
 
   final allDayKeys = <int>{};
   final rates = _RateResolver(rateService, baseCurrency);
+  var colorIdx = 0;
 
   // ════════════════════════════════════════════════
   // 1. ACCOUNTS — daily balance from transactions
   // ════════════════════════════════════════════════
   final activeAccounts = await (db.select(db.accounts)
         ..where((a) => a.isActive.equals(true))
-        ..where((a) => a.includeInNetWorth.equals(true))
         ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
       .get();
   final activeIds = activeAccounts.map((a) => a.id).toSet();
@@ -213,25 +206,11 @@ final _rawTimeSeriesProvider = FutureProvider<RawTimeSeriesData?>((ref) async {
     }
   }
 
-  // Convert account balances to base currency
-  final accountBalancesBase = <int, Map<int, double>>{};
-  for (final account in activeAccounts) {
-    if (!perAccount.containsKey(account.id)) continue;
-    final dayMap = perAccount[account.id]!;
-    final baseMap = <int, double>{};
-    for (final entry in dayMap.entries) {
-      final rate = await rates.getRate(account.currency, entry.key);
-      baseMap[entry.key] = entry.value * rate;
-    }
-    accountBalancesBase[account.id] = baseMap;
-  }
-
   // ════════════════════════════════════════════════
   // 2. ASSETS — cumulative invested value from events
   // ════════════════════════════════════════════════
   final activeAssets = await (db.select(db.assets)
         ..where((a) => a.isActive.equals(true))
-        ..where((a) => a.includeInNetWorth.equals(true))
         ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
       .get();
   final assetIds = activeAssets.map((a) => a.id).toSet();
@@ -289,228 +268,27 @@ final _rawTimeSeriesProvider = FutureProvider<RawTimeSeriesData?>((ref) async {
 
   if (allDayKeys.isEmpty) return null;
 
-  // Build cumulative invested series per asset
-  final assetInvestedCum = <int, Map<int, double>>{};
-  final sortedDaysInterim = allDayKeys.toList()..sort();
-  for (final asset in activeAssets) {
-    if (!perAssetDeltas.containsKey(asset.id)) continue;
-    final deltaMap = perAssetDeltas[asset.id]!;
-    final cumMap = <int, double>{};
-    var cumulative = 0.0;
-    var started = false;
-    for (final dayKey in sortedDaysInterim) {
-      if (deltaMap.containsKey(dayKey)) {
-        cumulative += deltaMap[dayKey]!;
-        started = true;
-      }
-      if (started) cumMap[dayKey] = cumulative;
-    }
-    assetInvestedCum[asset.id] = cumMap;
-  }
-
-  // Build market value series per asset
-  final assetMarketVal = <int, Map<int, double>>{};
-  for (final asset in activeAssets) {
-    if (!perAssetDeltas.containsKey(asset.id)) continue;
-    final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
-    final prices = await marketPriceService.getPriceHistory(asset.id);
-    final priceMap = <int, double>{};
-    for (final p in prices) {
-      priceMap[toDayKey(p.key)] = p.value;
-    }
-
-    final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
-    final assetDays = <int>{
-      ...perAssetDeltas[asset.id]!.keys,
-      ...priceMap.keys.where((dk) => dk >= firstEventKey),
-    }.toList()..sort();
-
-    final mktMap = <int, double>{};
-    var cumQuantity = 0.0;
-    double? lastPrice;
-    var started = false;
-    for (final dayKey in assetDays) {
-      if (qtyDeltaMap.containsKey(dayKey)) {
-        cumQuantity += qtyDeltaMap[dayKey]!;
-        started = true;
-      }
-      if (priceMap.containsKey(dayKey)) lastPrice = priceMap[dayKey]!;
-      if (!started) continue;
-      if (lastPrice != null && cumQuantity > 0) {
-        final fxRate = await rates.getRate(asset.currency, dayKey);
-        mktMap[dayKey] = cumQuantity * lastPrice * fxRate;
-        allDayKeys.add(dayKey);
-      }
-    }
-    assetMarketVal[asset.id] = mktMap;
-  }
-
-  // ════════════════════════════════════════════════
-  // 3. CAPEX adjustments
-  // ════════════════════════════════════════════════
-  final activeSchedules = await (db.select(db.depreciationSchedules)
-        ..where((s) => s.isActive.equals(true)))
-      .get();
-
-  final adjustmentsCum = <int, Map<int, double>>{};
-  for (final schedule in activeSchedules) {
-    final entries = await (db.select(db.depreciationEntries)
-          ..where((e) => e.scheduleId.equals(schedule.id))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
-
-    final deltaMap = <int, double>{};
-    if (schedule.expenseDate != null) {
-      final expDayKey = toDayKey(schedule.expenseDate!);
-      deltaMap[expDayKey] = (deltaMap[expDayKey] ?? 0) + schedule.totalAmount;
-    }
-    for (final entry in entries) {
-      final dayKey = toDayKey(entry.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - entry.amount;
-    }
-    if (schedule.bufferId != null) {
-      final reimbursements = await (db.select(db.bufferTransactions)
-            ..where((t) => t.bufferId.equals(schedule.bufferId!))
-            ..where((t) => t.isReimbursement.equals(true)))
-          .get();
-      for (final r in reimbursements) {
-        final dayKey = toDayKey(r.operationDate);
-        deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
-      }
-    }
-    if (deltaMap.isEmpty) continue;
-
-    // Convert to cumulative (in base currency)
-    final capexDays = deltaMap.keys.toList()..sort();
-    final cumMap = <int, double>{};
-    var cumulative = 0.0;
-    for (final dayKey in capexDays) {
-      final rate = await rates.getRate(schedule.currency, dayKey);
-      cumulative += deltaMap[dayKey]! * rate;
-      cumMap[dayKey] = cumulative;
-      allDayKeys.add(dayKey);
-    }
-    adjustmentsCum[schedule.id] = cumMap;
-  }
-
-  // ════════════════════════════════════════════════
-  // 4. INCOME ADJUSTMENTS
-  // ════════════════════════════════════════════════
-  final activeIncomeAdj = await (db.select(db.incomeAdjustments)
-        ..where((a) => a.isActive.equals(true)))
-      .get();
-
-  final incomeAdjCum = <int, Map<int, double>>{};
-  for (final adj in activeIncomeAdj) {
-    final expenses = await (db.select(db.incomeAdjustmentExpenses)
-          ..where((e) => e.adjustmentId.equals(adj.id))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
-
-    final deltaMap = <int, double>{};
-    final incomeDayKey = toDayKey(adj.incomeDate);
-    deltaMap[incomeDayKey] = (deltaMap[incomeDayKey] ?? 0) - adj.totalAmount;
-    allDayKeys.add(incomeDayKey);
-
-    for (final exp in expenses) {
-      final dayKey = toDayKey(exp.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + exp.amount;
-      allDayKeys.add(dayKey);
-    }
-    if (deltaMap.isEmpty) continue;
-
-    final adjDays = deltaMap.keys.toList()..sort();
-    final cumMap = <int, double>{};
-    var cumulative = 0.0;
-    for (final dayKey in adjDays) {
-      final rate = await rates.getRate(adj.currency, dayKey);
-      cumulative += deltaMap[dayKey]! * rate;
-      cumMap[dayKey] = cumulative;
-    }
-    incomeAdjCum[adj.id] = cumMap;
-  }
-
   final sortedDays = allDayKeys.toList()..sort();
   final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
 
-  return RawTimeSeriesData(
-    firstDate: firstDate,
-    sortedDayKeys: sortedDays,
-    baseCurrency: baseCurrency,
-    accountBalances: accountBalancesBase,
-    assetInvested: assetInvestedCum,
-    assetMarketValue: assetMarketVal,
-    adjustments: adjustmentsCum,
-    incomeAdjustments: incomeAdjCum,
-  );
-});
-
-// ════════════════════════════════════════════════════
-// Derived metrics provider
-// ════════════════════════════════════════════════════
-
-final _derivedMetricsProvider = FutureProvider<DerivedMetrics?>((ref) async {
-  final raw = await ref.watch(_rawTimeSeriesProvider.future);
-  if (raw == null) return null;
-  final events = await ref.watch(registeredEventsProvider.future);
-  final configs = await ref.watch(appConfigsMapProvider.future);
-  return DerivedMetricsService().compute(
-    raw: raw,
-    registeredEvents: events,
-    configs: configs,
-  );
-});
-
-final _yearlyStatsProvider = FutureProvider<List<YearlyStats>>((ref) async {
-  final raw = await ref.watch(_rawTimeSeriesProvider.future);
-  if (raw == null) return [];
-  final derived = await ref.watch(_derivedMetricsProvider.future);
-  if (derived == null) return [];
-  final events = await ref.watch(registeredEventsProvider.future);
-  return DerivedMetricsService().computeYearlyStats(
-    raw: raw,
-    risparTotale: derived.risparTotale,
-    registeredEvents: events,
-  );
-});
-
-// ════════════════════════════════════════════════════
-// Unified data provider — converts raw maps to _Series
-// ════════════════════════════════════════════════════
-
-final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
-  final raw = await ref.watch(_rawTimeSeriesProvider.future);
-  if (raw == null) return null;
-
-  final derived = await ref.watch(_derivedMetricsProvider.future);
-  final yearlyStats = await ref.watch(_yearlyStatsProvider.future);
-  final db = ref.watch(databaseProvider);
-
-  final firstDate = raw.firstDate;
-  final sortedDays = raw.sortedDayKeys;
-  var colorIdx = 0;
-
   // ── Build account series ──
-  final activeAccounts = await (db.select(db.accounts)
-        ..where((a) => a.isActive.equals(true))
-        ..where((a) => a.includeInNetWorth.equals(true))
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-      .get();
-
   final accountSeries = <_Series>[];
   for (final account in activeAccounts) {
-    final dayMap = raw.accountBalances[account.id];
-    if (dayMap == null) continue;
+    if (!perAccount.containsKey(account.id)) continue;
+    final dayMap = perAccount[account.id]!;
     final spots = <FlSpot>[];
     double? running;
+
     for (final dayKey in sortedDays) {
       if (dayMap.containsKey(dayKey)) running = dayMap[dayKey];
       if (running != null) {
+        final rate = await rates.getRate(account.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, running));
+        spots.add(FlSpot(x, running * rate));
       }
     }
+
     accountSeries.add(_Series(
       key: 'account:${account.id}',
       name: account.name,
@@ -520,27 +298,27 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     colorIdx++;
   }
 
-  // ── Build asset invested series ──
-  final activeAssets = await (db.select(db.assets)
-        ..where((a) => a.isActive.equals(true))
-        ..where((a) => a.includeInNetWorth.equals(true))
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-      .get();
-
+  // ── Build asset invested series (cumulative) ──
   final assetInvestedSeries = <_Series>[];
   for (final asset in activeAssets) {
-    final cumMap = raw.assetInvested[asset.id];
-    if (cumMap == null) continue;
+    if (!perAssetDeltas.containsKey(asset.id)) continue;
+    final deltaMap = perAssetDeltas[asset.id]!;
     final spots = <FlSpot>[];
-    double? running;
+    var cumulative = 0.0;
+    var started = false;
+
     for (final dayKey in sortedDays) {
-      if (cumMap.containsKey(dayKey)) running = cumMap[dayKey];
-      if (running != null) {
+      if (deltaMap.containsKey(dayKey)) {
+        cumulative += deltaMap[dayKey]!;
+        started = true;
+      }
+      if (started) {
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, running));
+        spots.add(FlSpot(x, cumulative));
       }
     }
+
     assetInvestedSeries.add(_Series(
       key: 'asset_invested:${asset.id}',
       name: '${asset.ticker ?? asset.name} inv.',
@@ -554,20 +332,48 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   // ── Build asset market value series ──
   final assetMarketSeries = <_Series>[];
   for (final asset in activeAssets) {
-    final mktMap = raw.assetMarketValue[asset.id];
-    if (mktMap == null) continue;
+    if (!perAssetDeltas.containsKey(asset.id)) continue;
+    final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
+
+    // Load market prices
+    final prices = await marketPriceService.getPriceHistory(asset.id);
+    final priceMap = <int, double>{};
+    for (final p in prices) {
+      priceMap[toDayKey(p.key)] = p.value;
+    }
+
+    final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
+    final assetDays = <int>{
+      ...perAssetDeltas[asset.id]!.keys,
+      ...priceMap.keys.where((dk) => dk >= firstEventKey),
+    }.toList()..sort();
+
     final spots = <FlSpot>[];
-    double? running;
-    for (final dayKey in sortedDays) {
-      if (mktMap.containsKey(dayKey)) running = mktMap[dayKey];
-      if (running != null) {
+    var cumQuantity = 0.0;
+    double? lastPrice;
+    var started = false;
+
+    for (final dayKey in assetDays) {
+      if (qtyDeltaMap.containsKey(dayKey)) {
+        cumQuantity += qtyDeltaMap[dayKey]!;
+        started = true;
+      }
+      if (priceMap.containsKey(dayKey)) {
+        lastPrice = priceMap[dayKey]!;
+      }
+      if (!started) continue;
+      if (lastPrice != null && cumQuantity > 0) {
+        final fxRate = await rates.getRate(asset.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, running));
+        spots.add(FlSpot(x, cumQuantity * lastPrice * fxRate));
       }
     }
+
+    // Use same color as invested counterpart
     final investedIdx = assetInvestedSeries.indexWhere((s) => s.key == 'asset_invested:${asset.id}');
     final color = investedIdx >= 0 ? assetInvestedSeries[investedIdx].color : _chartColors[colorIdx++ % _chartColors.length];
+
     assetMarketSeries.add(_Series(
       key: 'asset_market:${asset.id}',
       name: asset.ticker ?? asset.name,
@@ -576,28 +382,64 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     ));
   }
 
-  // ── Build adjustment series ──
+  // ════════════════════════════════════════════════
+  // 3. CAPEX — re-add at expense date, remove during spread steps
+  // ════════════════════════════════════════════════
   final activeSchedules = await (db.select(db.depreciationSchedules)
         ..where((s) => s.isActive.equals(true)))
       .get();
 
   final adjustmentSeries = <_Series>[];
+
   for (final schedule in activeSchedules) {
-    final cumMap = raw.adjustments[schedule.id];
-    if (cumMap == null) continue;
-    final capexDays = cumMap.keys.toList()..sort();
+    final entries = await (db.select(db.depreciationEntries)
+          ..where((e) => e.scheduleId.equals(schedule.id))
+          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+        .get();
+
+    final deltaMap = <int, double>{};
+
+    if (schedule.expenseDate != null) {
+      final expDayKey = toDayKey(schedule.expenseDate!);
+      deltaMap[expDayKey] = (deltaMap[expDayKey] ?? 0) + schedule.totalAmount;
+    }
+
+    for (final entry in entries) {
+      final dayKey = toDayKey(entry.date);
+      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - entry.amount;
+    }
+
+    if (schedule.bufferId != null) {
+      final reimbursements = await (db.select(db.bufferTransactions)
+            ..where((t) => t.bufferId.equals(schedule.bufferId!))
+            ..where((t) => t.isReimbursement.equals(true)))
+          .get();
+      for (final r in reimbursements) {
+        final dayKey = toDayKey(r.operationDate);
+        deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
+      }
+    }
+
+    if (deltaMap.isEmpty) continue;
+
+    final capexDays = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
+    var cumulative = 0.0;
     double? prevY;
+
     for (final dayKey in capexDays) {
+      final rate = await rates.getRate(schedule.currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
         spots.add(FlSpot(x - 0.5, prevY));
       }
-      final y = cumMap[dayKey]!;
+      cumulative += deltaMap[dayKey]!;
+      final y = cumulative * rate;
       spots.add(FlSpot(x, y));
       prevY = y;
     }
+
     adjustmentSeries.add(_Series(
       key: 'adjustment:${schedule.id}',
       name: schedule.assetName,
@@ -608,28 +450,55 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     colorIdx++;
   }
 
-  // ── Build income adjustment series ──
+  // ════════════════════════════════════════════════
+  // 4. INCOME ADJUSTMENTS — subtract at income date, add back at expenses
+  // ════════════════════════════════════════════════
   final activeIncomeAdj = await (db.select(db.incomeAdjustments)
         ..where((a) => a.isActive.equals(true)))
       .get();
 
   final incomeAdjSeries = <_Series>[];
+
   for (final adj in activeIncomeAdj) {
-    final cumMap = raw.incomeAdjustments[adj.id];
-    if (cumMap == null) continue;
-    final adjDays = cumMap.keys.toList()..sort();
+    final expenses = await (db.select(db.incomeAdjustmentExpenses)
+          ..where((e) => e.adjustmentId.equals(adj.id))
+          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+        .get();
+
+    final deltaMap = <int, double>{};
+
+    // At income date: subtract the full amount
+    final incomeDayKey = toDayKey(adj.incomeDate);
+    deltaMap[incomeDayKey] = (deltaMap[incomeDayKey] ?? 0) - adj.totalAmount;
+    allDayKeys.add(incomeDayKey);
+
+    // At each expense date: add back the expense amount
+    for (final exp in expenses) {
+      final dayKey = toDayKey(exp.date);
+      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + exp.amount;
+      allDayKeys.add(dayKey);
+    }
+
+    if (deltaMap.isEmpty) continue;
+
+    final adjDays = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
+    var cumulative = 0.0;
     double? prevY;
+
     for (final dayKey in adjDays) {
+      final rate = await rates.getRate(adj.currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
         spots.add(FlSpot(x - 0.5, prevY));
       }
-      final y = cumMap[dayKey]!;
+      cumulative += deltaMap[dayKey]!;
+      final y = cumulative * rate;
       spots.add(FlSpot(x, y));
       prevY = y;
     }
+
     incomeAdjSeries.add(_Series(
       key: 'income_adj:${adj.id}',
       name: adj.name,
@@ -640,37 +509,6 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     colorIdx++;
   }
 
-  // ── Build derived metric series ──
-  final derivedSeriesList = <_Series>[];
-  if (derived != null) {
-    final derivedColors = [
-      Colors.deepPurple, Colors.tealAccent.shade700, Colors.pinkAccent,
-      Colors.lightBlue, Colors.brown, Colors.deepOrange.shade300,
-      Colors.greenAccent.shade700, Colors.indigo.shade300,
-      Colors.amber.shade700, Colors.cyan.shade700,
-    ];
-    var dColorIdx = 0;
-    for (final entry in derived.allSeries.entries) {
-      if (entry.value.isEmpty) continue;
-      final spots = <FlSpot>[];
-      for (final dayKey in sortedDays) {
-        if (entry.value.containsKey(dayKey)) {
-          final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-          final x = dt.difference(firstDate).inDays.toDouble();
-          spots.add(FlSpot(x, entry.value[dayKey]!));
-        }
-      }
-      if (spots.isEmpty) continue;
-      derivedSeriesList.add(_Series(
-        key: 'derived:${entry.key}',
-        name: entry.key,
-        color: derivedColors[dColorIdx % derivedColors.length],
-        spots: spots,
-      ));
-      dColorIdx++;
-    }
-  }
-
   return _AllSeriesData(
     firstDate: firstDate,
     accounts: accountSeries,
@@ -678,10 +516,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     assetMarket: assetMarketSeries,
     adjustments: adjustmentSeries,
     incomeAdjustments: incomeAdjSeries,
-    derivedSeries: derivedSeriesList,
-    baseCurrency: raw.baseCurrency,
-    derivedMetrics: derived,
-    yearlyStats: yearlyStats,
+    baseCurrency: baseCurrency,
   );
 });
 
@@ -775,22 +610,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       padding: const EdgeInsets.all(16),
                       children: [
                         _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
-                        if (allData.derivedMetrics != null) ...[
-                          const SizedBox(height: 16),
-                          _MetricsSummaryCard(
-                            metrics: allData.derivedMetrics!,
-                            locale: locale,
-                            baseCurrency: allData.baseCurrency,
-                          ),
-                        ],
-                        if (allData.yearlyStats.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          _IncomeExpenseCard(
-                            yearlyStats: allData.yearlyStats,
-                            locale: locale,
-                            baseCurrency: allData.baseCurrency,
-                          ),
-                        ],
                         const SizedBox(height: 24),
                         ...charts.map((chart) {
                           final isCombined = chart.sourceChartIds != null;
@@ -983,7 +802,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final result = <_Series>[];
     for (final config in configs) {
       final type = config['type'] as String?;
-      final id = config['id'];
+      final id = config['id'] as int?;
       if (type == null || id == null) continue;
       final key = '$type:$id';
       final match = allData.allSeries.where((s) => s.key == key);
@@ -1063,7 +882,7 @@ class _ChartEditorDialogState extends State<_ChartEditorDialog> {
         final configs = (jsonDecode(widget.existing!.seriesJson) as List).cast<Map<String, dynamic>>();
         for (final c in configs) {
           final type = c['type'] as String?;
-          final id = c['id'];
+          final id = c['id'] as int?;
           if (type != null && id != null) _selected.add('$type:$id');
         }
       } catch (_) {}
@@ -1219,38 +1038,6 @@ class _ChartEditorDialogState extends State<_ChartEditorDialog> {
                     }),
                   ),
               ],
-
-              // Derived Metrics
-              if (d.derivedSeries.isNotEmpty) ...[
-                for (final groupEntry in DerivedMetrics.seriesGroups.entries) ...[
-                  () {
-                    final groupSeries = d.derivedSeries.where((s) {
-                      final name = s.key.replaceFirst('derived:', '');
-                      return groupEntry.value.contains(name);
-                    }).toList();
-                    if (groupSeries.isEmpty) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _SectionHeader(
-                          label: groupEntry.key,
-                          allSelected: groupSeries.every((s) => _selected.contains(s.key)),
-                          onToggleAll: () => _toggleGroup(groupSeries.map((s) => s.key).toSet()),
-                        ),
-                        for (final s in groupSeries)
-                          CheckboxListTile(
-                            dense: true,
-                            title: Text(s.name, style: const TextStyle(fontSize: 13)),
-                            value: _selected.contains(s.key),
-                            onChanged: (_) => setState(() {
-                              _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
-                            }),
-                          ),
-                      ],
-                    );
-                  }(),
-                ],
-              ],
             ],
           ),
         ),
@@ -1260,16 +1047,8 @@ class _ChartEditorDialogState extends State<_ChartEditorDialog> {
         FilledButton(
           onPressed: _selected.isEmpty || _titleCtrl.text.trim().isEmpty ? null : () {
             final series = _selected.map((key) {
-              final colonIdx = key.indexOf(':');
-              final type = key.substring(0, colonIdx);
-              final idStr = key.substring(colonIdx + 1);
-              final idInt = int.tryParse(idStr);
-              if (idInt != null) {
-                return {'type': type, 'id': idInt};
-              } else {
-                // Derived series: store name as string id
-                return {'type': type, 'id': idStr};
-              }
+              final parts = key.split(':');
+              return {'type': parts[0], 'id': int.parse(parts[1])};
             }).toList();
             Navigator.pop(context, _ChartEditorResult(
               title: _titleCtrl.text.trim(),
@@ -1542,7 +1321,6 @@ class _ChartCard extends StatelessWidget {
     final marketSeries = series.where((s) => s.key.startsWith('asset_market:')).toList();
     final adjustmentSeries = series.where((s) => s.key.startsWith('adjustment:')).toList();
     final incomeAdjSeries = series.where((s) => s.key.startsWith('income_adj:')).toList();
-    final derivedSeriesLegend = series.where((s) => s.key.startsWith('derived:')).toList();
 
     final hasZoom = zoomMinX != null || zoomMinY != null;
 
@@ -1592,7 +1370,6 @@ class _ChartCard extends StatelessWidget {
               marketSeries: marketSeries,
               adjustmentSeries: adjustmentSeries,
               incomeAdjSeries: incomeAdjSeries,
-              derivedSeries: derivedSeriesLegend,
               hidden: hidden,
               onToggle: onToggle,
               onToggleGroup: onToggleGroup,
@@ -1677,7 +1454,6 @@ class _ChartLegend extends StatelessWidget {
   final List<_Series> marketSeries;
   final List<_Series> adjustmentSeries;
   final List<_Series> incomeAdjSeries;
-  final List<_Series> derivedSeries;
   final Set<String> hidden;
   final ValueChanged<String> onToggle;
   final ValueChanged<Set<String>> onToggleGroup;
@@ -1688,7 +1464,6 @@ class _ChartLegend extends StatelessWidget {
     required this.marketSeries,
     required this.adjustmentSeries,
     required this.incomeAdjSeries,
-    this.derivedSeries = const [],
     required this.hidden,
     required this.onToggle,
     required this.onToggleGroup,
@@ -1708,8 +1483,6 @@ class _ChartLegend extends StatelessWidget {
           ..._buildGroup(context, 'Spread Adj.', adjustmentSeries),
         if (incomeAdjSeries.isNotEmpty)
           ..._buildGroup(context, 'Income Adj.', incomeAdjSeries),
-        if (derivedSeries.isNotEmpty)
-          ..._buildGroup(context, 'Derived', derivedSeries),
         _ToggleLegendItem(
           color: Colors.white,
           label: 'Total',
@@ -2485,465 +2258,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
         ],
       ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════
-// Metrics Summary Card
-// ════════════════════════════════════════════════════
-
-class _MetricsSummaryCard extends StatelessWidget {
-  final DerivedMetrics metrics;
-  final String locale;
-  final String baseCurrency;
-
-  const _MetricsSummaryCard({
-    required this.metrics,
-    required this.locale,
-    required this.baseCurrency,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final symbol = currencySymbol(baseCurrency);
-    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
-    final pctFmt = NumberFormat('0.00%', locale);
-
-    final rows = <_SummaryRow>[
-      _SummaryRow('Net Worth', metrics.ytdDeltas['Net Worth'], metrics.athValues['Net Worth'], metrics.drawdowns['Net Worth'], false),
-      _SummaryRow('Gross P/L', metrics.ytdDeltas['Gross P/L'], metrics.athValues['Gross P/L'], metrics.drawdowns['Gross P/L'], false),
-      _SummaryRow('Net P/L', metrics.ytdDeltas['Net P/L'], metrics.athValues['Net P/L'], metrics.drawdowns['Net P/L'], false),
-      if (metrics.plATPercent.isNotEmpty)
-        _SummaryRow('P/L AT%', null, null, null, true, currentPct: metrics.plATPercent.values.lastOrNull),
-      _SummaryRow('Risparmio', metrics.ytdDeltas['Risparmio'], metrics.athValues['Risparmio'], metrics.drawdowns['Risparmio'], false),
-      if (metrics.volatility.isNotEmpty)
-        _SummaryRow('Volatility', null, null, null, true, currentPct: metrics.volatility.values.last),
-    ];
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Metrics Summary', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(flex: 3, child: Text('Metric', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10))),
-                Expanded(flex: 2, child: Text('Current', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-                Expanded(flex: 2, child: Text('YTD', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-                Expanded(flex: 2, child: Text('ATH', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-                Expanded(flex: 2, child: Text('Drawdown', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-              ],
-            ),
-            const Divider(height: 8),
-            for (final row in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    Expanded(flex: 3, child: Text(row.label, style: theme.textTheme.bodySmall)),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        row.isPct
-                            ? (row.currentPct != null ? pctFmt.format(row.currentPct!) : '—')
-                            : (row.ath != null ? currFmt.format((row.ath ?? 0) - (row.drawdown ?? 0)) : '—'),
-                        style: theme.textTheme.bodySmall,
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        row.ytd != null ? '${row.ytd! >= 0 ? '+' : ''}${currFmt.format(row.ytd!)}' : '—',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: row.ytd != null ? (row.ytd! >= 0 ? Colors.green : Colors.red) : Colors.grey,
-                          fontSize: 11,
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        row.isPct ? '—' : (row.ath != null ? currFmt.format(row.ath!) : '—'),
-                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        row.isPct ? '—' : (row.drawdown != null && row.drawdown! > 0 ? '-${currFmt.format(row.drawdown!)}' : '—'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: row.drawdown != null && row.drawdown! > 0 ? Colors.red : Colors.grey,
-                          fontSize: 11,
-                        ),
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryRow {
-  final String label;
-  final double? ytd;
-  final double? ath;
-  final double? drawdown;
-  final bool isPct;
-  final double? currentPct;
-  const _SummaryRow(this.label, this.ytd, this.ath, this.drawdown, this.isPct, {this.currentPct});
-}
-
-// ════════════════════════════════════════════════════
-// Income vs Expenses Card
-// ════════════════════════════════════════════════════
-
-enum _ViewMode { raw, monthly, annualized, daily }
-enum _IncExpView { table, barChart, monthlyChart }
-
-class _IncomeExpenseCard extends StatefulWidget {
-  final List<YearlyStats> yearlyStats;
-  final String locale;
-  final String baseCurrency;
-
-  const _IncomeExpenseCard({
-    required this.yearlyStats,
-    required this.locale,
-    required this.baseCurrency,
-  });
-
-  @override
-  State<_IncomeExpenseCard> createState() => _IncomeExpenseCardState();
-}
-
-class _IncomeExpenseCardState extends State<_IncomeExpenseCard> {
-  _ViewMode _viewMode = _ViewMode.raw;
-  _IncExpView _currentView = _IncExpView.table;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final symbol = currencySymbol(widget.baseCurrency);
-    final currFmt = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 0);
-    final pctFmt = NumberFormat('+0.0%;-0.0%', widget.locale);
-
-    // Compute CAGR
-    final years = widget.yearlyStats;
-    double incomeCagr = 0, expenseCagr = 0;
-    if (years.length >= 2) {
-      final yoyIncome = years.skip(1).map((y) => 1 + y.yoyIncomeChangePct);
-      final yoyExpense = years.skip(1).map((y) => 1 + y.yoyExpenseChangePct);
-      if (yoyIncome.every((v) => v > 0)) {
-        incomeCagr = yoyIncome.reduce((a, b) => a * b);
-        incomeCagr = pow(incomeCagr, 1.0 / (years.length - 1)).toDouble() - 1;
-      }
-      if (yoyExpense.every((v) => v > 0)) {
-        expenseCagr = yoyExpense.reduce((a, b) => a * b);
-        expenseCagr = pow(expenseCagr, 1.0 / (years.length - 1)).toDouble() - 1;
-      }
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('Income vs Expenses', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.table_chart, size: 18),
-                  onPressed: () => setState(() => _currentView = _IncExpView.table),
-                  color: _currentView == _IncExpView.table ? theme.colorScheme.primary : null,
-                  tooltip: 'Table',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.bar_chart, size: 18),
-                  onPressed: () => setState(() => _currentView = _IncExpView.barChart),
-                  color: _currentView == _IncExpView.barChart ? theme.colorScheme.primary : null,
-                  tooltip: 'Bar Chart',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.show_chart, size: 18),
-                  onPressed: () => setState(() => _currentView = _IncExpView.monthlyChart),
-                  color: _currentView == _IncExpView.monthlyChart ? theme.colorScheme.primary : null,
-                  tooltip: 'Monthly',
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                for (final mode in _ViewMode.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: ChoiceChip(
-                      label: Text(mode.name[0].toUpperCase() + mode.name.substring(1)),
-                      selected: _viewMode == mode,
-                      onSelected: (_) => setState(() => _viewMode = mode),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      labelStyle: TextStyle(fontSize: 11, fontWeight: _viewMode == mode ? FontWeight.w700 : FontWeight.w400),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
-                const Spacer(),
-                if (years.length >= 2) ...[
-                  Text('Income CAGR: ', style: theme.textTheme.bodySmall?.copyWith(fontSize: 10, color: Colors.grey)),
-                  Text(pctFmt.format(incomeCagr), style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 10, color: incomeCagr >= 0 ? Colors.green : Colors.red, fontWeight: FontWeight.w600,
-                  )),
-                  const SizedBox(width: 8),
-                  Text('Expense CAGR: ', style: theme.textTheme.bodySmall?.copyWith(fontSize: 10, color: Colors.grey)),
-                  Text(pctFmt.format(expenseCagr), style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 10, color: expenseCagr <= 0 ? Colors.green : Colors.red, fontWeight: FontWeight.w600,
-                  )),
-                ],
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_currentView == _IncExpView.table)
-              _buildTable(theme, currFmt, pctFmt)
-            else if (_currentView == _IncExpView.barChart)
-              _buildBarChart(theme, currFmt)
-            else
-              _buildMonthlyChart(theme, currFmt),
-          ],
-        ),
-      ),
-    );
-  }
-
-  double _income(YearlyStats y) => switch (_viewMode) {
-    _ViewMode.raw => y.income,
-    _ViewMode.monthly => y.monthlyIncome,
-    _ViewMode.annualized => y.annualizedIncome,
-    _ViewMode.daily => y.dailyIncome,
-  };
-
-  double _expense(YearlyStats y) => switch (_viewMode) {
-    _ViewMode.raw => y.expenses,
-    _ViewMode.monthly => y.monthlyExpenses,
-    _ViewMode.annualized => y.annualizedExpenses,
-    _ViewMode.daily => y.dailyExpenses,
-  };
-
-  double _savings(YearlyStats y) => _income(y) - _expense(y);
-
-  Widget _buildTable(ThemeData theme, NumberFormat currFmt, NumberFormat pctFmt) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(flex: 1, child: Text('Year', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10))),
-            Expanded(flex: 1, child: Text('Days', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-            Expanded(flex: 2, child: Text('Income', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-            Expanded(flex: 2, child: Text('Expenses', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-            Expanded(flex: 2, child: Text('Savings', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-            Expanded(flex: 1, child: Text('Rate', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-            Expanded(flex: 2, child: Text('YoY Exp', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10), textAlign: TextAlign.right)),
-          ],
-        ),
-        const Divider(height: 8),
-        for (final y in widget.yearlyStats)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                Expanded(flex: 1, child: Text('${y.year}', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600))),
-                Expanded(flex: 1, child: Text('${y.trackedDays}', style: theme.textTheme.bodySmall?.copyWith(fontSize: 11), textAlign: TextAlign.right)),
-                Expanded(flex: 2, child: Text(currFmt.format(_income(y)), style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: Colors.green), textAlign: TextAlign.right)),
-                Expanded(flex: 2, child: Text(currFmt.format(_expense(y)), style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: Colors.red), textAlign: TextAlign.right)),
-                Expanded(flex: 2, child: Text(
-                  currFmt.format(_savings(y)),
-                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: _savings(y) >= 0 ? Colors.green : Colors.red),
-                  textAlign: TextAlign.right,
-                )),
-                Expanded(flex: 1, child: Text(
-                  '${(y.savingsRate * 100).toStringAsFixed(0)}%',
-                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: y.savingsRate >= 0 ? Colors.green : Colors.red),
-                  textAlign: TextAlign.right,
-                )),
-                Expanded(flex: 2, child: Text(
-                  y.yoyExpenseChangePct != 0 ? pctFmt.format(y.yoyExpenseChangePct) : '—',
-                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 11, color: y.yoyExpenseChangePct <= 0 ? Colors.green : Colors.red),
-                  textAlign: TextAlign.right,
-                )),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildBarChart(ThemeData theme, NumberFormat currFmt) {
-    final years = widget.yearlyStats;
-    if (years.isEmpty) return const SizedBox();
-
-    final maxVal = years.map((y) => _income(y)).reduce(max);
-
-    return SizedBox(
-      height: 200,
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: maxVal * 1.1,
-          barGroups: years.asMap().entries.map((entry) {
-            final y = entry.value;
-            return BarChartGroupData(
-              x: entry.key,
-              barRods: [
-                BarChartRodData(
-                  toY: _income(y),
-                  color: Colors.green.withValues(alpha: 0.7),
-                  width: 12,
-                ),
-                BarChartRodData(
-                  toY: _expense(y),
-                  color: Colors.red.withValues(alpha: 0.7),
-                  width: 12,
-                ),
-              ],
-            );
-          }).toList(),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, _) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= years.length) return const SizedBox();
-                  return Text('${years[idx].year}', style: const TextStyle(fontSize: 10));
-                },
-              ),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 60,
-                getTitlesWidget: (value, _) => Text(
-                  currFmt.format(value),
-                  style: const TextStyle(fontSize: 9),
-                ),
-              ),
-            ),
-          ),
-          borderData: FlBorderData(show: false),
-          gridData: const FlGridData(show: true, drawVerticalLine: false),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMonthlyChart(ThemeData theme, NumberFormat currFmt) {
-    final years = widget.yearlyStats;
-    if (years.isEmpty) return const SizedBox();
-
-    final monthLabels = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-    final yearColors = [Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.red, Colors.teal, Colors.pink, Colors.cyan];
-
-    final lines = <LineChartBarData>[];
-    final allY = <double>[];
-
-    for (var i = 0; i < years.length; i++) {
-      final y = years[i];
-      final spots = <FlSpot>[];
-      for (var m = 1; m <= 12; m++) {
-        final val = y.monthlyExpenseBreakdown[m] ?? 0;
-        if (val > 0) {
-          spots.add(FlSpot(m.toDouble() - 1, val));
-          allY.add(val);
-        }
-      }
-      if (spots.isEmpty) continue;
-      lines.add(LineChartBarData(
-        spots: spots,
-        isCurved: true,
-        preventCurveOverShooting: true,
-        color: yearColors[i % yearColors.length],
-        barWidth: 2,
-        dotData: const FlDotData(show: true),
-        belowBarData: BarAreaData(show: false),
-      ));
-    }
-
-    if (lines.isEmpty) return const Text('No monthly data', style: TextStyle(color: Colors.grey));
-
-    final maxY = allY.isEmpty ? 100.0 : allY.reduce(max) * 1.1;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 8,
-          children: [
-            for (var i = 0; i < years.length; i++)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(width: 12, height: 3, color: yearColors[i % yearColors.length]),
-                  const SizedBox(width: 4),
-                  Text('${years[i].year}', style: const TextStyle(fontSize: 11)),
-                ],
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 200,
-          child: LineChart(
-            LineChartData(
-              minX: 0,
-              maxX: 11,
-              minY: 0,
-              maxY: maxY,
-              lineBarsData: lines,
-              titlesData: FlTitlesData(
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    interval: 1,
-                    getTitlesWidget: (value, _) {
-                      final idx = value.toInt();
-                      if (idx < 0 || idx >= 12) return const SizedBox();
-                      return Text(monthLabels[idx], style: const TextStyle(fontSize: 10));
-                    },
-                  ),
-                ),
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 60,
-                    getTitlesWidget: (value, _) => Text(
-                      currFmt.format(value),
-                      style: const TextStyle(fontSize: 9),
-                    ),
-                  ),
-                ),
-              ),
-              borderData: FlBorderData(show: false),
-              gridData: const FlGridData(show: true, drawVerticalLine: false),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
