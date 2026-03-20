@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../utils/formatters.dart' as fmt;
 
 import '../../database/database.dart';
@@ -555,8 +556,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   _ChartZoom _zoomFor(int chartId) =>
       _chartZooms.putIfAbsent(chartId, () => _ChartZoom());
 
-  bool _hideComponentsFor(int chartId) =>
-      _hideComponents.putIfAbsent(chartId, () => false);
+  bool _hideComponentsFor(int chartId, {bool defaultValue = true}) =>
+      _hideComponents.putIfAbsent(chartId, () => defaultValue);
 
   @override
   Widget build(BuildContext context) {
@@ -579,16 +580,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
           data: (charts) {
-            // Build set of chart IDs that are sources of a combined chart
+            // Build set of chart IDs that are sources of a combined chart (only for type == 'chart')
             final collapsedChartIds = <int>{};
             for (final chart in charts) {
-              if (chart.sourceChartIds != null) {
+              if (chart.widgetType == 'chart' && chart.sourceChartIds != null) {
                 try {
                   final ids = (jsonDecode(chart.sourceChartIds!) as List).cast<int>();
                   collapsedChartIds.addAll(ids);
                 } catch (_) {}
               }
             }
+
+            final hasPriceChanges = charts.any((c) => c.widgetType == 'price_changes');
+            final chartService = ref.read(dashboardChartServiceProvider);
 
             return Scaffold(
               body: charts.isEmpty
@@ -606,88 +610,155 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ],
                       ),
                     )
-                  : ListView(
+                  : ReorderableListView.builder(
                       padding: const EdgeInsets.all(16),
-                      children: [
-                        _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
-                        const SizedBox(height: 24),
-                        ...charts.map((chart) {
-                          final isCombined = chart.sourceChartIds != null;
-                          final isCollapsed = collapsedChartIds.contains(chart.id) && !_expandedCollapsed.contains(chart.id);
+                      buildDefaultDragHandles: false,
+                      proxyDecorator: (child, index, animation) {
+                        return AnimatedBuilder(
+                          animation: animation,
+                          builder: (context, child) => Material(
+                            elevation: 4,
+                            color: Colors.transparent,
+                            child: child,
+                          ),
+                          child: child,
+                        );
+                      },
+                      itemCount: charts.length,
+                      onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) newIndex--;
+                        final ids = charts.map((c) => c.id).toList();
+                        final movedId = ids.removeAt(oldIndex);
+                        ids.insert(newIndex, movedId);
+                        chartService.reorder(ids);
+                      },
+                      itemBuilder: (context, index) {
+                        final chart = charts[index];
 
-                          // For collapsed source charts, show slim row
-                          if (isCollapsed) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _CollapsedChartRow(
-                                chart: chart,
-                                onExpand: () => setState(() => _expandedCollapsed.add(chart.id)),
-                                onEdit: () => _showChartEditor(context, allData, chart),
-                                onDelete: () => _deleteChart(context, chart),
-                              ),
-                            );
-                          }
-
-                          // For combined charts, build series from source chart totals
-                          List<_Series> filteredSeries;
-                          if (isCombined) {
-                            filteredSeries = _buildCombinedSeries(charts, chart, allData);
-                          } else {
-                            final seriesConfigs = _parseSeriesJson(chart.seriesJson);
-                            filteredSeries = _filterSeries(allData, seriesConfigs);
-                          }
-
-                          final hidden = _hiddenFor(chart.id);
-                          final zoom = _zoomFor(chart.id);
-                          final hideComp = _hideComponentsFor(chart.id);
-
-                          // Show collapse button if this chart was auto-collapsed but user expanded it
-                          final showCollapseButton = collapsedChartIds.contains(chart.id) && _expandedCollapsed.contains(chart.id);
-
+                        // Price changes widget
+                        if (chart.widgetType == 'price_changes') {
                           return Padding(
+                            key: ValueKey(chart.id),
                             padding: const EdgeInsets.only(bottom: 24),
-                            child: _ChartCard(
-                              chart: chart,
-                              series: filteredSeries,
-                              allData: allData,
-                              hidden: hidden,
-                              hideComponents: hideComp,
-                              locale: locale,
-                              chartHeight: _heightFor(chart.id),
-                              zoomMinX: zoom.minX,
-                              zoomMaxX: zoom.maxX,
-                              zoomMinY: zoom.minY,
-                              zoomMaxY: zoom.maxY,
-                              onToggle: (key) => setState(() {
-                                hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
-                              }),
-                              onToggleGroup: (keys) => setState(() {
-                                keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
-                              }),
-                              onToggleHideComponents: () => setState(() {
-                                _hideComponents[chart.id] = !hideComp;
-                              }),
-                              onZoom: (minX, maxX, minY, maxY) => setState(() {
-                                zoom.minX = minX;
-                                zoom.maxX = maxX;
-                                zoom.minY = minY;
-                                zoom.maxY = maxY;
-                              }),
-                              onHeightChanged: (h) => setState(() {
-                                _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
-                              }),
-                              onEdit: isCombined ? () => _showCombineChartsDialog(context, charts, chart) : () => _showChartEditor(context, allData, chart),
-                              onDelete: () => _deleteChart(context, chart),
-                              onCollapse: showCollapseButton ? () => setState(() => _expandedCollapsed.remove(chart.id)) : null,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    ReorderableDragStartListener(
+                                      index: index,
+                                      child: const Icon(Icons.drag_indicator, size: 20, color: Colors.grey),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, size: 18),
+                                      onPressed: () => _deleteChart(context, chart),
+                                      tooltip: 'Delete',
+                                    ),
+                                  ],
+                                ),
+                                _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
+                              ],
                             ),
                           );
-                        }),
-                      ],
+                        }
+
+                        // Chart widgets
+                        final isCombined = chart.sourceChartIds != null;
+                        final isCollapsed = collapsedChartIds.contains(chart.id) && !_expandedCollapsed.contains(chart.id);
+
+                        // For collapsed source charts, show slim row with drag handle
+                        if (isCollapsed) {
+                          return Padding(
+                            key: ValueKey(chart.id),
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _CollapsedChartRow(
+                              chart: chart,
+                              index: index,
+                              onExpand: () => setState(() => _expandedCollapsed.add(chart.id)),
+                              onEdit: () => _showChartEditor(context, allData, chart),
+                              onDelete: () => _deleteChart(context, chart),
+                            ),
+                          );
+                        }
+
+                        // For combined charts, build series from source chart totals
+                        List<_Series> filteredSeries;
+                        if (isCombined) {
+                          filteredSeries = _buildCombinedSeries(charts, chart, allData);
+                        } else {
+                          final seriesConfigs = _parseSeriesJson(chart.seriesJson);
+                          filteredSeries = _filterSeries(allData, seriesConfigs);
+                        }
+
+                        final hidden = _hiddenFor(chart.id);
+                        final zoom = _zoomFor(chart.id);
+                        final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
+
+                        return Padding(
+                          key: ValueKey(chart.id),
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: _ChartCard(
+                            chart: chart,
+                            index: index,
+                            series: filteredSeries,
+                            allData: allData,
+                            hidden: hidden,
+                            hideComponents: hideComp,
+                            locale: locale,
+                            chartHeight: _heightFor(chart.id),
+                            zoomMinX: zoom.minX,
+                            zoomMaxX: zoom.maxX,
+                            zoomMinY: zoom.minY,
+                            zoomMaxY: zoom.maxY,
+                            onToggle: (key) => setState(() {
+                              hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+                            }),
+                            onToggleGroup: (keys) => setState(() {
+                              keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
+                            }),
+                            onToggleHideComponents: () => setState(() {
+                              _hideComponents[chart.id] = !hideComp;
+                            }),
+                            onZoom: (minX, maxX, minY, maxY) => setState(() {
+                              zoom.minX = minX;
+                              zoom.maxX = maxX;
+                              zoom.minY = minY;
+                              zoom.maxY = maxY;
+                            }),
+                            onHeightChanged: (h) => setState(() {
+                              _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
+                            }),
+                            onEdit: isCombined ? () => _showCombineChartsDialog(context, charts, chart) : () => _showChartEditor(context, allData, chart),
+                            onDelete: () => _deleteChart(context, chart),
+                            onCollapse: (collapsedChartIds.contains(chart.id) && _expandedCollapsed.contains(chart.id))
+                                ? () => setState(() => _expandedCollapsed.remove(chart.id))
+                                : null,
+                          ),
+                        );
+                      },
                     ),
               floatingActionButton: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (charts.where((c) => c.sourceChartIds == null).length >= 2)
+                  if (!hasPriceChanges)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: FloatingActionButton.small(
+                        heroTag: 'price_changes',
+                        onPressed: () => chartService.create(
+                          title: 'Price Changes',
+                          seriesJson: '[]',
+                          widgetType: 'price_changes',
+                        ),
+                        tooltip: 'Add Price Changes',
+                        child: const Icon(Icons.show_chart),
+                      ),
+                    ),
+                  if (charts.where((c) => c.widgetType == 'chart' && c.sourceChartIds == null).length >= 2)
                     FloatingActionButton.small(
                       heroTag: 'combine',
                       onPressed: () => _showCombineChartsDialog(context, charts, null),
@@ -774,7 +845,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final result = await showDialog<_CombineChartsResult>(
       context: context,
       builder: (ctx) => _CombineChartsDialog(
-        charts: charts.where((c) => c.sourceChartIds == null).toList(),
+        charts: charts.where((c) => c.widgetType == 'chart' && c.sourceChartIds == null).toList(),
         existing: existing,
       ),
     );
@@ -877,6 +948,7 @@ class _ChartEditorDialogState extends State<_ChartEditorDialog> {
   void initState() {
     super.initState();
     _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
+    _titleCtrl.addListener(() => setState(() {}));
     if (widget.existing != null) {
       try {
         final configs = (jsonDecode(widget.existing!.seriesJson) as List).cast<Map<String, dynamic>>();
@@ -941,19 +1013,32 @@ class _ChartEditorDialogState extends State<_ChartEditorDialog> {
 
               // Assets (each with invested + market checkboxes)
               if (assetIds.isNotEmpty) ...[
-                _SectionHeader(
-                  label: 'Assets',
-                  allSelected: assetIds.every((id) =>
-                      _selected.contains('asset_invested:$id') &&
-                      _selected.contains('asset_market:$id')),
-                  onToggleAll: () {
-                    final keys = <String>{};
-                    for (final id in assetIds) {
-                      keys.add('asset_invested:$id');
-                      keys.add('asset_market:$id');
-                    }
-                    _toggleGroup(keys);
-                  },
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 4),
+                  child: Row(
+                    children: [
+                      const Text('Assets', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => _toggleGroup(assetIds.map((id) => 'asset_invested:$id').toSet()),
+                        child: Text(
+                          assetIds.every((id) => _selected.contains('asset_invested:$id'))
+                              ? 'Deselect Invested'
+                              : 'Select Invested',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _toggleGroup(assetIds.map((id) => 'asset_market:$id').toSet()),
+                        child: Text(
+                          assetIds.every((id) => _selected.contains('asset_market:$id'))
+                              ? 'Deselect Market'
+                              : 'Select Market',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 for (final id in assetIds) ...[
                   () {
@@ -1192,12 +1277,14 @@ class _CombineChartsDialogState extends State<_CombineChartsDialog> {
 
 class _CollapsedChartRow extends StatelessWidget {
   final DashboardChart chart;
+  final int index;
   final VoidCallback onExpand;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _CollapsedChartRow({
     required this.chart,
+    required this.index,
     required this.onExpand,
     required this.onEdit,
     required this.onDelete,
@@ -1205,25 +1292,33 @@ class _CollapsedChartRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(80),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.chevron_right, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            )),
-          ),
-          IconButton(icon: const Icon(Icons.expand_more, size: 18), onPressed: onExpand, tooltip: 'Expand', iconSize: 18, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-          IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: onEdit, tooltip: 'Edit', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-          IconButton(icon: const Icon(Icons.delete_outline, size: 16), onPressed: onDelete, tooltip: 'Delete', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-        ],
+    return InkWell(
+      onTap: onExpand,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(80),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            ReorderableDragStartListener(
+              index: index,
+              child: const Icon(Icons.drag_indicator, size: 18, color: Colors.grey),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.expand_more, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              )),
+            ),
+            IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: onEdit, tooltip: 'Edit', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+            IconButton(icon: const Icon(Icons.delete_outline, size: 16), onPressed: onDelete, tooltip: 'Delete', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+          ],
+        ),
       ),
     );
   }
@@ -1235,6 +1330,7 @@ class _CollapsedChartRow extends StatelessWidget {
 
 class _ChartCard extends StatelessWidget {
   final DashboardChart chart;
+  final int index;
   final List<_Series> series;
   final _AllSeriesData allData;
   final Set<String> hidden;
@@ -1256,6 +1352,7 @@ class _ChartCard extends StatelessWidget {
 
   const _ChartCard({
     required this.chart,
+    required this.index,
     required this.series,
     required this.allData,
     required this.hidden,
@@ -1332,29 +1429,36 @@ class _ChartCard extends StatelessWidget {
           // Title bar
           Row(
             children: [
+              ReorderableDragStartListener(
+                index: index,
+                child: const Icon(Icons.drag_indicator, size: 20, color: Colors.grey),
+              ),
+              const SizedBox(width: 8),
+              if (onCollapse != null)
+                GestureDetector(
+                  onTap: onCollapse,
+                  child: const Icon(Icons.expand_less, size: 18, color: Colors.grey),
+                ),
+              if (onCollapse != null) const SizedBox(width: 4),
               Expanded(
                 child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
               ),
-              Text(currFmt.format(currentTotal),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              if (chart.sourceChartIds == null)
+                Text(currFmt.format(currentTotal),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(width: 4),
-              // Hide components toggle
-              IconButton(
-                icon: Icon(hideComponents ? Icons.visibility_off : Icons.visibility, size: 18),
-                onPressed: onToggleHideComponents,
-                tooltip: hideComponents ? 'Show components' : 'Hide components',
-              ),
+              // Hide components toggle (not for combined charts — they only show contributors)
+              if (chart.sourceChartIds == null)
+                IconButton(
+                  icon: Icon(hideComponents ? Icons.visibility_off : Icons.visibility, size: 18),
+                  onPressed: onToggleHideComponents,
+                  tooltip: hideComponents ? 'Show components' : 'Hide components',
+                ),
               if (hasZoom)
                 IconButton(
                   icon: const Icon(Icons.zoom_out_map, size: 18),
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: 'Reset zoom',
-                ),
-              if (onCollapse != null)
-                IconButton(
-                  icon: const Icon(Icons.expand_less, size: 18),
-                  onPressed: onCollapse,
-                  tooltip: 'Collapse',
                 ),
               IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: onEdit, tooltip: 'Edit'),
               IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: onDelete, tooltip: 'Delete'),
@@ -1382,8 +1486,10 @@ class _ChartCard extends StatelessWidget {
             child: totalSpots.length >= 2
                 ? Builder(builder: (context) {
                     // Compute Y range so _DragZoomWrapper can map pixels to chart Y
+                    // Must match _UnifiedChart's Y range: include total only when shown
+                    final showTotal = chart.sourceChartIds == null && !hidden.contains('_total');
                     final allY = [
-                      ...totalSpots.map((s) => s.y),
+                      if (showTotal) ...totalSpots.map((s) => s.y),
                       ...drawnSeries.expand((s) => s.spots.map((p) => p.y)),
                     ];
                     final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
@@ -1405,7 +1511,7 @@ class _ChartCard extends StatelessWidget {
                         firstDate: allData.firstDate,
                         visible: drawnSeries,
                         totalSpots: totalSpots,
-                        showTotal: !hidden.contains('_total'),
+                        showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
                         baseCurrency: allData.baseCurrency,
                         locale: locale,
                         zoomMinX: zoomMinX,
@@ -2182,6 +2288,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       pricePct: c.pricePct,
                       valueDiff: c.valueDiff,
                       amtFmt: amtFmt,
+                      url: c.investingUrl,
                     )),
                     const Divider(height: 16),
                     _buildRow(
@@ -2211,6 +2318,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required double valueDiff,
     required NumberFormat amtFmt,
     bool bold = false,
+    String? url,
   }) {
     final isPositive = valueDiff >= 0;
     final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
@@ -2223,11 +2331,28 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         children: [
           Expanded(
             flex: 3,
-            child: Text(
-              name,
-              style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: url != null
+                ? MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: () => launchUrl(Uri.parse(url)),
+                      child: Text(
+                        name,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: weight,
+                          color: theme.colorScheme.primary,
+                          decoration: TextDecoration.underline,
+                          decorationColor: theme.colorScheme.primary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                : Text(
+                    name,
+                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
+                    overflow: TextOverflow.ellipsis,
+                  ),
           ),
           if (priceDiff != null)
             Expanded(

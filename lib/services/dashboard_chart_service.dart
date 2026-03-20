@@ -19,7 +19,7 @@ class DashboardChartService {
         .get();
   }
 
-  Future<int> create({required String title, required String seriesJson, String? sourceChartIds}) async {
+  Future<int> create({required String title, required String seriesJson, String? sourceChartIds, String widgetType = 'chart'}) async {
     final maxOrder = await _db.customSelect(
       'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM dashboard_charts',
     ).getSingle();
@@ -28,11 +28,22 @@ class DashboardChartService {
     return _db.into(_db.dashboardCharts).insert(
       DashboardChartsCompanion.insert(
         title: title,
+        widgetType: Value(widgetType),
         sortOrder: Value(nextOrder),
         seriesJson: seriesJson,
         sourceChartIds: Value(sourceChartIds),
       ),
     );
+  }
+
+  Future<void> reorder(List<int> orderedIds) async {
+    await _db.transaction(() async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await (_db.update(_db.dashboardCharts)
+              ..where((c) => c.id.equals(orderedIds[i])))
+            .write(DashboardChartsCompanion(sortOrder: Value(i)));
+      }
+    });
   }
 
   Future<void> update(int id, {String? title, String? seriesJson, int? sortOrder, String? sourceChartIds}) {

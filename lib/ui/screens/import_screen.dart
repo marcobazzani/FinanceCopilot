@@ -20,7 +20,8 @@ final _log = getLogger('ImportScreen');
 /// The full import wizard: pick file → preview → map columns → select target → confirm.
 class ImportScreen extends ConsumerStatefulWidget {
   final int? preselectedAccountId;
-  const ImportScreen({super.key, this.preselectedAccountId});
+  final ImportTarget? preselectedTarget;
+  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget});
 
   @override
   ConsumerState<ImportScreen> createState() => _ImportScreenState();
@@ -56,7 +57,7 @@ Future<void> _saveLastDirectory(String dir) async {
 }
 
 class _ImportScreenState extends ConsumerState<ImportScreen> {
-  int _step = 0; // 0=pick file, 1=preview+map, 2=confirm, 3=result
+  int _step = 1; // 1=preview+map, 2=confirm, 3=result
   FilePreview? _preview;
   String? _filePath;
   String? _selectedSheet;
@@ -90,13 +91,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   int _importTotal = 0;
   String? _error;
 
-  List<String> get _requiredFields => _target == ImportTarget.transaction
-      ? ['date', 'amount', 'description']
-      : ['date', 'isin', 'type', 'amount', 'quantity', 'price', 'currency', 'exchangeRate'];
+  List<String> get _requiredFields => switch (_target) {
+    ImportTarget.transaction => ['date', 'amount', 'description'],
+    ImportTarget.assetEvent => ['date', 'isin', 'type', 'amount', 'quantity', 'price', 'currency', 'exchangeRate'],
+    ImportTarget.income => ['date', 'amount'],
+  };
 
-  List<String> get _optionalFields => _target == ImportTarget.transaction
-      ? ['currency', 'valueDate', 'status']
-      : ['description'];
+  List<String> get _optionalFields => switch (_target) {
+    ImportTarget.transaction => ['currency', 'valueDate', 'status'],
+    ImportTarget.assetEvent => ['description'],
+    ImportTarget.income => ['description', 'currency'],
+  };
 
   // Multi-column mappings for optional fields: field → [col1, col2, ...]
   final Map<String, List<String>> _multiMappings = {};
@@ -123,10 +128,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _target = ImportTarget.transaction;
       _targetId = widget.preselectedAccountId;
     }
-    // Auto-open file picker after navigation animation completes
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (mounted) _pickFile();
-    });
+    if (widget.preselectedTarget != null) {
+      _target = widget.preselectedTarget!;
+    }
   }
 
   @override
@@ -140,57 +144,22 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Import File'),
-        leading: _step > 1 && _step < 3
+        title: const Text('Import'),
+        leading: _step == 2
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() => _step--),
+                onPressed: () => setState(() => _step = 1),
               )
             : null,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: switch (_step) {
-          0 => _buildFilePicker(),
           1 => _buildColumnMapper(),
           2 => _buildConfirm(),
           3 => _buildResult(),
           _ => const SizedBox(),
         },
-      ),
-    );
-  }
-
-  // ──────────────────────────────────────────────
-  // Step 0: Pick file
-  // ──────────────────────────────────────────────
-
-  Widget _buildFilePicker() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_error != null) ...[
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(_error!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 16),
-          ],
-          if (_parsing)
-            const Column(
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Reading file...', style: TextStyle(color: Colors.grey)),
-              ],
-            )
-          else
-            FilledButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: const Text('Pick File'),
-              onPressed: _pickFile,
-            ),
-        ],
       ),
     );
   }
@@ -206,7 +175,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     if (result == null || result.files.single.path == null) {
       _log.info('_pickFile: cancelled by user');
-      if (mounted && _filePath == null) Navigator.pop(context);
       return;
     }
 
@@ -247,7 +215,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _log.info('_pickFile: parsed OK — ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
-        _step = 1;
+        _parsing = false;
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
@@ -305,6 +273,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     if (_target == ImportTarget.transaction) {
       tryMap('amount', ['amount', 'importo', 'entrate', 'uscite', 'controvalore']);
+    } else if (_target == ImportTarget.income) {
+      tryMap('amount', ['amount', 'importo', 'stipendio', 'netto', 'salary', 'net']);
+      tryMap('description', ['description', 'descrizione', 'tipo', 'type', 'note']);
+      tryMap('currency', ['currency', 'valuta', 'divisa']);
     } else {
       // Asset event fields
       tryMap('isin', ['isin', 'codice isin', 'isin code']);
@@ -349,6 +321,34 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     } catch (e, stack) {
       _log.severe('_reparseFile: error', e, stack);
       setState(() => _error = 'Error re-parsing file: $e');
+    }
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (data?.text == null || data!.text!.trim().isEmpty) {
+      setState(() => _error = 'Clipboard is empty');
+      return;
+    }
+    setState(() { _parsing = true; _error = null; _filePath = null; });
+    try {
+      final importer = ref.read(importServiceProvider);
+      final preview = await importer.parseClipboard(data.text!, skipRows: _skipRows, noHeader: _noHeader);
+      if (preview.rows.isEmpty) {
+        setState(() { _error = 'No data rows found in clipboard'; _parsing = false; });
+        return;
+      }
+      setState(() {
+        _preview = preview;
+        _parsing = false;
+        _mappings.clear();
+        _amountFormula.clear();
+        _hashColumns.clear();
+        for (final f in _requiredFields) { _mappings[f] = null; }
+        _autoMap(preview.columns);
+      });
+    } catch (e) {
+      setState(() { _error = 'Error parsing clipboard: $e'; _parsing = false; });
     }
   }
 
@@ -521,12 +521,44 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // ──────────────────────────────────────────────
 
   Widget _buildColumnMapper() {
-    final preview = _preview!;
+    final preview = _preview;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Data source toolbar
+        Row(
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Open File'),
+              onPressed: _parsing ? null : _pickFile,
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.content_paste),
+              label: const Text('Paste from Clipboard'),
+              onPressed: _parsing ? null : _pasteFromClipboard,
+            ),
+            if (_filePath != null) ...[
+              const SizedBox(width: 16),
+              Chip(label: Text(_filePath!.split('/').last)),
+            ],
+            if (_filePath == null && _preview != null) ...[
+              const SizedBox(width: 16),
+              const Chip(label: Text('Clipboard data')),
+            ],
+            const Spacer(),
+            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(color: Colors.red)),
+        ],
+        const SizedBox(height: 12),
+
         // Target selector (hidden when preselected from account view)
-        if (widget.preselectedAccountId == null) ...[
+        if (widget.preselectedAccountId == null && widget.preselectedTarget == null) ...[
           Row(
             children: [
               const Text('Import as: ', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -534,6 +566,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 segments: const [
                   ButtonSegment(value: ImportTarget.transaction, label: Text('Transaction')),
                   ButtonSegment(value: ImportTarget.assetEvent, label: Text('Asset Event')),
+                  ButtonSegment(value: ImportTarget.income, label: Text('Income')),
                 ],
                 selected: {_target},
                 onSelectionChanged: (v) => setState(() {
@@ -543,7 +576,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   for (final f in _requiredFields) {
                     _mappings[f] = null;
                   }
-                  _autoMap(preview.columns);
+                  if (preview != null) _autoMap(preview.columns);
                 }),
               ),
             ],
@@ -551,6 +584,27 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           const SizedBox(height: 16),
         ],
 
+        // Disable mapping UI when no data loaded
+        Expanded(
+          child: IgnorePointer(
+            ignoring: preview == null,
+            child: Opacity(
+              opacity: preview == null ? 0.4 : 1.0,
+              child: _buildMappingContent(preview),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The mapping UI content (skip rows, column mapping, preview table, Next button).
+  Widget _buildMappingContent(FilePreview? preview) {
+    final columns = preview?.columns ?? [];
+    final totalRows = preview?.totalRows ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         // Skip rows (auto re-parse after 1s or Enter)
         Row(
           children: [
@@ -634,33 +688,33 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         const SizedBox(height: 8),
 
         // Column mapping
-        Text('Map columns (${preview.columns.length} columns, ${preview.totalRows} rows)',
+        Text('Map columns (${columns.length} columns, $totalRows rows)',
             style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Expanded(
           child: ListView(
             children: [
               // Required fields
-              _buildMappingRow('date', preview.columns, required: true),
+              _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
-                _buildAmountFormulaRow(preview.columns)
+                _buildAmountFormulaRow(columns)
               else
-                _buildMappingRow('amount', preview.columns, required: true),
+                _buildMappingRow('amount', columns, required: true),
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount')
-                  .map((f) => _buildMappingRow(f, preview.columns, required: true, multiColumn: f == 'description')),
+                  .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
               // Fee section for asset events
               if (_target == ImportTarget.assetEvent) ...[
                 const SizedBox(height: 12),
-                _buildFeeModeSection(preview.columns),
+                _buildFeeModeSection(columns),
               ],
               const SizedBox(height: 12),
               // Optional fields
               const Text('Optional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              ..._optionalFields.map((f) => _buildMappingRow(f, preview.columns, multiColumn: true)),
+              ..._optionalFields.map((f) => _buildMappingRow(f, columns, multiColumn: true)),
               const SizedBox(height: 4),
               Text('Unmapped columns are stored as metadata', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-              if (_target == ImportTarget.transaction) ...[
+              if (_target == ImportTarget.transaction && preview != null) ...[
                 const Divider(),
                 _buildBalanceModeSection(preview),
                 const Divider(),
@@ -674,7 +728,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 Wrap(
                   spacing: 4,
                   runSpacing: 0,
-                  children: preview.columns.map((col) {
+                  children: columns.map((col) {
                     final selected = _hashColumns.contains(col);
                     return FilterChip(
                       label: Text(col, style: const TextStyle(fontSize: 12)),
@@ -689,43 +743,45 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               const Divider(),
 
               // Data preview table
-              const SizedBox(height: 8),
-              Text('Preview (${preview.totalRows} rows)', style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              const Text('First 5 rows', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columns: preview.columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 12)))).toList(),
-                  rows: preview.rows.take(5).map((row) {
-                    return DataRow(
-                      cells: preview.columns.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 12)))).toList(),
-                    );
-                  }).toList(),
-                ),
-              ),
-              if (preview.rows.length > 10) ...[
+              if (preview != null) ...[
                 const SizedBox(height: 8),
-                Text('⋯ ${preview.rows.length - 10} rows hidden ⋯',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
-                    textAlign: TextAlign.center),
-              ],
-              if (preview.rows.length > 5) ...[
+                Text('Preview ($totalRows rows)', style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('Last 5 rows', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('First 5 rows', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 4),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
-                    columns: preview.columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 12)))).toList(),
-                    rows: preview.rows.skip(preview.rows.length > 5 ? preview.rows.length - 5 : 0).map((row) {
+                    columns: columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 12)))).toList(),
+                    rows: preview.rows.take(5).map((row) {
                       return DataRow(
-                        cells: preview.columns.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 12)))).toList(),
+                        cells: columns.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 12)))).toList(),
                       );
                     }).toList(),
                   ),
                 ),
+                if (preview.rows.length > 10) ...[
+                  const SizedBox(height: 8),
+                  Text('⋯ ${preview.rows.length - 10} rows hidden ⋯',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                      textAlign: TextAlign.center),
+                ],
+                if (preview.rows.length > 5) ...[
+                  const SizedBox(height: 4),
+                  const Text('Last 5 rows', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columns: columns.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 12)))).toList(),
+                      rows: preview.rows.skip(preview.rows.length > 5 ? preview.rows.length - 5 : 0).map((row) {
+                        return DataRow(
+                          cells: columns.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 12)))).toList(),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
@@ -1466,10 +1522,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   Widget _buildConfirm() {
     final isAssetImport = _target == ImportTarget.assetEvent;
+    final isIncomeImport = _target == ImportTarget.income;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!isAssetImport && widget.preselectedAccountId == null) ...[
+        if (!isAssetImport && !isIncomeImport && widget.preselectedAccountId == null) ...[
           const Text('Select Account', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           _buildAccountSelector(),
@@ -1485,9 +1542,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               children: [
                 const Text('Import Summary', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('File: ${_filePath?.split('/').last}'),
+                Text('Source: ${_filePath?.split('/').last ?? "Clipboard"}'),
                 Text('Rows: ${_preview?.totalRows}'),
-                Text('Target: ${isAssetImport ? "Asset Events" : "Transactions"}'),
+                Text('Target: ${isAssetImport ? "Asset Events" : isIncomeImport ? "Income" : "Transactions"}'),
                 const SizedBox(height: 8),
                 const Text('Mappings:', style: TextStyle(fontWeight: FontWeight.bold)),
                 ..._mappings.entries
@@ -1546,7 +1603,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               FilledButton.icon(
                 icon: const Icon(Icons.check),
                 label: const Text('Import'),
-                onPressed: (isAssetImport || _targetId != null) ? _executeImport : null,
+                onPressed: (isAssetImport || isIncomeImport || _targetId != null) ? _executeImport : null,
               ),
             ],
           ),
@@ -1804,6 +1861,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
         );
+      } else if (_target == ImportTarget.income) {
+        final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+        result = await importer.importIncomes(
+          preview: _preview!,
+          mappings: mappings,
+          defaultCurrency: baseCurrency,
+          onProgress: onProgress,
+        );
       } else {
         final assetResult = await importer.importAssetEventsGrouped(
           preview: _preview!,
@@ -1874,7 +1939,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   OutlinedButton(
                     onPressed: () => setState(() {
                       _reset();
-                      _step = 0;
+                      _step = 1;
                     }),
                     child: const Text('Import Another'),
                   ),

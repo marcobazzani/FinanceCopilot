@@ -18,6 +18,7 @@ class InvestingSearchResult {
   final String exchange;
   final String flag;
   final String type;
+  final String? url; // relative URL path, e.g. "/equities/amazon-com-inc"
 
   const InvestingSearchResult({
     required this.cid,
@@ -26,6 +27,7 @@ class InvestingSearchResult {
     required this.exchange,
     required this.flag,
     required this.type,
+    this.url,
   });
 }
 
@@ -34,7 +36,7 @@ class InvestingSearchResult {
 /// Investing.com exchange names (as returned by their search API).
 /// Multiple names per exchange code since the API uses Italian names.
 const _exchangeNames = <String, List<String>>{
-  'MIL': ['Milano'],
+  'MIL': ['Milano', 'Milan'],
   'NYQ': ['NASDAQ', 'NYSE'],  // Investing.com lists AMZN as NASDAQ even though it's NYQ
   'NMS': ['NASDAQ'],
   'NYS': ['NYSE'],
@@ -46,7 +48,7 @@ const _exchangeNames = <String, List<String>>{
   'PAR': ['Parigi', 'Paris'],
   'BRU': ['Bruxelles', 'Brussels'],
   'LIS': ['Lisbona', 'Lisbon'],
-  'SIX': ['Svizzera'],
+  'SIX': ['Svizzera', 'Switzerland'],
   'TSE': ['Toronto'],
   'HKG': ['Hong Kong'],
   'TYO': ['Tokyo'],
@@ -196,6 +198,7 @@ class InvestingComService extends MarketPriceService {
         exchange: exchange,
         flag: (q['flag'] as String?) ?? '',
         type: typeName.isNotEmpty ? '$typeName - $exchange' : exchange,
+        url: q['url'] as String?,
       );
     }).toList();
   }
@@ -223,11 +226,18 @@ class InvestingComService extends MarketPriceService {
     for (final r in results) {
       if (r.symbol.toUpperCase() == ticker.toUpperCase() &&
           exchangeNameList.any((name) => name.toLowerCase() == r.exchange.toLowerCase())) {
-        // Cache the cid
+        // Cache the cid and URL
         await db.customStatement(
           'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
           [cidKey, r.cid.toString(), 'Investing.com cid for $ticker on ${exchangeNameList.first}'],
         );
+        if (r.url != null && r.url!.isNotEmpty) {
+          final urlKey = 'INVESTING_URL_${ticker}_$exchange';
+          await db.customStatement(
+            'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
+            [urlKey, r.url!, 'Investing.com URL for $ticker'],
+          );
+        }
 
         _log.info('searchCid: found $ticker → cid=${r.cid} (${r.exchange})');
         return r.cid;
@@ -446,7 +456,60 @@ class InvestingComService extends MarketPriceService {
     return parts.join(' ');
   }
 
+  /// Backfill missing Investing.com URLs for assets that already have cached CIDs.
+  Future<void> _backfillMissingUrls(List<Asset> assets) async {
+    final missing = <(String, String, int)>[]; // (searchTerm, exchange, cachedCid)
+    for (final asset in assets) {
+      final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
+      if (searchTerm == null || searchTerm.isEmpty) continue;
+      final exchange = asset.exchange ?? 'MIL';
+      final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
+      final urlRow = await db.customSelect(
+        'SELECT value FROM app_configs WHERE key = ?',
+        variables: [Variable.withString(urlKey)],
+      ).getSingleOrNull();
+      if (urlRow != null) continue; // already has URL
+
+      final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
+      final cidRow = await db.customSelect(
+        'SELECT value FROM app_configs WHERE key = ?',
+        variables: [Variable.withString(cidKey)],
+      ).getSingleOrNull();
+      if (cidRow == null) continue; // no CID cached, will be resolved later
+      final cid = int.tryParse(cidRow.read<String>('value'));
+      if (cid == null) continue;
+
+      missing.add((searchTerm, exchange, cid));
+    }
+
+    if (missing.isEmpty) return;
+    _log.info('backfillUrls: ${missing.length} assets missing URLs');
+
+    await _runBatched(missing, _maxConcurrency, (record) async {
+      final (searchTerm, exchange, cid) = record;
+      try {
+        final results = await search(searchTerm);
+        for (final r in results) {
+          if (r.cid == cid && r.url != null && r.url!.isNotEmpty) {
+            final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
+            await db.customStatement(
+              'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
+              [urlKey, r.url!, 'Investing.com URL for $searchTerm'],
+            );
+            _log.info('backfillUrls: cached URL for $searchTerm → ${r.url}');
+            break;
+          }
+        }
+      } catch (e) {
+        _log.warning('backfillUrls: failed for $searchTerm: $e');
+      }
+    });
+  }
+
   @override
+  /// Max concurrent HTTP requests to Investing.com to avoid rate-limiting.
+  static const _maxConcurrency = 3;
+
   Future<void> syncPrices({bool forceToday = false}) async {
     try {
       final assets = await (db.select(db.assets)
@@ -460,22 +523,21 @@ class InvestingComService extends MarketPriceService {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      // Step 1: Resolve all cids first (search API doesn't need CF cookies)
-      // Also detect gaps: if firstBuy < firstPrice, we need to backfill.
-      final assetCids = <Asset, int>{};
+      // Step 0: Backfill missing URLs for assets with cached CIDs
+      await _backfillMissingUrls(assets);
+
+      // Step 1: Resolve CIDs in parallel (search API doesn't need CF cookies)
+      final candidates = <(Asset, String)>[]; // (asset, searchTerm)
       final backfillRanges = <int, DateTime>{}; // assetId → backfill-from date
       for (final asset in assets) {
-        // Use ticker if available, otherwise fall back to ISIN
         final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
         if (searchTerm == null || searchTerm.isEmpty) continue;
-        final label = _assetLabel(asset);
 
         final lastDate = await getLastSyncDate(asset.id);
         final firstBuy = await getFirstBuyDate(asset.id);
         final firstPrice = await getFirstPriceDate(asset.id);
         final defaultFrom = firstBuy ?? DateTime(2020, 1, 1);
 
-        // Check if we need to backfill a gap (firstBuy before firstPrice)
         final needsBackfill = firstBuy != null &&
             firstPrice != null &&
             firstBuy.isBefore(firstPrice);
@@ -487,17 +549,30 @@ class InvestingComService extends MarketPriceService {
         final needsForward = forceToday || from.isBefore(now);
 
         if (!needsForward && !needsBackfill) {
-          _log.fine('syncPrices: $label — already up to date');
+          _log.fine('syncPrices: ${_assetLabel(asset)} — already up to date');
           continue;
         }
 
         if (needsBackfill) {
           backfillRanges[asset.id] = firstBuy;
-          _log.info('syncPrices: $label — needs backfill from '
+          _log.info('syncPrices: ${_assetLabel(asset)} — needs backfill from '
               '${firstBuy.toIso8601String().substring(0, 10)} to '
               '${firstPrice!.toIso8601String().substring(0, 10)}');
         }
 
+        candidates.add((asset, searchTerm));
+      }
+
+      if (candidates.isEmpty) {
+        _log.info('syncPrices: no assets need syncing');
+        return;
+      }
+
+      // Resolve CIDs with bounded concurrency
+      final assetCids = <Asset, int>{};
+      await _runBatched(candidates, _maxConcurrency, (record) async {
+        final (asset, searchTerm) = record;
+        final label = _assetLabel(asset);
         final cid = await _searchCid(searchTerm, asset.exchange ?? 'MIL');
         if (cid != null) {
           assetCids[asset] = cid;
@@ -505,9 +580,7 @@ class InvestingComService extends MarketPriceService {
         } else {
           _log.warning('syncPrices: $label — could not resolve CID, skipping');
         }
-
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
+      });
 
       if (assetCids.isEmpty) {
         _log.info('syncPrices: no assets need syncing');
@@ -521,8 +594,9 @@ class InvestingComService extends MarketPriceService {
         return;
       }
 
-      // Step 3: Fetch historical prices for each asset
-      for (final entry in assetCids.entries) {
+      // Step 3: Fetch historical prices in parallel with bounded concurrency
+      final entries = assetCids.entries.toList();
+      await _runBatched(entries, _maxConcurrency, (entry) async {
         final asset = entry.key;
         final cid = entry.value;
         final label = _assetLabel(asset);
@@ -551,7 +625,6 @@ class InvestingComService extends MarketPriceService {
                 });
                 _log.info('syncPrices: $label — backfilled ${gapPrices.length} prices');
               }
-              await Future.delayed(const Duration(milliseconds: 1500));
             }
           }
 
@@ -593,13 +666,31 @@ class InvestingComService extends MarketPriceService {
         } catch (e) {
           _log.warning('syncPrices: $label (cid=$cid) — failed: $e');
         }
-
-        await Future.delayed(const Duration(milliseconds: 1500));
-      }
+      });
 
       _log.info('syncPrices: done');
     } catch (e, stack) {
       _log.warning('syncPrices: error', e, stack);
     }
+  }
+
+  /// Run [action] on each item with at most [maxConcurrent] in-flight at once.
+  static Future<void> _runBatched<T>(
+    List<T> items,
+    int maxConcurrent,
+    Future<void> Function(T) action,
+  ) async {
+    var index = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = index++;
+        if (i >= items.length) return;
+        await action(items[i]);
+      }
+    }
+    await Future.wait(List.generate(
+      maxConcurrent.clamp(1, items.length),
+      (_) => worker(),
+    ));
   }
 }

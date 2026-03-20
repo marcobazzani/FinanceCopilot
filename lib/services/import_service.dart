@@ -75,7 +75,7 @@ class ImportResult {
 }
 
 /// Target entity type for import.
-enum ImportTarget { transaction, assetEvent }
+enum ImportTarget { transaction, assetEvent, income }
 
 /// Result of an asset import that groups by ISIN.
 class AssetImportResult {
@@ -240,6 +240,19 @@ class ImportService {
     final sheets = await Isolate.run(() => _listSheetsIsolate(bytes));
     _log.info('listSheets: found ${sheets.length} sheets: $sheets');
     return sheets;
+  }
+
+  /// Parse clipboard/pasted text as CSV/TSV → FilePreview.
+  Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) async {
+    _log.info('parseClipboard: ${text.length} chars, skipRows=$skipRows, noHeader=$noHeader');
+    final result = await Isolate.run(() => _parseCsvIsolate({
+      'content': text,
+      'separator': null, // auto-detect
+      'skipRows': skipRows,
+      'noHeader': noHeader,
+    }));
+    _log.info('parseClipboard: parsed ${result.columns.length} columns, ${result.totalRows} rows');
+    return result;
   }
 
   // ──────────────────────────────────────────────
@@ -648,6 +661,76 @@ class ImportService {
         errors: errors,
       ),
       assetsByIsin: assetsByIsin,
+    );
+  }
+
+  /// Import rows as Income records.
+  Future<ImportResult> importIncomes({
+    required FilePreview preview,
+    required List<ColumnMapping> mappings,
+    String defaultCurrency = 'EUR',
+    void Function(int processed, int total)? onProgress,
+  }) async {
+    _log.info('importIncomes: ${preview.totalRows} rows, ${mappings.length} mappings, defaultCurrency=$defaultCurrency');
+    final mappingByField = {for (final m in mappings) m.targetField: m};
+    final dateMapping = mappingByField['date'];
+    final amountMapping = mappingByField['amount'];
+
+    if (dateMapping == null || amountMapping == null) {
+      return const ImportResult(
+        totalRows: 0, importedRows: 0, skippedDuplicates: 0, errorRows: 0,
+        errors: ['date and amount columns are required'],
+      );
+    }
+
+    final descMapping = mappingByField['description'];
+    final currencyMapping = mappingByField['currency'];
+
+    var imported = 0;
+    var errorCount = 0;
+    final errors = <String>[];
+    final companions = <IncomesCompanion>[];
+    const progressInterval = 100;
+
+    for (var i = 0; i < preview.rows.length; i++) {
+      final row = preview.rows[i];
+      try {
+        final dateStr = _resolveMapping(dateMapping, row) ?? '';
+        final amountStr = _resolveMapping(amountMapping, row) ?? '';
+        final date = _parseDate(dateStr);
+        final amount = _parseAmount(amountStr);
+        final description = descMapping != null ? (_resolveMapping(descMapping, row) ?? '') : '';
+        final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? defaultCurrency) : defaultCurrency;
+
+        companions.add(IncomesCompanion.insert(
+          date: date,
+          amount: amount,
+          description: Value(description),
+          currency: Value(currency.isNotEmpty ? currency : defaultCurrency),
+        ));
+        imported++;
+      } catch (e, stack) {
+        errorCount++;
+        errors.add('Row ${i + 1}: $e');
+        _log.warning('importIncomes: row ${i + 1} error: $e', e, stack);
+      }
+      if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
+    }
+
+    onProgress?.call(preview.rows.length, preview.rows.length);
+
+    _log.info('importIncomes: batch-inserting ${companions.length} rows');
+    await _db.batch((batch) {
+      batch.insertAll(_db.incomes, companions);
+    });
+
+    _log.info('importIncomes: done — imported=$imported, errors=$errorCount');
+    return ImportResult(
+      totalRows: preview.totalRows,
+      importedRows: imported,
+      skippedDuplicates: 0,
+      errorRows: errorCount,
+      errors: errors,
     );
   }
 

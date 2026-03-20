@@ -45,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -137,6 +137,14 @@ class AppDatabase extends _$AppDatabase {
           if (from < 17) {
             await customStatement('ALTER TABLE dashboard_charts ADD COLUMN source_chart_ids TEXT');
           }
+          if (from < 18) {
+            await customStatement("ALTER TABLE dashboard_charts ADD COLUMN widget_type TEXT NOT NULL DEFAULT 'chart'");
+            await customStatement('UPDATE dashboard_charts SET sort_order = sort_order + 1');
+            await customStatement(
+              "INSERT INTO dashboard_charts (title, widget_type, sort_order, series_json) "
+              "VALUES ('Price Changes', 'price_changes', 0, '[]')"
+            );
+          }
         },
       );
 
@@ -171,8 +179,16 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  /// Seed two default dashboard charts matching the original hardcoded layout.
+  /// Seed default dashboard widgets: price changes card + two charts.
   Future<void> _seedDefaultCharts() async {
+    // Widget 0: Price Changes card
+    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Price Changes',
+      widgetType: const Value('price_changes'),
+      sortOrder: const Value(0),
+      seriesJson: '[]',
+    ));
+
     // Gather all active accounts, assets, and adjustment schedules
     final accounts = await (select(this.accounts)..where((a) => a.isActive.equals(true))).get();
     final assets = await (select(this.assets)..where((a) => a.isActive.equals(true))).get();
@@ -186,7 +202,7 @@ class AppDatabase extends _$AppDatabase {
     ];
     await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
       title: 'Net Worth',
-      sortOrder: Value(0),
+      sortOrder: const Value(1),
       seriesJson: _encodeJson(nwSeries),
     ));
 
@@ -199,7 +215,7 @@ class AppDatabase extends _$AppDatabase {
     ];
     await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
       title: 'Invested vs Market Value',
-      sortOrder: Value(1),
+      sortOrder: const Value(2),
       seriesJson: _encodeJson(invSeries),
     ));
   }
@@ -224,6 +240,8 @@ LazyDatabase _openConnection() {
       await dbFolder.create(recursive: true);
     }
     final file = File(p.join(dbFolder.path, 'asset_manager.db'));
+    // ignore: avoid_print
+    print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');
     return NativeDatabase.createInBackground(file);
   });
@@ -237,6 +255,8 @@ LazyDatabase _openAtPath(String path) {
       _log.info('Creating database directory: ${parent.path}');
       await parent.create(recursive: true);
     }
+    // ignore: avoid_print
+    print('DB:  $path');
     _log.info('Opening database at path: $path');
     return NativeDatabase.createInBackground(file);
   });
