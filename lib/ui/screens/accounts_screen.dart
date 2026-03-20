@@ -5,10 +5,9 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../services/account_service.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
-
-final _balanceFormat = NumberFormat('#,##0.00', 'it_IT');
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -18,6 +17,7 @@ class AccountsScreen extends ConsumerWidget {
     final accountsAsync = ref.watch(accountsProvider);
     final statsAsync = ref.watch(accountStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
     final convertedStats = ref.watch(convertedAccountStatsProvider).valueOrNull ?? {};
 
     return Scaffold(
@@ -54,6 +54,7 @@ class AccountsScreen extends ConsumerWidget {
                 stats: stat,
                 convertedBalance: convertedStats[account.id],
                 baseCurrency: baseCurrency,
+                locale: locale,
                 index: i,
                 onTap: () => Navigator.push(
                   context,
@@ -113,6 +114,7 @@ class _AccountTile extends StatelessWidget {
   final AccountStats? stats;
   final double? convertedBalance;
   final String baseCurrency;
+  final String locale;
   final int index;
   final VoidCallback onTap;
 
@@ -122,6 +124,7 @@ class _AccountTile extends StatelessWidget {
     required this.stats,
     this.convertedBalance,
     required this.baseCurrency,
+    required this.locale,
     required this.index,
     required this.onTap,
   });
@@ -129,7 +132,8 @@ class _AccountTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateFormat = DateFormat('MMM yyyy');
+    final balanceFormat = fmt.amountFormat(locale);
+    final dateFormat = fmt.monthYearFormat(locale);
 
     return InkWell(
       onTap: onTap,
@@ -205,7 +209,7 @@ class _AccountTile extends StatelessWidget {
               children: [
                 if (stats?.balance != null) ...[
                   Text(
-                    '${_balanceFormat.format(stats!.balance!)} ${account.currency}',
+                    '${balanceFormat.format(stats!.balance!)} ${account.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: account.isActive
@@ -219,7 +223,7 @@ class _AccountTile extends StatelessWidget {
                   if (account.currency != baseCurrency && convertedBalance != null) ...[
                     const SizedBox(height: 2),
                     Text(
-                      '≈ ${_balanceFormat.format(convertedBalance!)} ${currencySymbol(baseCurrency)}',
+                      '≈ ${balanceFormat.format(convertedBalance!)} ${currencySymbol(baseCurrency)}',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: Colors.grey,
                       ),

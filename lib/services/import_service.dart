@@ -10,6 +10,7 @@ import 'package:excel/excel.dart' as xl;
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/amount_parser.dart' as amt;
+import '../utils/formatters.dart' show monthMap;
 import '../utils/logger.dart';
 import 'isin_lookup_service.dart';
 
@@ -671,26 +672,6 @@ class ImportService {
   }
 
   /// Parse a date string. Supports common formats.
-  static final _monthMap = {
-    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
-    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
-    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'june': 6,
-    'july': 7, 'august': 8, 'september': 9, 'october': 10,
-    'november': 11, 'december': 12,
-    // Italian
-    'gen': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'mag': 5, 'giu': 6,
-    'lug': 7, 'ago': 8, 'set': 9, 'ott': 10, 'nov': 11, 'dic': 12,
-    'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4, 'maggio': 5,
-    'giugno': 6, 'luglio': 7, 'agosto': 8, 'settembre': 9, 'ottobre': 10,
-    'novembre': 11, 'dicembre': 12,
-    // German
-    'jän': 1, 'mär': 3, 'mai': 5, 'okt': 10, 'dez': 12,
-    // French
-    'janv': 1, 'févr': 2, 'avr': 4, 'mai': 5, 'juin': 6,
-    'juil': 7, 'août': 8, 'sept': 9, 'déc': 12,
-    // Spanish
-    'ene': 1, 'abr': 4, 'ago': 8,
-  };
 
   DateTime _parseDate(String s) {
     s = s.trim();
@@ -755,7 +736,7 @@ class ImportService {
     // dd MMM yyyy or dd-MMM-yyyy (e.g. "20 Feb 2017", "20-Feb-2017")
     final namedDmy = RegExp(r'^(\d{1,2})[\s\-.](\w+)[\s\-.](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', caseSensitive: false).firstMatch(s);
     if (namedDmy != null) {
-      final month = _monthMap[namedDmy.group(2)!.toLowerCase()];
+      final month = monthMap[namedDmy.group(2)!.toLowerCase()];
       if (month != null) {
         return DateTime(
           int.parse(namedDmy.group(3)!),
@@ -771,7 +752,7 @@ class ImportService {
     // MMM dd, yyyy (e.g. "Feb 20, 2017", "February 20, 2017")
     final namedMdy = RegExp(r'^(\w+)\s+(\d{1,2}),?\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', caseSensitive: false).firstMatch(s);
     if (namedMdy != null) {
-      final month = _monthMap[namedMdy.group(1)!.toLowerCase()];
+      final month = monthMap[namedMdy.group(1)!.toLowerCase()];
       if (month != null) {
         return DateTime(
           int.parse(namedMdy.group(3)!),
@@ -787,7 +768,7 @@ class ImportService {
     // yyyy MMM dd (e.g. "2017 Feb 20")
     final namedYmd = RegExp(r'^(\d{4})[\s\-.](\w+)[\s\-.](\d{1,2})$', caseSensitive: false).firstMatch(s);
     if (namedYmd != null) {
-      final month = _monthMap[namedYmd.group(2)!.toLowerCase()];
+      final month = monthMap[namedYmd.group(2)!.toLowerCase()];
       if (month != null) {
         return DateTime(
           int.parse(namedYmd.group(1)!),

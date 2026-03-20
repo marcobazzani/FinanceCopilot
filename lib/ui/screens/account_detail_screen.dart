@@ -3,12 +3,11 @@ import 'dart:convert';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import '../../database/database.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
 import '../../utils/amount_parser.dart' as amt;
+import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'import_screen.dart';
 import 'transaction_edit_screen.dart';
@@ -37,8 +36,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final txStream = ref.watch(accountTransactionsProvider(widget.account.id));
-    final dateFmt = DateFormat('dd/MM/yyyy');
-    final amtFmt = NumberFormat.currency(locale: 'it_IT', symbol: widget.account.currency);
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
+    final amtFmt = fmt.currencyFormat(locale, widget.account.currency);
 
     return Scaffold(
       appBar: AppBar(

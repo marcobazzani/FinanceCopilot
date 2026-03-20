@@ -2,12 +2,12 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/capex_service.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard_screen.dart' show currencySymbol;
 
@@ -164,7 +164,8 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
     final sym = currencySymbol(_currency);
 
     // Load existing reimbursements BEFORE computing preview values
@@ -513,7 +514,8 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(
       context: context,

@@ -1,12 +1,12 @@
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard_screen.dart' show currencySymbol;
 
@@ -69,7 +69,8 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   void initState() {
     super.initState();
     final ev = widget.event;
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
 
     _selectedDate = ev?.date ?? DateTime.now();
     _dateCtrl = TextEditingController(text: dateFmt.format(_selectedDate));
@@ -366,7 +367,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateCtrl.text = DateFormat('dd/MM/yyyy').format(picked);
+        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).valueOrNull ?? 'en_US').format(picked);
       });
       _fetchExchangeRate();
     }

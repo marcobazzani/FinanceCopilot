@@ -1,11 +1,12 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show DateFormat;
 
 import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 
 class _Expense {
@@ -71,7 +72,8 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
     final sym = currencySymbol(_currency);
 
     // Load existing expenses
@@ -80,7 +82,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
       expAsync.whenData((exps) => _loadExistingExpenses(exps));
     }
 
-    final totalAmount = double.tryParse(_amountCtrl.text) ?? 0;
+    final totalAmount = double.tryParse(_amountCtrl.text.replaceAll(',', '.')) ?? 0;
     final remaining = totalAmount - _totalSpent;
 
     return Scaffold(
@@ -118,7 +120,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                     decoration: const InputDecoration(labelText: 'Total Amount'),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || double.tryParse(v) == null) return 'Invalid';
+                      if (v == null || double.tryParse(v.replaceAll(',', '.')) == null) return 'Invalid';
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -242,7 +244,8 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -289,7 +292,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     );
 
     if (confirmed != true) return null;
-    final amount = double.tryParse(amountCtrl.text);
+    final amount = double.tryParse(amountCtrl.text.replaceAll(',', '.'));
     if (amount == null || amount <= 0) return null;
     return _Expense(
       id: existing?.id,
@@ -317,7 +320,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
       final id = widget.adjustment!.id;
       await service.update(id, IncomeAdjustmentsCompanion(
         name: Value(_nameCtrl.text.trim()),
-        totalAmount: Value(double.parse(_amountCtrl.text)),
+        totalAmount: Value(double.parse(_amountCtrl.text.replaceAll(',', '.'))),
         currency: Value(_currency),
         incomeDate: Value(_incomeDate),
       ));
@@ -349,7 +352,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     } else {
       final id = await service.create(
         name: _nameCtrl.text.trim(),
-        totalAmount: double.parse(_amountCtrl.text),
+        totalAmount: double.parse(_amountCtrl.text.replaceAll(',', '.')),
         currency: _currency,
         incomeDate: _incomeDate,
       );

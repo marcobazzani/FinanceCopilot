@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +12,7 @@ import 'buffer_service.dart';
 import 'capex_service.dart';
 import 'dashboard_chart_service.dart';
 import 'income_adjustment_service.dart';
+import 'income_service.dart';
 import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
 import 'investing_com_service.dart';
@@ -61,6 +64,17 @@ final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
 final priceRefreshCounter = StateProvider<int>((ref) => 0);
 
 // ── Reactive stream providers ──
+
+/// Display locale from AppConfigs, reactive. Empty string = system default.
+final appLocaleProvider = StreamProvider<String>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('LOCALE')))
+      .watchSingleOrNull()
+      .map((row) {
+    final value = row?.value ?? '';
+    return value.isEmpty ? Platform.localeName : value;
+  });
+});
 
 /// Base currency from AppConfigs, reactive. Defaults to EUR.
 final baseCurrencyProvider = StreamProvider<String>((ref) {
@@ -255,4 +269,14 @@ final incomeAdjustmentProvider = StreamProvider.family<IncomeAdjustment, int>((r
 
 final incomeAdjustmentExpensesProvider = StreamProvider.family<List<IncomeAdjustmentExpense>, int>((ref, adjustmentId) {
   return ref.watch(incomeAdjustmentServiceProvider).watchExpenses(adjustmentId);
+});
+
+// ── Income providers ──
+
+final incomeServiceProvider = Provider<IncomeService>((ref) {
+  return IncomeService(ref.watch(databaseProvider));
+});
+
+final incomesProvider = StreamProvider<List<Income>>((ref) {
+  return ref.watch(incomeServiceProvider).watchAll();
 });

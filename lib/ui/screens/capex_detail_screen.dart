@@ -1,14 +1,10 @@
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import '../../database/database.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import 'capex_edit_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
-
-final _dateFmt = DateFormat('dd/MM/yyyy');
 
 class CapexDetailScreen extends ConsumerWidget {
   final int scheduleId;
@@ -39,8 +35,10 @@ class _DetailBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final entriesAsync = ref.watch(capexEntriesProvider(schedule.id));
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
     final sym = currencySymbol(schedule.currency);
-    final amtFmt = NumberFormat.currency(locale: 'it_IT', symbol: sym);
+    final dateFmt = fmt.shortDateFormat(locale);
+    final amtFmt = fmt.currencyFormat(locale, sym);
 
     final bufferTxnAsync = schedule.bufferId != null
         ? ref.watch(bufferTransactionsProvider(schedule.bufferId!))
@@ -99,8 +97,8 @@ class _DetailBody extends ConsumerWidget {
                   const SizedBox(height: 8),
                   _infoRow('Total', amtFmt.format(schedule.totalAmount)),
                   if (schedule.expenseDate != null)
-                    _infoRow('Expense', _dateFmt.format(schedule.expenseDate!)),
-                  _infoRow('Spread', '${_dateFmt.format(schedule.startDate)} → ${_dateFmt.format(schedule.endDate)}'),
+                    _infoRow('Expense', dateFmt.format(schedule.expenseDate!)),
+                  _infoRow('Spread', '${dateFmt.format(schedule.startDate)} → ${dateFmt.format(schedule.endDate)}'),
                 ],
               ),
             ),
@@ -146,7 +144,7 @@ class _DetailBody extends ConsumerWidget {
                         ),
                       ),
                       title: Text(
-                        _dateFmt.format(entries[i].date),
+                        dateFmt.format(entries[i].date),
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                       subtitle: Text(
@@ -227,7 +225,7 @@ class _DetailBody extends ConsumerWidget {
                         dense: true,
                         leading: const Icon(Icons.arrow_back, color: Colors.green, size: 20),
                         title: Text(
-                          '${_dateFmt.format(txn.operationDate)} — ${txn.description.isNotEmpty ? txn.description : "Reimbursement"}',
+                          '${dateFmt.format(txn.operationDate)} — ${txn.description.isNotEmpty ? txn.description : "Reimbursement"}',
                           style: const TextStyle(fontSize: 13),
                         ),
                         trailing: Text(
@@ -265,7 +263,8 @@ class _DetailBody extends ConsumerWidget {
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(
       context: context,

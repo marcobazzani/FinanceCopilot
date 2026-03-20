@@ -1,12 +1,11 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/market_price_service.dart' show supportedExchanges;
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
@@ -21,11 +20,12 @@ class AssetDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final eventsStream = ref.watch(assetEventsProvider(asset.id));
-    final dateFmt = DateFormat('dd/MM/yyyy');
-    final amtFmt = NumberFormat.currency(locale: 'it_IT', symbol: asset.currency);
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
+    final amtFmt = fmt.currencyFormat(locale, asset.currency);
     final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
     final showConverted = asset.currency != baseCurrency;
-    final baseFmt = NumberFormat.currency(locale: 'it_IT', symbol: currencySymbol(baseCurrency));
+    final baseFmt = fmt.currencyFormat(locale, currencySymbol(baseCurrency));
     final convertedAmounts = showConverted
         ? ref.watch(convertedEventAmountsProvider(asset.id)).valueOrNull ?? {}
         : <int, double>{};
@@ -220,8 +220,8 @@ class AssetDetailScreen extends ConsumerWidget {
                 TextField(
                   controller: isinCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'ISIN',
-                    hintText: 'e.g. IE00B4L5Y983',
+                    labelText: 'ISIN / Fund ID',
+                    hintText: 'e.g. IE00B4L5Y983 or 0P0000CWZR',
                   ),
                   textCapitalization: TextCapitalization.characters,
                   onChanged: (v) async {
@@ -261,6 +261,9 @@ class AssetDetailScreen extends ConsumerWidget {
                         Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
                     ],
                   )
+                else if (isinCtrl.text.trim().length >= 4 && isinCtrl.text.trim().length != 12)
+                  const Text('Non-standard ID — will use as identifier',
+                      style: TextStyle(color: Colors.orange, fontSize: 13))
                 else if (isinCtrl.text.trim().length == 12)
                   const Text('ISIN not found — will keep current name',
                       style: TextStyle(color: Colors.orange, fontSize: 13)),
@@ -291,7 +294,7 @@ class AssetDetailScreen extends ConsumerWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: isinCtrl.text.trim().length == 12 && !looking
+              onPressed: isinCtrl.text.trim().length >= 4 && !looking
                   ? () async {
                       final isin = isinCtrl.text.trim().toUpperCase();
                       final name = resolvedName ?? asset.name;
