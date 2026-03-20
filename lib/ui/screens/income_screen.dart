@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
+import '../../services/import_service.dart';
 import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
+import 'import_screen.dart';
 
 class IncomeScreen extends ConsumerStatefulWidget {
   const IncomeScreen({super.key});
@@ -142,9 +144,25 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _showAddDialog(context, baseCurrency),
-          child: const Icon(Icons.add),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton.small(
+              heroTag: 'import',
+              tooltip: 'Import from file',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ImportScreen(preselectedTarget: ImportTarget.income)),
+              ),
+              child: const Icon(Icons.file_upload),
+            ),
+            const SizedBox(height: 8),
+            FloatingActionButton(
+              heroTag: 'add',
+              onPressed: () => _showAddDialog(context, baseCurrency),
+              child: const Icon(Icons.add),
+            ),
+          ],
         ),
       ),
     );

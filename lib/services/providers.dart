@@ -191,6 +191,7 @@ class AssetDailyChange {
   final double todayFxRate;    // asset currency → base currency (today)
   final double previousFxRate; // asset currency → base currency (reference date)
   final String baseCurrency;
+  final String? investingUrl;   // Investing.com page URL
 
   const AssetDailyChange({
     required this.name,
@@ -202,6 +203,7 @@ class AssetDailyChange {
     required this.todayFxRate,
     required this.previousFxRate,
     required this.baseCurrency,
+    this.investingUrl,
   });
 
   double get priceDiff => todayPrice - previousPrice;
@@ -216,6 +218,7 @@ class AssetDailyChange {
 /// If the reference date falls on a non-trading day, the closest prior
 /// trading day's price is used automatically (via getPrice).
 final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, DateTime>((ref, referenceDate) async {
+  ref.watch(priceRefreshCounter); // rebuild after price sync
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
@@ -268,6 +271,21 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     }
     if (previousPrice == null) continue;
 
+    // Look up cached Investing.com URL for the link (same key logic as _searchCid)
+    String? investingUrl;
+    final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
+    if (searchTerm != null && searchTerm.isNotEmpty) {
+      final urlKey = 'INVESTING_URL_${searchTerm}_${asset.exchange ?? 'MIL'}';
+      final urlRow = await priceService.db.customSelect(
+        'SELECT value FROM app_configs WHERE key = ?',
+        variables: [Variable.withString(urlKey)],
+      ).getSingleOrNull();
+      if (urlRow != null) {
+        final path = urlRow.read<String>('value');
+        investingUrl = path.startsWith('http') ? path : 'https://www.investing.com$path';
+      }
+    }
+
     result.add(AssetDailyChange(
       name: asset.name,
       ticker: asset.ticker,
@@ -278,6 +296,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       todayFxRate: todayFx,
       previousFxRate: prevFx,
       baseCurrency: baseCurrency,
+      investingUrl: investingUrl,
     ));
   }
   return result;

@@ -24,6 +24,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initLogging();
   await initializeDateFormatting();
+  // Print key paths to stdout for easy access
+  // ignore: avoid_print
+  print('LOG: $logFilePath');
   _log.info('FinanceCopilot v$appVersion starting up');
   runApp(const ProviderScope(child: AssetManagerApp()));
 }
@@ -34,7 +37,10 @@ class AssetManagerApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dbPath = ref.watch(dbPathProvider);
-    final localeStr = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    // Only read locale from DB after a database is selected to avoid opening the default DB
+    final localeStr = dbPath != null
+        ? (ref.watch(appLocaleProvider).valueOrNull ?? 'en_US')
+        : 'en_US';
     // Parse locale string like "it_IT" into Locale('it', 'IT')
     final parts = localeStr.split(RegExp(r'[_-]'));
     final appLocale = Locale(parts[0], parts.length > 1 ? parts[1] : '');

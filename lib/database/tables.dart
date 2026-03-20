@@ -294,6 +294,7 @@ class AppConfigs extends Table {
 class DashboardCharts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get title => text().withLength(min: 1, max: 200)();
+  TextColumn get widgetType => text().withDefault(const Constant('chart'))();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   TextColumn get seriesJson => text()(); // JSON array of series configs
   TextColumn get sourceChartIds => text().nullable()(); // JSON array of chart IDs, e.g. "[1,3]"
