@@ -201,10 +201,9 @@ class AssetDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _editAsset(BuildContext context, WidgetRef ref) async {
+    final nameCtrl = TextEditingController(text: asset.name);
+    final tickerCtrl = TextEditingController(text: asset.ticker ?? '');
     final isinCtrl = TextEditingController(text: asset.isin ?? '');
-    String? resolvedName = asset.name;
-    String? resolvedTicker = asset.ticker;
-    bool looking = false;
     String selectedExchange = asset.exchange ?? 'MIL';
     var isActive = asset.isActive;
 
@@ -218,55 +217,28 @@ class AssetDetailScreen extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
-                  controller: isinCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'ISIN / Fund ID',
-                    hintText: 'e.g. IE00B4L5Y983 or 0P0000CWZR',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  onChanged: (v) async {
-                    final isin = v.trim().toUpperCase();
-                    if (isin.length == 12) {
-                      setDialogState(() => looking = true);
-                      final result = await ref.read(isinLookupServiceProvider).lookup(isin);
-                      if (ctx.mounted) {
-                        setDialogState(() {
-                          resolvedName = result.name;
-                          resolvedTicker = result.ticker;
-                          looking = false;
-                        });
-                      }
-                    } else {
-                      setDialogState(() {
-                        resolvedName = null;
-                        resolvedTicker = null;
-                      });
-                    }
-                  },
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                  onChanged: (_) => setDialogState(() {}),
                 ),
                 const SizedBox(height: 12),
-                if (looking)
-                  const Row(children: [
-                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                    SizedBox(width: 8),
-                    Text('Looking up ISIN...', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  ])
-                else if (resolvedName != null || resolvedTicker != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (resolvedName != null)
-                        Text(resolvedName!, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      if (resolvedTicker != null)
-                        Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                    ],
-                  )
-                else if (isinCtrl.text.trim().length >= 4 && isinCtrl.text.trim().length != 12)
-                  const Text('Non-standard ID — will use as identifier',
-                      style: TextStyle(color: Colors.orange, fontSize: 13))
-                else if (isinCtrl.text.trim().length == 12)
-                  const Text('ISIN not found — will keep current name',
-                      style: TextStyle(color: Colors.orange, fontSize: 13)),
+                TextField(
+                  controller: tickerCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Ticker',
+                    hintText: 'e.g. SWDA',
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: isinCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Identifier (ISIN, fund ID, etc.)',
+                    hintText: 'Optional',
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   value: selectedExchange,
@@ -294,17 +266,18 @@ class AssetDetailScreen extends ConsumerWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: isinCtrl.text.trim().length >= 4 && !looking
+              onPressed: nameCtrl.text.trim().isNotEmpty
                   ? () async {
+                      final name = nameCtrl.text.trim();
+                      final ticker = tickerCtrl.text.trim().toUpperCase();
                       final isin = isinCtrl.text.trim().toUpperCase();
-                      final name = resolvedName ?? asset.name;
-                      _log.info('saving asset id=${asset.id}, isin=$isin');
+                      _log.info('saving asset id=${asset.id}, name=$name');
                       await ref.read(assetServiceProvider).update(
                         asset.id,
                         AssetsCompanion(
                           name: Value(name),
-                          ticker: Value(resolvedTicker),
-                          isin: Value(isin),
+                          ticker: Value(ticker.isNotEmpty ? ticker : null),
+                          isin: Value(isin.isNotEmpty ? isin : null),
                           exchange: Value(selectedExchange),
                           isActive: Value(isActive),
                           updatedAt: Value(DateTime.now()),

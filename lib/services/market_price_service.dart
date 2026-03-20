@@ -20,6 +20,31 @@ const supportedExchanges = <String, String>{
   'Tokyo Stock Exchange': 'TYO',
 };
 
+/// Reverse map: Investing.com exchange name → internal code.
+/// Derived from `_exchangeNames` in investing_com_service.dart.
+const investingExchangeToCode = <String, String>{
+  'Milano': 'MIL',
+  'NASDAQ': 'NMS',
+  'NYSE': 'NYQ',
+  'AMEX': 'ASE',
+  'Xetra': 'XETRA',
+  'Francoforte': 'FRA',
+  'Frankfurt': 'FRA',
+  'London': 'LON',
+  'Londra': 'LON',
+  'Amsterdam': 'AMS',
+  'Parigi': 'PAR',
+  'Paris': 'PAR',
+  'Bruxelles': 'BRU',
+  'Brussels': 'BRU',
+  'Lisbona': 'LIS',
+  'Lisbon': 'LIS',
+  'Svizzera': 'SIX',
+  'Toronto': 'TSE',
+  'Hong Kong': 'HKG',
+  'Tokyo': 'TYO',
+};
+
 /// Abstract base for market price providers.
 /// Handles all DB logic; subclasses only implement the HTTP fetch.
 abstract class MarketPriceService {
@@ -45,10 +70,10 @@ abstract class MarketPriceService {
     try {
       final assets = await (db.select(db.assets)
             ..where((a) => a.isActive.equals(true))
-            ..where((a) => a.ticker.isNotNull()))
+            ..where((a) => a.ticker.isNotNull() | a.isin.isNotNull()))
           .get();
 
-      _log.info('syncPrices: found ${assets.length} active assets with tickers');
+      _log.info('syncPrices: found ${assets.length} active assets with ticker/ISIN');
 
       for (var i = 0; i < assets.length; i++) {
         final asset = assets[i];
