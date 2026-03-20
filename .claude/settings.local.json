@@ -64,7 +64,8 @@
       "Bash(echo Checking for table accessor usage in all dart files...:*)",
       "Bash(sqlite3:*)",
       "Bash(flutter analyze:*)",
-      "Bash(log show:*)"
+      "Bash(log show:*)",
+      "Bash(.venv/bin/python3:*)"
     ]
   }
 }
