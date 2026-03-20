@@ -296,6 +296,7 @@ class DashboardCharts extends Table {
   TextColumn get title => text().withLength(min: 1, max: 200)();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   TextColumn get seriesJson => text()(); // JSON array of series configs
+  TextColumn get sourceChartIds => text().nullable()(); // JSON array of chart IDs, e.g. "[1,3]"
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

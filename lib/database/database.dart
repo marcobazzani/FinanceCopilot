@@ -45,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -133,6 +133,9 @@ class AppDatabase extends _$AppDatabase {
               "INSERT OR IGNORE INTO app_configs (key, value, description) "
               "VALUES ('LOCALE', '', 'Display locale (empty = system default)')"
             );
+          }
+          if (from < 17) {
+            await customStatement('ALTER TABLE dashboard_charts ADD COLUMN source_chart_ids TEXT');
           }
         },
       );

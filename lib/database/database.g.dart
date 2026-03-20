@@ -10566,6 +10566,17 @@ class $DashboardChartsTable extends DashboardCharts
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _sourceChartIdsMeta = const VerificationMeta(
+    'sourceChartIds',
+  );
+  @override
+  late final GeneratedColumn<String> sourceChartIds = GeneratedColumn<String>(
+    'source_chart_ids',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -10584,6 +10595,7 @@ class $DashboardChartsTable extends DashboardCharts
     title,
     sortOrder,
     seriesJson,
+    sourceChartIds,
     createdAt,
   ];
   @override
@@ -10623,6 +10635,15 @@ class $DashboardChartsTable extends DashboardCharts
     } else if (isInserting) {
       context.missing(_seriesJsonMeta);
     }
+    if (data.containsKey('source_chart_ids')) {
+      context.handle(
+        _sourceChartIdsMeta,
+        sourceChartIds.isAcceptableOrUnknown(
+          data['source_chart_ids']!,
+          _sourceChartIdsMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -10654,6 +10675,10 @@ class $DashboardChartsTable extends DashboardCharts
         DriftSqlType.string,
         data['${effectivePrefix}series_json'],
       )!,
+      sourceChartIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_chart_ids'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -10672,12 +10697,14 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
   final String title;
   final int sortOrder;
   final String seriesJson;
+  final String? sourceChartIds;
   final DateTime createdAt;
   const DashboardChart({
     required this.id,
     required this.title,
     required this.sortOrder,
     required this.seriesJson,
+    this.sourceChartIds,
     required this.createdAt,
   });
   @override
@@ -10687,6 +10714,9 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
     map['title'] = Variable<String>(title);
     map['sort_order'] = Variable<int>(sortOrder);
     map['series_json'] = Variable<String>(seriesJson);
+    if (!nullToAbsent || sourceChartIds != null) {
+      map['source_chart_ids'] = Variable<String>(sourceChartIds);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -10697,6 +10727,9 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
       title: Value(title),
       sortOrder: Value(sortOrder),
       seriesJson: Value(seriesJson),
+      sourceChartIds: sourceChartIds == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceChartIds),
       createdAt: Value(createdAt),
     );
   }
@@ -10711,6 +10744,7 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
       title: serializer.fromJson<String>(json['title']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       seriesJson: serializer.fromJson<String>(json['seriesJson']),
+      sourceChartIds: serializer.fromJson<String?>(json['sourceChartIds']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -10722,6 +10756,7 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
       'title': serializer.toJson<String>(title),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'seriesJson': serializer.toJson<String>(seriesJson),
+      'sourceChartIds': serializer.toJson<String?>(sourceChartIds),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -10731,12 +10766,16 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
     String? title,
     int? sortOrder,
     String? seriesJson,
+    Value<String?> sourceChartIds = const Value.absent(),
     DateTime? createdAt,
   }) => DashboardChart(
     id: id ?? this.id,
     title: title ?? this.title,
     sortOrder: sortOrder ?? this.sortOrder,
     seriesJson: seriesJson ?? this.seriesJson,
+    sourceChartIds: sourceChartIds.present
+        ? sourceChartIds.value
+        : this.sourceChartIds,
     createdAt: createdAt ?? this.createdAt,
   );
   DashboardChart copyWithCompanion(DashboardChartsCompanion data) {
@@ -10747,6 +10786,9 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
       seriesJson: data.seriesJson.present
           ? data.seriesJson.value
           : this.seriesJson,
+      sourceChartIds: data.sourceChartIds.present
+          ? data.sourceChartIds.value
+          : this.sourceChartIds,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -10758,13 +10800,15 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
           ..write('title: $title, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('seriesJson: $seriesJson, ')
+          ..write('sourceChartIds: $sourceChartIds, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, title, sortOrder, seriesJson, createdAt);
+  int get hashCode =>
+      Object.hash(id, title, sortOrder, seriesJson, sourceChartIds, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -10773,6 +10817,7 @@ class DashboardChart extends DataClass implements Insertable<DashboardChart> {
           other.title == this.title &&
           other.sortOrder == this.sortOrder &&
           other.seriesJson == this.seriesJson &&
+          other.sourceChartIds == this.sourceChartIds &&
           other.createdAt == this.createdAt);
 }
 
@@ -10781,12 +10826,14 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
   final Value<String> title;
   final Value<int> sortOrder;
   final Value<String> seriesJson;
+  final Value<String?> sourceChartIds;
   final Value<DateTime> createdAt;
   const DashboardChartsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.seriesJson = const Value.absent(),
+    this.sourceChartIds = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   DashboardChartsCompanion.insert({
@@ -10794,6 +10841,7 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
     required String title,
     this.sortOrder = const Value.absent(),
     required String seriesJson,
+    this.sourceChartIds = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : title = Value(title),
        seriesJson = Value(seriesJson);
@@ -10802,6 +10850,7 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
     Expression<String>? title,
     Expression<int>? sortOrder,
     Expression<String>? seriesJson,
+    Expression<String>? sourceChartIds,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -10809,6 +10858,7 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
       if (title != null) 'title': title,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (seriesJson != null) 'series_json': seriesJson,
+      if (sourceChartIds != null) 'source_chart_ids': sourceChartIds,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -10818,6 +10868,7 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
     Value<String>? title,
     Value<int>? sortOrder,
     Value<String>? seriesJson,
+    Value<String?>? sourceChartIds,
     Value<DateTime>? createdAt,
   }) {
     return DashboardChartsCompanion(
@@ -10825,6 +10876,7 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
       title: title ?? this.title,
       sortOrder: sortOrder ?? this.sortOrder,
       seriesJson: seriesJson ?? this.seriesJson,
+      sourceChartIds: sourceChartIds ?? this.sourceChartIds,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -10844,6 +10896,9 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
     if (seriesJson.present) {
       map['series_json'] = Variable<String>(seriesJson.value);
     }
+    if (sourceChartIds.present) {
+      map['source_chart_ids'] = Variable<String>(sourceChartIds.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -10857,6 +10912,7 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
           ..write('title: $title, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('seriesJson: $seriesJson, ')
+          ..write('sourceChartIds: $sourceChartIds, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -20115,6 +20171,7 @@ typedef $$DashboardChartsTableCreateCompanionBuilder =
       required String title,
       Value<int> sortOrder,
       required String seriesJson,
+      Value<String?> sourceChartIds,
       Value<DateTime> createdAt,
     });
 typedef $$DashboardChartsTableUpdateCompanionBuilder =
@@ -20123,6 +20180,7 @@ typedef $$DashboardChartsTableUpdateCompanionBuilder =
       Value<String> title,
       Value<int> sortOrder,
       Value<String> seriesJson,
+      Value<String?> sourceChartIds,
       Value<DateTime> createdAt,
     });
 
@@ -20152,6 +20210,11 @@ class $$DashboardChartsTableFilterComposer
 
   ColumnFilters<String> get seriesJson => $composableBuilder(
     column: $table.seriesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceChartIds => $composableBuilder(
+    column: $table.sourceChartIds,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -20190,6 +20253,11 @@ class $$DashboardChartsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get sourceChartIds => $composableBuilder(
+    column: $table.sourceChartIds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -20216,6 +20284,11 @@ class $$DashboardChartsTableAnnotationComposer
 
   GeneratedColumn<String> get seriesJson => $composableBuilder(
     column: $table.seriesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourceChartIds => $composableBuilder(
+    column: $table.sourceChartIds,
     builder: (column) => column,
   );
 
@@ -20264,12 +20337,14 @@ class $$DashboardChartsTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<String> seriesJson = const Value.absent(),
+                Value<String?> sourceChartIds = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => DashboardChartsCompanion(
                 id: id,
                 title: title,
                 sortOrder: sortOrder,
                 seriesJson: seriesJson,
+                sourceChartIds: sourceChartIds,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -20278,12 +20353,14 @@ class $$DashboardChartsTableTableManager
                 required String title,
                 Value<int> sortOrder = const Value.absent(),
                 required String seriesJson,
+                Value<String?> sourceChartIds = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => DashboardChartsCompanion.insert(
                 id: id,
                 title: title,
                 sortOrder: sortOrder,
                 seriesJson: seriesJson,
+                sourceChartIds: sourceChartIds,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0

@@ -540,6 +540,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final _chartHeights = <int, double>{}; // chartId → user-set height
   final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
   final _hideComponents = <int, bool>{}; // chartId → hide individual lines
+  final _expandedCollapsed = <int>{}; // chart IDs temporarily un-collapsed
 
   static const _defaultChartHeight = 420.0;
   static const _minChartHeight = 200.0;
@@ -578,6 +579,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
           data: (charts) {
+            // Build set of chart IDs that are sources of a combined chart
+            final collapsedChartIds = <int>{};
+            for (final chart in charts) {
+              if (chart.sourceChartIds != null) {
+                try {
+                  final ids = (jsonDecode(chart.sourceChartIds!) as List).cast<int>();
+                  collapsedChartIds.addAll(ids);
+                } catch (_) {}
+              }
+            }
+
             return Scaffold(
               body: charts.isEmpty
                   ? Center(
@@ -600,11 +612,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
                         const SizedBox(height: 24),
                         ...charts.map((chart) {
-                          final seriesConfigs = _parseSeriesJson(chart.seriesJson);
-                          final filteredSeries = _filterSeries(allData, seriesConfigs);
+                          final isCombined = chart.sourceChartIds != null;
+                          final isCollapsed = collapsedChartIds.contains(chart.id) && !_expandedCollapsed.contains(chart.id);
+
+                          // For collapsed source charts, show slim row
+                          if (isCollapsed) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _CollapsedChartRow(
+                                chart: chart,
+                                onExpand: () => setState(() => _expandedCollapsed.add(chart.id)),
+                                onEdit: () => _showChartEditor(context, allData, chart),
+                                onDelete: () => _deleteChart(context, chart),
+                              ),
+                            );
+                          }
+
+                          // For combined charts, build series from source chart totals
+                          List<_Series> filteredSeries;
+                          if (isCombined) {
+                            filteredSeries = _buildCombinedSeries(charts, chart, allData);
+                          } else {
+                            final seriesConfigs = _parseSeriesJson(chart.seriesJson);
+                            filteredSeries = _filterSeries(allData, seriesConfigs);
+                          }
+
                           final hidden = _hiddenFor(chart.id);
                           final zoom = _zoomFor(chart.id);
                           final hideComp = _hideComponentsFor(chart.id);
+
+                          // Show collapse button if this chart was auto-collapsed but user expanded it
+                          final showCollapseButton = collapsedChartIds.contains(chart.id) && _expandedCollapsed.contains(chart.id);
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 24),
@@ -638,22 +676,118 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               onHeightChanged: (h) => setState(() {
                                 _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
                               }),
-                              onEdit: () => _showChartEditor(context, allData, chart),
+                              onEdit: isCombined ? () => _showCombineChartsDialog(context, charts, chart) : () => _showChartEditor(context, allData, chart),
                               onDelete: () => _deleteChart(context, chart),
+                              onCollapse: showCollapseButton ? () => setState(() => _expandedCollapsed.remove(chart.id)) : null,
                             ),
                           );
                         }),
                       ],
                     ),
-              floatingActionButton: FloatingActionButton(
-                onPressed: () => _showChartEditor(context, allData, null),
-                child: const Icon(Icons.add),
+              floatingActionButton: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (charts.where((c) => c.sourceChartIds == null).length >= 2)
+                    FloatingActionButton.small(
+                      heroTag: 'combine',
+                      onPressed: () => _showCombineChartsDialog(context, charts, null),
+                      tooltip: 'Combine Charts',
+                      child: const Icon(Icons.merge_type),
+                    ),
+                  const SizedBox(height: 8),
+                  FloatingActionButton(
+                    heroTag: 'add',
+                    onPressed: () => _showChartEditor(context, allData, null),
+                    child: const Icon(Icons.add),
+                  ),
+                ],
               ),
             );
           },
         );
       },
     );
+  }
+
+  /// Build series for a combined chart: each source chart's total becomes a line.
+  List<_Series> _buildCombinedSeries(List<DashboardChart> allCharts, DashboardChart combined, _AllSeriesData allData) {
+    List<int> sourceIds;
+    try {
+      sourceIds = (jsonDecode(combined.sourceChartIds!) as List).cast<int>();
+    } catch (_) {
+      return [];
+    }
+
+    final result = <_Series>[];
+    var colorIdx = 0;
+
+    for (final srcId in sourceIds) {
+      final srcChart = allCharts.where((c) => c.id == srcId).firstOrNull;
+      if (srcChart == null) continue;
+
+      final seriesConfigs = _parseSeriesJson(srcChart.seriesJson);
+      final srcSeries = _filterSeries(allData, seriesConfigs);
+      if (srcSeries.isEmpty) continue;
+
+      // Compute total spots for this source chart using the smart logic
+      final totalSpots = _buildSmartTotalSpotsStatic(srcSeries);
+      if (totalSpots.isEmpty) continue;
+
+      result.add(_Series(
+        key: 'combined_src:$srcId',
+        name: srcChart.title,
+        color: _chartColors[colorIdx % _chartColors.length],
+        spots: totalSpots,
+      ));
+      colorIdx++;
+    }
+
+    return result;
+  }
+
+  /// Static version of smart total spots for use outside _ChartCard.
+  static List<FlSpot> _buildSmartTotalSpotsStatic(List<_Series> visible) {
+    final visibleInvestedIds = <int>{};
+    final visibleMarketIds = <int>{};
+    for (final s in visible) {
+      final parts = s.key.split(':');
+      if (parts.length != 2) continue;
+      final id = int.tryParse(parts[1]);
+      if (id == null) continue;
+      if (parts[0] == 'asset_invested') visibleInvestedIds.add(id);
+      if (parts[0] == 'asset_market') visibleMarketIds.add(id);
+    }
+    final excludeFromTotal = <String>{};
+    for (final id in visibleInvestedIds) {
+      if (visibleMarketIds.contains(id)) {
+        excludeFromTotal.add('asset_invested:$id');
+      }
+    }
+    final spotsForTotal = visible
+        .where((s) => !excludeFromTotal.contains(s.key))
+        .map((s) => s.spots)
+        .toList();
+    return buildTotalSpots(spotsForTotal);
+  }
+
+  Future<void> _showCombineChartsDialog(BuildContext context, List<DashboardChart> charts, DashboardChart? existing) async {
+    final result = await showDialog<_CombineChartsResult>(
+      context: context,
+      builder: (ctx) => _CombineChartsDialog(
+        charts: charts.where((c) => c.sourceChartIds == null).toList(),
+        existing: existing,
+      ),
+    );
+    if (result == null) return;
+
+    final service = ref.read(dashboardChartServiceProvider);
+    final sourceJson = jsonEncode(result.selectedChartIds);
+
+    if (existing != null) {
+      await service.update(existing.id, title: result.title, sourceChartIds: sourceJson);
+    } else {
+      await service.create(title: result.title, seriesJson: '[]', sourceChartIds: sourceJson);
+    }
   }
 
   List<Map<String, dynamic>> _parseSeriesJson(String json) {
@@ -964,6 +1098,138 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════
+// Combine Charts dialog
+// ════════════════════════════════════════════════════
+
+class _CombineChartsResult {
+  final String title;
+  final List<int> selectedChartIds;
+  _CombineChartsResult({required this.title, required this.selectedChartIds});
+}
+
+class _CombineChartsDialog extends StatefulWidget {
+  final List<DashboardChart> charts; // non-combined charts only
+  final DashboardChart? existing;
+
+  const _CombineChartsDialog({required this.charts, this.existing});
+
+  @override
+  State<_CombineChartsDialog> createState() => _CombineChartsDialogState();
+}
+
+class _CombineChartsDialogState extends State<_CombineChartsDialog> {
+  late final TextEditingController _titleCtrl;
+  final _selectedIds = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
+    if (widget.existing?.sourceChartIds != null) {
+      try {
+        final ids = (jsonDecode(widget.existing!.sourceChartIds!) as List).cast<int>();
+        _selectedIds.addAll(ids);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing != null ? 'Edit Combined Chart' : 'Combine Charts'),
+      content: SizedBox(
+        width: 400,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(labelText: 'Combined Chart Title'),
+              ),
+              const SizedBox(height: 16),
+              const Text('Select charts to combine (2+):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 8),
+              for (final chart in widget.charts)
+                CheckboxListTile(
+                  dense: true,
+                  title: Text(chart.title, style: const TextStyle(fontSize: 13)),
+                  value: _selectedIds.contains(chart.id),
+                  onChanged: (_) => setState(() {
+                    _selectedIds.contains(chart.id) ? _selectedIds.remove(chart.id) : _selectedIds.add(chart.id);
+                  }),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _selectedIds.length >= 2 && _titleCtrl.text.trim().isNotEmpty
+              ? () => Navigator.pop(context, _CombineChartsResult(
+                  title: _titleCtrl.text.trim(),
+                  selectedChartIds: _selectedIds.toList(),
+                ))
+              : null,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Collapsed chart row (auto-collapsed source chart)
+// ════════════════════════════════════════════════════
+
+class _CollapsedChartRow extends StatelessWidget {
+  final DashboardChart chart;
+  final VoidCallback onExpand;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _CollapsedChartRow({
+    required this.chart,
+    required this.onExpand,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(80),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.chevron_right, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            )),
+          ),
+          IconButton(icon: const Icon(Icons.expand_more, size: 18), onPressed: onExpand, tooltip: 'Expand', iconSize: 18, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+          IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: onEdit, tooltip: 'Edit', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+          IconButton(icon: const Icon(Icons.delete_outline, size: 16), onPressed: onDelete, tooltip: 'Delete', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
 // Unified chart card widget
 // ════════════════════════════════════════════════════
 
@@ -986,6 +1252,7 @@ class _ChartCard extends StatelessWidget {
   final ValueChanged<double> onHeightChanged;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback? onCollapse;
 
   const _ChartCard({
     required this.chart,
@@ -1006,6 +1273,7 @@ class _ChartCard extends StatelessWidget {
     required this.onHeightChanged,
     required this.onEdit,
     required this.onDelete,
+    this.onCollapse,
   });
 
   /// Build total spots with smart asset handling:
@@ -1081,6 +1349,12 @@ class _ChartCard extends StatelessWidget {
                   icon: const Icon(Icons.zoom_out_map, size: 18),
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: 'Reset zoom',
+                ),
+              if (onCollapse != null)
+                IconButton(
+                  icon: const Icon(Icons.expand_less, size: 18),
+                  onPressed: onCollapse,
+                  tooltip: 'Collapse',
                 ),
               IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: onEdit, tooltip: 'Edit'),
               IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: onDelete, tooltip: 'Delete'),
