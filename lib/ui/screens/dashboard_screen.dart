@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
+import 'package:intl/intl.dart';
 import '../../utils/formatters.dart' as fmt;
 
 import '../../database/database.dart';
@@ -593,54 +594,56 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ],
                       ),
                     )
-                  : ListView.builder(
+                  : ListView(
                       padding: const EdgeInsets.all(16),
-                      itemCount: charts.length,
-                      itemBuilder: (context, index) {
-                        final chart = charts[index];
-                        final seriesConfigs = _parseSeriesJson(chart.seriesJson);
-                        final filteredSeries = _filterSeries(allData, seriesConfigs);
-                        final hidden = _hiddenFor(chart.id);
-                        final zoom = _zoomFor(chart.id);
-                        final hideComp = _hideComponentsFor(chart.id);
+                      children: [
+                        _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
+                        const SizedBox(height: 24),
+                        ...charts.map((chart) {
+                          final seriesConfigs = _parseSeriesJson(chart.seriesJson);
+                          final filteredSeries = _filterSeries(allData, seriesConfigs);
+                          final hidden = _hiddenFor(chart.id);
+                          final zoom = _zoomFor(chart.id);
+                          final hideComp = _hideComponentsFor(chart.id);
 
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 24),
-                          child: _ChartCard(
-                            chart: chart,
-                            series: filteredSeries,
-                            allData: allData,
-                            hidden: hidden,
-                            hideComponents: hideComp,
-                            locale: locale,
-                            chartHeight: _heightFor(chart.id),
-                            zoomMinX: zoom.minX,
-                            zoomMaxX: zoom.maxX,
-                            zoomMinY: zoom.minY,
-                            zoomMaxY: zoom.maxY,
-                            onToggle: (key) => setState(() {
-                              hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
-                            }),
-                            onToggleGroup: (keys) => setState(() {
-                              keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
-                            }),
-                            onToggleHideComponents: () => setState(() {
-                              _hideComponents[chart.id] = !hideComp;
-                            }),
-                            onZoom: (minX, maxX, minY, maxY) => setState(() {
-                              zoom.minX = minX;
-                              zoom.maxX = maxX;
-                              zoom.minY = minY;
-                              zoom.maxY = maxY;
-                            }),
-                            onHeightChanged: (h) => setState(() {
-                              _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
-                            }),
-                            onEdit: () => _showChartEditor(context, allData, chart),
-                            onDelete: () => _deleteChart(context, chart),
-                          ),
-                        );
-                      },
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 24),
+                            child: _ChartCard(
+                              chart: chart,
+                              series: filteredSeries,
+                              allData: allData,
+                              hidden: hidden,
+                              hideComponents: hideComp,
+                              locale: locale,
+                              chartHeight: _heightFor(chart.id),
+                              zoomMinX: zoom.minX,
+                              zoomMaxX: zoom.maxX,
+                              zoomMinY: zoom.minY,
+                              zoomMaxY: zoom.maxY,
+                              onToggle: (key) => setState(() {
+                                hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+                              }),
+                              onToggleGroup: (keys) => setState(() {
+                                keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
+                              }),
+                              onToggleHideComponents: () => setState(() {
+                                _hideComponents[chart.id] = !hideComp;
+                              }),
+                              onZoom: (minX, maxX, minY, maxY) => setState(() {
+                                zoom.minX = minX;
+                                zoom.maxX = maxX;
+                                zoom.minY = minY;
+                                zoom.maxY = maxY;
+                              }),
+                              onHeightChanged: (h) => setState(() {
+                                _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
+                              }),
+                              onEdit: () => _showChartEditor(context, allData, chart),
+                              onDelete: () => _deleteChart(context, chart),
+                            ),
+                          );
+                        }),
+                      ],
                     ),
               floatingActionButton: FloatingActionButton(
                 onPressed: () => _showChartEditor(context, allData, null),
@@ -1721,6 +1724,265 @@ class _UnifiedChart extends StatelessWidget {
           ),
         ),
         lineBarsData: lineBars,
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Asset Daily Changes Card
+// ════════════════════════════════════════════════════
+
+class _AssetDailyChangesCard extends ConsumerStatefulWidget {
+  final String locale;
+  final String baseCurrency;
+
+  const _AssetDailyChangesCard({
+    required this.locale,
+    required this.baseCurrency,
+  });
+
+  @override
+  ConsumerState<_AssetDailyChangesCard> createState() => _AssetDailyChangesCardState();
+}
+
+enum _SortCol { name, priceDiff, pct, valueDiff }
+enum _SortDir { asc, desc, none }
+
+class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
+  static const _labels = ['1d', '1w', '1m', '3m', '6m', 'YTD', '1y', '3y', '5y', 'All'];
+  int _selectedIdx = 0;
+  _SortCol _sortCol = _SortCol.name;
+  _SortDir _sortDir = _SortDir.asc;
+
+  void _onHeaderTap(_SortCol col) {
+    setState(() {
+      if (_sortCol == col) {
+        // Cycle: asc → desc → none (back to default name asc)
+        _sortDir = switch (_sortDir) {
+          _SortDir.asc => _SortDir.desc,
+          _SortDir.desc => _SortDir.none,
+          _SortDir.none => _SortDir.asc,
+        };
+        if (_sortDir == _SortDir.none) {
+          _sortCol = _SortCol.name;
+          _sortDir = _SortDir.asc;
+        }
+      } else {
+        _sortCol = col;
+        _sortDir = _SortDir.asc;
+      }
+    });
+  }
+
+  List<AssetDailyChange> _applySorting(List<AssetDailyChange> changes) {
+    final sorted = List.of(changes);
+    int Function(AssetDailyChange, AssetDailyChange) comparator;
+    switch (_sortCol) {
+      case _SortCol.name:
+        comparator = (a, b) => (a.ticker ?? a.name).compareTo(b.ticker ?? b.name);
+      case _SortCol.priceDiff:
+        comparator = (a, b) => (a.priceDiff * a.todayFxRate).compareTo(b.priceDiff * b.todayFxRate);
+      case _SortCol.pct:
+        comparator = (a, b) => a.pricePct.compareTo(b.pricePct);
+      case _SortCol.valueDiff:
+        comparator = (a, b) => a.valueDiff.compareTo(b.valueDiff);
+    }
+    sorted.sort((a, b) => _sortDir == _SortDir.desc ? comparator(b, a) : comparator(a, b));
+    return sorted;
+  }
+
+  DateTime get _referenceDate {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return switch (_selectedIdx) {
+      0 => today.subtract(const Duration(days: 1)),
+      1 => today.subtract(const Duration(days: 7)),
+      2 => DateTime(today.year, today.month - 1, today.day),
+      3 => DateTime(today.year, today.month - 3, today.day),
+      4 => DateTime(today.year, today.month - 6, today.day),
+      5 => DateTime(today.year, 1, 1),
+      6 => DateTime(today.year - 1, today.month, today.day),
+      7 => DateTime(today.year - 3, today.month, today.day),
+      8 => DateTime(today.year - 5, today.month, today.day),
+      9 => DateTime(2000, 1, 1),
+      _ => today.subtract(const Duration(days: 1)),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
+    final theme = Theme.of(context);
+    final amtFmt = fmt.amountFormat(widget.locale);
+    final symbol = currencySymbol(widget.baseCurrency);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Price Changes', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                ...List.generate(_labels.length, (i) {
+                  final selected = i == _selectedIdx;
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: ChoiceChip(
+                      label: Text(_labels[i]),
+                      selected: selected,
+                      onSelected: (_) => setState(() => _selectedIdx = i),
+                      labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: EdgeInsets.zero,
+                    ),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 8),
+            changesAsync.when(
+              loading: () => const Center(child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )),
+              error: (e, _) => Text('Error: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
+              data: (changes) {
+                if (changes.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text('No price data available', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  );
+                }
+
+                final sorted = _applySorting(changes);
+
+                final totalDiff = sorted.fold(0.0, (sum, c) => sum + c.valueDiff);
+                final totalPreviousValue = sorted.fold(0.0, (sum, c) => sum + c.previousPrice * c.quantity * c.previousFxRate);
+                final totalPct = totalPreviousValue != 0 ? (totalDiff / totalPreviousValue) * 100 : 0.0;
+
+                Widget headerCell(String label, _SortCol col, {int flex = 2, TextAlign align = TextAlign.right}) {
+                  final isActive = _sortCol == col;
+                  final arrow = isActive ? (_sortDir == _SortDir.asc ? ' \u25B2' : ' \u25BC') : '';
+                  return Expanded(
+                    flex: flex,
+                    child: GestureDetector(
+                      onTap: () => _onHeaderTap(col),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Text(
+                          '$label$arrow',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isActive ? theme.colorScheme.primary : Colors.grey,
+                            fontSize: 10,
+                            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                          textAlign: align,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          headerCell('Asset', _SortCol.name, flex: 3, align: TextAlign.left),
+                          headerCell('Price \u0394 ($symbol)', _SortCol.priceDiff),
+                          headerCell('%', _SortCol.pct),
+                          headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
+                        ],
+                      ),
+                    ),
+                    ...sorted.map((c) => _buildRow(
+                      theme: theme,
+                      name: c.ticker ?? c.name,
+                      priceDiff: c.priceDiff * c.todayFxRate,
+                      pricePct: c.pricePct,
+                      valueDiff: c.valueDiff,
+                      amtFmt: amtFmt,
+                    )),
+                    const Divider(height: 16),
+                    _buildRow(
+                      theme: theme,
+                      name: 'Total',
+                      priceDiff: null,
+                      pricePct: totalPct,
+                      valueDiff: totalDiff,
+                      amtFmt: amtFmt,
+                      bold: true,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow({
+    required ThemeData theme,
+    required String name,
+    required double? priceDiff,
+    required double pricePct,
+    required double valueDiff,
+    required NumberFormat amtFmt,
+    bool bold = false,
+  }) {
+    final isPositive = valueDiff >= 0;
+    final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
+    final arrow = valueDiff == 0 ? '' : (isPositive ? '\u25B2 ' : '\u25BC ');
+    final weight = bold ? FontWeight.w700 : FontWeight.w400;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: Text(
+              name,
+              style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (priceDiff != null)
+            Expanded(
+              flex: 2,
+              child: Text(
+                '${priceDiff >= 0 ? '+' : ''}${amtFmt.format(priceDiff)}',
+                style: theme.textTheme.bodySmall?.copyWith(color: color, fontSize: 11),
+                textAlign: TextAlign.right,
+              ),
+            )
+          else
+            const Expanded(flex: 2, child: SizedBox()),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%',
+              style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight, fontSize: 11),
+              textAlign: TextAlign.right,
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              '$arrow${amtFmt.format(valueDiff.abs())}',
+              style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
       ),
     );
   }

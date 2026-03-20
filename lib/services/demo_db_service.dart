@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:drift/drift.dart';
@@ -9,25 +10,40 @@ import '../utils/logger.dart';
 final _log = getLogger('DemoDbService');
 
 /// Generates a demo database with realistic, anonymized financial data.
+///
+/// Generation order: market prices → FX rates → asset events (using actual
+/// market prices on buy dates) → transactions (with balance guard ≥ 0).
 class DemoDbService {
   DemoDbService._();
+
+  /// Minimum balance the main account is allowed to have. Investment buys
+  /// are skipped for the month if they would push the balance below this.
+  static const _minBalance = 2000.0;
 
   static Future<void> generateDemoDb(String path) async {
     _log.info('Generating demo DB at $path');
     final db = AppDatabase.withPath(path);
 
     try {
-      // Wait for DB to be fully initialized (migration runs on first access)
       await db.customSelect('SELECT 1').get();
 
       await _insertAccounts(db);
       await _insertCategories(db);
-      await _insertTransactions(db);
       await _insertAssets(db);
-      await _insertAssetEvents(db);
+
+      final priceTimeSeries = _generatePriceTimeSeries();
+      await _writeMarketPrices(db, priceTimeSeries);
+
+      final fxRates = _generateFxRates();
+      await _writeFxRates(db, fxRates);
+
+      // Two-pass: first compute all potential buys, then build transactions
+      // together so we can skip buys that would overdraw the account.
+      await _insertEventsAndTransactions(db, priceTimeSeries, fxRates);
+
       await _insertBuffer(db);
       await _insertDepreciation(db);
-      await _insertExchangeRates(db);
+      await _insertDashboardCharts(db);
 
       _log.info('Demo DB generation complete');
     } finally {
@@ -35,12 +51,12 @@ class DemoDbService {
     }
   }
 
+  // ── Accounts ──
+
   static Future<void> _insertAccounts(AppDatabase db) async {
     final accounts = [
-      ('Checking Plus', AccountType.bank, 'EUR', 'National Bank', 1),
-      ('Savings Pro', AccountType.bank, 'EUR', 'National Bank', 2),
-      ('Digital Bank', AccountType.bank, 'EUR', 'FinTech Bank', 3),
-      ('Reserve Fund', AccountType.bank, 'EUR', 'Credit Union', 4),
+      ('Main Account', AccountType.bank, 'EUR', 'National Bank', 1),
+      ('Daily Spending', AccountType.bank, 'EUR', 'Digital Bank', 2),
     ];
     for (final (name, type, currency, institution, order) in accounts) {
       await db.into(db.accounts).insert(AccountsCompanion.insert(
@@ -53,18 +69,21 @@ class DemoDbService {
     }
   }
 
+  // ── Categories ──
+
   static Future<void> _insertCategories(AppDatabase db) async {
     final categories = [
-      ('Salary', CategoryType.income, true),
-      ('Freelance', CategoryType.income, false),
-      ('Rent', CategoryType.expense, true),
-      ('Groceries', CategoryType.expense, true),
-      ('Utilities', CategoryType.expense, true),
-      ('Transport', CategoryType.expense, false),
-      ('Subscriptions', CategoryType.expense, false),
-      ('Dining Out', CategoryType.expense, false),
-      ('Healthcare', CategoryType.expense, true),
-      ('Transfer', CategoryType.transfer, false),
+      ('Salary', CategoryType.income, true),          // 1
+      ('Freelance', CategoryType.income, false),       // 2
+      ('Rent', CategoryType.expense, true),            // 3
+      ('Groceries', CategoryType.expense, true),       // 4
+      ('Utilities', CategoryType.expense, true),       // 5
+      ('Transport', CategoryType.expense, false),      // 6
+      ('Subscriptions', CategoryType.expense, false),  // 7
+      ('Dining Out', CategoryType.expense, false),     // 8
+      ('Healthcare', CategoryType.expense, true),      // 9
+      ('Investments', CategoryType.expense, false),    // 10
+      ('Transfer', CategoryType.transfer, false),      // 11
     ];
     for (final (name, type, essential) in categories) {
       await db.into(db.categories).insert(CategoriesCompanion.insert(
@@ -75,114 +94,16 @@ class DemoDbService {
     }
   }
 
-  static Future<void> _insertTransactions(AppDatabase db) async {
-    final rng = Random(42);
-    final now = DateTime.now();
-    var balanceChecking = 0.0;
-    var balanceSavings = 15000.0;
-
-    // Insert initial savings balance as a single transaction
-    await db.into(db.transactions).insert(TransactionsCompanion.insert(
-      accountId: 2,
-      operationDate: DateTime(2023, 1, 1),
-      valueDate: DateTime(2023, 1, 1),
-      amount: balanceSavings,
-      balanceAfter: Value(balanceSavings),
-      description: Value('Opening balance'),
-      categoryId: const Value(1),
-    ));
-
-    // Monthly transactions for ~24 months on Checking Plus (account 1)
-    for (var m = 0; m < 24; m++) {
-      final year = 2024 + m ~/ 12;
-      final month = 1 + m % 12;
-      if (DateTime(year, month, 1).isAfter(now)) break;
-
-      // Salary: 27th of prior month or 1st
-      final salaryDay = min(27, DateTime(year, month + 1, 0).day);
-      final salaryDate = DateTime(year, month, salaryDay);
-      final salary = 3200.0 + rng.nextInt(200).toDouble();
-      balanceChecking += salary;
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: 1,
-        operationDate: salaryDate,
-        valueDate: salaryDate,
-        amount: salary,
-        balanceAfter: Value(balanceChecking),
-        description: Value('Monthly salary'),
-        categoryId: const Value(1), // Salary
-      ));
-
-      // Rent: 1st of month
-      final rentDate = DateTime(year, month, 1);
-      const rent = -950.0;
-      balanceChecking += rent;
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: 1,
-        operationDate: rentDate,
-        valueDate: rentDate,
-        amount: rent,
-        balanceAfter: Value(balanceChecking),
-        description: Value('Rent payment'),
-        categoryId: const Value(3), // Rent
-      ));
-
-      // Groceries: 3-4 transactions per month
-      final groceryCount = 3 + rng.nextInt(2);
-      for (var g = 0; g < groceryCount; g++) {
-        final day = 3 + rng.nextInt(25);
-        final groceryDate = DateTime(year, month, min(day, 28));
-        final amount = -(40.0 + rng.nextInt(80).toDouble());
-        balanceChecking += amount;
-        await db.into(db.transactions).insert(TransactionsCompanion.insert(
-          accountId: 1,
-          operationDate: groceryDate,
-          valueDate: groceryDate,
-          amount: amount,
-          balanceAfter: Value(balanceChecking),
-          description: Value('Supermarket'),
-          categoryId: const Value(4), // Groceries
-        ));
-      }
-
-      // Utilities: once per month
-      final utilDate = DateTime(year, month, 15);
-      final util = -(80.0 + rng.nextInt(40).toDouble());
-      balanceChecking += util;
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: 1,
-        operationDate: utilDate,
-        valueDate: utilDate,
-        amount: util,
-        balanceAfter: Value(balanceChecking),
-        description: Value('Electricity & gas'),
-        categoryId: const Value(5), // Utilities
-      ));
-
-      // Subscription: ~15€
-      final subDate = DateTime(year, month, 10);
-      const sub = -14.99;
-      balanceChecking += sub;
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: 1,
-        operationDate: subDate,
-        valueDate: subDate,
-        amount: sub,
-        balanceAfter: Value(balanceChecking),
-        description: Value('Streaming subscription'),
-        categoryId: const Value(7), // Subscriptions
-      ));
-    }
-  }
+  // ── Assets (fictional, anonymized) ──
 
   static Future<void> _insertAssets(AppDatabase db) async {
     final assets = [
       ('GLMK', 'Global Markets ETF', AssetType.stockEtf, 'EUR', 'MIL', 'GLMK.MI', 'global'),
-      ('EGB3', 'Euro Gov Bond 1-3Y', AssetType.bondEtf, 'EUR', 'MIL', 'EGB3.MI', 'bonds'),
-      ('EMKT', 'Emerging Markets ETF', AssetType.stockEtf, 'EUR', 'MIL', 'EMKT.MI', 'emerging'),
+      ('EGOV', 'Euro Gov Bond 1-3Y', AssetType.bondEtf, 'EUR', 'MIL', 'EGOV.MI', 'bonds'),
+      ('EMRG', 'Emerging Markets ETF', AssetType.stockEtf, 'EUR', 'MIL', 'EMRG.MI', 'emerging'),
       ('EU60', 'Europe 600 ETF', AssetType.stockEtf, 'EUR', 'MIL', 'EU60.MI', 'europe'),
-      ('GLDX', 'Gold ETC', AssetType.goldEtc, 'EUR', 'MIL', 'GLDX.MI', 'commodities'),
-      ('USTK', 'US Tech Leaders', AssetType.stockEtf, 'USD', 'NYQ', 'USTK', 'us-tech'),
+      ('GLDX', 'Physical Gold ETC', AssetType.goldEtc, 'EUR', 'MIL', 'GLDX.MI', 'commodities'),
+      ('USTK', 'US Tech Corp', AssetType.stockEtf, 'USD', 'NYQ', 'USTK', 'us-tech'),
     ];
     for (var i = 0; i < assets.length; i++) {
       final (ticker, name, type, currency, exchange, yahoo, group) = assets[i];
@@ -200,63 +121,435 @@ class DemoDbService {
     }
   }
 
-  static Future<void> _insertAssetEvents(AppDatabase db) async {
-    final rng = Random(42);
+  // ══════════════════════════════════════════════════
+  // Market price generation (in-memory, then persisted)
+  // ══════════════════════════════════════════════════
 
-    // (assetId, basePrices per year from 2021-2025, qty range)
-    final buyPlans = [
-      (1, [68.0, 72.0, 65.0, 78.0, 82.0], 5, 15),   // GLMK
-      (2, [102.0, 100.0, 98.0, 103.0, 105.0], 3, 8), // EGB3
-      (3, [25.0, 28.0, 22.0, 30.0, 33.0], 10, 25),   // EMKT
-      (4, [45.0, 48.0, 42.0, 52.0, 55.0], 5, 15),    // EU60
-      (5, [150.0, 165.0, 170.0, 180.0, 195.0], 1, 5), // GLDX
-      (6, [85.0, 95.0, 75.0, 105.0, 120.0], 3, 10),  // USTK (USD)
+  static Map<int, Map<int, double>> _generatePriceTimeSeries() {
+    final rng = Random(55);
+    final now = DateTime.now();
+
+    // (assetId, startDate, startPrice, annualDrift, dailyVol)
+    final specs = [
+      (1, DateTime(2022, 1, 3), 68.0, 0.07, 0.011),  // GLMK
+      (2, DateTime(2022, 1, 3), 105.0, 0.01, 0.003),  // EGOV
+      (3, DateTime(2022, 1, 3), 28.0, 0.06, 0.014),   // EMRG
+      (4, DateTime(2022, 1, 3), 48.0, 0.07, 0.012),   // EU60
+      (5, DateTime(2022, 1, 3), 160.0, 0.05, 0.010),  // GLDX
+      (6, DateTime(2017, 1, 3), 45.0, 0.15, 0.020),   // USTK (USD)
     ];
 
-    // Collect all events, then sort by date before inserting
-    final events = <AssetEventsCompanion>[];
+    final result = <int, Map<int, double>>{};
+    for (final (assetId, startDate, startPrice, drift, vol) in specs) {
+      var price = startPrice;
+      final dailyDrift = drift / 252;
+      final dayMap = <int, double>{};
 
-    for (final (assetId, basePrices, minQty, maxQty) in buyPlans) {
-      for (var year = 2021; year <= 2025; year++) {
-        final buysThisYear = 2 + rng.nextInt(3);
-        final priceIdx = year - 2021;
-        final basePrice = basePrices[priceIdx];
+      for (var d = startDate; d.isBefore(now); d = d.add(const Duration(days: 1))) {
+        if (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday) continue;
+        final z = _normalRandom(rng);
+        price *= (1 + dailyDrift + vol * z);
+        if (price < 1.0) price = 1.0;
+        dayMap[_dayKey(d)] = double.parse(price.toStringAsFixed(4));
+      }
+      result[assetId] = dayMap;
+    }
+    return result;
+  }
 
-        for (var b = 0; b < buysThisYear; b++) {
-          final month = 1 + rng.nextInt(12);
-          final day = 1 + rng.nextInt(28);
-          final date = DateTime(year, month, day);
-          final qty = (minQty + rng.nextInt(maxQty - minQty + 1)).toDouble();
-          final price = basePrice * (0.95 + rng.nextDouble() * 0.10);
-          final commission = 1.5 + rng.nextDouble() * 3.0;
+  static Future<void> _writeMarketPrices(
+    AppDatabase db, Map<int, Map<int, double>> priceTimeSeries,
+  ) async {
+    const currencies = {1: 'EUR', 2: 'EUR', 3: 'EUR', 4: 'EUR', 5: 'EUR', 6: 'USD'};
+    for (final assetId in priceTimeSeries.keys) {
+      final dayMap = priceTimeSeries[assetId]!;
+      final currency = currencies[assetId]!;
+      final sortedDays = dayMap.keys.toList()..sort();
+      for (final dk in sortedDays) {
+        final d = DateTime.fromMillisecondsSinceEpoch(dk * 86400000);
+        await db.into(db.marketPrices).insert(MarketPricesCompanion(
+          assetId: Value(assetId),
+          date: Value(d),
+          closePrice: Value(dayMap[dk]!),
+          currency: Value(currency),
+        ));
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  // FX rates
+  // ══════════════════════════════════════════════════
+
+  static Map<int, double> _generateFxRates() {
+    final rng = Random(77);
+    final start = DateTime(2017, 1, 1);
+    final now = DateTime.now();
+    final rates = <int, double>{};
+    var rate = 1.08;
+    for (var d = start; d.isBefore(now); d = d.add(const Duration(days: 1))) {
+      rate += (rng.nextDouble() - 0.5) * 0.005;
+      rate = rate.clamp(1.02, 1.18);
+      rates[_dayKey(d)] = double.parse(rate.toStringAsFixed(4));
+    }
+    return rates;
+  }
+
+  static Future<void> _writeFxRates(AppDatabase db, Map<int, double> fxRates) async {
+    final sortedDays = fxRates.keys.toList()..sort();
+    for (final dk in sortedDays) {
+      final d = DateTime.fromMillisecondsSinceEpoch(dk * 86400000);
+      await db.into(db.exchangeRates).insert(ExchangeRatesCompanion(
+        fromCurrency: const Value('EUR'),
+        toCurrency: const Value('USD'),
+        date: Value(d),
+        rate: Value(fxRates[dk]!),
+      ));
+    }
+  }
+
+  // ══════════════════════════════════════════════════
+  // Events + Transactions (interleaved so balance stays ≥ 0)
+  // ══════════════════════════════════════════════════
+
+  /// Builds a chronological list of _MonthlyBuy candidates, then processes
+  /// months in order: salary in → expenses out → check if buy fits → insert.
+  static Future<void> _insertEventsAndTransactions(
+    AppDatabase db,
+    Map<int, Map<int, double>> prices,
+    Map<int, double> fxRates,
+  ) async {
+    final rng = Random(42);
+    final now = DateTime.now();
+
+    // ── Pre-compute all potential monthly EUR buys ──
+    // Each month: buy 4 ETFs with a target budget of ~2500 EUR.
+    // Quantities are small enough so the total fits in a normal salary.
+    //
+    // (assetId, ticker, targetAmountPerBuy in EUR)
+    const eurAlloc = [
+      (1, 'GLMK', 1000.0),  // Global Markets – largest allocation
+      (2, 'EGOV', 300.0),   // Bonds – small
+      (3, 'EMRG', 500.0),   // Emerging
+      (4, 'EU60', 700.0),   // Europe
+    ];
+
+    // Collect buy candidates: (date, assetId, ticker, qty, price, eurAmount)
+    final buyCandidates = <(DateTime, List<(int, String, double, double, double)>)>[];
+
+    for (var year = 2022; year <= now.year; year++) {
+      final startMonth = year == 2022 ? 5 : 1;
+      final endMonth = year == now.year ? now.month - 1 : 12;
+
+      for (var month = startMonth; month <= endMonth; month++) {
+        var buyDay = 15 + rng.nextInt(4);
+        var buyDate = DateTime(year, month, buyDay);
+        while (buyDate.weekday == DateTime.saturday || buyDate.weekday == DateTime.sunday) {
+          buyDay++;
+          buyDate = DateTime(year, month, buyDay);
+        }
+        if (buyDate.isAfter(now)) break;
+
+        final batch = <(int, String, double, double, double)>[];
+        for (final (assetId, ticker, targetEur) in eurAlloc) {
+          final price = _priceOn(prices, assetId, buyDate);
+          final qty = (targetEur / price).floorToDouble();
+          if (qty < 1) continue;
+          final commission = 2.0 + rng.nextDouble() * 2.0;
           final amount = qty * price + commission;
-          final isUsd = assetId == 6;
+          batch.add((assetId, ticker, qty, price, amount));
+        }
+        buyCandidates.add((buyDate, batch));
+      }
+    }
 
-          events.add(AssetEventsCompanion.insert(
-            assetId: assetId,
-            date: date,
-            type: EventType.buy,
-            quantity: Value(qty),
-            price: Value(double.parse(price.toStringAsFixed(4))),
-            amount: double.parse(amount.toStringAsFixed(2)),
-            currency: Value(isUsd ? 'USD' : 'EUR'),
-            exchangeRate: Value(isUsd ? 1.08 + rng.nextDouble() * 0.06 : null),
-            commission: Value(double.parse(commission.toStringAsFixed(2))),
-            source: const Value('Demo'),
-          ));
+    // GLDX occasional buys
+    final gldxBuys = [
+      (DateTime(2022, 5, 18), 5, 5.0),
+      (DateTime(2023, 6, 5), 5, 3.0),
+      (DateTime(2025, 1, 6), 5, 4.0),
+    ];
+
+    // USTK (USD) buys
+    final ustkBuys = [
+      (DateTime(2018, 2, 15), 6, 20.0),
+      (DateTime(2019, 2, 15), 6, 40.0),
+      (DateTime(2019, 8, 15), 6, 50.0),
+      (DateTime(2020, 2, 18), 6, 30.0),
+      (DateTime(2020, 8, 17), 6, 60.0),
+    ];
+
+    // ── Build a month-by-month timeline of all financial events ──
+
+    // Account 1: Main Account
+    var balanceMain = 25000.0;
+    await _insertTx(db, 1, DateTime(2018, 1, 1), balanceMain, balanceMain,
+        'Opening balance', 1);
+
+    // Pre-index buy candidates by (year, month) for quick lookup
+    final buyByMonth = <(int, int), List<(int, String, double, double, double)>>{};
+    final buyDateByMonth = <(int, int), DateTime>{};
+    for (final (date, batch) in buyCandidates) {
+      buyByMonth[(date.year, date.month)] = batch;
+      buyDateByMonth[(date.year, date.month)] = date;
+    }
+
+    // Pre-index one-off buys by (year, month)
+    final oneOffBuysByMonth = <(int, int), List<(int, double, double, double, DateTime)>>{};
+    for (final (date, assetId, qty) in gldxBuys) {
+      if (date.isAfter(now)) continue;
+      final price = _priceOn(prices, assetId, date);
+      final amount = qty * price + 9.95;
+      oneOffBuysByMonth.putIfAbsent((date.year, date.month), () => [])
+          .add((assetId, qty, price, amount, date));
+    }
+    for (final (date, assetId, qty) in ustkBuys) {
+      if (date.isAfter(now)) continue;
+      final price = _priceOn(prices, assetId, date);
+      final fxRate = _fxOn(fxRates, date);
+      final usdAmount = qty * price;
+      final eurAmount = usdAmount / fxRate;
+      oneOffBuysByMonth.putIfAbsent((date.year, date.month), () => [])
+          .add((assetId, qty, price, eurAmount, date));
+    }
+
+    // All asset events to insert at the end (sorted)
+    final allEvents = <(DateTime, AssetEventsCompanion)>[];
+
+    // Monthly loop
+    for (var year = 2018; year <= now.year; year++) {
+      final endMonth = year == now.year ? now.month : 12;
+      for (var month = 1; month <= endMonth; month++) {
+        if (DateTime(year, month, 1).isAfter(now)) break;
+
+        // ── Income: salary ~27th ──
+        final baseSalary = 3200.0 + (year - 2018) * 120.0;
+        final salary = baseSalary + rng.nextInt(200).toDouble();
+        final salaryDay = min(27, DateTime(year, month + 1, 0).day);
+        final salaryDate = DateTime(year, month, salaryDay);
+        if (!salaryDate.isAfter(now)) {
+          balanceMain += salary;
+          await _insertTx(db, 1, salaryDate, salary, balanceMain, 'Monthly salary', 1);
+        }
+
+        // ── Expenses ──
+        // Rent (2020+)
+        if (year >= 2020) {
+          final rentDate = DateTime(year, month, 1);
+          if (!rentDate.isAfter(now)) {
+            const rent = -850.0;
+            balanceMain += rent;
+            await _insertTx(db, 1, rentDate, rent, balanceMain, 'Rent payment', 3);
+          }
+        }
+
+        // Utilities 15th
+        final utilDate = DateTime(year, month, 15);
+        if (!utilDate.isAfter(now)) {
+          final util = -(80.0 + rng.nextInt(40).toDouble());
+          balanceMain += util;
+          await _insertTx(db, 1, utilDate, util, balanceMain, 'Electricity & gas', 5);
+        }
+
+        // Subscriptions 10th
+        final subDate = DateTime(year, month, 10);
+        if (!subDate.isAfter(now)) {
+          const sub = -14.99;
+          balanceMain += sub;
+          await _insertTx(db, 1, subDate, sub, balanceMain, 'Streaming subscription', 7);
+        }
+
+        // Transfer to spending account (2022+)
+        if (year >= 2022) {
+          for (final topUpDay in [5, 20]) {
+            final topUpDate = DateTime(year, month, topUpDay);
+            if (!topUpDate.isAfter(now)) {
+              final topUp = -(300.0 + rng.nextInt(100).toDouble());
+              if (balanceMain + topUp >= _minBalance) {
+                balanceMain += topUp;
+                await _insertTx(db, 1, topUpDate, topUp, balanceMain,
+                    'Transfer to Daily Spending', 11);
+              }
+            }
+          }
+        }
+
+        // ── One-off buys (GLDX, USTK) ──
+        final oneOffs = oneOffBuysByMonth[(year, month)];
+        if (oneOffs != null) {
+          for (final (assetId, qty, price, eurAmount, date) in oneOffs) {
+            if (balanceMain - eurAmount < _minBalance) continue;
+            balanceMain -= eurAmount;
+            await _insertTx(db, 1, date, -eurAmount, balanceMain,
+                'Buy ${_tickerForId(assetId)} ${qty.toInt()}', 10);
+
+            final isUsd = assetId == 6;
+            allEvents.add((date, AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: date,
+              type: EventType.buy,
+              quantity: Value(qty),
+              price: Value(price),
+              amount: double.parse((qty * price).toStringAsFixed(2)),
+              currency: Value(isUsd ? 'USD' : 'EUR'),
+              exchangeRate: Value(isUsd ? _fxOn(fxRates, date) : 1.0),
+              commission: Value(isUsd ? 0.0 : 9.95),
+              source: const Value('Demo'),
+            )));
+          }
+        }
+
+        // ── Monthly batch ETF buys ──
+        final batch = buyByMonth[(year, month)];
+        if (batch != null) {
+          final buyDate = buyDateByMonth[(year, month)]!;
+          final totalCost = batch.fold(0.0, (sum, b) => sum + b.$5);
+
+          // Only buy if we can afford the whole batch
+          if (balanceMain - totalCost >= _minBalance) {
+            final descriptions = <String>[];
+            for (final (assetId, ticker, qty, price, amount) in batch) {
+              allEvents.add((buyDate, AssetEventsCompanion.insert(
+                assetId: assetId,
+                date: buyDate,
+                type: EventType.buy,
+                quantity: Value(qty),
+                price: Value(price),
+                amount: double.parse(amount.toStringAsFixed(2)),
+                currency: const Value('EUR'),
+                exchangeRate: const Value(1.0),
+                commission: Value(double.parse((amount - qty * price).toStringAsFixed(2))),
+                source: const Value('Demo'),
+              )));
+              descriptions.add('$ticker ${qty.toInt()}');
+            }
+            balanceMain -= totalCost;
+            await _insertTx(db, 1, buyDate, -totalCost, balanceMain,
+                'Buy ${descriptions.join(", ")}', 10);
+          }
         }
       }
     }
 
-    // Sort by date so the chart renders as a proper function
-    events.sort((a, b) => a.date.value.compareTo(b.date.value));
-    for (final event in events) {
+    // Insert all asset events sorted by date
+    allEvents.sort((a, b) => a.$1.compareTo(b.$1));
+    for (final (_, event) in allEvents) {
       await db.into(db.assetEvents).insert(event);
+    }
+
+    // ── Account 2: Daily Spending ──
+    var balanceSpending = 0.0;
+    for (var year = 2022; year <= now.year; year++) {
+      final endMonth = year == now.year ? now.month : 12;
+      for (var month = 1; month <= endMonth; month++) {
+        if (DateTime(year, month, 1).isAfter(now)) break;
+
+        // Top-ups from main account
+        for (final topUpDay in [5, 20]) {
+          final topUpDate = DateTime(year, month, topUpDay);
+          if (!topUpDate.isAfter(now)) {
+            final topUp = 300.0 + rng.nextInt(100).toDouble();
+            balanceSpending += topUp;
+            await _insertTx(db, 2, topUpDate, topUp, balanceSpending,
+                'Top-up from Main Account', 11);
+          }
+        }
+
+        // Groceries
+        final groceryCount = 3 + rng.nextInt(2);
+        for (var g = 0; g < groceryCount; g++) {
+          final day = 3 + rng.nextInt(25);
+          final groceryDate = DateTime(year, month, min(day, 28));
+          if (!groceryDate.isAfter(now)) {
+            final amount = -(30.0 + rng.nextInt(60).toDouble());
+            if (balanceSpending + amount >= 0) {
+              balanceSpending += amount;
+              await _insertTx(db, 2, groceryDate, amount, balanceSpending,
+                  'Supermarket', 4);
+            }
+          }
+        }
+
+        // Dining out
+        final diningCount = 1 + rng.nextInt(2);
+        for (var g = 0; g < diningCount; g++) {
+          final day = 5 + rng.nextInt(23);
+          final diningDate = DateTime(year, month, min(day, 28));
+          if (!diningDate.isAfter(now)) {
+            final amount = -(20.0 + rng.nextInt(40).toDouble());
+            if (balanceSpending + amount >= 0) {
+              balanceSpending += amount;
+              await _insertTx(db, 2, diningDate, amount, balanceSpending,
+                  'Restaurant', 8);
+            }
+          }
+        }
+
+        // Transport
+        final transportDate = DateTime(year, month, 12);
+        if (!transportDate.isAfter(now)) {
+          final amount = -(30.0 + rng.nextInt(20).toDouble());
+          if (balanceSpending + amount >= 0) {
+            balanceSpending += amount;
+            await _insertTx(db, 2, transportDate, amount, balanceSpending,
+                'Fuel', 6);
+          }
+        }
+      }
     }
   }
 
+  static String _tickerForId(int id) =>
+      const {1: 'GLMK', 2: 'EGOV', 3: 'EMRG', 4: 'EU60', 5: 'GLDX', 6: 'USTK'}[id] ?? '?';
+
+  // ══════════════════════════════════════════════════
+  // Helpers
+  // ══════════════════════════════════════════════════
+
+  static double _priceOn(Map<int, Map<int, double>> prices, int assetId, DateTime date) {
+    final dayMap = prices[assetId]!;
+    var dk = _dayKey(date);
+    for (var i = 0; i < 5; i++) {
+      if (dayMap.containsKey(dk - i)) return dayMap[dk - i]!;
+    }
+    final sorted = dayMap.keys.toList()..sort();
+    return dayMap[sorted.first]!;
+  }
+
+  static double _fxOn(Map<int, double> fxRates, DateTime date) {
+    var dk = _dayKey(date);
+    for (var i = 0; i < 5; i++) {
+      if (fxRates.containsKey(dk - i)) return fxRates[dk - i]!;
+    }
+    return 1.10;
+  }
+
+  static Future<void> _insertTx(
+    AppDatabase db, int accountId, DateTime date, double amount,
+    double balanceAfter, String description, int categoryId,
+  ) async {
+    await db.into(db.transactions).insert(TransactionsCompanion.insert(
+      accountId: accountId,
+      operationDate: date,
+      valueDate: date,
+      amount: double.parse(amount.toStringAsFixed(2)),
+      balanceAfter: Value(double.parse(balanceAfter.toStringAsFixed(2))),
+      description: Value(description),
+      categoryId: Value(categoryId),
+    ));
+  }
+
+  static double _normalRandom(Random rng) {
+    final u1 = rng.nextDouble();
+    final u2 = rng.nextDouble();
+    return sqrt(-2 * log(u1)) * cos(2 * pi * u2);
+  }
+
+  static int _dayKey(DateTime d) => d.millisecondsSinceEpoch ~/ 86400000;
+
+  // ── Buffer ──
+
   static Future<void> _insertBuffer(AppDatabase db) async {
-    // Create "Car Fund" buffer
     await db.into(db.buffers).insert(BuffersCompanion.insert(
       name: 'Car Fund',
       targetAmount: const Value(12000.0),
@@ -264,8 +557,8 @@ class DemoDbService {
 
     final rng = Random(99);
     var balance = 0.0;
-    for (var m = 0; m < 5; m++) {
-      final date = DateTime(2024, 3 + m * 2, 15);
+    for (var m = 0; m < 8; m++) {
+      final date = DateTime(2024, 1 + m, 15);
       final amount = 500.0 + rng.nextInt(300).toDouble();
       balance += amount;
       await db.into(db.bufferTransactions).insert(BufferTransactionsCompanion.insert(
@@ -278,6 +571,8 @@ class DemoDbService {
       ));
     }
   }
+
+  // ── Depreciation ──
 
   static Future<void> _insertDepreciation(AppDatabase db) async {
     final start = DateTime(2024, 1, 1);
@@ -294,7 +589,6 @@ class DemoDbService {
       direction: DepreciationDirection.forward,
     ));
 
-    // Generate monthly depreciation entries
     const monthlyAmount = 18000.0 / 36;
     var cumulative = 0.0;
     for (var m = 0; m < 36; m++) {
@@ -314,24 +608,30 @@ class DemoDbService {
     }
   }
 
-  static Future<void> _insertExchangeRates(AppDatabase db) async {
-    final rng = Random(77);
-    final start = DateTime(2023, 1, 1);
-    final now = DateTime.now();
+  // ── Dashboard charts ──
 
-    // EUR/USD daily rates for ~2 years
-    var rate = 1.08;
-    for (var d = start; d.isBefore(now); d = d.add(const Duration(days: 1))) {
-      // Random walk
-      rate += (rng.nextDouble() - 0.5) * 0.005;
-      rate = rate.clamp(1.02, 1.18);
-
-      await db.into(db.exchangeRates).insert(ExchangeRatesCompanion(
-        fromCurrency: const Value('EUR'),
-        toCurrency: const Value('USD'),
-        date: Value(d),
-        rate: Value(double.parse(rate.toStringAsFixed(4))),
-      ));
+  static Future<void> _insertDashboardCharts(AppDatabase db) async {
+    final investedMarketSeries = <Map<String, dynamic>>[];
+    for (var id = 1; id <= 6; id++) {
+      investedMarketSeries.add({'type': 'asset_market', 'id': id});
+      investedMarketSeries.add({'type': 'asset_invested', 'id': id});
     }
+    await db.into(db.dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Invested vs Market Value',
+      sortOrder: const Value(0),
+      seriesJson: jsonEncode(investedMarketSeries),
+    ));
+
+    final netWorthSeries = <Map<String, dynamic>>[
+      {'type': 'account', 'id': 1},
+      {'type': 'account', 'id': 2},
+      {'type': 'adjustment', 'id': 1},
+      for (var id = 1; id <= 6; id++) {'type': 'asset_invested', 'id': id},
+    ];
+    await db.into(db.dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Net Worth',
+      sortOrder: const Value(1),
+      seriesJson: jsonEncode(netWorthSeries),
+    ));
   }
 }

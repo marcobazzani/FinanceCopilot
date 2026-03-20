@@ -188,6 +188,29 @@ abstract class MarketPriceService {
     return row?.readNullable<double>('close_price');
   }
 
+  /// Get the two most recent prices for an asset (latest and previous).
+  /// Returns (latest, previous) or nulls if not enough data.
+  Future<(double?, double?)> getLastTwoPrices(int assetId) async {
+    final prices = await getRecentPrices(assetId, 2);
+    return (
+      prices.isNotEmpty ? prices[0] : null,
+      prices.length >= 2 ? prices[1] : null,
+    );
+  }
+
+  /// Get the [count] most recent prices for an asset, newest first.
+  Future<List<double>> getRecentPrices(int assetId, int count) async {
+    final rows = await db.customSelect(
+      'SELECT close_price FROM market_prices '
+      'WHERE asset_id = ? ORDER BY date DESC LIMIT ?',
+      variables: [Variable.withInt(assetId), Variable.withInt(count)],
+    ).get();
+    return rows
+        .map((r) => r.readNullable<double>('close_price'))
+        .whereType<double>()
+        .toList();
+  }
+
   /// Get all prices for an asset, sorted by date ascending.
   Future<List<MapEntry<DateTime, double>>> getPriceHistory(int assetId) async {
     final rows = await db.customSelect(
