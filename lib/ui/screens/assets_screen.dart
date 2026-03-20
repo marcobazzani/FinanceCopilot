@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/asset_service.dart';
-import '../../services/market_price_service.dart' show supportedExchanges;
+import '../../services/investing_com_service.dart';
+import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
@@ -80,108 +83,9 @@ class AssetsScreen extends ConsumerWidget {
   }
 
   Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    final isinCtrl = TextEditingController();
-    String? resolvedName;
-    String? resolvedTicker;
-    bool looking = false;
-    String selectedExchange = 'MIL'; // default Borsa Italiana
-
     await showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('New Asset'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: isinCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'ISIN / Fund ID',
-                  hintText: 'e.g. IE00B4L5Y983 or 0P0000CWZR',
-                ),
-                textCapitalization: TextCapitalization.characters,
-                autofocus: true,
-                onChanged: (v) async {
-                  final id = v.trim().toUpperCase();
-                  if (id.length == 12) {
-                    setDialogState(() => looking = true);
-                    final result = await ref.read(isinLookupServiceProvider).lookup(id);
-                    if (ctx.mounted) {
-                      setDialogState(() {
-                        resolvedName = result.name;
-                        resolvedTicker = result.ticker;
-                        looking = false;
-                      });
-                    }
-                  } else {
-                    setDialogState(() {
-                      resolvedName = null;
-                      resolvedTicker = null;
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              if (looking)
-                const Row(children: [
-                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 8),
-                  Text('Looking up ISIN...', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                ])
-              else if (resolvedName != null || resolvedTicker != null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (resolvedName != null)
-                      Text(resolvedName!, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (resolvedTicker != null)
-                      Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                  ],
-                )
-              else if (isinCtrl.text.trim().length >= 4 && isinCtrl.text.trim().length != 12)
-                const Text('Non-standard ID — will use as identifier',
-                    style: TextStyle(color: Colors.orange, fontSize: 13))
-              else if (isinCtrl.text.trim().length == 12)
-                const Text('ISIN not found — will use as name',
-                    style: TextStyle(color: Colors.orange, fontSize: 13)),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: selectedExchange,
-                decoration: const InputDecoration(
-                  labelText: 'Stock Exchange',
-                  isDense: true,
-                ),
-                items: supportedExchanges.entries
-                    .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
-                    .toList(),
-                onChanged: (v) {
-                  if (v != null) setDialogState(() => selectedExchange = v);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: isinCtrl.text.trim().length >= 4 && !looking
-                  ? () async {
-                      final id = isinCtrl.text.trim().toUpperCase();
-                      final name = resolvedName ?? id;
-                      await ref.read(assetServiceProvider).create(
-                            name: name,
-                            ticker: resolvedTicker,
-                            isin: id,
-                            exchange: selectedExchange,
-                          );
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
-                  : null,
-              child: const Text('Create'),
-            ),
-          ],
-        ),
-      ),
+      builder: (ctx) => _CreateAssetDialog(ref: ref),
     );
   }
 }
@@ -403,6 +307,267 @@ class _AssetTile extends StatelessWidget {
       text: TextSpan(children: parts),
       overflow: TextOverflow.ellipsis,
       maxLines: 1,
+    );
+  }
+}
+
+// ──────────────────────────────────────────────
+// Create Asset Dialog — two-step search flow
+// ──────────────────────────────────────────────
+
+class _CreateAssetDialog extends StatefulWidget {
+  final WidgetRef ref;
+  const _CreateAssetDialog({required this.ref});
+
+  @override
+  State<_CreateAssetDialog> createState() => _CreateAssetDialogState();
+}
+
+class _CreateAssetDialogState extends State<_CreateAssetDialog> {
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  List<InvestingSearchResult> _results = [];
+  bool _searching = false;
+  bool _manual = false;
+
+  // Step 2: selected result
+  InvestingSearchResult? _selected;
+  String _selectedExchange = 'MIL';
+
+  // Manual entry
+  final _manualNameCtrl = TextEditingController();
+  final _manualIdCtrl = TextEditingController();
+  String _manualExchange = 'MIL';
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    _manualNameCtrl.dispose();
+    _manualIdCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().length < 3) {
+      setState(() {
+        _results = [];
+        _searching = false;
+      });
+      return;
+    }
+    setState(() => _searching = true);
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final service = widget.ref.read(marketPriceServiceProvider) as InvestingComService;
+      try {
+        final results = await service.search(query.trim());
+        if (mounted && _searchCtrl.text.trim() == query.trim()) {
+          setState(() {
+            _results = results;
+            _searching = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _searching = false);
+      }
+    });
+  }
+
+  void _selectResult(InvestingSearchResult result) {
+    final code = investingExchangeToCode[result.exchange];
+    setState(() {
+      _selected = result;
+      _selectedExchange = code ?? 'MIL';
+    });
+  }
+
+  void _backToSearch() {
+    setState(() {
+      _selected = null;
+      _manual = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_manual) return _buildManualDialog();
+    if (_selected != null) return _buildConfirmDialog();
+    return _buildSearchDialog();
+  }
+
+  Widget _buildSearchDialog() {
+    return AlertDialog(
+      title: const Text('New Asset'),
+      content: SizedBox(
+        width: 400,
+        height: 350,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Search',
+                hintText: 'Name, ISIN, ticker, or fund ID',
+                prefixIcon: Icon(Icons.search),
+              ),
+              autofocus: true,
+              onChanged: _onSearchChanged,
+            ),
+            const SizedBox(height: 12),
+            if (_searching)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (_results.isNotEmpty)
+              Expanded(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final r = _results[i];
+                    return ListTile(
+                      dense: true,
+                      title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
+                      subtitle: Text(
+                        '${r.symbol}  ·  ${r.type}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      onTap: () => _selectResult(r),
+                    );
+                  },
+                ),
+              )
+            else if (_searchCtrl.text.trim().length >= 3)
+              const Expanded(
+                child: Center(
+                  child: Text('No results found', style: TextStyle(color: Colors.grey)),
+                ),
+              )
+            else
+              const Expanded(
+                child: Center(
+                  child: Text('Type at least 3 characters', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => setState(() => _manual = true),
+          child: const Text('Enter manually'),
+        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      ],
+    );
+  }
+
+  Widget _buildConfirmDialog() {
+    final r = _selected!;
+    return AlertDialog(
+      title: const Text('Create Asset'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(r.description, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+          const SizedBox(height: 8),
+          Text('Symbol: ${r.symbol}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Text('Type: ${r.type}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedExchange,
+            decoration: const InputDecoration(
+              labelText: 'Stock Exchange',
+              isDense: true,
+            ),
+            items: supportedExchanges.entries
+                .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _selectedExchange = v);
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: _backToSearch, child: const Text('Back')),
+        FilledButton(
+          onPressed: () async {
+            await widget.ref.read(assetServiceProvider).create(
+                  name: r.description,
+                  ticker: r.symbol.isNotEmpty ? r.symbol : null,
+                  exchange: _selectedExchange,
+                );
+            if (mounted) Navigator.pop(context);
+          },
+          child: const Text('Create'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualDialog() {
+    return AlertDialog(
+      title: const Text('New Asset (Manual)'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _manualNameCtrl,
+            decoration: const InputDecoration(labelText: 'Name'),
+            autofocus: true,
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _manualIdCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Identifier (ISIN, ticker, etc.)',
+              hintText: 'Optional',
+            ),
+            textCapitalization: TextCapitalization.characters,
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _manualExchange,
+            decoration: const InputDecoration(
+              labelText: 'Stock Exchange',
+              isDense: true,
+            ),
+            items: supportedExchanges.entries
+                .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _manualExchange = v);
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: _backToSearch, child: const Text('Back')),
+        FilledButton(
+          onPressed: _manualNameCtrl.text.trim().isNotEmpty
+              ? () async {
+                  final name = _manualNameCtrl.text.trim();
+                  final id = _manualIdCtrl.text.trim().toUpperCase();
+                  await widget.ref.read(assetServiceProvider).create(
+                        name: name,
+                        ticker: id.isNotEmpty ? id : null,
+                        isin: id.isNotEmpty ? id : null,
+                        exchange: _manualExchange,
+                      );
+                  if (mounted) Navigator.pop(context);
+                }
+              : null,
+          child: const Text('Create'),
+        ),
+      ],
     );
   }
 }

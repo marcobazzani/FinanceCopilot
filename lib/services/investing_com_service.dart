@@ -10,6 +10,25 @@ import 'market_price_service.dart';
 
 final _log = getLogger('InvestingComService');
 
+/// Result from the Investing.com search API.
+class InvestingSearchResult {
+  final int cid;
+  final String description;
+  final String symbol;
+  final String exchange;
+  final String flag;
+  final String type;
+
+  const InvestingSearchResult({
+    required this.cid,
+    required this.description,
+    required this.symbol,
+    required this.exchange,
+    required this.flag,
+    required this.type,
+  });
+}
+
 /// Investing.com exchange name mapping.
 /// Keys match internal exchange codes in `assets.exchange`.
 /// Investing.com exchange names (as returned by their search API).
@@ -141,6 +160,46 @@ class InvestingComService extends MarketPriceService {
   // Investing.com API: Search
   // ──────────────────────────────────────────────
 
+  static Options _searchOptions() => Options(
+        responseType: ResponseType.json,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Origin': 'https://www.investing.com',
+          'Referer': 'https://www.investing.com/',
+          'Domain-Id': 'it',
+        },
+      );
+
+  /// Search Investing.com for any query (name, ISIN, ticker, fund ID).
+  /// Returns a list of search results.
+  Future<List<InvestingSearchResult>> search(String query) async {
+    final url =
+        'https://api.investing.com/api/search/v2/search?q=${Uri.encodeComponent(query)}';
+
+    _log.info('search: $query');
+
+    final response = await _dio.get(url, options: _searchOptions());
+    final data = response.data as Map<String, dynamic>;
+    final quotes = (data['quotes'] as List?) ?? [];
+
+    _log.info('search: got ${quotes.length} results for $query');
+
+    return quotes.map((q) {
+      final exchange = (q['exchange'] as String?) ?? '';
+      final typeName = (q['typeName'] as String?) ?? '';
+      return InvestingSearchResult(
+        cid: q['id'] as int,
+        description: (q['description'] as String?) ?? '',
+        symbol: (q['symbol'] as String?) ?? '',
+        exchange: exchange,
+        flag: (q['flag'] as String?) ?? '',
+        type: typeName.isNotEmpty ? '$typeName - $exchange' : exchange,
+      );
+    }).toList();
+  }
+
   /// Search for a ticker on Investing.com, filtered by exchange.
   /// Returns the Investing.com cid (instrument ID) or null.
   Future<int?> _searchCid(String ticker, String exchange) async {
@@ -157,51 +216,26 @@ class InvestingComService extends MarketPriceService {
 
     final exchangeNameList = _exchangeNames[exchange] ?? [exchange];
 
-    // Search without type filter — works reliably across all instrument types
-    final url =
-        'https://api.investing.com/api/search/v2/search?q=$ticker';
+    _log.info('searchCid: $ticker on ${exchangeNameList.first}');
 
-    _log.info('search: $ticker on ${exchangeNameList.first}');
+    final results = await search(ticker);
 
-    final response = await _dio.get(
-      url,
-      options: Options(
-        responseType: ResponseType.json,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Origin': 'https://www.investing.com',
-          'Referer': 'https://www.investing.com/',
-          'Domain-Id': 'it',
-        },
-      ),
-    );
-    final data = response.data as Map<String, dynamic>;
-    final quotes = (data['quotes'] as List?) ?? [];
-
-    _log.info('search: got ${quotes.length} results for $ticker');
-
-    for (final q in quotes) {
-      final qExchange = (q['exchange'] as String?) ?? '';
-      final qSymbol = (q['symbol'] as String?) ?? '';
-      if (qSymbol.toUpperCase() == ticker.toUpperCase() &&
-          exchangeNameList.any((name) => name.toLowerCase() == qExchange.toLowerCase())) {
-        final cid = q['id'] as int;
-
+    for (final r in results) {
+      if (r.symbol.toUpperCase() == ticker.toUpperCase() &&
+          exchangeNameList.any((name) => name.toLowerCase() == r.exchange.toLowerCase())) {
         // Cache the cid
         await db.customStatement(
           'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
-          [cidKey, cid.toString(), 'Investing.com cid for $ticker on ${exchangeNameList.first}'],
+          [cidKey, r.cid.toString(), 'Investing.com cid for $ticker on ${exchangeNameList.first}'],
         );
 
-        _log.info('search: found $ticker → cid=$cid ($qExchange)');
-        return cid;
+        _log.info('searchCid: found $ticker → cid=${r.cid} (${r.exchange})');
+        return r.cid;
       }
     }
 
-    _log.warning('search: $ticker not found on ${exchangeNameList.first} '
-        '(candidates: ${quotes.map((q) => '${q['symbol']}@${q['exchange']}').join(', ')})');
+    _log.warning('searchCid: $ticker not found on ${exchangeNameList.first} '
+        '(candidates: ${results.map((r) => '${r.symbol}@${r.exchange}').join(', ')})');
     return null;
   }
 
@@ -210,7 +244,8 @@ class InvestingComService extends MarketPriceService {
   // ──────────────────────────────────────────────
 
   Future<Map<DateTime, double>> _fetchByCid(
-      int cid, DateTime from) async {
+      int cid, DateTime from, {String? label}) async {
+    final tag = label ?? 'cid=$cid';
     final fromStr =
         '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
     final now = DateTime.now();
@@ -220,13 +255,13 @@ class InvestingComService extends MarketPriceService {
     final url = 'https://api.investing.com/api/financialdata/historical/$cid'
         '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
-    _log.info('fetch: cid=$cid from $fromStr to $toStr');
+    _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
 
     final response = await _dio.get(url, options: _apiOptions());
     final data = response.data;
 
     if (data is String) {
-      _log.warning('fetch: got non-JSON response for cid=$cid (Cloudflare block?)');
+      _log.warning('fetch: $tag (cid=$cid) got non-JSON response (Cloudflare block?)');
       return {};
     }
     final dataMap = data as Map<String, dynamic>;
@@ -254,7 +289,7 @@ class InvestingComService extends MarketPriceService {
       prices[day] = price;
     }
 
-    _log.info('fetch: got ${prices.length} prices for cid=$cid');
+    _log.info('fetch: $tag (cid=$cid) → ${prices.length} prices');
     return prices;
   }
 
@@ -274,7 +309,19 @@ class InvestingComService extends MarketPriceService {
 
     final cid = await _searchCid(ticker, exchange);
     if (cid == null) return {};
-    return _fetchByCid(cid, from);
+    return _fetchByCid(cid, from, label: ticker);
+  }
+
+  /// Human-readable label for an asset: "Name [TICKER] (ISIN)".
+  static String _assetLabel(Asset asset) {
+    final parts = [asset.name];
+    if (asset.ticker != null && asset.ticker!.isNotEmpty) {
+      parts.add('[${asset.ticker}]');
+    }
+    if (asset.isin != null && asset.isin!.isNotEmpty && asset.isin != asset.ticker) {
+      parts.add('(${asset.isin})');
+    }
+    return parts.join(' ');
   }
 
   @override
@@ -282,10 +329,10 @@ class InvestingComService extends MarketPriceService {
     try {
       final assets = await (db.select(db.assets)
             ..where((a) => a.isActive.equals(true))
-            ..where((a) => a.ticker.isNotNull()))
+            ..where((a) => a.ticker.isNotNull() | a.isin.isNotNull()))
           .get();
 
-      _log.info('syncPrices: found ${assets.length} active assets with tickers');
+      _log.info('syncPrices: found ${assets.length} active assets with ticker/ISIN');
       if (assets.isEmpty) return;
 
       final now = DateTime.now();
@@ -296,8 +343,10 @@ class InvestingComService extends MarketPriceService {
       final assetCids = <Asset, int>{};
       final backfillRanges = <int, DateTime>{}; // assetId → backfill-from date
       for (final asset in assets) {
-        final ticker = asset.ticker;
-        if (ticker == null || ticker.isEmpty) continue;
+        // Use ticker if available, otherwise fall back to ISIN
+        final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
+        if (searchTerm == null || searchTerm.isEmpty) continue;
+        final label = _assetLabel(asset);
 
         final lastDate = await getLastSyncDate(asset.id);
         final firstBuy = await getFirstBuyDate(asset.id);
@@ -316,20 +365,23 @@ class InvestingComService extends MarketPriceService {
         final needsForward = forceToday || from.isBefore(now);
 
         if (!needsForward && !needsBackfill) {
-          _log.fine('syncPrices: ${asset.name} already up to date');
+          _log.fine('syncPrices: $label — already up to date');
           continue;
         }
 
         if (needsBackfill) {
           backfillRanges[asset.id] = firstBuy;
-          _log.info('syncPrices: ${asset.name} needs backfill from '
+          _log.info('syncPrices: $label — needs backfill from '
               '${firstBuy.toIso8601String().substring(0, 10)} to '
               '${firstPrice!.toIso8601String().substring(0, 10)}');
         }
 
-        final cid = await _searchCid(ticker, asset.exchange ?? 'MIL');
+        final cid = await _searchCid(searchTerm, asset.exchange ?? 'MIL');
         if (cid != null) {
           assetCids[asset] = cid;
+          _log.info('syncPrices: $label — resolved cid=$cid');
+        } else {
+          _log.warning('syncPrices: $label — could not resolve CID, skipping');
         }
 
         await Future.delayed(const Duration(milliseconds: 500));
@@ -351,6 +403,7 @@ class InvestingComService extends MarketPriceService {
       for (final entry in assetCids.entries) {
         final asset = entry.key;
         final cid = entry.value;
+        final label = _assetLabel(asset);
 
         try {
           // Backfill gap if needed (firstBuy → firstPrice)
@@ -358,9 +411,9 @@ class InvestingComService extends MarketPriceService {
           if (backfillFrom != null) {
             final firstPrice = await getFirstPriceDate(asset.id);
             if (firstPrice != null) {
-              _log.info('syncPrices: backfilling ${asset.name} from '
+              _log.info('syncPrices: $label — backfilling from '
                   '${backfillFrom.toIso8601String().substring(0, 10)}');
-              final gapPrices = await _fetchByCid(cid, backfillFrom);
+              final gapPrices = await _fetchByCid(cid, backfillFrom, label: label);
               if (gapPrices.isNotEmpty) {
                 await db.batch((batch) {
                   for (final p in gapPrices.entries) {
@@ -374,7 +427,7 @@ class InvestingComService extends MarketPriceService {
                         onConflict: DoUpdate((_) => c));
                   }
                 });
-                _log.info('syncPrices: backfilled ${gapPrices.length} prices for ${asset.name}');
+                _log.info('syncPrices: $label — backfilled ${gapPrices.length} prices');
               }
               await Future.delayed(const Duration(milliseconds: 1500));
             }
@@ -398,7 +451,7 @@ class InvestingComService extends MarketPriceService {
           }
 
           if (forceToday || from.isBefore(now)) {
-            final prices = await _fetchByCid(cid, from);
+            final prices = await _fetchByCid(cid, from, label: label);
             if (prices.isNotEmpty) {
               await db.batch((batch) {
                 for (final p in prices.entries) {
@@ -412,13 +465,11 @@ class InvestingComService extends MarketPriceService {
                       onConflict: DoUpdate((_) => c));
                 }
               });
-              _log.info(
-                  'syncPrices: stored ${prices.length} prices for ${asset.name}');
+              _log.info('syncPrices: $label — stored ${prices.length} prices');
             }
           }
         } catch (e) {
-          _log.warning(
-              'syncPrices: failed for ${asset.name} (cid=$cid): $e');
+          _log.warning('syncPrices: $label (cid=$cid) — failed: $e');
         }
 
         await Future.delayed(const Duration(milliseconds: 1500));
