@@ -104,146 +104,135 @@ class _DetailBody extends ConsumerWidget {
             ),
           ),
 
-          // Entries header
+          // Saving Events header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                const Text('Spread Entries', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const Spacer(),
-                entriesAsync.when(
-                  data: (entries) => Text('${entries.length} entries', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                  loading: () => const SizedBox(),
-                  error: (_, __) => const SizedBox(),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // Entries list
-          entriesAsync.when(
-            data: (entries) {
-              if (entries.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(child: Text('No entries generated yet.', style: TextStyle(color: Colors.grey))),
-                );
-              }
-              return Column(
-                children: [
-                  for (var i = 0; i < entries.length; i++)
-                    ListTile(
-                      dense: true,
-                      leading: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Colors.teal.withValues(alpha: 0.15),
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal),
-                        ),
-                      ),
-                      title: Text(
-                        dateFmt.format(entries[i].date),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                      ),
-                      subtitle: Text(
-                        'Cumulative: ${amtFmt.format(entries[i].cumulative)} · Remaining: ${amtFmt.format(entries[i].remaining)}',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                      trailing: Text(
-                        amtFmt.format(entries[i].amount),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                    ),
-                ],
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
-          ),
-
-          const Divider(height: 32),
-
-          // Reimbursements section
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                const Text('Reimbursements', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const Text('Saving Events', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
                 if (schedule.bufferId != null)
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline),
                     tooltip: 'Add Reimbursement',
                     onPressed: () => _addReimbursement(context, ref),
+                  )
+                else
+                  FilledButton.tonal(
+                    onPressed: () async {
+                      await ref.read(capexServiceProvider).createLinkedBuffer(schedule.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Reimbursement tracking enabled.')),
+                        );
+                      }
+                    },
+                    child: const Text('Enable Reimbursements'),
                   ),
               ],
             ),
           ),
           const SizedBox(height: 4),
 
-          if (schedule.bufferId == null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: FilledButton.tonal(
-                onPressed: () async {
-                  await ref.read(capexServiceProvider).createLinkedBuffer(schedule.id);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Reimbursement tracking enabled.')),
-                    );
-                  }
-                },
-                child: const Text('Enable Reimbursement Tracking'),
-              ),
-            )
-          else if (bufferTxnAsync != null)
-            bufferTxnAsync.when(
-              data: (txns) {
-                final reimbursements = txns.where((t) => t.isReimbursement).toList();
-                if (reimbursements.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: Text('No reimbursements yet.', style: TextStyle(color: Colors.grey))),
-                  );
-                }
-                final totalReimbursed = reimbursements.fold(0.0, (sum, t) => sum + t.amount.abs());
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: Row(
-                        children: [
-                          Text('Total reimbursed: ${amtFmt.format(totalReimbursed)}',
-                              style: const TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                    for (final txn in reimbursements)
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.arrow_back, color: Colors.green, size: 20),
-                        title: Text(
-                          '${dateFmt.format(txn.operationDate)} — ${txn.description.isNotEmpty ? txn.description : "Reimbursement"}',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        trailing: Text(
-                          '+${amtFmt.format(txn.amount.abs())}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
-                        ),
-                        onLongPress: () => _confirmDeleteReimbursement(context, ref, txn.id),
-                      ),
-                  ],
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-            ),
+          // Unified list: spread entries + reimbursements sorted by date
+          _buildUnifiedEventList(entriesAsync, bufferTxnAsync, dateFmt, amtFmt, context, ref),
 
           const SizedBox(height: 24),
         ],
       ),
+    );
+  }
+
+  Widget _buildUnifiedEventList(
+    AsyncValue<List<DepreciationEntry>> entriesAsync,
+    AsyncValue<List<BufferTransaction>>? bufferTxnAsync,
+    dynamic dateFmt,
+    dynamic amtFmt,
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    final entries = entriesAsync.valueOrNull ?? [];
+    final reimbursements = (bufferTxnAsync?.valueOrNull ?? [])
+        .where((t) => t.isReimbursement)
+        .toList();
+
+    if (entriesAsync.isLoading || (bufferTxnAsync != null && bufferTxnAsync.isLoading)) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (entries.isEmpty && reimbursements.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: Text('No events yet.', style: TextStyle(color: Colors.grey))),
+      );
+    }
+
+    // Build unified list of (date, isReimbursement, entry/txn)
+    final items = <({DateTime date, bool isReimbursement, DepreciationEntry? entry, BufferTransaction? txn})>[];
+    for (final e in entries) {
+      items.add((date: e.date, isReimbursement: false, entry: e, txn: null));
+    }
+    for (final t in reimbursements) {
+      items.add((date: t.operationDate, isReimbursement: true, entry: null, txn: t));
+    }
+    items.sort((a, b) => a.date.compareTo(b.date));
+
+    // Track entry index for numbering spread entries
+    var entryIdx = 0;
+    final totalReimbursed = reimbursements.fold(0.0, (sum, t) => sum + t.amount.abs());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (reimbursements.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Text('Total reimbursed: ${amtFmt.format(totalReimbursed)}',
+                style: const TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w600)),
+          ),
+        for (final item in items)
+          if (item.isReimbursement)
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.arrow_back, color: Colors.green, size: 20),
+              title: Text(
+                '${dateFmt.format(item.txn!.operationDate)} — ${item.txn!.description.isNotEmpty ? item.txn!.description : "Reimbursement"}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              trailing: Text(
+                '+${amtFmt.format(item.txn!.amount.abs())}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
+              ),
+              onLongPress: () => _confirmDeleteReimbursement(context, ref, item.txn!.id),
+            )
+          else
+            Builder(builder: (_) {
+              entryIdx++;
+              final e = item.entry!;
+              return ListTile(
+                dense: true,
+                leading: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.teal.withValues(alpha: 0.15),
+                  child: Text(
+                    '$entryIdx',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal),
+                  ),
+                ),
+                title: Text(
+                  dateFmt.format(e.date),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  'Cumulative: ${amtFmt.format(e.cumulative)} · Remaining: ${amtFmt.format(e.remaining)}',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                ),
+                trailing: Text(
+                  amtFmt.format(e.amount),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              );
+            }),
+      ],
     );
   }
 
