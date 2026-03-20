@@ -1,14 +1,12 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 import 'income_adj_edit_screen.dart';
-
-final _dateFmt = DateFormat('dd/MM/yyyy');
 
 class IncomeAdjDetailScreen extends ConsumerWidget {
   final int adjustmentId;
@@ -39,8 +37,10 @@ class _DetailBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final expensesAsync = ref.watch(incomeAdjustmentExpensesProvider(adjustment.id));
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
     final sym = currencySymbol(adjustment.currency);
-    final amtFmt = NumberFormat.currency(locale: 'it_IT', symbol: sym);
+    final amtFmt = fmt.currencyFormat(locale, sym);
+    final dateFmt = fmt.shortDateFormat(locale);
 
     return Scaffold(
       appBar: AppBar(
@@ -82,7 +82,7 @@ class _DetailBody extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   _infoRow('Total', amtFmt.format(adjustment.totalAmount)),
-                  _infoRow('Income Date', _dateFmt.format(adjustment.incomeDate)),
+                  _infoRow('Income Date', dateFmt.format(adjustment.incomeDate)),
                   expensesAsync.when(
                     data: (expenses) {
                       final totalSpent = expenses.fold(0.0, (sum, e) => sum + e.amount);
@@ -144,7 +144,7 @@ class _DetailBody extends ConsumerWidget {
                         ),
                       ),
                       title: Text(
-                        '${_dateFmt.format(expenses[i].date)}${expenses[i].description.isNotEmpty ? ' — ${expenses[i].description}' : ''}',
+                        '${dateFmt.format(expenses[i].date)}${expenses[i].description.isNotEmpty ? ' — ${expenses[i].description}' : ''}',
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                       trailing: Text(
@@ -182,7 +182,8 @@ class _DetailBody extends ConsumerWidget {
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -229,7 +230,7 @@ class _DetailBody extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final amount = double.tryParse(amountCtrl.text);
+      final amount = double.tryParse(amountCtrl.text.replaceAll(',', '.'));
       if (amount == null || amount <= 0) return;
 
       await ref.read(incomeAdjustmentServiceProvider).addExpense(

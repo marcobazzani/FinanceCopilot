@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'database/database.dart';
 import 'database/providers.dart';
@@ -12,6 +14,7 @@ import 'ui/screens/capex_screen.dart';
 import 'ui/screens/dashboard_screen.dart';
 import 'ui/screens/db_picker_screen.dart';
 import 'ui/screens/import_screen.dart';
+import 'ui/screens/income_screen.dart';
 import 'utils/logger.dart';
 import 'version.dart';
 
@@ -20,6 +23,7 @@ final _log = getLogger('Main');
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initLogging();
+  await initializeDateFormatting();
   _log.info('FinanceCopilot v$appVersion starting up');
   runApp(const ProviderScope(child: AssetManagerApp()));
 }
@@ -30,10 +34,28 @@ class AssetManagerApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dbPath = ref.watch(dbPathProvider);
+    final localeStr = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    // Parse locale string like "it_IT" into Locale('it', 'IT')
+    final parts = localeStr.split(RegExp(r'[_-]'));
+    final appLocale = Locale(parts[0], parts.length > 1 ? parts[1] : '');
 
     return MaterialApp(
       title: 'FinanceCopilot',
       debugShowCheckedModeBanner: false,
+      locale: appLocale,
+      supportedLocales: const [
+        Locale('en', 'US'),
+        Locale('en', 'GB'),
+        Locale('it', 'IT'),
+        Locale('de', 'DE'),
+        Locale('fr', 'FR'),
+        Locale('es', 'ES'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: ThemeData(
         colorSchemeSeed: Colors.indigo,
         useMaterial3: true,
@@ -67,6 +89,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationDestination(icon: Icon(Icons.account_balance), label: 'Accounts'),
     NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Assets'),
     NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Adjustments'),
+    NavigationDestination(icon: Icon(Icons.payments), label: 'Income'),
   ];
 
   static const _railDestinations = [
@@ -74,6 +97,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationRailDestination(icon: Icon(Icons.account_balance), label: Text('Accounts')),
     NavigationRailDestination(icon: Icon(Icons.pie_chart), label: Text('Assets')),
     NavigationRailDestination(icon: Icon(Icons.account_balance_wallet), label: Text('Adjustments')),
+    NavigationRailDestination(icon: Icon(Icons.payments), label: Text('Income')),
   ];
 
   @override
@@ -111,6 +135,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       1 => const AccountsScreen(),
       2 => const AssetsScreen(),
       3 => const CapexScreen(),
+      4 => const IncomeScreen(),
       _ => const SizedBox(),
     };
   }
@@ -204,11 +229,26 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
+  static const _localeOptions = [
+    ('', 'System Default'),
+    ('it_IT', 'Italiano (IT)'),
+    ('en_US', 'English (US)'),
+    ('en_GB', 'English (GB)'),
+    ('de_DE', 'Deutsch (DE)'),
+    ('fr_FR', 'Français (FR)'),
+    ('es_ES', 'Español (ES)'),
+  ];
+
   Future<void> _showSettingsDialog(BuildContext context) async {
     final db = ref.read(databaseProvider);
     final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final currentLocale = ref.read(appLocaleProvider).valueOrNull ?? '';
 
     var selectedCurrency = baseCurrency;
+    // Map back to stored value: if current resolved locale matches a known option, use '' for system default
+    var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
+        ? currentLocale
+        : '';
 
     await showDialog(
       context: context,
@@ -229,6 +269,15 @@ class _AppShellState extends ConsumerState<AppShell> {
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedCurrency = v!),
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedLocale,
+                  decoration: const InputDecoration(labelText: 'Number/Date Format'),
+                  items: _localeOptions
+                      .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => selectedLocale = v!),
+                ),
               ],
             ),
           ),
@@ -239,7 +288,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),
                 );
-                _log.info('Settings saved: currency=$selectedCurrency');
+                await db.into(db.appConfigs).insertOnConflictUpdate(
+                  AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
+                );
+                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('Save'),

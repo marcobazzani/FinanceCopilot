@@ -1,18 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/capex_service.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import 'capex_detail_screen.dart';
 import 'capex_edit_screen.dart';
 import 'income_adj_detail_screen.dart';
 import 'income_adj_edit_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
-
-final _amtFormat = NumberFormat('#,##0.00', 'it_IT');
-final _dateFmt = DateFormat('MMM yyyy');
 
 class CapexScreen extends ConsumerWidget {
   const CapexScreen({super.key});
@@ -57,6 +54,7 @@ class _SpreadTab extends ConsumerWidget {
     final schedulesAsync = ref.watch(capexSchedulesProvider);
     final statsAsync = ref.watch(capexStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
 
     return Scaffold(
       body: schedulesAsync.when(
@@ -81,6 +79,7 @@ class _SpreadTab extends ConsumerWidget {
                 schedule: schedule,
                 stats: stat,
                 baseCurrency: baseCurrency,
+                locale: locale,
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -165,18 +164,23 @@ class _CapexTile extends StatelessWidget {
   final DepreciationSchedule schedule;
   final CapexStats? stats;
   final String baseCurrency;
+  final String locale;
   final VoidCallback onTap;
 
   const _CapexTile({
     required this.schedule,
     required this.stats,
     required this.baseCurrency,
+    required this.locale,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final amtFormat = fmt.amountFormat(locale);
+    final dateFmt = fmt.monthYearFormat(locale);
+    final shortDate = fmt.shortDateFormat(locale);
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -210,12 +214,12 @@ class _CapexTile extends StatelessWidget {
                   Row(
                     children: [
                       if (schedule.expenseDate != null) ...[
-                        Text('Exp: ${DateFormat('dd/MM/yy').format(schedule.expenseDate!)}',
+                        Text('Exp: ${shortDate.format(schedule.expenseDate!)}',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                         const SizedBox(width: 8),
                       ],
                       Text(
-                        '${_dateFmt.format(schedule.startDate)} → ${_dateFmt.format(schedule.endDate)}',
+                        '${dateFmt.format(schedule.startDate)} → ${dateFmt.format(schedule.endDate)}',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                     ],
@@ -223,7 +227,7 @@ class _CapexTile extends StatelessWidget {
                   if (stats != null && stats!.totalReimbursed > 0) ...[
                     const SizedBox(height: 2),
                     Text(
-                      'Reimb: ${_amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}',
+                      'Reimb: ${amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}',
                       style: TextStyle(fontSize: 11, color: Colors.green.shade600),
                     ),
                   ],
@@ -235,7 +239,7 @@ class _CapexTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${_amtFormat.format(schedule.totalAmount)} ${currencySymbol(schedule.currency)}',
+                  '${amtFormat.format(schedule.totalAmount)} ${currencySymbol(schedule.currency)}',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: theme.colorScheme.primary,
@@ -266,6 +270,9 @@ class _IncomeAdjTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final amtFormat = fmt.amountFormat(locale);
+    final shortDate = fmt.shortDateFormat(locale);
     final sym = currencySymbol(adjustment.currency);
     final expensesAsync = ref.watch(incomeAdjustmentExpensesProvider(adjustment.id));
     final totalSpent = expensesAsync.valueOrNull?.fold(0.0, (sum, e) => sum + e.amount) ?? 0.0;
@@ -302,13 +309,13 @@ class _IncomeAdjTile extends ConsumerWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Income: ${DateFormat('dd/MM/yy').format(adjustment.incomeDate)}',
+                    'Income: ${shortDate.format(adjustment.incomeDate)}',
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   if (totalSpent > 0) ...[
                     const SizedBox(height: 2),
                     Text(
-                      'Spent: ${_amtFormat.format(totalSpent)} $sym · Remaining: ${_amtFormat.format(remaining)} $sym',
+                      'Spent: ${amtFormat.format(totalSpent)} $sym · Remaining: ${amtFormat.format(remaining)} $sym',
                       style: TextStyle(fontSize: 11, color: remaining > 0 ? Colors.orange.shade600 : Colors.green.shade600),
                     ),
                   ],
@@ -317,7 +324,7 @@ class _IncomeAdjTile extends ConsumerWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              '${_amtFormat.format(adjustment.totalAmount)} $sym',
+              '${amtFormat.format(adjustment.totalAmount)} $sym',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: theme.colorScheme.primary,

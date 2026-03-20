@@ -318,6 +318,15 @@ class IncomeAdjustmentExpenses extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+class Incomes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get date => dateTime()();
+  RealColumn get amount => real()();
+  TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 /// Stores per-account import configuration (column mappings, skip rows, etc.)
 class ImportConfigs extends Table {
   IntColumn get id => integer().autoIncrement()();

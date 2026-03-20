@@ -5,9 +5,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
+import '../../utils/formatters.dart' as fmt;
 
 import '../../database/database.dart';
 import '../../database/providers.dart';
@@ -561,6 +560,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
     final chartsAsync = ref.watch(dashboardChartsProvider);
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
 
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -612,6 +612,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             allData: allData,
                             hidden: hidden,
                             hideComponents: hideComp,
+                            locale: locale,
                             chartHeight: _heightFor(chart.id),
                             zoomMinX: zoom.minX,
                             zoomMaxX: zoom.maxX,
@@ -969,6 +970,7 @@ class _ChartCard extends StatelessWidget {
   final _AllSeriesData allData;
   final Set<String> hidden;
   final bool hideComponents;
+  final String locale;
   final double chartHeight;
   final double? zoomMinX;
   final double? zoomMaxX;
@@ -988,6 +990,7 @@ class _ChartCard extends StatelessWidget {
     required this.allData,
     required this.hidden,
     this.hideComponents = false,
+    required this.locale,
     required this.chartHeight,
     this.zoomMinX,
     this.zoomMaxX,
@@ -1036,7 +1039,7 @@ class _ChartCard extends StatelessWidget {
     final totalSpots = _buildSmartTotalSpots(visible);
     final symbol = currencySymbol(allData.baseCurrency);
     final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
-    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
+    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
     // Series to actually draw (empty if hideComponents, but total is unaffected)
     final drawnSeries = hideComponents ? <_Series>[] : visible;
@@ -1119,6 +1122,7 @@ class _ChartCard extends StatelessWidget {
                       yMax: effectiveMaxY,
                       firstDate: allData.firstDate,
                       baseCurrency: allData.baseCurrency,
+                      locale: locale,
                       onZoom: onZoom,
                       child: _UnifiedChart(
                         firstDate: allData.firstDate,
@@ -1126,6 +1130,7 @@ class _ChartCard extends StatelessWidget {
                         totalSpots: totalSpots,
                         showTotal: !hidden.contains('_total'),
                         baseCurrency: allData.baseCurrency,
+                        locale: locale,
                         zoomMinX: zoomMinX,
                         zoomMaxX: zoomMaxX,
                         zoomMinY: zoomMinY,
@@ -1411,6 +1416,7 @@ class _DragZoomWrapper extends StatefulWidget {
   final double bottomReserved;
   final DateTime firstDate;
   final String baseCurrency;
+  final String locale;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
   const _DragZoomWrapper({
@@ -1423,6 +1429,7 @@ class _DragZoomWrapper extends StatefulWidget {
     this.bottomReserved = 28,
     required this.firstDate,
     required this.baseCurrency,
+    required this.locale,
     required this.onZoom,
   });
 
@@ -1452,12 +1459,8 @@ class _DragZoomWrapperState extends State<_DragZoomWrapper> {
       builder: (context, constraints) {
         final chartWidth = constraints.maxWidth - widget.leftReserved;
         final chartHeight = constraints.maxHeight - widget.bottomReserved;
-        final dateFmt = DateFormat('dd MMM yyyy');
-        final currFmt = NumberFormat.currency(
-          locale: 'it_IT',
-          symbol: currencySymbol(widget.baseCurrency),
-          decimalDigits: 0,
-        );
+        final dateFmt = fmt.fullDateFormat(widget.locale);
+        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: 0);
 
         return Listener(
           behavior: HitTestBehavior.translucent,
@@ -1565,6 +1568,7 @@ class _UnifiedChart extends StatelessWidget {
   final List<FlSpot> totalSpots;
   final bool showTotal;
   final String baseCurrency;
+  final String locale;
   final double? zoomMinX;
   final double? zoomMaxX;
   final double? zoomMinY;
@@ -1576,6 +1580,7 @@ class _UnifiedChart extends StatelessWidget {
     required this.totalSpots,
     this.showTotal = true,
     required this.baseCurrency,
+    required this.locale,
     this.zoomMinX,
     this.zoomMaxX,
     this.zoomMinY,
@@ -1591,9 +1596,9 @@ class _UnifiedChart extends StatelessWidget {
     final symbol = currencySymbol(baseCurrency);
 
     final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
-    final dateFmt = DateFormat('MMM yyyy');
-    final fullFmt = DateFormat('dd MMM yyyy');
-    final currFmt = NumberFormat.currency(locale: 'it_IT', symbol: symbol, decimalDigits: 0);
+    final dateFmt = fmt.monthYearFormat(locale);
+    final fullFmt = fmt.fullDateFormat(locale);
+    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
     final lineBars = <LineChartBarData>[];
 

@@ -33,6 +33,7 @@ final _log = getLogger('Database');
   DashboardCharts,
   IncomeAdjustments,
   IncomeAdjustmentExpenses,
+  Incomes,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -44,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -124,6 +125,15 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(incomeAdjustments);
             await m.createTable(incomeAdjustmentExpenses);
           }
+          if (from < 15) {
+            await m.createTable(incomes);
+          }
+          if (from < 16) {
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "VALUES ('LOCALE', '', 'Display locale (empty = system default)')"
+            );
+          }
         },
       );
 
@@ -146,6 +156,7 @@ class AppDatabase extends _$AppDatabase {
       'SWR': ('0.0275', 'Safe withdrawal rate'),
       'BASE_CURRENCY': ('EUR', 'Base currency for all calculations'),
       'DEFAULT_DEPRECIATION_METHOD': ('LINEAR', 'Default depreciation method'),
+      'LOCALE': ('', 'Display locale (empty = system default)'),
     };
 
     for (final entry in defaults.entries) {

@@ -6,11 +6,9 @@ import '../../database/database.dart';
 import '../../services/asset_service.dart';
 import '../../services/market_price_service.dart' show supportedExchanges;
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
-
-final _amtFormat = NumberFormat('#,##0.00', 'it_IT');
-final _qtyFormat = NumberFormat('#,##0.####', 'it_IT');
 
 class AssetsScreen extends ConsumerWidget {
   const AssetsScreen({super.key});
@@ -20,6 +18,7 @@ class AssetsScreen extends ConsumerWidget {
     final assetsAsync = ref.watch(assetsProvider);
     final statsAsync = ref.watch(assetStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
     final convertedStats = ref.watch(convertedAssetStatsProvider).valueOrNull ?? {};
     final marketValues = ref.watch(assetMarketValuesProvider).valueOrNull ?? {};
 
@@ -58,6 +57,7 @@ class AssetsScreen extends ConsumerWidget {
                 convertedInvested: convertedStats[asset.id],
                 marketValue: marketValues[asset.id],
                 baseCurrency: baseCurrency,
+                locale: locale,
                 index: i,
                 onTap: () => Navigator.push(
                   context,
@@ -97,16 +97,16 @@ class AssetsScreen extends ConsumerWidget {
               TextField(
                 controller: isinCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'ISIN',
-                  hintText: 'e.g. IE00B4L5Y983',
+                  labelText: 'ISIN / Fund ID',
+                  hintText: 'e.g. IE00B4L5Y983 or 0P0000CWZR',
                 ),
                 textCapitalization: TextCapitalization.characters,
                 autofocus: true,
                 onChanged: (v) async {
-                  final isin = v.trim().toUpperCase();
-                  if (isin.length == 12) {
+                  final id = v.trim().toUpperCase();
+                  if (id.length == 12) {
                     setDialogState(() => looking = true);
-                    final result = await ref.read(isinLookupServiceProvider).lookup(isin);
+                    final result = await ref.read(isinLookupServiceProvider).lookup(id);
                     if (ctx.mounted) {
                       setDialogState(() {
                         resolvedName = result.name;
@@ -139,8 +139,11 @@ class AssetsScreen extends ConsumerWidget {
                       Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
                   ],
                 )
+              else if (isinCtrl.text.trim().length >= 4 && isinCtrl.text.trim().length != 12)
+                const Text('Non-standard ID — will use as identifier',
+                    style: TextStyle(color: Colors.orange, fontSize: 13))
               else if (isinCtrl.text.trim().length == 12)
-                const Text('ISIN not found — will use ISIN as name',
+                const Text('ISIN not found — will use as name',
                     style: TextStyle(color: Colors.orange, fontSize: 13)),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
@@ -161,14 +164,14 @@ class AssetsScreen extends ConsumerWidget {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
-              onPressed: isinCtrl.text.trim().length == 12 && !looking
+              onPressed: isinCtrl.text.trim().length >= 4 && !looking
                   ? () async {
-                      final isin = isinCtrl.text.trim().toUpperCase();
-                      final name = resolvedName ?? isin;
+                      final id = isinCtrl.text.trim().toUpperCase();
+                      final name = resolvedName ?? id;
                       await ref.read(assetServiceProvider).create(
                             name: name,
                             ticker: resolvedTicker,
-                            isin: isin,
+                            isin: id,
                             exchange: selectedExchange,
                           );
                       if (ctx.mounted) Navigator.pop(ctx);
@@ -189,6 +192,7 @@ class _AssetTile extends StatelessWidget {
   final double? convertedInvested;
   final double? marketValue;
   final String baseCurrency;
+  final String locale;
   final int index;
   final VoidCallback onTap;
 
@@ -199,6 +203,7 @@ class _AssetTile extends StatelessWidget {
     this.convertedInvested,
     this.marketValue,
     required this.baseCurrency,
+    required this.locale,
     required this.index,
     required this.onTap,
   });
@@ -206,7 +211,9 @@ class _AssetTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateFormat = DateFormat('MMM yyyy');
+    final amtFormat = fmt.amountFormat(locale);
+    final qtyFormat = fmt.qtyFormat(locale);
+    final dateFormat = fmt.monthYearFormat(locale);
 
     return InkWell(
       onTap: onTap,
@@ -282,7 +289,7 @@ class _AssetTile extends StatelessWidget {
               children: [
                 if (marketValue != null) ...[
                   Text(
-                    '${_amtFormat.format(marketValue!)} ${currencySymbol(baseCurrency)}',
+                    '${amtFormat.format(marketValue!)} ${currencySymbol(baseCurrency)}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: asset.isActive ? null : Colors.grey,
@@ -290,11 +297,11 @@ class _AssetTile extends StatelessWidget {
                   ),
                   if (convertedInvested != null && convertedInvested! > 0) ...[
                     const SizedBox(height: 2),
-                    _buildGainLoss(theme),
+                    _buildGainLoss(theme, amtFormat),
                   ],
                 ] else if (stats != null && stats!.totalInvested > 0)
                   Text(
-                    '${_amtFormat.format(stats!.totalInvested)} ${asset.currency}',
+                    '${amtFormat.format(stats!.totalInvested)} ${asset.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: asset.isActive
@@ -320,7 +327,7 @@ class _AssetTile extends StatelessWidget {
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
                   Text(
-                    'qty ${_qtyFormat.format(stats!.totalQuantity)}',
+                    'qty ${qtyFormat.format(stats!.totalQuantity)}',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: Colors.grey,
                     ),
@@ -342,7 +349,7 @@ class _AssetTile extends StatelessWidget {
     );
   }
 
-  Widget _buildGainLoss(ThemeData theme) {
+  Widget _buildGainLoss(ThemeData theme, NumberFormat amtFormat) {
     final invested = convertedInvested!;
     final gain = marketValue! - invested;
     final pct = (gain / invested) * 100;
@@ -350,7 +357,7 @@ class _AssetTile extends StatelessWidget {
     final color = isPositive ? Colors.green : Colors.red;
     final arrow = isPositive ? '\u25B2' : '\u25BC'; // ▲ ▼
     return Text(
-      '$arrow ${_amtFormat.format(gain.abs())} (${pct.abs().toStringAsFixed(1)}%)',
+      '$arrow ${amtFormat.format(gain.abs())} (${pct.abs().toStringAsFixed(1)}%)',
       style: theme.textTheme.labelSmall?.copyWith(
         color: color,
         fontWeight: FontWeight.w600,

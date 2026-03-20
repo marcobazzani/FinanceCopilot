@@ -1,11 +1,11 @@
 import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/providers.dart';
+import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 
 final _log = getLogger('TransactionEditScreen');
@@ -42,7 +42,8 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
   void initState() {
     super.initState();
     final tx = widget.transaction;
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final dateFmt = fmt.shortDateFormat(locale);
 
     _selectedDate = tx?.operationDate ?? DateTime.now();
     _dateCtrl = TextEditingController(text: dateFmt.format(_selectedDate));
@@ -224,7 +225,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateCtrl.text = DateFormat('dd/MM/yyyy').format(picked);
+        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).valueOrNull ?? 'en_US').format(picked);
       });
     }
   }
