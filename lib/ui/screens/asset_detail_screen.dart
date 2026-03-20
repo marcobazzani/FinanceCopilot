@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
-import '../../services/market_price_service.dart' show supportedExchanges;
+import '../../services/investing_com_service.dart';
+import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
@@ -201,96 +204,9 @@ class AssetDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _editAsset(BuildContext context, WidgetRef ref) async {
-    final nameCtrl = TextEditingController(text: asset.name);
-    final tickerCtrl = TextEditingController(text: asset.ticker ?? '');
-    final isinCtrl = TextEditingController(text: asset.isin ?? '');
-    String selectedExchange = asset.exchange ?? 'MIL';
-    var isActive = asset.isActive;
-
     await showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Edit Asset'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                  onChanged: (_) => setDialogState(() {}),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: tickerCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Ticker',
-                    hintText: 'e.g. SWDA',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: isinCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Identifier (ISIN, fund ID, etc.)',
-                    hintText: 'Optional',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedExchange,
-                  decoration: const InputDecoration(
-                    labelText: 'Stock Exchange',
-                    isDense: true,
-                  ),
-                  items: supportedExchanges.entries
-                      .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setDialogState(() => selectedExchange = v);
-                  },
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('Active'),
-                  value: isActive,
-                  onChanged: (v) => setDialogState(() => isActive = v),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () async {
-                      final name = nameCtrl.text.trim();
-                      final ticker = tickerCtrl.text.trim().toUpperCase();
-                      final isin = isinCtrl.text.trim().toUpperCase();
-                      _log.info('saving asset id=${asset.id}, name=$name');
-                      await ref.read(assetServiceProvider).update(
-                        asset.id,
-                        AssetsCompanion(
-                          name: Value(name),
-                          ticker: Value(ticker.isNotEmpty ? ticker : null),
-                          isin: Value(isin.isNotEmpty ? isin : null),
-                          exchange: Value(selectedExchange),
-                          isActive: Value(isActive),
-                          updatedAt: Value(DateTime.now()),
-                        ),
-                      );
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
-                  : null,
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
+      builder: (ctx) => _EditAssetDialog(ref: ref, asset: asset),
     );
   }
 
@@ -353,5 +269,256 @@ class AssetDetailScreen extends ConsumerWidget {
       await ref.read(assetServiceProvider).delete(asset.id);
       if (context.mounted) Navigator.pop(context);
     }
+  }
+}
+
+// ──────────────────────────────────────────────
+// Edit Asset Dialog — search + manual, like create
+// ──────────────────────────────────────────────
+
+class _EditAssetDialog extends StatefulWidget {
+  final WidgetRef ref;
+  final Asset asset;
+  const _EditAssetDialog({required this.ref, required this.asset});
+
+  @override
+  State<_EditAssetDialog> createState() => _EditAssetDialogState();
+}
+
+class _EditAssetDialogState extends State<_EditAssetDialog> {
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  List<InvestingSearchResult> _results = [];
+  bool _searching = false;
+  bool _searchMode = false;
+
+  // Edit fields (pre-populated from asset)
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _tickerCtrl;
+  late final TextEditingController _isinCtrl;
+  late String _selectedExchange;
+  late bool _isActive;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.asset.name);
+    _tickerCtrl = TextEditingController(text: widget.asset.ticker ?? '');
+    _isinCtrl = TextEditingController(text: widget.asset.isin ?? '');
+    _selectedExchange = widget.asset.exchange ?? 'MIL';
+    _isActive = widget.asset.isActive;
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    _nameCtrl.dispose();
+    _tickerCtrl.dispose();
+    _isinCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().length < 3) {
+      setState(() {
+        _results = [];
+        _searching = false;
+      });
+      return;
+    }
+    setState(() => _searching = true);
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final service = widget.ref.read(marketPriceServiceProvider) as InvestingComService;
+      try {
+        final results = await service.search(query.trim());
+        if (mounted && _searchCtrl.text.trim() == query.trim()) {
+          setState(() {
+            _results = results;
+            _searching = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _searching = false);
+      }
+    });
+  }
+
+  void _selectResult(InvestingSearchResult result) {
+    final code = investingExchangeToCode[result.exchange];
+    setState(() {
+      _nameCtrl.text = result.description;
+      _tickerCtrl.text = result.symbol;
+      _selectedExchange = code ?? _selectedExchange;
+      _searchMode = false;
+    });
+  }
+
+  Future<void> _save() async {
+    final name = _nameCtrl.text.trim();
+    final ticker = _tickerCtrl.text.trim().toUpperCase();
+    final isin = _isinCtrl.text.trim().toUpperCase();
+    _log.info('saving asset id=${widget.asset.id}, name=$name');
+    await widget.ref.read(assetServiceProvider).update(
+      widget.asset.id,
+      AssetsCompanion(
+        name: Value(name),
+        ticker: Value(ticker.isNotEmpty ? ticker : null),
+        isin: Value(isin.isNotEmpty ? isin : null),
+        exchange: Value(_selectedExchange),
+        isActive: Value(_isActive),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_searchMode) return _buildSearchDialog();
+    return _buildEditDialog();
+  }
+
+  Widget _buildEditDialog() {
+    return AlertDialog(
+      title: const Text('Edit Asset'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Name'),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _tickerCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Ticker',
+                hintText: 'e.g. SWDA',
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _isinCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Identifier (ISIN, fund ID, etc.)',
+                hintText: 'Optional',
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedExchange,
+              decoration: const InputDecoration(
+                labelText: 'Stock Exchange',
+                isDense: true,
+              ),
+              items: supportedExchanges.entries
+                  .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+                  .toList(),
+              onChanged: (v) {
+                if (v != null) setState(() => _selectedExchange = v);
+              },
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Active'),
+              value: _isActive,
+              onChanged: (v) => setState(() => _isActive = v),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => setState(() {
+            _searchCtrl.clear();
+            _results = [];
+            _searchMode = true;
+          }),
+          child: const Text('Search'),
+        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _nameCtrl.text.trim().isNotEmpty ? _save : null,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchDialog() {
+    return AlertDialog(
+      title: const Text('Search Asset'),
+      content: SizedBox(
+        width: 400,
+        height: 350,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Search',
+                hintText: 'Name, ISIN, ticker, or fund ID',
+                prefixIcon: Icon(Icons.search),
+              ),
+              autofocus: true,
+              onChanged: _onSearchChanged,
+            ),
+            const SizedBox(height: 12),
+            if (_searching)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (_results.isNotEmpty)
+              Expanded(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final r = _results[i];
+                    return ListTile(
+                      dense: true,
+                      title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
+                      subtitle: Text(
+                        '${r.symbol}  ·  ${r.type}',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      onTap: () => _selectResult(r),
+                    );
+                  },
+                ),
+              )
+            else if (_searchCtrl.text.trim().length >= 3)
+              const Expanded(
+                child: Center(
+                  child: Text('No results found', style: TextStyle(color: Colors.grey)),
+                ),
+              )
+            else
+              const Expanded(
+                child: Center(
+                  child: Text('Type at least 3 characters', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => setState(() => _searchMode = false),
+          child: const Text('Back'),
+        ),
+      ],
+    );
   }
 }

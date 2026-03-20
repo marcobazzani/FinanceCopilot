@@ -180,6 +180,109 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   return result;
 });
 
+/// Price change per asset over a lookback period.
+class AssetDailyChange {
+  final String name;
+  final String? ticker;
+  final String currency;
+  final double todayPrice;
+  final double previousPrice;
+  final double quantity;
+  final double todayFxRate;    // asset currency → base currency (today)
+  final double previousFxRate; // asset currency → base currency (reference date)
+  final String baseCurrency;
+
+  const AssetDailyChange({
+    required this.name,
+    this.ticker,
+    required this.currency,
+    required this.todayPrice,
+    required this.previousPrice,
+    required this.quantity,
+    required this.todayFxRate,
+    required this.previousFxRate,
+    required this.baseCurrency,
+  });
+
+  double get priceDiff => todayPrice - previousPrice;
+  double get pricePct => previousPrice != 0 ? (priceDiff / previousPrice) * 100 : 0;
+  /// Value change in base currency, captures both price AND FX movements.
+  double get valueDiff =>
+      (todayPrice * quantity * todayFxRate) - (previousPrice * quantity * previousFxRate);
+}
+
+/// Compare latest price vs price on or before [referenceDate].
+/// For "1d", pass yesterday; for "1y", pass one year ago, etc.
+/// If the reference date falls on a non-trading day, the closest prior
+/// trading day's price is used automatically (via getPrice).
+final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, DateTime>((ref, referenceDate) async {
+  final assets = await ref.watch(assetsProvider.future);
+  final stats = await ref.watch(assetStatsProvider.future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final priceService = ref.watch(marketPriceServiceProvider);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  final result = <AssetDailyChange>[];
+  for (final asset in assets) {
+    if (!asset.isActive) continue;
+    final stat = stats[asset.id];
+    if (stat == null || stat.totalQuantity == 0) continue;
+
+    final latestPrice = await priceService.getPrice(asset.id, today);
+    if (latestPrice == null) continue;
+
+    double todayFx = 1.0;
+    double prevFx = 1.0;
+    if (asset.currency != baseCurrency) {
+      // Use Investing.com for live FX, fall back to Frankfurter
+      if (priceService is InvestingComService) {
+        todayFx = await priceService.getLiveFxRate(asset.currency, baseCurrency) ?? 1.0;
+      } else {
+        todayFx = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
+      }
+      prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
+    }
+
+    // If reference date is before first buy, use weighted average buy price
+    double? previousPrice;
+    final beforeFirstBuy = stat.firstDate != null && referenceDate.isBefore(stat.firstDate!);
+    if (beforeFirstBuy) {
+      final avgRow = await priceService.db.customSelect(
+        "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
+        "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
+        "FROM asset_events WHERE asset_id = ? AND type IN ('buy','contribute') AND quantity IS NOT NULL AND price IS NOT NULL",
+        variables: [Variable.withInt(asset.id)],
+      ).getSingleOrNull();
+      final totalCost = avgRow?.readNullable<double>('total_cost') ?? 0;
+      final totalQty = avgRow?.readNullable<double>('total_qty') ?? 0;
+      if (totalQty > 0) {
+        previousPrice = totalCost / totalQty;
+        // For cost-basis, use today's FX for both sides (we're comparing price, not FX)
+        prevFx = todayFx;
+      }
+    } else {
+      previousPrice = await priceService.getPrice(asset.id, referenceDate);
+    }
+    if (previousPrice == null) continue;
+
+    result.add(AssetDailyChange(
+      name: asset.name,
+      ticker: asset.ticker,
+      currency: asset.currency,
+      todayPrice: latestPrice,
+      previousPrice: previousPrice,
+      quantity: stat.totalQuantity,
+      todayFxRate: todayFx,
+      previousFxRate: prevFx,
+      baseCurrency: baseCurrency,
+    ));
+  }
+  return result;
+});
+
 /// Converted event amounts for an asset (live rate for current value display).
 /// Uses stored exchangeRate (BASE/ASSET format) if available, otherwise live rate.
 final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, int>((ref, assetId) async {

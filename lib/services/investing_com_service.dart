@@ -240,6 +240,128 @@ class InvestingComService extends MarketPriceService {
   }
 
   // ──────────────────────────────────────────────
+  // Investing.com API: Live FX rate
+  // ──────────────────────────────────────────────
+
+  /// Cache of FX pair cids: "EUR/USD" → cid
+  final _fxCidCache = <String, int>{};
+
+  /// In-memory cache of live FX rates with 10-min TTL.
+  final _fxRateCache = <String, (double, DateTime)>{};
+  static const _fxRateTtl = Duration(minutes: 10);
+
+  /// Get the live exchange rate from [from] to [to] via Investing.com.
+  /// Searches for the currency pair, then fetches the latest price.
+  Future<double?> getLiveFxRate(String from, String to) async {
+    if (from == to) return 1.0;
+
+    final pairKey = '$from/$to';
+    final inversePairKey = '$to/$from';
+
+    // Check cache
+    final cached = _fxRateCache[pairKey];
+    if (cached != null && DateTime.now().difference(cached.$2) < _fxRateTtl) {
+      return cached.$1;
+    }
+
+    // Try direct pair first, then inverse
+    var rate = await _fetchFxRate(pairKey);
+    if (rate != null) {
+      _fxRateCache[pairKey] = (rate, DateTime.now());
+      return rate;
+    }
+
+    rate = await _fetchFxRate(inversePairKey);
+    if (rate != null) {
+      final invRate = 1.0 / rate;
+      _fxRateCache[pairKey] = (invRate, DateTime.now());
+      return invRate;
+    }
+
+    return null;
+  }
+
+  Future<double?> _fetchFxRate(String pairKey) async {
+    try {
+      // Resolve cid for currency pair
+      var cid = _fxCidCache[pairKey];
+      if (cid == null) {
+        // Also check DB cache
+        final cidKey = 'INVESTING_FX_CID_$pairKey';
+        final cidRow = await db.customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString(cidKey)],
+        ).getSingleOrNull();
+        if (cidRow != null) {
+          cid = int.tryParse(cidRow.read<String>('value'));
+        }
+
+        if (cid == null) {
+          final results = await search(pairKey);
+          for (final r in results) {
+            if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') ||
+                r.symbol == pairKey) {
+              cid = r.cid;
+              break;
+            }
+          }
+          if (cid == null) return null;
+
+          // Cache in DB
+          await db.customStatement(
+            'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
+            [cidKey, cid.toString(), 'Investing.com FX cid for $pairKey'],
+          );
+        }
+        _fxCidCache[pairKey] = cid;
+      }
+
+      // Fetch latest price via search API (no Cloudflare needed)
+      // Use a 3-day window to get the most recent rate
+      final now = DateTime.now();
+      final from = now.subtract(const Duration(days: 3));
+      final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
+      final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      final url = 'https://api.investing.com/api/financialdata/historical/$cid'
+          '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
+
+      // Need Cloudflare cookies for historical API
+      if (!_hasFreshCookies) {
+        final ok = await _solveCloudflareCookies();
+        if (!ok) return null;
+      }
+
+      final response = await _dio.get(url, options: _apiOptions());
+      final data = response.data;
+      if (data is String) return null;
+
+      final dataMap = data as Map<String, dynamic>;
+      final rows = (dataMap['data'] as List?) ?? [];
+      if (rows.isEmpty) return null;
+
+      // Get the most recent row (first in the list, usually sorted desc)
+      // Try last_closeRaw first, most rows have it
+      for (final row in rows) {
+        final closeRaw = row['last_closeRaw'];
+        if (closeRaw == null) continue;
+        double? price;
+        if (closeRaw is num) {
+          price = closeRaw.toDouble();
+        } else if (closeRaw is String) {
+          price = double.tryParse(closeRaw);
+        }
+        if (price != null && price > 0) return price;
+      }
+
+      return null;
+    } catch (e) {
+      _log.warning('_fetchFxRate: $pairKey failed — $e');
+      return null;
+    }
+  }
+
+  // ──────────────────────────────────────────────
   // Investing.com API: Historical prices
   // ──────────────────────────────────────────────
 
