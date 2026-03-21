@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/investing_com_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
@@ -90,6 +91,8 @@ class AssetDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
+          // Composition breakdown
+          _CompositionSection(assetId: asset.id),
           // Events header
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -269,6 +272,148 @@ class AssetDetailScreen extends ConsumerWidget {
       await ref.read(assetServiceProvider).delete(asset.id);
       if (context.mounted) Navigator.pop(context);
     }
+  }
+}
+
+// ──────────────────────────────────────────────
+// Composition breakdown section
+// ──────────────────────────────────────────────
+
+class _CompositionSection extends ConsumerWidget {
+  final int assetId;
+  const _CompositionSection({required this.assetId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final compositionsAsync = ref.watch(assetCompositionsProvider);
+    final entries = compositionsAsync.valueOrNull?[assetId];
+    if (entries == null || entries.isEmpty) return const SizedBox.shrink();
+
+    // Extract source URL and separate from display data
+    String? sourceUrl;
+    final byType = <String, List<AssetComposition>>{};
+    for (final e in entries) {
+      if (e.type == 'source_url') {
+        sourceUrl = e.name;
+        continue;
+      }
+      byType.putIfAbsent(e.type, () => []).add(e);
+    }
+
+    if (byType.isEmpty) return const SizedBox.shrink();
+
+    // Sort each group by weight descending
+    for (final list in byType.values) {
+      list.sort((a, b) => b.weight.compareTo(a.weight));
+    }
+
+    // Display order and labels
+    const typeLabels = {
+      'assetclass': 'Asset Class',
+      'country': 'Geographic',
+      'sector': 'Sector',
+      'holding': 'Top Holdings',
+    };
+    const typeOrder = ['assetclass', 'country', 'sector', 'holding'];
+
+    // Derive source label from URL
+    String? sourceLabel;
+    if (sourceUrl != null) {
+      if (sourceUrl.contains('justetf.com')) {
+        sourceLabel = 'justETF';
+      } else if (sourceUrl.contains('stockanalysis.com')) {
+        sourceLabel = 'Stock Analysis';
+      } else if (sourceUrl.contains('investing.com')) {
+        sourceLabel = 'Investing.com';
+      }
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ExpansionTile(
+        title: const Text('Composition', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        initiallyExpanded: false,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        children: [
+          for (final type in typeOrder)
+            if (byType.containsKey(type)) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text(
+                  typeLabels[type] ?? type,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              ...byType[type]!.map((c) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 1),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(c.name, style: const TextStyle(fontSize: 12)),
+                    ),
+                    SizedBox(
+                      width: 80,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: (c.weight / 100).clamp(0, 1),
+                                minHeight: 6,
+                                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 38,
+                            child: Text(
+                              '${c.weight.toStringAsFixed(1)}%',
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+            ],
+          // Source link
+          if (sourceUrl != null && sourceLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: InkWell(
+                onTap: () => launchUrl(Uri.parse(sourceUrl!)),
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Source: $sourceLabel',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 

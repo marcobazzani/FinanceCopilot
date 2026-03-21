@@ -120,6 +120,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
     // Kick off market price sync in background
     Future.microtask(() => _syncPrices());
+    // Kick off composition sync in background
+    Future.microtask(() async {
+      try {
+        await ref.read(compositionServiceProvider).syncCompositions();
+      } catch (e) {
+        _log.warning('Composition sync failed: $e');
+      }
+    });
   }
 
   Future<void> _syncPrices({bool forceToday = false}) async {

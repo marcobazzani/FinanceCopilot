@@ -15,6 +15,7 @@ import '../../database/providers.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
+import 'allocation_tab.dart';
 
 final _log = getLogger('DashboardScreen');
 
@@ -565,6 +566,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final chartsAsync = ref.watch(dashboardChartsProvider);
     final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
 
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          const TabBar(
+            tabs: [
+              Tab(text: 'Charts'),
+              Tab(text: 'Allocation'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildChartsTab(allDataAsync, chartsAsync, locale, context),
+                const AllocationTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartsTab(
+    AsyncValue<_AllSeriesData?> allDataAsync,
+    AsyncValue<List<DashboardChart>> chartsAsync,
+    String locale,
+    BuildContext context,
+  ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),

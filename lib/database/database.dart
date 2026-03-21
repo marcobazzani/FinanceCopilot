@@ -34,6 +34,7 @@ final _log = getLogger('Database');
   IncomeAdjustments,
   IncomeAdjustmentExpenses,
   Incomes,
+  AssetCompositions,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -45,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -144,6 +145,9 @@ class AppDatabase extends _$AppDatabase {
               "INSERT INTO dashboard_charts (title, widget_type, sort_order, series_json) "
               "VALUES ('Price Changes', 'price_changes', 0, '[]')"
             );
+          }
+          if (from < 19) {
+            await m.createTable(assetCompositions);
           }
         },
       );
