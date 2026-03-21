@@ -28,8 +28,16 @@
 
 # Database
 
-- App DB path: `/Users/marco/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db`
+- To find the DB path, check the app's stdout/stderr logs (it prints the path on startup). Do NOT search the filesystem with `find`.
+- The DB filename may vary (not always `asset_manager.db`) — look for any `.db` file at the logged path.
 - Never use `assets.db` in the repo root (stale copy, gitignored).
+
+# Architecture
+
+- The app must be **pure Flutter/Dart**. No Python scripts or external tools for runtime functionality.
+- All data fetching (prices, ETF composition, etc.) must happen inside the Dart app itself.
+- The released artifact must be fully self-contained.
+- For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
 
 # Key Project Files
 

@@ -12248,6 +12248,401 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   }
 }
 
+class $AssetCompositionsTable extends AssetCompositions
+    with TableInfo<$AssetCompositionsTable, AssetComposition> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AssetCompositionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<int> assetId = GeneratedColumn<int>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES assets (id)',
+    ),
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _weightMeta = const VerificationMeta('weight');
+  @override
+  late final GeneratedColumn<double> weight = GeneratedColumn<double>(
+    'weight',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    assetId,
+    type,
+    name,
+    weight,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'asset_compositions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AssetComposition> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('weight')) {
+      context.handle(
+        _weightMeta,
+        weight.isAcceptableOrUnknown(data['weight']!, _weightMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_weightMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AssetComposition map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AssetComposition(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      weight: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}weight'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AssetCompositionsTable createAlias(String alias) {
+    return $AssetCompositionsTable(attachedDatabase, alias);
+  }
+}
+
+class AssetComposition extends DataClass
+    implements Insertable<AssetComposition> {
+  final int id;
+  final int assetId;
+  final String type;
+  final String name;
+  final double weight;
+  final DateTime updatedAt;
+  const AssetComposition({
+    required this.id,
+    required this.assetId,
+    required this.type,
+    required this.name,
+    required this.weight,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['asset_id'] = Variable<int>(assetId);
+    map['type'] = Variable<String>(type);
+    map['name'] = Variable<String>(name);
+    map['weight'] = Variable<double>(weight);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  AssetCompositionsCompanion toCompanion(bool nullToAbsent) {
+    return AssetCompositionsCompanion(
+      id: Value(id),
+      assetId: Value(assetId),
+      type: Value(type),
+      name: Value(name),
+      weight: Value(weight),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory AssetComposition.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AssetComposition(
+      id: serializer.fromJson<int>(json['id']),
+      assetId: serializer.fromJson<int>(json['assetId']),
+      type: serializer.fromJson<String>(json['type']),
+      name: serializer.fromJson<String>(json['name']),
+      weight: serializer.fromJson<double>(json['weight']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'assetId': serializer.toJson<int>(assetId),
+      'type': serializer.toJson<String>(type),
+      'name': serializer.toJson<String>(name),
+      'weight': serializer.toJson<double>(weight),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  AssetComposition copyWith({
+    int? id,
+    int? assetId,
+    String? type,
+    String? name,
+    double? weight,
+    DateTime? updatedAt,
+  }) => AssetComposition(
+    id: id ?? this.id,
+    assetId: assetId ?? this.assetId,
+    type: type ?? this.type,
+    name: name ?? this.name,
+    weight: weight ?? this.weight,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  AssetComposition copyWithCompanion(AssetCompositionsCompanion data) {
+    return AssetComposition(
+      id: data.id.present ? data.id.value : this.id,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      type: data.type.present ? data.type.value : this.type,
+      name: data.name.present ? data.name.value : this.name,
+      weight: data.weight.present ? data.weight.value : this.weight,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssetComposition(')
+          ..write('id: $id, ')
+          ..write('assetId: $assetId, ')
+          ..write('type: $type, ')
+          ..write('name: $name, ')
+          ..write('weight: $weight, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, assetId, type, name, weight, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AssetComposition &&
+          other.id == this.id &&
+          other.assetId == this.assetId &&
+          other.type == this.type &&
+          other.name == this.name &&
+          other.weight == this.weight &&
+          other.updatedAt == this.updatedAt);
+}
+
+class AssetCompositionsCompanion extends UpdateCompanion<AssetComposition> {
+  final Value<int> id;
+  final Value<int> assetId;
+  final Value<String> type;
+  final Value<String> name;
+  final Value<double> weight;
+  final Value<DateTime> updatedAt;
+  const AssetCompositionsCompanion({
+    this.id = const Value.absent(),
+    this.assetId = const Value.absent(),
+    this.type = const Value.absent(),
+    this.name = const Value.absent(),
+    this.weight = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  AssetCompositionsCompanion.insert({
+    this.id = const Value.absent(),
+    required int assetId,
+    required String type,
+    required String name,
+    required double weight,
+    this.updatedAt = const Value.absent(),
+  }) : assetId = Value(assetId),
+       type = Value(type),
+       name = Value(name),
+       weight = Value(weight);
+  static Insertable<AssetComposition> custom({
+    Expression<int>? id,
+    Expression<int>? assetId,
+    Expression<String>? type,
+    Expression<String>? name,
+    Expression<double>? weight,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (assetId != null) 'asset_id': assetId,
+      if (type != null) 'type': type,
+      if (name != null) 'name': name,
+      if (weight != null) 'weight': weight,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  AssetCompositionsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? assetId,
+    Value<String>? type,
+    Value<String>? name,
+    Value<double>? weight,
+    Value<DateTime>? updatedAt,
+  }) {
+    return AssetCompositionsCompanion(
+      id: id ?? this.id,
+      assetId: assetId ?? this.assetId,
+      type: type ?? this.type,
+      name: name ?? this.name,
+      weight: weight ?? this.weight,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (assetId.present) {
+      map['asset_id'] = Variable<int>(assetId.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (weight.present) {
+      map['weight'] = Variable<double>(weight.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssetCompositionsCompanion(')
+          ..write('id: $id, ')
+          ..write('assetId: $assetId, ')
+          ..write('type: $type, ')
+          ..write('name: $name, ')
+          ..write('weight: $weight, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -12283,6 +12678,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $IncomeAdjustmentExpensesTable incomeAdjustmentExpenses =
       $IncomeAdjustmentExpensesTable(this);
   late final $IncomesTable incomes = $IncomesTable(this);
+  late final $AssetCompositionsTable assetCompositions =
+      $AssetCompositionsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -12309,6 +12706,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     incomeAdjustments,
     incomeAdjustmentExpenses,
     incomes,
+    assetCompositions,
   ];
 }
 
@@ -14729,6 +15127,30 @@ final class $$AssetsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$AssetCompositionsTable, List<AssetComposition>>
+  _assetCompositionsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.assetCompositions,
+        aliasName: $_aliasNameGenerator(
+          db.assets.id,
+          db.assetCompositions.assetId,
+        ),
+      );
+
+  $$AssetCompositionsTableProcessedTableManager get assetCompositionsRefs {
+    final manager = $$AssetCompositionsTableTableManager(
+      $_db,
+      $_db.assetCompositions,
+    ).filter((f) => f.assetId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _assetCompositionsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$AssetsTableFilterComposer
@@ -14913,6 +15335,31 @@ class $$AssetsTableFilterComposer
           }) => $$MarketPricesTableFilterComposer(
             $db: $db,
             $table: $db.marketPrices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> assetCompositionsRefs(
+    Expression<bool> Function($$AssetCompositionsTableFilterComposer f) f,
+  ) {
+    final $$AssetCompositionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assetCompositions,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetCompositionsTableFilterComposer(
+            $db: $db,
+            $table: $db.assetCompositions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -15193,6 +15640,32 @@ class $$AssetsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> assetCompositionsRefs<T extends Object>(
+    Expression<T> Function($$AssetCompositionsTableAnnotationComposer a) f,
+  ) {
+    final $$AssetCompositionsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.assetCompositions,
+          getReferencedColumn: (t) => t.assetId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$AssetCompositionsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.assetCompositions,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$AssetsTableTableManager
@@ -15212,6 +15685,7 @@ class $$AssetsTableTableManager
             bool assetEventsRefs,
             bool assetSnapshotsRefs,
             bool marketPricesRefs,
+            bool assetCompositionsRefs,
           })
         > {
   $$AssetsTableTableManager(_$AppDatabase db, $AssetsTable table)
@@ -15328,6 +15802,7 @@ class $$AssetsTableTableManager
                 assetEventsRefs = false,
                 assetSnapshotsRefs = false,
                 marketPricesRefs = false,
+                assetCompositionsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -15335,6 +15810,7 @@ class $$AssetsTableTableManager
                     if (assetEventsRefs) db.assetEvents,
                     if (assetSnapshotsRefs) db.assetSnapshots,
                     if (marketPricesRefs) db.marketPrices,
+                    if (assetCompositionsRefs) db.assetCompositions,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -15402,6 +15878,27 @@ class $$AssetsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (assetCompositionsRefs)
+                        await $_getPrefetchedData<
+                          Asset,
+                          $AssetsTable,
+                          AssetComposition
+                        >(
+                          currentTable: table,
+                          referencedTable: $$AssetsTableReferences
+                              ._assetCompositionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).assetCompositionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -15426,6 +15923,7 @@ typedef $$AssetsTableProcessedTableManager =
         bool assetEventsRefs,
         bool assetSnapshotsRefs,
         bool marketPricesRefs,
+        bool assetCompositionsRefs,
       })
     >;
 typedef $$AssetEventsTableCreateCompanionBuilder =
@@ -21401,6 +21899,353 @@ typedef $$IncomesTableProcessedTableManager =
       Income,
       PrefetchHooks Function()
     >;
+typedef $$AssetCompositionsTableCreateCompanionBuilder =
+    AssetCompositionsCompanion Function({
+      Value<int> id,
+      required int assetId,
+      required String type,
+      required String name,
+      required double weight,
+      Value<DateTime> updatedAt,
+    });
+typedef $$AssetCompositionsTableUpdateCompanionBuilder =
+    AssetCompositionsCompanion Function({
+      Value<int> id,
+      Value<int> assetId,
+      Value<String> type,
+      Value<String> name,
+      Value<double> weight,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$AssetCompositionsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $AssetCompositionsTable,
+          AssetComposition
+        > {
+  $$AssetCompositionsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
+    $_aliasNameGenerator(db.assetCompositions.assetId, db.assets.id),
+  );
+
+  $$AssetsTableProcessedTableManager get assetId {
+    final $_column = $_itemColumn<int>('asset_id')!;
+
+    final manager = $$AssetsTableTableManager(
+      $_db,
+      $_db.assets,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$AssetCompositionsTableFilterComposer
+    extends Composer<_$AppDatabase, $AssetCompositionsTable> {
+  $$AssetCompositionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get weight => $composableBuilder(
+    column: $table.weight,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$AssetsTableFilterComposer get assetId {
+    final $$AssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AssetCompositionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AssetCompositionsTable> {
+  $$AssetCompositionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get weight => $composableBuilder(
+    column: $table.weight,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$AssetsTableOrderingComposer get assetId {
+    final $$AssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AssetCompositionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AssetCompositionsTable> {
+  $$AssetCompositionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get weight =>
+      $composableBuilder(column: $table.weight, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$AssetsTableAnnotationComposer get assetId {
+    final $$AssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AssetCompositionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AssetCompositionsTable,
+          AssetComposition,
+          $$AssetCompositionsTableFilterComposer,
+          $$AssetCompositionsTableOrderingComposer,
+          $$AssetCompositionsTableAnnotationComposer,
+          $$AssetCompositionsTableCreateCompanionBuilder,
+          $$AssetCompositionsTableUpdateCompanionBuilder,
+          (AssetComposition, $$AssetCompositionsTableReferences),
+          AssetComposition,
+          PrefetchHooks Function({bool assetId})
+        > {
+  $$AssetCompositionsTableTableManager(
+    _$AppDatabase db,
+    $AssetCompositionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AssetCompositionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AssetCompositionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AssetCompositionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> assetId = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double> weight = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => AssetCompositionsCompanion(
+                id: id,
+                assetId: assetId,
+                type: type,
+                name: name,
+                weight: weight,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int assetId,
+                required String type,
+                required String name,
+                required double weight,
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => AssetCompositionsCompanion.insert(
+                id: id,
+                assetId: assetId,
+                type: type,
+                name: name,
+                weight: weight,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AssetCompositionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({assetId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable:
+                                    $$AssetCompositionsTableReferences
+                                        ._assetIdTable(db),
+                                referencedColumn:
+                                    $$AssetCompositionsTableReferences
+                                        ._assetIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$AssetCompositionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AssetCompositionsTable,
+      AssetComposition,
+      $$AssetCompositionsTableFilterComposer,
+      $$AssetCompositionsTableOrderingComposer,
+      $$AssetCompositionsTableAnnotationComposer,
+      $$AssetCompositionsTableCreateCompanionBuilder,
+      $$AssetCompositionsTableUpdateCompanionBuilder,
+      (AssetComposition, $$AssetCompositionsTableReferences),
+      AssetComposition,
+      PrefetchHooks Function({bool assetId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -21453,4 +22298,6 @@ class $AppDatabaseManager {
       );
   $$IncomesTableTableManager get incomes =>
       $$IncomesTableTableManager(_db, _db.incomes);
+  $$AssetCompositionsTableTableManager get assetCompositions =>
+      $$AssetCompositionsTableTableManager(_db, _db.assetCompositions);
 }

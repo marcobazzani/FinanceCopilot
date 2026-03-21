@@ -339,3 +339,13 @@ class ImportConfigs extends Table {
   TextColumn get hashColumnsJson => text().withDefault(const Constant('[]'))(); // JSON: [col1, col2, ...]
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
+
+/// ETF composition breakdown (country/sector/holding weights from justETF).
+class AssetCompositions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get assetId => integer().references(Assets, #id)();
+  TextColumn get type => text()();   // 'country', 'sector', 'holding'
+  TextColumn get name => text()();   // e.g. 'United States', 'Technology'
+  RealColumn get weight => real()(); // percentage, e.g. 67.33
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}

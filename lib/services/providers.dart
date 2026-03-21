@@ -15,6 +15,7 @@ import 'income_adjustment_service.dart';
 import 'income_service.dart';
 import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
+import 'composition_service.dart';
 import 'investing_com_service.dart';
 import 'import_service.dart';
 import 'isin_lookup_service.dart';
@@ -60,6 +61,10 @@ final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
   return InvestingComService(db);
 });
 
+final compositionServiceProvider = Provider<CompositionService>((ref) {
+  return CompositionService(ref.watch(databaseProvider));
+});
+
 /// Bumped after market price sync to trigger chart rebuilds.
 final priceRefreshCounter = StateProvider<int>((ref) => 0);
 
@@ -94,6 +99,18 @@ final accountStatsProvider = StreamProvider<Map<int, AccountStats>>((ref) {
 
 final assetsProvider = StreamProvider<List<Asset>>((ref) {
   return ref.watch(assetServiceProvider).watchAll();
+});
+
+/// Asset composition breakdowns (country/sector/holding weights from justETF).
+final assetCompositionsProvider = StreamProvider<Map<int, List<AssetComposition>>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.assetCompositions)).watch().map((rows) {
+    final map = <int, List<AssetComposition>>{};
+    for (final row in rows) {
+      map.putIfAbsent(row.assetId, () => []).add(row);
+    }
+    return map;
+  });
 });
 
 final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
