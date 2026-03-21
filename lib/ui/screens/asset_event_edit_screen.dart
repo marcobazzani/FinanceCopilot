@@ -88,9 +88,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     _amountCtrl.addListener(_onRateOrAmountChanged);
     _exchangeRateCtrl.addListener(_onRateOrAmountChanged);
 
-    // Auto-populate exchange rate for new events
+    // Auto-populate exchange rate and asset price for new events
     if (!_isEditing) {
       _fetchExchangeRate();
+      _fetchAssetPrice();
     }
   }
 
@@ -139,6 +140,21 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     }
   }
 
+  Future<void> _fetchAssetPrice() async {
+    if (!_usesQtyPrice) return;
+    // Only auto-fill if price field is empty or was auto-filled previously
+    if (_priceCtrl.text.isNotEmpty && _isEditing) return;
+
+    final priceService = ref.read(marketPriceServiceProvider);
+    final price = await priceService.getPrice(widget.asset.id, _selectedDate);
+    if (price != null && mounted) {
+      setState(() {
+        _priceCtrl.text = price.toStringAsFixed(4);
+      });
+      _onFieldChanged();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final baseSym = currencySymbol(_baseCurrency);
@@ -174,6 +190,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               onChanged: (v) {
                 setState(() => _eventType = v!);
                 _onFieldChanged();
+                _fetchAssetPrice();
               },
             ),
             const SizedBox(height: 12),
@@ -370,6 +387,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
         _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).valueOrNull ?? 'en_US').format(picked);
       });
       _fetchExchangeRate();
+      _fetchAssetPrice();
     }
   }
 
