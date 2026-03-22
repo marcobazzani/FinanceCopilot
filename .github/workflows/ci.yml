@@ -163,15 +163,13 @@ jobs:
           git push -f origin nightly
 
       - name: Create nightly release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create nightly \
             --prerelease \
             --title "Nightly Build" \
-            --notes "Automated nightly build from \`main\` branch.
-Commit: ${{ github.sha }}
-Date: ${{ github.event.head_commit.timestamp }}" \
+            --notes "Automated nightly build from main. Commit: ${{ github.sha }}" \
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg \
             artifacts/FinanceCopilot-windows.zip \
             artifacts/FinanceCopilot-linux/FinanceCopilot-linux.tar.gz
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
