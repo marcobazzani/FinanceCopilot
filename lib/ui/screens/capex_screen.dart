@@ -10,6 +10,7 @@ import 'capex_edit_screen.dart';
 import 'income_adj_detail_screen.dart';
 import 'income_adj_edit_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
+import '../widgets/privacy_text.dart';
 
 class CapexScreen extends ConsumerWidget {
   const CapexScreen({super.key});
@@ -226,7 +227,7 @@ class _CapexTile extends StatelessWidget {
                   ),
                   if (stats != null && stats!.totalReimbursed > 0) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    PrivacyText(
                       'Reimb: ${amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}',
                       style: TextStyle(fontSize: 11, color: Colors.green.shade600),
                     ),
@@ -238,7 +239,7 @@ class _CapexTile extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
+                PrivacyText(
                   '${amtFormat.format(schedule.totalAmount)} ${currencySymbol(schedule.currency)}',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
@@ -314,7 +315,7 @@ class _IncomeAdjTile extends ConsumerWidget {
                   ),
                   if (totalSpent > 0) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    PrivacyText(
                       'Spent: ${amtFormat.format(totalSpent)} $sym · Remaining: ${amtFormat.format(remaining)} $sym',
                       style: TextStyle(fontSize: 11, color: remaining > 0 ? Colors.orange.shade600 : Colors.green.shade600),
                     ),
@@ -323,7 +324,7 @@ class _IncomeAdjTile extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
+            PrivacyText(
               '${amtFormat.format(adjustment.totalAmount)} $sym',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,

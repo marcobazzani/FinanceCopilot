@@ -8,6 +8,7 @@ import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
+import '../widgets/privacy_text.dart';
 
 class AccountsScreen extends ConsumerWidget {
   const AccountsScreen({super.key});
@@ -212,7 +213,7 @@ class _AccountTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (stats?.balance != null) ...[
-                  Text(
+                  PrivacyText(
                     '${balanceFormat.format(stats!.balance!)} ${account.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
@@ -226,7 +227,7 @@ class _AccountTile extends StatelessWidget {
                   // Show converted balance if currency differs from base
                   if (account.currency != baseCurrency && convertedBalance != null) ...[
                     const SizedBox(height: 2),
-                    Text(
+                    PrivacyText(
                       '≈ ${balanceFormat.format(convertedBalance!)} ${currencySymbol(baseCurrency)}',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: Colors.grey,

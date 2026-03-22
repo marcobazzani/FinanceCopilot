@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/gestures.dart';
@@ -899,7 +900,7 @@ class _CollapsedChartRow extends StatelessWidget {
 // Unified chart card widget
 // ════════════════════════════════════════════════════
 
-class _ChartCard extends StatelessWidget {
+class _ChartCard extends ConsumerWidget {
   final DashboardChart chart;
   final List<_Series> series;
   final _AllSeriesData allData;
@@ -967,7 +968,8 @@ class _ChartCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPrivate = ref.watch(privacyModeProvider);
     final visible = series.where((s) => !hidden.contains(s.key)).toList();
     final totalSpots = _buildSmartTotalSpots(visible);
     final symbol = currencySymbol(allData.baseCurrency);
@@ -1004,8 +1006,14 @@ class _ChartCard extends StatelessWidget {
                 child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
               ),
               if (chart.sourceChartIds == null)
-                Text(currFmt.format(currentTotal),
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                isPrivate
+                    ? ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                        child: Text(currFmt.format(currentTotal),
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                      )
+                    : Text(currFmt.format(currentTotal),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(width: 4),
               // Hide components toggle (not for combined charts — they only show contributors)
               if (chart.sourceChartIds == null)
@@ -1076,6 +1084,7 @@ class _ChartCard extends StatelessWidget {
                         zoomMaxX: zoomMaxX,
                         zoomMinY: zoomMinY,
                         zoomMaxY: zoomMaxY,
+                        isPrivate: isPrivate,
                       ),
                     );
                   })
@@ -1514,6 +1523,7 @@ class _UnifiedChart extends StatelessWidget {
   final double? zoomMaxX;
   final double? zoomMinY;
   final double? zoomMaxY;
+  final bool isPrivate;
 
   const _UnifiedChart({
     required this.firstDate,
@@ -1526,6 +1536,7 @@ class _UnifiedChart extends StatelessWidget {
     this.zoomMaxX,
     this.zoomMinY,
     this.zoomMaxY,
+    this.isPrivate = false,
   });
 
   @override
@@ -1626,7 +1637,8 @@ class _UnifiedChart extends StatelessWidget {
               reservedSize: 60,
               interval: yRange > 0 ? yRange / 4 : 100,
               getTitlesWidget: (value, meta) {
-                return Text(currFmt.format(value),
+                final label = this.isPrivate ? '••••' : currFmt.format(value);
+                return Text(label,
                     style: TextStyle(fontSize: 10, color: textColor));
               },
             ),
@@ -1750,6 +1762,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
 
   @override
   Widget build(BuildContext context) {
+    final isPrivate = ref.watch(privacyModeProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
@@ -1847,6 +1860,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       valueDiff: c.valueDiff,
                       amtFmt: amtFmt,
                       url: c.investingUrl,
+                      isPrivate: isPrivate,
                     )),
                     const Divider(height: 16),
                     _buildRow(
@@ -1857,6 +1871,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       valueDiff: totalDiff,
                       amtFmt: amtFmt,
                       bold: true,
+                      isPrivate: isPrivate,
                     ),
                   ],
                 );
@@ -1877,11 +1892,16 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required NumberFormat amtFmt,
     bool bold = false,
     String? url,
+    required bool isPrivate,
   }) {
     final isPositive = valueDiff >= 0;
     final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
     final arrow = valueDiff == 0 ? '' : (isPositive ? '\u25B2 ' : '\u25BC ');
     final weight = bold ? FontWeight.w700 : FontWeight.w400;
+
+    Widget maybeBlur(Widget child) => isPrivate
+        ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
+        : child;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1933,11 +1953,11 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
           Expanded(
             flex: 3,
-            child: Text(
+            child: maybeBlur(Text(
               '$arrow${amtFmt.format(valueDiff.abs())}',
               style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
               textAlign: TextAlign.right,
-            ),
+            )),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../widgets/privacy_text.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
@@ -605,7 +606,7 @@ class _TopHoldingsChart extends StatelessWidget {
 // Concentration Card
 // ════════════════════════════════════════════════════
 
-class _ConcentrationCard extends StatelessWidget {
+class _ConcentrationCard extends ConsumerWidget {
   final List<MapEntry<String, double>> holdings;
   final double total;
   final String baseCurrency;
@@ -619,7 +620,8 @@ class _ConcentrationCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPrivate = ref.watch(privacyModeProvider);
     final count = holdings.length;
     final top1 = count >= 1 ? holdings[0].value / total * 100 : 0.0;
     final top3 = count >= 3
@@ -645,7 +647,7 @@ class _ConcentrationCard extends StatelessWidget {
             children: [
               Text('Concentration Risk', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
-              _metricRow('Portfolio Value', _fmtMoney(total, locale, baseCurrency)),
+              _metricRow('Portfolio Value', _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
               _metricRow('Holdings', '$count'),
               const Divider(),
               _metricRow('Top 1', '${top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
@@ -667,14 +669,16 @@ class _ConcentrationCard extends StatelessWidget {
     );
   }
 
-  Widget _metricRow(String label, String value) {
+  Widget _metricRow(String label, String value, {bool blur = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          blur
+              ? PrivacyText(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))
+              : Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         ],
       ),
     );

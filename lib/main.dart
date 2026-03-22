@@ -162,6 +162,15 @@ class _AppShellState extends ConsumerState<AppShell> {
       appBar: AppBar(
         title: const Text('FinanceCopilot'),
         actions: [
+          Consumer(builder: (context, ref, _) {
+            final isPrivate = ref.watch(privacyModeProvider);
+            return IconButton(
+              icon: Icon(isPrivate ? Icons.visibility_off : Icons.visibility),
+              tooltip: isPrivate ? 'Hide amounts' : 'Show amounts',
+              onPressed: () =>
+                  ref.read(privacyModeProvider.notifier).state = !isPrivate,
+            );
+          }),
           // Refresh market prices button
           IconButton(
             icon: _isSyncing

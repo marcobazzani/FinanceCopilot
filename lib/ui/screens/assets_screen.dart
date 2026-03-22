@@ -12,6 +12,7 @@ import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
+import '../widgets/privacy_text.dart';
 
 class AssetsScreen extends ConsumerWidget {
   const AssetsScreen({super.key});
@@ -192,7 +193,7 @@ class _AssetTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (marketValue != null) ...[
-                  Text(
+                  PrivacyText(
                     '${amtFormat.format(marketValue!)} ${currencySymbol(baseCurrency)}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
@@ -204,7 +205,7 @@ class _AssetTile extends StatelessWidget {
                     _buildGainLoss(theme, amtFormat),
                   ],
                 ] else if (stats != null && stats!.totalInvested > 0)
-                  Text(
+                  PrivacyText(
                     '${amtFormat.format(stats!.totalInvested)} ${asset.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
@@ -260,7 +261,7 @@ class _AssetTile extends StatelessWidget {
     final isPositive = gain >= 0;
     final color = isPositive ? Colors.green : Colors.red;
     final arrow = isPositive ? '\u25B2' : '\u25BC'; // ▲ ▼
-    return Text(
+    return PrivacyText(
       '$arrow ${amtFormat.format(gain.abs())} (${pct.abs().toStringAsFixed(1)}%)',
       style: theme.textTheme.labelSmall?.copyWith(
         color: color,

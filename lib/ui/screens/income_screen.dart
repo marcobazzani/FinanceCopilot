@@ -9,6 +9,7 @@ import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 import 'import_screen.dart';
+import '../widgets/privacy_text.dart';
 
 class IncomeScreen extends ConsumerStatefulWidget {
   const IncomeScreen({super.key});
@@ -127,7 +128,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                     backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                     child: Icon(Icons.payments, color: Theme.of(context).colorScheme.onPrimaryContainer),
                   ),
-                  title: Text(
+                  title: PrivacyText(
                     '${amtFormat.format(income.amount)} $sym',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),

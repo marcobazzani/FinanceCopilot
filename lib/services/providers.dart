@@ -69,6 +69,9 @@ final compositionServiceProvider = Provider<CompositionService>((ref) {
 /// Bumped after market price sync to trigger chart rebuilds.
 final priceRefreshCounter = StateProvider<int>((ref) => 0);
 
+/// Privacy mode: blur all monetary amounts for screenshot sharing.
+final privacyModeProvider = StateProvider<bool>((ref) => false);
+
 // ── Reactive stream providers ──
 
 /// Display locale from AppConfigs, reactive. Empty string = system default.
@@ -237,6 +240,8 @@ class AssetDailyChange {
 /// trading day's price is used automatically (via getPrice).
 final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, DateTime>((ref, referenceDate) async {
   ref.watch(priceRefreshCounter); // rebuild after price sync
+  ref.watch(assetsProvider);     // explicit reactive dependency (Riverpod 3.x)
+  ref.watch(assetStatsProvider); // explicit reactive dependency (Riverpod 3.x)
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
