@@ -34,7 +34,7 @@ The dashboard tracks your financial picture across six views — Price Changes, 
 The Allocation tab breaks down your portfolio by geography, sector, asset type, currency exposure, top holdings, and concentration risk, aggregated from live composition data across all your ETFs and stocks.
 
 ### Asset tracking
-One model for everything — stocks, ETFs, ETCs, crypto, real estate, pension funds, liabilities. Record buys, sells, and dividends as timestamped events. Market prices sync automatically from Investing.com (with Cloudflare bypass) or Google Sheets. ETF and stock composition data refreshes weekly from justETF and stockanalysis.com.
+One model for everything — stocks, ETFs, ETCs, crypto, real estate, pension funds, liabilities. Record buys, sells, and dividends as timestamped events. Market prices sync automatically from Investing.com or Google Sheets. ETF and stock composition data refreshes weekly from justETF and stockanalysis.com.
 
 ### Account management
 Track balances across any number of bank accounts, brokers, and wallets. Balances are derived from imported transactions so the history is always auditable.
@@ -59,7 +59,6 @@ FX rates for 13 currencies (EUR, USD, GBP, CHF, JPY, SEK, NOK, DKK, PLN, CZK, HU
 | State management | Riverpod |
 | Database | Drift (SQLite) |
 | Charts | fl_chart |
-| Cloudflare bypass | flutter_inappwebview (headless WebView) |
 | Import | csv, excel, file_picker |
 
 ## Getting Started
