@@ -66,7 +66,7 @@ class AppStrings {
   String get settingsCacheCleared       => _it ? 'Dati in cache cancellati'   : 'Cached data cleared';
 
   // ── Dashboard ───────────────────────────────────────────
-  String get dashTabCharts       => _it ? 'Grafici'          : 'Charts';
+  String get dashTabOverall      => _it ? 'Generale'         : 'Overall';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';
   String get dashTabAllocation   => _it ? 'Allocazione'      : 'Allocation';
   String get dashNoData          => _it
@@ -79,6 +79,15 @@ class AppStrings {
   String get dashAssets          => _it ? 'Attività'           : 'Assets';
   String get dashPriceChanges    => _it ? 'Variazioni prezzo'  : 'Price Changes';
   String get dashNoPriceData     => _it ? 'Nessun dato di prezzo disponibile' : 'No price data available';
+  String get dashTotals          => _it ? 'Totali'             : 'Totals';
+  String get dashTotalAssets     => _it ? 'Patrimonio totale'  : 'Total Assets';
+  String get dashCash            => _it ? 'Liquidità'          : 'Cash';
+  String get dashSaving          => _it ? 'Risparmi'           : 'Saving';
+  String get dashInvested        => _it ? 'Investito'          : 'Invested';
+  String get dashPortfolio       => _it ? 'Portafoglio'        : 'Portfolio';
+  String get cfVelocity          => _it ? 'Velocità'           : 'Velocity';
+  String get colTotal            => _it ? 'Totale'             : 'Total';
+  String get colAvg              => _it ? 'Media'              : 'Avg';
 
   // ── Dashboard cash-flow chart titles ────────────────────
   String get chartYearlyBarTitle          => _it ? 'Entrate / Uscite / Risparmio per Anno'   : 'Income / Expenses / Savings per Year';
