@@ -226,7 +226,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   if (assetIds.isNotEmpty) {
     final assetPlaceholders = assetIds.map((_) => '?').join(',');
     final evRows = await db.customSelect(
-      'SELECT asset_id, date, type, amount, quantity, currency, exchange_rate '
+      'SELECT asset_id, date, type, amount, quantity, currency, exchange_rate, commission '
       'FROM asset_events '
       'WHERE asset_id IN ($assetPlaceholders) '
       'ORDER BY date ASC',
@@ -238,6 +238,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       final epochSec = row.read<int>('date');
       final type = row.read<String>('type');
       final amount = row.read<double>('amount');
+      final commission = row.readNullable<double>('commission') ?? 0;
       final quantity = row.readNullable<double>('quantity') ?? 0;
       final currency = row.read<String>('currency');
       final storedRate = row.readNullable<double>('exchange_rate');
@@ -254,8 +255,9 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
       final dayKey = toDayKey(dt);
 
+      final netAmount = amount - commission;
       final baseAmount = await convertToBase(
-        amount: amount, currency: currency, baseCurrency: baseCurrency,
+        amount: netAmount, currency: currency, baseCurrency: baseCurrency,
         storedRate: storedRate, resolver: rates, dayKey: dayKey,
       );
 

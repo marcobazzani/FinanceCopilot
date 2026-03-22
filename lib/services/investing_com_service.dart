@@ -227,16 +227,14 @@ class InvestingComService extends MarketPriceService {
       if (r.symbol.toUpperCase() == ticker.toUpperCase() &&
           exchangeNameList.any((name) => name.toLowerCase() == r.exchange.toLowerCase())) {
         // Cache the cid and URL
-        await db.customStatement(
-          'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
-          [cidKey, r.cid.toString(), 'Investing.com cid for $ticker on ${exchangeNameList.first}'],
-        );
+        await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+          key: cidKey, value: r.cid.toString(), description: Value('Investing.com cid for $ticker on ${exchangeNameList.first}'),
+        ));
         if (r.url != null && r.url!.isNotEmpty) {
           final urlKey = 'INVESTING_URL_${ticker}_$exchange';
-          await db.customStatement(
-            'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
-            [urlKey, r.url!, 'Investing.com URL for $ticker'],
-          );
+          await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+            key: urlKey, value: r.url!, description: Value('Investing.com URL for $ticker'),
+          ));
         }
 
         _log.info('searchCid: found $ticker → cid=${r.cid} (${r.exchange})');
@@ -318,10 +316,9 @@ class InvestingComService extends MarketPriceService {
           if (cid == null) return null;
 
           // Cache in DB
-          await db.customStatement(
-            'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
-            [cidKey, cid.toString(), 'Investing.com FX cid for $pairKey'],
-          );
+          await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+            key: cidKey, value: cid.toString(), description: Value('Investing.com FX cid for $pairKey'),
+          ));
         }
         _fxCidCache[pairKey] = cid;
       }
@@ -492,10 +489,9 @@ class InvestingComService extends MarketPriceService {
         for (final r in results) {
           if (r.cid == cid && r.url != null && r.url!.isNotEmpty) {
             final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
-            await db.customStatement(
-              'INSERT OR REPLACE INTO app_configs (key, value, description) VALUES (?, ?, ?)',
-              [urlKey, r.url!, 'Investing.com URL for $searchTerm'],
-            );
+            await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+              key: urlKey, value: r.url!, description: Value('Investing.com URL for $searchTerm'),
+            ));
             _log.info('backfillUrls: cached URL for $searchTerm → ${r.url}');
             break;
           }

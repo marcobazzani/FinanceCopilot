@@ -247,7 +247,7 @@ LazyDatabase _openConnection() {
     // ignore: avoid_print
     print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase(file);
   });
 }
 
@@ -262,6 +262,6 @@ LazyDatabase _openAtPath(String path) {
     // ignore: avoid_print
     print('DB:  $path');
     _log.info('Opening database at path: $path');
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase(file);
   });
 }
