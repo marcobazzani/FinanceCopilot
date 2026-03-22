@@ -163,16 +163,15 @@ jobs:
           git push -f origin nightly
 
       - name: Create nightly release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly
-          name: Nightly Build
-          prerelease: true
-          body: |
-            Automated nightly build from `main` branch.
-            Commit: ${{ github.sha }}
-            Date: ${{ github.event.head_commit.timestamp }}
-          files: |
-            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
-            artifacts/FinanceCopilot-windows.zip
+        run: |
+          gh release create nightly \
+            --prerelease \
+            --title "Nightly Build" \
+            --notes "Automated nightly build from \`main\` branch.
+Commit: ${{ github.sha }}
+Date: ${{ github.event.head_commit.timestamp }}" \
+            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg \
+            artifacts/FinanceCopilot-windows.zip \
             artifacts/FinanceCopilot-linux/FinanceCopilot-linux.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
