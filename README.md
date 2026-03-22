@@ -116,4 +116,4 @@ flutter test
 
 ## License
 
-Private project. All rights reserved.
+MIT
