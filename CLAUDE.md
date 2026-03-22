@@ -10,6 +10,7 @@
 - Commit into git when detecting the user is starting a new task (not iterating on a previous task).
 - Use concise, meaningful commit messages.
 - After every commit bump the version number at the first code change
+- NEVER add `Co-Authored-By:` lines to commits. Not under any circumstances, not for any reason. No exceptions.
 
 # Code Quality
 
