@@ -16,6 +16,7 @@ import '../../database/providers.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
+import '../widgets/privacy_text.dart';
 import 'allocation_tab.dart';
 
 final _log = getLogger('DashboardScreen');
@@ -63,6 +64,46 @@ class _AllSeriesData {
   });
 
   List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...adjustments, ...incomeAdjustments];
+}
+
+// ════════════════════════════════════════════════════
+// Income/Expense data models
+// ════════════════════════════════════════════════════
+
+class _MonthBucket {
+  final int year, month;
+  final double income, navChange;
+  double get expenses    => income - navChange;
+  double get savings     => navChange;
+  double get savingsRate => income > 0 ? navChange / income : 0;
+  const _MonthBucket({required this.year, required this.month,
+                      required this.income, required this.navChange});
+}
+
+class _YearBucket {
+  final int year, days;
+  final double income, navChange;
+  final List<_MonthBucket> months;
+
+  double get expenses        => income - navChange;
+  double get savings         => navChange;
+  double get savingsRate     => income > 0 ? navChange / income : 0;
+  double get dailyIncome     => days > 0 ? income / days : 0;
+  double get dailyExpenses   => days > 0 ? expenses / days : 0;
+  double get monthlyIncome   => months.isNotEmpty ? income / months.length : 0;
+  double get monthlyExpenses => months.isNotEmpty ? expenses / months.length : 0;
+
+  const _YearBucket({required this.year, required this.days,
+                     required this.income, required this.navChange,
+                     required this.months});
+}
+
+class _IncomeExpenseData {
+  final List<_YearBucket> years;
+  final String baseCurrency;
+  final DateTime firstDate;
+  const _IncomeExpenseData({required this.years, required this.baseCurrency,
+                            required this.firstDate});
 }
 
 final _chartColors = [
@@ -526,6 +567,112 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     baseCurrency: baseCurrency,
   );
 });
+
+// ════════════════════════════════════════════════════
+// Income/Expense data provider
+// ════════════════════════════════════════════════════
+
+final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) async {
+  final allSeriesData = await ref.watch(_allSeriesDataProvider.future);
+  if (allSeriesData == null) return null;
+
+  final db = ref.watch(databaseProvider);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rateService = ref.watch(exchangeRateServiceProvider);
+  ref.watch(incomesProvider); // reactive
+
+  final rates = _RateResolver(rateService, baseCurrency);
+
+  // 1. Load all incomes, convert to base currency
+  final rows = await db.customSelect(
+    'SELECT date, amount, currency FROM incomes ORDER BY date ASC',
+  ).get();
+
+  final incomeByMonth = <(int, int), double>{};
+  for (final row in rows) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    final amount = row.read<double>('amount');
+    final currency = row.read<String>('currency');
+    final rate = await rates.getRate(currency, toDayKey(dt));
+    final key = (dt.year, dt.month);
+    incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
+  }
+
+  // 2. Build total saving series (same composition as Cash Flow tab)
+  final savingSpots = buildTotalSpots([
+    ...allSeriesData.accounts.map((s) => s.spots),
+    ...allSeriesData.assetInvested.map((s) => s.spots),
+    ...allSeriesData.adjustments.map((s) => s.spots),
+    ...allSeriesData.incomeAdjustments.map((s) => s.spots),
+  ]);
+
+  double lookupNAV(DateTime date) {
+    final x = date.difference(allSeriesData.firstDate).inDays.toDouble();
+    double nav = 0;
+    for (final s in savingSpots) {
+      if (s.x <= x) { nav = s.y; } else { break; }
+    }
+    return nav;
+  }
+
+  // 3. Build monthly + yearly buckets
+  final now = DateTime.now();
+  final years = <_YearBucket>[];
+
+  for (int y = allSeriesData.firstDate.year; y <= now.year; y++) {
+    final yStart = DateTime(y, 1, 1);
+    final isCurrentYear = y == now.year;
+    final effectiveEnd = isCurrentYear ? now : DateTime(y, 12, 31);
+    final days = effectiveEnd.difference(yStart).inDays + 1;
+
+    double yearIncome = 0;
+    final months = <_MonthBucket>[];
+
+    for (int m = 1; m <= 12; m++) {
+      if (isCurrentYear && m > now.month) break;
+      final mStart = DateTime(y, m, 1);
+      final mEnd = (isCurrentYear && m == now.month)
+          ? now
+          : (m < 12
+              ? DateTime(y, m + 1, 1).subtract(const Duration(days: 1))
+              : DateTime(y, 12, 31));
+      final mIncome = incomeByMonth[(y, m)] ?? 0;
+      yearIncome += mIncome;
+      months.add(_MonthBucket(
+        year: y, month: m,
+        income: mIncome,
+        navChange: lookupNAV(mEnd) - lookupNAV(mStart),
+      ));
+    }
+
+    years.add(_YearBucket(
+      year: y, days: days,
+      income: yearIncome,
+      navChange: lookupNAV(effectiveEnd) - lookupNAV(yStart),
+      months: months,
+    ));
+  }
+
+  return _IncomeExpenseData(
+    years: years,
+    baseCurrency: baseCurrency,
+    firstDate: allSeriesData.firstDate,
+  );
+});
+
+/// EOY prediction: extrapolate current year total based on prior-year pattern.
+/// Returns null if insufficient data.
+double? _eoyPrediction(_YearBucket current, _YearBucket prev, {bool expenses = false}) {
+  if (current.months.isEmpty) return null;
+  final n = current.months.length;
+  final prevSame = prev.months
+      .where((m) => m.month <= n)
+      .fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income));
+  if (prevSame == 0) return null;
+  final currentTotal = expenses ? current.expenses : current.income;
+  final prevTotal    = expenses ? prev.expenses    : prev.income;
+  return prevTotal * currentTotal / prevSame;
+}
 
 
 // ════════════════════════════════════════════════════
@@ -1808,30 +1955,35 @@ class _UnifiedChart extends StatelessWidget {
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
+            fitInsideHorizontally: true,
+            fitInsideVertically: true,
             getTooltipItems: (spots) {
-              return spots.map((spot) {
+              final items = <LineTooltipItem?>[];
+              for (int spotIdx = 0; spotIdx < spots.length; spotIdx++) {
+                final spot = spots[spotIdx];
                 final barIndex = spot.barIndex;
                 final isTotal = showTotal && barIndex == 0;
                 final seriesIdx = barIndex - (showTotal ? 1 : 0);
                 final date = firstDate.add(Duration(days: spot.x.toInt()));
+                final datePrefix = spotIdx == 0 ? '${fullFmt.format(date)}\n' : '';
 
                 if (isTotal) {
-                  return LineTooltipItem(
+                  items.add(LineTooltipItem(
                     '${fullFmt.format(date)}\nTotal: ${currFmt.format(spot.y)}',
                     const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                  );
-                }
-
-                if (seriesIdx >= 0 && seriesIdx < visible.length) {
+                  ));
+                } else if (seriesIdx >= 0 && seriesIdx < visible.length) {
                   final s = visible[seriesIdx];
                   final displayY = s.rightAxis ? unscaleRight(spot.y) : spot.y;
-                  return LineTooltipItem(
-                    '${s.name}: ${currFmt.format(displayY)}${s.rightAxis ? ' (→)' : ''}',
+                  items.add(LineTooltipItem(
+                    '$datePrefix${s.name}: ${currFmt.format(displayY)}${s.rightAxis ? ' (→)' : ''}',
                     TextStyle(color: s.color, fontSize: 11),
-                  );
+                  ));
+                } else {
+                  items.add(null);
                 }
-                return null;
-              }).toList();
+              }
+              return items;
             },
           ),
         ),
@@ -2167,10 +2319,10 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     // Default zoom: last 365 days
     final totalDays = DateTime.now().difference(widget.allData.firstDate).inDays.toDouble();
     final xMax = totalDays.clamp(0.0, double.infinity);
-    final xMin = (xMax - 365).clamp(0.0, double.infinity);
+    final xMin365 = (xMax - 365).clamp(0.0, double.infinity);
     for (final id in [_idSaving, _idSpending, _idVelocity]) {
       _zooms[id] = _ChartZoom()
-        ..minX = xMin
+        ..minX = xMin365
         ..maxX = xMax;
     }
   }
@@ -2246,6 +2398,8 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
   Widget build(BuildContext context) {
     final allData = widget.allData;
     final locale  = widget.locale;
+    final ieAsync = ref.watch(_incomeExpenseDataProvider);
+    final ieData  = ieAsync.value;
 
     // Saving = accounts + invested + adjustments (spread + income)
     final savingSpots = buildTotalSpots([
@@ -2333,11 +2487,829 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
               headerExtra: _maField(c.ctl, c.onWin),
             );
           }),
-          if (i < chartDefs.length - 1) const SizedBox(height: 24),
+          const SizedBox(height: 24),
+        ],
+        // Income/expense analytics sections
+        if (ieAsync.isLoading) ...[
+          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: 24),
+        ] else if (ieData != null) ...[
+          // Chart 4 equivalent: yearly totals bar chart (Expenses + Savings per year)
+          ExpansionTile(
+            title: const Text('Entrate / Uscite / Risparmio per Anno', style: TextStyle(fontWeight: FontWeight.w600)),
+            initiallyExpanded: true,
+            children: [_YearlyBarChart(data: ieData, locale: locale)],
+          ),
+          // Chart 2 equivalent: monthly averages bar chart per year
+          ExpansionTile(
+            title: const Text('Medie Mensili per Anno', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_MonthlyAvgBarChart(data: ieData, locale: locale)],
+          ),
+          // Chart 3 equivalent: monthly income by year (x=months, one line per year)
+          ExpansionTile(
+            title: const Text('Entrate per Mese (per Anno)', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_MonthlyByYearLineChart(data: ieData, locale: locale, field: 'income')],
+          ),
+          // Chart 5 equivalent: monthly expenses by year (x=months, recent years)
+          ExpansionTile(
+            title: const Text('Uscite per Mese (per Anno)', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_MonthlyByYearLineChart(data: ieData, locale: locale, field: 'expenses', maxYears: 5)],
+          ),
+          // Tables
+          ExpansionTile(
+            title: const Text('Riepilogo Annuale', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_YearlySummaryTable(data: ieData, locale: locale)],
+          ),
+          ExpansionTile(
+            title: const Text('Entrate Mensili per Anno (tabella)', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_MonthlyGrid(data: ieData, locale: locale, field: 'income')],
+          ),
+          ExpansionTile(
+            title: const Text('Uscite Mensili per Anno (tabella)', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_MonthlyGrid(data: ieData, locale: locale, field: 'expenses', maxYears: 5)],
+          ),
+          ExpansionTile(
+            title: const Text('Variazione YoY Entrate', style: TextStyle(fontWeight: FontWeight.w600)),
+            children: [_YoYDiffTable(data: ieData, locale: locale)],
+          ),
+          const SizedBox(height: 24),
         ],
       ],
     );
   }
+}
+
+// ════════════════════════════════════════════════════
+// Income/Expense table widgets
+// ════════════════════════════════════════════════════
+
+class _YearlySummaryTable extends StatelessWidget {
+  final _IncomeExpenseData data;
+  final String locale;
+  const _YearlySummaryTable({required this.data, required this.locale});
+
+  @override
+  Widget build(BuildContext context) {
+    final amtFmt = fmt.amountFormat(locale);
+    final pctFmt = NumberFormat('0.0%');
+    final theme  = Theme.of(context);
+    final sym    = currencySymbol(data.baseCurrency);
+    final now    = DateTime.now();
+
+    final years = data.years.reversed.toList();
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: DataTable(
+        headingRowHeight: 36,
+        dataRowMinHeight: 32,
+        dataRowMaxHeight: 52,
+        columnSpacing: 20,
+        columns: const [
+          DataColumn(label: Text('Year',     style: TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('Income',   style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Expenses', style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Savings',  style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Rate%',    style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Avg/Mo Inc',  style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Avg/Mo Exp',  style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Daily Inc',   style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text('Daily Exp',   style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+        ],
+        rows: [
+          for (int i = 0; i < years.length; i++) ...[
+            _yearRow(years[i], i == 0 && years[i].year == now.year,
+                     amtFmt, pctFmt, sym, theme),
+            // EOY prediction row for current (partial) year
+            if (i == 0 && years[i].year == now.year && years.length > 1)
+              _eoyRow(years[i], years[i + 1], amtFmt, pctFmt, sym, theme),
+          ],
+        ],
+      ),
+    );
+  }
+
+  DataRow _yearRow(_YearBucket y, bool isCurrent,
+      NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme) {
+    TextStyle? style = isCurrent
+        ? TextStyle(fontStyle: FontStyle.italic, color: theme.colorScheme.onSurface.withValues(alpha: 0.6))
+        : null;
+
+    Color savingsColor = y.savings >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+
+    return DataRow(cells: [
+      DataCell(Text(isCurrent ? '${y.year}*' : '${y.year}', style: style?.copyWith(fontWeight: FontWeight.w600))),
+      DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style)),
+      DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style)),
+      DataCell(PrivacyText(
+        '${amtFmt.format(y.savings)} $sym',
+        style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
+      )),
+      DataCell(Text(pctFmt.format(y.savingsRate), style: style?.copyWith(color: savingsColor))),
+      DataCell(PrivacyText('${amtFmt.format(y.monthlyIncome)} $sym', style: style)),
+      DataCell(PrivacyText('${amtFmt.format(y.monthlyExpenses)} $sym', style: style)),
+      DataCell(PrivacyText('${amtFmt.format(y.dailyIncome)} $sym', style: style)),
+      DataCell(PrivacyText('${amtFmt.format(y.dailyExpenses)} $sym', style: style)),
+    ]);
+  }
+
+  DataRow _eoyRow(_YearBucket current, _YearBucket prev,
+      NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme) {
+    final eoyInc = _eoyPrediction(current, prev);
+    final eoyExp = _eoyPrediction(current, prev, expenses: true);
+    final eoySav = (eoyInc != null && eoyExp != null) ? eoyInc - eoyExp : null;
+    final eoyRate = (eoyInc != null && eoyInc > 0 && eoySav != null) ? eoySav / eoyInc : null;
+
+    final style = TextStyle(
+      fontStyle: FontStyle.italic,
+      fontSize: 11,
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+    );
+
+    String fmt_(double? v) => v != null ? '~${amtFmt.format(v)} $sym' : '—';
+
+    return DataRow(cells: [
+      DataCell(Text('  EOY~', style: style)),
+      DataCell(PrivacyText(fmt_(eoyInc), style: style)),
+      DataCell(PrivacyText(fmt_(eoyExp), style: style)),
+      DataCell(PrivacyText(fmt_(eoySav), style: style)),
+      DataCell(Text(eoyRate != null ? '~${pctFmt.format(eoyRate)}' : '—', style: style)),
+      DataCell(const Text('')),
+      DataCell(const Text('')),
+      DataCell(const Text('')),
+      DataCell(const Text('')),
+    ]);
+  }
+}
+
+class _MonthlyGrid extends StatelessWidget {
+  final _IncomeExpenseData data;
+  final String locale;
+  final String field; // 'income' or 'expenses'
+  final int? maxYears;
+  const _MonthlyGrid({required this.data, required this.locale,
+                      required this.field, this.maxYears});
+
+  static const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
+                               'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  @override
+  Widget build(BuildContext context) {
+    final amtFmt = fmt.amountFormat(locale);
+    final theme  = Theme.of(context);
+    final sym    = currencySymbol(data.baseCurrency);
+    final now    = DateTime.now();
+
+    var years = data.years;
+    if (maxYears != null && years.length > maxYears!) {
+      years = years.sublist(years.length - maxYears!);
+    }
+    final yearLabels = years.map((y) => y.year).toList();
+
+    // avg column: average per year for each month
+    final borderSide = BorderSide(color: theme.dividerColor, width: 0.5);
+    final headerBorder = TableBorder(
+      horizontalInside: borderSide,
+      verticalInside: borderSide,
+      bottom: borderSide,
+    );
+
+    double _value(_YearBucket y, int m) {
+      final mb = y.months.where((b) => b.month == m).firstOrNull;
+      return mb == null ? double.nan : (field == 'income' ? mb.income : mb.expenses);
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Table(
+        border: headerBorder,
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        children: [
+          // Header row
+          TableRow(
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
+            children: [
+              _th('Month'),
+              for (final y in yearLabels)
+                _th('$y${y == now.year ? "*" : ""}'),
+              _th('Avg'),
+            ],
+          ),
+          // Month rows
+          for (int m = 1; m <= 12; m++) ...[
+            TableRow(children: [
+              _td(_monthNames[m - 1], bold: true),
+              for (final y in years) ...[
+                Builder(builder: (ctx) {
+                  final v = _value(y, m);
+                  final isFuture = v.isNaN;
+                  final isCurrent = y.year == now.year;
+                  return _tdPrivacy(
+                    isFuture ? '—' : '${amtFmt.format(v)} $sym',
+                    dimmed: isCurrent || isFuture,
+                  );
+                }),
+              ],
+              Builder(builder: (ctx) {
+                final vals = years.map((y) => _value(y, m)).where((v) => !v.isNaN).toList();
+                final avg = vals.isEmpty ? null : vals.reduce((a, b) => a + b) / vals.length;
+                return _tdPrivacy(avg == null ? '—' : '${amtFmt.format(avg)} $sym');
+              }),
+            ]),
+          ],
+          // Total row
+          TableRow(
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
+            children: [
+              _td('Total', bold: true),
+              for (final y in years) ...[
+                Builder(builder: (ctx) {
+                  final v = field == 'income' ? y.income : y.expenses;
+                  return _tdPrivacy('${amtFmt.format(v)} $sym',
+                    dimmed: y.year == now.year, bold: true);
+                }),
+              ],
+              Builder(builder: (ctx) {
+                final vals = years.map((y) => field == 'income' ? y.income : y.expenses).toList();
+                final avg = vals.isEmpty ? null : vals.reduce((a, b) => a + b) / vals.length;
+                return _tdPrivacy(avg == null ? '—' : '${amtFmt.format(avg)} $sym', bold: true);
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _th(String text) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                textAlign: TextAlign.right),
+  );
+
+  Widget _td(String text, {bool bold = false, bool dimmed = false}) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    child: Text(text,
+      style: TextStyle(fontWeight: bold ? FontWeight.w600 : null,
+                       fontSize: 12, color: dimmed ? Colors.grey : null),
+      textAlign: TextAlign.right),
+  );
+
+  Widget _tdPrivacy(String text, {bool bold = false, bool dimmed = false}) =>
+    Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: PrivacyText(text,
+        style: TextStyle(fontWeight: bold ? FontWeight.w600 : null,
+                         fontSize: 12, color: dimmed ? Colors.grey : null),
+        textAlign: TextAlign.right,
+      ),
+    );
+}
+
+class _YoYDiffTable extends StatelessWidget {
+  final _IncomeExpenseData data;
+  final String locale;
+  const _YoYDiffTable({required this.data, required this.locale});
+
+  static const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
+                               'Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  @override
+  Widget build(BuildContext context) {
+    final amtFmt = fmt.amountFormat(locale);
+    final theme  = Theme.of(context);
+    final sym    = currencySymbol(data.baseCurrency);
+    final now    = DateTime.now();
+    final years  = data.years;
+
+    if (years.length < 2) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Need at least 2 years of data.', style: TextStyle(color: Colors.grey)),
+      );
+    }
+
+    // Pairs: (prevYear, curYear)
+    final pairs = <(_YearBucket, _YearBucket)>[];
+    for (int i = 1; i < years.length; i++) {
+      pairs.add((years[i - 1], years[i]));
+    }
+
+    double? _diff(_YearBucket prev, _YearBucket cur, int month) {
+      final p = prev.months.where((m) => m.month == month).firstOrNull;
+      final c = cur.months.where((m) => m.month == month).firstOrNull;
+      if (p == null || c == null) return null;
+      return c.income - p.income;
+    }
+
+    final borderSide = BorderSide(color: theme.dividerColor, width: 0.5);
+    final tableBorder = TableBorder(
+      horizontalInside: borderSide,
+      verticalInside: borderSide,
+      bottom: borderSide,
+    );
+
+    Widget _diffCell(double? v) {
+      if (v == null) return const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5), child: Text('—', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: Colors.grey)));
+      final color = v >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+      final text  = '${v >= 0 ? '+' : ''}${amtFmt.format(v)} $sym';
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: PrivacyText(text,
+          style: TextStyle(fontSize: 12, color: color),
+          textAlign: TextAlign.right,
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Table(
+        border: tableBorder,
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        children: [
+          // Header
+          TableRow(
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
+            children: [
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: const Text('Month', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              for (final p in pairs)
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        child: Text('${p.$2.year}→${p.$1.year}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          textAlign: TextAlign.right)),
+            ],
+          ),
+          // Month rows
+          for (int m = 1; m <= 12; m++)
+            TableRow(children: [
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      child: Text(_monthNames[m - 1],
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+              for (final p in pairs)
+                _diffCell(_diff(p.$1, p.$2, m)),
+            ]),
+          // YTD row (sum of months 1..now.month for current pair, else full year)
+          TableRow(
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
+            children: [
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            child: Text('YTD', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              for (final p in pairs) ...[
+                Builder(builder: (ctx) {
+                  final maxM = p.$2.year == now.year ? now.month : 12;
+                  double sum = 0;
+                  bool valid = false;
+                  for (int m = 1; m <= maxM; m++) {
+                    final d = _diff(p.$1, p.$2, m);
+                    if (d != null) { sum += d; valid = true; }
+                  }
+                  return _diffCell(valid ? sum : null);
+                }),
+              ],
+            ],
+          ),
+          // Full year row
+          TableRow(
+            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
+            children: [
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            child: Text('Year', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              for (final p in pairs) ...[
+                Builder(builder: (ctx) {
+                  if (p.$2.months.length < 12) return _diffCell(null);
+                  return _diffCell(p.$2.income - p.$1.income);
+                }),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Income/Expense chart widgets (bar + line)
+// ════════════════════════════════════════════════════
+
+/// Bar chart: x=years, bars=Income+Expenses+Savings (Chart 4 equivalent).
+class _YearlyBarChart extends ConsumerStatefulWidget {
+  final _IncomeExpenseData data;
+  final String locale;
+  const _YearlyBarChart({required this.data, required this.locale});
+
+  @override
+  ConsumerState<_YearlyBarChart> createState() => _YearlyBarChartState();
+}
+
+class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
+  final _hidden = <String>{};
+  void _toggle(String key) => setState(() {
+    _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
+  });
+
+  static const _keys   = ['income', 'expenses', 'savings'];
+  static const _labels = ['Income', 'Expenses', 'Savings'];
+
+  @override
+  Widget build(BuildContext context) {
+    final isPrivate = ref.watch(privacyModeProvider);
+    final amtFmt   = fmt.amountFormat(widget.locale);
+    final sym      = currencySymbol(widget.data.baseCurrency);
+    final years    = widget.data.years;
+    final now      = DateTime.now();
+    if (years.isEmpty) return const SizedBox.shrink();
+
+    final colors = [Colors.green.shade400, Colors.red.shade400, Colors.blue.shade400];
+    const barW = 10.0;
+    const gap  = 4.0;
+
+    // Build rod list per group respecting hidden state.
+    // Track which original index each rod maps to for tooltip.
+    final groups = <BarChartGroupData>[];
+    for (int i = 0; i < years.length; i++) {
+      final y = years[i];
+      final vals = [y.income, y.expenses, y.savings];
+      final rods = <BarChartRodData>[];
+      for (int k = 0; k < 3; k++) {
+        if (!_hidden.contains(_keys[k])) {
+          rods.add(BarChartRodData(toY: vals[k], color: colors[k], width: barW));
+        }
+      }
+      groups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: gap));
+    }
+
+    // Visible indices for tooltip mapping
+    final visibleIndices = [0, 1, 2].where((k) => !_hidden.contains(_keys[k])).toList();
+
+    final allVals = years.expand((y) => [y.income, y.expenses, y.savings.abs()]);
+    final maxY = allVals.fold(0.0, max);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Wrap(spacing: 16, children: [
+            for (int k = 0; k < 3; k++)
+              _ToggleLegendItem(
+                color: colors[k],
+                label: _labels[k],
+                enabled: !_hidden.contains(_keys[k]),
+                onTap: () => _toggle(_keys[k]),
+              ),
+          ]),
+        ),
+        _maybeBlur(isPrivate, SizedBox(
+          height: 280,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
+            child: BarChart(BarChartData(
+              barGroups: groups,
+              maxY: maxY * 1.1,
+              minY: years.any((y) => y.savings < 0) ? years.map((y) => y.savings).reduce(min) * 1.1 : 0,
+              gridData: const FlGridData(show: true),
+              borderData: FlBorderData(show: false),
+              barTouchData: BarTouchData(
+                touchTooltipData: BarTouchTooltipData(
+                  fitInsideHorizontally: true,
+                  fitInsideVertically: true,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final y = years[group.x];
+                    if (rodIndex >= visibleIndices.length) return null;
+                    final origIdx = visibleIndices[rodIndex];
+                    final vals = [y.income, y.expenses, y.savings];
+                    return BarTooltipItem(
+                      '${y.year}${y.year == now.year ? "*" : ""}\n${_labels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
+                      const TextStyle(color: Colors.white, fontSize: 11),
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 60,
+                    getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (v, _) {
+                      final i = v.round();
+                      if (i < 0 || i >= years.length) return const SizedBox.shrink();
+                      final y = years[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('${y.year}${y.year == now.year ? "*" : ""}', style: const TextStyle(fontSize: 9)),
+                      );
+                    },
+                  ),
+                ),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+            )),
+          ),
+        )),
+      ],
+    );
+  }
+}
+
+/// Bar chart: x=years, bars=Monthly-avg Expenses + Monthly-avg Savings (Chart 2 equivalent).
+class _MonthlyAvgBarChart extends ConsumerStatefulWidget {
+  final _IncomeExpenseData data;
+  final String locale;
+  const _MonthlyAvgBarChart({required this.data, required this.locale});
+
+  @override
+  ConsumerState<_MonthlyAvgBarChart> createState() => _MonthlyAvgBarChartState();
+}
+
+class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
+  final _hidden = <String>{};
+  void _toggle(String key) => setState(() {
+    _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
+  });
+
+  static const _keys   = ['income', 'expenses', 'savings'];
+  static const _labels = ['Avg Monthly Income', 'Avg Monthly Expenses', 'Avg Monthly Savings'];
+  static const _tipLabels = ['Avg/Mo Income', 'Avg/Mo Expenses', 'Avg/Mo Savings'];
+
+  @override
+  Widget build(BuildContext context) {
+    final isPrivate = ref.watch(privacyModeProvider);
+    final amtFmt = fmt.amountFormat(widget.locale);
+    final sym    = currencySymbol(widget.data.baseCurrency);
+    final years  = widget.data.years;
+    final now    = DateTime.now();
+    if (years.isEmpty) return const SizedBox.shrink();
+
+    final colors = [Colors.green.shade400, Colors.red.shade400, Colors.blue.shade400];
+    const barW = 12.0;
+    const gap  = 4.0;
+
+    final visibleIndices = [0, 1, 2].where((k) => !_hidden.contains(_keys[k])).toList();
+
+    final groups = <BarChartGroupData>[];
+    for (int i = 0; i < years.length; i++) {
+      final y = years[i];
+      final vals = [y.monthlyIncome, y.monthlyExpenses, y.savings / max(1, y.months.length)];
+      final rods = <BarChartRodData>[];
+      for (final k in visibleIndices) {
+        rods.add(BarChartRodData(toY: vals[k], color: colors[k], width: barW));
+      }
+      groups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: gap));
+    }
+
+    final maxY = years.map((y) => [y.monthlyIncome, y.monthlyExpenses]).expand((l) => l).fold(0.0, max);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Wrap(spacing: 16, children: [
+            for (int k = 0; k < 3; k++)
+              _ToggleLegendItem(
+                color: colors[k],
+                label: _labels[k],
+                enabled: !_hidden.contains(_keys[k]),
+                onTap: () => _toggle(_keys[k]),
+              ),
+          ]),
+        ),
+        _maybeBlur(isPrivate, SizedBox(
+          height: 260,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
+            child: BarChart(BarChartData(
+              barGroups: groups,
+              maxY: maxY * 1.1,
+              gridData: const FlGridData(show: true),
+              borderData: FlBorderData(show: false),
+              barTouchData: BarTouchData(
+                touchTooltipData: BarTouchTooltipData(
+                  fitInsideHorizontally: true,
+                  fitInsideVertically: true,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final y = years[group.x];
+                    if (rodIndex >= visibleIndices.length) return null;
+                    final origIdx = visibleIndices[rodIndex];
+                    final vals = [y.monthlyIncome, y.monthlyExpenses, y.savings / max(1, y.months.length)];
+                    return BarTooltipItem(
+                      '${y.year}${y.year == now.year ? "*" : ""}\n${_tipLabels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
+                      const TextStyle(color: Colors.white, fontSize: 11),
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 55,
+                    getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (v, _) {
+                      final i = v.round();
+                      if (i < 0 || i >= years.length) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('${years[i].year}${years[i].year == now.year ? "*" : ""}',
+                                    style: const TextStyle(fontSize: 9)),
+                      );
+                    },
+                  ),
+                ),
+                topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+            )),
+          ),
+        )),
+      ],
+    );
+  }
+}
+
+/// Line chart: x=months(1–12), one line per year. Shows income or expenses.
+/// Chart 3 equivalent (income) and Chart 5 equivalent (expenses).
+class _MonthlyByYearLineChart extends ConsumerStatefulWidget {
+  final _IncomeExpenseData data;
+  final String locale;
+  final String field;    // 'income' or 'expenses'
+  final int? maxYears;   // limit to most recent N years
+  const _MonthlyByYearLineChart({required this.data, required this.locale,
+                                  required this.field, this.maxYears});
+
+  @override
+  ConsumerState<_MonthlyByYearLineChart> createState() => _MonthlyByYearLineChartState();
+}
+
+class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart> {
+  final _hidden = <String>{};
+  void _toggle(String key) => setState(() {
+    _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
+  });
+
+  static const _monthAbbr = ['','Jan','Feb','Mar','Apr','May','Jun',
+                                 'Jul','Aug','Sep','Oct','Nov','Dec'];
+  static const _palette = [
+    Colors.blue, Colors.red, Colors.green, Colors.orange,
+    Colors.purple, Colors.teal, Colors.pink, Colors.amber,
+    Colors.cyan, Colors.indigo,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isPrivate = ref.watch(privacyModeProvider);
+    final amtFmt = fmt.amountFormat(widget.locale);
+    final sym    = currencySymbol(widget.data.baseCurrency);
+    var   years  = widget.data.years;
+    if (widget.maxYears != null && years.length > widget.maxYears!) {
+      years = years.sublist(years.length - widget.maxYears!);
+    }
+    if (years.isEmpty) return const SizedBox.shrink();
+
+    // Build visible line bars only
+    final lineBars = <LineChartBarData>[];
+    final yearIndexMap = <int, int>{};   // lineBars index → years index
+    for (int i = 0; i < years.length; i++) {
+      final key = '${years[i].year}';
+      if (_hidden.contains(key)) continue;
+      final color = _palette[i % _palette.length];
+      final spots = <FlSpot>[];
+      for (final mb in years[i].months) {
+        final val = widget.field == 'income' ? mb.income : mb.expenses;
+        spots.add(FlSpot(mb.month.toDouble(), val));
+      }
+      if (spots.isEmpty) continue;
+      yearIndexMap[lineBars.length] = i;
+      lineBars.add(LineChartBarData(
+        spots: spots,
+        color: color,
+        barWidth: 2,
+        isCurved: false,
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ));
+    }
+
+    final allVals = years.expand((y) => y.months).map((m) => widget.field == 'income' ? m.income : m.expenses);
+    final maxY    = allVals.isEmpty ? 0.0 : allVals.fold(0.0, max);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              for (int i = 0; i < years.length; i++)
+                _ToggleLegendItem(
+                  color: _palette[i % _palette.length],
+                  label: '${years[i].year}',
+                  enabled: !_hidden.contains('${years[i].year}'),
+                  onTap: () => _toggle('${years[i].year}'),
+                ),
+            ],
+          ),
+        ),
+        _maybeBlur(isPrivate, SizedBox(
+          height: 260,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
+            child: lineBars.isEmpty
+                ? const Center(child: Text('All series hidden'))
+                : LineChart(LineChartData(
+                    lineBarsData: lineBars,
+                    minX: 1,
+                    maxX: 12,
+                    minY: 0,
+                    maxY: maxY * 1.1,
+                    gridData: const FlGridData(show: true),
+                    borderData: FlBorderData(show: false),
+                    lineTouchData: LineTouchData(
+                      touchTooltipData: LineTouchTooltipData(
+                        fitInsideHorizontally: true,
+                        fitInsideVertically: true,
+                        getTooltipItems: (spots) => spots.map((s) {
+                          final barIdx = lineBars.indexOf(s.bar);
+                          final yearIdx = yearIndexMap[barIdx] ?? -1;
+                          final yearLabel = yearIdx >= 0 ? '${years[yearIdx].year}' : '';
+                          return LineTooltipItem(
+                            '$yearLabel ${_monthAbbr[s.x.round()]}\n${amtFmt.format(s.y)} $sym',
+                            TextStyle(color: s.bar.color ?? Colors.white, fontSize: 11),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    titlesData: FlTitlesData(
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          interval: 1,
+                          getTitlesWidget: (v, _) {
+                            final m = v.round();
+                            if (m < 1 || m > 12) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(_monthAbbr[m], style: const TextStyle(fontSize: 9)),
+                            );
+                          },
+                        ),
+                      ),
+                      leftTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          reservedSize: 55,
+                          getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                        ),
+                      ),
+                      topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    ),
+                  )),
+          ),
+        )),
+      ],
+    );
+  }
+}
+
+// Shared helpers
+Widget _maybeBlur(bool isPrivate, Widget child) => isPrivate
+    ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
+    : child;
+
+Widget _legendDot(Color color, String label) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+    const SizedBox(width: 4),
+    Text(label, style: const TextStyle(fontSize: 11)),
+  ],
+);
+
+String _shortAmount(double v, String sym) {
+  if (v.abs() >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M $sym';
+  if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(0)}k $sym';
+  return '${v.toStringAsFixed(0)} $sym';
 }
 
 // (Cash flow rendering is handled by _ChartCard + _UnifiedChart above)
