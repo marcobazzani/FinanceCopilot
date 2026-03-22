@@ -31,12 +31,14 @@ class _Series {
   final Color color;
   final List<FlSpot> spots;
   final bool isDashed;
+  final bool rightAxis; // true → scale into left pixel space, show on right Y-axis
   const _Series({
     required this.key,
     required this.name,
     required this.color,
     required this.spots,
     this.isDashed = false,
+    this.rightAxis = false,
   });
 }
 
@@ -523,6 +525,80 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   );
 });
 
+
+// ════════════════════════════════════════════════════
+// Cash Flow math utilities
+// ════════════════════════════════════════════════════
+
+/// Forward-fill spots to one point per integer day (gap-free).
+List<FlSpot> _densifySpots(List<FlSpot> spots) {
+  if (spots.isEmpty) return [];
+  final sorted = List<FlSpot>.from(spots)..sort((a, b) => a.x.compareTo(b.x));
+  final result = <FlSpot>[];
+  int ix = sorted.first.x.round();
+  final ixMax = sorted.last.x.ceil();
+  double lastY = sorted.first.y;
+  int si = 0;
+  while (ix <= ixMax) {
+    while (si < sorted.length && sorted[si].x <= ix + 0.5) {
+      lastY = sorted[si].y;
+      si++;
+    }
+    result.add(FlSpot(ix.toDouble(), lastY));
+    ix++;
+  }
+  return result;
+}
+
+/// Trailing SMA of [windowDays] on spots — O(n) sliding window.
+List<FlSpot> _computeMA(List<FlSpot> spots, int windowDays) {
+  final dense = _densifySpots(spots);
+  if (dense.isEmpty) return [];
+  final result = <FlSpot>[];
+  double sum = 0;
+  for (int i = 0; i < dense.length; i++) {
+    sum += dense[i].y;
+    if (i >= windowDays) sum -= dense[i - windowDays].y;
+    result.add(FlSpot(dense[i].x, sum / min(i + 1, windowDays)));
+  }
+  return result;
+}
+
+/// Day-over-day first difference (velocity = derivative of MA).
+List<FlSpot> _computeVelocity(List<FlSpot> dense) {
+  final result = <FlSpot>[];
+  for (int i = 1; i < dense.length; i++) {
+    result.add(FlSpot(dense[i].x, dense[i].y - dense[i - 1].y));
+  }
+  return result;
+}
+
+/// Build spending spots: cumulative sum of negative daily deltas of the saving
+/// series (mirrors Excel's "Uscite cumulate" = cumsum of MIN(0, daily_P&L)).
+/// Output spots share the same X axis (days from firstDate) as saving spots.
+List<FlSpot> _buildSpendingFromSaving(List<FlSpot> savingSpots) {
+  final dense = _densifySpots(savingSpots);
+  if (dense.length < 2) return [];
+  final result = <FlSpot>[];
+  double cumul = 0;
+  result.add(FlSpot(dense.first.x, 0));
+  for (int i = 1; i < dense.length; i++) {
+    final delta = dense[i].y - dense[i - 1].y;
+    if (delta < 0) cumul += delta; // accumulate only negative (outflow) days
+    result.add(FlSpot(dense[i].x, cumul));
+  }
+  return result;
+}
+
+/// Element-wise difference of two spot lists (a − b), aligned by densified X.
+List<FlSpot> _computeDiff(List<FlSpot> a, List<FlSpot> b) {
+  if (a.isEmpty || b.isEmpty) return [];
+  final da = _densifySpots(a);
+  final db = _densifySpots(b);
+  final bMap = <double, double>{for (final s in db) s.x: s.y};
+  return [for (final sa in da) if (bMap.containsKey(sa.x)) FlSpot(sa.x, sa.y - bMap[sa.x]!)];
+}
+
 // ════════════════════════════════════════════════════
 // Dashboard screen with dynamic custom charts
 // ════════════════════════════════════════════════════
@@ -567,12 +643,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         children: [
           const TabBar(
             tabs: [
               Tab(text: 'Charts'),
+              Tab(text: 'Cash Flow'),
               Tab(text: 'Allocation'),
             ],
           ),
@@ -580,6 +657,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: TabBarView(
               children: [
                 _buildChartsTab(allDataAsync, locale, context),
+                _buildCashFlowTab(allDataAsync, locale, context),
                 const AllocationTab(),
               ],
             ),
@@ -714,6 +792,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Widget _buildCashFlowTab(
+    AsyncValue<_AllSeriesData?> allDataAsync,
+    String locale,
+    BuildContext context,
+  ) {
+    return allDataAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (allData) {
+        if (allData == null) {
+          return const Center(
+            child: Text('No data yet.',
+                style: TextStyle(color: Colors.grey)),
+          );
+        }
+        return _CashFlowTab(allData: allData, locale: locale);
+      },
+    );
+  }
+
   /// Build the fixed set of dashboard widgets from live series data.
   /// Widget definitions are static; series are resolved dynamically from all
   /// active accounts, assets, and adjustments — no IDs are hardcoded.
@@ -830,7 +928,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     }
     final spotsForTotal = visible
-        .where((s) => !excludeFromTotal.contains(s.key))
+        .where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis)
         .map((s) => s.spots)
         .toList();
     return buildTotalSpots(spotsForTotal);
@@ -918,6 +1016,7 @@ class _ChartCard extends ConsumerWidget {
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
   final ValueChanged<double> onHeightChanged;
   final VoidCallback? onCollapse;
+  final Widget? headerExtra; // optional trailing widget in title bar (e.g. MA window input)
 
   const _ChartCard({
     required this.chart,
@@ -937,6 +1036,7 @@ class _ChartCard extends ConsumerWidget {
     required this.onZoom,
     required this.onHeightChanged,
     this.onCollapse,
+    this.headerExtra,
   });
 
   /// Build total spots with smart asset handling:
@@ -961,7 +1061,7 @@ class _ChartCard extends ConsumerWidget {
       }
     }
     final spotsForTotal = visible
-        .where((s) => !excludeFromTotal.contains(s.key))
+        .where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis)
         .map((s) => s.spots)
         .toList();
     return buildTotalSpots(spotsForTotal);
@@ -985,6 +1085,7 @@ class _ChartCard extends ConsumerWidget {
     final marketSeries = series.where((s) => s.key.startsWith('asset_market:')).toList();
     final adjustmentSeries = series.where((s) => s.key.startsWith('adjustment:')).toList();
     final incomeAdjSeries = series.where((s) => s.key.startsWith('income_adj:')).toList();
+    final cfSeries = series.where((s) => s.key.startsWith('cf:')).toList();
 
     final hasZoom = zoomMinX != null || zoomMinY != null;
 
@@ -1028,6 +1129,7 @@ class _ChartCard extends ConsumerWidget {
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: 'Reset zoom',
                 ),
+              if (headerExtra != null) headerExtra!,
             ],
           ),
           const SizedBox(height: 4),
@@ -1035,11 +1137,13 @@ class _ChartCard extends ConsumerWidget {
           // Legend
           if (!hideComponents) ...[
             _ChartLegend(
-              accountSeries: accountSeries,
-              investedSeries: investedSeries,
-              marketSeries: marketSeries,
-              adjustmentSeries: adjustmentSeries,
-              incomeAdjSeries: incomeAdjSeries,
+              accountSeries: cfSeries.isEmpty ? accountSeries : [],
+              investedSeries: cfSeries.isEmpty ? investedSeries : [],
+              marketSeries: cfSeries.isEmpty ? marketSeries : [],
+              adjustmentSeries: cfSeries.isEmpty ? adjustmentSeries : [],
+              incomeAdjSeries: cfSeries.isEmpty ? incomeAdjSeries : [],
+              otherSeries: cfSeries,
+              showTotalItem: cfSeries.isEmpty,
               hidden: hidden,
               onToggle: onToggle,
               onToggleGroup: onToggleGroup,
@@ -1056,7 +1160,7 @@ class _ChartCard extends ConsumerWidget {
                     final showTotal = chart.sourceChartIds == null && !hidden.contains('_total');
                     final allY = [
                       if (showTotal) ...totalSpots.map((s) => s.y),
-                      ...drawnSeries.expand((s) => s.spots.map((p) => p.y)),
+                      ...drawnSeries.where((s) => !s.rightAxis).expand((s) => s.spots.map((p) => p.y)),
                     ];
                     final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
                     final autoMaxY = allY.isEmpty ? 100.0 : allY.reduce(max);
@@ -1127,6 +1231,8 @@ class _ChartLegend extends StatelessWidget {
   final List<_Series> marketSeries;
   final List<_Series> adjustmentSeries;
   final List<_Series> incomeAdjSeries;
+  final List<_Series> otherSeries; // e.g. cash-flow series with cf: prefix
+  final bool showTotalItem;
   final Set<String> hidden;
   final ValueChanged<String> onToggle;
   final ValueChanged<Set<String>> onToggleGroup;
@@ -1137,6 +1243,8 @@ class _ChartLegend extends StatelessWidget {
     required this.marketSeries,
     required this.adjustmentSeries,
     required this.incomeAdjSeries,
+    this.otherSeries = const [],
+    this.showTotalItem = true,
     required this.hidden,
     required this.onToggle,
     required this.onToggleGroup,
@@ -1156,13 +1264,22 @@ class _ChartLegend extends StatelessWidget {
           ..._buildGroup(context, 'Spread Adj.', adjustmentSeries),
         if (incomeAdjSeries.isNotEmpty)
           ..._buildGroup(context, 'Income Adj.', incomeAdjSeries),
-        _ToggleLegendItem(
-          color: Colors.white,
-          label: 'Total',
-          bold: true,
-          enabled: !hidden.contains('_total'),
-          onTap: () => onToggle('_total'),
-        ),
+        for (final s in otherSeries)
+          _ToggleLegendItem(
+            color: s.color,
+            label: s.rightAxis ? '${s.name} (→)' : s.name,
+            dashed: s.isDashed,
+            enabled: !hidden.contains(s.key),
+            onTap: () => onToggle(s.key),
+          ),
+        if (showTotalItem)
+          _ToggleLegendItem(
+            color: Colors.white,
+            label: 'Total',
+            bold: true,
+            enabled: !hidden.contains('_total'),
+            onTap: () => onToggle('_total'),
+          ),
       ],
     );
   }
@@ -1552,9 +1669,46 @@ class _UnifiedChart extends StatelessWidget {
     final fullFmt = fmt.fullDateFormat(locale);
     final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
+    // ── Dual Y-axis setup ──
+    final leftVisible  = visible.where((s) => !s.rightAxis).toList();
+    final rightVisible = visible.where((s) =>  s.rightAxis).toList();
+    final hasDualAxis  = rightVisible.isNotEmpty;
+
+    // Left Y range (left series + total)
+    final leftY = [
+      if (showTotal) ...totalSpots.map((s) => s.y),
+      ...leftVisible.expand((s) => s.spots.map((p) => p.y)),
+    ];
+    final leftAutoMin = leftY.isEmpty ? 0.0  : leftY.reduce(min);
+    final leftAutoMax = leftY.isEmpty ? 100.0 : leftY.reduce(max);
+    final leftAutoRange = leftAutoMax - leftAutoMin;
+    final chartMinY = zoomMinY ?? (leftAutoRange > 0 ? leftAutoMin - leftAutoRange * 0.05 : leftAutoMin - 100);
+    final chartMaxY = zoomMaxY ?? (leftAutoRange > 0 ? leftAutoMax + leftAutoRange * 0.05 : leftAutoMax + 100);
+    final chartRange = chartMaxY - chartMinY;
+    final yRange = chartRange;
+
+    // Right Y range (natural scale, not zoomed — always shows full range)
+    double rightNatMin = 0, rightNatMax = 1;
+    if (hasDualAxis) {
+      final rightY = rightVisible.expand((s) => s.spots.map((p) => p.y)).toList();
+      if (rightY.isNotEmpty) {
+        rightNatMin = rightY.reduce(min);
+        rightNatMax = rightY.reduce(max);
+      }
+    }
+    final rightNatRange = (rightNatMax - rightNatMin).abs().clamp(1e-9, double.infinity);
+
+    // Scale right-axis value → left pixel space
+    double scaleRight(double y) =>
+        chartRange <= 0 ? chartMinY : (y - rightNatMin) / rightNatRange * chartRange + chartMinY;
+
+    // Reverse-scale left-pixel value → actual right-axis value (for tooltip/labels)
+    double unscaleRight(double scaledY) =>
+        chartRange <= 0 ? rightNatMin : (scaledY - chartMinY) / chartRange * rightNatRange + rightNatMin;
+
     final lineBars = <LineChartBarData>[];
 
-    // Total line
+    // Total line (always left axis)
     if (showTotal) {
       lineBars.add(LineChartBarData(
         spots: totalSpots,
@@ -1571,29 +1725,23 @@ class _UnifiedChart extends StatelessWidget {
       ));
     }
 
-    // Visible series lines
+    // Visible series lines (right-axis series are scaled into left pixel space)
     for (final s in visible) {
+      final spots = s.rightAxis
+          ? s.spots.map((pt) => FlSpot(pt.x, scaleRight(pt.y))).toList()
+          : s.spots;
       lineBars.add(LineChartBarData(
-        spots: s.spots,
+        spots: spots,
         isCurved: true,
         preventCurveOverShooting: true,
         curveSmoothness: 0.15,
         color: s.color,
-        barWidth: s.isDashed ? 1.5 : 2,
+        barWidth: s.rightAxis ? 1.5 : (s.isDashed ? 1.5 : 2),
         dotData: const FlDotData(show: false),
         belowBarData: BarAreaData(show: false),
         dashArray: s.isDashed ? [6, 3] : null,
       ));
     }
-
-    // Compute Y range from visible lines only
-    final visibleY = lineBars.expand((b) => b.spots.map((s) => s.y));
-    final autoMinY = visibleY.isEmpty ? 0.0 : visibleY.reduce(min);
-    final autoMaxY = visibleY.isEmpty ? 100.0 : visibleY.reduce(max);
-    final autoRange = autoMaxY - autoMinY;
-    final chartMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
-    final chartMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
-    final yRange = chartMaxY - chartMinY;
 
     final xMin = zoomMinX ?? 0;
     final xMax = zoomMaxX ?? totalDays;
@@ -1615,7 +1763,18 @@ class _UnifiedChart extends StatelessWidget {
         ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: hasDualAxis,
+              reservedSize: hasDualAxis ? 68 : 0,
+              interval: yRange > 0 ? yRange / 4 : 100,
+              getTitlesWidget: (scaledY, meta) {
+                final actualY = unscaleRight(scaledY);
+                final label = isPrivate ? '••••' : currFmt.format(actualY);
+                return Text(label, style: TextStyle(fontSize: 9, color: textColor));
+              },
+            ),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -1663,8 +1822,9 @@ class _UnifiedChart extends StatelessWidget {
 
                 if (seriesIdx >= 0 && seriesIdx < visible.length) {
                   final s = visible[seriesIdx];
+                  final displayY = s.rightAxis ? unscaleRight(spot.y) : spot.y;
                   return LineTooltipItem(
-                    '${s.name}: ${currFmt.format(spot.y)}',
+                    '${s.name}: ${currFmt.format(displayY)}${s.rightAxis ? ' (→)' : ''}',
                     TextStyle(color: s.color, fontSize: 11),
                   );
                 }
@@ -1964,3 +2124,219 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     );
   }
 }
+
+// ════════════════════════════════════════════════════
+// Cash Flow tab
+// ════════════════════════════════════════════════════
+
+class _CashFlowTab extends ConsumerStatefulWidget {
+  final _AllSeriesData allData;
+  final String locale;
+  const _CashFlowTab({required this.allData, required this.locale});
+
+  @override
+  ConsumerState<_CashFlowTab> createState() => _CashFlowTabState();
+}
+
+class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
+  static const _idSaving   = -10;
+  static const _idSpending = -11;
+  static const _idVelocity = -12;
+
+  int _savingWindow   = 365;
+  int _spendingWindow = 365;
+  int _velocityWindow = 365;
+
+  late final TextEditingController _savingWinCtl;
+  late final TextEditingController _spendingWinCtl;
+  late final TextEditingController _velocityWinCtl;
+
+  final _hidden  = <int, Set<String>>{};
+  final _heights = <int, double>{};
+  final _zooms   = <int, _ChartZoom>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _savingWinCtl   = TextEditingController(text: '$_savingWindow');
+    _spendingWinCtl = TextEditingController(text: '$_spendingWindow');
+    _velocityWinCtl = TextEditingController(text: '$_velocityWindow');
+
+    // Default zoom: last 365 days
+    final totalDays = DateTime.now().difference(widget.allData.firstDate).inDays.toDouble();
+    final xMax = totalDays.clamp(0.0, double.infinity);
+    final xMin = (xMax - 365).clamp(0.0, double.infinity);
+    for (final id in [_idSaving, _idSpending, _idVelocity]) {
+      _zooms[id] = _ChartZoom()
+        ..minX = xMin
+        ..maxX = xMax;
+    }
+  }
+
+  @override
+  void dispose() {
+    _savingWinCtl.dispose();
+    _spendingWinCtl.dispose();
+    _velocityWinCtl.dispose();
+    super.dispose();
+  }
+
+  Set<String> _hiddenFor(int id) => _hidden.putIfAbsent(id, () => {});
+  double _heightFor(int id) => _heights.putIfAbsent(id, () => 420.0);
+  _ChartZoom _zoomFor(int id) => _zooms.putIfAbsent(id, () => _ChartZoom());
+
+  Widget _maField(TextEditingController ctl, ValueChanged<int> onChanged) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('MA:', style: TextStyle(fontSize: 12)),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 60,
+          height: 32,
+          child: TextField(
+            controller: ctl,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 12),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (v) {
+              final w = int.tryParse(v);
+              if (w != null) onChanged(w.clamp(1, 3000));
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  DashboardChart _fakeChart(int id, String title) => DashboardChart(
+    id: id,
+    title: title,
+    widgetType: 'chart',
+    sortOrder: 0,
+    seriesJson: '[]',
+    sourceChartIds: 'cf', // non-null → showTotal=false, no hide-components button
+    createdAt: DateTime.now(),
+  );
+
+  void _onToggle(int chartId, String key) => setState(() {
+    final h = _hiddenFor(chartId);
+    if (h.contains(key)) { h.remove(key); } else { h.add(key); }
+  });
+
+  void _onToggleGroup(int chartId, Set<String> keys) => setState(() {
+    final h = _hiddenFor(chartId);
+    final allHidden = keys.every(h.contains);
+    if (allHidden) { h.removeAll(keys); } else { h.addAll(keys); }
+  });
+
+  void _onZoom(int chartId, double? minX, double? maxX, double? minY, double? maxY) =>
+      setState(() {
+        final z = _zoomFor(chartId);
+        z.minX = minX; z.maxX = maxX; z.minY = minY; z.maxY = maxY;
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final allData = widget.allData;
+    final locale  = widget.locale;
+
+    // Saving = accounts + invested + adjustments (spread + income)
+    final savingSpots = buildTotalSpots([
+      ...allData.accounts.map((s) => s.spots),
+      ...allData.assetInvested.map((s) => s.spots),
+      ...allData.adjustments.map((s) => s.spots),
+      ...allData.incomeAdjustments.map((s) => s.spots),
+    ]);
+
+    // Cash = accounts + spread adjustments only
+    final cashSpots = buildTotalSpots([
+      ...allData.accounts.map((s) => s.spots),
+      ...allData.adjustments.map((s) => s.spots),
+    ]);
+
+    // Spending = cumulative sum of negative daily deltas of saving
+    final spendingSpots = _buildSpendingFromSaving(savingSpots);
+
+    final savingMA   = _computeMA(savingSpots,   _savingWindow);
+    final spendingMA = _computeMA(spendingSpots, _spendingWindow);
+    final savingDiff = _computeDiff(savingSpots, savingMA);
+
+    final savingVel      = _computeVelocity(_computeMA(savingSpots,   _velocityWindow));
+    final spendingVelRaw = _computeVelocity(_computeMA(spendingSpots, _velocityWindow));
+    final spendingVel    = spendingVelRaw.map((s) => FlSpot(s.x, -s.y)).toList();
+
+    final chartDefs = [
+      (
+        id: _idSaving,
+        chart: _fakeChart(_idSaving, 'Saving vs MA'),
+        series: <_Series>[
+          _Series(key: 'cf:saving',    name: 'Saving', color: Colors.blue,          spots: savingSpots),
+          _Series(key: 'cf:saving_ma', name: 'MA',     color: Colors.blue.shade200,  spots: savingMA,   isDashed: true),
+          _Series(key: 'cf:diff',      name: 'Diff',   color: Colors.orange,         spots: savingDiff, rightAxis: true),
+        ],
+        ctl: _savingWinCtl,
+        onWin: (int w) => setState(() => _savingWindow = w),
+      ),
+      (
+        id: _idSpending,
+        chart: _fakeChart(_idSpending, 'Spending vs MA & Cash'),
+        series: <_Series>[
+          _Series(key: 'cf:spending',    name: 'Spending', color: Colors.red,           spots: spendingSpots),
+          _Series(key: 'cf:spending_ma', name: 'MA',       color: Colors.red.shade200,   spots: spendingMA,  isDashed: true),
+          _Series(key: 'cf:cash',        name: 'Cash',     color: Colors.green,          spots: cashSpots,   rightAxis: true),
+        ],
+        ctl: _spendingWinCtl,
+        onWin: (int w) => setState(() => _spendingWindow = w),
+      ),
+      (
+        id: _idVelocity,
+        chart: _fakeChart(_idVelocity, 'Velocity (MA derivative)'),
+        series: <_Series>[
+          _Series(key: 'cf:saving_vel',   name: 'Saving vel.',   color: Colors.blue, spots: savingVel),
+          _Series(key: 'cf:spending_vel', name: 'Spending vel.', color: Colors.red,  spots: spendingVel),
+        ],
+        ctl: _velocityWinCtl,
+        onWin: (int w) => setState(() => _velocityWindow = w),
+      ),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (int i = 0; i < chartDefs.length; i++) ...[
+          Builder(builder: (_) {
+            final c = chartDefs[i];
+            final z = _zoomFor(c.id);
+            return _ChartCard(
+              chart: c.chart,
+              series: c.series,
+              allData: allData,
+              hidden: _hiddenFor(c.id),
+              locale: locale,
+              chartHeight: _heightFor(c.id),
+              zoomMinX: z.minX,
+              zoomMaxX: z.maxX,
+              zoomMinY: z.minY,
+              zoomMaxY: z.maxY,
+              onToggle: (key) => _onToggle(c.id, key),
+              onToggleGroup: (keys) => _onToggleGroup(c.id, keys),
+              onToggleHideComponents: () {},
+              onZoom: (minX, maxX, minY, maxY) => _onZoom(c.id, minX, maxX, minY, maxY),
+              onHeightChanged: (h) => setState(() => _heights[c.id] = h.clamp(200.0, 900.0)),
+              headerExtra: _maField(c.ctl, c.onWin),
+            );
+          }),
+          if (i < chartDefs.length - 1) const SizedBox(height: 24),
+        ],
+      ],
+    );
+  }
+}
+
+// (Cash flow rendering is handled by _ChartCard + _UnifiedChart above)
+// ════ end of file ════
