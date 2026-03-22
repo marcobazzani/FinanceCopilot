@@ -133,7 +133,7 @@ jobs:
             artifacts/FinanceCopilot-windows.zip
             artifacts/FinanceCopilot-linux/FinanceCopilot-linux.tar.gz
 
-  nightly:
+  latest:
     needs: build
     if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -152,16 +152,16 @@ jobs:
           cd artifacts/FinanceCopilot-windows
           zip -r ../FinanceCopilot-windows.zip .
 
-      - name: Delete existing nightly release
-        run: gh release delete nightly --yes --cleanup-tag || true
+      - name: Delete existing latest release
+        run: gh release delete latest --yes --cleanup-tag || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create nightly release
+      - name: Create latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create nightly \
+          gh release create latest \
             --prerelease \
             --title "Nightly Build" \
             --notes "Automated nightly build from main. Commit: ${{ github.sha }}" \
