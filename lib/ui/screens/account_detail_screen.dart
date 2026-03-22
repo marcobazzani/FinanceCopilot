@@ -36,7 +36,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final txStream = ref.watch(accountTransactionsProvider(widget.account.id));
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, widget.account.currency);
 
@@ -243,7 +243,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   Future<void> _confirmWipeTransactions(BuildContext context) async {
-    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).valueOrNull?.length ?? 0;
+    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).value?.length ?? 0;
     if (txCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No transactions to wipe.')),
@@ -281,7 +281,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
-    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).valueOrNull?.length ?? 0;
+    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).value?.length ?? 0;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

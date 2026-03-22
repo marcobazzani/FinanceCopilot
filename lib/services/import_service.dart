@@ -101,7 +101,7 @@ FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
   final tabs = '\t'.allMatches(firstLine).length;
   final sep = separator ?? (tabs > commas && tabs > semicolons ? '\t' : semicolons > commas ? ';' : ',');
 
-  final rows = const CsvToListConverter().convert(content, fieldDelimiter: sep, eol: '\n');
+  final rows = Csv(fieldDelimiter: sep, lineDelimiter: '\n').decode(content);
   if (rows.isEmpty) return const FilePreview(columns: [], rows: [], totalRows: 0);
 
   var nonEmptyRows = rows.where((row) => row.any((cell) => cell.toString().trim().isNotEmpty)).toList();

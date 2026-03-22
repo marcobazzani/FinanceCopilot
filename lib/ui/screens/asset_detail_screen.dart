@@ -24,14 +24,14 @@ class AssetDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final eventsStream = ref.watch(assetEventsProvider(asset.id));
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, asset.currency);
-    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final showConverted = asset.currency != baseCurrency;
     final baseFmt = fmt.currencyFormat(locale, currencySymbol(baseCurrency));
     final convertedAmounts = showConverted
-        ? ref.watch(convertedEventAmountsProvider(asset.id)).valueOrNull ?? {}
+        ? ref.watch(convertedEventAmountsProvider(asset.id)).value ?? {}
         : <int, double>{};
 
     return Scaffold(
@@ -214,7 +214,7 @@ class AssetDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmWipeEvents(BuildContext context, WidgetRef ref) async {
-    final evCount = ref.read(assetEventsProvider(asset.id)).valueOrNull?.length ?? 0;
+    final evCount = ref.read(assetEventsProvider(asset.id)).value?.length ?? 0;
     if (evCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No events to wipe.')),
@@ -286,7 +286,7 @@ class _CompositionSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final compositionsAsync = ref.watch(assetCompositionsProvider);
-    final entries = compositionsAsync.valueOrNull?[assetId];
+    final entries = compositionsAsync.value?[assetId];
     if (entries == null || entries.isEmpty) return const SizedBox.shrink();
 
     // Extract source URL and separate from display data

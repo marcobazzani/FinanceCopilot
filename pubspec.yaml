@@ -15,25 +15,25 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # State management
-  flutter_riverpod: ^2.6.1
-  riverpod_annotation: ^2.6.1
+  flutter_riverpod: ^3.1.0
+  riverpod_annotation: ^4.0.0
 
   # Database (drift + SQLite)
-  drift: ^2.25.0
-  sqlite3_flutter_libs: ^0.5.28
+  drift: ^2.31.0
+  sqlite3_flutter_libs: ^0.5.42
   path_provider: ^2.1.5
   path: ^1.9.1
 
   # Charts
-  fl_chart: ^0.70.2
+  fl_chart: ^1.2.0
 
   # File import
-  csv: ^6.0.0
+  csv: ^8.0.0
   excel:
     git:
       url: https://github.com/justkawal/excel.git
       ref: main
-  file_picker: ^9.2.1
+  file_picker: ^10.3.10
 
   # HTTP (market data)
   dio: ^5.8.0
@@ -62,19 +62,19 @@ dev_dependencies:
   integration_test:
     sdk: flutter
 
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
   # Drift code generation
-  drift_dev: ^2.25.0
-  build_runner: ^2.4.14
+  drift_dev: ^2.31.0
+  build_runner: ^2.13.1
 
   # Riverpod code generation
-  riverpod_generator: ^2.6.3
-  custom_lint: ^0.7.5
-  riverpod_lint: ^2.6.3
+  riverpod_generator: ^4.0.0
+  custom_lint: ^0.8.1
+  riverpod_lint: ^3.1.0
 
   # JSON serialization
-  json_serializable: ^6.9.4
+  json_serializable: ^6.11.2
 
 flutter:
   uses-material-design: true

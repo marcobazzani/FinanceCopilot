@@ -18,7 +18,7 @@ class IncomeScreen extends ConsumerStatefulWidget {
 }
 
 class _IncomeScreenState extends ConsumerState<IncomeScreen> {
-  String get _locale => ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+  String get _locale => ref.read(appLocaleProvider).value ?? 'en_US';
   final _focusNode = FocusNode();
 
   @override
@@ -31,7 +31,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text == null || data!.text!.trim().isEmpty) return;
 
-    final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+    final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
     final lines = data.text!.trim().split('\n');
     final entries = <IncomesCompanion>[];
 
@@ -88,8 +88,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   @override
   Widget build(BuildContext context) {
     final incomesAsync = ref.watch(incomesProvider);
-    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final amtFormat = fmt.amountFormat(locale);
     final dateFmt = fmt.shortDateFormat(locale);
 

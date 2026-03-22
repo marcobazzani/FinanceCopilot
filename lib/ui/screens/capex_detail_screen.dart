@@ -35,7 +35,7 @@ class _DetailBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final entriesAsync = ref.watch(capexEntriesProvider(schedule.id));
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final sym = currencySymbol(schedule.currency);
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, sym);
@@ -151,8 +151,8 @@ class _DetailBody extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) {
-    final entries = entriesAsync.valueOrNull ?? [];
-    final reimbursements = (bufferTxnAsync?.valueOrNull ?? [])
+    final entries = entriesAsync.value ?? [];
+    final reimbursements = (bufferTxnAsync?.value ?? [])
         .where((t) => t.isReimbursement)
         .toList();
 
@@ -252,7 +252,7 @@ class _DetailBody extends ConsumerWidget {
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
-    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(

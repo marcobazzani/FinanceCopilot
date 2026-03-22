@@ -163,9 +163,9 @@ class AllocationTab extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (marketValues) {
-          final compositions = compositionsAsync.valueOrNull ?? {};
-          final baseCurrency = baseCurrencyAsync.valueOrNull ?? 'EUR';
-          final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+          final compositions = compositionsAsync.value ?? {};
+          final baseCurrency = baseCurrencyAsync.value ?? 'EUR';
+          final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
           final total = marketValues.values.fold(0.0, (a, b) => a + b);
 
           if (total == 0) {

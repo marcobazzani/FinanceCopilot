@@ -36,7 +36,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
   bool _loadedExisting = false;
 
   bool get _isEditing => widget.adjustment != null;
-  String get _baseCurrency => ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+  String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
 
   double get _totalSpent => _expenses.fold(0.0, (sum, e) => sum + e.amount);
 
@@ -72,7 +72,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
     final sym = currencySymbol(_currency);
 
@@ -244,7 +244,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
-    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(

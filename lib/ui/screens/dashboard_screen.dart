@@ -563,7 +563,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
     return DefaultTabController(
       length: 2,

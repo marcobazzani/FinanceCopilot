@@ -53,8 +53,8 @@ class _SpreadTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final schedulesAsync = ref.watch(capexSchedulesProvider);
     final statsAsync = ref.watch(capexStatsProvider);
-    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
     return Scaffold(
       body: schedulesAsync.when(
@@ -66,7 +66,7 @@ class _SpreadTab extends ConsumerWidget {
             );
           }
 
-          final stats = statsAsync.valueOrNull ?? {};
+          final stats = statsAsync.value ?? {};
 
           return ListView.separated(
             itemCount: schedules.length,
@@ -270,12 +270,12 @@ class _IncomeAdjTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final amtFormat = fmt.amountFormat(locale);
     final shortDate = fmt.shortDateFormat(locale);
     final sym = currencySymbol(adjustment.currency);
     final expensesAsync = ref.watch(incomeAdjustmentExpensesProvider(adjustment.id));
-    final totalSpent = expensesAsync.valueOrNull?.fold(0.0, (sum, e) => sum + e.amount) ?? 0.0;
+    final totalSpent = expensesAsync.value?.fold(0.0, (sum, e) => sum + e.amount) ?? 0.0;
     final remaining = adjustment.totalAmount - totalSpent;
 
     return InkWell(

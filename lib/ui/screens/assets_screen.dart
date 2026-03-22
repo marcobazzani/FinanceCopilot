@@ -20,10 +20,10 @@ class AssetsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final assetsAsync = ref.watch(assetsProvider);
     final statsAsync = ref.watch(assetStatsProvider);
-    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
-    final convertedStats = ref.watch(convertedAssetStatsProvider).valueOrNull ?? {};
-    final marketValues = ref.watch(assetMarketValuesProvider).valueOrNull ?? {};
+    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final convertedStats = ref.watch(convertedAssetStatsProvider).value ?? {};
+    final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
 
     return Scaffold(
       body: assetsAsync.when(
@@ -35,7 +35,7 @@ class AssetsScreen extends ConsumerWidget {
             );
           }
 
-          final stats = statsAsync.valueOrNull ?? {};
+          final stats = statsAsync.value ?? {};
 
           return ReorderableListView.builder(
             buildDefaultDragHandles: false,

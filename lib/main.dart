@@ -39,7 +39,7 @@ class AssetManagerApp extends ConsumerWidget {
     final dbPath = ref.watch(dbPathProvider);
     // Only read locale from DB after a database is selected to avoid opening the default DB
     final localeStr = dbPath != null
-        ? (ref.watch(appLocaleProvider).valueOrNull ?? 'en_US')
+        ? (ref.watch(appLocaleProvider).value ?? 'en_US')
         : 'en_US';
     // Parse locale string like "it_IT" into Locale('it', 'IT')
     final parts = localeStr.split(RegExp(r'[_-]'));
@@ -255,8 +255,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   Future<void> _showSettingsDialog(BuildContext context) async {
     final db = ref.read(databaseProvider);
-    final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
-    final currentLocale = ref.read(appLocaleProvider).valueOrNull ?? '';
+    final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
+    final currentLocale = ref.read(appLocaleProvider).value ?? '';
 
     var selectedCurrency = baseCurrency;
     // Map back to stored value: if current resolved locale matches a known option, use '' for system default

@@ -16,9 +16,9 @@ class AccountsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final accountsAsync = ref.watch(accountsProvider);
     final statsAsync = ref.watch(accountStatsProvider);
-    final baseCurrency = ref.watch(baseCurrencyProvider).valueOrNull ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
-    final convertedStats = ref.watch(convertedAccountStatsProvider).valueOrNull ?? {};
+    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final convertedStats = ref.watch(convertedAccountStatsProvider).value ?? {};
 
     return Scaffold(
       body: accountsAsync.when(
@@ -30,7 +30,7 @@ class AccountsScreen extends ConsumerWidget {
             );
           }
 
-          final stats = statsAsync.valueOrNull ?? {};
+          final stats = statsAsync.value ?? {};
 
           return ReorderableListView.builder(
             buildDefaultDragHandles: false,

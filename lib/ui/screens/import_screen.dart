@@ -1862,7 +1862,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
         );
       } else if (_target == ImportTarget.income) {
-        final baseCurrency = ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+        final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
         result = await importer.importIncomes(
           preview: _preview!,
           mappings: mappings,

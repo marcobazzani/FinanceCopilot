@@ -51,7 +51,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
   bool _loadedExisting = false;
 
   bool get _isEditing => widget.schedule != null;
-  String get _baseCurrency => ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+  String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
   bool get _needsConversion => _currency != _baseCurrency;
 
   DateTime get _startDate {
@@ -164,7 +164,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
     final sym = currencySymbol(_currency);
 
@@ -514,7 +514,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
-    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(

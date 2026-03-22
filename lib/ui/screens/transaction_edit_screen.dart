@@ -42,7 +42,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
   void initState() {
     super.initState();
     final tx = widget.transaction;
-    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
 
     _selectedDate = tx?.operationDate ?? DateTime.now();
@@ -225,7 +225,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).valueOrNull ?? 'en_US').format(picked);
+        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).value ?? 'en_US').format(picked);
       });
     }
   }

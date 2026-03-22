@@ -39,7 +39,7 @@ Date,Amount,Description
       expect(preview.columns, ['Date', 'Amount', 'Description']);
       expect(preview.rows, hasLength(2));
       expect(preview.rows[0]['Date'], '15/01/2024');
-      expect(preview.rows[0]['Amount'], '-42.5');
+      expect(preview.rows[0]['Amount'], '-42.50');
       expect(preview.rows[1]['Description'], 'Salary');
     });
 

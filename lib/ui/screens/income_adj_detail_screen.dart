@@ -37,7 +37,7 @@ class _DetailBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final expensesAsync = ref.watch(incomeAdjustmentExpensesProvider(adjustment.id));
-    final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final sym = currencySymbol(adjustment.currency);
     final amtFmt = fmt.currencyFormat(locale, sym);
     final dateFmt = fmt.shortDateFormat(locale);
@@ -182,7 +182,7 @@ class _DetailBody extends ConsumerWidget {
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
-    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(

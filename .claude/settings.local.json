@@ -65,7 +65,12 @@
       "Bash(sqlite3:*)",
       "Bash(flutter analyze:*)",
       "Bash(log show:*)",
-      "Bash(.venv/bin/python3:*)"
+      "Bash(.venv/bin/python3:*)",
+      "Bash(git:*)",
+      "Bash(/tmp/pw-venv/bin/python:*)",
+      "Bash(curl:*)",
+      "Bash(head:*)",
+      "Bash(echo:*)"
     ]
   }
 }

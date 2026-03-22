@@ -52,7 +52,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   bool get _usesQtyPrice => _qtyPriceTypes.contains(_eventType);
 
   String get _baseCurrency =>
-      ref.read(baseCurrencyProvider).valueOrNull ?? 'EUR';
+      ref.read(baseCurrencyProvider).value ?? 'EUR';
 
   bool get _needsConversion => _currency != _baseCurrency;
 
@@ -69,7 +69,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   void initState() {
     super.initState();
     final ev = widget.event;
-    final locale = ref.read(appLocaleProvider).valueOrNull ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
 
     _selectedDate = ev?.date ?? DateTime.now();
@@ -384,7 +384,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).valueOrNull ?? 'en_US').format(picked);
+        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).value ?? 'en_US').format(picked);
       });
       _fetchExchangeRate();
       _fetchAssetPrice();
