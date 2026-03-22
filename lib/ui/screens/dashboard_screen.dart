@@ -563,7 +563,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
-    final chartsAsync = ref.watch(dashboardChartsProvider);
     final locale = ref.watch(appLocaleProvider).valueOrNull ?? 'en_US';
 
     return DefaultTabController(
@@ -579,7 +578,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Expanded(
             child: TabBarView(
               children: [
-                _buildChartsTab(allDataAsync, chartsAsync, locale, context),
+                _buildChartsTab(allDataAsync, locale, context),
                 const AllocationTab(),
               ],
             ),
@@ -591,7 +590,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _buildChartsTab(
     AsyncValue<_AllSeriesData?> allDataAsync,
-    AsyncValue<List<DashboardChart>> chartsAsync,
     String locale,
     BuildContext context,
   ) {
@@ -606,208 +604,174 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           );
         }
 
-        return chartsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
-          data: (charts) {
-            // Build set of chart IDs that are sources of a combined chart (only for type == 'chart')
-            final collapsedChartIds = <int>{};
-            for (final chart in charts) {
-              if (chart.widgetType == 'chart' && chart.sourceChartIds != null) {
-                try {
-                  final ids = (jsonDecode(chart.sourceChartIds!) as List).cast<int>();
-                  collapsedChartIds.addAll(ids);
-                } catch (_) {}
-              }
+        final charts = _buildStaticCharts(allData);
+
+        // Build set of chart IDs that are sources of a combined chart
+        final collapsedChartIds = <int>{};
+        for (final chart in charts) {
+          if (chart.widgetType == 'chart' && chart.sourceChartIds != null) {
+            try {
+              final ids = (jsonDecode(chart.sourceChartIds!) as List).cast<int>();
+              collapsedChartIds.addAll(ids);
+            } catch (_) {}
+          }
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: charts.length,
+          itemBuilder: (context, index) {
+            final chart = charts[index];
+
+            // Price changes widget
+            if (chart.widgetType == 'price_changes') {
+              return Padding(
+                key: ValueKey(chart.id),
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
+                  ],
+                ),
+              );
             }
 
-            final hasPriceChanges = charts.any((c) => c.widgetType == 'price_changes');
-            final chartService = ref.read(dashboardChartServiceProvider);
+            // Chart widgets
+            final isCombined = chart.sourceChartIds != null;
+            final isCollapsed = collapsedChartIds.contains(chart.id) && !_expandedCollapsed.contains(chart.id);
 
-            return Scaffold(
-              body: charts.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('No charts configured.', style: TextStyle(color: Colors.grey)),
-                          const SizedBox(height: 8),
-                          ElevatedButton.icon(
-                            onPressed: () => _showChartEditor(context, allData, null),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Chart'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ReorderableListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      buildDefaultDragHandles: false,
-                      proxyDecorator: (child, index, animation) {
-                        return AnimatedBuilder(
-                          animation: animation,
-                          builder: (context, child) => Material(
-                            elevation: 4,
-                            color: Colors.transparent,
-                            child: child,
-                          ),
-                          child: child,
-                        );
-                      },
-                      itemCount: charts.length,
-                      onReorder: (oldIndex, newIndex) {
-                        if (newIndex > oldIndex) newIndex--;
-                        final ids = charts.map((c) => c.id).toList();
-                        final movedId = ids.removeAt(oldIndex);
-                        ids.insert(newIndex, movedId);
-                        chartService.reorder(ids);
-                      },
-                      itemBuilder: (context, index) {
-                        final chart = charts[index];
+            // Source charts auto-collapse under the combined chart
+            if (isCollapsed) {
+              return Padding(
+                key: ValueKey(chart.id),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _CollapsedChartRow(
+                  chart: chart,
+                  onExpand: () => setState(() => _expandedCollapsed.add(chart.id)),
+                ),
+              );
+            }
 
-                        // Price changes widget
-                        if (chart.widgetType == 'price_changes') {
-                          return Padding(
-                            key: ValueKey(chart.id),
-                            padding: const EdgeInsets.only(bottom: 24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    ReorderableDragStartListener(
-                                      index: index,
-                                      child: const Icon(Icons.drag_indicator, size: 20, color: Colors.grey),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline, size: 18),
-                                      onPressed: () => _deleteChart(context, chart),
-                                      tooltip: 'Delete',
-                                    ),
-                                  ],
-                                ),
-                                _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
-                              ],
-                            ),
-                          );
-                        }
+            List<_Series> filteredSeries;
+            if (isCombined) {
+              filteredSeries = _buildCombinedSeries(charts, chart, allData);
+            } else {
+              final seriesConfigs = _parseSeriesJson(chart.seriesJson);
+              filteredSeries = _filterSeries(allData, seriesConfigs);
+            }
 
-                        // Chart widgets
-                        final isCombined = chart.sourceChartIds != null;
-                        final isCollapsed = collapsedChartIds.contains(chart.id) && !_expandedCollapsed.contains(chart.id);
+            final hidden = _hiddenFor(chart.id);
+            final zoom = _zoomFor(chart.id);
+            final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
 
-                        // For collapsed source charts, show slim row with drag handle
-                        if (isCollapsed) {
-                          return Padding(
-                            key: ValueKey(chart.id),
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _CollapsedChartRow(
-                              chart: chart,
-                              index: index,
-                              onExpand: () => setState(() => _expandedCollapsed.add(chart.id)),
-                              onEdit: () => _showChartEditor(context, allData, chart),
-                              onDelete: () => _deleteChart(context, chart),
-                            ),
-                          );
-                        }
-
-                        // For combined charts, build series from source chart totals
-                        List<_Series> filteredSeries;
-                        if (isCombined) {
-                          filteredSeries = _buildCombinedSeries(charts, chart, allData);
-                        } else {
-                          final seriesConfigs = _parseSeriesJson(chart.seriesJson);
-                          filteredSeries = _filterSeries(allData, seriesConfigs);
-                        }
-
-                        final hidden = _hiddenFor(chart.id);
-                        final zoom = _zoomFor(chart.id);
-                        final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
-
-                        return Padding(
-                          key: ValueKey(chart.id),
-                          padding: const EdgeInsets.only(bottom: 24),
-                          child: _ChartCard(
-                            chart: chart,
-                            index: index,
-                            series: filteredSeries,
-                            allData: allData,
-                            hidden: hidden,
-                            hideComponents: hideComp,
-                            locale: locale,
-                            chartHeight: _heightFor(chart.id),
-                            zoomMinX: zoom.minX,
-                            zoomMaxX: zoom.maxX,
-                            zoomMinY: zoom.minY,
-                            zoomMaxY: zoom.maxY,
-                            onToggle: (key) => setState(() {
-                              hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
-                            }),
-                            onToggleGroup: (keys) => setState(() {
-                              keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
-                            }),
-                            onToggleHideComponents: () => setState(() {
-                              _hideComponents[chart.id] = !hideComp;
-                            }),
-                            onZoom: (minX, maxX, minY, maxY) => setState(() {
-                              zoom.minX = minX;
-                              zoom.maxX = maxX;
-                              zoom.minY = minY;
-                              zoom.maxY = maxY;
-                            }),
-                            onHeightChanged: (h) => setState(() {
-                              _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
-                            }),
-                            onEdit: isCombined ? () => _showCombineChartsDialog(context, charts, chart) : () => _showChartEditor(context, allData, chart),
-                            onDelete: () => _deleteChart(context, chart),
-                            onCollapse: (collapsedChartIds.contains(chart.id) && _expandedCollapsed.contains(chart.id))
-                                ? () => setState(() => _expandedCollapsed.remove(chart.id))
-                                : null,
-                          ),
-                        );
-                      },
-                    ),
-              floatingActionButton: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!hasPriceChanges)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: FloatingActionButton.small(
-                        heroTag: 'price_changes',
-                        onPressed: () => chartService.create(
-                          title: 'Price Changes',
-                          seriesJson: '[]',
-                          widgetType: 'price_changes',
-                        ),
-                        tooltip: 'Add Price Changes',
-                        child: const Icon(Icons.show_chart),
-                      ),
-                    ),
-                  if (charts.where((c) => c.widgetType == 'chart' && c.sourceChartIds == null).length >= 2)
-                    FloatingActionButton.small(
-                      heroTag: 'combine',
-                      onPressed: () => _showCombineChartsDialog(context, charts, null),
-                      tooltip: 'Combine Charts',
-                      child: const Icon(Icons.merge_type),
-                    ),
-                  const SizedBox(height: 8),
-                  FloatingActionButton(
-                    heroTag: 'add',
-                    onPressed: () => _showChartEditor(context, allData, null),
-                    child: const Icon(Icons.add),
-                  ),
-                ],
+            return Padding(
+              key: ValueKey(chart.id),
+              padding: const EdgeInsets.only(bottom: 24),
+              child: _ChartCard(
+                chart: chart,
+                series: filteredSeries,
+                allData: allData,
+                hidden: hidden,
+                hideComponents: hideComp,
+                locale: locale,
+                chartHeight: _heightFor(chart.id),
+                zoomMinX: zoom.minX,
+                zoomMaxX: zoom.maxX,
+                zoomMinY: zoom.minY,
+                zoomMaxY: zoom.maxY,
+                onToggle: (key) => setState(() {
+                  hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+                }),
+                onToggleGroup: (keys) => setState(() {
+                  keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
+                }),
+                onToggleHideComponents: () => setState(() {
+                  _hideComponents[chart.id] = !hideComp;
+                }),
+                onZoom: (minX, maxX, minY, maxY) => setState(() {
+                  zoom.minX = minX;
+                  zoom.maxX = maxX;
+                  zoom.minY = minY;
+                  zoom.maxY = maxY;
+                }),
+                onHeightChanged: (h) => setState(() {
+                  _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
+                }),
+                onCollapse: (collapsedChartIds.contains(chart.id) && _expandedCollapsed.contains(chart.id))
+                    ? () => setState(() => _expandedCollapsed.remove(chart.id))
+                    : null,
               ),
             );
           },
         );
       },
     );
+  }
+
+  /// Build the fixed set of dashboard widgets from live series data.
+  /// Widget definitions are static; series are resolved dynamically from all
+  /// active accounts, assets, and adjustments — no IDs are hardcoded.
+  List<DashboardChart> _buildStaticCharts(_AllSeriesData allData) {
+    final now = DateTime.now();
+
+    List<Map<String, dynamic>> toConfigs(List<_Series> series) => series.map((s) {
+          final parts = s.key.split(':');
+          return {'type': parts[0], 'id': int.parse(parts[1])};
+        }).toList();
+
+    // Total Assets: all accounts + all market values + spread adjustments
+    final totalAssetsJson = jsonEncode([
+      ...toConfigs(allData.accounts),
+      ...toConfigs(allData.assetMarket),
+      ...toConfigs(allData.adjustments),
+    ]);
+
+    // Cash: all accounts + spread adjustments only (no income adj)
+    final cashJson = jsonEncode([
+      ...toConfigs(allData.accounts),
+      ...toConfigs(allData.adjustments),
+    ]);
+
+    // Saving: all accounts + all invested assets + all adjustments (spread + income)
+    final savingJson = jsonEncode([
+      ...toConfigs(allData.accounts),
+      ...toConfigs(allData.assetInvested),
+      ...toConfigs(allData.adjustments),
+      ...toConfigs(allData.incomeAdjustments),
+    ]);
+
+    // Invested: all invested assets
+    final investedJson = jsonEncode(toConfigs(allData.assetInvested));
+
+    // Stable negative IDs avoid clashing with any real DB rows
+    const idPriceChanges = -1;
+    const idTotals = -2;
+    const idTotalAssets = -3;
+    const idCash = -4;
+    const idSaving = -5;
+    const idInvested = -6;
+
+    return [
+      DashboardChart(id: idPriceChanges, title: 'Price Changes', widgetType: 'price_changes',
+          sortOrder: 0, seriesJson: '[]', createdAt: now),
+      DashboardChart(id: idTotals, title: 'Totals', widgetType: 'chart',
+          sortOrder: 1, seriesJson: '[]',
+          sourceChartIds: jsonEncode([idTotalAssets, idCash, idSaving, idInvested]),
+          createdAt: now),
+      DashboardChart(id: idTotalAssets, title: 'Total Assets', widgetType: 'chart',
+          sortOrder: 2, seriesJson: totalAssetsJson, createdAt: now),
+      DashboardChart(id: idCash, title: 'Cash', widgetType: 'chart',
+          sortOrder: 3, seriesJson: cashJson, createdAt: now),
+      DashboardChart(id: idSaving, title: 'Saving', widgetType: 'chart',
+          sortOrder: 4, seriesJson: savingJson, createdAt: now),
+      DashboardChart(id: idInvested, title: 'Invested', widgetType: 'chart',
+          sortOrder: 5, seriesJson: investedJson, createdAt: now),
+    ];
   }
 
   /// Build series for a combined chart: each source chart's total becomes a line.
@@ -871,25 +835,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return buildTotalSpots(spotsForTotal);
   }
 
-  Future<void> _showCombineChartsDialog(BuildContext context, List<DashboardChart> charts, DashboardChart? existing) async {
-    final result = await showDialog<_CombineChartsResult>(
-      context: context,
-      builder: (ctx) => _CombineChartsDialog(
-        charts: charts.where((c) => c.widgetType == 'chart' && c.sourceChartIds == null).toList(),
-        existing: existing,
-      ),
-    );
-    if (result == null) return;
-
-    final service = ref.read(dashboardChartServiceProvider);
-    final sourceJson = jsonEncode(result.selectedChartIds);
-
-    if (existing != null) {
-      await service.update(existing.id, title: result.title, sourceChartIds: sourceJson);
-    } else {
-      await service.create(title: result.title, seriesJson: '[]', sourceChartIds: sourceJson);
-    }
-  }
 
   List<Map<String, dynamic>> _parseSeriesJson(String json) {
     try {
@@ -912,395 +857,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return result;
   }
 
-  Future<void> _showChartEditor(BuildContext context, _AllSeriesData allData, DashboardChart? existing) async {
-    final result = await showDialog<_ChartEditorResult>(
-      context: context,
-      builder: (ctx) => _ChartEditorDialog(
-        allData: allData,
-        existing: existing,
-      ),
-    );
-    if (result == null) return;
-
-    final service = ref.read(dashboardChartServiceProvider);
-    final seriesJson = jsonEncode(result.selectedSeries);
-
-    if (existing != null) {
-      await service.update(existing.id, title: result.title, seriesJson: seriesJson);
-    } else {
-      await service.create(title: result.title, seriesJson: seriesJson);
-    }
-  }
-
-  Future<void> _deleteChart(BuildContext context, DashboardChart chart) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Chart'),
-        content: Text('Delete "${chart.title}"?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(dashboardChartServiceProvider).delete(chart.id);
-    }
-  }
 }
 
-// ════════════════════════════════════════════════════
-// Chart editor dialog
-// ════════════════════════════════════════════════════
-
-class _ChartEditorResult {
-  final String title;
-  final List<Map<String, dynamic>> selectedSeries;
-  _ChartEditorResult({required this.title, required this.selectedSeries});
-}
-
-class _ChartEditorDialog extends StatefulWidget {
-  final _AllSeriesData allData;
-  final DashboardChart? existing;
-
-  const _ChartEditorDialog({required this.allData, this.existing});
-
-  @override
-  State<_ChartEditorDialog> createState() => _ChartEditorDialogState();
-}
-
-class _ChartEditorDialogState extends State<_ChartEditorDialog> {
-  late final TextEditingController _titleCtrl;
-  final _selected = <String>{}; // set of "type:id" keys
-
-  @override
-  void initState() {
-    super.initState();
-    _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
-    _titleCtrl.addListener(() => setState(() {}));
-    if (widget.existing != null) {
-      try {
-        final configs = (jsonDecode(widget.existing!.seriesJson) as List).cast<Map<String, dynamic>>();
-        for (final c in configs) {
-          final type = c['type'] as String?;
-          final id = c['id'] as int?;
-          if (type != null && id != null) _selected.add('$type:$id');
-        }
-      } catch (_) {}
-    }
-  }
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = widget.allData;
-
-    // Extract unique asset ids from invested + market series
-    final assetIds = <int>{};
-    for (final s in [...d.assetInvested, ...d.assetMarket]) {
-      final parts = s.key.split(':');
-      if (parts.length == 2) assetIds.add(int.parse(parts[1]));
-    }
-
-    return AlertDialog(
-      title: Text(widget.existing != null ? 'Edit Chart' : 'New Chart'),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: _titleCtrl,
-                decoration: const InputDecoration(labelText: 'Chart Title'),
-              ),
-              const SizedBox(height: 16),
-
-              // Accounts
-              if (d.accounts.isNotEmpty) ...[
-                _SectionHeader(
-                  label: 'Accounts',
-                  allSelected: d.accounts.every((s) => _selected.contains(s.key)),
-                  onToggleAll: () => _toggleGroup(d.accounts.map((s) => s.key).toSet()),
-                ),
-                for (final s in d.accounts)
-                  CheckboxListTile(
-                    dense: true,
-                    title: Text(s.name, style: const TextStyle(fontSize: 13)),
-                    value: _selected.contains(s.key),
-                    onChanged: (_) => setState(() {
-                      _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
-                    }),
-                  ),
-              ],
-
-              // Assets (each with invested + market checkboxes)
-              if (assetIds.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 4),
-                  child: Row(
-                    children: [
-                      const Text('Assets', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => _toggleGroup(assetIds.map((id) => 'asset_invested:$id').toSet()),
-                        child: Text(
-                          assetIds.every((id) => _selected.contains('asset_invested:$id'))
-                              ? 'Deselect Invested'
-                              : 'Select Invested',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => _toggleGroup(assetIds.map((id) => 'asset_market:$id').toSet()),
-                        child: Text(
-                          assetIds.every((id) => _selected.contains('asset_market:$id'))
-                              ? 'Deselect Market'
-                              : 'Select Market',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                for (final id in assetIds) ...[
-                  () {
-                    final inv = d.assetInvested.where((s) => s.key == 'asset_invested:$id');
-                    final mkt = d.assetMarket.where((s) => s.key == 'asset_market:$id');
-                    final name = mkt.isNotEmpty ? mkt.first.name : (inv.isNotEmpty ? inv.first.name : 'Asset $id');
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                          Row(
-                            children: [
-                              if (inv.isNotEmpty)
-                                Expanded(
-                                  child: CheckboxListTile(
-                                    dense: true,
-                                    title: const Text('Invested', style: TextStyle(fontSize: 12)),
-                                    value: _selected.contains('asset_invested:$id'),
-                                    onChanged: (_) => setState(() {
-                                      _selected.contains('asset_invested:$id')
-                                          ? _selected.remove('asset_invested:$id')
-                                          : _selected.add('asset_invested:$id');
-                                    }),
-                                  ),
-                                ),
-                              if (mkt.isNotEmpty)
-                                Expanded(
-                                  child: CheckboxListTile(
-                                    dense: true,
-                                    title: const Text('Market', style: TextStyle(fontSize: 12)),
-                                    value: _selected.contains('asset_market:$id'),
-                                    onChanged: (_) => setState(() {
-                                      _selected.contains('asset_market:$id')
-                                          ? _selected.remove('asset_market:$id')
-                                          : _selected.add('asset_market:$id');
-                                    }),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  }(),
-                ],
-              ],
-
-              // Spread Adjustments
-              if (d.adjustments.isNotEmpty) ...[
-                _SectionHeader(
-                  label: 'Spread Adjustments',
-                  allSelected: d.adjustments.every((s) => _selected.contains(s.key)),
-                  onToggleAll: () => _toggleGroup(d.adjustments.map((s) => s.key).toSet()),
-                ),
-                for (final s in d.adjustments)
-                  CheckboxListTile(
-                    dense: true,
-                    title: Text(s.name, style: const TextStyle(fontSize: 13)),
-                    value: _selected.contains(s.key),
-                    onChanged: (_) => setState(() {
-                      _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
-                    }),
-                  ),
-              ],
-
-              // Income Adjustments
-              if (d.incomeAdjustments.isNotEmpty) ...[
-                _SectionHeader(
-                  label: 'Income Adjustments',
-                  allSelected: d.incomeAdjustments.every((s) => _selected.contains(s.key)),
-                  onToggleAll: () => _toggleGroup(d.incomeAdjustments.map((s) => s.key).toSet()),
-                ),
-                for (final s in d.incomeAdjustments)
-                  CheckboxListTile(
-                    dense: true,
-                    title: Text(s.name, style: const TextStyle(fontSize: 13)),
-                    value: _selected.contains(s.key),
-                    onChanged: (_) => setState(() {
-                      _selected.contains(s.key) ? _selected.remove(s.key) : _selected.add(s.key);
-                    }),
-                  ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: _selected.isEmpty || _titleCtrl.text.trim().isEmpty ? null : () {
-            final series = _selected.map((key) {
-              final parts = key.split(':');
-              return {'type': parts[0], 'id': int.parse(parts[1])};
-            }).toList();
-            Navigator.pop(context, _ChartEditorResult(
-              title: _titleCtrl.text.trim(),
-              selectedSeries: series,
-            ));
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-
-  void _toggleGroup(Set<String> keys) {
-    setState(() {
-      if (keys.every(_selected.contains)) {
-        _selected.removeAll(keys);
-      } else {
-        _selected.addAll(keys);
-      }
-    });
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String label;
-  final bool allSelected;
-  final VoidCallback onToggleAll;
-
-  const _SectionHeader({required this.label, required this.allSelected, required this.onToggleAll});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 4),
-      child: Row(
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          const Spacer(),
-          TextButton(
-            onPressed: onToggleAll,
-            child: Text(allSelected ? 'Deselect All' : 'Select All', style: const TextStyle(fontSize: 11)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════
-// Combine Charts dialog
-// ════════════════════════════════════════════════════
-
-class _CombineChartsResult {
-  final String title;
-  final List<int> selectedChartIds;
-  _CombineChartsResult({required this.title, required this.selectedChartIds});
-}
-
-class _CombineChartsDialog extends StatefulWidget {
-  final List<DashboardChart> charts; // non-combined charts only
-  final DashboardChart? existing;
-
-  const _CombineChartsDialog({required this.charts, this.existing});
-
-  @override
-  State<_CombineChartsDialog> createState() => _CombineChartsDialogState();
-}
-
-class _CombineChartsDialogState extends State<_CombineChartsDialog> {
-  late final TextEditingController _titleCtrl;
-  final _selectedIds = <int>{};
-
-  @override
-  void initState() {
-    super.initState();
-    _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
-    if (widget.existing?.sourceChartIds != null) {
-      try {
-        final ids = (jsonDecode(widget.existing!.sourceChartIds!) as List).cast<int>();
-        _selectedIds.addAll(ids);
-      } catch (_) {}
-    }
-  }
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.existing != null ? 'Edit Combined Chart' : 'Combine Charts'),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: _titleCtrl,
-                decoration: const InputDecoration(labelText: 'Combined Chart Title'),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 16),
-              const Text('Select charts to combine (2+):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 8),
-              for (final chart in widget.charts)
-                CheckboxListTile(
-                  dense: true,
-                  title: Text(chart.title, style: const TextStyle(fontSize: 13)),
-                  value: _selectedIds.contains(chart.id),
-                  onChanged: (_) => setState(() {
-                    _selectedIds.contains(chart.id) ? _selectedIds.remove(chart.id) : _selectedIds.add(chart.id);
-                  }),
-                ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        ElevatedButton(
-          onPressed: _selectedIds.length >= 2 && _titleCtrl.text.trim().isNotEmpty
-              ? () => Navigator.pop(context, _CombineChartsResult(
-                  title: _titleCtrl.text.trim(),
-                  selectedChartIds: _selectedIds.toList(),
-                ))
-              : null,
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
 
 // ════════════════════════════════════════════════════
 // Collapsed chart row (auto-collapsed source chart)
@@ -1308,18 +866,9 @@ class _CombineChartsDialogState extends State<_CombineChartsDialog> {
 
 class _CollapsedChartRow extends StatelessWidget {
   final DashboardChart chart;
-  final int index;
   final VoidCallback onExpand;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
-  const _CollapsedChartRow({
-    required this.chart,
-    required this.index,
-    required this.onExpand,
-    required this.onEdit,
-    required this.onDelete,
-  });
+  const _CollapsedChartRow({required this.chart, required this.onExpand});
 
   @override
   Widget build(BuildContext context) {
@@ -1334,20 +883,11 @@ class _CollapsedChartRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            ReorderableDragStartListener(
-              index: index,
-              child: const Icon(Icons.drag_indicator, size: 18, color: Colors.grey),
-            ),
-            const SizedBox(width: 4),
             Icon(Icons.expand_more, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 4),
-            Expanded(
-              child: Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              )),
-            ),
-            IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: onEdit, tooltip: 'Edit', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
-            IconButton(icon: const Icon(Icons.delete_outline, size: 16), onPressed: onDelete, tooltip: 'Delete', iconSize: 16, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+            Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            )),
           ],
         ),
       ),
@@ -1361,7 +901,6 @@ class _CollapsedChartRow extends StatelessWidget {
 
 class _ChartCard extends StatelessWidget {
   final DashboardChart chart;
-  final int index;
   final List<_Series> series;
   final _AllSeriesData allData;
   final Set<String> hidden;
@@ -1377,13 +916,10 @@ class _ChartCard extends StatelessWidget {
   final VoidCallback onToggleHideComponents;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
   final ValueChanged<double> onHeightChanged;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
   final VoidCallback? onCollapse;
 
   const _ChartCard({
     required this.chart,
-    required this.index,
     required this.series,
     required this.allData,
     required this.hidden,
@@ -1399,8 +935,6 @@ class _ChartCard extends StatelessWidget {
     required this.onToggleHideComponents,
     required this.onZoom,
     required this.onHeightChanged,
-    required this.onEdit,
-    required this.onDelete,
     this.onCollapse,
   });
 
@@ -1460,11 +994,6 @@ class _ChartCard extends StatelessWidget {
           // Title bar
           Row(
             children: [
-              ReorderableDragStartListener(
-                index: index,
-                child: const Icon(Icons.drag_indicator, size: 20, color: Colors.grey),
-              ),
-              const SizedBox(width: 8),
               if (onCollapse != null)
                 GestureDetector(
                   onTap: onCollapse,
@@ -1491,8 +1020,6 @@ class _ChartCard extends StatelessWidget {
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: 'Reset zoom',
                 ),
-              IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: onEdit, tooltip: 'Edit'),
-              IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: onDelete, tooltip: 'Delete'),
             ],
           ),
           const SizedBox(height: 4),
