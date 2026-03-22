@@ -38,6 +38,9 @@ dependencies:
   # HTTP (market data)
   dio: ^5.8.0
 
+  # HTML parsing (DOM, not regex)
+  html: ^0.15.4
+
   # Google Sheets (price data via GOOGLEFINANCE, CSV export)
   url_launcher: ^6.3.1
 

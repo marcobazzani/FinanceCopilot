@@ -292,6 +292,46 @@ class _AppShellState extends ConsumerState<AppShell> {
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedLocale = v!),
                 ),
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Clear cached data',
+                              style: Theme.of(ctx).textTheme.bodyMedium),
+                          Text(
+                            'Prices, exchange rates, composition',
+                            style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(ctx).colorScheme.error,
+                        side: BorderSide(color: Theme.of(ctx).colorScheme.error),
+                      ),
+                      onPressed: () async {
+                        await db.delete(db.marketPrices).go();
+                        await db.delete(db.exchangeRates).go();
+                        await db.delete(db.assetCompositions).go();
+                        _log.info('Cleared all cached data (prices, exchange rates, compositions)');
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('Cached data cleared')),
+                          );
+                        }
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

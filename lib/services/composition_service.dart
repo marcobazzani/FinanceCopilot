@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:html/dom.dart';
+import 'package:html/parser.dart' show parse;
 
 import '../database/database.dart';
 import '../utils/logger.dart';
@@ -131,21 +134,22 @@ class CompositionService {
       return [];
     }
 
+    final doc = parse(html);
     final entries = <_Entry>[];
 
     // Try to get structured composition (equity ETFs)
-    entries.addAll(_parseJustEtfSection(html, 'countries'));
-    entries.addAll(_parseJustEtfSection(html, 'sectors'));
-    entries.addAll(_parseJustEtfHoldings(html));
+    entries.addAll(_parseJustEtfSection(doc, 'countries'));
+    entries.addAll(_parseJustEtfSection(doc, 'sectors'));
+    entries.addAll(_parseJustEtfHoldings(doc));
 
     // If no structured data (money market, commodity, gold, bond ETFs),
     // derive from the "Investment focus" field
     if (entries.isEmpty) {
-      entries.addAll(_parseInvestmentFocus(html, asset));
+      entries.addAll(_parseInvestmentFocus(doc, asset));
     }
 
     // Store the asset class from the Investment focus field
-    final assetClass = _detectAssetClass(html);
+    final assetClass = _detectAssetClass(doc);
     if (assetClass != null) {
       entries.add(_Entry('assetclass', assetClass, 100));
     }
@@ -158,23 +162,22 @@ class CompositionService {
 
   /// Parse the "Investment focus" field from justETF.
   /// Format: "Equity, World" or "Money Market, EUR, Europe" or "Commodities, Broad market"
-  List<_Entry> _parseInvestmentFocus(String html, Asset asset) {
+  List<_Entry> _parseInvestmentFocus(Document doc, Asset asset) {
     final entries = <_Entry>[];
 
     String? focus;
 
     // Primary: data-testid attribute for investment focus value
-    final testIdPattern = RegExp(
-      r'data-testid="tl_etf-basics_value_investment-focus"[^>]*>([^<]+)',
-    );
-    focus = testIdPattern.firstMatch(html)?.group(1)?.trim();
+    focus = doc.querySelector('[data-testid="tl_etf-basics_value_investment-focus"]')?.text.trim();
 
-    // Fallback: plain table cell
+    // Fallback: find the "Investment focus" label td, get its sibling
     if (focus == null || focus.isEmpty) {
-      final focusPattern = RegExp(
-        r'Investment focus</td>\s*<td[^>]*>\s*([^<]+)',
-      );
-      focus = focusPattern.firstMatch(html)?.group(1)?.trim();
+      focus = doc.querySelectorAll('td')
+          .where((td) => td.text.trim() == 'Investment focus')
+          .firstOrNull
+          ?.nextElementSibling
+          ?.text
+          .trim();
     }
 
     if (focus != null && focus.isNotEmpty) {
@@ -194,9 +197,10 @@ class CompositionService {
 
     // Fund domicile as country fallback
     if (!entries.any((e) => e.type == 'country')) {
-      final dm = RegExp(r'data-testid="tl_etf-basics_value_fund-domicile"[^>]*>([^<]+)')
-          .firstMatch(html);
-      final domicile = dm?.group(1)?.trim();
+      final domicile = doc
+          .querySelector('[data-testid="tl_etf-basics_value_fund-domicile"]')
+          ?.text
+          .trim();
       if (domicile != null && domicile.isNotEmpty) {
         entries.add(_Entry('country', domicile, 100));
       }
@@ -208,13 +212,19 @@ class CompositionService {
 
   /// Detect the real asset class from justETF's Investment focus field.
   /// Returns labels like "Stock ETF", "Bond ETF", "Commodity ETF", "Gold ETC", "Money Market ETF".
-  String? _detectAssetClass(String html) {
-    final testIdPattern = RegExp(
-      r'data-testid="tl_etf-basics_value_investment-focus"[^>]*>([^<]+)',
-    );
-    var focus = testIdPattern.firstMatch(html)?.group(1)?.trim().toLowerCase();
-    focus ??= RegExp(r'Investment focus</td>\s*<td[^>]*>\s*([^<]+)')
-        .firstMatch(html)?.group(1)?.trim().toLowerCase();
+  String? _detectAssetClass(Document doc) {
+    var focus = doc
+        .querySelector('[data-testid="tl_etf-basics_value_investment-focus"]')
+        ?.text
+        .trim()
+        .toLowerCase();
+    focus ??= doc.querySelectorAll('td')
+        .where((td) => td.text.trim() == 'Investment focus')
+        .firstOrNull
+        ?.nextElementSibling
+        ?.text
+        .trim()
+        .toLowerCase();
     if (focus == null) return null;
 
     if (focus.contains('money market')) return 'Money Market ETF';
@@ -248,12 +258,13 @@ class CompositionService {
     final html = await _fetchHtml(url);
     if (html == null) return [];
 
+    final doc = parse(html);
     final entries = <_Entry>[];
 
-    final sector = _extractTableValue(html, 'Sector');
+    final sector = _extractTableValue(doc, 'Sector');
     if (sector != null) entries.add(_Entry('sector', sector, 100));
 
-    final country = _extractTableValue(html, 'Country');
+    final country = _extractTableValue(doc, 'Country');
     if (country != null) entries.add(_Entry('country', country, 100));
 
     entries.add(_Entry('holding', asset.name, 100));
@@ -297,16 +308,17 @@ class CompositionService {
     final html = await _fetchHtml(holdingsUrl);
     if (html == null) return [];
 
+    final doc = parse(html);
     final entries = <_Entry>[];
 
     // Parse sector allocation from HTML table
-    entries.addAll(_parseInvestingComSectors(html));
+    entries.addAll(_parseInvestingComSectors(doc));
 
-    // Parse region allocation from Highcharts JSON
-    entries.addAll(_parseInvestingComRegions(html));
+    // Parse region allocation from Highcharts JSON (embedded in <script> tags)
+    entries.addAll(_parseInvestingComRegions(doc));
 
     // Parse top holdings from HTML table
-    entries.addAll(_parseInvestingComHoldings(html));
+    entries.addAll(_parseInvestingComHoldings(doc));
 
     if (entries.isEmpty) {
       entries.add(_Entry('holding', asset.name, 100));
@@ -319,27 +331,17 @@ class CompositionService {
   }
 
   /// Parse sector allocation from investing.com fund holdings page.
-  /// Format: <td class="left">Technology</td><td class="right">30.880</td>
-  List<_Entry> _parseInvestingComSectors(String html) {
+  List<_Entry> _parseInvestingComSectors(Document doc) {
     final entries = <_Entry>[];
 
-    // Find the sector allocation section
-    final sectorStart = html.indexOf('js-sector');
-    if (sectorStart < 0) return entries;
+    final sectorSection = doc.querySelector('.js-sector');
+    if (sectorSection == null) return entries;
 
-    // Find the next closing table after the sector start
-    final sectionEnd = html.indexOf('</table>', sectorStart);
-    if (sectionEnd < 0) return entries;
-    final section = html.substring(sectorStart, sectionEnd);
-
-    final rowPattern = RegExp(
-      r'<td class="left">([^<]+)</td>\s*<td class="right">([^<]+)</td>',
-    );
-
-    for (final match in rowPattern.allMatches(section)) {
-      final name = _decodeHtml(match.group(1)!.trim());
-      final weight = double.tryParse(match.group(2)!.trim());
-      if (weight != null && weight > 0) {
+    for (final cell in sectorSection.querySelectorAll('td.left')) {
+      final name = cell.text.trim();
+      final weightText = cell.nextElementSibling?.text.trim();
+      final weight = double.tryParse(weightText ?? '');
+      if (name.isNotEmpty && weight != null && weight > 0) {
         entries.add(_Entry('sector', name, weight));
       }
     }
@@ -349,13 +351,16 @@ class CompositionService {
 
   /// Parse region allocation from Highcharts JSON embedded in the page.
   /// Looks for: "renderTo":"regionAllocationPieChart1"..."data":[{"name":"...","y":...}]
-  List<_Entry> _parseInvestingComRegions(String html) {
+  List<_Entry> _parseInvestingComRegions(Document doc) {
     final entries = <_Entry>[];
+
+    // Scope search to <script> tags to avoid false matches in other HTML
+    final scriptContent = doc.querySelectorAll('script').map((s) => s.text).join();
 
     final chartPattern = RegExp(
       r'regionAllocationPieChart1[^;]*"data":\[([^\]]+)\]',
     );
-    final match = chartPattern.firstMatch(html);
+    final match = chartPattern.firstMatch(scriptContent);
     if (match == null) return entries;
 
     try {
@@ -376,28 +381,17 @@ class CompositionService {
   }
 
   /// Parse top holdings from investing.com fund holdings page.
-  List<_Entry> _parseInvestingComHoldings(String html) {
+  List<_Entry> _parseInvestingComHoldings(Document doc) {
     final entries = <_Entry>[];
 
-    // Top holdings table has class "genTbl" and contains rows with holding name + weight%
-    // Pattern: <td ...>Name</td> ... <td ...>XX.XX%</td>
-    final holdingsStart = html.indexOf('Top Holdings');
-    if (holdingsStart < 0) return entries;
-
-    // Find the holdings table
-    final tableStart = html.indexOf('<table', holdingsStart);
-    final tableEnd = html.indexOf('</table>', tableStart);
-    if (tableStart < 0 || tableEnd < 0) return entries;
-    final table = html.substring(tableStart, tableEnd);
-
-    final rowPattern = RegExp(
-      r'<td[^>]*>\s*(?:<a[^>]*>)?\s*([^<]+?)\s*(?:</a>)?\s*</td>\s*'
-      r'<td[^>]*>\s*([0-9.]+)\s*%?\s*</td>',
-    );
-
-    for (final match in rowPattern.allMatches(table)) {
-      final name = _decodeHtml(match.group(1)!.trim());
-      final weight = double.tryParse(match.group(2)!.trim());
+    final rows = doc.querySelector('.genTbl')?.querySelectorAll('tr') ?? [];
+    for (final row in rows.skip(1)) {
+      // skip header row
+      final cells = row.querySelectorAll('td');
+      if (cells.length < 2) continue;
+      final name = cells[0].text.trim();
+      final weightText = cells[1].text.trim().replaceAll('%', '');
+      final weight = double.tryParse(weightText);
       if (weight != null && weight > 0 && name.isNotEmpty && name != 'Name') {
         entries.add(_Entry('holding', name, weight));
       }
@@ -409,19 +403,12 @@ class CompositionService {
   // ── Shared helpers ────────────────────────────────────────
 
   /// Extract a value from an HTML table row: <td>Label</td><td>...Value...</td>
-  String? _extractTableValue(String html, String label) {
-    final pattern = RegExp(
-      '>$label</td>\\s*<td[^>]*>([\\s\\S]*?)</td>',
-      caseSensitive: false,
-    );
-    final match = pattern.firstMatch(html);
-    if (match == null) return null;
-
-    final text = match.group(1)!
-        .replaceAll(RegExp(r'<!--.*?-->'), '')
-        .replaceAll(RegExp(r'<[^>]*>'), '')
-        .trim();
-    return (text.isNotEmpty && text != '-') ? text : null;
+  String? _extractTableValue(Document doc, String label) {
+    final labelTd = doc.querySelectorAll('td')
+        .where((td) => td.text.trim().toLowerCase() == label.toLowerCase())
+        .firstOrNull;
+    final text = labelTd?.nextElementSibling?.text.trim();
+    return (text != null && text.isNotEmpty && text != '-') ? text : null;
   }
 
   Future<String?> _fetchHtml(String url) async {
@@ -447,21 +434,18 @@ class CompositionService {
 
   // ── justETF HTML parsers ──────────────────────────────────
 
-  List<_Entry> _parseJustEtfSection(String html, String section) {
+  List<_Entry> _parseJustEtfSection(Document doc, String section) {
     final type = section == 'countries' ? 'country' : 'sector';
     final entries = <_Entry>[];
 
-    final rowPattern = RegExp(
-      r'data-testid="tl_etf-holdings_' + section + r'_value_name"[^>]*>([^<]+)</td>'
-      r'[\s\S]*?'
-      r'data-testid="tl_etf-holdings_' + section + r'_value_percentage"[^>]*>([^<]+)</span>',
-    );
+    final names = doc.querySelectorAll('[data-testid="tl_etf-holdings_${section}_value_name"]');
+    final pcts = doc.querySelectorAll('[data-testid="tl_etf-holdings_${section}_value_percentage"]');
 
-    for (final match in rowPattern.allMatches(html)) {
-      final name = _decodeHtml(match.group(1)!.trim());
-      final pctStr = match.group(2)!.trim().replaceAll('%', '');
+    for (var i = 0; i < min(names.length, pcts.length); i++) {
+      final name = names[i].text.trim();
+      final pctStr = pcts[i].text.trim().replaceAll('%', '');
       final weight = double.tryParse(pctStr);
-      if (weight != null && weight > 0) {
+      if (name.isNotEmpty && weight != null && weight > 0) {
         entries.add(_Entry(type, name, weight));
       }
     }
@@ -469,35 +453,22 @@ class CompositionService {
     return entries;
   }
 
-  List<_Entry> _parseJustEtfHoldings(String html) {
+  List<_Entry> _parseJustEtfHoldings(Document doc) {
     final entries = <_Entry>[];
 
-    final linkPattern = RegExp(
-      r'data-testid="tl_etf-holdings_top-holdings_link_name"[^>]*title="([^"]+)"'
-      r'[\s\S]*?'
-      r'data-testid="tl_etf-holdings_top-holdings_value_percentage"[^>]*>([^<]+)</span>',
-    );
+    final links = doc.querySelectorAll('[data-testid="tl_etf-holdings_top-holdings_link_name"]');
+    final pcts = doc.querySelectorAll('[data-testid="tl_etf-holdings_top-holdings_value_percentage"]');
 
-    for (final match in linkPattern.allMatches(html)) {
-      final name = _decodeHtml(match.group(1)!.trim());
-      final pctStr = match.group(2)!.trim().replaceAll('%', '');
+    for (var i = 0; i < min(links.length, pcts.length); i++) {
+      final name = (links[i].attributes['title'] ?? links[i].text).trim();
+      final pctStr = pcts[i].text.trim().replaceAll('%', '');
       final weight = double.tryParse(pctStr);
-      if (weight != null && weight > 0) {
+      if (name.isNotEmpty && weight != null && weight > 0) {
         entries.add(_Entry('holding', name, weight));
       }
     }
 
     return entries;
-  }
-
-  String _decodeHtml(String text) {
-    return text
-        .replaceAll('&amp;', '&')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#039;', "'")
-        .replaceAll('&apos;', "'");
   }
 }
 
