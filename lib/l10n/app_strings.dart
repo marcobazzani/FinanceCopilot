@@ -366,6 +366,17 @@ class AppStrings {
   String get noMarketValues    => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';
   String get noData            => _it ? 'Nessun dato'               : 'No data';
   String get concentrationRisk => _it ? 'Rischio concentrazione'    : 'Concentration Risk';
+  String get unclassified      => _it ? 'Non classificato'          : 'Unclassified';
+  String get allocGeographic   => _it ? 'Allocazione geografica'    : 'Geographic Allocation';
+  String get allocSector       => _it ? 'Allocazione settoriale'    : 'Sector Allocation';
+  String get allocAssetType    => _it ? 'Tipo di attività'          : 'Asset Type';
+  String get allocCurrency     => _it ? 'Esposizione valutaria'     : 'Currency Exposure';
+  String get allocTopHoldings  => _it ? 'Principali posizioni'      : 'Top Holdings';
+  String get allocPortfolioVal => _it ? 'Valore portafoglio'        : 'Portfolio Value';
+  String get allocHoldings     => _it ? 'Posizioni'                 : 'Holdings';
+  String get allocWellDiversified       => _it ? 'Ben diversificato'              : 'Well diversified';
+  String get allocModeratelyConcentrated => _it ? 'Moderatamente concentrato'     : 'Moderately concentrated';
+  String get allocHighlyConcentrated    => _it ? 'Altamente concentrato'          : 'Highly concentrated';
 
   // ── DB Picker ────────────────────────────────────────────
   String get dbPickerTitle        => _it ? 'Apri un database'        : 'Open a Database';

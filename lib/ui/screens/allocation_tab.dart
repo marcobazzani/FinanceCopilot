@@ -181,11 +181,11 @@ class AllocationTab extends ConsumerWidget {
           // Weighted breakdowns
           final byCountry = _weightedBreakdown(
             assets, marketValues, compositions, 'country',
-            (a) => a.country ?? 'Unclassified',
+            (a) => a.country ?? s.unclassified,
           );
           final bySector = _weightedBreakdown(
             assets, marketValues, compositions, 'sector',
-            (a) => a.sector ?? 'Unclassified',
+            (a) => a.sector ?? s.unclassified,
           );
           final byHolding = _weightedBreakdown(
             assets, marketValues, compositions, 'holding',
@@ -200,11 +200,11 @@ class AllocationTab extends ConsumerWidget {
           // Drill-down data for clickable charts
           final countryDrill = _drillDownData(
             assets, marketValues, compositions, 'country',
-            (a) => a.country ?? 'Unclassified',
+            (a) => a.country ?? s.unclassified,
           );
           final sectorDrill = _drillDownData(
             assets, marketValues, compositions, 'sector',
-            (a) => a.sector ?? 'Unclassified',
+            (a) => a.sector ?? s.unclassified,
           );
           final typeDrill = _drillDownData(
             assets, marketValues, compositions, 'assetclass',
@@ -221,7 +221,7 @@ class AllocationTab extends ConsumerWidget {
               runSpacing: 16,
               children: [
                 _ChartCard(
-                  title: 'Geographic Allocation',
+                  title: s.allocGeographic,
                   child: _DrillableDonut(
                     data: byCountry,
                     total: total,
@@ -229,7 +229,7 @@ class AllocationTab extends ConsumerWidget {
                   ),
                 ),
                 _ChartCard(
-                  title: 'Sector Allocation',
+                  title: s.allocSector,
                   child: _DrillableDonut(
                     data: bySector,
                     total: total,
@@ -237,7 +237,7 @@ class AllocationTab extends ConsumerWidget {
                   ),
                 ),
                 _ChartCard(
-                  title: 'Asset Type',
+                  title: s.allocAssetType,
                   child: _DrillableDonut(
                     data: byType,
                     total: total,
@@ -245,11 +245,11 @@ class AllocationTab extends ConsumerWidget {
                   ),
                 ),
                 _ChartCard(
-                  title: 'Currency Exposure',
+                  title: s.allocCurrency,
                   child: _DonutChart(data: byCurrency, total: total),
                 ),
                 _ChartCard(
-                  title: 'Top Holdings',
+                  title: s.allocTopHoldings,
                   child: _TopHoldingsChart(
                     holdings: topHoldings,
                     total: total,
@@ -333,7 +333,7 @@ class _DrillableDonutState extends State<_DrillableDonut> {
   @override
   Widget build(BuildContext context) {
     if (widget.data.isEmpty) {
-      return const SizedBox(height: 200, child: Center(child: Text('No data')));
+      return const SizedBox(height: 200, child: Center(child: Text('')));
     }
 
     // If drilled in, show the sub-breakdown
@@ -461,16 +461,16 @@ class _DrillableDonutState extends State<_DrillableDonut> {
 // Simple Donut Chart (non-drillable)
 // ════════════════════════════════════════════════════
 
-class _DonutChart extends StatelessWidget {
+class _DonutChart extends ConsumerWidget {
   final Map<String, double> data;
   final double total;
 
   const _DonutChart({required this.data, required this.total});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (data.isEmpty) {
-      return const SizedBox(height: 200, child: Center(child: Text('No data')));
+      return SizedBox(height: 200, child: Center(child: Text(ref.watch(appStringsProvider).noData)));
     }
 
     final entries = data.entries.toList();
@@ -520,7 +520,7 @@ class _DonutChart extends StatelessWidget {
 // Top Holdings Bar Chart
 // ════════════════════════════════════════════════════
 
-class _TopHoldingsChart extends StatelessWidget {
+class _TopHoldingsChart extends ConsumerWidget {
   final List<MapEntry<String, double>> holdings;
   final double total;
   final String baseCurrency;
@@ -534,9 +534,9 @@ class _TopHoldingsChart extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (holdings.isEmpty) {
-      return const SizedBox(height: 200, child: Center(child: Text('No data')));
+      return SizedBox(height: 200, child: Center(child: Text(ref.watch(appStringsProvider).noData)));
     }
 
     final reversed = holdings.reversed.toList();
@@ -650,8 +650,8 @@ class _ConcentrationCard extends ConsumerWidget {
             children: [
               Text(sl.concentrationRisk, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
-              _metricRow('Portfolio Value', _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
-              _metricRow('Holdings', '$count'),
+              _metricRow(sl.allocPortfolioVal, _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
+              _metricRow(sl.allocHoldings, '$count'),
               const Divider(),
               _metricRow('Top 1', '${top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
               _metricRow('Top 3', '${top3.toStringAsFixed(1)}%'),
@@ -659,7 +659,7 @@ class _ConcentrationCard extends ConsumerWidget {
               const Divider(),
               _metricRow('HHI', hhi.toStringAsFixed(0)),
               Text(
-                hhi < 1500 ? 'Well diversified' : hhi < 2500 ? 'Moderately concentrated' : 'Highly concentrated',
+                hhi < 1500 ? sl.allocWellDiversified : hhi < 2500 ? sl.allocModeratelyConcentrated : sl.allocHighlyConcentrated,
                 style: TextStyle(
                   fontSize: 12,
                   color: hhi < 1500 ? Colors.green : hhi < 2500 ? Colors.orange : Colors.red,
