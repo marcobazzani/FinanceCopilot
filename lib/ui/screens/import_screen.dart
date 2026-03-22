@@ -13,6 +13,7 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/logger.dart';
 
 final _log = getLogger('ImportScreen');
@@ -142,9 +143,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Import'),
+        title: Text(s.importTitle),
         leading: _step == 2
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -233,10 +235,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   Future<void> _showSheetPicker(List<String> sheets) async {
+    final s = ref.read(appStringsProvider);
     final selected = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Select Sheet'),
+        title: Text(s.selectSheetTitle),
         children: sheets
             .map((s) => SimpleDialogOption(
                   onPressed: () => Navigator.pop(ctx, s),
@@ -521,6 +524,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // ──────────────────────────────────────────────
 
   Widget _buildColumnMapper() {
+    final s = ref.watch(appStringsProvider);
     final preview = _preview;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -530,13 +534,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           children: [
             FilledButton.icon(
               icon: const Icon(Icons.folder_open),
-              label: const Text('Open File'),
+              label: Text(s.openFile),
               onPressed: _parsing ? null : _pickFile,
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.content_paste),
-              label: const Text('Paste from Clipboard'),
+              label: Text(s.pasteFromClipboard),
               onPressed: _parsing ? null : _pasteFromClipboard,
             ),
             if (_filePath != null) ...[
@@ -545,7 +549,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             ],
             if (_filePath == null && _preview != null) ...[
               const SizedBox(width: 16),
-              const Chip(label: Text('Clipboard data')),
+              Chip(label: Text(s.clipboardData)),
             ],
             const Spacer(),
             if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -561,12 +565,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         if (widget.preselectedAccountId == null && widget.preselectedTarget == null) ...[
           Row(
             children: [
-              const Text('Import as: ', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
               SegmentedButton<ImportTarget>(
-                segments: const [
-                  ButtonSegment(value: ImportTarget.transaction, label: Text('Transaction')),
-                  ButtonSegment(value: ImportTarget.assetEvent, label: Text('Asset Event')),
-                  ButtonSegment(value: ImportTarget.income, label: Text('Income')),
+                segments: [
+                  ButtonSegment(value: ImportTarget.transaction, label: Text(s.importTypeTransaction)),
+                  ButtonSegment(value: ImportTarget.assetEvent, label: Text(s.importTypeAssetEvent)),
+                  ButtonSegment(value: ImportTarget.income, label: Text(s.importTypeIncome)),
                 ],
                 selected: {_target},
                 onSelectionChanged: (v) => setState(() {
@@ -600,6 +604,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   /// The mapping UI content (skip rows, column mapping, preview table, Next button).
   Widget _buildMappingContent(FilePreview? preview) {
+    final s = ref.watch(appStringsProvider);
     final columns = preview?.columns ?? [];
     final totalRows = preview?.totalRows ?? 0;
     return Column(
@@ -608,7 +613,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         // Skip rows (auto re-parse after 1s or Enter)
         Row(
           children: [
-            const Text('Skip rows: ', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(s.skipRows, style: const TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(
               width: 120,
               child: TextFormField(
@@ -658,7 +663,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            Text('Skip N rows before the header row', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            Text(s.skipRowsHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ],
         ),
         const SizedBox(height: 4),
@@ -681,14 +686,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 setState(() => _noHeader = !_noHeader);
                 _reparseFile();
               },
-              child: const Text('No header row (use column numbers)', style: TextStyle(fontSize: 13)),
+              child: Text(s.noHeaderRow, style: const TextStyle(fontSize: 13)),
             ),
           ],
         ),
         const SizedBox(height: 8),
 
         // Column mapping
-        Text('Map columns (${columns.length} columns, $totalRows rows)',
+        Text(s.mapColumnsTitle(columns.length, totalRows),
             style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Expanded(
@@ -710,10 +715,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ],
               const SizedBox(height: 12),
               // Optional fields
-              const Text('Optional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Text(s.optional, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               ..._optionalFields.map((f) => _buildMappingRow(f, columns, multiColumn: true)),
               const SizedBox(height: 4),
-              Text('Unmapped columns are stored as metadata', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Text(s.unmappedHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               if (_target == ImportTarget.transaction && preview != null) ...[
                 const Divider(),
                 _buildBalanceModeSection(preview),
@@ -721,9 +726,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
                 // Dedup hash column selector
                 const SizedBox(height: 8),
-                const Text('Dedup key columns', style: TextStyle(fontWeight: FontWeight.bold)),
-                const Text('Select which columns identify a unique row (duplicates will be skipped)',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(s.dedupKeyColumns, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.dedupKeyHelp,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 4,
@@ -745,9 +750,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               // Data preview table
               if (preview != null) ...[
                 const SizedBox(height: 8),
-                Text('Preview ($totalRows rows)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.previewRows(totalRows), style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
-                const Text('First 5 rows', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(s.first5Rows, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 4),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -762,13 +767,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 ),
                 if (preview.rows.length > 10) ...[
                   const SizedBox(height: 8),
-                  Text('⋯ ${preview.rows.length - 10} rows hidden ⋯',
+                  Text(s.hiddenRows(preview.rows.length - 10),
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
                       textAlign: TextAlign.center),
                 ],
                 if (preview.rows.length > 5) ...[
                   const SizedBox(height: 4),
-                  const Text('Last 5 rows', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(s.last5Rows, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 4),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -792,7 +797,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           children: [
             FilledButton(
               onPressed: _canProceedToConfirm() ? () => setState(() => _step = 2) : null,
-              child: const Text('Next'),
+              child: Text(s.next),
             ),
           ],
         ),
@@ -801,6 +806,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   Widget _buildMappingRow(String field, List<String> columns, {bool required = false, bool multiColumn = false}) {
+    final s = ref.watch(appStringsProvider);
     final multiCols = _multiMappings[field] ?? [];
     final isMulti = multiColumn && multiCols.length > 1;
     final showAddBtn = multiColumn && !isMulti && _mappings[field] != null;
@@ -829,10 +835,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       border: const OutlineInputBorder(),
-                      hintText: required ? 'Required' : 'Not mapped',
+                      hintText: required ? s.required : s.notMapped,
                     ),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('— None —', style: TextStyle(color: Colors.grey))),
+                      DropdownMenuItem(value: null, child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey))),
                       ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
                     onChanged: (v) => setState(() => _mappings[field] = v),
@@ -922,7 +928,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                 children: [
                   OutlinedButton.icon(
                     icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add column'),
+                    label: Text(s.addColumn),
                     style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                     onPressed: () => setState(() {
                       _multiMappings[field]!.add(columns.first);
@@ -976,20 +982,21 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   /// Build the "Balance per row" configuration section.
   Widget _buildBalanceModeSection(FilePreview preview) {
+    final s = ref.watch(appStringsProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 8),
-        const Text('Balance per row', style: TextStyle(fontWeight: FontWeight.bold)),
-        const Text('How to compute balanceAfter for each transaction',
-            style: TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(s.balancePerRow, style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(s.balancePerRowHelp,
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 8),
         SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'none', label: Text('None')),
-            ButtonSegment(value: 'column', label: Text('From column')),
-            ButtonSegment(value: 'cumulative', label: Text('Cumulative sum')),
-            ButtonSegment(value: 'filtered', label: Text('Filtered sum')),
+          segments: [
+            ButtonSegment(value: 'none', label: Text(s.recalcNone)),
+            ButtonSegment(value: 'column', label: Text(s.balanceFromColumn)),
+            ButtonSegment(value: 'cumulative', label: Text(s.recalcCumulative)),
+            ButtonSegment(value: 'filtered', label: Text(s.recalcFiltered)),
           ],
           selected: {_balanceMode},
           onSelectionChanged: (v) => setState(() {
@@ -1024,23 +1031,23 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 140,
-                  child: Text('Filter column', style: TextStyle(fontWeight: FontWeight.w500)),
+                  child: Text(s.filterColumn, style: const TextStyle(fontWeight: FontWeight.w500)),
                 ),
                 const Icon(Icons.arrow_forward, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _balanceFilterColumn,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      border: OutlineInputBorder(),
-                      hintText: 'Select column',
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: const OutlineInputBorder(),
+                      hintText: s.selectColumn,
                     ),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('— None —', style: TextStyle(color: Colors.grey))),
+                      DropdownMenuItem(value: null, child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey))),
                       ...preview.columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
                     onChanged: (v) => setState(() {
@@ -1337,14 +1344,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             Expanded(
               child: DropdownButtonFormField<String>(
                 value: _mappings['amount'],
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  border: OutlineInputBorder(),
-                  hintText: 'Select column',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: const OutlineInputBorder(),
+                  hintText: ref.watch(appStringsProvider).selectColumn,
                 ),
                 items: [
-                  const DropdownMenuItem(value: null, child: Text('— None —', style: TextStyle(color: Colors.grey))),
+                  DropdownMenuItem(value: null, child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey))),
                   ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                 ],
                 onChanged: (v) => setState(() => _mappings['amount'] = v),
@@ -1442,7 +1449,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               children: [
                 OutlinedButton.icon(
                   icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add column'),
+                  label: Text(ref.watch(appStringsProvider).addColumn),
                   style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                   onPressed: () => setState(() {
                     _amountFormula.add(FormulaTerm(operator: '+', sourceColumn: columns.first));
@@ -1647,7 +1654,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         );
       },
       loading: () => const CircularProgressIndicator(),
-      error: (e, _) => Text('Error: $e'),
+      error: (e, _) => Text(ref.watch(appStringsProvider).error(e)),
     );
   }
 
@@ -1687,24 +1694,25 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         );
       },
       loading: () => const CircularProgressIndicator(),
-      error: (e, _) => Text('Error: $e'),
+      error: (e, _) => Text(ref.watch(appStringsProvider).error(e)),
     );
   }
 
   Future<void> _showCreateAccountDialog() async {
+    final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController();
 
     final created = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New Account'),
+        title: Text(s.newAccountTitle),
         content: TextField(
           controller: nameCtrl,
-          decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Fineco'),
+          decoration: InputDecoration(labelText: s.name, hintText: s.accountNameHint),
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
           FilledButton(
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
@@ -1713,7 +1721,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   );
               if (ctx.mounted) Navigator.pop(ctx, true);
             },
-            child: const Text('Create'),
+            child: Text(s.create),
           ),
         ],
       ),
@@ -1722,6 +1730,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   Future<void> _showCreateAssetDialog() async {
+    final s = ref.read(appStringsProvider);
     final isinCtrl = TextEditingController();
     String? resolvedName;
     String? resolvedTicker;
@@ -1731,7 +1740,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('New Asset'),
+          title: Text(s.newAssetTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1781,7 +1790,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: isinCtrl.text.trim().length == 12 && !looking
                   ? () async {
@@ -1795,7 +1804,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                       if (ctx.mounted) Navigator.pop(ctx, true);
                     }
                   : null,
-              child: const Text('Create'),
+              child: Text(s.create),
             ),
           ],
         ),

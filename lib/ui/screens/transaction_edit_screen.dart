@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 
@@ -68,14 +69,15 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Transaction' : 'New Transaction'),
+        title: Text(_isEditing ? s.editTransactionTitle : s.newTransactionTitle),
         actions: [
           if (_isEditing)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),
-              tooltip: 'Delete',
+              tooltip: s.delete,
               onPressed: _confirmDelete,
             ),
         ],
@@ -88,23 +90,23 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             // Date picker
             TextFormField(
               controller: _dateCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Date *',
-                suffixIcon: Icon(Icons.calendar_today),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.dateRequired,
+                suffixIcon: const Icon(Icons.calendar_today),
+                border: const OutlineInputBorder(),
               ),
               readOnly: true,
               onTap: _pickDate,
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+              validator: (v) => (v == null || v.isEmpty) ? s.required : null,
             ),
             const SizedBox(height: 12),
 
             // Amount
             TextFormField(
               controller: _amountCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Amount *',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: '${s.amount} *',
+                border: const OutlineInputBorder(),
                 hintText: '-123.45',
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
@@ -119,9 +121,9 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             // Description
             TextFormField(
               controller: _descCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.description,
+                border: const OutlineInputBorder(),
               ),
               maxLines: 1,
             ),
@@ -130,9 +132,9 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             // Full description
             TextFormField(
               controller: _descFullCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Full Description',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.fullDescription,
+                border: const OutlineInputBorder(),
               ),
               maxLines: 3,
             ),
@@ -141,9 +143,9 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             // Balance after
             TextFormField(
               controller: _balanceCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Balance After',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.balanceAfter,
+                border: const OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
             ),
@@ -155,9 +157,9 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _currencyCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Currency',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: s.currency,
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -165,9 +167,9 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 Expanded(
                   child: DropdownButtonFormField<TransactionStatus>(
                     value: _status,
-                    decoration: const InputDecoration(
-                      labelText: 'Status',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: s.statusLabel,
+                      border: const OutlineInputBorder(),
                     ),
                     items: TransactionStatus.values
                         .map((s) => DropdownMenuItem(value: s, child: Text(s.name)))
@@ -182,7 +184,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             // Raw metadata (read-only if imported)
             if (_isEditing && widget.transaction!.rawMetadata != null) ...[
               const Divider(),
-              const Text('Raw Import Data', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Text(s.rawImportData, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -207,7 +209,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _save,
-              child: Text(_isEditing ? 'Save Changes' : 'Create Transaction'),
+              child: Text(_isEditing ? s.saveChanges : s.createTransaction),
             ),
           ],
         ),
@@ -270,17 +272,18 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
   }
 
   Future<void> _confirmDelete() async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Transaction?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(s.deleteTransactionTitle),
+        content: Text(s.cannotBeUndone),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),

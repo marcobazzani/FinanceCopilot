@@ -8,6 +8,7 @@ import '../widgets/privacy_text.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import 'package:intl/intl.dart';
 
 // ════════════════════════════════════════════════════
@@ -152,6 +153,7 @@ class AllocationTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final compositionsAsync = ref.watch(assetCompositionsProvider);
@@ -159,10 +161,10 @@ class AllocationTab extends ConsumerWidget {
 
     return assetsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (assets) => marketValuesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(s.error(e))),
         data: (marketValues) {
           final compositions = compositionsAsync.value ?? {};
           final baseCurrency = baseCurrencyAsync.value ?? 'EUR';
@@ -170,9 +172,9 @@ class AllocationTab extends ConsumerWidget {
           final total = marketValues.values.fold(0.0, (a, b) => a + b);
 
           if (total == 0) {
-            return const Center(
-              child: Text('No market values available.',
-                  style: TextStyle(color: Colors.grey)),
+            return Center(
+              child: Text(s.noMarketValues,
+                  style: const TextStyle(color: Colors.grey)),
             );
           }
 
@@ -622,6 +624,7 @@ class _ConcentrationCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isPrivate = ref.watch(privacyModeProvider);
+    final sl = ref.watch(appStringsProvider);
     final count = holdings.length;
     final top1 = count >= 1 ? holdings[0].value / total * 100 : 0.0;
     final top3 = count >= 3
@@ -645,7 +648,7 @@ class _ConcentrationCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Concentration Risk', style: Theme.of(context).textTheme.titleMedium),
+              Text(sl.concentrationRisk, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
               _metricRow('Portfolio Value', _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
               _metricRow('Holdings', '$count'),

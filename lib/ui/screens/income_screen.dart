@@ -6,6 +6,7 @@ import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 import 'import_screen.dart';
@@ -71,8 +72,9 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
     if (entries.isEmpty) {
       if (mounted) {
+        final s = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No valid rows found in clipboard')),
+          SnackBar(content: Text(s.noValidRowsClipboard)),
         );
       }
       return;
@@ -80,14 +82,16 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
     await ref.read(incomeServiceProvider).bulkCreate(entries);
     if (mounted) {
+      final s = ref.read(appStringsProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Pasted ${entries.length} income records')),
+        SnackBar(content: Text(s.pastedIncomeRecords(entries.length))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
     final incomesAsync = ref.watch(incomesProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
@@ -143,14 +147,14 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
+          error: (e, _) => Center(child: Text(s.error(e))),
         ),
         floatingActionButton: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             FloatingActionButton.small(
               heroTag: 'import',
-              tooltip: 'Import from file',
+              tooltip: s.importFromFileTooltip,
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ImportScreen(preselectedTarget: ImportTarget.income)),
@@ -170,6 +174,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   }
 
   Future<void> _showAddDialog(BuildContext context, String defaultCurrency) async {
+    final s = ref.read(appStringsProvider);
     final dateFmt = fmt.shortDateFormat(_locale);
     final dateCtl = TextEditingController(text: dateFmt.format(DateTime.now()));
     final amountCtl = TextEditingController();
@@ -180,7 +185,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Income'),
+          title: Text(s.addIncomeTitle),
           content: SizedBox(
             width: 400,
             child: Column(
@@ -188,23 +193,23 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
               children: [
                 TextField(
                   controller: dateCtl,
-                  decoration: const InputDecoration(labelText: 'Date (dd/MM/yyyy)'),
+                  decoration: InputDecoration(labelText: s.dateFormatHint),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountCtl,
-                  decoration: const InputDecoration(labelText: 'Amount'),
+                  decoration: InputDecoration(labelText: s.amount),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: descCtl,
-                  decoration: const InputDecoration(labelText: 'Description'),
+                  decoration: InputDecoration(labelText: s.description),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: currency,
-                  decoration: const InputDecoration(labelText: 'Currency'),
+                  decoration: InputDecoration(labelText: s.currency),
                   items: ExchangeRateService.allCurrencies
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                       .toList(),
@@ -214,8 +219,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
           ],
         ),
       ),
@@ -228,7 +233,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (date == null || amount == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid date or amount')),
+          SnackBar(content: Text(s.invalidDateOrAmount)),
         );
       }
       return;
@@ -243,6 +248,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   }
 
   Future<void> _showEditDialog(BuildContext context, Income income) async {
+    final s = ref.read(appStringsProvider);
     final dateFmt = fmt.shortDateFormat(_locale);
     final dateCtl = TextEditingController(text: dateFmt.format(income.date));
     final amountCtl = TextEditingController(text: income.amount.toString());
@@ -253,7 +259,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Edit Income'),
+          title: Text(s.editIncomeTitle),
           content: SizedBox(
             width: 400,
             child: Column(
@@ -261,23 +267,23 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
               children: [
                 TextField(
                   controller: dateCtl,
-                  decoration: const InputDecoration(labelText: 'Date (dd/MM/yyyy)'),
+                  decoration: InputDecoration(labelText: s.dateFormatHint),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountCtl,
-                  decoration: const InputDecoration(labelText: 'Amount'),
+                  decoration: InputDecoration(labelText: s.amount),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: descCtl,
-                  decoration: const InputDecoration(labelText: 'Description'),
+                  decoration: InputDecoration(labelText: s.description),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: currency,
-                  decoration: const InputDecoration(labelText: 'Currency'),
+                  decoration: InputDecoration(labelText: s.currency),
                   items: ExchangeRateService.allCurrencies
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                       .toList(),
@@ -291,13 +297,13 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: 'Delete',
+                  tooltip: s.delete,
                   onPressed: () => Navigator.pop(ctx, 'delete'),
                 ),
                 const Spacer(),
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('Save')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(s.save)),
               ],
             ),
           ],
@@ -316,7 +322,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (date == null || amount == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid date or amount')),
+          SnackBar(content: Text(s.invalidDateOrAmount)),
         );
       }
       return;
@@ -334,19 +340,20 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   }
 
   Future<void> _confirmDelete(BuildContext context, Income income) async {
+    final s = ref.read(appStringsProvider);
     final amtFormat = fmt.amountFormat(_locale);
     final dateFmt = fmt.shortDateFormat(_locale);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Income'),
-        content: Text('Delete ${amtFormat.format(income.amount)} ${income.currency} from ${dateFmt.format(income.date)}?'),
+        title: Text(s.deleteIncomeTitle),
+        content: Text(s.deleteIncomeConfirm(amtFormat.format(income.amount), income.currency, dateFmt.format(income.date))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),

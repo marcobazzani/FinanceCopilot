@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../services/capex_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'capex_detail_screen.dart';
 import 'capex_edit_screen.dart';
@@ -17,6 +18,7 @@ class CapexScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -24,10 +26,10 @@ class CapexScreen extends ConsumerWidget {
           preferredSize: const Size.fromHeight(kToolbarHeight),
           child: Material(
             color: Theme.of(context).colorScheme.surface,
-            child: const TabBar(
+            child: TabBar(
               tabs: [
-                Tab(text: 'Saving Spent'),
-                Tab(text: 'Donation Spent'),
+                Tab(text: s.capexTabSavingSpent),
+                Tab(text: s.capexTabDonationSpent),
               ],
             ),
           ),
@@ -52,6 +54,7 @@ class _SpreadTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final schedulesAsync = ref.watch(capexSchedulesProvider);
     final statsAsync = ref.watch(capexStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
@@ -61,8 +64,8 @@ class _SpreadTab extends ConsumerWidget {
       body: schedulesAsync.when(
         data: (schedules) {
           if (schedules.isEmpty) {
-            return const Center(
-              child: Text('No spread adjustments yet.\nAdd an item to spread large expenses over time.',
+            return Center(
+              child: Text(s.noSpreadAdjustments,
                   textAlign: TextAlign.center),
             );
           }
@@ -81,6 +84,7 @@ class _SpreadTab extends ConsumerWidget {
                 stats: stat,
                 baseCurrency: baseCurrency,
                 locale: locale,
+                strings: s,
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -92,7 +96,7 @@ class _SpreadTab extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(s.error(e))),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.push(
@@ -114,14 +118,15 @@ class _IncomeTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final adjAsync = ref.watch(incomeAdjustmentsProvider);
 
     return Scaffold(
       body: adjAsync.when(
         data: (adjustments) {
           if (adjustments.isEmpty) {
-            return const Center(
-              child: Text('No income adjustments yet.\nAdd a donation or lump sum to subtract from net worth.',
+            return Center(
+              child: Text(s.noIncomeAdjustments,
                   textAlign: TextAlign.center),
             );
           }
@@ -144,7 +149,7 @@ class _IncomeTab extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(s.error(e))),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.push(
@@ -166,6 +171,7 @@ class _CapexTile extends StatelessWidget {
   final CapexStats? stats;
   final String baseCurrency;
   final String locale;
+  final AppStrings strings;
   final VoidCallback onTap;
 
   const _CapexTile({
@@ -173,6 +179,7 @@ class _CapexTile extends StatelessWidget {
     required this.stats,
     required this.baseCurrency,
     required this.locale,
+    required this.strings,
     required this.onTap,
   });
 
@@ -215,7 +222,7 @@ class _CapexTile extends StatelessWidget {
                   Row(
                     children: [
                       if (schedule.expenseDate != null) ...[
-                        Text('Exp: ${shortDate.format(schedule.expenseDate!)}',
+                        Text(strings.expLabel(shortDate.format(schedule.expenseDate!)),
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                         const SizedBox(width: 8),
                       ],

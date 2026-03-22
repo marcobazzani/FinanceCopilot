@@ -6,6 +6,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 
@@ -85,9 +86,11 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     final totalAmount = double.tryParse(_amountCtrl.text.replaceAll(',', '.')) ?? 0;
     final remaining = totalAmount - _totalSpent;
 
+    final s = ref.watch(appStringsProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Income Adjustment' : 'New Income Adjustment'),
+        title: Text(_isEditing ? s.editIncomeAdjTitle : s.newIncomeAdjTitle),
         actions: [
           if (_isEditing)
             IconButton(
@@ -106,8 +109,8 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
           children: [
             TextFormField(
               controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Donation, Inheritance'),
-              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+              decoration: InputDecoration(labelText: s.name, hintText: s.incomeAdjNameHint),
+              validator: (v) => v == null || v.trim().isEmpty ? s.required : null,
             ),
             const SizedBox(height: 12),
 
@@ -117,7 +120,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: _amountCtrl,
-                    decoration: const InputDecoration(labelText: 'Total Amount'),
+                    decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
                       if (v == null || double.tryParse(v.replaceAll(',', '.')) == null) return 'Invalid';
@@ -130,7 +133,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _currency,
-                    decoration: const InputDecoration(labelText: 'Currency'),
+                    decoration: InputDecoration(labelText: s.currency),
                     items: ExchangeRateService.allCurrencies
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                         .toList(),
@@ -156,7 +159,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
-                      Text('Remaining: ', style: const TextStyle(fontSize: 13)),
+                      Text(s.remaining, style: const TextStyle(fontSize: 13)),
                       Text(
                         '${remaining.toStringAsFixed(2)} $sym',
                         style: TextStyle(
@@ -180,11 +183,11 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
             // Expenses
             Row(
               children: [
-                Text('Expenses', style: Theme.of(context).textTheme.titleSmall),
+                Text(s.expensesLabel, style: Theme.of(context).textTheme.titleSmall),
                 const Spacer(),
                 TextButton.icon(
                   icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add'),
+                  label: Text(s.add),
                   onPressed: _addExpense,
                 ),
               ],
@@ -221,10 +224,10 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                 ),
 
             if (_expenses.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No expenses yet. Add when you spend this money.',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(s.noExpensesYet,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
               ),
 
             const SizedBox(height: 24),
@@ -232,7 +235,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
             FilledButton.icon(
               onPressed: _save,
               icon: const Icon(Icons.save),
-              label: Text(_isEditing ? 'Update' : 'Create'),
+              label: Text(_isEditing ? s.update : s.create),
             ),
           ],
         ),
@@ -241,6 +244,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
   }
 
   Future<_Expense?> _showExpenseDialog({_Expense? existing}) async {
+    final s = ref.read(appStringsProvider);
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
@@ -251,20 +255,20 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(existing != null ? 'Edit Expense' : 'Add Expense'),
+          title: Text(existing != null ? s.editExpenseTitle : s.addExpenseTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
                 controller: amountCtrl,
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: s.amount),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 autofocus: true,
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: descCtrl,
-                decoration: const InputDecoration(labelText: 'Description', hintText: 'e.g. Furniture, Travel'),
+                decoration: InputDecoration(labelText: s.description, hintText: s.expenseHint),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -284,8 +288,8 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(existing != null ? 'Update' : 'Add')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(existing != null ? s.update : s.add)),
           ],
         ),
       ),

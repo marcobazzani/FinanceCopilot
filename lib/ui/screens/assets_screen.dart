@@ -9,6 +9,7 @@ import '../../services/asset_service.dart';
 import '../../services/investing_com_service.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
@@ -19,6 +20,7 @@ class AssetsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
     final statsAsync = ref.watch(assetStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
@@ -30,8 +32,8 @@ class AssetsScreen extends ConsumerWidget {
       body: assetsAsync.when(
         data: (assets) {
           if (assets.isEmpty) {
-            return const Center(
-              child: Text('No assets yet.\nImport asset events to get started.',
+            return Center(
+              child: Text(s.noAssetsYet,
                   textAlign: TextAlign.center),
             );
           }
@@ -74,7 +76,7 @@ class AssetsScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(s.error(e))),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showCreateDialog(context, ref),
@@ -398,8 +400,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   }
 
   Widget _buildSearchDialog() {
+    final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: const Text('New Asset'),
+      title: Text(s.newAssetTitle),
       content: SizedBox(
         width: 400,
         height: 350,
@@ -408,10 +411,10 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           children: [
             TextField(
               controller: _searchCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Search',
-                hintText: 'Name, ISIN, ticker, or fund ID',
-                prefixIcon: Icon(Icons.search),
+              decoration: InputDecoration(
+                labelText: s.search,
+                hintText: s.searchAssetsHint,
+                prefixIcon: const Icon(Icons.search),
               ),
               autofocus: true,
               onChanged: _onSearchChanged,
@@ -444,15 +447,15 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 ),
               )
             else if (_searchCtrl.text.trim().length >= 3)
-              const Expanded(
+              Expanded(
                 child: Center(
-                  child: Text('No results found', style: TextStyle(color: Colors.grey)),
+                  child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
                 ),
               )
             else
-              const Expanded(
+              Expanded(
                 child: Center(
-                  child: Text('Type at least 3 characters', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                 ),
               ),
           ],
@@ -461,30 +464,31 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       actions: [
         TextButton(
           onPressed: () => setState(() => _manual = true),
-          child: const Text('Enter manually'),
+          child: Text(s.enterManually),
         ),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
       ],
     );
   }
 
   Widget _buildConfirmDialog() {
+    final s = widget.ref.read(appStringsProvider);
     final r = _selected!;
     return AlertDialog(
-      title: const Text('Create Asset'),
+      title: Text(s.createAssetTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(r.description, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
           const SizedBox(height: 8),
-          Text('Symbol: ${r.symbol}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          Text('Type: ${r.type}', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Text(s.symbolLabel(r.symbol), style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Text(s.typeLabel(r.type), style: const TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             value: _selectedExchange,
-            decoration: const InputDecoration(
-              labelText: 'Stock Exchange',
+            decoration: InputDecoration(
+              labelText: s.stockExchange,
               isDense: true,
             ),
             items: supportedExchanges.entries
@@ -497,7 +501,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: _backToSearch, child: const Text('Back')),
+        TextButton(onPressed: _backToSearch, child: Text(s.back)),
         FilledButton(
           onPressed: () async {
             await widget.ref.read(assetServiceProvider).create(
@@ -507,38 +511,39 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 );
             if (mounted) Navigator.pop(context);
           },
-          child: const Text('Create'),
+          child: Text(s.create),
         ),
       ],
     );
   }
 
   Widget _buildManualDialog() {
+    final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: const Text('New Asset (Manual)'),
+      title: Text(s.newAssetManualTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: _manualNameCtrl,
-            decoration: const InputDecoration(labelText: 'Name'),
+            decoration: InputDecoration(labelText: s.name),
             autofocus: true,
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _manualIdCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Identifier (ISIN, ticker, etc.)',
-              hintText: 'Optional',
+            decoration: InputDecoration(
+              labelText: s.identifierLabel,
+              hintText: s.optional,
             ),
             textCapitalization: TextCapitalization.characters,
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             value: _manualExchange,
-            decoration: const InputDecoration(
-              labelText: 'Stock Exchange',
+            decoration: InputDecoration(
+              labelText: s.stockExchange,
               isDense: true,
             ),
             items: supportedExchanges.entries
@@ -551,7 +556,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: _backToSearch, child: const Text('Back')),
+        TextButton(onPressed: _backToSearch, child: Text(s.back)),
         FilledButton(
           onPressed: _manualNameCtrl.text.trim().isNotEmpty
               ? () async {
@@ -566,7 +571,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   if (mounted) Navigator.pop(context);
                 }
               : null,
-          child: const Text('Create'),
+          child: Text(s.create),
         ),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 import 'income_adj_edit_screen.dart';
@@ -14,6 +15,7 @@ class IncomeAdjDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final adjAsync = ref.watch(incomeAdjustmentProvider(adjustmentId));
 
     return adjAsync.when(
@@ -24,7 +26,7 @@ class IncomeAdjDetailScreen extends ConsumerWidget {
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(child: Text('Error: $e')),
+        body: Center(child: Text(s.error(e))),
       ),
     );
   }
@@ -36,6 +38,7 @@ class _DetailBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final expensesAsync = ref.watch(incomeAdjustmentExpensesProvider(adjustment.id));
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final sym = currencySymbol(adjustment.currency);
@@ -48,7 +51,7 @@ class _DetailBody extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
-            tooltip: 'Edit',
+            tooltip: s.edit,
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -58,7 +61,7 @@ class _DetailBody extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Delete',
+            tooltip: s.delete,
             onPressed: () => _confirmDelete(context, ref),
           ),
         ],
@@ -108,11 +111,11 @@ class _DetailBody extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                const Text('Expenses', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(s.expensesLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline),
-                  tooltip: 'Add Expense',
+                  tooltip: s.tooltipAddExpense,
                   onPressed: () => _addExpense(context, ref),
                 ),
               ],
@@ -124,10 +127,10 @@ class _DetailBody extends ConsumerWidget {
           expensesAsync.when(
             data: (expenses) {
               if (expenses.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(child: Text('No expenses yet. Add when you spend this money.',
-                      style: TextStyle(color: Colors.grey))),
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Center(child: Text(s.noExpensesYet,
+                      style: const TextStyle(color: Colors.grey))),
                 );
               }
               return Column(
@@ -157,7 +160,7 @@ class _DetailBody extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
+            error: (e, _) => Center(child: Text(s.error(e))),
           ),
 
           const SizedBox(height: 24),
@@ -179,6 +182,7 @@ class _DetailBody extends ConsumerWidget {
   }
 
   Future<void> _addExpense(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
@@ -189,20 +193,20 @@ class _DetailBody extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Expense'),
+          title: Text(s.addExpenseTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
                 controller: amountCtrl,
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: s.amount),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 autofocus: true,
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: descCtrl,
-                decoration: const InputDecoration(labelText: 'Description', hintText: 'e.g. Furniture, Travel'),
+                decoration: InputDecoration(labelText: s.description, hintText: s.expenseHint),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -222,8 +226,8 @@ class _DetailBody extends ConsumerWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
           ],
         ),
       ),
@@ -243,16 +247,17 @@ class _DetailBody extends ConsumerWidget {
   }
 
   Future<void> _confirmDeleteExpense(BuildContext context, WidgetRef ref, int expenseId) async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Expense?'),
+        title: Text(s.deleteExpenseTitle),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),
@@ -263,17 +268,18 @@ class _DetailBody extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Income Adjustment?'),
-        content: Text('Delete "${adjustment.name}" and all its expenses?\nThis cannot be undone.'),
+        title: Text(s.deleteIncomeAdjTitle),
+        content: Text(s.deleteIncomeAdjConfirm(adjustment.name)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),

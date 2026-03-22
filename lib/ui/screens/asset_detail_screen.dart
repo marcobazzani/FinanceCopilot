@@ -9,6 +9,7 @@ import '../../services/investing_com_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
@@ -23,6 +24,7 @@ class AssetDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final eventsStream = ref.watch(assetEventsProvider(asset.id));
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
@@ -40,17 +42,17 @@ class AssetDetailScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
-            tooltip: 'Edit Asset',
+            tooltip: s.tooltipEditAsset,
             onPressed: () => _editAsset(context, ref),
           ),
           IconButton(
             icon: const Icon(Icons.delete_sweep),
-            tooltip: 'Wipe Events',
+            tooltip: s.tooltipWipeEvents,
             onPressed: () => _confirmWipeEvents(context, ref),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Delete Asset',
+            tooltip: s.tooltipDeleteAsset,
             onPressed: () => _confirmDeleteAsset(context, ref),
           ),
         ],
@@ -98,7 +100,7 @@ class AssetDetailScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                const Text('Events', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(s.eventsLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
                 eventsStream.when(
                   data: (events) => Text('${events.length} events', style: const TextStyle(color: Colors.grey, fontSize: 13)),
@@ -114,9 +116,9 @@ class AssetDetailScreen extends ConsumerWidget {
             child: eventsStream.when(
               data: (events) {
                 if (events.isEmpty) {
-                  return const Center(
-                    child: Text('No events yet.\nImport or add events manually.',
-                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                  return Center(
+                    child: Text(s.noEventsYet,
+                        textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
                   );
                 }
                 return ListView.separated(
@@ -179,7 +181,7 @@ class AssetDetailScreen extends ConsumerWidget {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+              error: (e, _) => Center(child: Text(s.error(e))),
             ),
           ),
         ],
@@ -214,27 +216,28 @@ class AssetDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _confirmWipeEvents(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final evCount = ref.read(assetEventsProvider(asset.id)).value?.length ?? 0;
     if (evCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No events to wipe.')),
+        SnackBar(content: Text(s.noEventsToWipe)),
       );
       return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Wipe All Events?'),
+        title: Text(s.wipeAllEventsTitle),
         content: Text(
           'This will delete all $evCount events from "${asset.name}" '
-          'but keep the asset itself.\n\nThis cannot be undone.',
+          'but keep the asset itself.\n\n${s.cannotBeUndone}',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.orange),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Wipe'),
+            child: Text(s.wipe),
           ),
         ],
       ),
@@ -244,24 +247,25 @@ class AssetDetailScreen extends ConsumerWidget {
       final deleted = await ref.read(assetEventServiceProvider).deleteByAsset(asset.id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Wiped $deleted events.')),
+          SnackBar(content: Text(s.wipedEvents(deleted))),
         );
       }
     }
   }
 
   Future<void> _confirmDeleteAsset(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Asset?'),
-        content: Text('Delete "${asset.name}" and all its events?\nThis cannot be undone.'),
+        title: Text(s.deleteAssetTitle),
+        content: Text(s.deleteAssetConfirm(asset.name)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),
@@ -331,7 +335,7 @@ class _CompositionSection extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ExpansionTile(
-        title: const Text('Composition', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        title: Text(ref.watch(appStringsProvider).composition, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
         initiallyExpanded: false,
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
@@ -526,40 +530,41 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   }
 
   Widget _buildEditDialog() {
+    final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: const Text('Edit Asset'),
+      title: Text(s.editAssetTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name'),
+              decoration: InputDecoration(labelText: s.name),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _tickerCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Ticker',
-                hintText: 'e.g. SWDA',
+              decoration: InputDecoration(
+                labelText: s.tickerLabel,
+                hintText: s.tickerHint,
               ),
               textCapitalization: TextCapitalization.characters,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _isinCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Identifier (ISIN, fund ID, etc.)',
-                hintText: 'Optional',
+              decoration: InputDecoration(
+                labelText: s.isinLabel,
+                hintText: s.optional,
               ),
               textCapitalization: TextCapitalization.characters,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _selectedExchange,
-              decoration: const InputDecoration(
-                labelText: 'Stock Exchange',
+              decoration: InputDecoration(
+                labelText: s.stockExchange,
                 isDense: true,
               ),
               items: supportedExchanges.entries
@@ -571,7 +576,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
             ),
             const SizedBox(height: 8),
             SwitchListTile(
-              title: const Text('Active'),
+              title: Text(s.active),
               value: _isActive,
               onChanged: (v) => setState(() => _isActive = v),
               contentPadding: EdgeInsets.zero,
@@ -586,20 +591,21 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
             _results = [];
             _searchMode = true;
           }),
-          child: const Text('Search'),
+          child: Text(s.search),
         ),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
         FilledButton(
           onPressed: _nameCtrl.text.trim().isNotEmpty ? _save : null,
-          child: const Text('Save'),
+          child: Text(s.save),
         ),
       ],
     );
   }
 
   Widget _buildSearchDialog() {
+    final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: const Text('Search Asset'),
+      title: Text(s.searchAssetTitle),
       content: SizedBox(
         width: 400,
         height: 350,
@@ -608,10 +614,10 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
           children: [
             TextField(
               controller: _searchCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Search',
-                hintText: 'Name, ISIN, ticker, or fund ID',
-                prefixIcon: Icon(Icons.search),
+              decoration: InputDecoration(
+                labelText: s.search,
+                hintText: s.searchAssetsHint,
+                prefixIcon: const Icon(Icons.search),
               ),
               autofocus: true,
               onChanged: _onSearchChanged,
@@ -644,15 +650,15 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                 ),
               )
             else if (_searchCtrl.text.trim().length >= 3)
-              const Expanded(
+              Expanded(
                 child: Center(
-                  child: Text('No results found', style: TextStyle(color: Colors.grey)),
+                  child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
                 ),
               )
             else
-              const Expanded(
+              Expanded(
                 child: Center(
-                  child: Text('Type at least 3 characters', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                 ),
               ),
           ],
@@ -661,7 +667,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       actions: [
         TextButton(
           onPressed: () => setState(() => _searchMode = false),
-          child: const Text('Back'),
+          child: Text(s.back),
         ),
       ],
     );

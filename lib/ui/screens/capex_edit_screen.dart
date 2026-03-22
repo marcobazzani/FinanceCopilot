@@ -7,6 +7,7 @@ import '../../database/tables.dart';
 import '../../services/capex_service.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard_screen.dart' show currencySymbol;
@@ -178,9 +179,11 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
     final perStep = _perStepAmount;
     final effective = _effectiveAmount;
 
+    final s = ref.watch(appStringsProvider);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Adjustment' : 'New Adjustment'),
+        title: Text(_isEditing ? s.editAdjustmentTitle : s.newAdjustmentTitle),
         actions: [
           if (_isEditing)
             IconButton(
@@ -200,8 +203,8 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             // Name
             TextFormField(
               controller: _nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Car, Kitchen renovation'),
-              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+              decoration: InputDecoration(labelText: s.name, hintText: s.capexNameHint),
+              validator: (v) => v == null || v.trim().isEmpty ? s.required : null,
             ),
             const SizedBox(height: 12),
 
@@ -212,7 +215,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                   flex: 2,
                   child: TextFormField(
                     controller: _amountCtrl,
-                    decoration: const InputDecoration(labelText: 'Total Amount'),
+                    decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
                       if (v == null || double.tryParse(v) == null) return 'Invalid';
@@ -225,7 +228,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _currency,
-                    decoration: const InputDecoration(labelText: 'Currency'),
+                    decoration: InputDecoration(labelText: s.currency),
                     items: ExchangeRateService.allCurrencies
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                         .toList(),
@@ -240,7 +243,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
               TextFormField(
                 controller: _exchangeRateCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Rate $_baseCurrency/$_currency',
+                  labelText: s.rateLabel(_baseCurrency, _currency),
                   hintText: 'e.g. 1.08',
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -259,11 +262,11 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             // ── Reimbursements ──
             Row(
               children: [
-                Text('Reimbursements', style: Theme.of(context).textTheme.titleSmall),
+                Text(s.reimbursements, style: Theme.of(context).textTheme.titleSmall),
                 const Spacer(),
                 TextButton.icon(
                   icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add'),
+                  label: Text(s.add),
                   onPressed: _addReimbursement,
                 ),
               ],
@@ -313,7 +316,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             // Step frequency
             DropdownButtonFormField<StepFrequency>(
               value: _stepFrequency,
-              decoration: const InputDecoration(labelText: 'Step Frequency'),
+              decoration: InputDecoration(labelText: s.stepFrequency),
               items: StepFrequency.values
                   .map((f) => DropdownMenuItem(value: f, child: Text(f.name)))
                   .toList(),
@@ -323,21 +326,21 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
             // Spread mode
             SegmentedButton<_SpreadMode>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: _SpreadMode.backward,
-                  label: Text('Backward'),
-                  icon: Icon(Icons.arrow_back, size: 16),
+                  label: Text(s.directionBackward),
+                  icon: const Icon(Icons.arrow_back, size: 16),
                 ),
                 ButtonSegment(
                   value: _SpreadMode.forward,
-                  label: Text('Forward'),
-                  icon: Icon(Icons.arrow_forward, size: 16),
+                  label: Text(s.directionForward),
+                  icon: const Icon(Icons.arrow_forward, size: 16),
                 ),
                 ButtonSegment(
                   value: _SpreadMode.startSteps,
-                  label: Text('Start + Steps'),
-                  icon: Icon(Icons.pin, size: 16),
+                  label: Text(s.directionStartSteps),
+                  icon: const Icon(Icons.pin, size: 16),
                 ),
               ],
               selected: {_spreadMode},
@@ -386,7 +389,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                     children: [
                       Row(
                         children: [
-                          Text('Preview', style: Theme.of(context).textTheme.titleSmall),
+                          Text(s.preview, style: Theme.of(context).textTheme.titleSmall),
                           const Spacer(),
                           Text(
                             '${previewDates.length} × ${perStep.toStringAsFixed(2)} $sym',
@@ -446,7 +449,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                   child: FilledButton.icon(
                     onPressed: () => _save(andAddAnother: false),
                     icon: const Icon(Icons.save),
-                    label: Text(_isEditing ? 'Update' : 'Create'),
+                    label: Text(_isEditing ? s.update : s.create),
                   ),
                 ),
                 if (!_isEditing) ...[
@@ -454,7 +457,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                   Expanded(
                     child: FilledButton.tonal(
                       onPressed: () => _save(andAddAnother: true),
-                      child: const Text('Save & Add Another'),
+                      child: Text(s.saveAndAddAnother),
                     ),
                   ),
                 ],
@@ -497,7 +500,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _stepsCtrl,
-            decoration: const InputDecoration(labelText: 'Number of Steps'),
+            decoration: InputDecoration(labelText: ref.read(appStringsProvider).numberOfSteps),
             keyboardType: TextInputType.number,
             validator: (v) {
               final n = int.tryParse(v ?? '');
@@ -511,6 +514,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
   }
 
   Future<_Reimbursement?> _showReimbursementDialog({_Reimbursement? existing}) async {
+    final s = ref.read(appStringsProvider);
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
@@ -521,20 +525,20 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(existing != null ? 'Edit Reimbursement' : 'Add Reimbursement'),
+          title: Text(existing != null ? s.editReimbursementTitle : s.addReimbursementTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
                 controller: amountCtrl,
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: s.amount),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 autofocus: true,
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: descCtrl,
-                decoration: const InputDecoration(labelText: 'Description', hintText: 'e.g. From John'),
+                decoration: InputDecoration(labelText: s.description, hintText: s.reimbursementFromHint),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -554,8 +558,8 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(existing != null ? 'Update' : 'Add')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(existing != null ? s.update : s.add)),
           ],
         ),
       ),
@@ -681,7 +685,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
         setState(() {});
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Saved! Add another.'), duration: Duration(seconds: 1)),
+            SnackBar(content: Text(ref.read(appStringsProvider).savedAddAnother), duration: const Duration(seconds: 1)),
           );
         }
       } else {

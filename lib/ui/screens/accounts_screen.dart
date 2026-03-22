@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/account_service.dart';
+import '../../l10n/app_strings.dart';
 import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
@@ -15,6 +16,7 @@ class AccountsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final accountsAsync = ref.watch(accountsProvider);
     final statsAsync = ref.watch(accountStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
@@ -25,9 +27,8 @@ class AccountsScreen extends ConsumerWidget {
       body: accountsAsync.when(
         data: (accounts) {
           if (accounts.isEmpty) {
-            return const Center(
-              child: Text('No accounts yet.\nImport a file to get started.',
-                  textAlign: TextAlign.center),
+            return Center(
+              child: Text(s.noAccountsYet, textAlign: TextAlign.center),
             );
           }
 
@@ -68,7 +69,7 @@ class AccountsScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(s.error(e))),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showCreateDialog(context, ref),
@@ -78,24 +79,25 @@ class AccountsScreen extends ConsumerWidget {
   }
 
   Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController();
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('New Account'),
+          title: Text(s.newAccountTitle),
           content: TextField(
             controller: nameCtrl,
-            decoration: const InputDecoration(
-                labelText: 'Name', hintText: 'e.g. Fineco'),
+            decoration: InputDecoration(
+                labelText: s.name, hintText: s.accountNameHint),
             autofocus: true,
             onChanged: (_) => setDialogState(() {}),
           ),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
+                child: Text(s.cancel)),
             FilledButton(
               onPressed: nameCtrl.text.trim().isNotEmpty
                   ? () async {
@@ -105,7 +107,7 @@ class AccountsScreen extends ConsumerWidget {
                       if (ctx.mounted) Navigator.pop(ctx);
                     }
                   : null,
-              child: const Text('Create'),
+              child: Text(s.create),
             ),
           ],
         ),
@@ -114,7 +116,7 @@ class AccountsScreen extends ConsumerWidget {
   }
 }
 
-class _AccountTile extends StatelessWidget {
+class _AccountTile extends ConsumerWidget {
   final Account account;
   final AccountStats? stats;
   final double? convertedBalance;
@@ -135,7 +137,8 @@ class _AccountTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final theme = Theme.of(context);
     final balanceFormat = fmt.amountFormat(locale);
     final dateFormat = fmt.monthYearFormat(locale);
@@ -204,7 +207,7 @@ class _AccountTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   // Stats line
-                  _buildStatsLine(context, dateFormat),
+                  _buildStatsLine(context, dateFormat, s),
                 ],
               ),
             ),
@@ -251,7 +254,7 @@ class _AccountTile extends StatelessWidget {
                   ),
                 if (!account.isActive) ...[
                   const SizedBox(height: 2),
-                  Text('Inactive',
+                  Text(s.inactive,
                       style: theme.textTheme.labelSmall
                           ?.copyWith(color: Colors.grey)),
                 ],
@@ -265,7 +268,7 @@ class _AccountTile extends StatelessWidget {
     );
   }
 
-  Widget _buildStatsLine(BuildContext context, DateFormat dateFormat) {
+  Widget _buildStatsLine(BuildContext context, DateFormat dateFormat, AppStrings s) {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
       color: Colors.grey.shade600,
@@ -273,27 +276,25 @@ class _AccountTile extends StatelessWidget {
     );
 
     if (stats == null || stats!.count == 0) {
-      return Text('No transactions yet', style: style);
+      return Text(s.noTransactionsYet, style: style);
     }
 
     final parts = <InlineSpan>[];
 
-    // Transaction count
     parts.add(TextSpan(
-      text: '${stats!.count} transactions',
+      text: '${stats!.count} ${s.transactions}',
       style: style,
     ));
 
-    // Date range
     if (stats!.firstDate != null) {
       parts.add(TextSpan(
-        text: '  ·  Since ${dateFormat.format(stats!.firstDate!)}',
+        text: '  ·  ${s.since(dateFormat.format(stats!.firstDate!))}',
         style: style,
       ));
     }
     if (stats!.lastDate != null) {
       parts.add(TextSpan(
-        text: '  ·  Last record ${dateFormat.format(stats!.lastDate!)}',
+        text: '  ·  ${s.lastRecord(dateFormat.format(stats!.lastDate!))}',
         style: style,
       ));
     }

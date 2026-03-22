@@ -14,6 +14,7 @@ import '../../utils/formatters.dart' as fmt;
 import '../../database/database.dart';
 import '../../database/providers.dart';
 import '../../services/exchange_rate_service.dart';
+import '../../l10n/app_strings.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
 import '../widgets/privacy_text.dart';
@@ -790,23 +791,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final s = ref.watch(appStringsProvider);
 
     return DefaultTabController(
       length: 3,
       child: Column(
         children: [
-          const TabBar(
+          TabBar(
             tabs: [
-              Tab(text: 'Charts'),
-              Tab(text: 'Cash Flow'),
-              Tab(text: 'Allocation'),
+              Tab(text: s.dashTabCharts),
+              Tab(text: s.dashTabCashFlow),
+              Tab(text: s.dashTabAllocation),
             ],
           ),
           Expanded(
             child: TabBarView(
               children: [
-                _buildChartsTab(allDataAsync, locale, context),
-                _buildCashFlowTab(allDataAsync, locale, context),
+                _buildChartsTab(allDataAsync, locale, context, s),
+                _buildCashFlowTab(allDataAsync, locale, context, s),
                 const AllocationTab(),
               ],
             ),
@@ -820,15 +822,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     AsyncValue<_AllSeriesData?> allDataAsync,
     String locale,
     BuildContext context,
+    AppStrings s,
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
         if (allData == null) {
-          return const Center(
-            child: Text('No data yet. Import transactions or add assets to get started.',
-                style: TextStyle(color: Colors.grey)),
+          return Center(
+            child: Text(s.dashNoData,
+                style: const TextStyle(color: Colors.grey)),
           );
         }
 
@@ -945,15 +948,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     AsyncValue<_AllSeriesData?> allDataAsync,
     String locale,
     BuildContext context,
+    AppStrings s,
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
         if (allData == null) {
-          return const Center(
-            child: Text('No data yet.',
-                style: TextStyle(color: Colors.grey)),
+          return Center(
+            child: Text(s.dashNoData,
+                style: const TextStyle(color: Colors.grey)),
           );
         }
         return _CashFlowTab(allData: allData, locale: locale);
@@ -1219,6 +1223,7 @@ class _ChartCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isPrivate = ref.watch(privacyModeProvider);
+    final s = ref.watch(appStringsProvider);
     final visible = series.where((s) => !hidden.contains(s.key)).toList();
     final totalSpots = _buildSmartTotalSpots(visible);
     final symbol = currencySymbol(allData.baseCurrency);
@@ -1270,13 +1275,13 @@ class _ChartCard extends ConsumerWidget {
                 IconButton(
                   icon: Icon(hideComponents ? Icons.visibility_off : Icons.visibility, size: 18),
                   onPressed: onToggleHideComponents,
-                  tooltip: hideComponents ? 'Show components' : 'Hide components',
+                  tooltip: hideComponents ? s.dashShowComponents : s.dashHideComponents,
                 ),
               if (hasZoom)
                 IconButton(
                   icon: const Icon(Icons.zoom_out_map, size: 18),
                   onPressed: () => onZoom(null, null, null, null),
-                  tooltip: 'Reset zoom',
+                  tooltip: s.dashResetZoom,
                 ),
               if (headerExtra != null) headerExtra!,
             ],
@@ -1341,7 +1346,7 @@ class _ChartCard extends ConsumerWidget {
                       ),
                     );
                   })
-                : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
+                : Center(child: Text(s.dashNotEnoughData, style: const TextStyle(color: Colors.grey))),
           ),
 
           // Resize handle
@@ -2077,6 +2082,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
   @override
   Widget build(BuildContext context) {
     final isPrivate = ref.watch(privacyModeProvider);
+    final sl = ref.watch(appStringsProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
@@ -2090,7 +2096,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           children: [
             Row(
               children: [
-                Text('Price Changes', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                Text(sl.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                 const Spacer(),
                 ...List.generate(_labels.length, (i) {
                   final selected = i == _selectedIdx;
@@ -2115,12 +2121,12 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                 padding: EdgeInsets.all(16),
                 child: CircularProgressIndicator(strokeWidth: 2),
               )),
-              error: (e, _) => Text('Error: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
+              error: (e, _) => Text(sl.error(e), style: const TextStyle(color: Colors.red, fontSize: 12)),
               data: (changes) {
                 if (changes.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text('No price data available', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  return Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(sl.dashNoPriceData, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                   );
                 }
 
@@ -2398,6 +2404,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
   Widget build(BuildContext context) {
     final allData = widget.allData;
     final locale  = widget.locale;
+    final s       = ref.watch(appStringsProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final ieData  = ieAsync.value;
 
@@ -2496,40 +2503,36 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
         ] else if (ieData != null) ...[
           // Chart 4 equivalent: yearly totals bar chart (Expenses + Savings per year)
           ExpansionTile(
-            title: const Text('Entrate / Uscite / Risparmio per Anno', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartYearlyBarTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             initiallyExpanded: true,
             children: [_YearlyBarChart(data: ieData, locale: locale)],
           ),
-          // Chart 2 equivalent: monthly averages bar chart per year
           ExpansionTile(
-            title: const Text('Medie Mensili per Anno', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartMonthlyAvgTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_MonthlyAvgBarChart(data: ieData, locale: locale)],
           ),
-          // Chart 3 equivalent: monthly income by year (x=months, one line per year)
           ExpansionTile(
-            title: const Text('Entrate per Mese (per Anno)', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartMonthlyIncomeTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_MonthlyByYearLineChart(data: ieData, locale: locale, field: 'income')],
           ),
-          // Chart 5 equivalent: monthly expenses by year (x=months, recent years)
           ExpansionTile(
-            title: const Text('Uscite per Mese (per Anno)', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartMonthlyExpensesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_MonthlyByYearLineChart(data: ieData, locale: locale, field: 'expenses', maxYears: 5)],
           ),
-          // Tables
           ExpansionTile(
-            title: const Text('Riepilogo Annuale', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartYearlySummaryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_YearlySummaryTable(data: ieData, locale: locale)],
           ),
           ExpansionTile(
-            title: const Text('Entrate Mensili per Anno (tabella)', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartMonthlyIncTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_MonthlyGrid(data: ieData, locale: locale, field: 'income')],
           ),
           ExpansionTile(
-            title: const Text('Uscite Mensili per Anno (tabella)', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartMonthlyExpTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_MonthlyGrid(data: ieData, locale: locale, field: 'expenses', maxYears: 5)],
           ),
           ExpansionTile(
-            title: const Text('Variazione YoY Entrate', style: TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(s.chartYoYTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
             children: [_YoYDiffTable(data: ieData, locale: locale)],
           ),
           const SizedBox(height: 24),
@@ -2543,13 +2546,14 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
 // Income/Expense table widgets
 // ════════════════════════════════════════════════════
 
-class _YearlySummaryTable extends StatelessWidget {
+class _YearlySummaryTable extends ConsumerWidget {
   final _IncomeExpenseData data;
   final String locale;
   const _YearlySummaryTable({required this.data, required this.locale});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sl = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
     final pctFmt = NumberFormat('0.0%');
     final theme  = Theme.of(context);
@@ -2566,16 +2570,16 @@ class _YearlySummaryTable extends StatelessWidget {
         dataRowMinHeight: 32,
         dataRowMaxHeight: 52,
         columnSpacing: 20,
-        columns: const [
-          DataColumn(label: Text('Year',     style: TextStyle(fontWeight: FontWeight.bold))),
-          DataColumn(label: Text('Income',   style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Expenses', style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Savings',  style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Rate%',    style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Avg/Mo Inc',  style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Avg/Mo Exp',  style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Daily Inc',   style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text('Daily Exp',   style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+        columns: [
+          DataColumn(label: Text(sl.colYear,       style: const TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text(sl.colIncome,     style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colExpenses,   style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colSavings,    style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colRate,        style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colAvgMonthInc, style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colAvgMonthExp, style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colDailyInc,    style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(label: Text(sl.colDailyExp,    style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
         ],
         rows: [
           for (int i = 0; i < years.length; i++) ...[
@@ -2583,7 +2587,7 @@ class _YearlySummaryTable extends StatelessWidget {
                      amtFmt, pctFmt, sym, theme),
             // EOY prediction row for current (partial) year
             if (i == 0 && years[i].year == now.year && years.length > 1)
-              _eoyRow(years[i], years[i + 1], amtFmt, pctFmt, sym, theme),
+              _eoyRow(years[i], years[i + 1], amtFmt, pctFmt, sym, theme, sl),
           ],
         ],
       ),
@@ -2615,7 +2619,7 @@ class _YearlySummaryTable extends StatelessWidget {
   }
 
   DataRow _eoyRow(_YearBucket current, _YearBucket prev,
-      NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme) {
+      NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme, AppStrings sl) {
     final eoyInc = _eoyPrediction(current, prev);
     final eoyExp = _eoyPrediction(current, prev, expenses: true);
     final eoySav = (eoyInc != null && eoyExp != null) ? eoyInc - eoyExp : null;
@@ -2630,7 +2634,7 @@ class _YearlySummaryTable extends StatelessWidget {
     String fmt_(double? v) => v != null ? '~${amtFmt.format(v)} $sym' : '—';
 
     return DataRow(cells: [
-      DataCell(Text('  EOY~', style: style)),
+      DataCell(Text(sl.eoyLabel, style: style)),
       DataCell(PrivacyText(fmt_(eoyInc), style: style)),
       DataCell(PrivacyText(fmt_(eoyExp), style: style)),
       DataCell(PrivacyText(fmt_(eoySav), style: style)),
@@ -2643,7 +2647,7 @@ class _YearlySummaryTable extends StatelessWidget {
   }
 }
 
-class _MonthlyGrid extends StatelessWidget {
+class _MonthlyGrid extends ConsumerWidget {
   final _IncomeExpenseData data;
   final String locale;
   final String field; // 'income' or 'expenses'
@@ -2655,7 +2659,8 @@ class _MonthlyGrid extends StatelessWidget {
                                'Jul','Aug','Sep','Oct','Nov','Dec'];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sl = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
     final theme  = Theme.of(context);
     final sym    = currencySymbol(data.baseCurrency);
@@ -2691,7 +2696,7 @@ class _MonthlyGrid extends StatelessWidget {
           TableRow(
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
-              _th('Month'),
+              _th(sl.colMonth),
               for (final y in yearLabels)
                 _th('$y${y == now.year ? "*" : ""}'),
               _th('Avg'),
@@ -2768,7 +2773,7 @@ class _MonthlyGrid extends StatelessWidget {
     );
 }
 
-class _YoYDiffTable extends StatelessWidget {
+class _YoYDiffTable extends ConsumerWidget {
   final _IncomeExpenseData data;
   final String locale;
   const _YoYDiffTable({required this.data, required this.locale});
@@ -2777,7 +2782,8 @@ class _YoYDiffTable extends StatelessWidget {
                                'Jul','Aug','Sep','Oct','Nov','Dec'];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sl = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
     final theme  = Theme.of(context);
     final sym    = currencySymbol(data.baseCurrency);
@@ -2785,9 +2791,9 @@ class _YoYDiffTable extends StatelessWidget {
     final years  = data.years;
 
     if (years.length < 2) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Need at least 2 years of data.', style: TextStyle(color: Colors.grey)),
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(sl.needMoreYears, style: const TextStyle(color: Colors.grey)),
       );
     }
 
@@ -2836,7 +2842,7 @@ class _YoYDiffTable extends StatelessWidget {
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
               Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      child: const Text('Month', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                      child: Text(sl.colMonth, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
               for (final p in pairs)
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         child: Text('${p.$2.year}→${p.$1.year}',
@@ -2857,8 +2863,8 @@ class _YoYDiffTable extends StatelessWidget {
           TableRow(
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
-              const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            child: Text('YTD', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            child: Text(sl.colYTD, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
               for (final p in pairs) ...[
                 Builder(builder: (ctx) {
                   final maxM = p.$2.year == now.year ? now.month : 12;
@@ -2877,8 +2883,8 @@ class _YoYDiffTable extends StatelessWidget {
           TableRow(
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
-              const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            child: Text('Year', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            child: Text(sl.colYear, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
               for (final p in pairs) ...[
                 Builder(builder: (ctx) {
                   if (p.$2.months.length < 12) return _diffCell(null);
@@ -2913,12 +2919,13 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
     _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
   });
 
-  static const _keys   = ['income', 'expenses', 'savings'];
-  static const _labels = ['Income', 'Expenses', 'Savings'];
+  static const _keys = ['income', 'expenses', 'savings'];
 
   @override
   Widget build(BuildContext context) {
     final isPrivate = ref.watch(privacyModeProvider);
+    final sl = ref.watch(appStringsProvider);
+    final labels = [sl.legendIncome, sl.legendExpenses, sl.legendSavings];
     final amtFmt   = fmt.amountFormat(widget.locale);
     final sym      = currencySymbol(widget.data.baseCurrency);
     final years    = widget.data.years;
@@ -2959,7 +2966,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
             for (int k = 0; k < 3; k++)
               _ToggleLegendItem(
                 color: colors[k],
-                label: _labels[k],
+                label: labels[k],
                 enabled: !_hidden.contains(_keys[k]),
                 onTap: () => _toggle(_keys[k]),
               ),
@@ -2985,7 +2992,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
                     final origIdx = visibleIndices[rodIndex];
                     final vals = [y.income, y.expenses, y.savings];
                     return BarTooltipItem(
-                      '${y.year}${y.year == now.year ? "*" : ""}\n${_labels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
+                      '${y.year}${y.year == now.year ? "*" : ""}\n${labels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
                       const TextStyle(color: Colors.white, fontSize: 11),
                     );
                   },
@@ -3040,13 +3047,14 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
     _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
   });
 
-  static const _keys   = ['income', 'expenses', 'savings'];
-  static const _labels = ['Avg Monthly Income', 'Avg Monthly Expenses', 'Avg Monthly Savings'];
-  static const _tipLabels = ['Avg/Mo Income', 'Avg/Mo Expenses', 'Avg/Mo Savings'];
+  static const _keys = ['income', 'expenses', 'savings'];
 
   @override
   Widget build(BuildContext context) {
     final isPrivate = ref.watch(privacyModeProvider);
+    final sl = ref.watch(appStringsProvider);
+    final labels = [sl.legendAvgMonthlyIncome, sl.legendAvgMonthlyExpenses, sl.legendAvgMonthlySavings];
+    final tipLabels = [sl.tipAvgMonthIncome, sl.tipAvgMonthExpenses, sl.tipAvgMonthSavings];
     final amtFmt = fmt.amountFormat(widget.locale);
     final sym    = currencySymbol(widget.data.baseCurrency);
     final years  = widget.data.years;
@@ -3081,7 +3089,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
             for (int k = 0; k < 3; k++)
               _ToggleLegendItem(
                 color: colors[k],
-                label: _labels[k],
+                label: labels[k],
                 enabled: !_hidden.contains(_keys[k]),
                 onTap: () => _toggle(_keys[k]),
               ),
@@ -3106,7 +3114,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
                     final origIdx = visibleIndices[rodIndex];
                     final vals = [y.monthlyIncome, y.monthlyExpenses, y.savings / max(1, y.months.length)];
                     return BarTooltipItem(
-                      '${y.year}${y.year == now.year ? "*" : ""}\n${_tipLabels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
+                      '${y.year}${y.year == now.year ? "*" : ""}\n${tipLabels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
                       const TextStyle(color: Colors.white, fontSize: 11),
                     );
                   },
@@ -3176,6 +3184,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
   @override
   Widget build(BuildContext context) {
     final isPrivate = ref.watch(privacyModeProvider);
+    final sl = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(widget.locale);
     final sym    = currencySymbol(widget.data.baseCurrency);
     var   years  = widget.data.years;
@@ -3235,7 +3244,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
             child: lineBars.isEmpty
-                ? const Center(child: Text('All series hidden'))
+                ? Center(child: Text(sl.allSeriesHidden))
                 : LineChart(LineChartData(
                     lineBarsData: lineBars,
                     minX: 1,

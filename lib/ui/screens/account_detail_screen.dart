@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/amount_parser.dart' as amt;
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
@@ -35,6 +36,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
     final txStream = ref.watch(accountTransactionsProvider(widget.account.id));
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final dateFmt = fmt.shortDateFormat(locale);
@@ -46,7 +48,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.file_upload),
-            tooltip: 'Import File',
+            tooltip: s.tooltipImportFile,
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => ImportScreen(preselectedAccountId: widget.account.id)),
@@ -54,32 +56,32 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.fingerprint),
-            tooltip: 'Reindex Dedup Keys',
+            tooltip: s.tooltipReindexDedup,
             onPressed: () => _showReindexDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.account_balance_wallet),
-            tooltip: 'Recalculate Balance',
+            tooltip: s.tooltipRecalcBalance,
             onPressed: () => _showBalanceDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: 'Add Transaction',
+            tooltip: s.tooltipAddTransaction,
             onPressed: () => _addTransaction(),
           ),
           IconButton(
             icon: const Icon(Icons.edit),
-            tooltip: 'Edit Account',
+            tooltip: s.tooltipEditAccount,
             onPressed: () => _editAccount(context),
           ),
           IconButton(
             icon: const Icon(Icons.delete_sweep),
-            tooltip: 'Wipe Transactions',
+            tooltip: s.tooltipWipeTransactions,
             onPressed: () => _confirmWipeTransactions(context),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            tooltip: 'Delete Account',
+            tooltip: s.tooltipDeleteAccount,
             color: Colors.red,
             onPressed: () => _confirmDeleteAccount(context),
           ),
@@ -93,7 +95,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Search transactions...',
+                hintText: s.searchTransactions,
                 prefixIcon: const Icon(Icons.search),
                 border: const OutlineInputBorder(),
                 isDense: true,
@@ -174,7 +176,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
+              error: (e, _) => Center(child: Text(s.error(e))),
             ),
           ),
           // Summary bar
@@ -243,28 +245,29 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   Future<void> _confirmWipeTransactions(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
     final txCount = ref.read(accountTransactionsProvider(widget.account.id)).value?.length ?? 0;
     if (txCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No transactions to wipe.')),
+        SnackBar(content: Text(s.noTransactionsToWipe)),
       );
       return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Wipe All Transactions?'),
+        title: Text(s.wipeAllTransactionsTitle),
         content: Text(
           'This will delete all $txCount transactions from "${widget.account.name}" '
           'but keep the account and its import configuration (column mappings, '
-          'dedup keys, balance settings).\n\nThis cannot be undone.',
+          'dedup keys, balance settings).\n\n${s.cannotBeUndone}',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.orange),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Wipe'),
+            child: Text(s.wipe),
           ),
         ],
       ),
@@ -274,29 +277,26 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       final deleted = await ref.read(transactionServiceProvider).deleteByAccount(widget.account.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Wiped $deleted transactions. Import config preserved.')),
+          SnackBar(content: Text(s.wipedTransactions(deleted))),
         );
       }
     }
   }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
     final txCount = ref.read(accountTransactionsProvider(widget.account.id)).value?.length ?? 0;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Account?'),
-        content: Text(
-          txCount > 0
-              ? 'This will permanently delete "${widget.account.name}" and all $txCount transactions. This cannot be undone.'
-              : 'This will permanently delete "${widget.account.name}". This cannot be undone.',
-        ),
+        title: Text(s.deleteAccountTitle),
+        content: Text(s.deleteAccountConfirm(widget.account.name)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),
@@ -309,6 +309,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   Future<void> _editAccount(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController(text: widget.account.name);
     var currencyCtrl = TextEditingController(text: widget.account.currency);
     var institutionCtrl = TextEditingController(text: widget.account.institution);
@@ -318,28 +319,28 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Edit Account'),
+          title: Text(s.editAccountTitle),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name'),
+                  decoration: InputDecoration(labelText: s.name),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: currencyCtrl,
-                  decoration: const InputDecoration(labelText: 'Currency', hintText: 'EUR'),
+                  decoration: InputDecoration(labelText: s.currency, hintText: 'EUR'),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: institutionCtrl,
-                  decoration: const InputDecoration(labelText: 'Institution'),
+                  decoration: InputDecoration(labelText: s.institution),
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(
-                  title: const Text('Active'),
+                  title: Text(s.active),
                   value: isActive,
                   onChanged: (v) => setDialogState(() => isActive = v),
                   contentPadding: EdgeInsets.zero,
@@ -348,7 +349,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: () async {
                 if (nameCtrl.text.trim().isEmpty) return;
@@ -364,7 +365,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                 );
                 if (ctx.mounted) Navigator.pop(ctx);
               },
-              child: const Text('Save'),
+              child: Text(s.save),
             ),
           ],
         ),
@@ -373,6 +374,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   Future<void> _showReindexDialog(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
     // Get all transactions with rawMetadata to discover available columns
     final txs = await ref.read(transactionServiceProvider).getByAccount(widget.account.id);
     final withMeta = txs.where((t) => t.rawMetadata != null && t.rawMetadata!.isNotEmpty).toList();
@@ -380,7 +382,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     if (withMeta.isEmpty) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No imported transactions with metadata found.')),
+          SnackBar(content: Text(s.noImportedTransactions)),
         );
       }
       return;
@@ -405,7 +407,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Reindex Dedup Keys'),
+          title: Text(s.reindexDedupTitle),
           content: SizedBox(
             width: 400,
             child: SingleChildScrollView(
@@ -413,12 +415,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${withMeta.length} transactions with metadata.', style: const TextStyle(fontSize: 13)),
+                  Text(s.withMetadata(withMeta.length), style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 8),
-                  const Text('Select columns for dedup hash:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(s.selectDedupColumns, style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  const Text('The hash uniquely identifies a row. Duplicates with the same hash will be removed.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(s.dedupHashHelp,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 4,
@@ -437,7 +439,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   const SizedBox(height: 12),
                   // Preview: show hash for first row with old and new
                   if (selectedCols.isNotEmpty) ...[
-                    const Text('Preview (first row):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text(s.previewFirstRow, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Builder(builder: (_) {
                       final meta = jsonDecode(withMeta.first.rawMetadata!) as Map<String, dynamic>;
@@ -464,7 +466,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: selectedCols.isEmpty
                   ? null
@@ -472,7 +474,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                       Navigator.pop(ctx);
                       await _executeReindex(withMeta, allColumns, selectedCols.toList());
                     },
-              child: const Text('Reindex & Remove Duplicates'),
+              child: Text(s.reindexButton),
             ),
           ],
         ),
@@ -525,19 +527,21 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     final deleted = await txSvc.removeDuplicates(widget.account.id);
 
     if (mounted) {
+      final s = ref.read(appStringsProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Reindexed ${updates.length} hashes. Removed $deleted duplicates.')),
+        SnackBar(content: Text(s.reindexResult(updates.length, deleted))),
       );
     }
   }
 
   Future<void> _showBalanceDialog(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
     // Get all transactions with rawMetadata to discover available columns
     final txs = await ref.read(transactionServiceProvider).getByAccount(widget.account.id);
     if (txs.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No transactions to recalculate.')),
+          SnackBar(content: Text(s.noTransactionsToRecalc)),
         );
       }
       return;
@@ -587,7 +591,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Recalculate Balance'),
+          title: Text(s.recalcBalanceTitle),
           content: SizedBox(
             width: 500,
             child: SingleChildScrollView(
@@ -595,15 +599,15 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Choose how to compute balanceAfter for each transaction.',
-                      style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  Text(s.recalcBalanceHelp,
+                      style: const TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 12),
                   SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'none', label: Text('None')),
-                      ButtonSegment(value: 'column', label: Text('From column')),
-                      ButtonSegment(value: 'cumulative', label: Text('Cumulative')),
-                      ButtonSegment(value: 'filtered', label: Text('Filtered')),
+                    segments: [
+                      ButtonSegment(value: 'none', label: Text(s.recalcNone)),
+                      ButtonSegment(value: 'column', label: Text(s.recalcColumn)),
+                      ButtonSegment(value: 'cumulative', label: Text(s.recalcCumulative)),
+                      ButtonSegment(value: 'filtered', label: Text(s.recalcFiltered)),
                     ],
                     selected: {balanceMode},
                     onSelectionChanged: (v) => setDialogState(() {
@@ -663,7 +667,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                           TextButton(
                             onPressed: () => setDialogState(() => filterInclude.clear()),
                             style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                            child: const Text('None', style: TextStyle(fontSize: 11)),
+                            child: Text(s.none, style: const TextStyle(fontSize: 11)),
                           ),
                         ],
                       ),
@@ -691,7 +695,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: balanceMode == 'none' ||
                       (balanceMode == 'filtered' && filterColumn == null) ||

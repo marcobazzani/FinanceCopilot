@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/legacy.dart';
 
 import '../database/database.dart';
 import '../database/providers.dart';
+import '../l10n/app_strings.dart';
 import 'account_service.dart';
 import 'asset_event_service.dart';
 import 'asset_service.dart';
@@ -73,6 +74,20 @@ final priceRefreshCounter = StateProvider<int>((ref) => 0);
 final privacyModeProvider = StateProvider<bool>((ref) => false);
 
 // ── Reactive stream providers ──
+
+/// UI language from AppConfigs, reactive. 'en' (default) or 'it'.
+final appLanguageProvider = StreamProvider<String>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('LANGUAGE')))
+      .watchSingleOrNull()
+      .map((row) => row?.value ?? 'en');
+});
+
+/// Provides the current [AppStrings] instance derived from [appLanguageProvider].
+final appStringsProvider = Provider<AppStrings>((ref) {
+  final lang = ref.watch(appLanguageProvider).value ?? 'en';
+  return AppStrings.of(lang);
+});
 
 /// Display locale from AppConfigs, reactive. Empty string = system default.
 final appLocaleProvider = StreamProvider<String>((ref) {

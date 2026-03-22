@@ -8,7 +8,9 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 
 import '../../database/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../services/demo_db_service.dart';
+import '../../services/providers.dart';
 import '../../utils/logger.dart';
 import '../../version.dart';
 
@@ -161,8 +163,9 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     } catch (e) {
       _log.warning('Failed to generate demo DB: $e');
       if (mounted) {
+        final s = ref.read(appStringsProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate demo DB: $e')),
+          SnackBar(content: Text(s.dbPickerDemoFailed(e))),
         );
       }
     } finally {
@@ -172,6 +175,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
     final theme = Theme.of(context);
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
@@ -185,7 +189,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
             children: [
               Icon(Icons.storage, size: 48, color: theme.colorScheme.primary),
               const SizedBox(height: 16),
-              Text('Open a Database', style: theme.textTheme.headlineSmall),
+              Text(s.dbPickerTitle, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -193,13 +197,13 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                   FilledButton.icon(
                     onPressed: _openFilePicker,
                     icon: const Icon(Icons.folder_open),
-                    label: const Text('Open File...'),
+                    label: Text(s.dbPickerOpenFile),
                   ),
                   const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: _createEmpty,
                     icon: const Icon(Icons.add_circle_outline),
-                    label: const Text('New Project'),
+                    label: Text(s.dbPickerNewProject),
                   ),
                   const SizedBox(width: 12),
                   OutlinedButton.icon(
@@ -210,7 +214,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.auto_awesome),
-                    label: Text(_isGenerating ? 'Generating...' : 'Create Demo DB'),
+                    label: Text(_isGenerating ? s.dbPickerGenerating : s.dbPickerCreateDemo),
                   ),
                 ],
               ),
@@ -222,7 +226,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                   alignment: Alignment.centerLeft,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('Recent', style: theme.textTheme.titleSmall?.copyWith(color: Colors.grey)),
+                    child: Text(s.dbPickerRecent, style: theme.textTheme.titleSmall?.copyWith(color: Colors.grey)),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -251,7 +255,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                           isThreeLine: true,
                           trailing: IconButton(
                             icon: const Icon(Icons.close, size: 18),
-                            tooltip: 'Remove from recent',
+                            tooltip: s.dbPickerRemoveRecent,
                             onPressed: () => _removeRecent(path),
                           ),
                           onTap: () => _selectDb(path),

@@ -6,6 +6,7 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard_screen.dart' show currencySymbol;
@@ -157,17 +158,18 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
     final baseSym = currencySymbol(_baseCurrency);
     final converted = _convertedAmount;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Event' : 'New Event'),
+        title: Text(_isEditing ? s.editEventTitle : s.newEventTitle),
         actions: [
           if (_isEditing)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.red),
-              tooltip: 'Delete',
+              tooltip: s.delete,
               onPressed: _confirmDelete,
             ),
         ],
@@ -180,9 +182,9 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             // Event type
             DropdownButtonFormField<EventType>(
               value: _eventType,
-              decoration: const InputDecoration(
-                labelText: 'Event Type *',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.eventTypeLabel,
+                border: const OutlineInputBorder(),
               ),
               items: EventType.values
                   .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
@@ -198,14 +200,14 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             // Date picker
             TextFormField(
               controller: _dateCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Date *',
-                suffixIcon: Icon(Icons.calendar_today),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.dateRequired,
+                suffixIcon: const Icon(Icons.calendar_today),
+                border: const OutlineInputBorder(),
               ),
               readOnly: true,
               onTap: _pickDate,
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+              validator: (v) => (v == null || v.isEmpty) ? s.required : null,
             ),
             const SizedBox(height: 12),
 
@@ -215,9 +217,9 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _currency,
-                    decoration: const InputDecoration(
-                      labelText: 'Currency',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: s.currency,
+                      border: const OutlineInputBorder(),
                     ),
                     items: ExchangeRateService.allCurrencies
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
@@ -253,9 +255,9 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _quantityCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Quantity *',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: s.quantityLabel,
+                        border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
@@ -326,9 +328,9 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             // Commission
             TextFormField(
               controller: _commissionCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Commission',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.commissionLabel,
+                border: const OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
@@ -337,9 +339,9 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             // Notes
             TextFormField(
               controller: _notesCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Notes',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.notes,
+                border: const OutlineInputBorder(),
               ),
               maxLines: 3,
             ),
@@ -348,7 +350,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             if (_isEditing && widget.event!.rawMetadata != null) ...[
               const SizedBox(height: 16),
               const Divider(),
-              const Text('Raw Import Data', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Text(s.rawImportData, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -366,7 +368,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _save,
-              child: Text(_isEditing ? 'Save Changes' : 'Create Event'),
+              child: Text(_isEditing ? s.saveChanges : s.createEvent),
             ),
           ],
         ),
@@ -447,17 +449,18 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   }
 
   Future<void> _confirmDelete() async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Event?'),
-        content: const Text('This cannot be undone.'),
+        title: Text(s.deleteEventTitle),
+        content: Text(s.cannotBeUndone),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),

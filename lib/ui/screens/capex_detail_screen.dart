@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../services/providers.dart';
+import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'capex_edit_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
@@ -12,6 +13,7 @@ class CapexDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final scheduleAsync = ref.watch(capexScheduleProvider(scheduleId));
 
     return scheduleAsync.when(
@@ -22,7 +24,7 @@ class CapexDetailScreen extends ConsumerWidget {
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(child: Text('Error: $e')),
+        body: Center(child: Text(s.error(e))),
       ),
     );
   }
@@ -34,6 +36,7 @@ class _DetailBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final entriesAsync = ref.watch(capexEntriesProvider(schedule.id));
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final sym = currencySymbol(schedule.currency);
@@ -50,7 +53,7 @@ class _DetailBody extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit),
-            tooltip: 'Edit',
+            tooltip: s.edit,
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
@@ -60,19 +63,19 @@ class _DetailBody extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Regenerate Entries',
+            tooltip: s.tooltipRegenerateEntries,
             onPressed: () async {
               await ref.read(capexServiceProvider).generateEntries(schedule.id);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Entries regenerated.')),
+                  SnackBar(content: Text(s.entriesRegenerated)),
                 );
               }
             },
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Delete',
+            tooltip: s.delete,
             onPressed: () => _confirmDelete(context, ref),
           ),
         ],
@@ -109,12 +112,12 @@ class _DetailBody extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                const Text('Saving Events', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(s.savingEvents, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
                 if (schedule.bufferId != null)
                   IconButton(
                     icon: const Icon(Icons.add_circle_outline),
-                    tooltip: 'Add Reimbursement',
+                    tooltip: s.tooltipAddReimbursement,
                     onPressed: () => _addReimbursement(context, ref),
                   )
                 else
@@ -123,11 +126,11 @@ class _DetailBody extends ConsumerWidget {
                       await ref.read(capexServiceProvider).createLinkedBuffer(schedule.id);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Reimbursement tracking enabled.')),
+                          SnackBar(content: Text(s.reimbursementEnabled)),
                         );
                       }
                     },
-                    child: const Text('Enable Reimbursements'),
+                    child: Text(s.enableReimbursements),
                   ),
               ],
             ),
@@ -160,9 +163,9 @@ class _DetailBody extends ConsumerWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (entries.isEmpty && reimbursements.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: Text('No events yet.', style: TextStyle(color: Colors.grey))),
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Center(child: Text(ref.read(appStringsProvider).noEventsCapex, style: const TextStyle(color: Colors.grey))),
       );
     }
 
@@ -249,6 +252,7 @@ class _DetailBody extends ConsumerWidget {
   }
 
   Future<void> _addReimbursement(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
@@ -259,19 +263,19 @@ class _DetailBody extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Reimbursement'),
+          title: Text(s.addReimbursementTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
                 controller: amountCtrl,
-                decoration: const InputDecoration(labelText: 'Amount'),
+                decoration: InputDecoration(labelText: s.amount),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: descCtrl,
-                decoration: const InputDecoration(labelText: 'Description', hintText: 'e.g. From John'),
+                decoration: InputDecoration(labelText: s.description, hintText: s.reimbursementFromHint),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -291,10 +295,10 @@ class _DetailBody extends ConsumerWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Add'),
+              child: Text(s.add),
             ),
           ],
         ),
@@ -318,16 +322,17 @@ class _DetailBody extends ConsumerWidget {
   }
 
   Future<void> _confirmDeleteReimbursement(BuildContext context, WidgetRef ref, int txnId) async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Reimbursement?'),
+        title: Text(s.deleteReimbursementTitle),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),
@@ -339,17 +344,18 @@ class _DetailBody extends ConsumerWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Adjustment?'),
-        content: Text('Delete "${schedule.assetName}" and all its entries?\nThis cannot be undone.'),
+        title: Text(s.deleteAdjustmentTitle),
+        content: Text(s.deleteAdjustmentConfirm(schedule.assetName)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(s.delete),
           ),
         ],
       ),

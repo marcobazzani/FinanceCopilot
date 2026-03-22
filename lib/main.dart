@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'database/database.dart';
 import 'database/providers.dart';
+import 'l10n/app_strings.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/providers.dart';
 import 'ui/screens/accounts_screen.dart';
@@ -90,20 +91,20 @@ class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
   bool _isSyncing = false;
 
-  static const _destinations = [
-    NavigationDestination(icon: Icon(Icons.dashboard), label: 'Dashboard'),
-    NavigationDestination(icon: Icon(Icons.account_balance), label: 'Accounts'),
-    NavigationDestination(icon: Icon(Icons.pie_chart), label: 'Assets'),
-    NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Adjustments'),
-    NavigationDestination(icon: Icon(Icons.payments), label: 'Income'),
+  List<NavigationDestination> _destinations(AppStrings s) => [
+    NavigationDestination(icon: const Icon(Icons.dashboard), label: s.navDashboard),
+    NavigationDestination(icon: const Icon(Icons.account_balance), label: s.navAccounts),
+    NavigationDestination(icon: const Icon(Icons.pie_chart), label: s.navAssets),
+    NavigationDestination(icon: const Icon(Icons.account_balance_wallet), label: s.navAdjustments),
+    NavigationDestination(icon: const Icon(Icons.payments), label: s.navIncome),
   ];
 
-  static const _railDestinations = [
-    NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Dashboard')),
-    NavigationRailDestination(icon: Icon(Icons.account_balance), label: Text('Accounts')),
-    NavigationRailDestination(icon: Icon(Icons.pie_chart), label: Text('Assets')),
-    NavigationRailDestination(icon: Icon(Icons.account_balance_wallet), label: Text('Adjustments')),
-    NavigationRailDestination(icon: Icon(Icons.payments), label: Text('Income')),
+  List<NavigationRailDestination> _railDestinations(AppStrings s) => [
+    NavigationRailDestination(icon: const Icon(Icons.dashboard), label: Text(s.navDashboard)),
+    NavigationRailDestination(icon: const Icon(Icons.account_balance), label: Text(s.navAccounts)),
+    NavigationRailDestination(icon: const Icon(Icons.pie_chart), label: Text(s.navAssets)),
+    NavigationRailDestination(icon: const Icon(Icons.account_balance_wallet), label: Text(s.navAdjustments)),
+    NavigationRailDestination(icon: const Icon(Icons.payments), label: Text(s.navIncome)),
   ];
 
   @override
@@ -157,6 +158,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 600;
+    final s = ref.watch(appStringsProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -164,14 +166,14 @@ class _AppShellState extends ConsumerState<AppShell> {
         actions: [
           Consumer(builder: (context, ref, _) {
             final isPrivate = ref.watch(privacyModeProvider);
+            final ss = ref.watch(appStringsProvider);
             return IconButton(
               icon: Icon(isPrivate ? Icons.visibility_off : Icons.visibility),
-              tooltip: isPrivate ? 'Hide amounts' : 'Show amounts',
+              tooltip: isPrivate ? ss.tooltipHideAmounts : ss.tooltipShowAmounts,
               onPressed: () =>
                   ref.read(privacyModeProvider.notifier).state = !isPrivate,
             );
           }),
-          // Refresh market prices button
           IconButton(
             icon: _isSyncing
                 ? const SizedBox(
@@ -180,22 +182,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
-            tooltip: 'Refresh Market Prices',
+            tooltip: s.tooltipRefreshPrices,
             onPressed: _isSyncing ? null : () => _syncPrices(forceToday: true),
           ),
           IconButton(
             icon: const Icon(Icons.swap_horiz),
-            tooltip: 'Change Database',
+            tooltip: s.tooltipChangeDatabase,
             onPressed: () => ref.read(dbPathProvider.notifier).state = null,
           ),
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
+            tooltip: s.tooltipSettings,
             onPressed: () => _showSettingsDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.file_upload),
-            tooltip: 'Import File',
+            tooltip: s.tooltipImportFile,
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const ImportScreen()),
@@ -213,7 +215,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                         selectedIndex: _selectedIndex,
                         onDestinationSelected: (i) => setState(() => _selectedIndex = i),
                         labelType: NavigationRailLabelType.all,
-                        destinations: _railDestinations,
+                        destinations: _railDestinations(s),
                       ),
                     ),
                     Padding(
@@ -247,7 +249,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           : NavigationBar(
               selectedIndex: _selectedIndex,
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-              destinations: _destinations,
+              destinations: _destinations(s),
             ),
     );
   }
@@ -262,22 +264,31 @@ class _AppShellState extends ConsumerState<AppShell> {
     ('es_ES', 'Español (ES)'),
   ];
 
+  static const _languageOptions = [
+    ('en', 'English'),
+    ('it', 'Italiano'),
+  ];
+
   Future<void> _showSettingsDialog(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
     final db = ref.read(databaseProvider);
     final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
     final currentLocale = ref.read(appLocaleProvider).value ?? '';
+    final currentLang = ref.read(appLanguageProvider).value ?? 'en';
 
     var selectedCurrency = baseCurrency;
-    // Map back to stored value: if current resolved locale matches a known option, use '' for system default
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
         ? currentLocale
         : '';
+    var selectedLang = _languageOptions.any((o) => o.$1 == currentLang)
+        ? currentLang
+        : 'en';
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Settings'),
+          title: Text(s.settingsTitle),
           content: SizedBox(
             width: 400,
             child: Column(
@@ -285,8 +296,17 @@ class _AppShellState extends ConsumerState<AppShell> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<String>(
+                  value: selectedLang,
+                  decoration: InputDecoration(labelText: s.settingsLanguage),
+                  items: _languageOptions
+                      .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => selectedLang = v!),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
                   value: selectedCurrency,
-                  decoration: const InputDecoration(labelText: 'Default Currency'),
+                  decoration: InputDecoration(labelText: s.settingsCurrency),
                   items: ExchangeRateService.allCurrencies
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                       .toList(),
@@ -295,7 +315,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: selectedLocale,
-                  decoration: const InputDecoration(labelText: 'Number/Date Format'),
+                  decoration: InputDecoration(labelText: s.settingsNumberFormat),
                   items: _localeOptions
                       .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
                       .toList(),
@@ -310,10 +330,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Clear cached data',
+                          Text(s.settingsClearCache,
                               style: Theme.of(ctx).textTheme.bodyMedium),
                           Text(
-                            'Prices, exchange rates, composition',
+                            s.settingsClearCacheSubtitle,
                             style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                                   color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                                 ),
@@ -333,11 +353,11 @@ class _AppShellState extends ConsumerState<AppShell> {
                         _log.info('Cleared all cached data (prices, exchange rates, compositions)');
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(content: Text('Cached data cleared')),
+                            SnackBar(content: Text(s.settingsCacheCleared)),
                           );
                         }
                       },
-                      child: const Text('Clear'),
+                      child: Text(s.settingsClearButton),
                     ),
                   ],
                 ),
@@ -345,19 +365,22 @@ class _AppShellState extends ConsumerState<AppShell> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: () async {
+                await db.into(db.appConfigs).insertOnConflictUpdate(
+                  AppConfigsCompanion.insert(key: 'LANGUAGE', value: selectedLang),
+                );
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),
                 );
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
-                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale');
+                _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
-              child: const Text('Save'),
+              child: Text(s.save),
             ),
           ],
         ),
