@@ -797,7 +797,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: [
           const TabBar(
             tabs: [
-              Tab(text: 'Charts'),
+              Tab(text: 'Overall'),
               Tab(text: 'Cash Flow'),
               Tab(text: 'Allocation'),
             ],
@@ -996,6 +996,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     // Invested: all invested assets
     final investedJson = jsonEncode(toConfigs(allData.assetInvested));
 
+    // Portfolio: all market-value assets
+    final portfolioJson = jsonEncode(toConfigs(allData.assetMarket));
+
     // Stable negative IDs avoid clashing with any real DB rows
     const idPriceChanges = -1;
     const idTotals = -2;
@@ -1003,13 +1006,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     const idCash = -4;
     const idSaving = -5;
     const idInvested = -6;
+    const idPortfolio = -7;
 
     return [
       DashboardChart(id: idPriceChanges, title: 'Price Changes', widgetType: 'price_changes',
           sortOrder: 0, seriesJson: '[]', createdAt: now),
       DashboardChart(id: idTotals, title: 'Totals', widgetType: 'chart',
           sortOrder: 1, seriesJson: '[]',
-          sourceChartIds: jsonEncode([idTotalAssets, idCash, idSaving, idInvested]),
+          sourceChartIds: jsonEncode([idTotalAssets, idCash, idSaving, idInvested, idPortfolio]),
           createdAt: now),
       DashboardChart(id: idTotalAssets, title: 'Total Assets', widgetType: 'chart',
           sortOrder: 2, seriesJson: totalAssetsJson, createdAt: now),
@@ -1019,6 +1023,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           sortOrder: 4, seriesJson: savingJson, createdAt: now),
       DashboardChart(id: idInvested, title: 'Invested', widgetType: 'chart',
           sortOrder: 5, seriesJson: investedJson, createdAt: now),
+      DashboardChart(id: idPortfolio, title: 'Portfolio', widgetType: 'chart',
+          sortOrder: 6, seriesJson: portfolioJson, createdAt: now),
     ];
   }
 
