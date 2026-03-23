@@ -37,7 +37,16 @@ jobs:
   build:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            artifact: FinanceCopilot-macos
+          - os: windows-latest
+            platform: windows
+            artifact: FinanceCopilot-windows
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,18 +69,21 @@ jobs:
         run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Build release
-        run: flutter build macos --release
+        run: flutter build ${{ matrix.platform }} --release
 
       - name: Ad-hoc sign macOS build
+        if: matrix.platform == 'macos'
         run: codesign --force --deep --sign - --entitlements macos/Runner/Release.entitlements build/macos/Build/Products/Release/FinanceCopilot.app
 
       - name: Verify entitlements
+        if: matrix.platform == 'macos'
         run: |
           ENTITLEMENTS=$(codesign -d --entitlements - build/macos/Build/Products/Release/FinanceCopilot.app 2>&1)
           echo "$ENTITLEMENTS"
           echo "$ENTITLEMENTS" | grep -q "user-selected" || (echo "ERROR: file access entitlement missing from signed app" && exit 1)
 
       - name: Create macOS DMG
+        if: matrix.platform == 'macos'
         run: |
           brew install create-dmg
           create-dmg \
@@ -84,11 +96,19 @@ jobs:
             build/FinanceCopilot-macos.dmg \
             build/macos/Build/Products/Release/FinanceCopilot.app
 
-      - name: Upload artifact
+      - name: Upload artifact (macOS)
+        if: matrix.platform == 'macos'
         uses: actions/upload-artifact@v4
         with:
-          name: FinanceCopilot-macos
+          name: ${{ matrix.artifact }}
           path: build/FinanceCopilot-macos.dmg
+
+      - name: Upload artifact (Windows)
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/windows/x64/runner/Release/
 
   release:
     needs: build
@@ -97,16 +117,23 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Prepare Windows zip
+        run: |
+          cd artifacts/FinanceCopilot-windows
+          zip -r ../FinanceCopilot-windows.zip .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
+          files: |
+            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
+            artifacts/FinanceCopilot-windows.zip
 
   update-tap:
     needs: release
@@ -137,10 +164,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Prepare Windows zip
+        run: |
+          cd artifacts/FinanceCopilot-windows
+          zip -r ../FinanceCopilot-windows.zip .
 
       - name: Delete existing latest release
         run: gh release delete latest --yes --cleanup-tag || true
@@ -155,7 +187,8 @@ jobs:
             --prerelease \
             --title "Nightly Build" \
             --notes "Automated nightly build from main. Commit: ${{ github.sha }}" \
-            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
+            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg \
+            artifacts/FinanceCopilot-windows.zip
 
   update-tap-nightly:
     needs: latest
