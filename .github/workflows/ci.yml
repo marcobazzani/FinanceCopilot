@@ -65,6 +65,12 @@ jobs:
       - name: Ad-hoc sign macOS build
         run: codesign --force --deep --sign - --entitlements macos/Runner/Release.entitlements build/macos/Build/Products/Release/FinanceCopilot.app
 
+      - name: Verify entitlements
+        run: |
+          ENTITLEMENTS=$(codesign -d --entitlements - build/macos/Build/Products/Release/FinanceCopilot.app 2>&1)
+          echo "$ENTITLEMENTS"
+          echo "$ENTITLEMENTS" | grep -q "user-selected" || (echo "ERROR: file access entitlement missing from signed app" && exit 1)
+
       - name: Create macOS DMG
         run: |
           brew install create-dmg
