@@ -46,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -148,6 +148,18 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 19) {
             await m.createTable(assetCompositions);
+          }
+          if (from < 20) {
+            // Add type column, migrate description→type, drop description
+            await customStatement(
+              "ALTER TABLE incomes ADD COLUMN type TEXT NOT NULL DEFAULT 'income'",
+            );
+            await customStatement(
+              "UPDATE incomes SET type = 'refund' WHERE LOWER(description) LIKE '%rimborso%'",
+            );
+            await customStatement(
+              'ALTER TABLE incomes DROP COLUMN description',
+            );
           }
         },
       );

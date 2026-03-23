@@ -584,9 +584,9 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   final rates = _RateResolver(rateService, baseCurrency);
 
-  // 1. Load all incomes, convert to base currency
+  // 1. Load incomes (excluding refunds), convert to base currency
   final rows = await db.customSelect(
-    'SELECT date, amount, currency FROM incomes ORDER BY date ASC',
+    "SELECT date, amount, currency FROM incomes WHERE type = 'income' ORDER BY date ASC",
   ).get();
 
   final incomeByMonth = <(int, int), double>{};

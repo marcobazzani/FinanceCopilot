@@ -43,6 +43,8 @@ enum EventType {
   transferOut,
 }
 
+enum IncomeType { income, refund }
+
 enum DepreciationMethod { linear, decliningBalance, custom }
 
 enum DepreciationDirection { forward, backward }
@@ -324,7 +326,7 @@ class Incomes extends Table {
   IntColumn get id => integer().autoIncrement()();
   DateTimeColumn get date => dateTime()();
   RealColumn get amount => real()();
-  TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get type => textEnum<IncomeType>().withDefault(Constant(IncomeType.income.name))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }

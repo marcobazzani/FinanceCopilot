@@ -11886,18 +11886,16 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _descriptionMeta = const VerificationMeta(
-    'description',
-  );
   @override
-  late final GeneratedColumn<String> description = GeneratedColumn<String>(
-    'description',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(''),
-  );
+  late final GeneratedColumnWithTypeConverter<IncomeType, String> type =
+      GeneratedColumn<String>(
+        'type',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: Constant(IncomeType.income.name),
+      ).withConverter<IncomeType>($IncomesTable.$convertertype);
   static const VerificationMeta _currencyMeta = const VerificationMeta(
     'currency',
   );
@@ -11931,7 +11929,7 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     id,
     date,
     amount,
-    description,
+    type,
     currency,
     createdAt,
   ];
@@ -11966,15 +11964,6 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     } else if (isInserting) {
       context.missing(_amountMeta);
     }
-    if (data.containsKey('description')) {
-      context.handle(
-        _descriptionMeta,
-        description.isAcceptableOrUnknown(
-          data['description']!,
-          _descriptionMeta,
-        ),
-      );
-    }
     if (data.containsKey('currency')) {
       context.handle(
         _currencyMeta,
@@ -12008,10 +11997,12 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
         DriftSqlType.double,
         data['${effectivePrefix}amount'],
       )!,
-      description: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}description'],
-      )!,
+      type: $IncomesTable.$convertertype.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}type'],
+        )!,
+      ),
       currency: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}currency'],
@@ -12027,20 +12018,23 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
   $IncomesTable createAlias(String alias) {
     return $IncomesTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<IncomeType, String, String> $convertertype =
+      const EnumNameConverter<IncomeType>(IncomeType.values);
 }
 
 class Income extends DataClass implements Insertable<Income> {
   final int id;
   final DateTime date;
   final double amount;
-  final String description;
+  final IncomeType type;
   final String currency;
   final DateTime createdAt;
   const Income({
     required this.id,
     required this.date,
     required this.amount,
-    required this.description,
+    required this.type,
     required this.currency,
     required this.createdAt,
   });
@@ -12050,7 +12044,9 @@ class Income extends DataClass implements Insertable<Income> {
     map['id'] = Variable<int>(id);
     map['date'] = Variable<DateTime>(date);
     map['amount'] = Variable<double>(amount);
-    map['description'] = Variable<String>(description);
+    {
+      map['type'] = Variable<String>($IncomesTable.$convertertype.toSql(type));
+    }
     map['currency'] = Variable<String>(currency);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
@@ -12061,7 +12057,7 @@ class Income extends DataClass implements Insertable<Income> {
       id: Value(id),
       date: Value(date),
       amount: Value(amount),
-      description: Value(description),
+      type: Value(type),
       currency: Value(currency),
       createdAt: Value(createdAt),
     );
@@ -12076,7 +12072,9 @@ class Income extends DataClass implements Insertable<Income> {
       id: serializer.fromJson<int>(json['id']),
       date: serializer.fromJson<DateTime>(json['date']),
       amount: serializer.fromJson<double>(json['amount']),
-      description: serializer.fromJson<String>(json['description']),
+      type: $IncomesTable.$convertertype.fromJson(
+        serializer.fromJson<String>(json['type']),
+      ),
       currency: serializer.fromJson<String>(json['currency']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -12088,7 +12086,9 @@ class Income extends DataClass implements Insertable<Income> {
       'id': serializer.toJson<int>(id),
       'date': serializer.toJson<DateTime>(date),
       'amount': serializer.toJson<double>(amount),
-      'description': serializer.toJson<String>(description),
+      'type': serializer.toJson<String>(
+        $IncomesTable.$convertertype.toJson(type),
+      ),
       'currency': serializer.toJson<String>(currency),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -12098,14 +12098,14 @@ class Income extends DataClass implements Insertable<Income> {
     int? id,
     DateTime? date,
     double? amount,
-    String? description,
+    IncomeType? type,
     String? currency,
     DateTime? createdAt,
   }) => Income(
     id: id ?? this.id,
     date: date ?? this.date,
     amount: amount ?? this.amount,
-    description: description ?? this.description,
+    type: type ?? this.type,
     currency: currency ?? this.currency,
     createdAt: createdAt ?? this.createdAt,
   );
@@ -12114,9 +12114,7 @@ class Income extends DataClass implements Insertable<Income> {
       id: data.id.present ? data.id.value : this.id,
       date: data.date.present ? data.date.value : this.date,
       amount: data.amount.present ? data.amount.value : this.amount,
-      description: data.description.present
-          ? data.description.value
-          : this.description,
+      type: data.type.present ? data.type.value : this.type,
       currency: data.currency.present ? data.currency.value : this.currency,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
@@ -12128,7 +12126,7 @@ class Income extends DataClass implements Insertable<Income> {
           ..write('id: $id, ')
           ..write('date: $date, ')
           ..write('amount: $amount, ')
-          ..write('description: $description, ')
+          ..write('type: $type, ')
           ..write('currency: $currency, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -12136,8 +12134,7 @@ class Income extends DataClass implements Insertable<Income> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, date, amount, description, currency, createdAt);
+  int get hashCode => Object.hash(id, date, amount, type, currency, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -12145,7 +12142,7 @@ class Income extends DataClass implements Insertable<Income> {
           other.id == this.id &&
           other.date == this.date &&
           other.amount == this.amount &&
-          other.description == this.description &&
+          other.type == this.type &&
           other.currency == this.currency &&
           other.createdAt == this.createdAt);
 }
@@ -12154,14 +12151,14 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   final Value<int> id;
   final Value<DateTime> date;
   final Value<double> amount;
-  final Value<String> description;
+  final Value<IncomeType> type;
   final Value<String> currency;
   final Value<DateTime> createdAt;
   const IncomesCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
     this.amount = const Value.absent(),
-    this.description = const Value.absent(),
+    this.type = const Value.absent(),
     this.currency = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
@@ -12169,7 +12166,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     this.id = const Value.absent(),
     required DateTime date,
     required double amount,
-    this.description = const Value.absent(),
+    this.type = const Value.absent(),
     this.currency = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : date = Value(date),
@@ -12178,7 +12175,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     Expression<int>? id,
     Expression<DateTime>? date,
     Expression<double>? amount,
-    Expression<String>? description,
+    Expression<String>? type,
     Expression<String>? currency,
     Expression<DateTime>? createdAt,
   }) {
@@ -12186,7 +12183,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
       if (id != null) 'id': id,
       if (date != null) 'date': date,
       if (amount != null) 'amount': amount,
-      if (description != null) 'description': description,
+      if (type != null) 'type': type,
       if (currency != null) 'currency': currency,
       if (createdAt != null) 'created_at': createdAt,
     });
@@ -12196,7 +12193,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     Value<int>? id,
     Value<DateTime>? date,
     Value<double>? amount,
-    Value<String>? description,
+    Value<IncomeType>? type,
     Value<String>? currency,
     Value<DateTime>? createdAt,
   }) {
@@ -12204,7 +12201,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
       id: id ?? this.id,
       date: date ?? this.date,
       amount: amount ?? this.amount,
-      description: description ?? this.description,
+      type: type ?? this.type,
       currency: currency ?? this.currency,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -12222,8 +12219,10 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     if (amount.present) {
       map['amount'] = Variable<double>(amount.value);
     }
-    if (description.present) {
-      map['description'] = Variable<String>(description.value);
+    if (type.present) {
+      map['type'] = Variable<String>(
+        $IncomesTable.$convertertype.toSql(type.value),
+      );
     }
     if (currency.present) {
       map['currency'] = Variable<String>(currency.value);
@@ -12240,7 +12239,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
           ..write('id: $id, ')
           ..write('date: $date, ')
           ..write('amount: $amount, ')
-          ..write('description: $description, ')
+          ..write('type: $type, ')
           ..write('currency: $currency, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -21695,7 +21694,7 @@ typedef $$IncomesTableCreateCompanionBuilder =
       Value<int> id,
       required DateTime date,
       required double amount,
-      Value<String> description,
+      Value<IncomeType> type,
       Value<String> currency,
       Value<DateTime> createdAt,
     });
@@ -21704,7 +21703,7 @@ typedef $$IncomesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<DateTime> date,
       Value<double> amount,
-      Value<String> description,
+      Value<IncomeType> type,
       Value<String> currency,
       Value<DateTime> createdAt,
     });
@@ -21733,10 +21732,11 @@ class $$IncomesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => ColumnFilters(column),
-  );
+  ColumnWithTypeConverterFilters<IncomeType, IncomeType, String> get type =>
+      $composableBuilder(
+        column: $table.type,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
 
   ColumnFilters<String> get currency => $composableBuilder(
     column: $table.currency,
@@ -21773,8 +21773,8 @@ class $$IncomesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get description => $composableBuilder(
-    column: $table.description,
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -21807,10 +21807,8 @@ class $$IncomesTableAnnotationComposer
   GeneratedColumn<double> get amount =>
       $composableBuilder(column: $table.amount, builder: (column) => column);
 
-  GeneratedColumn<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => column,
-  );
+  GeneratedColumnWithTypeConverter<IncomeType, String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
 
   GeneratedColumn<String> get currency =>
       $composableBuilder(column: $table.currency, builder: (column) => column);
@@ -21850,14 +21848,14 @@ class $$IncomesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
                 Value<double> amount = const Value.absent(),
-                Value<String> description = const Value.absent(),
+                Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => IncomesCompanion(
                 id: id,
                 date: date,
                 amount: amount,
-                description: description,
+                type: type,
                 currency: currency,
                 createdAt: createdAt,
               ),
@@ -21866,14 +21864,14 @@ class $$IncomesTableTableManager
                 Value<int> id = const Value.absent(),
                 required DateTime date,
                 required double amount,
-                Value<String> description = const Value.absent(),
+                Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => IncomesCompanion.insert(
                 id: id,
                 date: date,
                 amount: amount,
-                description: description,
+                type: type,
                 currency: currency,
                 createdAt: createdAt,
               ),

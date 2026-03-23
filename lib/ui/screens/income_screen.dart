@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
+import '../../database/tables.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
@@ -29,6 +30,13 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     super.dispose();
   }
 
+  String _typeLabel(AppStrings s, IncomeType type) {
+    return switch (type) {
+      IncomeType.income => s.incomeTypeIncome,
+      IncomeType.refund => s.incomeTypeRefund,
+    };
+  }
+
   Future<void> _handlePaste() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text == null || data!.text!.trim().isEmpty) return;
@@ -50,7 +58,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
       final dateStr = parts[0].trim();
       final amountStr = parts[1].trim();
-      final description = parts.length > 2 ? parts[2].trim() : '';
+      final typeStr = parts.length > 2 ? parts[2].trim().toLowerCase() : '';
       final currency = parts.length > 3 ? parts[3].trim().toUpperCase() : baseCurrency;
 
       // Skip rows with empty amount
@@ -62,10 +70,14 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       final amount = _parseItalianNumber(amountStr);
       if (amount == null) continue;
 
+      final type = typeStr.contains('rimborso') || typeStr.contains('refund')
+          ? IncomeType.refund
+          : IncomeType.income;
+
       entries.add(IncomesCompanion.insert(
         date: date,
         amount: amount,
-        description: Value(description),
+        type: Value(type),
         currency: Value(currency),
       ));
     }
@@ -113,9 +125,9 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
         body: incomesAsync.when(
           data: (incomes) {
             if (incomes.isEmpty) {
-              return const Center(
+              return Center(
                 child: Text(
-                  'No income records yet.\nAdd entries or paste from Excel (Ctrl/⌘+V).',
+                  s.noIncomeYet,
                   textAlign: TextAlign.center,
                 ),
               );
@@ -127,17 +139,25 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
               itemBuilder: (ctx, i) {
                 final income = incomes[i];
                 final sym = currencySymbol(income.currency);
+                final isRefund = income.type == IncomeType.refund;
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    child: Icon(Icons.payments, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                    backgroundColor: isRefund
+                        ? Colors.orange.shade100
+                        : Theme.of(context).colorScheme.primaryContainer,
+                    child: Icon(
+                      isRefund ? Icons.replay : Icons.payments,
+                      color: isRefund
+                          ? Colors.orange.shade800
+                          : Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
                   ),
                   title: PrivacyText(
                     '${amtFormat.format(income.amount)} $sym',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
-                    '${dateFmt.format(income.date)}${income.description.isNotEmpty ? ' · ${income.description}' : ''}',
+                    '${dateFmt.format(income.date)} · ${_typeLabel(s, income.type)}',
                   ),
                   trailing: Text(income.currency, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                   onTap: () => _showEditDialog(context, income),
@@ -178,8 +198,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final dateFmt = fmt.shortDateFormat(_locale);
     final dateCtl = TextEditingController(text: dateFmt.format(DateTime.now()));
     final amountCtl = TextEditingController();
-    final descCtl = TextEditingController();
     var currency = defaultCurrency;
+    var type = IncomeType.income;
 
     final result = await showDialog<bool>(
       context: context,
@@ -202,9 +222,13 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: descCtl,
-                  decoration: InputDecoration(labelText: s.description),
+                DropdownButtonFormField<IncomeType>(
+                  value: type,
+                  decoration: InputDecoration(labelText: s.incomeTypeLabel),
+                  items: IncomeType.values
+                      .map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t))))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => type = v!),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
@@ -242,7 +266,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     await ref.read(incomeServiceProvider).create(
       date: date,
       amount: amount,
-      description: descCtl.text.trim(),
+      type: type,
       currency: currency,
     );
   }
@@ -252,8 +276,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final dateFmt = fmt.shortDateFormat(_locale);
     final dateCtl = TextEditingController(text: dateFmt.format(income.date));
     final amountCtl = TextEditingController(text: income.amount.toString());
-    final descCtl = TextEditingController(text: income.description);
     var currency = income.currency;
+    var type = income.type;
 
     final result = await showDialog<String>(
       context: context,
@@ -276,9 +300,13 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 ),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: descCtl,
-                  decoration: InputDecoration(labelText: s.description),
+                DropdownButtonFormField<IncomeType>(
+                  value: type,
+                  decoration: InputDecoration(labelText: s.incomeTypeLabel),
+                  items: IncomeType.values
+                      .map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t))))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => type = v!),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
@@ -333,7 +361,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       IncomesCompanion(
         date: Value(date),
         amount: Value(amount),
-        description: Value(descCtl.text.trim()),
+        type: Value(type),
         currency: Value(currency),
       ),
     );

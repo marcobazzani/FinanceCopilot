@@ -101,7 +101,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   List<String> get _optionalFields => switch (_target) {
     ImportTarget.transaction => ['currency', 'valueDate', 'status'],
     ImportTarget.assetEvent => ['description'],
-    ImportTarget.income => ['description', 'currency'],
+    ImportTarget.income => ['type', 'currency'],
   };
 
   // Multi-column mappings for optional fields: field → [col1, col2, ...]
@@ -278,7 +278,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       tryMap('amount', ['amount', 'importo', 'entrate', 'uscite', 'controvalore']);
     } else if (_target == ImportTarget.income) {
       tryMap('amount', ['amount', 'importo', 'stipendio', 'netto', 'salary', 'net']);
-      tryMap('description', ['description', 'descrizione', 'tipo', 'type', 'note']);
+      tryMap('type', ['type', 'tipo', 'description', 'descrizione']);
       tryMap('currency', ['currency', 'valuta', 'divisa']);
     } else {
       // Asset event fields

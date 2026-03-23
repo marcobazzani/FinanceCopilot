@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../database/database.dart';
+import '../database/tables.dart';
 import '../utils/logger.dart';
 
 final _log = getLogger('IncomeService');
@@ -37,15 +38,15 @@ class IncomeService {
   Future<int> create({
     required DateTime date,
     required double amount,
-    String description = '',
+    IncomeType type = IncomeType.income,
     String currency = 'EUR',
   }) async {
-    _log.info('create: amount=$amount, date=$date, currency=$currency');
+    _log.info('create: amount=$amount, date=$date, type=$type, currency=$currency');
     return _db.into(_db.incomes).insert(
       IncomesCompanion.insert(
         date: date,
         amount: amount,
-        description: Value(description),
+        type: Value(type),
         currency: Value(currency),
       ),
     );

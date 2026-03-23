@@ -683,7 +683,7 @@ class ImportService {
       );
     }
 
-    final descMapping = mappingByField['description'];
+    final typeMapping = mappingByField['type'];
     final currencyMapping = mappingByField['currency'];
 
     var imported = 0;
@@ -699,13 +699,16 @@ class ImportService {
         final amountStr = _resolveMapping(amountMapping, row) ?? '';
         final date = _parseDate(dateStr);
         final amount = _parseAmount(amountStr);
-        final description = descMapping != null ? (_resolveMapping(descMapping, row) ?? '') : '';
+        final typeStr = typeMapping != null ? (_resolveMapping(typeMapping, row) ?? '') : '';
         final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? defaultCurrency) : defaultCurrency;
+        final type = typeStr.toLowerCase().contains('rimborso') || typeStr.toLowerCase().contains('refund')
+            ? IncomeType.refund
+            : IncomeType.income;
 
         companions.add(IncomesCompanion.insert(
           date: date,
           amount: amount,
-          description: Value(description),
+          type: Value(type),
           currency: Value(currency.isNotEmpty ? currency : defaultCurrency),
         ));
         imported++;

@@ -292,6 +292,9 @@ class AppStrings {
       : 'No income records yet.\nAdd entries or paste from Excel (Ctrl/⌘+V).';
   String get addIncomeTitle        => _it ? 'Aggiungi reddito'          : 'Add Income';
   String get editIncomeTitle       => _it ? 'Modifica reddito'          : 'Edit Income';
+  String get incomeTypeLabel       => _it ? 'Tipo'                      : 'Type';
+  String get incomeTypeIncome      => _it ? 'Reddito'                   : 'Income';
+  String get incomeTypeRefund      => _it ? 'Rimborso'                  : 'Refund';
   String get invalidDateOrAmount   => _it ? 'Data o importo non valido' : 'Invalid date or amount';
   String get deleteIncomeTitle     => _it ? 'Elimina reddito?'          : 'Delete Income?';
   String deleteIncomeConfirm(String amt, String cur, String d) => _it
