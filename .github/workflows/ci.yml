@@ -135,6 +135,11 @@ jobs:
             --notes "Automated nightly build from main. Commit: ${{ github.sha }}" \
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
 
+  update-tap-nightly:
+    needs: latest
+    if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
       - name: Update nightly Homebrew cask
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
