@@ -61,14 +61,28 @@ FX rates for 13 currencies (EUR, USD, GBP, CHF, JPY, SEK, NOK, DKK, PLN, CZK, HU
 | Charts | fl_chart |
 | Import | csv, excel, file_picker |
 
-## Getting Started
+## Install
 
-### Prerequisites
+### Homebrew (macOS)
 
-- Flutter SDK ^3.8.1
-- Xcode (macOS builds)
+```bash
+brew tap marcobazzani/financecopilot
+brew install --cask financecopilot
+```
 
-### Build & Run
+For the nightly build (latest from `main`):
+
+```bash
+brew install --cask financecopilot-nightly
+```
+
+### Download
+
+Pre-built binaries for macOS, Windows, and Linux are available on the [Releases](https://github.com/marcobazzani/FinanceCopilot/releases) page. The [Nightly Build](https://github.com/marcobazzani/FinanceCopilot/releases/tag/latest) is updated automatically on every push to `main`.
+
+### Build from Source
+
+Prerequisites: Flutter SDK ^3.8.1, Xcode (macOS builds)
 
 ```bash
 flutter pub get
