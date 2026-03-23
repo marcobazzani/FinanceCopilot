@@ -134,3 +134,19 @@ jobs:
             --title "Nightly Build" \
             --notes "Automated nightly build from main. Commit: ${{ github.sha }}" \
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
+
+      - name: Update nightly Homebrew cask
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          SHA="${{ github.sha }}"
+          VERSION="nightly-${SHA:0:7}"
+          git clone https://x-access-token:${GH_TOKEN}@github.com/marcobazzani/homebrew-financecopilot.git tap
+          cd tap
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" Casks/financecopilot-nightly.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/financecopilot-nightly.rb
+          git diff --cached --quiet && echo "Already up to date" && exit 0
+          git commit -m "Update nightly to ${VERSION}"
+          git push
