@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:asset_manager/database/database.dart';
+import 'package:asset_manager/database/tables.dart';
 import 'package:asset_manager/services/income_service.dart';
 
 void main() {
@@ -20,13 +21,13 @@ void main() {
       final id = await service.create(
         date: DateTime(2024, 6, 15),
         amount: 3000,
-        description: 'June salary',
+        type: IncomeType.income,
         currency: 'EUR',
       );
 
       final income = await service.getById(id);
       expect(income.amount, 3000);
-      expect(income.description, 'June salary');
+      expect(income.type, IncomeType.income);
       expect(income.currency, 'EUR');
       expect(income.date, DateTime(2024, 6, 15));
     });
@@ -39,38 +40,38 @@ void main() {
 
       final income = await service.getById(id);
       expect(income.currency, 'EUR');
-      expect(income.description, '');
+      expect(income.type, IncomeType.income);
     });
 
     test('getAll returns ordered by date desc', () async {
-      await service.create(date: DateTime(2023, 1, 1), amount: 1000, description: 'Oldest');
-      await service.create(date: DateTime(2025, 1, 1), amount: 2000, description: 'Newest');
-      await service.create(date: DateTime(2024, 6, 1), amount: 1500, description: 'Middle');
+      await service.create(date: DateTime(2023, 1, 1), amount: 1000);
+      await service.create(date: DateTime(2025, 1, 1), amount: 2000, type: IncomeType.refund);
+      await service.create(date: DateTime(2024, 6, 1), amount: 1500);
 
       final all = await service.getAll();
       expect(all, hasLength(3));
-      expect(all[0].description, 'Newest');
-      expect(all[1].description, 'Middle');
-      expect(all[2].description, 'Oldest');
+      expect(all[0].amount, 2000);
+      expect(all[0].type, IncomeType.refund);
+      expect(all[1].amount, 1500);
+      expect(all[2].amount, 1000);
     });
 
     test('update fields', () async {
       final id = await service.create(
         date: DateTime(2024, 1, 1),
         amount: 1000,
-        description: 'Original',
       );
 
       await service.update(
         id,
         const IncomesCompanion(
-          description: Value('Updated'),
+          type: Value(IncomeType.refund),
           amount: Value(2000),
         ),
       );
 
       final updated = await service.getById(id);
-      expect(updated.description, 'Updated');
+      expect(updated.type, IncomeType.refund);
       expect(updated.amount, 2000);
     });
 
@@ -88,21 +89,19 @@ void main() {
 
   group('Bulk create', () {
     test('inserts multiple records', () async {
-      final entries = [
+      final entries = <IncomesCompanion>[
         IncomesCompanion.insert(
           date: DateTime(2024, 1, 15),
           amount: 3000,
-          description: const Value('Jan salary'),
         ),
         IncomesCompanion.insert(
           date: DateTime(2024, 2, 15),
           amount: 3000,
-          description: const Value('Feb salary'),
+          type: const Value(IncomeType.refund),
         ),
         IncomesCompanion.insert(
           date: DateTime(2024, 3, 15),
           amount: 3200,
-          description: const Value('Mar salary'),
           currency: const Value('USD'),
         ),
       ];
@@ -112,9 +111,10 @@ void main() {
       final all = await service.getAll();
       expect(all, hasLength(3));
       // Ordered by date desc
-      expect(all[0].description, 'Mar salary');
+      expect(all[0].amount, 3200);
       expect(all[0].currency, 'USD');
-      expect(all[2].description, 'Jan salary');
+      expect(all[1].type, IncomeType.refund);
+      expect(all[2].amount, 3000);
     });
 
     test('empty list does nothing', () async {
