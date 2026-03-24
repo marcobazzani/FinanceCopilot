@@ -2019,12 +2019,14 @@ class _AssetDailyChangesCard extends ConsumerStatefulWidget {
   ConsumerState<_AssetDailyChangesCard> createState() => _AssetDailyChangesCardState();
 }
 
-enum _SortCol { name, priceDiff, pct, valueDiff }
+enum _SortCol { name, priceDiff, pct, valueDiff, marketValue }
 enum _SortDir { asc, desc, none }
 
 class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
-  static const _labels = ['1d', '1w', '1m', '3m', '6m', 'YTD', '1y', '3y', '5y', 'All'];
-  int _selectedIdx = 0;
+  static const _units = ['d', 'w', 'm', 'y', 'YTD', 'All'];
+  int _number = 1;
+  String _unit = 'd';
+  final _numberController = TextEditingController(text: '1');
   _SortCol _sortCol = _SortCol.name;
   _SortDir _sortDir = _SortDir.asc;
 
@@ -2060,27 +2062,33 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         comparator = (a, b) => a.pricePct.compareTo(b.pricePct);
       case _SortCol.valueDiff:
         comparator = (a, b) => a.valueDiff.compareTo(b.valueDiff);
+      case _SortCol.marketValue:
+        comparator = (a, b) => a.todayPrice.compareTo(b.todayPrice);
     }
     sorted.sort((a, b) => _sortDir == _SortDir.desc ? comparator(b, a) : comparator(a, b));
     return sorted;
   }
 
+  bool get _isSpecialUnit => _unit == 'YTD' || _unit == 'All';
+
   DateTime get _referenceDate {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    return switch (_selectedIdx) {
-      0 => today.subtract(const Duration(days: 1)),
-      1 => today.subtract(const Duration(days: 7)),
-      2 => DateTime(today.year, today.month - 1, today.day),
-      3 => DateTime(today.year, today.month - 3, today.day),
-      4 => DateTime(today.year, today.month - 6, today.day),
-      5 => DateTime(today.year, 1, 1),
-      6 => DateTime(today.year - 1, today.month, today.day),
-      7 => DateTime(today.year - 3, today.month, today.day),
-      8 => DateTime(today.year - 5, today.month, today.day),
-      9 => DateTime(2000, 1, 1),
+    return switch (_unit) {
+      'd' => today.subtract(Duration(days: _number)),
+      'w' => today.subtract(Duration(days: _number * 7)),
+      'm' => DateTime(today.year, today.month - _number, today.day),
+      'y' => DateTime(today.year - _number, today.month, today.day),
+      'YTD' => DateTime(today.year, 1, 1),
+      'All' => DateTime(2000, 1, 1),
       _ => today.subtract(const Duration(days: 1)),
     };
+  }
+
+  @override
+  void dispose() {
+    _numberController.dispose();
+    super.dispose();
   }
 
   @override
@@ -2101,14 +2109,77 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
               children: [
                 Text(ref.watch(appStringsProvider).dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                 const Spacer(),
-                ...List.generate(_labels.length, (i) {
-                  final selected = i == _selectedIdx;
+                SizedBox(
+                  width: 56,
+                  child: TextField(
+                    controller: _numberController,
+                    enabled: !_isSpecialUnit,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12),
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                      suffixIconConstraints: const BoxConstraints(maxWidth: 20, maxHeight: 32),
+                      suffixIcon: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            height: 16,
+                            width: 20,
+                            child: IconButton(
+                              onPressed: _isSpecialUnit ? null : () {
+                                setState(() {
+                                  _number++;
+                                  _numberController.text = '$_number';
+                                });
+                              },
+                              icon: const Icon(Icons.arrow_drop_up, size: 16),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                          SizedBox(
+                            height: 16,
+                            width: 20,
+                            child: IconButton(
+                              onPressed: _isSpecialUnit || _number <= 1 ? null : () {
+                                setState(() {
+                                  _number--;
+                                  _numberController.text = '$_number';
+                                });
+                              },
+                              icon: const Icon(Icons.arrow_drop_down, size: 16),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    onChanged: (v) {
+                      final n = int.tryParse(v);
+                      if (n != null && n > 0) setState(() => _number = n);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 4),
+                ..._units.map((u) {
+                  final selected = u == _unit;
                   return Padding(
-                    padding: const EdgeInsets.only(left: 4),
+                    padding: const EdgeInsets.only(left: 2),
                     child: ChoiceChip(
-                      label: Text(_labels[i]),
+                      label: Text(u),
                       selected: selected,
-                      onSelected: (_) => setState(() => _selectedIdx = i),
+                      onSelected: (_) => setState(() {
+                        _unit = u;
+                        if (_isSpecialUnit) {
+                          _numberController.text = '';
+                        } else if (_numberController.text.isEmpty) {
+                          _number = 1;
+                          _numberController.text = '1';
+                        }
+                      }),
                       labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
                       visualDensity: VisualDensity.compact,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -2169,6 +2240,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       child: Row(
                         children: [
                           headerCell('Asset', _SortCol.name, flex: 3, align: TextAlign.left),
+                          headerCell('Price', _SortCol.marketValue, flex: 2),
                           headerCell('Price \u0394 ($symbol)', _SortCol.priceDiff),
                           headerCell('%', _SortCol.pct),
                           headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
@@ -2178,6 +2250,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                     ...sorted.map((c) => _buildRow(
                       theme: theme,
                       name: c.ticker ?? c.name,
+                      marketValue: c.todayPrice * c.todayFxRate,
                       priceDiff: c.priceDiff * c.todayFxRate,
                       pricePct: c.pricePct,
                       valueDiff: c.valueDiff,
@@ -2189,6 +2262,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                     _buildRow(
                       theme: theme,
                       name: 'Total',
+                      marketValue: null,
                       priceDiff: null,
                       pricePct: totalPct,
                       valueDiff: totalDiff,
@@ -2209,6 +2283,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
   Widget _buildRow({
     required ThemeData theme,
     required String name,
+    required double? marketValue,
     required double? priceDiff,
     required double pricePct,
     required double valueDiff,
@@ -2254,6 +2329,14 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                     style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
                     overflow: TextOverflow.ellipsis,
                   ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              marketValue != null ? amtFmt.format(marketValue) : '',
+              style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
+              textAlign: TextAlign.right,
+            ),
           ),
           if (priceDiff != null)
             Expanded(

@@ -272,7 +272,12 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
 
-    final latestPrice = await priceService.getPrice(asset.id, today);
+    // Use live price (not stored in DB) for today's value
+    double? latestPrice;
+    if (priceService is InvestingComService) {
+      latestPrice = await priceService.getLivePrice(asset.id);
+    }
+    latestPrice ??= await priceService.getPrice(asset.id, today);
     if (latestPrice == null) continue;
 
     double todayFx = 1.0;

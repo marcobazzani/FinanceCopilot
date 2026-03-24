@@ -258,6 +258,79 @@ class InvestingComService extends MarketPriceService {
   final _fxRateCache = <String, (double, DateTime)>{};
   static const _fxRateTtl = Duration(minutes: 10);
 
+  /// In-memory cache of live asset prices (assetId → (price, fetchedAt)).
+  /// These are NOT stored to the DB — used only for display.
+  final _livePriceCache = <int, (double, DateTime)>{};
+
+  /// Get today's live price for an asset without storing it to the DB.
+  /// Returns the cached value if fresh (< 10 min), otherwise fetches from API.
+  /// Falls back to the latest stored price in the DB.
+  Future<double?> getLivePrice(int assetId) async {
+    // Check cache
+    final cached = _livePriceCache[assetId];
+    if (cached != null && DateTime.now().difference(cached.$2) < _fxRateTtl) {
+      return cached.$1;
+    }
+
+    // Resolve CID for this asset
+    final assetRow = await db.customSelect(
+      'SELECT ticker, exchange FROM assets WHERE id = ?',
+      variables: [Variable.withInt(assetId)],
+    ).getSingleOrNull();
+    if (assetRow == null) return getPrice(assetId, DateTime.now());
+
+    final ticker = assetRow.readNullable<String>('ticker');
+    final exchange = assetRow.readNullable<String>('exchange') ?? 'MIL';
+    final searchTerm = ticker ?? '';
+    if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
+
+    final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
+    final cidRow = await db.customSelect(
+      'SELECT value FROM app_configs WHERE key = ?',
+      variables: [Variable.withString(cidKey)],
+    ).getSingleOrNull();
+    final cid = cidRow != null ? int.tryParse(cidRow.read<String>('value')) : null;
+    if (cid == null) return getPrice(assetId, DateTime.now());
+
+    // Fetch last 3 days and take the most recent price
+    try {
+      final now = DateTime.now();
+      final from = now.subtract(const Duration(days: 3));
+      final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
+      final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      final url = 'https://api.investing.com/api/financialdata/historical/$cid'
+          '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
+
+      if (!_hasFreshCookies) {
+        final ok = await _solveCloudflareCookies();
+        if (!ok) return getPrice(assetId, DateTime.now());
+      }
+
+      final response = await _dio.get(url, options: _apiOptions());
+      final data = response.data;
+      if (data is String) return getPrice(assetId, DateTime.now());
+
+      final dataMap = data as Map<String, dynamic>;
+      final rows = (dataMap['data'] as List?) ?? [];
+      for (final row in rows) {
+        final closeRaw = row['last_closeRaw'];
+        if (closeRaw == null) continue;
+        double? price;
+        if (closeRaw is num) price = closeRaw.toDouble();
+        else if (closeRaw is String) price = double.tryParse(closeRaw);
+        if (price != null && price > 0) {
+          _livePriceCache[assetId] = (price, DateTime.now());
+          return price;
+        }
+      }
+    } catch (e) {
+      _log.warning('getLivePrice: asset $assetId failed — $e');
+    }
+
+    return getPrice(assetId, DateTime.now());
+  }
+
   /// Get the live exchange rate from [from] to [to] via Investing.com.
   /// Searches for the currency pair, then fetches the latest price.
   Future<double?> getLiveFxRate(String from, String to) async {
@@ -407,6 +480,11 @@ class InvestingComService extends MarketPriceService {
       if (dt == null) continue;
       final day = DateTime(dt.year, dt.month, dt.day);
 
+      // Never store today's price — market may still be open.
+      // Today's price is fetched live via getLivePrice() for display only.
+      final nowDt = DateTime.now();
+      if (!day.isBefore(DateTime(nowDt.year, nowDt.month, nowDt.day))) continue;
+
       double? price;
       if (closeRaw is num) {
         price = closeRaw.toDouble();
@@ -538,9 +616,9 @@ class InvestingComService extends MarketPriceService {
             firstPrice != null &&
             firstBuy.isBefore(firstPrice);
 
-        final from = lastDate != null
-            ? lastDate.add(const Duration(days: 1))
-            : defaultFrom;
+        // Re-fetch from lastDate (not +1) so that an intraday price stored
+        // during trading hours gets corrected with the actual close.
+        final from = lastDate ?? defaultFrom;
 
         final needsForward = forceToday || from.isBefore(now);
 
@@ -629,17 +707,9 @@ class InvestingComService extends MarketPriceService {
           final firstBuy = await getFirstBuyDate(asset.id);
           final defaultFrom = firstBuy ?? DateTime(2020, 1, 1);
 
-          DateTime from;
-          if (lastDate != null) {
-            if (forceToday) {
-              final lastPlus1 = lastDate.add(const Duration(days: 1));
-              from = today.isAfter(lastPlus1) ? lastPlus1 : today;
-            } else {
-              from = lastDate.add(const Duration(days: 1));
-            }
-          } else {
-            from = defaultFrom;
-          }
+          // Re-fetch from lastDate (not +1) so that an intraday price stored
+          // during trading hours gets corrected with the actual close.
+          final from = lastDate ?? defaultFrom;
 
           if (forceToday || from.isBefore(now)) {
             final prices = await _fetchByCid(cid, from, label: label);
