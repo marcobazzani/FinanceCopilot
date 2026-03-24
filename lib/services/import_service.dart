@@ -320,7 +320,7 @@ class ImportService {
     required int accountId,
     Set<String>? hashColumns,
     void Function(int processed, int total)? onProgress,
-    String balanceMode = 'none',
+    String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
   }) async {

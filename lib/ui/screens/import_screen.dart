@@ -109,8 +109,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // Delimiter for string concatenation in multi-column mappings (default: space)
   final Map<String, String> _multiDelimiters = {};
 
-  // Balance computation mode: 'none' | 'column' | 'cumulative' | 'filtered'
-  String _balanceMode = 'none';
+  // Balance computation mode: 'cumulative' | 'column' | 'filtered'
+  String _balanceMode = 'cumulative';
   // For 'filtered' mode: which CSV column to filter on
   String? _balanceFilterColumn;
   // For 'filtered' mode: included status values
@@ -428,11 +428,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
 
       // Restore balance mode config
-      _balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'none';
+      _balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'cumulative';
       _balanceFilterColumn = savedMappings['__balanceFilterColumn'] as String?;
       if (_balanceFilterColumn != null && !currentCols.contains(_balanceFilterColumn)) {
         _balanceFilterColumn = null;
-        _balanceMode = 'none';
+        _balanceMode = 'cumulative';
       }
       _balanceFilterInclude.clear();
       if (savedMappings.containsKey('__balanceFilterInclude')) {
@@ -497,9 +497,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       mappingsToSave['__delim_${entry.key}'] = entry.value;
     }
     // Save balance mode config
-    if (_balanceMode != 'none') {
-      mappingsToSave['__balanceMode'] = _balanceMode;
-    }
+    mappingsToSave['__balanceMode'] = _balanceMode;
     if (_balanceFilterColumn != null) {
       mappingsToSave['__balanceFilterColumn'] = _balanceFilterColumn;
     }
@@ -993,9 +991,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         const SizedBox(height: 8),
         SegmentedButton<String>(
           segments: [
-            ButtonSegment(value: 'none', label: Text(s.recalcNone)),
-            ButtonSegment(value: 'column', label: Text(s.balanceFromColumn)),
             ButtonSegment(value: 'cumulative', label: Text(s.recalcCumulative)),
+            ButtonSegment(value: 'column', label: Text(s.balanceFromColumn)),
             ButtonSegment(value: 'filtered', label: Text(s.recalcFiltered)),
           ],
           selected: {_balanceMode},
@@ -2000,7 +1997,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _noHeader = false;
     _balanceDiffColumn = null;
     _savedConfig = null;
-    _balanceMode = 'none';
+    _balanceMode = 'cumulative';
     _balanceFilterColumn = null;
     _balanceFilterInclude.clear();
     _feeMode = 'column';

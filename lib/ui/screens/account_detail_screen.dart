@@ -564,7 +564,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       savedMappings = jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic>;
     }
 
-    var balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'none';
+    var balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'cumulative';
     String? filterColumn = savedMappings['__balanceFilterColumn'] as String?;
     if (filterColumn != null && !columns.contains(filterColumn)) filterColumn = null;
     final filterInclude = <String>{};
@@ -604,9 +604,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   const SizedBox(height: 12),
                   SegmentedButton<String>(
                     segments: [
-                      ButtonSegment(value: 'none', label: Text(s.recalcNone)),
-                      ButtonSegment(value: 'column', label: Text(s.recalcColumn)),
                       ButtonSegment(value: 'cumulative', label: Text(s.recalcCumulative)),
+                      ButtonSegment(value: 'column', label: Text(s.recalcColumn)),
                       ButtonSegment(value: 'filtered', label: Text(s.recalcFiltered)),
                     ],
                     selected: {balanceMode},
@@ -697,8 +696,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
-              onPressed: balanceMode == 'none' ||
-                      (balanceMode == 'filtered' && filterColumn == null) ||
+              onPressed: (balanceMode == 'filtered' && filterColumn == null) ||
                       (balanceMode == 'column' && savedMappings['balanceAfter'] == null)
                   ? null
                   : () async {
