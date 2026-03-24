@@ -8,7 +8,6 @@ import '../database/database.dart';
 import '../database/providers.dart';
 import '../l10n/app_strings.dart';
 import 'account_service.dart';
-import 'tour_service.dart';
 import 'asset_event_service.dart';
 import 'asset_service.dart';
 import 'buffer_service.dart';
@@ -73,16 +72,6 @@ final priceRefreshCounter = StateProvider<int>((ref) => 0);
 
 /// Privacy mode: blur all monetary amounts for screenshot sharing.
 final privacyModeProvider = StateProvider<bool>((ref) => false);
-
-/// Guided tour state.
-final tourProvider = StateProvider<TourState>((ref) => const TourState());
-
-/// Import screen wizard step (1=map, 2=confirm, 3=result), null when not on import screen.
-/// Used by tour overlay to observe import progress without coupling.
-final importStepProvider = StateProvider<int?>((ref) => null);
-
-/// Whether the import screen has a file loaded (preview available).
-final importFileLoadedProvider = StateProvider<bool>((ref) => false);
 
 // ── Reactive stream providers ──
 

@@ -6,16 +6,13 @@ import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/asset_service.dart';
-import '../../services/import_service.dart';
 import '../../services/investing_com_service.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
-import '../widgets/tour_keys.dart';
 import 'asset_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
-import 'import_screen.dart';
 import '../widgets/privacy_text.dart';
 
 class AssetsScreen extends ConsumerWidget {
@@ -81,32 +78,9 @@ class AssetsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            key: TourKeys.assetsImportFab,
-            heroTag: 'importAssets',
-            tooltip: s.importFromFileTooltip,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ImportScreen(
-                    preselectedTarget: ImportTarget.assetEvent,
-                  ),
-                ),
-              );
-            },
-            child: const Icon(Icons.file_upload),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'addAsset',
-            onPressed: () => _showCreateDialog(context, ref),
-            child: const Icon(Icons.add),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showCreateDialog(context, ref),
+        child: const Icon(Icons.add),
       ),
     );
   }

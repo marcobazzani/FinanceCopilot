@@ -13,9 +13,7 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
-import '../../services/tour_service.dart';
 import '../../l10n/app_strings.dart';
-import '../widgets/tour_keys.dart';
 import '../../utils/logger.dart';
 
 final _log = getLogger('ImportScreen');
@@ -24,8 +22,7 @@ final _log = getLogger('ImportScreen');
 class ImportScreen extends ConsumerStatefulWidget {
   final int? preselectedAccountId;
   final ImportTarget? preselectedTarget;
-  final String? preselectedFilePath;
-  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget, this.preselectedFilePath});
+  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget});
 
   @override
   ConsumerState<ImportScreen> createState() => _ImportScreenState();
@@ -34,17 +31,14 @@ class ImportScreen extends ConsumerStatefulWidget {
 /// Remember last directory across navigations and app restarts.
 String? _lastDirectory;
 
-String get _prefsDir {
-  final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
-  return Platform.isWindows
-      ? p.join(Platform.environment['APPDATA'] ?? home, 'FinanceCopilot')
-      : p.join(home, '.config', 'FinanceCopilot');
-}
-
 Future<String?> _loadLastDirectory() async {
   if (_lastDirectory != null) return _lastDirectory;
   try {
-    final file = File(p.join(_prefsDir, '.last_import_dir'));
+    final prefsDir = Directory(p.join(
+      Platform.environment['HOME'] ?? '',
+      'Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager',
+    ));
+    final file = File(p.join(prefsDir.path, '.last_import_dir'));
     if (await file.exists()) {
       _lastDirectory = (await file.readAsString()).trim();
     }
@@ -55,9 +49,11 @@ Future<String?> _loadLastDirectory() async {
 Future<void> _saveLastDirectory(String dir) async {
   _lastDirectory = dir;
   try {
-    final d = Directory(_prefsDir);
-    if (!await d.exists()) await d.create(recursive: true);
-    await File(p.join(_prefsDir, '.last_import_dir')).writeAsString(dir);
+    final prefsDir = Directory(p.join(
+      Platform.environment['HOME'] ?? '',
+      'Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager',
+    ));
+    await File(p.join(prefsDir.path, '.last_import_dir')).writeAsString(dir);
   } catch (_) {}
 }
 
@@ -136,37 +132,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (widget.preselectedTarget != null) {
       _target = widget.preselectedTarget!;
     }
-    if (widget.preselectedFilePath != null) {
-      Future.microtask(() => _loadFile(widget.preselectedFilePath!));
-    }
-    // Publish initial state for tour
-    Future.microtask(() {
-      ref.read(importStepProvider.notifier).state = _step;
-      ref.read(importFileLoadedProvider.notifier).state = false;
-    });
   }
 
   @override
   void dispose() {
     _skipRowsTimer?.cancel();
     _skipRowsCtrl.dispose();
-    // Clear import state when leaving
-    Future.microtask(() {
-      ref.read(importStepProvider.notifier).state = null;
-      ref.read(importFileLoadedProvider.notifier).state = false;
-    });
     super.dispose();
-  }
-
-  @override
-  void setState(VoidCallback fn) {
-    super.setState(fn);
-    // Publish state changes for tour observation
-    Future.microtask(() {
-      if (!mounted) return;
-      ref.read(importStepProvider.notifier).state = _step;
-      ref.read(importFileLoadedProvider.notifier).state = _preview != null;
-    });
   }
 
   @override
@@ -194,46 +166,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     );
   }
 
-  Future<void> _loadFile(String path) async {
-    _log.info('_loadFile: auto-loading $path');
-    setState(() {
-      _error = null;
-      _filePath = path;
-      _parsing = true;
-    });
-    try {
-      final importer = ref.read(importServiceProvider);
-      final preview = await importer.parseFile(path, skipRows: _skipRows, noHeader: _noHeader);
-      if (preview.rows.isEmpty) {
-        setState(() => _error = 'File is empty or has no data rows.');
-        return;
-      }
-      setState(() {
-        _preview = preview;
-        _parsing = false;
-        for (final f in _requiredFields) {
-          _mappings[f] = null;
-        }
-        _autoMap(preview.columns);
-      });
-    } catch (e) {
-      _log.warning('_loadFile error: $e');
-      if (mounted) setState(() { _error = '$e'; _parsing = false; });
-    }
-  }
-
   Future<void> _pickFile() async {
     _log.info('_pickFile: opening file picker');
     await _loadLastDirectory();
-    // During tour, default to the demo CSV folder
-    final tour = ref.read(tourProvider);
-    final initialDir = (tour.isActive && tour.demoCsvDir != null)
-        ? tour.demoCsvDir!
-        : _lastDirectory;
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['csv', 'xlsx', 'xls', 'tsv'],
-      initialDirectory: initialDir,
+      initialDirectory: _lastDirectory,
     );
 
     if (result == null || result.files.single.path == null) {
@@ -594,7 +533,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         Row(
           children: [
             FilledButton.icon(
-              key: TourKeys.importOpenFile,
               icon: const Icon(Icons.folder_open),
               label: Text(s.openFile),
               onPressed: _parsing ? null : _pickFile,
@@ -674,7 +612,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       children: [
         // Skip rows (auto re-parse after 1s or Enter)
         Row(
-          key: TourKeys.importSkipRows,
           children: [
             Text(s.skipRows, style: const TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(
@@ -763,25 +700,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           child: ListView(
             children: [
               // Required fields
-              KeyedSubtree(
-                key: TourKeys.importMapDate,
-                child: _buildMappingRow('date', columns, required: true),
-              ),
+              _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
-                KeyedSubtree(
-                  key: TourKeys.importMapAmount,
-                  child: _buildAmountFormulaRow(columns),
-                )
+                _buildAmountFormulaRow(columns)
               else
                 _buildMappingRow('amount', columns, required: true),
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount')
-                  .map((f) => f == 'description'
-                    ? KeyedSubtree(
-                        key: TourKeys.importMapDescription,
-                        child: _buildMappingRow(f, columns, required: true, multiColumn: true),
-                      )
-                    : _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
+                  .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
               // Fee section for asset events
               if (_target == ImportTarget.assetEvent) ...[
                 const SizedBox(height: 12),
@@ -795,15 +721,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               Text(s.unmappedHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               if (_target == ImportTarget.transaction && preview != null) ...[
                 const Divider(),
-                KeyedSubtree(
-                  key: TourKeys.importBalance,
-                  child: _buildBalanceModeSection(preview),
-                ),
+                _buildBalanceModeSection(preview),
                 const Divider(),
 
                 // Dedup hash column selector
                 const SizedBox(height: 8),
-                Text(s.dedupKeyColumns, key: TourKeys.importDedup, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.dedupKeyColumns, style: const TextStyle(fontWeight: FontWeight.bold)),
                 Text(s.dedupKeyHelp,
                     style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 4),
@@ -873,7 +796,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              key: TourKeys.importNext,
               onPressed: _canProceedToConfirm() ? () => setState(() => _step = 2) : null,
               child: Text(s.next),
             ),
@@ -1336,7 +1258,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
 
     return Row(
-      key: TourKeys.importFormula,
       mainAxisSize: MainAxisSize.min,
       children: [
         modeBtn('Direct', Icons.arrow_forward, 'simple'),
@@ -1687,7 +1608,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               FilledButton.icon(
-                key: TourKeys.importConfirm,
                 icon: const Icon(Icons.check),
                 label: const Text('Import'),
                 onPressed: (isAssetImport || isIncomeImport || _targetId != null) ? _executeImport : null,
@@ -2034,7 +1954,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   ),
                   const SizedBox(width: 12),
                   FilledButton(
-                    key: TourKeys.importDone,
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Done'),
                   ),

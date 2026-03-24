@@ -5,7 +5,6 @@ import '../../database/database.dart';
 import '../../services/capex_service.dart';
 import '../../services/providers.dart';
 import '../../l10n/app_strings.dart';
-import '../widgets/tour_keys.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'capex_detail_screen.dart';
 import 'capex_edit_screen.dart';
@@ -100,7 +99,6 @@ class _SpreadTab extends ConsumerWidget {
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
       floatingActionButton: FloatingActionButton(
-        key: TourKeys.adjustmentsFab,
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const CapexEditScreen()),

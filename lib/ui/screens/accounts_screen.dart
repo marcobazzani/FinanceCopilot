@@ -4,14 +4,11 @@ import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../services/account_service.dart';
-import '../../services/import_service.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/providers.dart';
 import '../../utils/formatters.dart' as fmt;
-import '../widgets/tour_keys.dart';
 import 'account_detail_screen.dart';
 import 'dashboard_screen.dart' show currencySymbol;
-import 'import_screen.dart';
 import '../widgets/privacy_text.dart';
 
 class AccountsScreen extends ConsumerWidget {
@@ -74,32 +71,9 @@ class AccountsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            key: TourKeys.accountsImportFab,
-            heroTag: 'importAccounts',
-            tooltip: s.importFromFileTooltip,
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ImportScreen(
-                    preselectedTarget: ImportTarget.transaction,
-                  ),
-                ),
-              );
-            },
-            child: const Icon(Icons.file_upload),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'addAccount',
-            onPressed: () => _showCreateDialog(context, ref),
-            child: const Icon(Icons.add),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showCreateDialog(context, ref),
+        child: const Icon(Icons.add),
       ),
     );
   }
