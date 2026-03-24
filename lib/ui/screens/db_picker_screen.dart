@@ -9,17 +9,25 @@ import 'package:path/path.dart' as p;
 
 import '../../database/providers.dart';
 import '../../l10n/app_strings.dart';
+import '../../services/demo_csv_service.dart';
 import '../../services/demo_db_service.dart';
 import '../../services/providers.dart';
+import '../../services/tour_service.dart';
 import '../../utils/logger.dart';
 import '../../version.dart';
+import '../widgets/tour_keys.dart';
 
 final _log = getLogger('DbPicker');
 
 /// Persisted recent-databases list stored in ~/.config/FinanceCopilot/recent_dbs.json.
 class _RecentDbs {
+  static String get _homeDir =>
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+
   static final _configDir = Directory(
-    p.join(Platform.environment['HOME']!, '.config', 'FinanceCopilot'),
+    Platform.isWindows
+        ? p.join(Platform.environment['APPDATA'] ?? _homeDir, 'FinanceCopilot')
+        : p.join(_homeDir, '.config', 'FinanceCopilot'),
   );
   static File get _file => File(p.join(_configDir.path, 'recent_dbs.json'));
 
@@ -78,22 +86,9 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   @override
   void initState() {
     super.initState();
-    _copySandboxDbIfNeeded().then((_) => _loadRecent());
+    _loadRecent();
   }
 
-  /// On first run, copy sandbox DB to ~/Documents/ and add to recents.
-  Future<void> _copySandboxDbIfNeeded() async {
-    final sandboxDb = File(
-      '/Users/marco/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db',
-    );
-    final home = Platform.environment['HOME']!;
-    final target = File(p.join(home, 'Documents', 'FinanceCopilot.db'));
-    if (await sandboxDb.exists() && !await target.exists()) {
-      _log.info('Copying sandbox DB to ${target.path}');
-      await sandboxDb.copy(target.path);
-      await _RecentDbs.add(target.path);
-    }
-  }
 
   Future<void> _loadRecent() async {
     final paths = await _RecentDbs.load();
@@ -144,6 +139,103 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     await _selectDb(path);
   }
 
+  Future<void> _startGuidedTour() async {
+    final s = ref.read(appStringsProvider);
+    _log.info('Guide Me: showing intro dialog');
+    final home = _RecentDbs._homeDir;
+    var demoDir = p.join(home, 'Documents', 'FinanceCopilot Demo Files');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.school, size: 28),
+              const SizedBox(width: 12),
+              Text(s.guideMeDialogTitle),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.guideMeDialogBody),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.folder, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          demoDir,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          try {
+                            final picked = await FilePicker.platform.getDirectoryPath(
+                              dialogTitle: s.guideMeChooseFolder,
+                            );
+                            if (picked != null) {
+                              setDialogState(() => demoDir = picked);
+                            }
+                          } catch (e) {
+                            _log.warning('Guide Me: directory picker error: $e');
+                          }
+                        },
+                        child: Text(s.guideMeChangePath),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(s.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(s.guideMeStart),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    _log.info('Guide Me: starting tour with dir=$demoDir');
+    setState(() => _isGenerating = true);
+    try {
+      await DemoCsvService.generateDemoCsvs(demoDir);
+      _log.info('Demo CSVs generated in $demoDir');
+      Tour.start(ref.read(tourProvider.notifier), demoDir);
+    } catch (e) {
+      _log.warning('Failed to generate demo CSVs: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate demo files: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+  }
+
   Future<void> _generateDemo() async {
     // Ask user where to save
     final dir = await FilePicker.platform.getDirectoryPath(
@@ -191,21 +283,35 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
               const SizedBox(height: 16),
               Text(s.dbPickerTitle, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   FilledButton.icon(
                     onPressed: _openFilePicker,
                     icon: const Icon(Icons.folder_open),
                     label: Text(s.dbPickerOpenFile),
                   ),
-                  const SizedBox(width: 12),
                   OutlinedButton.icon(
-                    onPressed: _createEmpty,
+                    key: TourKeys.newProjectButton,
+                    onPressed: () async {
+                      final tour = ref.read(tourProvider);
+                      if (tour.isActive && tour.currentStep == TourStep.dbPickerNewProject) {
+                        // During tour: auto-create DB in the demo folder
+                        final dbPath = p.join(tour.demoCsvDir!, 'FinanceCopilot_tour.db');
+                        final existing = File(dbPath);
+                        if (await existing.exists()) await existing.delete();
+                        _log.info('Tour: creating DB at $dbPath');
+                        await _selectDb(dbPath);
+                        Tour.advance(ref.read(tourProvider.notifier));
+                      } else {
+                        await _createEmpty();
+                      }
+                    },
                     icon: const Icon(Icons.add_circle_outline),
                     label: Text(s.dbPickerNewProject),
                   ),
-                  const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: _isGenerating ? null : _generateDemo,
                     icon: _isGenerating
@@ -215,6 +321,11 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                           )
                         : const Icon(Icons.auto_awesome),
                     label: Text(_isGenerating ? s.dbPickerGenerating : s.dbPickerCreateDemo),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _startGuidedTour,
+                    icon: const Icon(Icons.school),
+                    label: Text(s.dbPickerGuideMe),
                   ),
                 ],
               ),

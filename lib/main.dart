@@ -9,6 +9,7 @@ import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/providers.dart';
+import 'services/tour_service.dart';
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/capex_screen.dart';
@@ -16,6 +17,8 @@ import 'ui/screens/dashboard_screen.dart';
 import 'ui/screens/db_picker_screen.dart';
 import 'ui/screens/import_screen.dart';
 import 'ui/screens/income_screen.dart';
+import 'ui/widgets/tour_keys.dart';
+import 'ui/widgets/tour_overlay.dart';
 import 'utils/logger.dart';
 import 'version.dart';
 
@@ -74,6 +77,7 @@ class AssetManagerApp extends ConsumerWidget {
         brightness: Brightness.dark,
       ),
       themeMode: ThemeMode.system,
+      builder: (context, child) => TourOverlay(child: child!),
       home: dbPath == null ? const DbPickerScreen() : const AppShell(),
     );
   }
@@ -101,46 +105,29 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   List<NavigationRailDestination> _railDestinations(AppStrings s) => [
     NavigationRailDestination(icon: const Icon(Icons.dashboard), label: Text(s.navDashboard)),
-    NavigationRailDestination(icon: const Icon(Icons.account_balance), label: Text(s.navAccounts)),
-    NavigationRailDestination(icon: const Icon(Icons.pie_chart), label: Text(s.navAssets)),
-    NavigationRailDestination(icon: const Icon(Icons.account_balance_wallet), label: Text(s.navAdjustments)),
-    NavigationRailDestination(icon: const Icon(Icons.payments), label: Text(s.navIncome)),
+    NavigationRailDestination(icon: Icon(Icons.account_balance, key: TourKeys.navAccounts), label: Text(s.navAccounts)),
+    NavigationRailDestination(icon: Icon(Icons.pie_chart, key: TourKeys.navAssets), label: Text(s.navAssets)),
+    NavigationRailDestination(icon: Icon(Icons.account_balance_wallet, key: TourKeys.navAdjustments), label: Text(s.navAdjustments)),
+    NavigationRailDestination(icon: Icon(Icons.payments, key: TourKeys.navIncome), label: Text(s.navIncome)),
   ];
 
   @override
   void initState() {
     super.initState();
-    // Kick off exchange rate sync in background (non-blocking)
-    Future.microtask(() async {
-      try {
-        _log.info('Starting exchange rate sync...');
-        await ref.read(exchangeRateServiceProvider).syncRates();
-      } catch (e) {
-        _log.warning('Exchange rate sync failed: $e');
-      }
-    });
-    // Kick off market price sync in background
     Future.microtask(() => _syncPrices());
-    // Kick off composition sync in background
-    Future.microtask(() async {
-      try {
-        await ref.read(compositionServiceProvider).syncCompositions();
-      } catch (e) {
-        _log.warning('Composition sync failed: $e');
-      }
-    });
   }
 
   Future<void> _syncPrices({bool forceToday = false}) async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
     try {
-      _log.info('Starting market price sync (forceToday=$forceToday)...');
+      _log.info('Starting sync (prices + exchange rates + compositions)...');
       await Future.wait([
         ref.read(marketPriceServiceProvider).syncPrices(forceToday: forceToday),
         ref.read(exchangeRateServiceProvider).syncRates(),
+        ref.read(compositionServiceProvider).syncCompositions(),
       ]);
-      // Bump refresh counter so chart providers rebuild with new prices
+      _log.info('All syncs complete');
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
       if (mounted) setState(() => _isSyncing = false);
@@ -216,7 +203,13 @@ class _AppShellState extends ConsumerState<AppShell> {
                     Expanded(
                       child: NavigationRail(
                         selectedIndex: _selectedIndex,
-                        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+                        onDestinationSelected: (i) {
+                          setState(() => _selectedIndex = i);
+                          final tour = ref.read(tourProvider);
+                          if (tour.isActive && tour.targetNavIndex == i) {
+                            Tour.advance(ref.read(tourProvider.notifier));
+                          }
+                        },
                         labelType: NavigationRailLabelType.all,
                         destinations: _railDestinations(s),
                       ),
@@ -251,7 +244,13 @@ class _AppShellState extends ConsumerState<AppShell> {
           ? null
           : NavigationBar(
               selectedIndex: _selectedIndex,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+              onDestinationSelected: (i) {
+                setState(() => _selectedIndex = i);
+                final tour = ref.read(tourProvider);
+                if (tour.isActive && tour.targetNavIndex == i) {
+                  Tour.advance(ref.read(tourProvider.notifier));
+                }
+              },
               destinations: _destinations(s),
             ),
     );

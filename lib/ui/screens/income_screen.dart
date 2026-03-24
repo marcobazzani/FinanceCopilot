@@ -8,6 +8,7 @@ import '../../services/exchange_rate_service.dart';
 import '../../services/import_service.dart';
 import '../../services/providers.dart';
 import '../../l10n/app_strings.dart';
+import '../widgets/tour_keys.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard_screen.dart' show currencySymbol;
 import 'import_screen.dart';
@@ -173,12 +174,19 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             FloatingActionButton.small(
+              key: TourKeys.incomeImportFab,
               heroTag: 'import',
               tooltip: s.importFromFileTooltip,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ImportScreen(preselectedTarget: ImportTarget.income)),
-              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ImportScreen(
+                      preselectedTarget: ImportTarget.income,
+                    ),
+                  ),
+                );
+              },
               child: const Icon(Icons.file_upload),
             ),
             const SizedBox(height: 8),

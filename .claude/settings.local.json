@@ -70,7 +70,11 @@
       "Bash(/tmp/pw-venv/bin/python:*)",
       "Bash(curl:*)",
       "Bash(head:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(gh api:*)",
+      "Bash(gh repo:*)",
+      "Bash(gh run:*)",
+      "Bash(ioreg:*)"
     ]
   }
 }

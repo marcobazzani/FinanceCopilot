@@ -22,6 +22,8 @@
 # Navigation
 
 - Do NOT run `find` or exploratory commands to locate files — check the code directly.
+- To find the Logs, check the app's stdout/stderr logs (it prints the path on startup). Does not make anysense to search in system logs the application does not write them there.
+
 
 # Python
 
