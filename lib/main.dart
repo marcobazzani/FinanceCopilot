@@ -74,8 +74,45 @@ class AssetManagerApp extends ConsumerWidget {
         brightness: Brightness.dark,
       ),
       themeMode: ThemeMode.system,
-      home: dbPath == null ? const DbPickerScreen() : const AppShell(),
+      home: dbPath == null ? const DbPickerScreen() : _SafeAppShell(dbPath: dbPath),
     );
+  }
+}
+
+/// Catches errors when opening the DB / building AppShell.
+class _SafeAppShell extends ConsumerWidget {
+  final String dbPath;
+  const _SafeAppShell({required this.dbPath});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    try {
+      // Force the database to open now so we catch errors early
+      ref.watch(databaseProvider);
+      _log.info('Database provider resolved for: $dbPath');
+    } catch (e, stack) {
+      _log.severe('Failed to open database at $dbPath: $e\n$stack');
+      return Scaffold(
+        appBar: AppBar(title: const Text('FinanceCopilot')),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              Text('Failed to open database:\n$e',
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () => ref.read(dbPathProvider.notifier).state = null,
+                child: const Text('Back to picker'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const AppShell();
   }
 }
 

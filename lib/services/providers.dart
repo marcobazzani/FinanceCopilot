@@ -23,6 +23,9 @@ import 'import_service.dart';
 import 'isin_lookup_service.dart';
 import 'market_price_service.dart';
 import 'transaction_service.dart';
+import '../utils/logger.dart';
+
+final _log = getLogger('Providers');
 
 // ── Service providers ──
 
@@ -55,7 +58,9 @@ final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
 });
 
 final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
-  return ExchangeRateService(ref.watch(databaseProvider));
+  final priceService = ref.watch(marketPriceServiceProvider);
+  final investing = priceService is InvestingComService ? priceService : null;
+  return ExchangeRateService(ref.watch(databaseProvider), investingService: investing);
 });
 
 final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
@@ -202,17 +207,32 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
 
   final result = <int, double>{};
   final now = DateTime.now();
+  _log.info('assetMarketValues: ${assets.length} assets, ${stats.length} stats, base=$baseCurrency');
   for (final asset in assets) {
     final stat = stats[asset.id];
-    if (stat == null || stat.totalQuantity == 0) continue;
-    final price = await priceService.getPrice(asset.id, now);
-    if (price == null) continue;
+    if (stat == null || stat.totalQuantity == 0) {
+      _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} — no stat or qty=0');
+      continue;
+    }
+    // Use live price for current market values
+    double? price;
+    if (priceService is InvestingComService) {
+      price = await priceService.getLivePrice(asset.id);
+    }
+    price ??= await priceService.getPrice(asset.id, now);
+    if (price == null) {
+      _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} — no price');
+      continue;
+    }
     double fxRate = 1.0;
     if (asset.currency != baseCurrency) {
-      fxRate = await rateService.getRate(asset.currency, baseCurrency, now) ?? 1.0;
+      fxRate = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
     }
-    result[asset.id] = stat.totalQuantity * price * fxRate;
+    final value = stat.totalQuantity * price * fxRate;
+    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} — qty=${stat.totalQuantity} price=$price fx=$fxRate → $value');
+    result[asset.id] = value;
   }
+  _log.info('assetMarketValues: ${result.length} assets with values, total=${result.values.fold(0.0, (a, b) => a + b).toStringAsFixed(2)}');
   return result;
 });
 
@@ -276,9 +296,13 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double? latestPrice;
     if (priceService is InvestingComService) {
       latestPrice = await priceService.getLivePrice(asset.id);
+      _log.fine('dailyChanges: ${asset.ticker ?? asset.name} — livePrice=$latestPrice');
     }
     latestPrice ??= await priceService.getPrice(asset.id, today);
-    if (latestPrice == null) continue;
+    if (latestPrice == null) {
+      _log.warning('dailyChanges: ${asset.ticker ?? asset.name} — no price at all');
+      continue;
+    }
 
     double todayFx = 1.0;
     double prevFx = 1.0;
