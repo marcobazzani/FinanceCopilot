@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.assetmanager" "\0"
-            VALUE "FileDescription", "asset_manager" "\0"
+            VALUE "CompanyName", "FinanceCopilot" "\0"
+            VALUE "FileDescription", "FinanceCopilot" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "asset_manager" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.assetmanager. All rights reserved." "\0"
-            VALUE "OriginalFilename", "asset_manager.exe" "\0"
-            VALUE "ProductName", "asset_manager" "\0"
+            VALUE "InternalName", "FinanceCopilot" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 FinanceCopilot. All rights reserved." "\0"
+            VALUE "OriginalFilename", "FinanceCopilot.exe" "\0"
+            VALUE "ProductName", "FinanceCopilot" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
