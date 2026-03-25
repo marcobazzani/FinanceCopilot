@@ -485,10 +485,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   Future<void> _executeReindex(List<Transaction> transactions, List<String> allColumns, List<String> hashCols) async {
     // Sort hash columns in original column order
     hashCols.sort((a, b) => allColumns.indexOf(a).compareTo(allColumns.indexOf(b)));
-
     _log.info('reindex: ${transactions.length} transactions, hash cols: $hashCols');
 
-    // Save config FIRST so it's never lost even if user navigates away
+    // Save config
     final existingConfig = await ref.read(importConfigServiceProvider).getByAccount(widget.account.id);
     await ref.read(importConfigServiceProvider).save(
           accountId: widget.account.id,
@@ -503,33 +502,113 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               : [],
           hashColumns: hashCols,
         );
-    _log.info('reindex: saved config with hashCols=$hashCols');
 
-    // Batch-compute all new hashes
-    final updates = <int, String>{}; // id → newHash
+    // Compute new hashes
+    final newHashes = <int, String>{}; // id → newHash
     for (final tx in transactions) {
       if (tx.rawMetadata == null) continue;
       final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
       final row = meta.map((k, v) => MapEntry(k, v.toString()));
-      final newHash = ImportService.hashRow(row, hashCols);
-      if (newHash != tx.importHash) {
-        updates[tx.id] = newHash;
+      newHashes[tx.id] = ImportService.hashRow(row, hashCols);
+    }
+
+    // Find duplicates: keep lowest ID per hash, mark others for deletion
+    final seen = <String, int>{}; // hash → kept ID
+    final duplicates = <Transaction>[]; // rows to delete
+    final sorted = List.of(transactions)..sort((a, b) => a.id.compareTo(b.id));
+    for (final tx in sorted) {
+      final hash = newHashes[tx.id] ?? tx.importHash;
+      if (hash == null) continue;
+      if (seen.containsKey(hash)) {
+        duplicates.add(tx);
+      } else {
+        seen[hash] = tx.id;
       }
     }
-    _log.info('reindex: ${updates.length} hashes to update');
 
-    // Batch update all hashes in a single DB transaction
+    if (duplicates.isEmpty) {
+      // Just update hashes, no duplicates
+      final txSvc = ref.read(transactionServiceProvider);
+      final updates = newHashes.entries
+          .where((e) => sorted.any((tx) => tx.id == e.key && tx.importHash != e.value))
+          .fold<Map<int, String>>({}, (map, e) { map[e.key] = e.value; return map; });
+      if (updates.isNotEmpty) await txSvc.batchUpdateHashes(updates);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reindexed ${updates.length} hashes. No duplicates found.')),
+        );
+      }
+      return;
+    }
+
+    // Show preview dialog
+    if (!mounted) return;
+    final excluded = <int>{}; // IDs the user wants to keep
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('${duplicates.length} duplicates found'),
+          content: SizedBox(
+            width: 600,
+            height: 400,
+            child: ListView.builder(
+              itemCount: duplicates.length,
+              itemBuilder: (ctx, i) {
+                final tx = duplicates[i];
+                final kept = seen[newHashes[tx.id] ?? tx.importHash]!;
+                return CheckboxListTile(
+                  value: !excluded.contains(tx.id),
+                  onChanged: (v) => setDialogState(() {
+                    if (v == true) excluded.remove(tx.id); else excluded.add(tx.id);
+                  }),
+                  title: Text(
+                    '${tx.description}  ${tx.amount > 0 ? '+' : ''}${tx.amount}',
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    'ID ${tx.id} — duplicate of #$kept — ${DateTime.fromMillisecondsSinceEpoch(tx.operationDate.millisecondsSinceEpoch).toString().substring(0, 10)}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Delete ${duplicates.length - excluded.length} duplicates'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Update hashes
     final txSvc = ref.read(transactionServiceProvider);
-    await txSvc.batchUpdateHashes(updates);
-    _log.info('reindex: batch-updated ${updates.length} hashes');
+    final hashUpdates = <int, String>{};
+    for (final e in newHashes.entries) {
+      final tx = sorted.firstWhere((t) => t.id == e.key, orElse: () => sorted.first);
+      if (tx.importHash != e.value) hashUpdates[tx.id] = e.value;
+    }
+    if (hashUpdates.isNotEmpty) await txSvc.batchUpdateHashes(hashUpdates);
 
-    // Now remove duplicates
-    final deleted = await txSvc.removeDuplicates(widget.account.id);
+    // Delete confirmed duplicates
+    final toDelete = duplicates.where((tx) => !excluded.contains(tx.id)).toList();
+    for (final tx in toDelete) {
+      await txSvc.delete(tx.id);
+    }
 
     if (mounted) {
       final s = ref.read(appStringsProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.reindexResult(updates.length, deleted))),
+        SnackBar(content: Text(s.reindexResult(hashUpdates.length, toDelete.length))),
       );
     }
   }

@@ -86,6 +86,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   ImportConfig? _savedConfig;
 
   ImportResult? _result;
+  ImportPreview? _importPreview;
   bool _importing = false;
   bool _parsing = false;
   int _importedSoFar = 0;
@@ -794,7 +795,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              onPressed: _canProceedToConfirm() ? () => setState(() => _step = 2) : null,
+              onPressed: _canProceedToConfirm() ? () {
+                setState(() => _step = 2);
+                _computeImportPreview();
+              } : null,
               child: Text(s.next),
             ),
           ],
@@ -1600,7 +1604,21 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ],
             ),
           ),
-        ] else
+        ] else ...[
+          if (_importPreview != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_importPreview!.newRows} new rows, ${_importPreview!.updateRows} existing to update',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -1611,6 +1629,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ),
             ],
           ),
+        ],
       ],
     );
   }
@@ -1810,6 +1829,21 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (created == true) setState(() {});
   }
 
+  Future<void> _computeImportPreview() async {
+    if (_preview == null || _target != ImportTarget.transaction || _targetId == null) return;
+    try {
+      final importer = ref.read(importServiceProvider);
+      final preview = await importer.previewImport(
+        preview: _preview!,
+        accountId: _targetId!,
+        hashColumns: _hashColumns.isNotEmpty ? _hashColumns : null,
+      );
+      if (mounted) setState(() => _importPreview = preview);
+    } catch (e) {
+      _log.warning('_computeImportPreview: $e');
+    }
+  }
+
   Future<void> _executeImport() async {
     _log.info('_executeImport: starting import — target=${_target.name}, targetId=$_targetId');
     setState(() {
@@ -1886,7 +1920,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         result = assetResult.result;
       }
 
-      _log.info('_executeImport: complete — imported=${result.importedRows}, duplicates=${result.skippedDuplicates}, errors=${result.errorRows}');
+      _log.info('_executeImport: complete — imported=${result.importedRows}, updated=${result.updatedDuplicates}, errors=${result.errorRows}');
       if (result.errors.isNotEmpty) {
         _log.warning('_executeImport: first error: ${result.errors.first}');
       }
@@ -1930,8 +1964,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               Text('Import Complete', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 16),
               _resultRow('Total rows', '${r.totalRows}'),
-              _resultRow('Imported', '${r.importedRows}', color: Colors.green),
-              _resultRow('Skipped (duplicates)', '${r.skippedDuplicates}', color: Colors.grey),
+              _resultRow('Imported (new)', '${r.importedRows}', color: Colors.green),
+              if (r.updatedDuplicates > 0) _resultRow('Updated (existing)', '${r.updatedDuplicates}', color: Colors.blue),
               if (r.errorRows > 0) _resultRow('Errors', '${r.errorRows}', color: Colors.red),
               if (r.errors.isNotEmpty) ...[
                 const SizedBox(height: 8),

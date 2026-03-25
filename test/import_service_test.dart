@@ -80,7 +80,7 @@ Date,Amount,Description,Extra
       );
 
       expect(result.importedRows, 2);
-      expect(result.skippedDuplicates, 0);
+      expect(result.updatedDuplicates, 0);
       expect(result.errorRows, 0);
 
       final txs = await db.select(db.transactions).get();
@@ -118,7 +118,7 @@ Date,Amount,Description
         accountId: accountId,
       );
       expect(result1.importedRows, 2);
-      expect(result1.skippedDuplicates, 0);
+      expect(result1.updatedDuplicates, 0);
 
       // Second import (same data)
       final result2 = await importer.importTransactions(
@@ -127,7 +127,7 @@ Date,Amount,Description
         accountId: accountId,
       );
       expect(result2.importedRows, 0);
-      expect(result2.skippedDuplicates, 2);
+      expect(result2.updatedDuplicates, 2);
 
       // Still only 2 rows in DB
       final txs = await db.select(db.transactions).get();
@@ -175,7 +175,7 @@ Date,Amount,Desc
       );
 
       expect(result.importedRows, 1);
-      expect(result.skippedDuplicates, 2);
+      expect(result.updatedDuplicates, 2);
 
       final txs = await db.select(db.transactions).get();
       expect(txs, hasLength(3));
