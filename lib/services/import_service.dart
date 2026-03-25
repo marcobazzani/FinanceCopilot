@@ -262,8 +262,17 @@ class ImportService {
   /// Compute SHA-256 hash of a row (all values concatenated in column order).
   /// Public static so it can be reused for reindexing from rawMetadata.
   static String hashRow(Map<String, String> row, List<String> columns) {
-    final values = columns.map((c) => row[c] ?? '').join('|');
+    final values = columns.map((c) => _normalizeForHash(row[c] ?? '')).join('|');
     return sha256.convert(utf8.encode(values)).toString();
+  }
+
+  /// Normalize a cell value for hashing: trim whitespace and normalize
+  /// numeric representations so "3.0" and "3.00" produce the same hash.
+  static String _normalizeForHash(String value) {
+    final trimmed = value.trim();
+    final n = double.tryParse(trimmed);
+    if (n != null) return n.toString(); // canonical form: -3.0, 0.0, etc.
+    return trimmed;
   }
 
   String _hashRow(Map<String, String> row, List<String> columns) => hashRow(row, columns);
