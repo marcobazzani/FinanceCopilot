@@ -185,6 +185,7 @@ jobs:
         run: |
           gh release create latest \
             --prerelease \
+            --draft=false \
             --title "Nightly Build" \
             --notes "Automated nightly build from main. Commit: ${{ github.sha }}" \
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg \
