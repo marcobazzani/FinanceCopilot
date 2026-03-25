@@ -15,6 +15,7 @@ import '../../database/database.dart';
 import '../../database/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/exchange_rate_service.dart';
+import '../../services/investing_com_service.dart';
 import '../../services/providers.dart';
 import '../../utils/logger.dart';
 import '../widgets/privacy_text.dart';
@@ -217,6 +218,8 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   ref.watch(priceRefreshCounter);
 
   final allDayKeys = <int>{};
+  // Include today so charts extend to the current day with live data
+  allDayKeys.add(toDayKey(DateTime.now()));
   final rates = _RateResolver(rateService, baseCurrency);
   var colorIdx = 0;
 
@@ -315,7 +318,8 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     }
   }
 
-  if (allDayKeys.isEmpty) return null;
+  // Need actual data beyond just today's placeholder
+  if (allDayKeys.length <= 1 && perAccount.isEmpty && perAssetDeltas.isEmpty) return null;
 
   final sortedDays = allDayKeys.toList()..sort();
   final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
@@ -384,11 +388,19 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
 
-    // Load market prices
+    // Load market prices (DB = confirmed closes only)
     final prices = await marketPriceService.getPriceHistory(asset.id);
     final priceMap = <int, double>{};
     for (final p in prices) {
       priceMap[toDayKey(p.key)] = p.value;
+    }
+    // Add today's live price (not in DB) so the chart extends to today
+    if (marketPriceService is InvestingComService) {
+      final livePrice = await marketPriceService.getLivePrice(asset.id);
+      if (livePrice != null) {
+        final todayKey = toDayKey(DateTime.now());
+        priceMap[todayKey] = livePrice;
+      }
     }
 
     final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
