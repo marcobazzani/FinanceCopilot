@@ -1966,6 +1966,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               _resultRow('Total rows', '${r.totalRows}'),
               _resultRow('Imported (new)', '${r.importedRows}', color: Colors.green),
               if (r.updatedDuplicates > 0) _resultRow('Updated (existing)', '${r.updatedDuplicates}', color: Colors.blue),
+              if (r.unchangedDuplicates > 0) _resultRow('Unchanged', '${r.unchangedDuplicates}', color: Colors.grey),
               if (r.errorRows > 0) _resultRow('Errors', '${r.errorRows}', color: Colors.red),
               if (r.errors.isNotEmpty) ...[
                 const SizedBox(height: 8),

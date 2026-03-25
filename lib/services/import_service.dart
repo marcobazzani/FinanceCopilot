@@ -69,6 +69,7 @@ class ImportResult {
   final int totalRows;
   final int importedRows;
   final int updatedDuplicates;
+  final int unchangedDuplicates;
   final int errorRows;
   final List<String> errors;
 
@@ -76,6 +77,7 @@ class ImportResult {
     required this.totalRows,
     required this.importedRows,
     required this.updatedDuplicates,
+    this.unchangedDuplicates = 0,
     required this.errorRows,
     this.errors = const [],
   });
@@ -278,17 +280,19 @@ class ImportService {
         ? preview.columns.where((c) => hashColumns.contains(c)).toList()
         : preview.columns;
     final existingHashMap = await _getExistingTransactionHashMap(accountId);
-    var newRows = 0;
-    var updateRows = 0;
+    var newCount = 0;
+    var updateCount = 0;
+    var unchangedCount = 0;
     for (final row in preview.rows) {
       final hash = _hashRow(row, dedupCols);
       if (existingHashMap.containsKey(hash)) {
-        updateRows++;
+        // Could check field-level diff here too, but for preview just count as "existing"
+        updateCount++;
       } else {
-        newRows++;
+        newCount++;
       }
     }
-    return ImportPreview(totalRows: preview.totalRows, newRows: newRows, updateRows: updateRows);
+    return ImportPreview(totalRows: preview.totalRows, newRows: newCount, updateRows: updateCount);
   }
 
   static String hashRow(Map<String, String> row, List<String> columns) {
@@ -411,6 +415,7 @@ class ImportService {
 
     var imported = 0;
     var updated = 0;
+    var unchanged = 0;
     var errorCount = 0;
     final errors = <String>[];
     final updateRows = <int, _ParsedTransactionRow>{}; // existingId → new data
@@ -475,11 +480,22 @@ class ImportService {
           csvIndex: i,
         );
 
-        // Dedup: if hash exists, update the existing row; otherwise insert new
-        final existingId = existingHashMap[hash];
-        if (existingId != null) {
-          updateRows[existingId] = parsed;
-          updated++;
+        // Dedup: if hash exists, update only if at least one field differs
+        final existing = existingHashMap[hash];
+        if (existing != null) {
+          final differs = existing.amount != parsed.amount
+              || existing.description != parsed.description
+              || existing.currency != parsed.currency
+              || existing.operationDate != parsed.date
+              || (parsed.valueDate != null && existing.valueDate != parsed.valueDate)
+              || (parsed.status != null && existing.status != parsed.status)
+              || existing.rawMetadata != jsonEncode(parsed.rawMetadata);
+          if (differs) {
+            updateRows[existing.id] = parsed;
+            updated++;
+          } else {
+            unchanged++;
+          }
         } else {
           parsedRows.add(parsed);
           imported++;
@@ -542,11 +558,12 @@ class ImportService {
       });
     }
 
-    _log.info('importTransactions: done — imported=$imported, updated=$updated, errors=$errorCount');
+    _log.info('importTransactions: done — imported=$imported, updated=$updated, unchanged=$unchanged, errors=$errorCount');
     return ImportResult(
       totalRows: preview.totalRows,
       importedRows: imported,
       updatedDuplicates: updated,
+      unchangedDuplicates: unchanged,
       errorRows: errorCount,
       errors: errors,
     );
@@ -807,13 +824,13 @@ class ImportService {
   // Helpers
   // ──────────────────────────────────────────────
 
-  /// Returns hash → transaction ID map for dedup (update existing on match).
-  Future<Map<String, int>> _getExistingTransactionHashMap(int accountId) async {
+  /// Returns hash → transaction map for dedup (compare + update existing on match).
+  Future<Map<String, Transaction>> _getExistingTransactionHashMap(int accountId) async {
     final rows = await (_db.select(_db.transactions)
           ..where((t) => t.accountId.equals(accountId))
           ..where((t) => t.importHash.isNotNull()))
         .get();
-    return {for (final r in rows) r.importHash!: r.id};
+    return {for (final r in rows) r.importHash!: r};
   }
 
   Future<Set<String>> _getExistingEventHashes(int assetId) async {

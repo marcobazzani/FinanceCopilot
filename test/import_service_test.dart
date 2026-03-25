@@ -127,7 +127,8 @@ Date,Amount,Description
         accountId: accountId,
       );
       expect(result2.importedRows, 0);
-      expect(result2.updatedDuplicates, 2);
+      expect(result2.updatedDuplicates, 0); // same data → unchanged
+      expect(result2.unchangedDuplicates, 2);
 
       // Still only 2 rows in DB
       final txs = await db.select(db.transactions).get();
@@ -175,7 +176,7 @@ Date,Amount,Desc
       );
 
       expect(result.importedRows, 1);
-      expect(result.updatedDuplicates, 2);
+      expect(result.unchangedDuplicates, 2); // same data → unchanged
 
       final txs = await db.select(db.transactions).get();
       expect(txs, hasLength(3));
