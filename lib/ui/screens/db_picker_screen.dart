@@ -19,7 +19,10 @@ final _log = getLogger('DbPicker');
 /// Persisted recent-databases list stored in ~/.config/FinanceCopilot/recent_dbs.json.
 class _RecentDbs {
   static final _configDir = Directory(
-    p.join(Platform.environment['HOME']!, '.config', 'FinanceCopilot'),
+    p.join(
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.',
+      '.config', 'FinanceCopilot',
+    ),
   );
   static File get _file => File(p.join(_configDir.path, 'recent_dbs.json'));
 
@@ -81,12 +84,14 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     _copySandboxDbIfNeeded().then((_) => _loadRecent());
   }
 
-  /// On first run, copy sandbox DB to ~/Documents/ and add to recents.
+  /// On first run (macOS only), copy sandbox DB to ~/Documents/ and add to recents.
   Future<void> _copySandboxDbIfNeeded() async {
+    if (!Platform.isMacOS) return;
     final sandboxDb = File(
       '/Users/marco/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db',
     );
-    final home = Platform.environment['HOME']!;
+    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+    if (home == '.') return; // No home directory found
     final target = File(p.join(home, 'Documents', 'FinanceCopilot.db'));
     if (await sandboxDb.exists() && !await target.exists()) {
       _log.info('Copying sandbox DB to ${target.path}');
