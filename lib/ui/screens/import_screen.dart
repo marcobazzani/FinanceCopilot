@@ -2059,7 +2059,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
 
       _log.info('_executeImport: ${mappings.length} column mappings built');
-      _log.fine('_executeImport: mappings=${mappings.map((m) => '${m.targetField}←${m.sourceColumn ?? "formula"}').join(', ')}');
+
+      // Re-parse full file if preview was capped (large files)
+      var fullPreview = _preview!;
+      if (fullPreview.rows.length < fullPreview.totalRows) {
+        _log.info('_executeImport: re-parsing full file (${fullPreview.totalRows} rows)...');
+        fullPreview = await importer.getFullRows(fullPreview);
+        _log.info('_executeImport: re-parsed ${fullPreview.rows.length} rows');
+      }
 
       void onProgress(int processed, int total) {
         setState(() {
@@ -2071,7 +2078,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final ImportResult result;
       if (_target == ImportTarget.transaction) {
         result = await importer.importTransactions(
-          preview: _preview!,
+          preview: fullPreview,
           mappings: mappings,
           accountId: _targetId!,
           onProgress: onProgress,
@@ -2082,7 +2089,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       } else if (_target == ImportTarget.income) {
         final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
         result = await importer.importIncomes(
-          preview: _preview!,
+          preview: fullPreview,
           mappings: mappings,
           defaultCurrency: baseCurrency,
           onProgress: onProgress,
@@ -2093,7 +2100,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mappings.removeWhere((m) => m.targetField == 'type');
         }
         final assetResult = await importer.importAssetEventsGrouped(
-          preview: _preview!,
+          preview: fullPreview,
           mappings: mappings,
           onProgress: onProgress,
           computeFee: _feeMode == 'computed',

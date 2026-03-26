@@ -47,13 +47,27 @@ class ColumnMapping {
 /// Result of parsing a file before column mapping.
 class FilePreview {
   final List<String> columns;
-  final List<Map<String, String>> rows; // all rows as {columnName: value}
+  /// Preview rows for UI display (first 5 + last 5 = max 10).
+  /// For full row access during import, re-parse the file.
+  final List<Map<String, String>> rows;
   final int totalRows;
+
+  /// Source file metadata for re-parsing during import.
+  final String? filePath;
+  final String? clipboardText;
+  final int skipRows;
+  final bool noHeader;
+  final String? sheetName;
 
   const FilePreview({
     required this.columns,
     required this.rows,
     required this.totalRows,
+    this.filePath,
+    this.clipboardText,
+    this.skipRows = 0,
+    this.noHeader = false,
+    this.sheetName,
   });
 }
 
@@ -229,8 +243,18 @@ class ImportService {
       default:
         throw UnsupportedError('Unsupported file format: .$ext');
     }
-    _log.info('parseFile: parsed ${result.columns.length} columns, ${result.totalRows} rows');
-    return result;
+    // Cap rows for preview (first 5 + last 5) to save memory; import re-parses
+    final previewRows = _capPreviewRows(result.rows);
+    _log.info('parseFile: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
+    return FilePreview(
+      columns: result.columns,
+      rows: previewRows,
+      totalRows: result.totalRows,
+      filePath: filePath,
+      skipRows: skipRows,
+      noHeader: noHeader,
+      sheetName: sheetName,
+    );
   }
 
   /// List available sheet names in an Excel file (runs in isolate).
@@ -251,8 +275,62 @@ class ImportService {
       'skipRows': skipRows,
       'noHeader': noHeader,
     }));
-    _log.info('parseClipboard: parsed ${result.columns.length} columns, ${result.totalRows} rows');
-    return result;
+    final previewRows = _capPreviewRows(result.rows);
+    _log.info('parseClipboard: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
+    return FilePreview(
+      columns: result.columns,
+      rows: previewRows,
+      totalRows: result.totalRows,
+      clipboardText: text,
+      skipRows: skipRows,
+      noHeader: noHeader,
+    );
+  }
+
+  /// Cap rows to first 5 + last 5 for preview display. Saves memory for large files.
+  static List<Map<String, String>> _capPreviewRows(List<Map<String, String>> rows, {int headTail = 5}) {
+    if (rows.length <= headTail * 2) return rows;
+    return [...rows.take(headTail), ...rows.skip(rows.length - headTail)];
+  }
+
+  /// Re-parse the full file to get ALL rows (for import, not preview).
+  /// Returns a FilePreview with all rows — only call this during import.
+  Future<FilePreview> getFullRows(FilePreview preview) async {
+    // If preview already has all rows (small file), return as-is
+    if (preview.rows.length >= preview.totalRows) return preview;
+
+    _log.info('_getFullRows: re-parsing ${preview.totalRows} rows from source');
+    if (preview.filePath != null) {
+      final ext = preview.filePath!.toLowerCase().split('.').last;
+      switch (ext) {
+        case 'csv':
+        case 'tsv':
+          final content = await File(preview.filePath!).readAsString();
+          return Isolate.run(() => _parseCsvIsolate({
+            'content': content,
+            'separator': ext == 'tsv' ? '\t' : null,
+            'skipRows': preview.skipRows,
+            'noHeader': preview.noHeader,
+          }));
+        case 'xlsx':
+        case 'xls':
+          final bytes = await File(preview.filePath!).readAsBytes();
+          return Isolate.run(() => _parseExcelIsolate({
+            'bytes': bytes,
+            'sheetName': preview.sheetName,
+            'skipRows': preview.skipRows,
+            'noHeader': preview.noHeader,
+          }));
+      }
+    } else if (preview.clipboardText != null) {
+      return Isolate.run(() => _parseCsvIsolate({
+        'content': preview.clipboardText!,
+        'separator': null,
+        'skipRows': preview.skipRows,
+        'noHeader': preview.noHeader,
+      }));
+    }
+    return preview;
   }
 
   // ──────────────────────────────────────────────
