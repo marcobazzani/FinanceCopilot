@@ -114,6 +114,14 @@ final baseCurrencyProvider = StreamProvider<String>((ref) {
       .map((row) => row?.value ?? 'EUR');
 });
 
+/// Update channel: 'nightly' or 'stable'. Stored in AppConfigs.
+final updateChannelProvider = StreamProvider<String>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('UPDATE_CHANNEL')))
+      .watchSingleOrNull()
+      .map((row) => row?.value ?? 'nightly');
+});
+
 final accountsProvider = StreamProvider<List<Account>>((ref) {
   return ref.watch(accountServiceProvider).watchAll();
 });

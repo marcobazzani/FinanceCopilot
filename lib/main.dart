@@ -9,6 +9,7 @@ import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/providers.dart';
+import 'services/update_service.dart';
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/capex_screen.dart';
@@ -28,7 +29,7 @@ Future<void> main() async {
   // Print key paths to stdout for easy access
   // ignore: avoid_print
   print('LOG: $logFilePath');
-  _log.info('FinanceCopilot v$appVersion starting up');
+  _log.info('FinanceCopilot v$appVersion ($appCommit) starting up');
   runApp(const ProviderScope(child: FinanceCopilotApp()));
 }
 
@@ -166,6 +167,104 @@ class _AppShellState extends ConsumerState<AppShell> {
         _log.warning('Composition sync failed: $e');
       }
     });
+    // Check for updates in background
+    Future.microtask(() => _checkForUpdates());
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      final channel = ref.read(updateChannelProvider).value ?? appChannel;
+      _log.info('Checking for updates (channel=$channel, commit=$appCommit)...');
+      final updater = UpdateService();
+      final info = await updater.checkForUpdate(channel);
+      if (!info.available || !mounted) return;
+
+      final changelog = await updater.getChangelog(info.latestCommit);
+      if (!mounted) return;
+
+      _showUpdateDialog(info, changelog);
+    } catch (e) {
+      _log.warning('Update check failed: $e');
+    }
+  }
+
+  void _showUpdateDialog(UpdateInfo info, List<String> changelog) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        var downloading = false;
+        var progress = 0.0;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            icon: const Icon(Icons.system_update, size: 36, color: Colors.blue),
+            title: Text('Update Available — ${info.latestVersion ?? ""}'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (changelog.isNotEmpty) ...[
+                    const Text('Changes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: changelog.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 1),
+                          child: Text('• ${changelog[i]}',
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ] else
+                    Text(info.releaseNotes ?? 'A new version is available.'),
+                  if (downloading) ...[
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(value: progress > 0 ? progress : null),
+                    const SizedBox(height: 4),
+                    Text('Downloading... ${(progress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ],
+              ),
+            ),
+            actions: downloading
+                ? []
+                : [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Later'),
+                    ),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('Update & Restart'),
+                      onPressed: info.downloadUrl == null
+                          ? null
+                          : () async {
+                              setDialogState(() => downloading = true);
+                              try {
+                                await UpdateService().applyUpdate(
+                                  info,
+                                  onProgress: (p) => setDialogState(() => progress = p),
+                                );
+                              } catch (e) {
+                                if (ctx.mounted) {
+                                  setDialogState(() => downloading = false);
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text('Update failed: $e')),
+                                  );
+                                }
+                              }
+                            },
+                    ),
+                  ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _syncPrices({bool forceToday = false}) async {
@@ -261,7 +360,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        'v$appVersion',
+                        'v$appVersion${appCommit != "dev" ? " (${appCommit.substring(0, 7)})" : ""}',
                         style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                       ),
                     ),
@@ -316,6 +415,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     final currentLocale = ref.read(appLocaleProvider).value ?? '';
     final currentLang = ref.read(appLanguageProvider).value ?? 'en';
 
+    final currentChannel = ref.read(updateChannelProvider).value ?? appChannel;
+
     var selectedCurrency = baseCurrency;
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
         ? currentLocale
@@ -323,6 +424,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     var selectedLang = _languageOptions.any((o) => o.$1 == currentLang)
         ? currentLang
         : 'en';
+    var selectedChannel = currentChannel;
 
     await showDialog(
       context: context,
@@ -360,6 +462,16 @@ class _AppShellState extends ConsumerState<AppShell> {
                       .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedLocale = v!),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedChannel,
+                  decoration: const InputDecoration(labelText: 'Update Channel'),
+                  items: const [
+                    DropdownMenuItem(value: 'nightly', child: Text('Nightly (latest commits)')),
+                    DropdownMenuItem(value: 'stable', child: Text('Stable (tagged releases)')),
+                  ],
+                  onChanged: (v) => setDialogState(() => selectedChannel = v!),
                 ),
                 const SizedBox(height: 20),
                 const Divider(),
@@ -417,7 +529,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
-                _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale');
+                await db.into(db.appConfigs).insertOnConflictUpdate(
+                  AppConfigsCompanion.insert(key: 'UPDATE_CHANNEL', value: selectedChannel),
+                );
+                _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale, channel=$selectedChannel');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text(s.save),

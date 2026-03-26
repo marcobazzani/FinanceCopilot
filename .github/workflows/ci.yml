@@ -68,8 +68,20 @@ jobs:
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Determine channel
+        id: channel
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=nightly" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build release
-        run: flutter build ${{ matrix.platform }} --release
+        run: |
+          flutter build ${{ matrix.platform }} --release \
+            --dart-define=COMMIT_SHA=${{ github.sha }} \
+            --dart-define=CHANNEL=${{ steps.channel.outputs.channel }}
 
       - name: Ad-hoc sign macOS build
         if: matrix.platform == 'macos'
