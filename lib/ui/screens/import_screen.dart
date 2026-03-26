@@ -91,7 +91,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'amount', 'description'],
-    ImportTarget.assetEvent => ['date', 'isin', 'type', 'amount', 'quantity', 'price', 'currency', 'exchangeRate'],
+    ImportTarget.assetEvent => ['date', 'isin', 'type', 'quantity', 'price', 'currency', 'exchangeRate'],
     ImportTarget.income => ['date', 'amount'],
   };
 
@@ -118,6 +118,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // 'computed' = fee = |amount| - quantity * price / exchangeRate
   String _feeMode = 'column';
 
+  // Auto-calculate amount as quantity * price for asset events
+  bool _autoCalcAmount = false;
 
   @override
   void initState() {
@@ -685,7 +687,45 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
                 _buildAmountFormulaRow(columns)
-              else
+              else if (_target == ImportTarget.assetEvent) ...[
+                // Amount: either from column or auto-calculated
+                Row(
+                  children: [
+                    Expanded(child: _autoCalcAmount
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(children: [
+                              SizedBox(width: 100, child: Text('amount', style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13,
+                                color: Theme.of(context).colorScheme.primary,
+                              ))),
+                              const Icon(Icons.arrow_forward, size: 16),
+                              const SizedBox(width: 8),
+                              Text('quantity × price', style: TextStyle(
+                                fontSize: 13, fontStyle: FontStyle.italic,
+                                color: Colors.grey.shade600,
+                              )),
+                            ]),
+                          )
+                        : _buildMappingRow('amount', columns)),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: _autoCalcAmount,
+                          onChanged: (v) => setState(() {
+                            _autoCalcAmount = v ?? false;
+                            if (_autoCalcAmount) _mappings['amount'] = null;
+                          }),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        const Text('Auto calc', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+              ] else
                 _buildMappingRow('amount', columns, required: true),
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount')
@@ -1461,8 +1501,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _canProceedToConfirm() {
     // date must be mapped
     if (_mappings['date'] == null) return false;
-    // amount: either simple mapping, formula, or balance-diff
-    if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null) return false;
+    // amount: either simple mapping, formula, balance-diff, or auto-calc
+    if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
     // Asset events also require ISIN
     if (_target == ImportTarget.assetEvent && _mappings['isin'] == null) return false;
     return true;
@@ -1962,5 +2002,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _balanceFilterColumn = null;
     _balanceFilterInclude.clear();
     _feeMode = 'column';
+    _autoCalcAmount = false;
   }
 }

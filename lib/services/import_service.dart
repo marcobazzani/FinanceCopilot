@@ -483,12 +483,12 @@ class ImportService {
     final amountMapping = mappingByField['amount'];
     final isinMapping = mappingByField['isin'];
 
-    if (dateMapping == null || amountMapping == null || isinMapping == null) {
+    if (dateMapping == null || isinMapping == null) {
       _log.severe('importAssetEventsGrouped: missing required mappings');
       return AssetImportResult(
         result: const ImportResult(
           totalRows: 0, importedRows: 0, errorRows: 0,
-          errors: ['date, amount, and ISIN columns are required'],
+          errors: ['date and ISIN columns are required'],
         ),
         assetsByIsin: {},
       );
@@ -578,9 +578,7 @@ class ImportService {
 
       try {
         final dateStr = _resolveMapping(dateMapping, row) ?? '';
-        final amountStr = _resolveMapping(amountMapping, row) ?? '';
         final date = _parseDate(dateStr);
-        final amount = _parseAmount(amountStr);
 
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
@@ -592,6 +590,16 @@ class ImportService {
 
         final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
         final price = priceMapping != null ? _tryParseAmount(_resolveMapping(priceMapping, row)) : null;
+
+        // Amount: from column, or auto-calculated as quantity * price
+        final double amount;
+        if (amountMapping != null) {
+          amount = _parseAmount(_resolveMapping(amountMapping, row) ?? '');
+        } else if (qty != null && price != null) {
+          amount = qty * price;
+        } else {
+          amount = 0;
+        }
         final rate = exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null;
 
         // Fee: from column or computed as |amount| - qty * price / rate
