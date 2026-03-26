@@ -19,6 +19,7 @@ import 'exchange_rate_service.dart';
 import 'import_config_service.dart';
 import 'composition_service.dart';
 import 'investing_com_service.dart';
+import 'network_monitor.dart';
 import 'import_service.dart';
 import 'isin_lookup_service.dart';
 import 'market_price_service.dart';
@@ -26,6 +27,13 @@ import 'transaction_service.dart';
 import '../utils/logger.dart';
 
 final _log = getLogger('Providers');
+
+// ── Network ──
+
+final networkMonitorProvider = Provider<NetworkMonitor>((ref) => NetworkMonitor());
+
+/// Whether network is currently available. Polled reactively.
+final networkOnlineProvider = StateProvider<bool>((ref) => true);
 
 // ── Service providers ──
 

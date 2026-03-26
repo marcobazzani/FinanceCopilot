@@ -72,7 +72,9 @@
       "Bash(head:*)",
       "Bash(echo:*)",
       "Bash(./ci-wait.sh 30)",
-      "Bash(gh issue:*)"
+      "Bash(gh issue:*)",
+      "Read(//Users/marco/Documents/FinanceCopilot/**)",
+      "Read(//Users/marco/Documents/AssetManager/**)"
     ]
   }
 }

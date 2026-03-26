@@ -50,7 +50,7 @@ class DemoDbService {
 
   static Future<void> _generateDemoDb(String path, {SendPort? sendPort}) async {
     final db = AppDatabase.withPath(path);
-    const total = 8;
+    const total = 9;
     var step = 0;
     void progress(String label) { step++; sendPort?.send([step, total, label]); }
 
@@ -72,6 +72,9 @@ class DemoDbService {
 
       progress('Generating transactions...');
       await _insertEventsAndTransactions(db, priceTimeSeries, fxRates);
+
+      progress('Generating income records...');
+      await _insertIncomes(db);
 
       progress('Creating buffer...');
       await _insertBuffer(db);
@@ -135,18 +138,19 @@ class DemoDbService {
 
   static Future<void> _insertAssets(AppDatabase db) async {
     final assets = [
-      ('GLMK', 'Global Markets ETF', AssetType.stockEtf, 'EUR', 'MIL', 'GLMK.MI', 'global'),
-      ('EGOV', 'Euro Gov Bond 1-3Y', AssetType.bondEtf, 'EUR', 'MIL', 'EGOV.MI', 'bonds'),
-      ('EMRG', 'Emerging Markets ETF', AssetType.stockEtf, 'EUR', 'MIL', 'EMRG.MI', 'emerging'),
-      ('EU60', 'Europe 600 ETF', AssetType.stockEtf, 'EUR', 'MIL', 'EU60.MI', 'europe'),
-      ('GLDX', 'Physical Gold ETC', AssetType.goldEtc, 'EUR', 'MIL', 'GLDX.MI', 'commodities'),
-      ('USTK', 'US Tech Corp', AssetType.stockEtf, 'USD', 'NYQ', 'USTK', 'us-tech'),
+      ('VWCE', 'Vanguard FTSE All-World', AssetType.stockEtf, 'EUR', 'MIL', 'VWCE.MI', 'IE00BK5BQT80', 'global'),
+      ('AGGH', 'iShares Core Global Agg Bond', AssetType.bondEtf, 'EUR', 'MIL', 'AGGH.MI', 'IE00BDBRDM35', 'bonds'),
+      ('VFEA', 'Vanguard FTSE Emerging Markets', AssetType.stockEtf, 'EUR', 'MIL', 'VFEA.MI', 'IE00BK5BR733', 'emerging'),
+      ('CSSPX', 'iShares Core S&P 500 Acc', AssetType.stockEtf, 'EUR', 'MIL', 'CSSPX.MI', 'IE00B5BMR087', 'us-large'),
+      ('SGLD', 'Invesco Physical Gold ETC', AssetType.goldEtc, 'EUR', 'MIL', 'SGLD.MI', 'IE00B579F325', 'commodities'),
+      ('MSFT', 'Microsoft Corp', AssetType.stock, 'USD', 'NYQ', 'MSFT', 'US5949181045', 'us-tech'),
     ];
     for (var i = 0; i < assets.length; i++) {
-      final (ticker, name, type, currency, exchange, yahoo, group) = assets[i];
+      final (ticker, name, type, currency, exchange, yahoo, isin, group) = assets[i];
       await db.into(db.assets).insert(AssetsCompanion.insert(
         name: name,
         ticker: Value(ticker),
+        isin: Value(isin),
         assetType: type,
         assetGroup: Value(group),
         currency: Value(currency),
@@ -168,12 +172,12 @@ class DemoDbService {
 
     // (assetId, startDate, startPrice, annualDrift, dailyVol)
     final specs = [
-      (1, DateTime(2022, 1, 3), 68.0, 0.07, 0.011),  // GLMK
-      (2, DateTime(2022, 1, 3), 105.0, 0.01, 0.003),  // EGOV
-      (3, DateTime(2022, 1, 3), 28.0, 0.06, 0.014),   // EMRG
-      (4, DateTime(2022, 1, 3), 48.0, 0.07, 0.012),   // EU60
-      (5, DateTime(2022, 1, 3), 160.0, 0.05, 0.010),  // GLDX
-      (6, DateTime(2017, 1, 3), 45.0, 0.15, 0.020),   // USTK (USD)
+      (1, DateTime(2022, 1, 3), 68.0, 0.07, 0.011),  // VWCE
+      (2, DateTime(2022, 1, 3), 105.0, 0.01, 0.003),  // AGGH
+      (3, DateTime(2022, 1, 3), 28.0, 0.06, 0.014),   // VFEA
+      (4, DateTime(2022, 1, 3), 48.0, 0.07, 0.012),   // CSSPX
+      (5, DateTime(2022, 1, 3), 160.0, 0.05, 0.010),  // SGLD
+      (6, DateTime(2017, 1, 3), 45.0, 0.15, 0.020),   // MSFT (USD)
     ];
 
     final result = <int, Map<int, double>>{};
@@ -265,10 +269,10 @@ class DemoDbService {
     //
     // (assetId, ticker, targetAmountPerBuy in EUR)
     const eurAlloc = [
-      (1, 'GLMK', 1000.0),  // Global Markets – largest allocation
-      (2, 'EGOV', 300.0),   // Bonds – small
-      (3, 'EMRG', 500.0),   // Emerging
-      (4, 'EU60', 700.0),   // Europe
+      (1, 'VWCE', 1000.0),  // All-World – largest allocation
+      (2, 'AGGH', 300.0),   // Bonds – small
+      (3, 'VFEA', 500.0),   // Emerging
+      (4, 'CSSPX', 700.0),   // S&P 500
     ];
 
     // Collect buy candidates: (date, assetId, ticker, qty, price, eurAmount)
@@ -300,14 +304,14 @@ class DemoDbService {
       }
     }
 
-    // GLDX occasional buys
+    // SGLD occasional buys
     final gldxBuys = [
       (DateTime(2022, 5, 18), 5, 5.0),
       (DateTime(2023, 6, 5), 5, 3.0),
       (DateTime(2025, 1, 6), 5, 4.0),
     ];
 
-    // USTK (USD) buys
+    // MSFT (USD) buys
     final ustkBuys = [
       (DateTime(2018, 2, 15), 6, 20.0),
       (DateTime(2019, 2, 15), 6, 40.0),
@@ -411,7 +415,7 @@ class DemoDbService {
           }
         }
 
-        // ── One-off buys (GLDX, USTK) ──
+        // ── One-off buys (SGLD, MSFT) ──
         final oneOffs = oneOffBuysByMonth[(year, month)];
         if (oneOffs != null) {
           for (final (assetId, qty, price, eurAmount, date) in oneOffs) {
@@ -537,7 +541,7 @@ class DemoDbService {
   }
 
   static String _tickerForId(int id) =>
-      const {1: 'GLMK', 2: 'EGOV', 3: 'EMRG', 4: 'EU60', 5: 'GLDX', 6: 'USTK'}[id] ?? '?';
+      const {1: 'VWCE', 2: 'AGGH', 3: 'VFEA', 4: 'CSSPX', 5: 'SGLD', 6: 'MSFT'}[id] ?? '?';
 
   // ══════════════════════════════════════════════════
   // Helpers
@@ -583,6 +587,41 @@ class DemoDbService {
   }
 
   static int _dayKey(DateTime d) => d.millisecondsSinceEpoch ~/ 86400000;
+
+  // ── Income records ──
+
+  static Future<void> _insertIncomes(AppDatabase db) async {
+    final now = DateTime.now();
+    final rng = Random(99);
+
+    for (int year = 2018; year <= now.year; year++) {
+      final maxMonth = year == now.year ? now.month : 12;
+      for (int month = 1; month <= maxMonth; month++) {
+        final date = DateTime(year, month, 27);
+        if (date.isAfter(now)) break;
+
+        // Monthly salary — grows over the years
+        final salary = 3200.0 + (year - 2018) * 120.0 + rng.nextInt(200);
+        await db.into(db.incomes).insert(IncomesCompanion.insert(
+          date: date,
+          amount: salary.toDouble(),
+          type: const Value(IncomeType.income),
+          currency: const Value('EUR'),
+        ));
+
+        // Occasional refunds (every ~4 months)
+        if (month % 4 == 2) {
+          final refund = 50.0 + rng.nextInt(200);
+          await db.into(db.incomes).insert(IncomesCompanion.insert(
+            date: DateTime(year, month, 15),
+            amount: refund.toDouble(),
+            type: const Value(IncomeType.refund),
+            currency: const Value('EUR'),
+          ));
+        }
+      }
+    }
+  }
 
   // ── Buffer ──
 

@@ -214,6 +214,7 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
+    case WM_SETTINGCHANGE:
       UpdateTheme(hwnd);
       return 0;
   }
@@ -282,7 +283,18 @@ void Win32Window::UpdateTheme(HWND const window) {
 
   if (result == ERROR_SUCCESS) {
     BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+    // Try attribute 20 first (Windows 11 / newer 10 builds), fall back to 19
+    HRESULT hr = DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                           &enable_dark_mode, sizeof(enable_dark_mode));
+    if (FAILED(hr)) {
+      DwmSetWindowAttribute(window, 19,
+                            &enable_dark_mode, sizeof(enable_dark_mode));
+    }
+    // Force title bar repaint
+    RECT rect;
+    GetWindowRect(window, &rect);
+    SetWindowPos(window, nullptr, rect.left, rect.top, rect.right - rect.left,
+                 rect.bottom - rect.top,
+                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
   }
 }

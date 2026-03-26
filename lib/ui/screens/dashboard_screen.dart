@@ -3051,37 +3051,42 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
     final colorSavings  = Colors.blue.shade400;
     const barW = 20.0;
 
-    // Build stacked bar groups: Expenses (bottom) + Savings (top)
+    // Build bar groups: stacked Expenses+Savings rod + thin Income rod
+    final showIncome = !_hidden.contains('income');
+    final showExp = !_hidden.contains('expenses');
+    final showSav = !_hidden.contains('savings');
+    const stackW = 20.0;
+    const incomeW = 3.0;
+
     final groups = <BarChartGroupData>[];
     for (int i = 0; i < years.length; i++) {
       final y = years[i];
-      final showExp = !_hidden.contains('expenses');
-      final showSav = !_hidden.contains('savings');
       final expH = showExp ? y.expenses : 0.0;
       final savH = showSav ? (y.savings > 0 ? y.savings : 0.0) : 0.0;
 
-      groups.add(BarChartGroupData(
-        x: i,
-        barRods: [
+      final rods = <BarChartRodData>[
+        // Stacked bar: Expenses (bottom) + Savings (top)
+        BarChartRodData(
+          toY: expH + savH,
+          width: stackW,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+          rodStackItems: [
+            if (showExp) BarChartRodStackItem(0, expH, colorExpenses),
+            if (showSav) BarChartRodStackItem(expH, expH + savH, colorSavings),
+          ],
+          color: Colors.transparent,
+        ),
+        // Income as a thin rod (acts as a line marker)
+        if (showIncome)
           BarChartRodData(
-            toY: expH + savH,
-            width: barW,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
-            rodStackItems: [
-              if (showExp) BarChartRodStackItem(0, expH, colorExpenses),
-              if (showSav) BarChartRodStackItem(expH, expH + savH, colorSavings),
-            ],
-            color: Colors.transparent,
+            toY: y.income,
+            width: incomeW,
+            color: colorIncome,
+            borderRadius: BorderRadius.circular(1),
           ),
-        ],
-      ));
+      ];
+      groups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: 2));
     }
-
-    // Income line data (overlaid on bars)
-    final showIncome = !_hidden.contains('income');
-    final incomeSpots = showIncome
-        ? List.generate(years.length, (i) => FlSpot(i.toDouble(), years[i].income))
-        : <FlSpot>[];
 
     final allVals = years.expand((y) => [y.income, y.expenses + (y.savings > 0 ? y.savings : 0)]);
     final maxY = allVals.fold(0.0, max);
@@ -3101,10 +3106,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
           height: 280,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
-            child: Stack(
-              children: [
-                // Stacked bar chart (Expenses + Savings)
-                BarChart(BarChartData(
+            child: BarChart(BarChartData(
                   barGroups: groups,
                   maxY: maxY * 1.15,
                   gridData: const FlGridData(show: true),
@@ -3151,34 +3153,6 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
                     rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   ),
                 )),
-                // Income line overlay
-                if (incomeSpots.isNotEmpty)
-                  LineChart(LineChartData(
-                    maxY: maxY * 1.15,
-                    minY: 0,
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: incomeSpots,
-                        color: colorIncome,
-                        barWidth: 3,
-                        isCurved: true,
-                        preventCurveOverShooting: true,
-                        dotData: FlDotData(show: incomeSpots.length <= 12),
-                        belowBarData: BarAreaData(show: false),
-                      ),
-                    ],
-                    lineTouchData: const LineTouchData(enabled: false),
-                    gridData: const FlGridData(show: false),
-                    borderData: FlBorderData(show: false),
-                    titlesData: const FlTitlesData(
-                      leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    ),
-                  )),
-              ],
-            ),
           ),
         )),
       ],

@@ -36,6 +36,11 @@ Future<void> initLogging() async {
     stderr.writeln('Failed to open log file: $e');
   }
 
+  // Suppress repeated identical messages
+  String? _lastMsg;
+  int _repeatCount = 0;
+  int _lineCount = 0;
+
   Logger.root.onRecord.listen((record) {
     final level = switch (record.level) {
       Level.SEVERE => 'ERROR',
@@ -44,16 +49,50 @@ Future<void> initLogging() async {
       Level.FINE || Level.FINER || Level.FINEST => 'DEBUG',
       _ => record.level.name,
     };
-    final ts = record.time.toIso8601String().substring(11, 23); // HH:mm:ss.SSS
+    final ts = record.time.toIso8601String().substring(11, 23);
     final msg = '$ts $level [${record.loggerName}] ${record.message}';
+
+    // Suppress repeated messages (e.g. network errors during suspend)
+    final dedupKey = '${record.loggerName}:${record.message}';
+    if (dedupKey == _lastMsg) {
+      _repeatCount++;
+      if (_repeatCount == 5) {
+        final suppressed = '$ts WARN  [Logger] Suppressing repeated: ${record.message.length > 60 ? record.message.substring(0, 60) : record.message}...';
+        _logSink?.writeln(suppressed);
+        stderr.writeln(suppressed);
+      }
+      if (_repeatCount >= 5) return; // suppress after 5 repeats
+    } else {
+      if (_repeatCount > 5) {
+        final note = '$ts INFO  [Logger] (suppressed ${_repeatCount - 5} repeats)';
+        _logSink?.writeln(note);
+      }
+      _lastMsg = dedupKey;
+      _repeatCount = 0;
+    }
+
     final fullMsg = record.error != null ? '$msg\n  Error: ${record.error}' : msg;
-    final withStack = record.stackTrace != null ? '$fullMsg\n  ${record.stackTrace}' : fullMsg;
+    // Skip stack traces for warnings (DioException etc.) — just the message
+    final withStack = record.stackTrace != null && record.level >= Level.SEVERE
+        ? '$fullMsg\n  ${record.stackTrace}' : fullMsg;
 
-    // Write to file
     _logSink?.writeln(withStack);
-
-    // Also write to stderr (visible in flutter run / debug console)
     stderr.writeln(withStack);
+
+    // Periodic rotation check (every 10000 lines)
+    _lineCount++;
+    if (_lineCount % 10000 == 0 && logFilePath != null) {
+      final logFile = File(logFilePath!);
+      if (logFile.existsSync() && logFile.lengthSync() > 10 * 1024 * 1024) {
+        _logSink?.flush();
+        _logSink?.close();
+        final backup = File('${logFilePath!}.1');
+        if (backup.existsSync()) backup.deleteSync();
+        logFile.renameSync(backup.path);
+        _logSink = logFile.openWrite(mode: FileMode.append);
+        _logSink!.writeln('--- Log rotated at ${DateTime.now().toIso8601String()} ---');
+      }
+    }
   });
 }
 

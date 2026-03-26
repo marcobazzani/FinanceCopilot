@@ -148,18 +148,27 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
-    // Kick off exchange rate sync in background (non-blocking)
+    Future.microtask(() => _startBackgroundSync());
+  }
+
+  Future<void> _startBackgroundSync() async {
+    final monitor = ref.read(networkMonitorProvider);
+    final online = await monitor.check();
+    ref.read(networkOnlineProvider.notifier).state = online;
+    if (!online) {
+      _log.info('Network offline — skipping background sync');
+      return;
+    }
+
+    // Kick off syncs in parallel
     Future.microtask(() async {
       try {
-        _log.info('Starting exchange rate sync...');
         await ref.read(exchangeRateServiceProvider).syncRates();
       } catch (e) {
         _log.warning('Exchange rate sync failed: $e');
       }
     });
-    // Kick off market price sync in background
     Future.microtask(() => _syncPrices());
-    // Kick off composition sync in background
     Future.microtask(() async {
       try {
         await ref.read(compositionServiceProvider).syncCompositions();
@@ -171,6 +180,16 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   Future<void> _syncPrices({bool forceToday = false}) async {
     if (_isSyncing) return;
+
+    // Check network first
+    final monitor = ref.read(networkMonitorProvider);
+    final online = await monitor.check();
+    ref.read(networkOnlineProvider.notifier).state = online;
+    if (!online) {
+      _log.info('Network offline — skipping price sync');
+      return;
+    }
+
     setState(() => _isSyncing = true);
     try {
       _log.info('Starting market price sync (forceToday=$forceToday)...');
@@ -178,7 +197,6 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.read(marketPriceServiceProvider).syncPrices(forceToday: forceToday),
         ref.read(exchangeRateServiceProvider).syncRates(),
       ]);
-      // Bump refresh counter so chart providers rebuild with new prices
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
       if (mounted) setState(() => _isSyncing = false);
@@ -214,6 +232,23 @@ class _AppShellState extends ConsumerState<AppShell> {
               onPressed: () =>
                   ref.read(privacyModeProvider.notifier).state = !isPrivate,
             );
+          }),
+          Consumer(builder: (context, ref, _) {
+            final online = ref.watch(networkOnlineProvider);
+            if (!online) {
+              return IconButton(
+                icon: Icon(Icons.signal_wifi_off, color: Colors.red.shade300),
+                tooltip: 'No network — tap to retry',
+                onPressed: () async {
+                  final monitor = ref.read(networkMonitorProvider);
+                  monitor.reset();
+                  final nowOnline = await monitor.check();
+                  ref.read(networkOnlineProvider.notifier).state = nowOnline;
+                  if (nowOnline) _startBackgroundSync();
+                },
+              );
+            }
+            return const SizedBox.shrink();
           }),
           IconButton(
             icon: _isSyncing
