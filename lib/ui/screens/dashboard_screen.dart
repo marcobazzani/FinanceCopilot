@@ -3046,29 +3046,44 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
     final now      = DateTime.now();
     if (years.isEmpty) return const SizedBox.shrink();
 
-    final colors = [Colors.green.shade400, Colors.red.shade400, Colors.blue.shade400];
-    const barW = 10.0;
-    const gap  = 4.0;
+    final colorIncome   = Colors.green.shade400;
+    final colorExpenses = Colors.red.shade400;
+    final colorSavings  = Colors.blue.shade400;
+    const barW = 20.0;
 
-    // Build rod list per group respecting hidden state.
-    // Track which original index each rod maps to for tooltip.
+    // Build stacked bar groups: Expenses (bottom) + Savings (top)
     final groups = <BarChartGroupData>[];
     for (int i = 0; i < years.length; i++) {
       final y = years[i];
-      final vals = [y.income, y.expenses, y.savings];
-      final rods = <BarChartRodData>[];
-      for (int k = 0; k < 3; k++) {
-        if (!_hidden.contains(_keys[k])) {
-          rods.add(BarChartRodData(toY: vals[k], color: colors[k], width: barW));
-        }
-      }
-      groups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: gap));
+      final showExp = !_hidden.contains('expenses');
+      final showSav = !_hidden.contains('savings');
+      final expH = showExp ? y.expenses : 0.0;
+      final savH = showSav ? (y.savings > 0 ? y.savings : 0.0) : 0.0;
+
+      groups.add(BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
+            toY: expH + savH,
+            width: barW,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+            rodStackItems: [
+              if (showExp) BarChartRodStackItem(0, expH, colorExpenses),
+              if (showSav) BarChartRodStackItem(expH, expH + savH, colorSavings),
+            ],
+            color: Colors.transparent,
+          ),
+        ],
+      ));
     }
 
-    // Visible indices for tooltip mapping
-    final visibleIndices = [0, 1, 2].where((k) => !_hidden.contains(_keys[k])).toList();
+    // Income line data (overlaid on bars)
+    final showIncome = !_hidden.contains('income');
+    final incomeSpots = showIncome
+        ? List.generate(years.length, (i) => FlSpot(i.toDouble(), years[i].income))
+        : <FlSpot>[];
 
-    final allVals = years.expand((y) => [y.income, y.expenses, y.savings.abs()]);
+    final allVals = years.expand((y) => [y.income, y.expenses + (y.savings > 0 ? y.savings : 0)]);
     final maxY = allVals.fold(0.0, max);
 
     return Column(
@@ -3077,67 +3092,93 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Wrap(spacing: 16, children: [
-            for (int k = 0; k < 3; k++)
-              _ToggleLegendItem(
-                color: colors[k],
-                label: labels[k],
-                enabled: !_hidden.contains(_keys[k]),
-                onTap: () => _toggle(_keys[k]),
-              ),
+            _ToggleLegendItem(color: Colors.green.shade400, label: labels[0], enabled: !_hidden.contains('income'), onTap: () => _toggle('income')),
+            _ToggleLegendItem(color: Colors.red.shade400, label: labels[1], enabled: !_hidden.contains('expenses'), onTap: () => _toggle('expenses')),
+            _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: !_hidden.contains('savings'), onTap: () => _toggle('savings')),
           ]),
         ),
         _maybeBlur(isPrivate, SizedBox(
           height: 280,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
-            child: BarChart(BarChartData(
-              barGroups: groups,
-              maxY: maxY * 1.1,
-              minY: years.any((y) => y.savings < 0) ? years.map((y) => y.savings).reduce(min) * 1.1 : 0,
-              gridData: const FlGridData(show: true),
-              borderData: FlBorderData(show: false),
-              barTouchData: BarTouchData(
-                touchTooltipData: BarTouchTooltipData(
-                  fitInsideHorizontally: true,
-                  fitInsideVertically: true,
-                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                    final y = years[group.x];
-                    if (rodIndex >= visibleIndices.length) return null;
-                    final origIdx = visibleIndices[rodIndex];
-                    final vals = [y.income, y.expenses, y.savings];
-                    return BarTooltipItem(
-                      '${y.year}${y.year == now.year ? "*" : ""}\n${labels[origIdx]}\n${amtFmt.format(vals[origIdx])} $sym',
-                      const TextStyle(color: Colors.white, fontSize: 11),
-                    );
-                  },
-                ),
-              ),
-              titlesData: FlTitlesData(
-                leftTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    reservedSize: 60,
-                    getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+            child: Stack(
+              children: [
+                // Stacked bar chart (Expenses + Savings)
+                BarChart(BarChartData(
+                  barGroups: groups,
+                  maxY: maxY * 1.15,
+                  gridData: const FlGridData(show: true),
+                  borderData: FlBorderData(show: false),
+                  barTouchData: BarTouchData(
+                    touchTooltipData: BarTouchTooltipData(
+                      fitInsideHorizontally: true,
+                      fitInsideVertically: true,
+                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                        final y = years[group.x];
+                        return BarTooltipItem(
+                          '${y.year}${y.year == now.year ? "*" : ""}\n'
+                          '${labels[1]}: ${amtFmt.format(y.expenses)} $sym\n'
+                          '${labels[2]}: ${amtFmt.format(y.savings)} $sym\n'
+                          '${labels[0]}: ${amtFmt.format(y.income)} $sym',
+                          const TextStyle(color: Colors.white, fontSize: 11),
+                        );
+                      },
+                    ),
                   ),
-                ),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (v, _) {
-                      final i = v.round();
-                      if (i < 0 || i >= years.length) return const SizedBox.shrink();
-                      final y = years[i];
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text('${y.year}${y.year == now.year ? "*" : ""}', style: const TextStyle(fontSize: 9)),
-                      );
-                    },
+                  titlesData: FlTitlesData(
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 60,
+                        getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (v, _) {
+                          final i = v.round();
+                          if (i < 0 || i >= years.length) return const SizedBox.shrink();
+                          final y = years[i];
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text('${y.year}${y.year == now.year ? "*" : ""}', style: const TextStyle(fontSize: 9)),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   ),
-                ),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              ),
-            )),
+                )),
+                // Income line overlay
+                if (incomeSpots.isNotEmpty)
+                  LineChart(LineChartData(
+                    maxY: maxY * 1.15,
+                    minY: 0,
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: incomeSpots,
+                        color: colorIncome,
+                        barWidth: 3,
+                        isCurved: true,
+                        preventCurveOverShooting: true,
+                        dotData: FlDotData(show: incomeSpots.length <= 12),
+                        belowBarData: BarAreaData(show: false),
+                      ),
+                    ],
+                    lineTouchData: const LineTouchData(enabled: false),
+                    gridData: const FlGridData(show: false),
+                    borderData: FlBorderData(show: false),
+                    titlesData: const FlTitlesData(
+                      leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    ),
+                  )),
+              ],
+            ),
           ),
         )),
       ],
@@ -3200,13 +3241,9 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Wrap(spacing: 16, children: [
-            for (int k = 0; k < 3; k++)
-              _ToggleLegendItem(
-                color: colors[k],
-                label: labels[k],
-                enabled: !_hidden.contains(_keys[k]),
-                onTap: () => _toggle(_keys[k]),
-              ),
+            _ToggleLegendItem(color: Colors.green.shade400, label: labels[0], enabled: !_hidden.contains('income'), onTap: () => _toggle('income')),
+            _ToggleLegendItem(color: Colors.red.shade400, label: labels[1], enabled: !_hidden.contains('expenses'), onTap: () => _toggle('expenses')),
+            _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: !_hidden.contains('savings'), onTap: () => _toggle('savings')),
           ]),
         ),
         _maybeBlur(isPrivate, SizedBox(
