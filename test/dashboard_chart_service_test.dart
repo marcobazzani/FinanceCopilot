@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:asset_manager/database/database.dart';
-import 'package:asset_manager/services/dashboard_chart_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/dashboard_chart_service.dart';
 
 void main() {
   late AppDatabase db;

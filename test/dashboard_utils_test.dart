@@ -1,7 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:asset_manager/ui/screens/dashboard_screen.dart';
+import 'package:finance_copilot/ui/screens/dashboard_screen.dart';
 
 void main() {
   group('toDayKey', () {

@@ -37,7 +37,7 @@ Future<String?> _loadLastDirectory() async {
   try {
     final prefsDir = Directory(p.join(
       Platform.environment['HOME'] ?? '',
-      'Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager',
+      'Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot',
     ));
     final file = File(p.join(prefsDir.path, '.last_import_dir'));
     if (await file.exists()) {
@@ -52,7 +52,7 @@ Future<void> _saveLastDirectory(String dir) async {
   try {
     final prefsDir = Directory(p.join(
       Platform.environment['HOME'] ?? '',
-      'Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager',
+      'Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot',
     ));
     await File(p.join(prefsDir.path, '.last_import_dir')).writeAsString(dir);
   } catch (_) {}

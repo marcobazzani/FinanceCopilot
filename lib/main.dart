@@ -29,11 +29,11 @@ Future<void> main() async {
   // ignore: avoid_print
   print('LOG: $logFilePath');
   _log.info('FinanceCopilot v$appVersion starting up');
-  runApp(const ProviderScope(child: AssetManagerApp()));
+  runApp(const ProviderScope(child: FinanceCopilotApp()));
 }
 
-class AssetManagerApp extends ConsumerWidget {
-  const AssetManagerApp({super.key});
+class FinanceCopilotApp extends ConsumerWidget {
+  const FinanceCopilotApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

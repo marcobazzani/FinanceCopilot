@@ -3,13 +3,13 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:asset_manager/database/database.dart';
-import 'package:asset_manager/database/providers.dart';
-import 'package:asset_manager/database/tables.dart';
-import 'package:asset_manager/main.dart';
-import 'package:asset_manager/services/exchange_rate_service.dart';
-import 'package:asset_manager/services/market_price_service.dart';
-import 'package:asset_manager/services/providers.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/providers.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/main.dart';
+import 'package:finance_copilot/services/exchange_rate_service.dart';
+import 'package:finance_copilot/services/market_price_service.dart';
+import 'package:finance_copilot/services/providers.dart';
 
 /// No-op market price service that never makes HTTP calls.
 class _NoOpMarketPriceService extends MarketPriceService {
@@ -54,7 +54,7 @@ Future<AppDatabase> pumpApp(
           return _NoOpMarketPriceService(db);
         }),
       ],
-      child: const AssetManagerApp(),
+      child: const FinanceCopilotApp(),
     ),
   );
   await tester.pumpAndSettle();

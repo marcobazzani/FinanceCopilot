@@ -1,4 +1,4 @@
-name: asset_manager
+name: finance_copilot
 description: "Personal wealth management app — replaces MoneyHistory.xlsx"
 publish_to: 'none'
 version: 0.2.0+2

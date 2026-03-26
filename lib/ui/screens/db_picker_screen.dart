@@ -88,7 +88,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   Future<void> _copySandboxDbIfNeeded() async {
     if (!Platform.isMacOS) return;
     final sandboxDb = File(
-      '/Users/marco/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db',
+      '/Users/marco/Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot/finance_copilot.db',
     );
     final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
     if (home == '.') return; // No home directory found

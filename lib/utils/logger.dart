@@ -8,7 +8,7 @@ IOSink? _logSink;
 String? logFilePath;
 
 /// Initialize logging for the whole app. Call once in main().
-/// Logs to <app documents>/AssetManager/app.log (sandbox-safe)
+/// Logs to <app documents>/FinanceCopilot/app.log (sandbox-safe)
 /// and also to stderr for debug console visibility.
 Future<void> initLogging() async {
   Logger.root.level = Level.ALL;
@@ -16,7 +16,7 @@ Future<void> initLogging() async {
   // Open log file inside the app's sandboxed documents directory
   try {
     final docsDir = await getApplicationDocumentsDirectory();
-    final logDir = Directory(p.join(docsDir.path, 'AssetManager'));
+    final logDir = Directory(p.join(docsDir.path, 'FinanceCopilot'));
     if (!await logDir.exists()) {
       await logDir.create(recursive: true);
     }

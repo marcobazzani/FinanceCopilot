@@ -250,12 +250,12 @@ class AppDatabase extends _$AppDatabase {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dir = await getApplicationDocumentsDirectory();
-    final dbFolder = Directory(p.join(dir.path, 'AssetManager'));
+    final dbFolder = Directory(p.join(dir.path, 'FinanceCopilot'));
     if (!await dbFolder.exists()) {
       _log.info('Creating database directory: ${dbFolder.path}');
       await dbFolder.create(recursive: true);
     }
-    final file = File(p.join(dbFolder.path, 'asset_manager.db'));
+    final file = File(p.join(dbFolder.path, 'finance_copilot.db'));
     // ignore: avoid_print
     print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');

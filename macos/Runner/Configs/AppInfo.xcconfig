@@ -8,7 +8,7 @@
 PRODUCT_NAME = FinanceCopilot
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.assetmanager.assetManager
+PRODUCT_BUNDLE_IDENTIFIER = net.bazzani.financecopilot
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.assetmanager. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 net.bazzani.financecopilot. All rights reserved.

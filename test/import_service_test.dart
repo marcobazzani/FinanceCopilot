@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:asset_manager/database/database.dart';
-import 'package:asset_manager/services/import_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/import_service.dart';
 
 void main() {
   late AppDatabase db;

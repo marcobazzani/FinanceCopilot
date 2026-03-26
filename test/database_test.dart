@@ -2,8 +2,8 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:asset_manager/database/database.dart';
-import 'package:asset_manager/database/tables.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
 
 void main() {
   late AppDatabase db;

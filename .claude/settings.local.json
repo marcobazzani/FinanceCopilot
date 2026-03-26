@@ -70,7 +70,9 @@
       "Bash(/tmp/pw-venv/bin/python:*)",
       "Bash(curl:*)",
       "Bash(head:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(./ci-wait.sh 30)",
+      "Bash(gh issue:*)"
     ]
   }
 }

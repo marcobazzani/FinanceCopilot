@@ -1,4 +1,4 @@
-package com.assetmanager.asset_manager
+package net.bazzani.financecopilot
 
 import io.flutter.embedding.android.FlutterActivity
 
