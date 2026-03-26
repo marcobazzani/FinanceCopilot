@@ -782,6 +782,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
   final _hideComponents = <int, bool>{}; // chartId → hide individual lines
   final _expandedCollapsed = <int>{}; // chart IDs temporarily un-collapsed
+  final _priceChangesKey = GlobalKey();
 
   static const _defaultChartHeight = 420.0;
   static const _minChartHeight = 200.0;
@@ -878,7 +879,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
                     ),
-                    _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
+                    _AssetDailyChangesCard(key: _priceChangesKey, locale: locale, baseCurrency: allData.baseCurrency),
                   ],
                 ),
               );
@@ -1963,12 +1964,15 @@ class _UnifiedChart extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 60,
+              reservedSize: 80,
               interval: yRange > 0 ? yRange / 4 : 100,
               getTitlesWidget: (value, meta) {
                 final label = this.isPrivate ? '••••' : currFmt.format(value);
-                return Text(label,
-                    style: TextStyle(fontSize: 10, color: textColor));
+                return SideTitleWidget(
+                  meta: meta,
+                  child: Text(label,
+                      style: TextStyle(fontSize: 10, color: textColor)),
+                );
               },
             ),
           ),
@@ -1978,6 +1982,8 @@ class _UnifiedChart extends StatelessWidget {
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
+            tooltipMargin: 16,
+            maxContentWidth: 200,
             getTooltipItems: (spots) {
               final items = <LineTooltipItem?>[];
               for (int spotIdx = 0; spotIdx < spots.length; spotIdx++) {
@@ -2023,6 +2029,7 @@ class _AssetDailyChangesCard extends ConsumerStatefulWidget {
   final String baseCurrency;
 
   const _AssetDailyChangesCard({
+    super.key,
     required this.locale,
     required this.baseCurrency,
   });
