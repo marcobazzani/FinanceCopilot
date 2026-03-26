@@ -11,6 +11,7 @@ import '../../database/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/demo_db_service.dart';
 import '../../services/providers.dart';
+import '../../services/update_service.dart';
 import '../../utils/logger.dart';
 import '../../version.dart';
 
@@ -82,6 +83,104 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   void initState() {
     super.initState();
     _copySandboxDbIfNeeded().then((_) => _loadRecent());
+    // Check for updates on startup (no DB needed)
+    Future.microtask(() => _checkForUpdates());
+  }
+
+  Future<void> _checkForUpdates() async {
+    try {
+      // Use compile-time channel default (no DB needed)
+      _log.info('Checking for updates (channel=$appChannel, commit=$appCommit)...');
+      final updater = UpdateService();
+      final info = await updater.checkForUpdate(appChannel);
+      if (!info.available || !mounted) return;
+
+      final changelog = await updater.getChangelog(info.latestCommit);
+      if (!mounted) return;
+
+      _showUpdateDialog(info, changelog);
+    } catch (e) {
+      _log.warning('Update check failed: $e');
+    }
+  }
+
+  void _showUpdateDialog(UpdateInfo info, List<String> changelog) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        var downloading = false;
+        var progress = 0.0;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            icon: const Icon(Icons.system_update, size: 36, color: Colors.blue),
+            title: Text('Update Available — ${info.latestVersion ?? ""}'),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (changelog.isNotEmpty) ...[
+                    const Text('Changes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: changelog.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 1),
+                          child: Text('• ${changelog[i]}',
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ] else
+                    Text(info.releaseNotes ?? 'A new version is available.'),
+                  if (downloading) ...[
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(value: progress > 0 ? progress : null),
+                    const SizedBox(height: 4),
+                    Text('Downloading... ${(progress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ],
+              ),
+            ),
+            actions: downloading
+                ? []
+                : [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Later'),
+                    ),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.download, size: 18),
+                      label: const Text('Update & Restart'),
+                      onPressed: info.downloadUrl == null
+                          ? null
+                          : () async {
+                              setDialogState(() => downloading = true);
+                              try {
+                                await UpdateService().applyUpdate(
+                                  info,
+                                  onProgress: (p) => setDialogState(() => progress = p),
+                                );
+                              } catch (e) {
+                                if (ctx.mounted) {
+                                  setDialogState(() => downloading = false);
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text('Update failed: $e')),
+                                  );
+                                }
+                              }
+                            },
+                    ),
+                  ],
+          ),
+        );
+      },
+    );
   }
 
   /// On first run (macOS only), copy sandbox DB to ~/Documents/ and add to recents.
