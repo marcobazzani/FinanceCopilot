@@ -54,7 +54,8 @@ final importConfigServiceProvider = Provider<ImportConfigService>((ref) {
 });
 
 final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
-  return IsinLookupService();
+  final priceService = ref.watch(marketPriceServiceProvider);
+  return IsinLookupService(priceService as InvestingComService);
 });
 
 final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {

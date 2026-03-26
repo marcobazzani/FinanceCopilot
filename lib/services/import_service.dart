@@ -478,6 +478,8 @@ class ImportService {
     IsinLookupService? isinLookup,
     Set<String>? buyValues,
     Set<String>? sellValues,
+    /// ISIN → selected exchange option (from UI picker). If null, uses first result.
+    Map<String, IsinExchangeOption>? selectedExchanges,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -534,21 +536,34 @@ class ImportService {
       }
     }
 
-    // Batch-lookup all new ISINs via OpenFIGI
+    // Resolve new ISINs — use selected exchanges from UI if provided
     final newIsins = isinToRows.keys.where((i) => !existingByIsin.containsKey(i)).toList();
-    final lookupResults = isinLookup != null && newIsins.isNotEmpty
-        ? await isinLookup.lookupBatch(newIsins)
-        : <String, IsinLookupResult>{};
 
     for (final isin in isinToRows.keys) {
       if (existingByIsin.containsKey(isin)) {
         assetsByIsin[isin] = existingByIsin[isin]!;
         _log.fine('importAssetEventsGrouped: reusing asset id=${existingByIsin[isin]} for ISIN=$isin');
       } else {
-        // Use ISIN lookup result for name/ticker; fall back to ISIN code
-        final lookup = lookupResults[isin];
-        final name = lookup?.name ?? isin;
-        final ticker = lookup?.ticker;
+        // Use selected exchange from UI picker, or lookup first result
+        final selected = selectedExchanges?[isin];
+        String name;
+        String? ticker;
+        String? exchange;
+
+        if (selected != null) {
+          name = selected.name;
+          ticker = selected.ticker;
+          exchange = selected.exchange;
+        } else if (isinLookup != null) {
+          final lookup = await isinLookup.lookup(isin);
+          final best = lookup.bestFor(null);
+          name = best?.name ?? isin;
+          ticker = best?.ticker;
+          exchange = best?.exchange;
+        } else {
+          name = isin;
+        }
+
         final currency = currencyMapping != null
             ? (_resolveMapping(currencyMapping, preview.rows[isinToRows[isin]!.first]) ?? 'EUR')
             : 'EUR';
@@ -559,9 +574,10 @@ class ImportService {
           ticker: Value(ticker),
           isin: Value(isin),
           currency: Value(currency),
+          exchange: Value(exchange),
         ));
         assetsByIsin[isin] = assetId;
-        _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker');
+        _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker, exchange=$exchange');
       }
     }
 

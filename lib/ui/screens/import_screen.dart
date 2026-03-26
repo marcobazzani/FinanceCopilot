@@ -12,6 +12,7 @@ import 'dart:convert';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/import_service.dart';
+import '../../services/isin_lookup_service.dart';
 import '../../services/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/logger.dart';
@@ -125,6 +126,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _typeMode = 'column';
   final Set<String> _buyValues = {};
   final Set<String> _sellValues = {};
+
+  // Exchange picker for asset imports (ISIN → all available listings, user picks one)
+  Map<String, IsinLookupResult>? _isinLookupResults;
+  final Map<String, IsinExchangeOption> _selectedExchanges = {};
+  String? _defaultExchange; // e.g. "Milano" — applies to all ISINs
+  bool _lookingUpIsins = false;
 
   @override
   void initState() {
@@ -803,7 +810,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              onPressed: _canProceedToConfirm() ? () => setState(() => _step = 2) : null,
+              onPressed: _canProceedToConfirm() ? () {
+                setState(() => _step = 2);
+                if (_target == ImportTarget.assetEvent) _lookupIsins();
+              } : null,
               child: Text(s.next),
             ),
           ],
@@ -1605,6 +1615,44 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // ──────────────────────────────────────────────
 
   /// Extract unique ISINs from preview data for the asset import summary.
+  /// Collect all unique exchange names across all ISIN lookup results.
+  List<String> _allExchanges() {
+    if (_isinLookupResults == null) return [];
+    final exchanges = <String>{};
+    for (final result in _isinLookupResults!.values) {
+      for (final o in result.options) {
+        if (o.exchange.isNotEmpty) exchanges.add(o.exchange);
+      }
+    }
+    return exchanges.toList()..sort();
+  }
+
+  Future<void> _lookupIsins() async {
+    final isins = _getIsinSummary().keys.toList();
+    if (isins.isEmpty) return;
+    setState(() => _lookingUpIsins = true);
+    try {
+      final lookup = ref.read(isinLookupServiceProvider);
+      final results = await lookup.lookupBatch(isins);
+      if (mounted) {
+        setState(() {
+          _isinLookupResults = results;
+          // Auto-select best option per ISIN based on default exchange
+          for (final entry in results.entries) {
+            if (!_selectedExchanges.containsKey(entry.key)) {
+              final best = entry.value.bestFor(_defaultExchange);
+              if (best != null) _selectedExchanges[entry.key] = best;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      _log.warning('_lookupIsins: $e');
+    } finally {
+      if (mounted) setState(() => _lookingUpIsins = false);
+    }
+  }
+
   Map<String, int> _getIsinSummary() {
     if (_preview == null || _mappings['isin'] == null) return {};
     final isinCol = _mappings['isin']!;
@@ -1652,10 +1700,80 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
                 if (isAssetImport) ...[
                   const SizedBox(height: 12),
-                  const Text('Assets to create/update:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ..._getIsinSummary().entries.map((e) =>
-                    Text('  ${e.key} — ${e.value} events', style: const TextStyle(fontSize: 13)),
-                  ),
+                  const Text('Assets & Exchange:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  if (_lookingUpIsins)
+                    const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Row(children: [
+                        SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 8),
+                        Text('Looking up exchanges...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ]),
+                    )
+                  else ...[
+                    // Default exchange selector
+                    if (_isinLookupResults != null) ...[
+                      Row(
+                        children: [
+                          const Text('Default exchange: ', style: TextStyle(fontSize: 12)),
+                          const SizedBox(width: 4),
+                          DropdownButton<String>(
+                            value: _defaultExchange,
+                            hint: const Text('Auto', style: TextStyle(fontSize: 12)),
+                            isDense: true,
+                            items: _allExchanges().map((ex) => DropdownMenuItem(value: ex, child: Text(ex, style: const TextStyle(fontSize: 12)))).toList(),
+                            onChanged: (v) => setState(() {
+                              _defaultExchange = v;
+                              // Re-apply default to all ISINs
+                              for (final entry in _isinLookupResults!.entries) {
+                                final best = entry.value.bestFor(v);
+                                if (best != null) _selectedExchanges[entry.key] = best;
+                              }
+                            }),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    // Per-ISIN exchange picker
+                    ..._getIsinSummary().entries.map((e) {
+                      final isin = e.key;
+                      final count = e.value;
+                      final options = _isinLookupResults?[isin]?.options ?? [];
+                      final selected = _selectedExchanges[isin];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            SizedBox(width: 130, child: Text(isin, style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
+                            const SizedBox(width: 4),
+                            Text('$count events', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            const SizedBox(width: 8),
+                            if (options.length > 1)
+                              Expanded(
+                                child: DropdownButton<int>(
+                                  value: selected?.cid,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  items: options.map((o) => DropdownMenuItem(
+                                    value: o.cid,
+                                    child: Text('${o.ticker} — ${o.exchange}', style: const TextStyle(fontSize: 12)),
+                                  )).toList(),
+                                  onChanged: (cid) => setState(() {
+                                    _selectedExchanges[isin] = options.firstWhere((o) => o.cid == cid);
+                                  }),
+                                ),
+                              )
+                            else if (options.length == 1)
+                              Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: const TextStyle(fontSize: 12)))
+                            else
+                              const Expanded(child: Text('(not found)', style: TextStyle(fontSize: 12, color: Colors.grey))),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
                 ],
               ],
             ),
@@ -1844,10 +1962,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                   if (isin.length == 12) {
                     setDialogState(() => looking = true);
                     final result = await ref.read(isinLookupServiceProvider).lookup(isin);
+                    final best = result.bestFor(null);
                     if (ctx.mounted) {
                       setDialogState(() {
-                        resolvedName = result.name;
-                        resolvedTicker = result.ticker;
+                        resolvedName = best?.name;
+                        resolvedTicker = best?.ticker;
                         looking = false;
                       });
                     }
@@ -1981,6 +2100,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           isinLookup: ref.read(isinLookupServiceProvider),
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
         );
         result = assetResult.result;
       }
@@ -2104,5 +2224,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _typeMode = 'column';
     _buyValues.clear();
     _sellValues.clear();
+    _isinLookupResults = null;
+    _selectedExchanges.clear();
+    _defaultExchange = null;
   }
 }
