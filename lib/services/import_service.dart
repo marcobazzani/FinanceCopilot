@@ -644,12 +644,33 @@ class ImportService {
 
     onProgress?.call(preview.rows.length, preview.rows.length);
 
-    _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events');
+    // Date-based wipe-and-replace: for each asset, delete events from oldest CSV date onward
+    var totalDeleted = 0;
+    // Group companions by assetId and find oldest date per asset
+    final byAsset = <int, List<AssetEventsCompanion>>{};
+    for (final c in companions) {
+      (byAsset[c.assetId.value] ??= []).add(c);
+    }
+    for (final entry in byAsset.entries) {
+      final assetId = entry.key;
+      final events = entry.value;
+      final oldestDate = events.map((e) => e.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
+      final cutoff = DateTime(oldestDate.year, oldestDate.month, oldestDate.day);
+      final deleted = await _db.customUpdate(
+        'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
+        variables: [Variable.withInt(assetId), Variable.withInt(cutoff.millisecondsSinceEpoch ~/ 1000)],
+        updates: {_db.assetEvents},
+      );
+      totalDeleted += deleted;
+      _log.fine('importAssetEventsGrouped: asset $assetId — deleted $deleted events from ${cutoff.toIso8601String().substring(0, 10)}');
+    }
+
+    _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
     await _db.batch((batch) {
       batch.insertAll(_db.assetEvents, companions);
     });
 
-    _log.info('importAssetEventsGrouped: done — imported=$imported, errors=$errorCount, assets=${assetsByIsin.length}');
+    _log.info('importAssetEventsGrouped: done — imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}');
     return AssetImportResult(
       result: ImportResult(
         totalRows: preview.totalRows,
@@ -738,13 +759,6 @@ class ImportService {
   // Helpers
   // ──────────────────────────────────────────────
 
-  Future<Set<String>> _getExistingEventHashes(int assetId) async {
-    final rows = await (_db.select(_db.assetEvents)
-          ..where((t) => t.assetId.equals(assetId))
-          ..where((t) => t.importHash.isNotNull()))
-        .get();
-    return rows.map((r) => r.importHash!).toSet();
-  }
 
   /// Parse a date string. Supports common formats.
 
