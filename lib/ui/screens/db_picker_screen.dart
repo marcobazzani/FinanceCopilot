@@ -78,6 +78,8 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   List<String> _recentPaths = [];
   bool _isLoading = true;
   bool _isGenerating = false;
+  double _demoProgress = 0;
+  String _demoLabel = '';
 
   @override
   void initState() {
@@ -261,7 +263,9 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
       final existing = File(path);
       if (await existing.exists()) await existing.delete();
 
-      await DemoDbService.generateDemoDb(path);
+      await DemoDbService.generateDemoDb(path, onProgress: (step, total, label) {
+        if (mounted) setState(() { _demoProgress = step / total; _demoLabel = label; });
+      });
       _log.info('Demo DB generated at $path');
       await _selectDb(path);
     } catch (e) {
@@ -322,6 +326,19 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                   ),
                 ],
               ),
+              if (_isGenerating) ...[
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    children: [
+                      LinearProgressIndicator(value: _demoProgress > 0 ? _demoProgress : null),
+                      const SizedBox(height: 4),
+                      Text(_demoLabel, style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               if (_isLoading)
                 const CircularProgressIndicator()

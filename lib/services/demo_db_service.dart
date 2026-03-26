@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:drift/drift.dart';
@@ -20,32 +21,68 @@ class DemoDbService {
   /// are skipped for the month if they would push the balance below this.
   static const _minBalance = 2000.0;
 
-  static Future<void> generateDemoDb(String path) async {
-    _log.info('Generating demo DB at $path');
+  /// Runs demo generation in a separate isolate so the UI stays responsive.
+  /// [onProgress] receives (step, totalSteps, label) updates from the isolate.
+  static Future<void> generateDemoDb(String path, {void Function(int step, int total, String label)? onProgress}) async {
+    _log.info('Generating demo DB at $path (in isolate)');
+
+    final receivePort = ReceivePort();
+    await Isolate.spawn(
+      (message) async {
+        final sendPort = message.$1 as SendPort;
+        final dbPath = message.$2 as String;
+        await _generateDemoDb(dbPath, sendPort: sendPort);
+        sendPort.send('DONE');
+        Isolate.exit();
+      },
+      (receivePort.sendPort, path),
+    );
+
+    await for (final msg in receivePort) {
+      if (msg == 'DONE') break;
+      if (msg is List && msg.length == 3) {
+        onProgress?.call(msg[0] as int, msg[1] as int, msg[2] as String);
+      }
+    }
+    receivePort.close();
+    _log.info('Demo DB generation complete');
+  }
+
+  static Future<void> _generateDemoDb(String path, {SendPort? sendPort}) async {
     final db = AppDatabase.withPath(path);
+    const total = 8;
+    var step = 0;
+    void progress(String label) { step++; sendPort?.send([step, total, label]); }
 
     try {
       await db.customSelect('SELECT 1').get();
 
+      progress('Creating accounts...');
       await _insertAccounts(db);
       await _insertCategories(db);
       await _insertAssets(db);
 
+      progress('Generating prices...');
       final priceTimeSeries = _generatePriceTimeSeries();
       await _writeMarketPrices(db, priceTimeSeries);
 
+      progress('Generating FX rates...');
       final fxRates = _generateFxRates();
       await _writeFxRates(db, fxRates);
 
-      // Two-pass: first compute all potential buys, then build transactions
-      // together so we can skip buys that would overdraw the account.
+      progress('Generating transactions...');
       await _insertEventsAndTransactions(db, priceTimeSeries, fxRates);
 
+      progress('Creating buffer...');
       await _insertBuffer(db);
+
+      progress('Creating adjustments...');
       await _insertDepreciation(db);
+
+      progress('Creating charts...');
       await _insertDashboardCharts(db);
 
-      _log.info('Demo DB generation complete');
+      progress('Finalizing...');
     } finally {
       await db.close();
     }
