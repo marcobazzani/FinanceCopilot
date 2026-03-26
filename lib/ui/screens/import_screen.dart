@@ -91,7 +91,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'amount', 'description'],
-    ImportTarget.assetEvent => ['date', 'isin', 'type', 'quantity', 'price', 'currency', 'exchangeRate'],
+    ImportTarget.assetEvent => ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate'],
     ImportTarget.income => ['date', 'amount'],
   };
 
@@ -120,6 +120,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   // Auto-calculate amount as quantity * price for asset events
   bool _autoCalcAmount = false;
+
+  // Type detection: 'column' (map from CSV with custom values), 'sign' (infer from qty/amount sign)
+  String _typeMode = 'column';
+  final Set<String> _buyValues = {};
+  final Set<String> _sellValues = {};
 
   @override
   void initState() {
@@ -730,8 +735,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount')
                   .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
-              // Fee section for asset events
+              // Type detection + Fee section for asset events
               if (_target == ImportTarget.assetEvent) ...[
+                const SizedBox(height: 12),
+                _buildTypeDetectionSection(columns),
                 const SizedBox(height: 12),
                 _buildFeeModeSection(columns),
               ],
@@ -1121,6 +1128,91 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         // Fee/cost column — available for cumulative and filtered modes
 
 
+      ],
+    );
+  }
+
+  /// Build the buy/sell type detection section for asset imports.
+  Widget _buildTypeDetectionSection(List<String> columns) {
+    // Gather unique values from the mapped type column
+    final typeCol = _mappings['type'];
+    final uniqueVals = <String>{};
+    if (typeCol != null && _preview != null) {
+      for (final row in _preview!.rows) {
+        final v = (row[typeCol] ?? '').trim();
+        if (v.isNotEmpty) uniqueVals.add(v);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Buy / Sell Detection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        const SizedBox(height: 4),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'column', label: Text('From column')),
+            ButtonSegment(value: 'sign', label: Text('From sign (+/-)')),
+          ],
+          selected: {_typeMode},
+          onSelectionChanged: (v) => setState(() {
+            _typeMode = v.first;
+            if (_typeMode == 'sign') {
+              _mappings['type'] = null;
+              _buyValues.clear();
+              _sellValues.clear();
+            }
+          }),
+        ),
+        if (_typeMode == 'column') ...[
+          const SizedBox(height: 4),
+          _buildMappingRow('type', columns),
+          if (typeCol != null && uniqueVals.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('Map values to Buy / Sell:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            const SizedBox(height: 4),
+            ...uniqueVals.map((val) {
+              final isBuy = _buyValues.contains(val);
+              final isSell = _sellValues.contains(val);
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 140,
+                      child: Text(val, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Buy', style: TextStyle(fontSize: 11)),
+                      selected: isBuy,
+                      onSelected: (_) => setState(() {
+                        _sellValues.remove(val);
+                        if (isBuy) { _buyValues.remove(val); } else { _buyValues.add(val); }
+                      }),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                    ChoiceChip(
+                      label: const Text('Sell', style: TextStyle(fontSize: 11)),
+                      selected: isSell,
+                      onSelected: (_) => setState(() {
+                        _buyValues.remove(val);
+                        if (isSell) { _sellValues.remove(val); } else { _sellValues.add(val); }
+                      }),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ] else
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('Negative quantity or amount → Sell, positive → Buy',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          ),
       ],
     );
   }
@@ -1877,12 +1969,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           onProgress: onProgress,
         );
       } else {
+        // Remove type mapping if using sign-based detection
+        if (_typeMode == 'sign') {
+          mappings.removeWhere((m) => m.targetField == 'type');
+        }
         final assetResult = await importer.importAssetEventsGrouped(
           preview: _preview!,
           mappings: mappings,
           onProgress: onProgress,
           computeFee: _feeMode == 'computed',
           isinLookup: ref.read(isinLookupServiceProvider),
+          buyValues: _buyValues.isNotEmpty ? _buyValues : null,
+          sellValues: _sellValues.isNotEmpty ? _sellValues : null,
         );
         result = assetResult.result;
       }
@@ -2003,5 +2101,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _balanceFilterInclude.clear();
     _feeMode = 'column';
     _autoCalcAmount = false;
+    _typeMode = 'column';
+    _buyValues.clear();
+    _sellValues.clear();
   }
 }

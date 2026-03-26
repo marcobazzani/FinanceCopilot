@@ -476,6 +476,8 @@ class ImportService {
     void Function(int processed, int total)? onProgress,
     bool computeFee = false,
     IsinLookupService? isinLookup,
+    Set<String>? buyValues,
+    Set<String>? sellValues,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -585,9 +587,6 @@ class ImportService {
           rawMetadata[col] = row[col] ?? '';
         }
 
-        final eventTypeStr = typeMapping != null ? (_resolveMapping(typeMapping, row) ?? 'BUY') : 'BUY';
-        final eventType = _parseEventType(eventTypeStr);
-
         final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
         final price = priceMapping != null ? _tryParseAmount(_resolveMapping(priceMapping, row)) : null;
 
@@ -601,6 +600,16 @@ class ImportService {
           amount = 0;
         }
         final rate = exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null;
+
+        // Event type: from column with custom mappings, or inferred from sign
+        final EventType eventType;
+        if (typeMapping != null) {
+          final typeStr = _resolveMapping(typeMapping, row) ?? 'BUY';
+          eventType = _parseEventType(typeStr, buyValues: buyValues, sellValues: sellValues);
+        } else {
+          final isNeg = (qty != null && qty < 0) || amount < 0;
+          eventType = isNeg ? EventType.sell : EventType.buy;
+        }
 
         // Fee: from column or computed as |amount| - qty * price / rate
         double? commission;
@@ -866,8 +875,11 @@ class ImportService {
   double _parseAmount(String s) => amt.parseAmount(s);
   double? _tryParseAmount(String? s) => amt.tryParseAmount(s);
 
-  EventType _parseEventType(String s) {
+  EventType _parseEventType(String s, {Set<String>? buyValues, Set<String>? sellValues}) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
+    // Custom user-defined mappings take priority
+    if (buyValues != null && buyValues.any((v) => v.toUpperCase() == normalized)) return EventType.buy;
+    if (sellValues != null && sellValues.any((v) => v.toUpperCase() == normalized)) return EventType.sell;
     // Direct enum match
     final direct = EventType.values.where((e) => e.name.toUpperCase() == normalized).firstOrNull;
     if (direct != null) return direct;
