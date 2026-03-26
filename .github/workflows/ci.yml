@@ -70,6 +70,7 @@ jobs:
 
       - name: Determine channel
         id: channel
+        shell: bash
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "channel=stable" >> "$GITHUB_OUTPUT"
@@ -78,6 +79,7 @@ jobs:
           fi
 
       - name: Build release
+        shell: bash
         run: |
           flutter build ${{ matrix.platform }} --release \
             --dart-define=COMMIT_SHA=${{ github.sha }} \
