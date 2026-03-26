@@ -73,9 +73,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // Formula terms for amount (visual formula builder)
   final List<FormulaTerm> _amountFormula = [];
 
-  // Columns selected for dedup hash (empty = all columns)
-  final Set<String> _hashColumns = {};
-
   bool _noHeader = false;
   String? _balanceDiffColumn; // when set, amount = balance[i] - balance[i-1]
 
@@ -86,7 +83,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   ImportConfig? _savedConfig;
 
   ImportResult? _result;
-  ImportPreview? _importPreview;
   bool _importing = false;
   bool _parsing = false;
   int _importedSoFar = 0;
@@ -254,11 +250,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   /// Try to auto-map columns by matching common names.
   void _autoMap(List<String> columns) {
-    // Default: all columns in hash
-    _hashColumns
-      ..clear()
-      ..addAll(columns);
-
     final lowerCols = {for (final c in columns) c.toLowerCase(): c};
 
     /// Try to map a target field by trying a list of common column names.
@@ -311,7 +302,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _error = null;
         _mappings.clear();
         _amountFormula.clear();
-        _hashColumns.clear();
+    
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
@@ -347,7 +338,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _parsing = false;
         _mappings.clear();
         _amountFormula.clear();
-        _hashColumns.clear();
+    
         for (final f in _requiredFields) { _mappings[f] = null; }
         _autoMap(preview.columns);
       });
@@ -462,15 +453,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
-      final savedHash = (jsonDecode(config.hashColumnsJson) as List<dynamic>).cast<String>();
-      _hashColumns.clear();
-      for (final col in savedHash) {
-        if (currentCols.contains(col)) {
-          _hashColumns.add(col);
-        }
-      }
-
-      _log.info('_applySavedConfig: result — mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, hashCols=$_hashColumns, formula=${_amountFormula.length} terms');
+      _log.info('_applySavedConfig: result — mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms');
     });
   }
 
@@ -513,7 +496,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           formula: _amountFormula
               .map((t) => {'operator': t.operator, 'sourceColumn': t.sourceColumn})
               .toList(),
-          hashColumns: _hashColumns.toList(),
+          hashColumns: const [],
         );
     _log.info('_saveConfig: saved config for account $accountId');
   }
@@ -721,28 +704,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               if (_target == ImportTarget.transaction && preview != null) ...[
                 const Divider(),
                 _buildBalanceModeSection(preview),
-                const Divider(),
-
-                // Dedup hash column selector
-                const SizedBox(height: 8),
-                Text(s.dedupKeyColumns, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(s.dedupKeyHelp,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 0,
-                  children: columns.map((col) {
-                    final selected = _hashColumns.contains(col);
-                    return FilterChip(
-                      label: Text(col, style: const TextStyle(fontSize: 12)),
-                      selected: selected,
-                      onSelected: (v) => setState(() {
-                        if (v) { _hashColumns.add(col); } else { _hashColumns.remove(col); }
-                      }),
-                    );
-                  }).toList(),
-                ),
               ],
               const Divider(),
 
@@ -795,10 +756,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              onPressed: _canProceedToConfirm() ? () {
-                setState(() => _step = 2);
-                _computeImportPreview();
-              } : null,
+              onPressed: _canProceedToConfirm() ? () => setState(() => _step = 2) : null,
               child: Text(s.next),
             ),
           ],
@@ -1604,21 +1562,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ],
             ),
           ),
-        ] else ...[
-          if (_importPreview != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${_importPreview!.newRows} new rows, ${_importPreview!.updateRows} existing to update',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            ),
+        ] else
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -1629,7 +1573,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               ),
             ],
           ),
-        ],
       ],
     );
   }
@@ -1829,21 +1772,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (created == true) setState(() {});
   }
 
-  Future<void> _computeImportPreview() async {
-    if (_preview == null || _target != ImportTarget.transaction || _targetId == null) return;
-    try {
-      final importer = ref.read(importServiceProvider);
-      final preview = await importer.previewImport(
-        preview: _preview!,
-        accountId: _targetId!,
-        hashColumns: _hashColumns.isNotEmpty ? _hashColumns : null,
-      );
-      if (mounted) setState(() => _importPreview = preview);
-    } catch (e) {
-      _log.warning('_computeImportPreview: $e');
-    }
-  }
-
   Future<void> _executeImport() async {
     _log.info('_executeImport: starting import — target=${_target.name}, targetId=$_targetId');
     setState(() {
@@ -1895,7 +1823,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           preview: _preview!,
           mappings: mappings,
           accountId: _targetId!,
-          hashColumns: _hashColumns.isNotEmpty ? _hashColumns : null,
           onProgress: onProgress,
           balanceMode: _balanceMode,
           balanceFilterColumn: _balanceFilterColumn,
@@ -1920,7 +1847,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         result = assetResult.result;
       }
 
-      _log.info('_executeImport: complete — imported=${result.importedRows}, updated=${result.updatedDuplicates}, errors=${result.errorRows}');
+      _log.info('_executeImport: complete — imported=${result.importedRows}, deleted=${result.deletedRows}, errors=${result.errorRows}');
       if (result.errors.isNotEmpty) {
         _log.warning('_executeImport: first error: ${result.errors.first}');
       }
@@ -1964,9 +1891,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               Text('Import Complete', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 16),
               _resultRow('Total rows', '${r.totalRows}'),
-              _resultRow('Imported (new)', '${r.importedRows}', color: Colors.green),
-              if (r.updatedDuplicates > 0) _resultRow('Updated (existing)', '${r.updatedDuplicates}', color: Colors.blue),
-              if (r.unchangedDuplicates > 0) _resultRow('Unchanged', '${r.unchangedDuplicates}', color: Colors.grey),
+              _resultRow('Imported', '${r.importedRows}', color: Colors.green),
+              if (r.deletedRows > 0) _resultRow('Replaced (overlap)', '${r.deletedRows}', color: Colors.orange),
               if (r.errorRows > 0) _resultRow('Errors', '${r.errorRows}', color: Colors.red),
               if (r.errors.isNotEmpty) ...[
                 const SizedBox(height: 8),
@@ -2026,7 +1952,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _parsing = false;
     _importedSoFar = 0;
     _importTotal = 0;
-    _hashColumns.clear();
+
     _multiMappings.clear();
     _multiDelimiters.clear();
     _noHeader = false;

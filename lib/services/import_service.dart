@@ -58,26 +58,17 @@ class FilePreview {
 }
 
 /// Result of an import operation.
-class ImportPreview {
-  final int totalRows;
-  final int newRows;
-  final int updateRows;
-  const ImportPreview({required this.totalRows, required this.newRows, required this.updateRows});
-}
-
 class ImportResult {
   final int totalRows;
   final int importedRows;
-  final int updatedDuplicates;
-  final int unchangedDuplicates;
+  final int deletedRows;
   final int errorRows;
   final List<String> errors;
 
   const ImportResult({
     required this.totalRows,
     required this.importedRows,
-    required this.updatedDuplicates,
-    this.unchangedDuplicates = 0,
+    this.deletedRows = 0,
     required this.errorRows,
     this.errors = const [],
   });
@@ -265,51 +256,8 @@ class ImportService {
   }
 
   // ──────────────────────────────────────────────
-  // Step 2: Compute row hashes for dedup
+  // Helpers: mapping resolution
   // ──────────────────────────────────────────────
-
-  /// Compute SHA-256 hash of a row (all values concatenated in column order).
-  /// Public static so it can be reused for reindexing from rawMetadata.
-  /// Preview how many rows are new vs existing (for UI preview before import).
-  Future<ImportPreview> previewImport({
-    required FilePreview preview,
-    required int accountId,
-    Set<String>? hashColumns,
-  }) async {
-    final dedupCols = (hashColumns != null && hashColumns.isNotEmpty)
-        ? preview.columns.where((c) => hashColumns.contains(c)).toList()
-        : preview.columns;
-    final existingHashMap = await _getExistingTransactionHashMap(accountId);
-    var newCount = 0;
-    var updateCount = 0;
-    var unchangedCount = 0;
-    for (final row in preview.rows) {
-      final hash = _hashRow(row, dedupCols);
-      if (existingHashMap.containsKey(hash)) {
-        // Could check field-level diff here too, but for preview just count as "existing"
-        updateCount++;
-      } else {
-        newCount++;
-      }
-    }
-    return ImportPreview(totalRows: preview.totalRows, newRows: newCount, updateRows: updateCount);
-  }
-
-  static String hashRow(Map<String, String> row, List<String> columns) {
-    final values = columns.map((c) => _normalizeForHash(row[c] ?? '')).join('|');
-    return sha256.convert(utf8.encode(values)).toString();
-  }
-
-  /// Normalize a cell value for hashing: trim whitespace and normalize
-  /// numeric representations so "3.0" and "3.00" produce the same hash.
-  static String _normalizeForHash(String value) {
-    final trimmed = value.trim();
-    final n = double.tryParse(trimmed);
-    if (n != null) return n.toString(); // canonical form: -3.0, 0.0, etc.
-    return trimmed;
-  }
-
-  String _hashRow(Map<String, String> row, List<String> columns) => hashRow(row, columns);
 
   /// Resolve a mapping value from a row: simple column lookup, formula, or multi-column.
   String? _resolveMapping(ColumnMapping mapping, Map<String, String> row) {
@@ -357,42 +305,30 @@ class ImportService {
   // ──────────────────────────────────────────────
 
   /// Import rows as Transactions.
+  /// Algorithm: find the oldest date in the CSV, delete all DB rows for this
+  /// account from that date onward, then insert all CSV rows. This guarantees
+  /// no orphan rows from previous imports with changed data.
   Future<ImportResult> importTransactions({
     required FilePreview preview,
     required List<ColumnMapping> mappings,
     required int accountId,
-    Set<String>? hashColumns,
     void Function(int processed, int total)? onProgress,
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
   }) async {
-    final dedupCols = (hashColumns != null && hashColumns.isNotEmpty)
-        ? preview.columns.where((c) => hashColumns.contains(c)).toList()
-        : preview.columns;
-    _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings, ${dedupCols.length} hash cols');
-    for (final m in mappings) {
-      if (m.isFormula) {
-        _log.fine('  mapping: ${m.targetField} ← formula(${m.formulaTerms!.map((t) => "${t.operator}${t.sourceColumn}").join(" ")})');
-      } else {
-        _log.fine('  mapping: ${m.targetField} ← ${m.sourceColumn}');
-      }
-    }
+    _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
 
     if (dateMapping == null || amountMapping == null) {
-      _log.severe('importTransactions: missing required mappings (date=${dateMapping != null}, amount=${amountMapping != null})');
+      _log.severe('importTransactions: missing required mappings');
       return const ImportResult(
-        totalRows: 0, importedRows: 0, updatedDuplicates: 0, errorRows: 0,
+        totalRows: 0, importedRows: 0, errorRows: 0,
         errors: ['date and amount columns are required'],
       );
     }
-
-    // Get existing hashes for this account (hash → existing row ID)
-    final existingHashMap = await _getExistingTransactionHashMap(accountId);
-    _log.fine('importTransactions: ${existingHashMap.length} existing hashes for dedup');
 
     // Pre-compute balance-diff amounts if needed
     List<double>? balanceDiffAmounts;
@@ -413,28 +349,22 @@ class ImportService {
       }
     }
 
-    var imported = 0;
-    var updated = 0;
-    var unchanged = 0;
-    var errorCount = 0;
-    final errors = <String>[];
-    final updateRows = <int, _ParsedTransactionRow>{}; // existingId → new data
-
-    // Pre-resolve field mappings once (not per-row)
+    // Pre-resolve field mappings once
     final descMapping = mappingByField['description'];
     final balanceMapping = mappingByField['balanceAfter'];
     final currencyMapping = mappingByField['currency'];
     final valueDateMapping = mappingByField['valueDate'];
     final statusMapping = mappingByField['status'];
 
-    // Collect parsed row data first, then compute balance, then build companions
+    // Parse all rows
+    var imported = 0;
+    var errorCount = 0;
+    final errors = <String>[];
     final parsedRows = <_ParsedTransactionRow>[];
     const progressInterval = 100;
 
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
-      final hash = _hashRow(row, dedupCols);
-
       try {
         final dateStr = _resolveMapping(dateMapping, row) ?? '';
         final double amount;
@@ -446,7 +376,6 @@ class ImportService {
         }
         final date = _parseDate(dateStr);
 
-        // Store entire row as raw metadata
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
           rawMetadata[col] = row[col] ?? '';
@@ -466,7 +395,7 @@ class ImportService {
           txStatus = TransactionStatus.values.where((s) => s.name.toLowerCase() == sStr).firstOrNull;
         }
 
-        final parsed = _ParsedTransactionRow(
+        parsedRows.add(_ParsedTransactionRow(
           date: date,
           valueDate: valueDate,
           amount: amount,
@@ -475,31 +404,11 @@ class ImportService {
           currency: currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? 'EUR') : 'EUR',
           status: txStatus,
           rawMetadata: rawMetadata,
-          hash: hash,
+          hash: null,
           filterColumnValue: balanceFilterColumn != null ? (row[balanceFilterColumn] ?? '').trim() : null,
           csvIndex: i,
-        );
-
-        // Dedup: if hash exists, update only if at least one field differs
-        final existing = existingHashMap[hash];
-        if (existing != null) {
-          final differs = existing.amount != parsed.amount
-              || existing.description != parsed.description
-              || existing.currency != parsed.currency
-              || existing.operationDate != parsed.date
-              || (parsed.valueDate != null && existing.valueDate != parsed.valueDate)
-              || (parsed.status != null && existing.status != parsed.status)
-              || existing.rawMetadata != jsonEncode(parsed.rawMetadata);
-          if (differs) {
-            updateRows[existing.id] = parsed;
-            updated++;
-          } else {
-            unchanged++;
-          }
-        } else {
-          parsedRows.add(parsed);
-          imported++;
-        }
+        ));
+        imported++;
       } catch (e, stack) {
         errorCount++;
         errors.add('Row ${i + 1}: $e');
@@ -508,10 +417,29 @@ class ImportService {
       if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
     }
 
-    // Compute balanceAfter based on mode
+    if (parsedRows.isEmpty) {
+      return ImportResult(totalRows: preview.totalRows, importedRows: 0, errorRows: errorCount, errors: errors);
+    }
+
+    // Compute balanceAfter
     _computeBalances(parsedRows, balanceMode, balanceFilterInclude);
 
-    // Build companions from parsed rows
+    // Find the oldest date in the parsed rows
+    final oldestDate = parsedRows.map((r) => r.date).reduce((a, b) => a.isBefore(b) ? a : b);
+    final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day).millisecondsSinceEpoch ~/ 1000;
+
+    // Delete all DB rows for this account from oldest CSV date onward
+    final deleted = await _db.customUpdate(
+      'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?',
+      variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+      updates: {_db.transactions},
+    );
+    _log.info('importTransactions: deleted $deleted rows from ${oldestDate.toIso8601String().substring(0, 10)} onward');
+
+    // Report parsing complete, starting DB write
+    onProgress?.call(preview.rows.length, preview.rows.length);
+
+    // Batch insert all parsed rows
     final companions = parsedRows.map((r) => TransactionsCompanion.insert(
       accountId: accountId,
       operationDate: r.date,
@@ -522,48 +450,18 @@ class ImportService {
       currency: Value(r.currency),
       status: r.status != null ? Value(r.status!) : const Value.absent(),
       rawMetadata: Value(jsonEncode(r.rawMetadata)),
-      importHash: Value(r.hash),
     )).toList();
 
-    // Report parsing complete, starting DB write
-    onProgress?.call(preview.rows.length, preview.rows.length);
-
-    // Batch insert new rows
-    _log.info('importTransactions: batch-inserting ${companions.length} new rows');
+    _log.info('importTransactions: batch-inserting ${companions.length} rows');
     await _db.batch((batch) {
       batch.insertAll(_db.transactions, companions);
     });
 
-    // Batch update existing rows that matched by hash
-    if (updateRows.isNotEmpty) {
-      _log.info('importTransactions: updating ${updateRows.length} existing rows');
-      await _db.batch((batch) {
-        for (final entry in updateRows.entries) {
-          final r = entry.value;
-          batch.update(
-            _db.transactions,
-            TransactionsCompanion(
-              operationDate: Value(r.date),
-              valueDate: Value(r.valueDate ?? r.date),
-              amount: Value(r.amount),
-              description: Value(r.description),
-              balanceAfter: Value(r.balanceAfter),
-              currency: Value(r.currency),
-              status: r.status != null ? Value(r.status!) : const Value.absent(),
-              rawMetadata: Value(jsonEncode(r.rawMetadata)),
-            ),
-            where: (t) => t.id.equals(entry.key),
-          );
-        }
-      });
-    }
-
-    _log.info('importTransactions: done — imported=$imported, updated=$updated, unchanged=$unchanged, errors=$errorCount');
+    _log.info('importTransactions: done — imported=$imported, deleted=$deleted, errors=$errorCount');
     return ImportResult(
       totalRows: preview.totalRows,
       importedRows: imported,
-      updatedDuplicates: updated,
-      unchangedDuplicates: unchanged,
+      deletedRows: deleted,
       errorRows: errorCount,
       errors: errors,
     );
@@ -589,7 +487,7 @@ class ImportService {
       _log.severe('importAssetEventsGrouped: missing required mappings');
       return AssetImportResult(
         result: const ImportResult(
-          totalRows: 0, importedRows: 0, updatedDuplicates: 0, errorRows: 0,
+          totalRows: 0, importedRows: 0, errorRows: 0,
           errors: ['date, amount, and ISIN columns are required'],
         ),
         assetsByIsin: {},
@@ -739,7 +637,7 @@ class ImportService {
       result: ImportResult(
         totalRows: preview.totalRows,
         importedRows: imported,
-        updatedDuplicates: 0,
+
         errorRows: errorCount,
         errors: errors,
       ),
@@ -761,7 +659,7 @@ class ImportService {
 
     if (dateMapping == null || amountMapping == null) {
       return const ImportResult(
-        totalRows: 0, importedRows: 0, updatedDuplicates: 0, errorRows: 0,
+        totalRows: 0, importedRows: 0, errorRows: 0,
         errors: ['date and amount columns are required'],
       );
     }
@@ -814,7 +712,6 @@ class ImportService {
     return ImportResult(
       totalRows: preview.totalRows,
       importedRows: imported,
-      updatedDuplicates: 0,
       errorRows: errorCount,
       errors: errors,
     );
@@ -823,15 +720,6 @@ class ImportService {
   // ──────────────────────────────────────────────
   // Helpers
   // ──────────────────────────────────────────────
-
-  /// Returns hash → transaction map for dedup (compare + update existing on match).
-  Future<Map<String, Transaction>> _getExistingTransactionHashMap(int accountId) async {
-    final rows = await (_db.select(_db.transactions)
-          ..where((t) => t.accountId.equals(accountId))
-          ..where((t) => t.importHash.isNotNull()))
-        .get();
-    return {for (final r in rows) r.importHash!: r};
-  }
 
   Future<Set<String>> _getExistingEventHashes(int assetId) async {
     final rows = await (_db.select(_db.assetEvents)
@@ -1046,7 +934,7 @@ class _ParsedTransactionRow {
   final String currency;
   final TransactionStatus? status;
   final Map<String, String> rawMetadata;
-  final String hash;
+  final String? hash;
   final String? filterColumnValue;
   final int csvIndex;
 

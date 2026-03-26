@@ -80,21 +80,20 @@ Date,Amount,Description,Extra
       );
 
       expect(result.importedRows, 2);
-      expect(result.updatedDuplicates, 0);
       expect(result.errorRows, 0);
 
       final txs = await db.select(db.transactions).get();
       expect(txs, hasLength(2));
       expect(txs[0].amount, -42.50);
       expect(txs[0].description, 'Supermarket');
-      expect(txs[0].importHash, isNotNull);
+      // importHash is no longer set for transactions (date-based replace instead)
 
       // raw_metadata should contain unmapped 'Extra' column
       expect(txs[0].rawMetadata, contains('Extra'));
       expect(txs[0].rawMetadata, contains('some extra data'));
     });
 
-    test('deduplication: re-importing same file skips rows', () async {
+    test('re-importing same file replaces rows cleanly', () async {
       final accountId = await db.into(db.accounts).insert(
         AccountsCompanion.insert(name: 'Fineco'),
       );
@@ -112,39 +111,29 @@ Date,Amount,Description
       ];
 
       // First import
-      final result1 = await importer.importTransactions(
-        preview: preview,
-        mappings: mappings,
-        accountId: accountId,
-      );
-      expect(result1.importedRows, 2);
-      expect(result1.updatedDuplicates, 0);
+      await importer.importTransactions(preview: preview, mappings: mappings, accountId: accountId);
 
-      // Second import (same data)
-      final result2 = await importer.importTransactions(
-        preview: preview,
-        mappings: mappings,
-        accountId: accountId,
-      );
-      expect(result2.importedRows, 0);
-      expect(result2.updatedDuplicates, 0); // same data → unchanged
-      expect(result2.unchangedDuplicates, 2);
+      // Second import (same data) — deletes from oldest date, re-inserts
+      final result2 = await importer.importTransactions(preview: preview, mappings: mappings, accountId: accountId);
+      expect(result2.importedRows, 2);
+      expect(result2.deletedRows, 2);
 
       // Still only 2 rows in DB
       final txs = await db.select(db.transactions).get();
       expect(txs, hasLength(2));
     });
 
-    test('partial re-import: new rows imported, old rows skipped', () async {
+    test('partial re-import: overlapping rows replaced, earlier rows kept', () async {
       final accountId = await db.into(db.accounts).insert(
         AccountsCompanion.insert(name: 'Revolut'),
       );
 
-      // First import: 2 rows
+      // First import: 3 rows spanning Jan-Feb
       final file1 = _writeCsv('rev1.csv', '''
 Date,Amount,Desc
-01/02/2024,-10.00,Coffee
-02/02/2024,-20.00,Lunch
+15/01/2024,-10.00,Coffee
+01/02/2024,-20.00,Lunch
+02/02/2024,-30.00,Dinner
 ''');
       final preview1 = await importer.parseFile(file1.path);
       await importer.importTransactions(
@@ -156,13 +145,13 @@ Date,Amount,Desc
         ],
         accountId: accountId,
       );
+      expect((await db.select(db.transactions).get()).length, 3);
 
-      // Second import: 3 rows (2 old + 1 new)
+      // Second import: 2 rows from Feb onward (deletes Feb rows, keeps Jan)
       final file2 = _writeCsv('rev2.csv', '''
 Date,Amount,Desc
-01/02/2024,-10.00,Coffee
-02/02/2024,-20.00,Lunch
-03/02/2024,-15.00,Dinner
+01/02/2024,-20.00,Lunch updated
+03/02/2024,-15.00,Brunch
 ''');
       final preview2 = await importer.parseFile(file2.path);
       final result = await importer.importTransactions(
@@ -175,11 +164,11 @@ Date,Amount,Desc
         accountId: accountId,
       );
 
-      expect(result.importedRows, 1);
-      expect(result.unchangedDuplicates, 2); // same data → unchanged
+      expect(result.importedRows, 2);
+      expect(result.deletedRows, 2); // Feb 1 + Feb 2 deleted
 
       final txs = await db.select(db.transactions).get();
-      expect(txs, hasLength(3));
+      expect(txs, hasLength(3)); // Jan 15 kept + Feb 1 + Feb 3 inserted
     });
   });
 
