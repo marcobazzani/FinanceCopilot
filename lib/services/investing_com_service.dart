@@ -78,10 +78,16 @@ class InvestingComService extends MarketPriceService {
       DateTime.now().difference(_cookiesObtainedAt!).inMinutes < 30 &&
       _cfCookies.isNotEmpty;
 
+  /// Mutex: only one CF solve at a time; concurrent callers wait for the result.
+  Completer<bool>? _cfSolving;
+
   /// Solve the Cloudflare challenge using a headless InAppWebView.
   /// Returns true if cookies were obtained successfully.
   Future<bool> _solveCloudflareCookies() async {
     if (_hasFreshCookies) return true;
+    // If another solve is in progress, wait for it
+    if (_cfSolving != null) return _cfSolving!.future;
+    _cfSolving = Completer<bool>();
 
     _log.info('Solving Cloudflare challenge via headless WebView...');
 
@@ -131,14 +137,17 @@ class InvestingComService extends MarketPriceService {
     );
 
     // Timeout after 15 seconds
-    timeout = Timer(const Duration(seconds: 15), () async {
+    timeout = Timer(const Duration(seconds: 30), () async {
       _log.warning('Cloudflare challenge timed out');
       await headless?.dispose();
       if (!completer.isCompleted) completer.complete(false);
     });
 
     await headless.run();
-    return completer.future;
+    final result = await completer.future;
+    _cfSolving?.complete(result);
+    _cfSolving = null;
+    return result;
   }
 
   /// Build Dio options with Cloudflare cookies + matching UA.
@@ -458,6 +467,12 @@ class InvestingComService extends MarketPriceService {
         '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
     _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
+
+    // Ensure Cloudflare cookies are available
+    if (!_hasFreshCookies) {
+      final ok = await _solveCloudflareCookies();
+      if (!ok) return {};
+    }
 
     final response = await _dio.get(url, options: _apiOptions());
     final data = response.data;

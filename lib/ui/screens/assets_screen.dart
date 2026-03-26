@@ -233,10 +233,29 @@ class _AssetTile extends StatelessWidget {
                   ),
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    'qty ${qtyFormat.format(stats!.totalQuantity)}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: Colors.grey,
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        if (marketValue != null) ...[
+                          TextSpan(
+                            text: '${amtFormat.format(marketValue! / stats!.totalQuantity)}',
+                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                          ),
+                          if (asset.currency != baseCurrency)
+                            TextSpan(
+                              text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
+                            ),
+                          TextSpan(
+                            text: '  ×  ',
+                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
+                          ),
+                        ],
+                        TextSpan(
+                          text: qtyFormat.format(stats!.totalQuantity),
+                          style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                        ),
+                      ],
                     ),
                   ),
                 ],
