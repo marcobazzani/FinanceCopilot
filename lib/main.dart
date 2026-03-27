@@ -168,20 +168,19 @@ class _AppShellState extends ConsumerState<AppShell> {
       return;
     }
 
-    // Kick off syncs in parallel
+    // Run all syncs, then dismiss the Windows WebView dialog
     Future.microtask(() async {
       try {
-        await ref.read(exchangeRateServiceProvider).syncRates();
+        await Future.wait([
+          _syncPrices(),
+          ref.read(exchangeRateServiceProvider).syncRates(),
+          ref.read(compositionServiceProvider).syncCompositions(),
+        ]);
       } catch (e) {
-        _log.warning('Exchange rate sync failed: $e');
-      }
-    });
-    Future.microtask(() => _syncPrices());
-    Future.microtask(() async {
-      try {
-        await ref.read(compositionServiceProvider).syncCompositions();
-      } catch (e) {
-        _log.warning('Composition sync failed: $e');
+        _log.warning('Background sync error: $e');
+      } finally {
+        final ps = ref.read(marketPriceServiceProvider);
+        if (ps is InvestingComService) ps.dismissWebViewDialog();
       }
     });
   }
