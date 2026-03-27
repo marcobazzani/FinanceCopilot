@@ -203,8 +203,8 @@ class InvestingComService extends MarketPriceService {
       return data as Map<String, dynamic>;
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
-        _log.fine('_webViewFetch: 403 — will re-solve CF');
-        _webViewReadyAt = null;
+        // Don't re-solve — if cf_clearance is missing (Windows), re-solving won't help
+        _log.fine('_webViewFetch: 403');
       } else {
         _log.fine('_webViewFetch: ${e.response?.statusCode}');
       }
