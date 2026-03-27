@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
@@ -61,111 +62,115 @@ const _exchangeNames = <String, List<String>>{
 class InvestingComService extends MarketPriceService {
   final Dio _dio;
 
-  /// Cloudflare cookies obtained from headless WebView.
-  Map<String, String> _cfCookies = {};
-  String _userAgent = '';
-  DateTime? _cookiesObtainedAt;
+  /// Persistent headless WebView for CF-protected API calls.
+  HeadlessInAppWebView? _webView;
+  InAppWebViewController? _webViewController;
+  DateTime? _webViewReadyAt;
 
   InvestingComService(super.db, {Dio? dio}) : _dio = dio ?? Dio();
 
   // ──────────────────────────────────────────────
-  // Cloudflare cookie resolution via headless WebView
+  // Headless WebView: solve CF + make API calls in same browser context
   // ──────────────────────────────────────────────
 
-  /// Whether cookies are still valid (~30 min window to be safe).
-  bool get _hasFreshCookies =>
-      _cookiesObtainedAt != null &&
-      DateTime.now().difference(_cookiesObtainedAt!).inMinutes < 30 &&
-      _cfCookies.isNotEmpty;
+  /// Whether the WebView is ready (CF solved, not expired).
+  bool get _isWebViewReady =>
+      _webViewController != null &&
+      _webViewReadyAt != null &&
+      DateTime.now().difference(_webViewReadyAt!).inMinutes < 30;
 
-  /// Mutex: only one CF solve at a time; concurrent callers wait for the result.
+  /// Mutex: only one CF solve at a time.
   Completer<bool>? _cfSolving;
 
-  /// Solve the Cloudflare challenge using a headless InAppWebView.
-  /// Returns true if cookies were obtained successfully.
-  Future<bool> _solveCloudflareCookies() async {
-    if (_hasFreshCookies) return true;
-    // If another solve is in progress, wait for it
+  /// Ensure the headless WebView is running and CF is solved.
+  Future<bool> _ensureWebView() async {
+    if (_isWebViewReady) return true;
     if (_cfSolving != null) return _cfSolving!.future;
     _cfSolving = Completer<bool>();
 
     _log.info('Solving Cloudflare challenge via headless WebView...');
 
-    final completer = Completer<bool>();
+    // Dispose old WebView if any
+    if (_webView != null) {
+      try { await _webView!.dispose(); } catch (_) {}
+      _webView = null;
+      _webViewController = null;
+    }
 
-    HeadlessInAppWebView? headless;
+    final completer = Completer<bool>();
     Timer? timeout;
 
-    headless = HeadlessInAppWebView(
+    _webView = HeadlessInAppWebView(
       initialUrlRequest: URLRequest(
         url: WebUri('https://www.investing.com/'),
       ),
       initialSettings: InAppWebViewSettings(
         javaScriptEnabled: true,
-        // Don't set custom user agent — Cloudflare detects it
       ),
       onLoadStop: (controller, url) async {
-        // Check if we've passed Cloudflare (page title won't be "Just a moment...")
         final title = await controller.getTitle();
         if (title != null && !title.contains('Just a moment')) {
-          // Extract cookies
-          final cookieManager = CookieManager.instance();
-          final cookies = await cookieManager.getCookies(
-            url: WebUri('https://www.investing.com/'),
-          );
-
-          _cfCookies = {};
-          for (final cookie in cookies) {
-            _cfCookies[cookie.name] = cookie.value.toString();
-          }
-
-          // Get the user agent the WebView used
-          _userAgent = await controller.evaluateJavascript(
-                source: 'navigator.userAgent',
-              ) as String? ??
-              '';
-
-          _cookiesObtainedAt = DateTime.now();
-          _log.info(
-              'Cloudflare solved: ${_cfCookies.length} cookies, UA: ${_userAgent.substring(0, 50)}...');
-
+          _webViewController = controller;
+          _webViewReadyAt = DateTime.now();
+          _log.info('Cloudflare solved — WebView ready');
           timeout?.cancel();
-          await headless?.dispose();
           if (!completer.isCompleted) completer.complete(true);
         }
       },
     );
 
-    // Timeout after 15 seconds
     timeout = Timer(const Duration(seconds: 30), () async {
       _log.warning('Cloudflare challenge timed out');
-      await headless?.dispose();
+      try { await _webView?.dispose(); } catch (_) {}
+      _webView = null;
+      _webViewController = null;
       if (!completer.isCompleted) completer.complete(false);
     });
 
-    await headless.run();
+    await _webView!.run();
     final result = await completer.future;
     _cfSolving?.complete(result);
     _cfSolving = null;
     return result;
   }
 
-  /// Build Dio options with Cloudflare cookies + matching UA.
-  Options _apiOptions() {
-    final cookieStr =
-        _cfCookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
-    return Options(
-      responseType: ResponseType.json,
-      headers: {
-        'User-Agent': _userAgent,
-        'Cookie': cookieStr,
-        'Accept': 'application/json',
-        'Origin': 'https://www.investing.com',
-        'Referer': 'https://www.investing.com/',
-        'Domain-Id': 'it',
-      },
-    );
+  /// Make an API call through the WebView's browser context (same cookies/UA).
+  /// Returns parsed JSON or null on failure.
+  Future<Map<String, dynamic>?> _webViewFetch(String url) async {
+    if (!_isWebViewReady) {
+      final ok = await _ensureWebView();
+      if (!ok) return null;
+    }
+
+    try {
+      final js = '''
+        (async () => {
+          try {
+            const r = await fetch('$url', {
+              headers: { 'domain-id': 'www' }
+            });
+            if (!r.ok) return JSON.stringify({__error: r.status});
+            return JSON.stringify(await r.json());
+          } catch(e) {
+            return JSON.stringify({__error: e.toString()});
+          }
+        })()
+      ''';
+      final resultStr = await _webViewController!.evaluateJavascript(source: js);
+      if (resultStr == null) return null;
+
+      final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
+      if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
+        _log.warning('_webViewFetch: $url → error ${decoded['__error']}');
+        return null;
+      }
+      return decoded as Map<String, dynamic>;
+    } catch (e) {
+      _log.warning('_webViewFetch: $url failed — $e');
+      return null;
+    }
   }
+
 
   // ──────────────────────────────────────────────
   // Investing.com API: Search
@@ -301,27 +306,18 @@ class InvestingComService extends MarketPriceService {
     final cid = cidRow != null ? int.tryParse(cidRow.read<String>('value')) : null;
     if (cid == null) return getPrice(assetId, DateTime.now());
 
-    // Fetch last 3 days and take the most recent price
-    try {
-      final now = DateTime.now();
-      final from = now.subtract(const Duration(days: 3));
-      final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
-      final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    // Fetch last 3 days via WebView (same browser context as CF solve)
+    final now = DateTime.now();
+    final from = now.subtract(const Duration(days: 3));
+    final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
+    final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-      final url = 'https://api.investing.com/api/financialdata/historical/$cid'
-          '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
+    final url = 'https://api.investing.com/api/financialdata/historical/$cid'
+        '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
-      if (!_hasFreshCookies) {
-        final ok = await _solveCloudflareCookies();
-        if (!ok) return getPrice(assetId, DateTime.now());
-      }
-
-      final response = await _dio.get(url, options: _apiOptions());
-      final data = response.data;
-      if (data is String) return getPrice(assetId, DateTime.now());
-
-      final dataMap = data as Map<String, dynamic>;
-      final rows = (dataMap['data'] as List?) ?? [];
+    final data = await _webViewFetch(url);
+    if (data != null) {
+      final rows = (data['data'] as List?) ?? [];
       for (final row in rows) {
         final closeRaw = row['last_closeRaw'];
         if (closeRaw == null) continue;
@@ -333,8 +329,6 @@ class InvestingComService extends MarketPriceService {
           return price;
         }
       }
-    } catch (e) {
-      _log.warning('getLivePrice: asset $assetId failed — $e');
     }
 
     return getPrice(assetId, DateTime.now());
@@ -405,8 +399,7 @@ class InvestingComService extends MarketPriceService {
         _fxCidCache[pairKey] = cid;
       }
 
-      // Fetch latest price via search API (no Cloudflare needed)
-      // Use a 3-day window to get the most recent rate
+      // Fetch via WebView (same browser context as CF solve)
       final now = DateTime.now();
       final from = now.subtract(const Duration(days: 3));
       final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
@@ -415,34 +408,18 @@ class InvestingComService extends MarketPriceService {
       final url = 'https://api.investing.com/api/financialdata/historical/$cid'
           '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
-      // Need Cloudflare cookies for historical API
-      if (!_hasFreshCookies) {
-        final ok = await _solveCloudflareCookies();
-        if (!ok) return null;
-      }
+      final data = await _webViewFetch(url);
+      if (data == null) return null;
 
-      final response = await _dio.get(url, options: _apiOptions());
-      final data = response.data;
-      if (data is String) return null;
-
-      final dataMap = data as Map<String, dynamic>;
-      final rows = (dataMap['data'] as List?) ?? [];
-      if (rows.isEmpty) return null;
-
-      // Get the most recent row (first in the list, usually sorted desc)
-      // Try last_closeRaw first, most rows have it
+      final rows = (data['data'] as List?) ?? [];
       for (final row in rows) {
         final closeRaw = row['last_closeRaw'];
         if (closeRaw == null) continue;
         double? price;
-        if (closeRaw is num) {
-          price = closeRaw.toDouble();
-        } else if (closeRaw is String) {
-          price = double.tryParse(closeRaw);
-        }
+        if (closeRaw is num) price = closeRaw.toDouble();
+        else if (closeRaw is String) price = double.tryParse(closeRaw);
         if (price != null && price > 0) return price;
       }
-
       return null;
     } catch (e) {
       _log.warning('_fetchFxRate: $pairKey failed — $e');
@@ -468,20 +445,11 @@ class InvestingComService extends MarketPriceService {
 
     _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
 
-    // Ensure Cloudflare cookies are available
-    if (!_hasFreshCookies) {
-      final ok = await _solveCloudflareCookies();
-      if (!ok) return {};
-    }
-
-    final response = await _dio.get(url, options: _apiOptions());
-    final data = response.data;
-
-    if (data is String) {
-      _log.warning('fetch: $tag (cid=$cid) got non-JSON response (Cloudflare block?)');
+    final dataMap = await _webViewFetch(url);
+    if (dataMap == null) {
+      _log.warning('fetch: $tag (cid=$cid) — WebView fetch failed');
       return {};
     }
-    final dataMap = data as Map<String, dynamic>;
     final rows = (dataMap['data'] as List?) ?? [];
 
     final prices = <DateTime, double>{};
@@ -676,8 +644,8 @@ class InvestingComService extends MarketPriceService {
         return;
       }
 
-      // Step 2: Solve Cloudflare for historical API access
-      final cfOk = await _solveCloudflareCookies();
+      // Step 2: Ensure WebView is ready (solves CF if needed)
+      final cfOk = await _ensureWebView();
       if (!cfOk) {
         _log.warning('syncPrices: could not solve Cloudflare, aborting');
         return;
