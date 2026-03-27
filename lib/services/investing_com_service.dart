@@ -159,37 +159,43 @@ class InvestingComService extends MarketPriceService {
     return result;
   }
 
-  /// Make a CF-protected API call.
-  /// macOS: Dio with extracted cookies (cf_clearance available).
-  /// Windows: Dio also, but cf_clearance is missing — will 403.
-  /// TODO: find a Windows-specific workaround for cf_clearance.
+  /// Headers that mimic a real browser's XHR call (from Edge HAR analysis).
+  static const _browserHeaders = {
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Origin': 'https://www.investing.com',
+    'Referer': 'https://www.investing.com/',
+    'Domain-Id': 'www',
+    'sec-ch-ua': '"Chromium";v="131", "Not-A.Brand";v="24"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
+  };
+
+  /// Make a CF-protected API call using Dio with browser headers.
+  /// On macOS, also sends cf_clearance cookie (extracted from WebView).
+  /// On Windows, relies on sec-* headers only (cf_clearance not extractable).
   Future<Map<String, dynamic>?> _webViewFetch(String url) async {
+    // Ensure WebView is ready (solves CF, caches cookies)
     if (!_isWebViewReady) {
       final ok = await _ensureWebView();
       if (!ok) return null;
     }
 
-    if (_cfCookieStr.isEmpty) return null;
-
     try {
-      // Mirror Edge browser headers exactly — no cookies needed for API subdomain
+      final headers = Map<String, String>.from(_browserHeaders);
+      headers['User-Agent'] = _cfUserAgent.isNotEmpty ? _cfUserAgent
+          : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+      // Include cookies if available (macOS has cf_clearance, Windows doesn't — but still send what we have)
+      if (_cfCookieStr.isNotEmpty) {
+        headers['Cookie'] = _cfCookieStr;
+      }
+
       final response = await _dio.get(url, options: Options(
         responseType: ResponseType.json,
-        headers: {
-          'User-Agent': _cfUserAgent.isNotEmpty ? _cfUserAgent
-              : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Origin': 'https://www.investing.com',
-          'Referer': 'https://www.investing.com/',
-          'Domain-Id': 'www',
-          'sec-ch-ua': '"Chromium";v="131", "Not-A.Brand";v="24"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"Windows"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-site',
-        },
+        headers: headers,
       ));
 
       final data = response.data;
@@ -197,8 +203,10 @@ class InvestingComService extends MarketPriceService {
       return data as Map<String, dynamic>;
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
-        _log.fine('_webViewFetch: 403');
+        _log.fine('_webViewFetch: 403 — will re-solve CF');
         _webViewReadyAt = null;
+      } else {
+        _log.fine('_webViewFetch: ${e.response?.statusCode}');
       }
       return null;
     } catch (e) {
