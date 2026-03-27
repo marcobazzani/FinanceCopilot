@@ -18,6 +18,11 @@
 - Never duplicate code. Extract shared logic into utilities or service methods.
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
 
+# Localization
+
+- Always translate every string the user sees in the UI (use `AppStrings` / l10n).
+- Always localize dates (both input parsing and output formatting) based on the application's locale configuration.
+
 
 
 # Navigation

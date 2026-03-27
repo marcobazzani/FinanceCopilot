@@ -490,8 +490,8 @@ class ImportService {
         imported++;
       } catch (e, stack) {
         errorCount++;
-        errors.add('Row ${i + 1}: $e');
-        _log.warning('importTransactions: row ${i + 1} error: $e', e, stack);
+        errors.add('Skipped line ${i + 1}: $e');
+        _log.warning('importTransactions: skipped line ${i + 1}: $e', e, stack);
       }
       if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
     }
@@ -569,12 +569,12 @@ class ImportService {
     final amountMapping = mappingByField['amount'];
     final isinMapping = mappingByField['isin'];
 
-    if (dateMapping == null || isinMapping == null) {
+    if (isinMapping == null) {
       _log.severe('importAssetEventsGrouped: missing required mappings');
       return AssetImportResult(
         result: const ImportResult(
           totalRows: 0, importedRows: 0, errorRows: 0,
-          errors: ['date and ISIN columns are required'],
+          errors: ['ISIN column is required'],
         ),
         assetsByIsin: {},
       );
@@ -600,7 +600,7 @@ class ImportService {
       final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
       if (isin.isEmpty) {
         errorCount++;
-        errors.add('Row ${i + 1}: empty ISIN');
+        errors.add('Skipped line ${i + 1}: empty ISIN');
         continue;
       }
       isinToRows.putIfAbsent(isin, () => []).add(i);
@@ -677,8 +677,14 @@ class ImportService {
       }
 
       try {
-        final dateStr = _resolveMapping(dateMapping, row) ?? '';
-        final date = _parseDate(dateStr);
+        final DateTime date;
+        if (dateMapping != null) {
+          final dateStr = _resolveMapping(dateMapping, row) ?? '';
+          date = _parseDate(dateStr);
+        } else {
+          final now = DateTime.now();
+          date = DateTime(now.year, now.month, now.day);
+        }
 
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
@@ -734,8 +740,8 @@ class ImportService {
         imported++;
       } catch (e, stack) {
         errorCount++;
-        errors.add('Row ${i + 1}: $e');
-        _log.warning('importAssetEventsGrouped: row ${i + 1} error: $e', e, stack);
+        errors.add('Skipped line ${i + 1}: $e');
+        _log.warning('importAssetEventsGrouped: skipped line ${i + 1}: $e', e, stack);
       }
       if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
     }
@@ -850,8 +856,8 @@ class ImportService {
         imported++;
       } catch (e, stack) {
         errorCount++;
-        errors.add('Row ${i + 1}: $e');
-        _log.warning('importIncomes: row ${i + 1} error: $e', e, stack);
+        errors.add('Skipped line ${i + 1}: $e');
+        _log.warning('importIncomes: skipped line ${i + 1}: $e', e, stack);
       }
       if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
     }

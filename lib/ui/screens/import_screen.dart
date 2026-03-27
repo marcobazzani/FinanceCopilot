@@ -68,6 +68,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   ImportTarget _target = ImportTarget.transaction;
   int? _targetId; // accountId or assetId
 
+  // Asset import mode: 'historic' (date+rate required) or 'current' (default to today, rate auto-fetched)
+  String _assetImportMode = 'historic';
+
   // Column mappings: targetField → sourceColumn (for simple fields)
   final Map<String, String?> _mappings = {};
 
@@ -92,13 +95,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'amount', 'description'],
-    ImportTarget.assetEvent => ['date', 'isin', 'quantity', 'price', 'currency'],
+    ImportTarget.assetEvent => _assetImportMode == 'historic'
+        ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
+        : ['isin', 'quantity', 'price', 'currency'],
     ImportTarget.income => ['date', 'amount'],
   };
 
   List<String> get _optionalFields => switch (_target) {
     ImportTarget.transaction => ['currency', 'valueDate', 'status'],
-    ImportTarget.assetEvent => ['exchangeRate', 'description'],
+    ImportTarget.assetEvent => _assetImportMode == 'historic'
+        ? ['description']
+        : ['date', 'exchangeRate', 'description'],
     ImportTarget.income => ['type', 'currency'],
   };
 
@@ -126,6 +133,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _typeMode = 'column';
   final Set<String> _buyValues = {};
   final Set<String> _sellValues = {};
+
+  // Cached unique values per column (from ALL rows, not just preview)
+  final Map<String, List<String>> _fullUniqueValues = {};
+  bool _loadingUniqueValues = false;
 
   // Exchange picker for asset imports (ISIN → all available listings, user picks one)
   Map<String, IsinLookupResult>? _isinLookupResults;
@@ -695,8 +706,46 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         Expanded(
           child: ListView(
             children: [
-              // Required fields
-              _buildMappingRow('date', columns, required: true),
+              // Asset event mode toggle (Historic vs Current)
+              if (_target == ImportTarget.assetEvent) ...[
+                Row(
+                  children: [
+                    const Text('Mode: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(width: 8),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'historic', label: Text('Historic')),
+                        ButtonSegment(value: 'current', label: Text('Current')),
+                      ],
+                      selected: {_assetImportMode},
+                      onSelectionChanged: (v) {
+                        setState(() {
+                          _assetImportMode = v.first;
+                          if (_assetImportMode == 'current') {
+                            _mappings.remove('date');
+                            _mappings.remove('exchangeRate');
+                          }
+                        });
+                      },
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _assetImportMode == 'historic'
+                          ? 'Date & exchange rate required'
+                          : 'Date defaults to today, rate auto-fetched',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+              // Required fields — date required except for asset events in current mode
+              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic')
+                _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
                 _buildAmountFormulaRow(columns)
               else if (_target == ImportTarget.assetEvent) ...[
@@ -852,7 +901,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       border: const OutlineInputBorder(),
-                      hintText: required ? s.required : s.notMapped,
+                      hintText: required ? s.required
+                          : field == 'date' ? '${s.notMapped} (→ ${DateTime.now().toIso8601String().substring(0, 10)})'
+                          : s.notMapped,
                     ),
                     items: [
                       DropdownMenuItem(value: null, child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey))),
@@ -995,6 +1046,29 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
     final sorted = values.toList()..sort();
     return sorted;
+  }
+
+  /// Load unique values for a column from ALL rows (not just preview).
+  Future<void> _loadFullUniqueValues(String column) async {
+    if (_fullUniqueValues.containsKey(column) || _preview == null || _loadingUniqueValues) return;
+    setState(() => _loadingUniqueValues = true);
+    try {
+      final importer = ref.read(importServiceProvider);
+      final full = await importer.getFullRows(_preview!);
+      final values = <String>{};
+      for (final row in full.rows) {
+        final v = (row[column] ?? '').trim();
+        if (v.isNotEmpty) values.add(v);
+      }
+      final sorted = values.toList()..sort();
+      if (mounted) setState(() {
+        _fullUniqueValues[column] = sorted;
+        _loadingUniqueValues = false;
+      });
+    } catch (e) {
+      _log.warning('_loadFullUniqueValues failed: $e');
+      if (mounted) setState(() => _loadingUniqueValues = false);
+    }
   }
 
   /// Build the "Balance per row" configuration section.
@@ -1144,15 +1218,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   /// Build the buy/sell type detection section for asset imports.
   Widget _buildTypeDetectionSection(List<String> columns) {
-    // Gather unique values from the mapped type column
+    // Gather unique values from the mapped type column (all rows, not just preview)
     final typeCol = _mappings['type'];
-    final uniqueVals = <String>{};
-    if (typeCol != null && _preview != null) {
-      for (final row in _preview!.rows) {
-        final v = (row[typeCol] ?? '').trim();
-        if (v.isNotEmpty) uniqueVals.add(v);
-      }
+    if (typeCol != null && !_fullUniqueValues.containsKey(typeCol)) {
+      _loadFullUniqueValues(typeCol);
     }
+    final uniqueVals = typeCol != null ? (_fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol)) : <String>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1171,6 +1242,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               _mappings['type'] = null;
               _buyValues.clear();
               _sellValues.clear();
+              _fullUniqueValues.remove(_mappings['type']);
             }
           }),
         ),
@@ -1601,8 +1673,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   bool _canProceedToConfirm() {
-    // date must be mapped
-    if (_mappings['date'] == null) return false;
+    // date must be mapped (unless asset events in current mode)
+    if (_mappings['date'] == null && !(_target == ImportTarget.assetEvent && _assetImportMode == 'current')) return false;
     // amount: either simple mapping, formula, balance-diff, or auto-calc
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
     // Asset events also require ISIN
@@ -2160,7 +2232,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               _resultRow('Total rows', '${r.totalRows}'),
               _resultRow('Imported', '${r.importedRows}', color: Colors.green),
               if (r.deletedRows > 0) _resultRow('Replaced (overlap)', '${r.deletedRows}', color: Colors.orange),
-              if (r.errorRows > 0) _resultRow('Errors', '${r.errorRows}', color: Colors.red),
+              if (r.errorRows > 0) _resultRow('Skipped', '${r.errorRows}', color: Colors.red),
               if (r.errors.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 ...r.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),
