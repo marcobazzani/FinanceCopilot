@@ -112,6 +112,21 @@ class InvestingComService extends MarketPriceService {
       onLoadStop: (controller, url) async {
         final title = await controller.getTitle();
         if (title != null && !title.contains('Just a moment')) {
+          // Diagnostic: check CF challenge state
+          try {
+            final diag = await controller.evaluateJavascript(source: '''
+              JSON.stringify({
+                title: document.title?.substring(0, 50),
+                url: window.location.href?.substring(0, 60),
+                hasTurnstile: !!document.querySelector('iframe[src*="turnstile"]'),
+                hasCfChallenge: !!document.querySelector('#challenge-running, #challenge-form'),
+                iframes: Array.from(document.querySelectorAll('iframe')).length,
+                cfCookie: document.cookie.includes('cf_clearance'),
+              })
+            ''');
+            _log.info('CF diagnostic: $diag');
+          } catch (_) {}
+
           _webViewController = controller;
           _webViewReadyAt = DateTime.now();
 
