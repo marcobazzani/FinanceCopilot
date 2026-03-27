@@ -247,19 +247,33 @@ class InvestingComService extends MarketPriceService {
       final headers = Map<String, String>.from(_browserHeaders);
       headers['User-Agent'] = _cfUserAgent.isNotEmpty ? _cfUserAgent
           : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-      // Include cookies if available (macOS has cf_clearance, Windows doesn't — but still send what we have)
       if (_cfCookieStr.isNotEmpty) {
         headers['Cookie'] = _cfCookieStr;
       }
 
-      final response = await _dio.get(url, options: Options(
-        responseType: ResponseType.json,
-        headers: headers,
-      ));
-
-      final data = response.data;
-      if (data is String) return null;
-      return data as Map<String, dynamic>;
+      // Try Dart HttpClient first (different TLS fingerprint than Dio)
+      // Cloudflare may block Dio's TLS but not Dart's
+      final uri = Uri.parse(url);
+      final httpClient = HttpClient();
+      final request = await httpClient.getUrl(uri);
+      headers.forEach((k, v) => request.headers.set(k, v));
+      final httpResponse = await request.close();
+      if (httpResponse.statusCode == 403) {
+        httpClient.close();
+        // Fall back to Dio (works on macOS with cf_clearance)
+        final response = await _dio.get(url, options: Options(
+          responseType: ResponseType.json,
+          headers: headers,
+        ));
+        final data = response.data;
+        if (data is String) return null;
+        return data as Map<String, dynamic>;
+      }
+      final body = await httpResponse.transform(utf8.decoder).join();
+      httpClient.close();
+      final data = jsonDecode(body);
+      if (data is! Map<String, dynamic>) return null;
+      return data;
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
         // Don't re-solve — if cf_clearance is missing (Windows), re-solving won't help
