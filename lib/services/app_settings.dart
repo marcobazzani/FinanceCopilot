@@ -57,4 +57,14 @@ class AppSettings {
   static Future<void> setUpdateChannel(String channel) async {
     await set('updateChannel', channel);
   }
+
+  /// Get the UI language ('en' or 'it').
+  static Future<String> getLanguage() async {
+    return await get('language') ?? 'en';
+  }
+
+  /// Set the UI language.
+  static Future<void> setLanguage(String lang) async {
+    await set('language', lang);
+  }
 }

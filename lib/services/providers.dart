@@ -89,6 +89,10 @@ final privacyModeProvider = StateProvider<bool>((ref) => false);
 
 // ── Reactive stream providers ──
 
+/// Portable language setting (from ~/.config/FinanceCopilot/settings.json).
+/// Used before a DB is opened. Initialized on app start.
+final portableLanguageProvider = StateProvider<String>((ref) => 'en');
+
 /// UI language from AppConfigs, reactive. 'en' (default) or 'it'.
 final appLanguageProvider = StreamProvider<String>((ref) {
   final db = ref.watch(databaseProvider);
@@ -97,9 +101,9 @@ final appLanguageProvider = StreamProvider<String>((ref) {
       .map((row) => row?.value ?? 'en');
 });
 
-/// Provides the current [AppStrings] instance derived from [appLanguageProvider].
+/// Provides the current [AppStrings] instance from portable language setting.
 final appStringsProvider = Provider<AppStrings>((ref) {
-  final lang = ref.watch(appLanguageProvider).value ?? 'en';
+  final lang = ref.watch(portableLanguageProvider);
   return AppStrings.of(lang);
 });
 

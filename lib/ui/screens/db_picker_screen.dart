@@ -90,6 +90,9 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     AppSettings.getUpdateChannel().then((ch) {
       if (mounted) setState(() => _channel = ch);
     });
+    AppSettings.getLanguage().then((lang) {
+      ref.read(portableLanguageProvider.notifier).state = lang;
+    });
     // Check for updates on startup (no DB needed)
     Future.microtask(() => _checkForUpdates());
   }
@@ -402,6 +405,22 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                   Text(
                     'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () async {
+                      final current = ref.read(portableLanguageProvider);
+                      final next = current == 'en' ? 'it' : 'en';
+                      await AppSettings.setLanguage(next);
+                      ref.read(portableLanguageProvider.notifier).state = next;
+                    },
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Text(
+                        ref.watch(portableLanguageProvider) == 'it' ? '🇮🇹' : '🇬🇧',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(

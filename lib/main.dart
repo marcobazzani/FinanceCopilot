@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
+import 'services/app_settings.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/investing_com_service.dart';
 import 'services/providers.dart';
@@ -350,25 +351,17 @@ class _AppShellState extends ConsumerState<AppShell> {
     ('es_ES', 'Español (ES)'),
   ];
 
-  static const _languageOptions = [
-    ('en', 'English'),
-    ('it', 'Italiano'),
-  ];
 
   Future<void> _showSettingsDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
     final db = ref.read(databaseProvider);
     final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
     final currentLocale = ref.read(appLocaleProvider).value ?? '';
-    final currentLang = ref.read(appLanguageProvider).value ?? 'en';
 
     var selectedCurrency = baseCurrency;
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
         ? currentLocale
         : '';
-    var selectedLang = _languageOptions.any((o) => o.$1 == currentLang)
-        ? currentLang
-        : 'en';
 
     await showDialog(
       context: context,
@@ -381,15 +374,6 @@ class _AppShellState extends ConsumerState<AppShell> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DropdownButtonFormField<String>(
-                  value: selectedLang,
-                  decoration: InputDecoration(labelText: s.settingsLanguage),
-                  items: _languageOptions
-                      .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
-                      .toList(),
-                  onChanged: (v) => setDialogState(() => selectedLang = v!),
-                ),
-                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: selectedCurrency,
                   decoration: InputDecoration(labelText: s.settingsCurrency),
@@ -455,15 +439,12 @@ class _AppShellState extends ConsumerState<AppShell> {
             FilledButton(
               onPressed: () async {
                 await db.into(db.appConfigs).insertOnConflictUpdate(
-                  AppConfigsCompanion.insert(key: 'LANGUAGE', value: selectedLang),
-                );
-                await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),
                 );
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
-                _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale');
+                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text(s.save),
