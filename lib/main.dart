@@ -207,6 +207,9 @@ class _AppShellState extends ConsumerState<AppShell> {
       ]);
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
+      // Dismiss Windows WebView dialog if open
+      final ps = ref.read(marketPriceServiceProvider);
+      if (ps is InvestingComService) ps.dismissWebViewDialog();
       if (mounted) setState(() => _isSyncing = false);
     }
   }

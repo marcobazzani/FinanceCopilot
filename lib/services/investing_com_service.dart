@@ -107,6 +107,15 @@ class InvestingComService extends MarketPriceService {
   /// Context for showing visible WebView dialog on Windows.
   static BuildContext? appContext;
 
+  /// Dismiss the Windows WebView dialog (called after sync completes).
+  BuildContext? _visibleDialogCtx;
+  void dismissWebViewDialog() {
+    if (_visibleDialogCtx != null && _visibleDialogCtx!.mounted) {
+      Navigator.pop(_visibleDialogCtx!);
+      _visibleDialogCtx = null;
+    }
+  }
+
   /// Ensure WebView is running and CF is solved.
   /// macOS: headless. Windows: visible dialog (headless doesn't get cf_clearance).
   Future<bool> _ensureWebView() async {
@@ -162,8 +171,9 @@ class InvestingComService extends MarketPriceService {
       context: ctx,
       barrierDismissible: false,
       builder: (dialogCtx) {
+        _visibleDialogCtx = dialogCtx;
         Timer? timeout;
-        timeout = Timer(const Duration(seconds: 30), () {
+        timeout = Timer(const Duration(seconds: 60), () {
           if (!completer.isCompleted) {
             _log.warning('CF visible timed out');
             completer.complete(false);
@@ -174,11 +184,11 @@ class InvestingComService extends MarketPriceService {
           title: const Row(children: [
             SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
             SizedBox(width: 12),
-            Text('Connecting to market data...', style: TextStyle(fontSize: 14)),
+            Text('Syncing market data...', style: TextStyle(fontSize: 14)),
           ]),
           content: SizedBox(
-            width: 400,
-            height: 350,
+            width: 1,
+            height: 1, // Tiny — just keeps the WebView alive
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: InAppWebView(
@@ -188,14 +198,14 @@ class InvestingComService extends MarketPriceService {
                   if (completer.isCompleted) return;
                   final title = await controller.getTitle();
                   if (title != null && !title.contains('Just a moment')) {
-                    // Page loaded — use this WebView for API calls via navigation
                     _webViewController = controller;
                     _webViewReadyAt = DateTime.now();
                     _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
-                    _log.info('CF visible: WebView ready (will use navigation for API calls)');
+                    _log.info('CF visible: WebView ready (keeping dialog open for API calls)');
                     timeout?.cancel();
                     completer.complete(true);
-                    if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                    // DON'T dismiss — keep WebView alive for navigation fetches
+                    // Hide the dialog content instead
                   }
                 },
               ),
