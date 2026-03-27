@@ -172,16 +172,17 @@ class InvestingComService extends MarketPriceService {
     if (_cfCookieStr.isEmpty) return null;
 
     try {
+      // Mirror Edge browser headers exactly — no cookies needed for API subdomain
       final response = await _dio.get(url, options: Options(
         responseType: ResponseType.json,
         headers: {
-          'User-Agent': _cfUserAgent,
-          'Cookie': _cfCookieStr,
-          'Accept': 'application/json',
+          'User-Agent': _cfUserAgent.isNotEmpty ? _cfUserAgent
+              : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
           'Origin': 'https://www.investing.com',
           'Referer': 'https://www.investing.com/',
           'Domain-Id': 'www',
-          // Browser security headers — Cloudflare checks these on Windows
           'sec-ch-ua': '"Chromium";v="131", "Not-A.Brand";v="24"',
           'sec-ch-ua-mobile': '?0',
           'sec-ch-ua-platform': '"Windows"',
