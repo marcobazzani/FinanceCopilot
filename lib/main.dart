@@ -8,6 +8,7 @@ import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/exchange_rate_service.dart';
+import 'services/app_settings.dart';
 import 'services/investing_com_service.dart';
 import 'services/providers.dart';
 
@@ -362,7 +363,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final currentLocale = ref.read(appLocaleProvider).value ?? '';
     final currentLang = ref.read(appLanguageProvider).value ?? 'en';
 
-    final currentChannel = ref.read(updateChannelProvider).value ?? appChannel;
+    final currentChannel = await AppSettings.getUpdateChannel();
 
     var selectedCurrency = baseCurrency;
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
@@ -476,9 +477,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
-                await db.into(db.appConfigs).insertOnConflictUpdate(
-                  AppConfigsCompanion.insert(key: 'UPDATE_CHANNEL', value: selectedChannel),
-                );
+                await AppSettings.setUpdateChannel(selectedChannel);
                 _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale, channel=$selectedChannel');
                 if (ctx.mounted) Navigator.pop(ctx);
               },

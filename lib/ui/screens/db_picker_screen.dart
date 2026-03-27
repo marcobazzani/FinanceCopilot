@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../../database/providers.dart';
 import '../../l10n/app_strings.dart';
+import '../../services/app_settings.dart';
 import '../../services/demo_db_service.dart';
 import '../../services/providers.dart';
 import '../../services/update_service.dart';
@@ -92,9 +93,10 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   Future<void> _checkForUpdates() async {
     try {
       // Use compile-time channel default (no DB needed)
-      _log.info('Checking for updates (channel=$appChannel, commit=$appCommit)...');
+      final channel = await AppSettings.getUpdateChannel();
+      _log.info('Checking for updates (channel=$channel, commit=$appCommit)...');
       final updater = UpdateService();
-      final info = await updater.checkForUpdate(appChannel);
+      final info = await updater.checkForUpdate(channel);
       if (!info.available || !mounted) return;
 
       final changelog = await updater.getChangelog(info.latestCommit);
