@@ -12,6 +12,7 @@ import '../database/tables.dart';
 import '../utils/amount_parser.dart' as amt;
 import '../utils/formatters.dart' show monthMap;
 import '../utils/logger.dart';
+import 'exchange_rate_service.dart';
 import 'isin_lookup_service.dart';
 
 final _log = getLogger('ImportService');
@@ -558,6 +559,9 @@ class ImportService {
     Set<String>? sellValues,
     /// ISIN → selected exchange option (from UI picker). If null, uses first result.
     Map<String, IsinExchangeOption>? selectedExchanges,
+    /// If provided, fills missing exchange rates from historical data after import.
+    ExchangeRateService? rateService,
+    required String baseCurrency,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -763,6 +767,25 @@ class ImportService {
     await _db.batch((batch) {
       batch.insertAll(_db.assetEvents, companions);
     });
+
+    // Fill missing exchange rates from historical data
+    if (rateService != null) {
+      var filled = 0;
+      for (final assetId in byAsset.keys) {
+        final events = await (_db.select(_db.assetEvents)
+              ..where((e) => e.assetId.equals(assetId) & e.exchangeRate.isNull() & e.currency.equals(baseCurrency).not()))
+            .get();
+        for (final ev in events) {
+          final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+          if (rate != null) {
+            await (_db.update(_db.assetEvents)..where((e) => e.id.equals(ev.id)))
+                .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+            filled++;
+          }
+        }
+      }
+      if (filled > 0) _log.info('importAssetEventsGrouped: filled $filled missing exchange rates');
+    }
 
     _log.info('importAssetEventsGrouped: done — imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}');
     return AssetImportResult(

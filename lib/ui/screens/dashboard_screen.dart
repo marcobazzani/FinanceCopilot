@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -197,6 +198,10 @@ String currencySymbol(String code) {
     _ => code,
   };
 }
+
+// Price change period selection — survives ListView.builder recycling
+final _priceChangeNumberProvider = StateProvider<int>((ref) => 1);
+final _priceChangeUnitProvider = StateProvider<String>((ref) => 'd');
 
 // ════════════════════════════════════════════════════
 // Unified data provider — computes ALL series at once
@@ -782,8 +787,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
   final _hideComponents = <int, bool>{}; // chartId → hide individual lines
   final _expandedCollapsed = <int>{}; // chart IDs temporarily un-collapsed
-  static final _priceChangesKey = GlobalKey();
-
   static const _defaultChartHeight = 420.0;
   static const _minChartHeight = 200.0;
   static const _maxChartHeight = 900.0;
@@ -879,7 +882,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
                     ),
-                    _AssetDailyChangesCard(key: _priceChangesKey, locale: locale, baseCurrency: allData.baseCurrency),
+                    _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
                   ],
                 ),
               );
@@ -2044,11 +2047,28 @@ enum _SortDir { asc, desc, none }
 
 class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
   static const _units = ['d', 'w', 'm', 'y', 'YTD', 'All'];
-  int _number = 1;
-  String _unit = 'd';
-  final _numberController = TextEditingController(text: '1');
+  late final TextEditingController _numberController;
   _SortCol _sortCol = _SortCol.name;
   _SortDir _sortDir = _SortDir.asc;
+
+  int get _number => ref.read(_priceChangeNumberProvider);
+  set _number(int v) => ref.read(_priceChangeNumberProvider.notifier).state = v;
+  String get _unit => ref.read(_priceChangeUnitProvider);
+  set _unit(String v) => ref.read(_priceChangeUnitProvider.notifier).state = v;
+
+  @override
+  void initState() {
+    super.initState();
+    _numberController = TextEditingController(
+      text: ref.read(_priceChangeNumberProvider).toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _numberController.dispose();
+    super.dispose();
+  }
 
   void _onHeaderTap(_SortCol col) {
     setState(() {
@@ -2106,13 +2126,10 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
   }
 
   @override
-  void dispose() {
-    _numberController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Watch providers to rebuild when period changes
+    ref.watch(_priceChangeNumberProvider);
+    ref.watch(_priceChangeUnitProvider);
     final isPrivate = ref.watch(privacyModeProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
     final theme = Theme.of(context);

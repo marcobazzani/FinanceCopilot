@@ -92,13 +92,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'amount', 'description'],
-    ImportTarget.assetEvent => ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate'],
+    ImportTarget.assetEvent => ['date', 'isin', 'quantity', 'price', 'currency'],
     ImportTarget.income => ['date', 'amount'],
   };
 
   List<String> get _optionalFields => switch (_target) {
     ImportTarget.transaction => ['currency', 'valueDate', 'status'],
-    ImportTarget.assetEvent => ['description'],
+    ImportTarget.assetEvent => ['exchangeRate', 'description'],
     ImportTarget.income => ['type', 'currency'],
   };
 
@@ -2108,6 +2108,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
+          rateService: ref.read(exchangeRateServiceProvider),
+          baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
         );
         result = assetResult.result;
       }

@@ -181,6 +181,7 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final eventService = ref.watch(assetEventServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  final db = ref.watch(databaseProvider);
 
   final result = <int, double?>{};
   for (final asset in assets) {
@@ -199,7 +200,15 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
       } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
         total += ev.amount / ev.exchangeRate!;
       } else {
-        total += await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+        final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+        if (rate != null && rate > 0) {
+          total += ev.amount / rate;
+          // Persist so we don't re-fetch next time
+          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
+              .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+        } else {
+          total += await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+        }
       }
     }
     result[asset.id] = total;
@@ -380,6 +389,7 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
   final events = await ref.watch(assetEventsProvider(assetId).future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  final db = ref.watch(databaseProvider);
 
   final result = <int, double>{};
   for (final ev in events) {
@@ -389,7 +399,14 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
       // Stored rate is BASE/ASSET, so divide to get base currency amount
       result[ev.id] = ev.amount / ev.exchangeRate!;
     } else {
-      result[ev.id] = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+      final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+      if (rate != null && rate > 0) {
+        result[ev.id] = ev.amount / rate;
+        await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
+            .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+      } else {
+        result[ev.id] = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+      }
     }
   }
   return result;
