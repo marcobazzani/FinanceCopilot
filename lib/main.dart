@@ -8,7 +8,6 @@ import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/exchange_rate_service.dart';
-import 'services/app_settings.dart';
 import 'services/investing_com_service.dart';
 import 'services/providers.dart';
 
@@ -363,8 +362,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     final currentLocale = ref.read(appLocaleProvider).value ?? '';
     final currentLang = ref.read(appLanguageProvider).value ?? 'en';
 
-    final currentChannel = await AppSettings.getUpdateChannel();
-
     var selectedCurrency = baseCurrency;
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
         ? currentLocale
@@ -372,7 +369,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     var selectedLang = _languageOptions.any((o) => o.$1 == currentLang)
         ? currentLang
         : 'en';
-    var selectedChannel = currentChannel;
 
     await showDialog(
       context: context,
@@ -410,16 +406,6 @@ class _AppShellState extends ConsumerState<AppShell> {
                       .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedLocale = v!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: selectedChannel,
-                  decoration: const InputDecoration(labelText: 'Update Channel'),
-                  items: const [
-                    DropdownMenuItem(value: 'nightly', child: Text('Nightly (latest commits)')),
-                    DropdownMenuItem(value: 'stable', child: Text('Stable (tagged releases)')),
-                  ],
-                  onChanged: (v) => setDialogState(() => selectedChannel = v!),
                 ),
                 const SizedBox(height: 20),
                 const Divider(),
@@ -477,8 +463,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
-                await AppSettings.setUpdateChannel(selectedChannel);
-                _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale, channel=$selectedChannel');
+                _log.info('Settings saved: lang=$selectedLang, currency=$selectedCurrency, locale=$selectedLocale');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text(s.save),

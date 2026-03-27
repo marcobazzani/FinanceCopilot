@@ -81,18 +81,25 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   bool _isGenerating = false;
   double _demoProgress = 0;
   String _demoLabel = '';
+  String _channel = 'nightly';
 
   @override
   void initState() {
     super.initState();
     _copySandboxDbIfNeeded().then((_) => _loadRecent());
+    AppSettings.getUpdateChannel().then((ch) {
+      if (mounted) setState(() => _channel = ch);
+    });
     // Check for updates on startup (no DB needed)
     Future.microtask(() => _checkForUpdates());
   }
 
   Future<void> _checkForUpdates() async {
+    if (appCommit == 'dev') {
+      _log.info('Skipping update check (local build)');
+      return;
+    }
     try {
-      // Use compile-time channel default (no DB needed)
       final channel = await AppSettings.getUpdateChannel();
       _log.info('Checking for updates (channel=$channel, commit=$appCommit)...');
       final updater = UpdateService();
@@ -389,9 +396,30 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                 ),
               ],
               const SizedBox(height: 24),
-              Text(
-                'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () async {
+                      final next = _channel == 'nightly' ? 'stable' : 'nightly';
+                      await AppSettings.setUpdateChannel(next);
+                      if (mounted) setState(() => _channel = next);
+                    },
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: Text(
+                        _channel,
+                        style: TextStyle(fontSize: 10, color: theme.colorScheme.primary,
+                            decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

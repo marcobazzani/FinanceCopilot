@@ -782,7 +782,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
   final _hideComponents = <int, bool>{}; // chartId → hide individual lines
   final _expandedCollapsed = <int>{}; // chart IDs temporarily un-collapsed
-  final _priceChangesKey = GlobalKey();
+  static final _priceChangesKey = GlobalKey();
 
   static const _defaultChartHeight = 420.0;
   static const _minChartHeight = 200.0;
@@ -1257,6 +1257,7 @@ class _ChartCard extends ConsumerWidget {
     final adjustmentSeries = series.where((s) => s.key.startsWith('adjustment:')).toList();
     final incomeAdjSeries = series.where((s) => s.key.startsWith('income_adj:')).toList();
     final cfSeries = series.where((s) => s.key.startsWith('cf:')).toList();
+    final combinedSeries = series.where((s) => s.key.startsWith('combined_src:')).toList();
 
     final hasZoom = zoomMinX != null || zoomMinY != null;
 
@@ -1308,13 +1309,13 @@ class _ChartCard extends ConsumerWidget {
           // Legend
           if (!hideComponents) ...[
             _ChartLegend(
-              accountSeries: cfSeries.isEmpty ? accountSeries : [],
-              investedSeries: cfSeries.isEmpty ? investedSeries : [],
-              marketSeries: cfSeries.isEmpty ? marketSeries : [],
-              adjustmentSeries: cfSeries.isEmpty ? adjustmentSeries : [],
-              incomeAdjSeries: cfSeries.isEmpty ? incomeAdjSeries : [],
-              otherSeries: cfSeries,
-              showTotalItem: cfSeries.isEmpty,
+              accountSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? accountSeries : [],
+              investedSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? investedSeries : [],
+              marketSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? marketSeries : [],
+              adjustmentSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? adjustmentSeries : [],
+              incomeAdjSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? incomeAdjSeries : [],
+              otherSeries: combinedSeries.isNotEmpty ? combinedSeries : cfSeries,
+              showTotalItem: chart.sourceChartIds == null && cfSeries.isEmpty,
               hidden: hidden,
               onToggle: onToggle,
               onToggleGroup: onToggleGroup,
@@ -1949,7 +1950,7 @@ class _UnifiedChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 28,
+              reservedSize: 40,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
                 final date = firstDate.add(Duration(days: value.toInt()));
@@ -3131,7 +3132,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        reservedSize: 60,
+                        reservedSize: 80,
                         getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
                       ),
                     ),
@@ -3249,7 +3250,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
                 leftTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
-                    reservedSize: 55,
+                    reservedSize: 80,
                     getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
                   ),
                 ),
@@ -3379,6 +3380,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                     borderData: FlBorderData(show: false),
                     lineTouchData: LineTouchData(
                       touchTooltipData: LineTouchTooltipData(
+                        tooltipMargin: 16,
                         fitInsideHorizontally: true,
                         fitInsideVertically: true,
                         getTooltipItems: (spots) => spots.map((s) {
@@ -3410,7 +3412,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          reservedSize: 55,
+                          reservedSize: 80,
                           getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
                         ),
                       ),
