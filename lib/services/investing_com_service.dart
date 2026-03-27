@@ -117,12 +117,23 @@ class InvestingComService extends MarketPriceService {
 
           // Cache cookies + UA at solve time (avoids crash-prone live extraction on Windows)
           try {
+            // Get cookies for both www and api subdomains
             final cookieManager = CookieManager.instance();
-            final cookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
-            _cfCookieStr = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+            final wwwCookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
+            final apiCookies = await cookieManager.getCookies(url: WebUri('https://api.investing.com/'));
+            // Also try the bare domain
+            final bareCookies = await cookieManager.getCookies(url: WebUri('https://investing.com/'));
+
+            // Merge all (deduplicate by name, prefer www cookies)
+            final merged = <String, String>{};
+            for (final c in bareCookies) { merged[c.name] = c.value.toString(); }
+            for (final c in apiCookies) { merged[c.name] = c.value.toString(); }
+            for (final c in wwwCookies) { merged[c.name] = c.value.toString(); }
+            _cfCookieStr = merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
             _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
-            final cookieNames = cookies.map((c) => c.name).toList()..sort();
-            _log.info('Cloudflare solved — ${cookies.length} cookies: ${cookieNames.join(", ")}');
+            final cookieNames = merged.keys.toList()..sort();
+            final hasCfClearance = merged.containsKey('cf_clearance');
+            _log.info('Cloudflare solved — ${merged.length} cookies (cf_clearance: $hasCfClearance): ${cookieNames.join(", ")}');
             _log.fine('CF UA: $_cfUserAgent');
           } catch (e) {
             _log.warning('Failed to extract cookies: $e');
