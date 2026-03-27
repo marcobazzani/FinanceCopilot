@@ -74,7 +74,9 @@
       "Bash(./ci-wait.sh 30)",
       "Bash(gh issue:*)",
       "Read(//Users/marco/Documents/FinanceCopilot/**)",
-      "Read(//Users/marco/Documents/AssetManager/**)"
+      "Read(//Users/marco/Documents/AssetManager/**)",
+      "Bash(tail:*)",
+      "Bash(grep:*)"
     ]
   }
 }

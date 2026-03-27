@@ -324,12 +324,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double todayFx = 1.0;
     double prevFx = 1.0;
     if (asset.currency != baseCurrency) {
-      // Use Investing.com for live FX, fall back to Frankfurter
-      if (priceService is InvestingComService) {
-        todayFx = await priceService.getLiveFxRate(asset.currency, baseCurrency) ?? 1.0;
-      } else {
-        todayFx = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
-      }
+      todayFx = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
       prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
     }
 
