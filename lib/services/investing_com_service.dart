@@ -228,15 +228,18 @@ class InvestingComService extends MarketPriceService {
         urlRequest: URLRequest(url: WebUri(url)),
       );
 
-      // Poll for body content
+      // Poll for body content — JSON pages render differently across browsers
       for (var i = 0; i < 20; i++) {
         await Future.delayed(const Duration(milliseconds: 300));
         try {
+          // Try multiple ways to get the JSON text
           final body = await _webViewController!.evaluateJavascript(
-            source: 'document.body?.innerText',
+            source: 'document.body?.innerText || document.body?.textContent || document.querySelector("pre")?.textContent || ""',
           );
-          if (body != null && body != 'null' && body.toString().contains('"data"')) {
-            completer.complete(body.toString());
+          if (body != null && body != 'null' && body.toString().length > 10) {
+            final text = body.toString();
+            _log.fine('_fetchViaNavigation: got ${text.length} chars');
+            completer.complete(text);
             handled = true;
             break;
           }
