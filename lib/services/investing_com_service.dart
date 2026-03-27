@@ -182,31 +182,20 @@ class InvestingComService extends MarketPriceService {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: InAppWebView(
-                // Load API URL directly — if CF challenges it, WebView solves it
-                // and cf_clearance gets set for the investing.com domain
-                initialUrlRequest: URLRequest(url: WebUri(
-                    'https://api.investing.com/api/financialdata/historical/46925'
-                    '?start-date=2026-01-01&end-date=2026-03-27&time-frame=Daily&add-missing-rows=false')),
+                initialUrlRequest: URLRequest(url: WebUri('https://www.investing.com/')),
                 initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
                 onLoadStop: (controller, url) async {
                   if (completer.isCompleted) return;
-                  final currentUrl = url?.toString() ?? '';
                   final title = await controller.getTitle();
-                  _log.info('CF visible onLoadStop: url=${currentUrl.substring(0, currentUrl.length.clamp(0, 60))}, title=$title');
-
-                  // Wait a moment for cookies to settle
-                  await Future.delayed(const Duration(seconds: 2));
-
-                  await _onCfSolved(controller);
-
-                  // Check if we got cf_clearance now
-                  if (_cfCookieStr.contains('cf_clearance')) {
-                    _log.info('CF visible: got cf_clearance!');
+                  if (title != null && !title.contains('Just a moment')) {
+                    // Page loaded — use this WebView for API calls via navigation
+                    _webViewController = controller;
+                    _webViewReadyAt = DateTime.now();
+                    _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
+                    _log.info('CF visible: WebView ready (will use navigation for API calls)');
                     timeout?.cancel();
                     completer.complete(true);
                     if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                  } else {
-                    _log.info('CF visible: no cf_clearance yet, waiting...');
                   }
                 },
               ),
@@ -216,6 +205,65 @@ class InvestingComService extends MarketPriceService {
       },
     );
     return completer.future;
+  }
+
+  /// Mutex for sequential WebView navigation.
+  Completer<void>? _navQueue;
+
+  /// Fetch API data by navigating the WebView to the URL and reading the body.
+  /// Used on Windows where Dio gets 403 due to TLS fingerprinting.
+  Future<Map<String, dynamic>?> _fetchViaNavigation(String url) async {
+    // Serialize navigations
+    while (_navQueue != null) {
+      await _navQueue!.future;
+    }
+    _navQueue = Completer<void>();
+
+    try {
+      final completer = Completer<String?>();
+      bool handled = false;
+
+      // Use onLoadResource to detect when the API response is ready
+      await _webViewController!.loadUrl(
+        urlRequest: URLRequest(url: WebUri(url)),
+      );
+
+      // Poll for body content
+      for (var i = 0; i < 20; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          final body = await _webViewController!.evaluateJavascript(
+            source: 'document.body?.innerText',
+          );
+          if (body != null && body != 'null' && body.toString().contains('"data"')) {
+            completer.complete(body.toString());
+            handled = true;
+            break;
+          }
+        } catch (_) {}
+      }
+      if (!handled) completer.complete(null);
+
+      final body = await completer.future;
+      if (body == null || body.isEmpty) return null;
+
+      // Clean up JSON string (WebView may wrap in quotes)
+      var cleaned = body;
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.substring(1, cleaned.length - 1)
+            .replaceAll(r'\"', '"')
+            .replaceAll(r'\/', '/');
+      }
+
+      final decoded = jsonDecode(cleaned);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (e) {
+      _log.fine('_fetchViaNavigation: $e');
+      return null;
+    } finally {
+      _navQueue?.complete();
+      _navQueue = null;
+    }
   }
 
   /// Headers that mimic a real browser's XHR call (from Edge HAR analysis).
@@ -244,36 +292,26 @@ class InvestingComService extends MarketPriceService {
     }
 
     try {
+      // On Windows without cf_clearance: use WebView navigation (Dio/HttpClient get 403 due to TLS fingerprint)
+      // On macOS with cf_clearance: use Dio (faster, parallel)
+      if (Platform.isWindows && _webViewController != null) {
+        return await _fetchViaNavigation(url);
+      }
+
       final headers = Map<String, String>.from(_browserHeaders);
       headers['User-Agent'] = _cfUserAgent.isNotEmpty ? _cfUserAgent
-          : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+          : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
       if (_cfCookieStr.isNotEmpty) {
         headers['Cookie'] = _cfCookieStr;
       }
 
-      // Try Dart HttpClient first (different TLS fingerprint than Dio)
-      // Cloudflare may block Dio's TLS but not Dart's
-      final uri = Uri.parse(url);
-      final httpClient = HttpClient();
-      final request = await httpClient.getUrl(uri);
-      headers.forEach((k, v) => request.headers.set(k, v));
-      final httpResponse = await request.close();
-      if (httpResponse.statusCode == 403) {
-        httpClient.close();
-        // Fall back to Dio (works on macOS with cf_clearance)
-        final response = await _dio.get(url, options: Options(
-          responseType: ResponseType.json,
-          headers: headers,
-        ));
-        final data = response.data;
-        if (data is String) return null;
-        return data as Map<String, dynamic>;
-      }
-      final body = await httpResponse.transform(utf8.decoder).join();
-      httpClient.close();
-      final data = jsonDecode(body);
-      if (data is! Map<String, dynamic>) return null;
-      return data;
+      final response = await _dio.get(url, options: Options(
+        responseType: ResponseType.json,
+        headers: headers,
+      ));
+      final data = response.data;
+      if (data is String) return null;
+      return data as Map<String, dynamic>;
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
         // Don't re-solve — if cf_clearance is missing (Windows), re-solving won't help
