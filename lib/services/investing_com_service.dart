@@ -181,6 +181,13 @@ class InvestingComService extends MarketPriceService {
           'Origin': 'https://www.investing.com',
           'Referer': 'https://www.investing.com/',
           'Domain-Id': 'www',
+          // Browser security headers — Cloudflare checks these on Windows
+          'sec-ch-ua': '"Chromium";v="131", "Not-A.Brand";v="24"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-site',
         },
       ));
 
