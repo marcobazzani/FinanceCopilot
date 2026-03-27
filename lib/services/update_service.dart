@@ -211,21 +211,20 @@ class UpdateService {
 
     // Write a batch script that waits for the app to exit, copies files, and relaunches
     _log.info('applyUpdate Windows: writing update script...');
-    final batch = '''
-@echo off
-echo Waiting for FinanceCopilot to exit...
-:waitloop
-tasklist /fi "pid eq $pid" 2>nul | find "$pid" >nul
-if not errorlevel 1 (
-  timeout /t 1 /nobreak >nul
-  goto waitloop
-)
-echo Copying new files...
-xcopy /s /y /q "$extractDir\\*" "$currentDir\\"
-echo Restarting...
-start "" "$currentExe"
-del "%~f0"
-''';
+    final exeName = p.basename(currentExe);
+    final batch = '@echo off\r\n'
+        'echo Waiting for FinanceCopilot to exit...\r\n'
+        ':waitloop\r\n'
+        'tasklist /fi "imagename eq $exeName" 2>nul | find /i "$exeName" >nul\r\n'
+        'if not errorlevel 1 (\r\n'
+        '  timeout /t 1 /nobreak >nul\r\n'
+        '  goto waitloop\r\n'
+        ')\r\n'
+        'echo Copying new files...\r\n'
+        'xcopy /s /y /q "$extractDir\\*" "$currentDir\\"\r\n'
+        'echo Restarting...\r\n'
+        'start "" "$currentExe"\r\n'
+        'del "%~f0"\r\n';
     await File(batchPath).writeAsString(batch);
 
     // Launch the batch script detached and exit
