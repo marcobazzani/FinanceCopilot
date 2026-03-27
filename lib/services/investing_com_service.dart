@@ -66,6 +66,8 @@ class InvestingComService extends MarketPriceService {
   HeadlessInAppWebView? _webView;
   InAppWebViewController? _webViewController;
   DateTime? _webViewReadyAt;
+  String _cfCookieStr = '';
+  String _cfUserAgent = '';
 
   InvestingComService(super.db, {Dio? dio}) : _dio = dio ?? Dio();
 
@@ -112,7 +114,17 @@ class InvestingComService extends MarketPriceService {
         if (title != null && !title.contains('Just a moment')) {
           _webViewController = controller;
           _webViewReadyAt = DateTime.now();
-          _log.info('Cloudflare solved — WebView ready');
+
+          // Cache cookies + UA at solve time (avoids crash-prone live extraction on Windows)
+          try {
+            final cookieManager = CookieManager.instance();
+            final cookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
+            _cfCookieStr = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+            _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
+            _log.info('Cloudflare solved — ${cookies.length} cookies, UA: ${_cfUserAgent.length > 50 ? _cfUserAgent.substring(0, 50) : _cfUserAgent}...');
+          } catch (e) {
+            _log.warning('Failed to extract cookies: $e');
+          }
           timeout?.cancel();
           if (!completer.isCompleted) completer.complete(true);
         }
@@ -143,21 +155,11 @@ class InvestingComService extends MarketPriceService {
     }
 
     try {
-      // Extract fresh cookies + UA from the live WebView
-      final cookieManager = CookieManager.instance();
-      final cookies = await cookieManager.getCookies(
-        url: WebUri('https://www.investing.com/'),
-      );
-      final cookieStr = cookies.map((c) => '${c.name}=${c.value}').join('; ');
-      final ua = await _webViewController!.evaluateJavascript(
-        source: 'navigator.userAgent',
-      ) as String? ?? '';
-
       final response = await _dio.get(url, options: Options(
         responseType: ResponseType.json,
         headers: {
-          'User-Agent': ua,
-          'Cookie': cookieStr,
+          'User-Agent': _cfUserAgent,
+          'Cookie': _cfCookieStr,
           'Accept': 'application/json',
           'Origin': 'https://www.investing.com',
           'Referer': 'https://www.investing.com/',
