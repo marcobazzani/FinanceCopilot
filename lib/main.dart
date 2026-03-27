@@ -297,7 +297,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        'v$appVersion${appCommit != "dev" ? " (${appCommit.substring(0, 7)})" : ""}',
+                        'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
                         style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                       ),
                     ),

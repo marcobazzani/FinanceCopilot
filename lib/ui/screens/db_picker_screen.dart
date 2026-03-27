@@ -388,7 +388,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
               ],
               const SizedBox(height: 24),
               Text(
-                'v$appVersion',
+                'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
                 style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
               ),
             ],
