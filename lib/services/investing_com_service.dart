@@ -159,62 +159,43 @@ class InvestingComService extends MarketPriceService {
     return result;
   }
 
-  /// Mutex for sequential WebView navigation (one page load at a time).
-  final _fetchLock = Completer<void>()..complete(null);
-  Completer<void>? _fetchQueue;
-
-  /// Make a CF-protected API call by navigating the WebView to the URL.
-  /// The browser sends cf_clearance automatically (not extractable on Windows).
+  /// Make a CF-protected API call.
+  /// macOS: Dio with extracted cookies (cf_clearance available).
+  /// Windows: Dio also, but cf_clearance is missing — will 403.
+  /// TODO: find a Windows-specific workaround for cf_clearance.
   Future<Map<String, dynamic>?> _webViewFetch(String url) async {
     if (!_isWebViewReady) {
       final ok = await _ensureWebView();
       if (!ok) return null;
     }
 
-    // Serialize: only one navigation at a time
-    while (_fetchQueue != null) {
-      await _fetchQueue!.future;
-    }
-    _fetchQueue = Completer<void>();
+    if (_cfCookieStr.isEmpty) return null;
 
     try {
-      // Navigate to API URL, then poll for body content
-      await _webViewController!.loadUrl(
-        urlRequest: URLRequest(url: WebUri(url)),
-      );
+      final response = await _dio.get(url, options: Options(
+        responseType: ResponseType.json,
+        headers: {
+          'User-Agent': _cfUserAgent,
+          'Cookie': _cfCookieStr,
+          'Accept': 'application/json',
+          'Origin': 'https://www.investing.com',
+          'Referer': 'https://www.investing.com/',
+          'Domain-Id': 'www',
+        },
+      ));
 
-      // Wait for page to load by polling document.readyState
-      String? body;
-      for (var i = 0; i < 30; i++) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        final state = await _webViewController!.evaluateJavascript(
-          source: 'document.readyState',
-        );
-        if (state == 'complete' || state == '"complete"') {
-          body = (await _webViewController!.evaluateJavascript(
-            source: 'document.body?.innerText',
-          ))?.toString();
-          if (body != null && body != 'null' && body.isNotEmpty) break;
-        }
+      final data = response.data;
+      if (data is String) return null;
+      return data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        _log.fine('_webViewFetch: 403');
+        _webViewReadyAt = null;
       }
-
-      if (body == null || body == 'null' || body.isEmpty) return null;
-
-      // Parse JSON from page body
-      final cleaned = body.startsWith('"') && body.endsWith('"')
-          ? body.substring(1, body.length - 1)
-              .replaceAll(r'\"', '"')
-              .replaceAll(r'\n', '')
-              .replaceAll(r'\t', '')
-          : body;
-      final decoded = jsonDecode(cleaned);
-      return decoded is Map<String, dynamic> ? decoded : null;
+      return null;
     } catch (e) {
       _log.fine('_webViewFetch: failed — $e');
       return null;
-    } finally {
-      _fetchQueue?.complete();
-      _fetchQueue = null;
     }
   }
 
