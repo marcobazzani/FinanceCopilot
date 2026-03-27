@@ -121,7 +121,9 @@ class InvestingComService extends MarketPriceService {
             final cookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
             _cfCookieStr = cookies.map((c) => '${c.name}=${c.value}').join('; ');
             _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
-            _log.info('Cloudflare solved — ${cookies.length} cookies, UA: ${_cfUserAgent.length > 50 ? _cfUserAgent.substring(0, 50) : _cfUserAgent}...');
+            final cookieNames = cookies.map((c) => c.name).toList()..sort();
+            _log.info('Cloudflare solved — ${cookies.length} cookies: ${cookieNames.join(", ")}');
+            _log.fine('CF UA: $_cfUserAgent');
           } catch (e) {
             _log.warning('Failed to extract cookies: $e');
           }
