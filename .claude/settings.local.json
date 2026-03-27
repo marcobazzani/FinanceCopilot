@@ -76,7 +76,8 @@
       "Read(//Users/marco/Documents/FinanceCopilot/**)",
       "Read(//Users/marco/Documents/AssetManager/**)",
       "Bash(tail:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(prlctl exec:*)"
     ]
   }
 }

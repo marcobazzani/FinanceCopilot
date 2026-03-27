@@ -144,19 +144,20 @@ class InvestingComService extends MarketPriceService {
 
     try {
       final js = '''
-        (async () => {
-          try {
-            const r = await fetch('$url', {
-              headers: { 'domain-id': 'www' }
-            });
-            if (!r.ok) return JSON.stringify({__error: r.status});
-            return JSON.stringify(await r.json());
-          } catch(e) {
-            return JSON.stringify({__error: e.toString()});
-          }
-        })()
+        try {
+          const r = await fetch('$url', {
+            headers: { 'domain-id': 'www' }
+          });
+          if (!r.ok) return JSON.stringify({__error: r.status});
+          return JSON.stringify(await r.json());
+        } catch(e) {
+          return JSON.stringify({__error: e.toString()});
+        }
       ''';
-      final resultStr = await _webViewController!.evaluateJavascript(source: js);
+      final callResult = await _webViewController!.callAsyncJavaScript(
+        functionBody: js,
+      );
+      final resultStr = callResult?.value;
       if (resultStr == null) return null;
 
       final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
