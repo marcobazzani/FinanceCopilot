@@ -8,6 +8,7 @@ import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/exchange_rate_service.dart';
+import 'services/investing_com_service.dart';
 import 'services/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
@@ -149,6 +150,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     Future.microtask(() => _startBackgroundSync());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Provide context for Windows visible WebView CF solve
+    InvestingComService.appContext = context;
   }
 
   Future<void> _startBackgroundSync() async {

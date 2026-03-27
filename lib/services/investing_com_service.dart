@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
@@ -84,94 +86,120 @@ class InvestingComService extends MarketPriceService {
   /// Mutex: only one CF solve at a time.
   Completer<bool>? _cfSolving;
 
-  /// Ensure the headless WebView is running and CF is solved.
+  /// Cookie extraction callback shared by headless and visible WebView.
+  Future<void> _onCfSolved(InAppWebViewController controller) async {
+    _webViewController = controller;
+    _webViewReadyAt = DateTime.now();
+    try {
+      final cookieManager = CookieManager.instance();
+      final cookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
+      final merged = <String, String>{};
+      for (final c in cookies) { merged[c.name] = c.value.toString(); }
+      _cfCookieStr = merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
+      _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
+      final hasCf = merged.containsKey('cf_clearance');
+      _log.info('Cloudflare solved — ${merged.length} cookies (cf_clearance: $hasCf)');
+    } catch (e) {
+      _log.warning('Failed to extract cookies: $e');
+    }
+  }
+
+  /// Context for showing visible WebView dialog on Windows.
+  static BuildContext? appContext;
+
+  /// Ensure WebView is running and CF is solved.
+  /// macOS: headless. Windows: visible dialog (headless doesn't get cf_clearance).
   Future<bool> _ensureWebView() async {
     if (_isWebViewReady) return true;
     if (_cfSolving != null) return _cfSolving!.future;
     _cfSolving = Completer<bool>();
+    final result = Platform.isWindows ? await _solveVisible() : await _solveHeadless();
+    _cfSolving?.complete(result);
+    _cfSolving = null;
+    return result;
+  }
 
-    _log.info('Solving Cloudflare challenge via headless WebView...');
-
-    // Dispose old WebView if any
+  Future<bool> _solveHeadless() async {
+    _log.info('Solving CF via headless WebView...');
     if (_webView != null) {
       try { await _webView!.dispose(); } catch (_) {}
       _webView = null;
       _webViewController = null;
     }
-
     final completer = Completer<bool>();
     Timer? timeout;
-
     _webView = HeadlessInAppWebView(
-      initialUrlRequest: URLRequest(
-        url: WebUri('https://www.investing.com/'),
-      ),
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-      ),
+      initialUrlRequest: URLRequest(url: WebUri('https://www.investing.com/')),
+      initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
       onLoadStop: (controller, url) async {
         final title = await controller.getTitle();
-        if (title != null && !title.contains('Just a moment')) {
-          // Diagnostic: check CF challenge state
-          try {
-            final diag = await controller.evaluateJavascript(source: '''
-              JSON.stringify({
-                title: document.title?.substring(0, 50),
-                url: window.location.href?.substring(0, 60),
-                hasTurnstile: !!document.querySelector('iframe[src*="turnstile"]'),
-                hasCfChallenge: !!document.querySelector('#challenge-running, #challenge-form'),
-                iframes: Array.from(document.querySelectorAll('iframe')).length,
-                cfCookie: document.cookie.includes('cf_clearance'),
-              })
-            ''');
-            _log.info('CF diagnostic: $diag');
-          } catch (_) {}
-
-          _webViewController = controller;
-          _webViewReadyAt = DateTime.now();
-
-          // Cache cookies + UA at solve time (avoids crash-prone live extraction on Windows)
-          try {
-            // Get cookies for both www and api subdomains
-            final cookieManager = CookieManager.instance();
-            final wwwCookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
-            final apiCookies = await cookieManager.getCookies(url: WebUri('https://api.investing.com/'));
-            // Also try the bare domain
-            final bareCookies = await cookieManager.getCookies(url: WebUri('https://investing.com/'));
-
-            // Merge all (deduplicate by name, prefer www cookies)
-            final merged = <String, String>{};
-            for (final c in bareCookies) { merged[c.name] = c.value.toString(); }
-            for (final c in apiCookies) { merged[c.name] = c.value.toString(); }
-            for (final c in wwwCookies) { merged[c.name] = c.value.toString(); }
-            _cfCookieStr = merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
-            _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
-            final cookieNames = merged.keys.toList()..sort();
-            final hasCfClearance = merged.containsKey('cf_clearance');
-            _log.info('Cloudflare solved — ${merged.length} cookies (cf_clearance: $hasCfClearance): ${cookieNames.join(", ")}');
-            _log.fine('CF UA: $_cfUserAgent');
-          } catch (e) {
-            _log.warning('Failed to extract cookies: $e');
-          }
+        if (title != null && !title.contains('Just a moment') && !completer.isCompleted) {
+          await _onCfSolved(controller);
           timeout?.cancel();
-          if (!completer.isCompleted) completer.complete(true);
+          completer.complete(true);
         }
       },
     );
-
     timeout = Timer(const Duration(seconds: 30), () async {
-      _log.warning('Cloudflare challenge timed out');
+      _log.warning('CF headless timed out');
       try { await _webView?.dispose(); } catch (_) {}
       _webView = null;
-      _webViewController = null;
       if (!completer.isCompleted) completer.complete(false);
     });
-
     await _webView!.run();
-    final result = await completer.future;
-    _cfSolving?.complete(result);
-    _cfSolving = null;
-    return result;
+    return completer.future;
+  }
+
+  Future<bool> _solveVisible() async {
+    _log.info('Solving CF via visible WebView (Windows)...');
+    final ctx = appContext;
+    if (ctx == null || !ctx.mounted) {
+      _log.warning('No app context — falling back to headless');
+      return _solveHeadless();
+    }
+    final completer = Completer<bool>();
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        Timer? timeout;
+        timeout = Timer(const Duration(seconds: 30), () {
+          if (!completer.isCompleted) {
+            _log.warning('CF visible timed out');
+            completer.complete(false);
+            if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+          }
+        });
+        return AlertDialog(
+          title: const Row(children: [
+            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+            SizedBox(width: 12),
+            Text('Connecting to market data...', style: TextStyle(fontSize: 14)),
+          ]),
+          content: SizedBox(
+            width: 400,
+            height: 350,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: InAppWebView(
+                initialUrlRequest: URLRequest(url: WebUri('https://www.investing.com/')),
+                initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
+                onLoadStop: (controller, url) async {
+                  final title = await controller.getTitle();
+                  if (title != null && !title.contains('Just a moment') && !completer.isCompleted) {
+                    await _onCfSolved(controller);
+                    timeout?.cancel();
+                    completer.complete(true);
+                    if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                  }
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    return completer.future;
   }
 
   /// Headers that mimic a real browser's XHR call (from Edge HAR analysis).
