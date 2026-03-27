@@ -1,6 +1,6 @@
 # Build & Deploy
 
-- Always build first, then kill the running app, then start the new build. Never kill before the build completes.
+- When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
   flutter build macos --release && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```

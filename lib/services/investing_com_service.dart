@@ -134,8 +134,8 @@ class InvestingComService extends MarketPriceService {
     return result;
   }
 
-  /// Make an API call through the WebView's browser context (same cookies/UA).
-  /// Returns parsed JSON or null on failure.
+  /// Make a CF-protected API call.
+  /// Uses Dio with cookies extracted from the WebView.
   Future<Map<String, dynamic>?> _webViewFetch(String url) async {
     if (!_isWebViewReady) {
       final ok = await _ensureWebView();
@@ -143,39 +143,41 @@ class InvestingComService extends MarketPriceService {
     }
 
     try {
-      final js = '''
-        try {
-          const r = await fetch('$url', {
-            headers: { 'domain-id': 'www' }
-          });
-          if (!r.ok) return JSON.stringify({__error: r.status});
-          return JSON.stringify(await r.json());
-        } catch(e) {
-          return JSON.stringify({__error: e.toString()});
-        }
-      ''';
-      final callResult = await _webViewController!.callAsyncJavaScript(
-        functionBody: js,
+      // Extract fresh cookies + UA from the live WebView
+      final cookieManager = CookieManager.instance();
+      final cookies = await cookieManager.getCookies(
+        url: WebUri('https://www.investing.com/'),
       );
-      final resultStr = callResult?.value;
-      if (resultStr == null) return null;
+      final cookieStr = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+      final ua = await _webViewController!.evaluateJavascript(
+        source: 'navigator.userAgent',
+      ) as String? ?? '';
 
-      final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
-      if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
-        final err = decoded['__error'].toString();
-        // Network errors after sleep → invalidate WebView so it re-solves
-        if (err.contains('Load failed') || err.contains('NetworkError')) {
-          _log.fine('_webViewFetch: network error, will re-solve CF on next call');
-          _webViewReadyAt = null;
-        } else {
-          _log.fine('_webViewFetch: error $err');
-        }
-        return null;
+      final response = await _dio.get(url, options: Options(
+        responseType: ResponseType.json,
+        headers: {
+          'User-Agent': ua,
+          'Cookie': cookieStr,
+          'Accept': 'application/json',
+          'Origin': 'https://www.investing.com',
+          'Referer': 'https://www.investing.com/',
+          'Domain-Id': 'www',
+        },
+      ));
+
+      final data = response.data;
+      if (data is String) return null;
+      return data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        _log.fine('_webViewFetch: 403 — will re-solve CF');
+        _webViewReadyAt = null;
+      } else {
+        _log.fine('_webViewFetch: ${e.response?.statusCode ?? "error"}');
       }
-      return decoded as Map<String, dynamic>;
+      return null;
     } catch (e) {
       _log.fine('_webViewFetch: failed — $e');
-      _webViewReadyAt = null; // force re-solve
       return null;
     }
   }
