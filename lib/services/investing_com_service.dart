@@ -182,15 +182,31 @@ class InvestingComService extends MarketPriceService {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: InAppWebView(
-                initialUrlRequest: URLRequest(url: WebUri('https://www.investing.com/')),
+                // Load API URL directly — if CF challenges it, WebView solves it
+                // and cf_clearance gets set for the investing.com domain
+                initialUrlRequest: URLRequest(url: WebUri(
+                    'https://api.investing.com/api/financialdata/historical/46925'
+                    '?start-date=2026-01-01&end-date=2026-03-27&time-frame=Daily&add-missing-rows=false')),
                 initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
                 onLoadStop: (controller, url) async {
+                  if (completer.isCompleted) return;
+                  final currentUrl = url?.toString() ?? '';
                   final title = await controller.getTitle();
-                  if (title != null && !title.contains('Just a moment') && !completer.isCompleted) {
-                    await _onCfSolved(controller);
+                  _log.info('CF visible onLoadStop: url=${currentUrl.substring(0, currentUrl.length.clamp(0, 60))}, title=$title');
+
+                  // Wait a moment for cookies to settle
+                  await Future.delayed(const Duration(seconds: 2));
+
+                  await _onCfSolved(controller);
+
+                  // Check if we got cf_clearance now
+                  if (_cfCookieStr.contains('cf_clearance')) {
+                    _log.info('CF visible: got cf_clearance!');
                     timeout?.cancel();
                     completer.complete(true);
                     if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                  } else {
+                    _log.info('CF visible: no cf_clearance yet, waiting...');
                   }
                 },
               ),
