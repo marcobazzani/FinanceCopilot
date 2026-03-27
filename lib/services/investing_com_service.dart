@@ -230,20 +230,31 @@ class InvestingComService extends MarketPriceService {
 
       // Poll for body content — JSON pages render differently across browsers
       for (var i = 0; i < 20; i++) {
-        await Future.delayed(const Duration(milliseconds: 300));
+        await Future.delayed(const Duration(milliseconds: 500));
         try {
-          // Try multiple ways to get the JSON text
+          final readyState = await _webViewController!.evaluateJavascript(source: 'document.readyState');
+          if (readyState != 'complete' && readyState != '"complete"') continue;
+
+          // WebView2 renders JSON in a <pre> tag or directly in body
           final body = await _webViewController!.evaluateJavascript(
-            source: 'document.body?.innerText || document.body?.textContent || document.querySelector("pre")?.textContent || ""',
+            source: 'document.querySelector("pre")?.textContent || document.body?.innerText || document.body?.textContent || ""',
           );
-          if (body != null && body != 'null' && body.toString().length > 10) {
-            final text = body.toString();
-            _log.fine('_fetchViaNavigation: got ${text.length} chars');
+          final text = body?.toString() ?? '';
+          if (text.length > 10 && text != 'null') {
+            _log.info('_fetchViaNavigation: got ${text.length} chars (attempt $i)');
             completer.complete(text);
             handled = true;
             break;
+          } else if (i == 0) {
+            // Log what we see for debugging
+            final html = await _webViewController!.evaluateJavascript(
+              source: 'document.body?.innerHTML?.substring(0, 200)',
+            );
+            _log.info('_fetchViaNavigation: body HTML preview: $html');
           }
-        } catch (_) {}
+        } catch (e) {
+          _log.fine('_fetchViaNavigation poll error: $e');
+        }
       }
       if (!handled) completer.complete(null);
 
