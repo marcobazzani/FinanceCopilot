@@ -638,6 +638,9 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   final years = <_YearBucket>[];
 
   for (int y = allSeriesData.firstDate.year; y <= now.year; y++) {
+    // Use Dec 31 of previous year as start reference so that Jan 1
+    // transactions are included in the year's NAV change.
+    final yStartRef = DateTime(y - 1, 12, 31);
     final yStart = DateTime(y, 1, 1);
     final isCurrentYear = y == now.year;
     final effectiveEnd = isCurrentYear ? now : DateTime(y, 12, 31);
@@ -648,7 +651,8 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
     for (int m = 1; m <= 12; m++) {
       if (isCurrentYear && m > now.month) break;
-      final mStart = DateTime(y, m, 1);
+      // Use last day of previous month so 1st-of-month txns are captured.
+      final mStartRef = DateTime(y, m, 1).subtract(const Duration(days: 1));
       final mEnd = (isCurrentYear && m == now.month)
           ? now
           : (m < 12
@@ -659,14 +663,14 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
       months.add(_MonthBucket(
         year: y, month: m,
         income: mIncome,
-        navChange: lookupNAV(mEnd) - lookupNAV(mStart),
+        navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
       ));
     }
 
     years.add(_YearBucket(
       year: y, days: days,
       income: yearIncome,
-      navChange: lookupNAV(effectiveEnd) - lookupNAV(yStart),
+      navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
       months: months,
     ));
   }

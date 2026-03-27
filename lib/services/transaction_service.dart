@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../database/database.dart';
 import '../database/tables.dart';
+import '../utils/amount_parser.dart' as amt;
 import '../utils/logger.dart';
 
 final _log = getLogger('TransactionService');
@@ -127,5 +130,76 @@ class TransactionService {
     }
     if (deleted > 0) _log.info('removeDuplicates: deleted $deleted duplicates for account $accountId');
     return deleted;
+  }
+
+  /// Recalculate balanceAfter for all transactions in an account.
+  /// Uses the saved import config (balance mode, filter settings).
+  /// Returns the number of updated transactions.
+  Future<int> recalculateBalances(
+    int accountId, {
+    required String balanceMode,
+    Map<String, dynamic> savedMappings = const {},
+  }) async {
+    if (balanceMode == 'none') return 0;
+
+    final txs = await getByAccount(accountId);
+    if (txs.isEmpty) return 0;
+
+    // Sort chronologically (date ASC, id ASC)
+    final sorted = List.of(txs)..sort((a, b) {
+      final cmp = a.operationDate.compareTo(b.operationDate);
+      if (cmp != 0) return cmp;
+      return a.id.compareTo(b.id);
+    });
+
+    int toCents(double v) => (v * 100).round();
+    double fromCents(int c) => c / 100;
+
+    int balanceCents = 0;
+    final updates = <int, double?>{};
+    final balanceColumn = savedMappings['balanceAfter'] as String?;
+    final filterColumn = savedMappings['__balanceFilterColumn'] as String?;
+    final filterInclude = <String>{};
+    if (savedMappings.containsKey('__balanceFilterInclude')) {
+      filterInclude.addAll(
+        (jsonDecode(savedMappings['__balanceFilterInclude'] as String) as List<dynamic>).cast<String>(),
+      );
+    }
+
+    for (final tx in sorted) {
+      double? newBalance;
+
+      if (balanceMode == 'column') {
+        if (balanceColumn != null && tx.rawMetadata != null) {
+          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+          final raw = meta[balanceColumn]?.toString() ?? '';
+          newBalance = amt.tryParseAmount(raw);
+        }
+      } else if (balanceMode == 'cumulative') {
+        balanceCents += toCents(tx.amount);
+        newBalance = fromCents(balanceCents);
+      } else if (balanceMode == 'filtered') {
+        String filterVal = '';
+        if (filterColumn != null && tx.rawMetadata != null) {
+          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+          filterVal = (meta[filterColumn]?.toString() ?? '').trim();
+        }
+        final included = filterInclude.isEmpty || filterInclude.contains(filterVal);
+        if (included) {
+          balanceCents += toCents(tx.amount);
+        }
+        newBalance = fromCents(balanceCents);
+      }
+
+      if (newBalance != tx.balanceAfter) {
+        updates[tx.id] = newBalance;
+      }
+    }
+
+    if (updates.isNotEmpty) {
+      await batchUpdateBalances(updates);
+    }
+    _log.info('recalculateBalances: account=$accountId, mode=$balanceMode, updated=${updates.length}/${sorted.length}');
+    return updates.length;
   }
 }

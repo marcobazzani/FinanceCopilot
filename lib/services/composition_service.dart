@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' show parse;
 
 import '../database/database.dart';
+import '../database/tables.dart';
 import '../utils/logger.dart';
 
 final _log = getLogger('CompositionService');
@@ -23,6 +25,17 @@ class CompositionService {
   final Dio _dio;
 
   CompositionService(this._db, {Dio? dio}) : _dio = dio ?? Dio();
+
+  static const _assetClassToType = {
+    'Stock ETF': AssetType.stockEtf,
+    'Bond ETF': AssetType.bondEtf,
+    'Commodity ETF': AssetType.commEtf,
+    'Gold ETC': AssetType.goldEtc,
+    'Money Market ETF': AssetType.monEtf,
+    'ETF': AssetType.stockEtf,
+    'Stock': AssetType.stock,
+    'Pension Fund': AssetType.pension,
+  };
 
   static const _userAgent =
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
@@ -75,6 +88,20 @@ class CompositionService {
             );
           }
         });
+
+        // Auto-update assetType from detected asset class
+        final assetClassEntry =
+            data.where((e) => e.type == 'assetclass').firstOrNull;
+        if (assetClassEntry != null) {
+          final newType = _assetClassToType[assetClassEntry.name];
+          if (newType != null && newType != asset.assetType) {
+            await (_db.update(_db.assets)
+                  ..where((a) => a.id.equals(asset.id)))
+                .write(AssetsCompanion(assetType: Value(newType)));
+            _log.info('syncCompositions: ${asset.name} — updated assetType '
+                '${asset.assetType} → $newType');
+          }
+        }
 
         _log.info('syncCompositions: ${asset.name} — stored ${data.length} entries');
       } catch (e) {

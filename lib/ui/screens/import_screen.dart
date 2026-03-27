@@ -2194,6 +2194,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // Save import config for this account
       await _saveConfig();
 
+      // Auto-recalculate balances for the entire account after transaction import
+      if (_target == ImportTarget.transaction && _targetId != null) {
+        final txSvc = ref.read(transactionServiceProvider);
+        final configSvc = ref.read(importConfigServiceProvider);
+        final savedConfig = await configSvc.getByAccount(_targetId!);
+        final mappings = savedConfig != null
+            ? jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic>
+            : <String, dynamic>{};
+        final mode = (mappings['__balanceMode'] as String?) ?? 'cumulative';
+        await txSvc.recalculateBalances(_targetId!, balanceMode: mode, savedMappings: mappings);
+      }
+
       setState(() {
         _result = result;
         _step = 3;

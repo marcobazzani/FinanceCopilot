@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
 import '../../services/providers.dart';
-import '../../utils/amount_parser.dart' as amt;
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'import_screen.dart';
@@ -578,61 +577,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   ) async {
     _log.info('balanceRecalc: mode=$balanceMode, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
     final txSvc = ref.read(transactionServiceProvider);
-
-    // Sort chronologically (date ASC, id ASC) so cumulative balance
-    // accumulates from oldest to newest, regardless of CSV import order.
-    final sorted = List.of(transactions)..sort((a, b) {
-      final cmp = a.operationDate.compareTo(b.operationDate);
-      if (cmp != 0) return cmp;
-      return a.id.compareTo(b.id);
-    });
-
-    // All arithmetic in integer cents to avoid floating point errors
-    int toCents(double v) => (v * 100).round();
-    double fromCents(int c) => c / 100;
-
-    int balanceCents = 0;
-    final updates = <int, double?>{}; // id → newBalance
-    final balanceColumn = mappings['balanceAfter'] as String?;
-
-    for (final tx in sorted) {
-      double? newBalance;
-
-      if (balanceMode == 'column') {
-        // Read balance from the original CSV column stored in rawMetadata
-        if (balanceColumn != null && tx.rawMetadata != null) {
-          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
-          final raw = meta[balanceColumn]?.toString() ?? '';
-          newBalance = amt.tryParseAmount(raw);
-        }
-      } else if (balanceMode == 'cumulative') {
-        balanceCents += toCents(tx.amount);
-        newBalance = fromCents(balanceCents);
-      } else if (balanceMode == 'filtered') {
-        String filterVal = '';
-        if (filterColumn != null && tx.rawMetadata != null) {
-          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
-          filterVal = (meta[filterColumn]?.toString() ?? '').trim();
-        }
-        final included = filterInclude.isEmpty || filterInclude.contains(filterVal);
-        if (included) {
-          balanceCents += toCents(tx.amount);
-        }
-        newBalance = fromCents(balanceCents);
-      }
-
-      if (newBalance != tx.balanceAfter) {
-        updates[tx.id] = newBalance;
-      }
-    }
-
-    // Batch update
-    await txSvc.batchUpdateBalances(updates);
-
-    _log.info('balanceRecalc: updated ${updates.length} transactions, final balance=${fromCents(balanceCents)}');
+    final updated = await txSvc.recalculateBalances(
+      widget.account.id,
+      balanceMode: balanceMode,
+      savedMappings: mappings,
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recalculated ${updates.length} balances. Final: ${fromCents(balanceCents)}')),
+        SnackBar(content: Text('Recalculated $updated balances.')),
       );
     }
   }
