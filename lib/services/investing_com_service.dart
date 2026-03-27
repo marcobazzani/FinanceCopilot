@@ -235,7 +235,14 @@ class InvestingComService extends MarketPriceService {
 
       // Use onLoadResource to detect when the API response is ready
       await _webViewController!.loadUrl(
-        urlRequest: URLRequest(url: WebUri(url)),
+        urlRequest: URLRequest(
+          url: WebUri(url),
+          headers: {
+            'domain-id': 'www',
+            'Origin': 'https://www.investing.com',
+            'Referer': 'https://www.investing.com/',
+          },
+        ),
       );
 
       // Poll for body content — JSON pages render differently across browsers
@@ -250,7 +257,7 @@ class InvestingComService extends MarketPriceService {
             source: 'document.querySelector("pre")?.textContent || document.body?.innerText || document.body?.textContent || ""',
           );
           final text = body?.toString() ?? '';
-          if (text.length > 10 && text != 'null') {
+          if (text.length > 10 && text != 'null' && !text.contains('@errors')) {
             _log.info('_fetchViaNavigation: got ${text.length} chars (attempt $i)');
             completer.complete(text);
             handled = true;
