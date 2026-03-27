@@ -162,12 +162,20 @@ class InvestingComService extends MarketPriceService {
 
       final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
       if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
-        _log.warning('_webViewFetch: $url → error ${decoded['__error']}');
+        final err = decoded['__error'].toString();
+        // Network errors after sleep → invalidate WebView so it re-solves
+        if (err.contains('Load failed') || err.contains('NetworkError')) {
+          _log.fine('_webViewFetch: network error, will re-solve CF on next call');
+          _webViewReadyAt = null;
+        } else {
+          _log.fine('_webViewFetch: error $err');
+        }
         return null;
       }
       return decoded as Map<String, dynamic>;
     } catch (e) {
-      _log.warning('_webViewFetch: $url failed — $e');
+      _log.fine('_webViewFetch: failed — $e');
+      _webViewReadyAt = null; // force re-solve
       return null;
     }
   }
@@ -448,7 +456,7 @@ class InvestingComService extends MarketPriceService {
 
     final dataMap = await _webViewFetch(url);
     if (dataMap == null) {
-      _log.warning('fetch: $tag (cid=$cid) — WebView fetch failed');
+      _log.fine('fetch: $tag (cid=$cid) — WebView fetch returned null');
       return {};
     }
     final rows = (dataMap['data'] as List?) ?? [];
