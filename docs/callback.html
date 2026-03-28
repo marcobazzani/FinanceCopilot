@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinanceCopilot — Bank Connected</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 520px; margin: 80px auto; padding: 0 20px; text-align: center; color: #333; }
+  .code-box { background: #f3f4f6; border: 2px solid #4f46e5; border-radius: 8px; padding: 16px; margin: 24px 0; font-family: monospace; font-size: 1.1em; word-break: break-all; user-select: all; }
+  .success { color: #16a34a; font-size: 1.3em; }
+  .error { color: #dc2626; }
+  button { background: #4f46e5; color: white; border: none; border-radius: 6px; padding: 10px 24px; font-size: 1em; cursor: pointer; }
+  button:hover { background: #4338ca; }
+  .hint { color: #666; font-size: 0.9em; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="content"></div>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const el = document.getElementById('content');
+  if (code) {
+    el.innerHTML =
+      '<p class="success">&#10004; Bank authorization successful!</p>' +
+      '<p>Copy this code and paste it into FinanceCopilot:</p>' +
+      '<div class="code-box" id="code">' + code.replace(/</g, '&lt;') + '</div>' +
+      '<button onclick="copyCode()">Copy to clipboard</button>' +
+      '<p class="hint">You can close this page after copying.</p>';
+  } else {
+    el.innerHTML =
+      '<p class="error">No authorization code received.</p>' +
+      '<p>Please try connecting your bank again from FinanceCopilot.</p>';
+  }
+  function copyCode() {
+    navigator.clipboard.writeText(code).then(function() {
+      document.querySelector('button').textContent = 'Copied!';
+    });
+  }
+</script>
+</body>
+</html>
