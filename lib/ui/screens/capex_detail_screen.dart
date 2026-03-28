@@ -98,10 +98,10 @@ class _DetailBody extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _infoRow('Total', amtFmt.format(schedule.totalAmount)),
+                  _infoRow(s.totalLabel, amtFmt.format(schedule.totalAmount)),
                   if (schedule.expenseDate != null)
-                    _infoRow('Expense', dateFmt.format(schedule.expenseDate!)),
-                  _infoRow('Spread', '${dateFmt.format(schedule.startDate)} → ${dateFmt.format(schedule.endDate)}'),
+                    _infoRow(s.expenseLabel, dateFmt.format(schedule.expenseDate!)),
+                  _infoRow(s.spreadLabel, '${dateFmt.format(schedule.startDate)} → ${dateFmt.format(schedule.endDate)}'),
                 ],
               ),
             ),
@@ -189,7 +189,7 @@ class _DetailBody extends ConsumerWidget {
         if (reimbursements.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Text('Total reimbursed: ${amtFmt.format(totalReimbursed)}',
+            child: Text(ref.read(appStringsProvider).totalReimbursed(amtFmt.format(totalReimbursed)),
                 style: const TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w600)),
           ),
         for (final item in items)
@@ -198,7 +198,7 @@ class _DetailBody extends ConsumerWidget {
               dense: true,
               leading: const Icon(Icons.arrow_back, color: Colors.green, size: 20),
               title: Text(
-                '${dateFmt.format(item.txn!.operationDate)} — ${item.txn!.description.isNotEmpty ? item.txn!.description : "Reimbursement"}',
+                '${dateFmt.format(item.txn!.operationDate)} — ${item.txn!.description.isNotEmpty ? item.txn!.description : ref.read(appStringsProvider).reimbursement}',
                 style: const TextStyle(fontSize: 13),
               ),
               trailing: Text(
@@ -226,7 +226,7 @@ class _DetailBody extends ConsumerWidget {
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                 ),
                 subtitle: Text(
-                  'Cumulative: ${amtFmt.format(e.cumulative)} · Remaining: ${amtFmt.format(e.remaining)}',
+                  ref.read(appStringsProvider).cumulativeRemaining(amtFmt.format(e.cumulative), amtFmt.format(e.remaining)),
                   style: const TextStyle(fontSize: 11, color: Colors.grey),
                 ),
                 trailing: Text(
@@ -280,7 +280,7 @@ class _DetailBody extends ConsumerWidget {
               const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text('Date: ${dateFmt.format(date)}'),
+                title: Text(s.datePrefix(dateFmt.format(date))),
                 trailing: const Icon(Icons.calendar_today, size: 18),
                 onTap: () async {
                   final picked = await showDatePicker(

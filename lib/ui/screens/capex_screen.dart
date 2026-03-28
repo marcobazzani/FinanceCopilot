@@ -235,7 +235,7 @@ class _CapexTile extends StatelessWidget {
                   if (stats != null && stats!.totalReimbursed > 0) ...[
                     const SizedBox(height: 2),
                     PrivacyText(
-                      'Reimb: ${amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}',
+                      strings.reimbLabel('${amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}'),
                       style: TextStyle(fontSize: 11, color: Colors.green.shade600),
                     ),
                   ],
@@ -255,7 +255,7 @@ class _CapexTile extends StatelessWidget {
                 ),
                 if (stats != null)
                   Text(
-                    '${stats!.entryCount} steps · ${schedule.stepFrequency.name}',
+                    strings.nSteps(stats!.entryCount, schedule.stepFrequency.name),
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
               ],
@@ -317,13 +317,13 @@ class _IncomeAdjTile extends ConsumerWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Income: ${shortDate.format(adjustment.incomeDate)}',
+                    ref.read(appStringsProvider).incomeLabel(shortDate.format(adjustment.incomeDate)),
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   if (totalSpent > 0) ...[
                     const SizedBox(height: 2),
                     PrivacyText(
-                      'Spent: ${amtFormat.format(totalSpent)} $sym · Remaining: ${amtFormat.format(remaining)} $sym',
+                      ref.read(appStringsProvider).spentRemaining('${amtFormat.format(totalSpent)} $sym', '${amtFormat.format(remaining)} $sym'),
                       style: TextStyle(fontSize: 11, color: remaining > 0 ? Colors.orange.shade600 : Colors.green.shade600),
                     ),
                   ],

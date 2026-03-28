@@ -335,12 +335,13 @@ class _UnifiedChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 40,
+              reservedSize: 48,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
                 final date = firstDate.add(Duration(days: value.toInt()));
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                return SideTitleWidget(
+                  meta: meta,
+                  angle: -0.5,
                   child: Text(dateFmt.format(date),
                       style: TextStyle(fontSize: 10, color: textColor)),
                 );

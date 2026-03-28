@@ -110,6 +110,7 @@ class _ChartCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
     final isPrivate = ref.watch(privacyModeProvider);
     final visible = series.where((s) => !hidden.contains(s.key)).toList();
     final totalSpots = _buildSmartTotalSpots(visible);
@@ -163,13 +164,13 @@ class _ChartCard extends ConsumerWidget {
                 IconButton(
                   icon: Icon(hideComponents ? Icons.visibility_off : Icons.visibility, size: 18),
                   onPressed: onToggleHideComponents,
-                  tooltip: hideComponents ? 'Show components' : 'Hide components',
+                  tooltip: hideComponents ? s.showComponents : s.hideComponents,
                 ),
               if (hasZoom)
                 IconButton(
                   icon: const Icon(Icons.zoom_out_map, size: 18),
                   onPressed: () => onZoom(null, null, null, null),
-                  tooltip: 'Reset zoom',
+                  tooltip: s.resetZoom,
                 ),
               if (headerExtra != null) headerExtra!,
             ],
@@ -189,6 +190,11 @@ class _ChartCard extends ConsumerWidget {
               hidden: hidden,
               onToggle: onToggle,
               onToggleGroup: onToggleGroup,
+              accountsLabel: s.legendAccounts,
+              spreadAdjLabel: s.legendSpreadAdj,
+              incomeAdjLabel: s.legendIncomeAdj,
+              assetsLabel: s.dashAssets,
+              totalLabel: s.legendTotal,
             ),
             const SizedBox(height: 8),
           ],
@@ -234,7 +240,7 @@ class _ChartCard extends ConsumerWidget {
                       ),
                     );
                   })
-                : const Center(child: Text('Not enough data to plot', style: TextStyle(color: Colors.grey))),
+                : Center(child: Text(s.dashNotEnoughData, style: const TextStyle(color: Colors.grey))),
           ),
 
           // Resize handle
@@ -278,6 +284,11 @@ class _ChartLegend extends StatelessWidget {
   final Set<String> hidden;
   final ValueChanged<String> onToggle;
   final ValueChanged<Set<String>> onToggleGroup;
+  final String accountsLabel;
+  final String spreadAdjLabel;
+  final String incomeAdjLabel;
+  final String assetsLabel;
+  final String totalLabel;
 
   const _ChartLegend({
     required this.accountSeries,
@@ -290,6 +301,11 @@ class _ChartLegend extends StatelessWidget {
     required this.hidden,
     required this.onToggle,
     required this.onToggleGroup,
+    required this.accountsLabel,
+    required this.spreadAdjLabel,
+    required this.incomeAdjLabel,
+    required this.assetsLabel,
+    required this.totalLabel,
   });
 
   @override
@@ -299,13 +315,13 @@ class _ChartLegend extends StatelessWidget {
       runSpacing: 4,
       children: [
         if (accountSeries.isNotEmpty)
-          ..._buildGroup(context, 'Accounts', accountSeries),
+          ..._buildGroup(context, accountsLabel, accountSeries),
         if (investedSeries.isNotEmpty || marketSeries.isNotEmpty)
           ..._buildAssetGroup(context),
         if (adjustmentSeries.isNotEmpty)
-          ..._buildGroup(context, 'Spread Adj.', adjustmentSeries),
+          ..._buildGroup(context, spreadAdjLabel, adjustmentSeries),
         if (incomeAdjSeries.isNotEmpty)
-          ..._buildGroup(context, 'Income Adj.', incomeAdjSeries),
+          ..._buildGroup(context, incomeAdjLabel, incomeAdjSeries),
         for (final s in otherSeries)
           _ToggleLegendItem(
             color: s.color,
@@ -317,7 +333,7 @@ class _ChartLegend extends StatelessWidget {
         if (showTotalItem)
           _ToggleLegendItem(
             color: Colors.white,
-            label: 'Total',
+            label: totalLabel,
             bold: true,
             enabled: !hidden.contains('_total'),
             onTap: () => onToggle('_total'),
@@ -383,7 +399,7 @@ class _ChartLegend extends StatelessWidget {
                   ? Theme.of(context).colorScheme.surfaceContainerHighest
                   : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ),
-            child: Text('Assets', style: TextStyle(
+            child: Text(assetsLabel, style: TextStyle(
               fontSize: 11, fontWeight: FontWeight.w600,
               color: !allHidden
                   ? Theme.of(context).colorScheme.onSurface

@@ -186,12 +186,12 @@ extension _ColumnMapperStep on _ImportScreenState {
               if (_target == ImportTarget.assetEvent) ...[
                 Row(
                   children: [
-                    const Text('Mode: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text(s.modeLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(width: 8),
                     SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'historic', label: Text('Historic')),
-                        ButtonSegment(value: 'current', label: Text('Current')),
+                      segments: [
+                        ButtonSegment(value: 'historic', label: Text(s.modeHistoric)),
+                        ButtonSegment(value: 'current', label: Text(s.modeCurrent)),
                       ],
                       selected: {_assetImportMode},
                       onSelectionChanged: (v) {
@@ -211,8 +211,8 @@ extension _ColumnMapperStep on _ImportScreenState {
                     const SizedBox(width: 12),
                     Text(
                       _assetImportMode == 'historic'
-                          ? 'Date & exchange rate required'
-                          : 'Date defaults to today, rate auto-fetched',
+                          ? s.dateExchangeRequired
+                          : s.dateDefaultsToday,
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     ),
                   ],
@@ -238,7 +238,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                               ))),
                               const Icon(Icons.arrow_forward, size: 16),
                               const SizedBox(width: 8),
-                              Text('quantity × price', style: TextStyle(
+                              Text(s.qtyTimesPrice, style: TextStyle(
                                 fontSize: 13, fontStyle: FontStyle.italic,
                                 color: Colors.grey.shade600,
                               )),
@@ -257,7 +257,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                           }),
                           visualDensity: VisualDensity.compact,
                         ),
-                        const Text('Auto calc', style: TextStyle(fontSize: 12)),
+                        Text(s.autoCalc, style: const TextStyle(fontSize: 12)),
                       ],
                     ),
                   ],
@@ -398,7 +398,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               if (showAddBtn) ...[
                 const SizedBox(width: 4),
                 Tooltip(
-                  message: 'Combine multiple columns',
+                  message: s.combineMultipleColumns,
                   child: IconButton(
                     icon: const Icon(Icons.add_circle_outline, size: 20),
                     visualDensity: VisualDensity.compact,
@@ -412,7 +412,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               if (isMulti) ...[
                 const SizedBox(width: 4),
                 Tooltip(
-                  message: 'Use single column',
+                  message: s.useSingleColumn,
                   child: IconButton(
                     icon: const Icon(Icons.remove_circle_outline, size: 20),
                     visualDensity: VisualDensity.compact,
@@ -479,7 +479,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                     }),
                   ),
                   const SizedBox(width: 12),
-                  const Text('Sep:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(s.sepLabel, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(width: 4),
                   SizedBox(
                     width: 60,
@@ -605,12 +605,12 @@ extension _ColumnMapperStep on _ImportScreenState {
                       _balanceFilterInclude.addAll(_uniqueColumnValues(_balanceFilterColumn!));
                     }),
                     style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    child: const Text('All', style: TextStyle(fontSize: 11)),
+                    child: Text(s.all, style: const TextStyle(fontSize: 11)),
                   ),
                   TextButton(
                     onPressed: () => _setState(() => _balanceFilterInclude.clear()),
                     style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    child: const Text('None', style: TextStyle(fontSize: 11)),
+                    child: Text(s.none, style: const TextStyle(fontSize: 11)),
                   ),
                 ],
               ),
@@ -657,6 +657,7 @@ extension _ColumnMapperStep on _ImportScreenState {
 
   /// Build the buy/sell type detection section for asset imports.
   Widget _buildTypeDetectionSection(List<String> columns) {
+    final s = ref.watch(appStringsProvider);
     // Gather unique values from the mapped type column (all rows, not just preview)
     final typeCol = _mappings['type'];
     if (typeCol != null && !_fullUniqueValues.containsKey(typeCol)) {
@@ -670,9 +671,9 @@ extension _ColumnMapperStep on _ImportScreenState {
         const Text('Buy / Sell Detection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 4),
         SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'column', label: Text('From column')),
-            ButtonSegment(value: 'sign', label: Text('From sign (+/-)')),
+          segments: [
+            ButtonSegment(value: 'column', label: Text(s.fromColumn)),
+            ButtonSegment(value: 'sign', label: Text(s.fromSign)),
           ],
           selected: {_typeMode},
           onSelectionChanged: (v) => _setState(() {
@@ -705,7 +706,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
-                      label: const Text('Buy', style: TextStyle(fontSize: 11)),
+                      label: Text(s.buyLabel, style: const TextStyle(fontSize: 11)),
                       selected: isBuy,
                       onSelected: (_) => _setState(() {
                         _sellValues.remove(val);
@@ -715,7 +716,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                     ),
                     const SizedBox(width: 4),
                     ChoiceChip(
-                      label: const Text('Sell', style: TextStyle(fontSize: 11)),
+                      label: Text(s.sellLabel, style: const TextStyle(fontSize: 11)),
                       selected: isSell,
                       onSelected: (_) => _setState(() {
                         _buyValues.remove(val);
@@ -731,7 +732,7 @@ extension _ColumnMapperStep on _ImportScreenState {
         ] else
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('Negative quantity or amount → Sell, positive → Buy',
+            child: Text(s.signBasedHelp,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ),
       ],
@@ -740,15 +741,16 @@ extension _ColumnMapperStep on _ImportScreenState {
 
   /// Build the fee computation mode selector for asset imports.
   Widget _buildFeeModeSection(List<String> columns) {
+    final s = ref.watch(appStringsProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('Fee / Commission', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'column', label: Text('From column')),
-            ButtonSegment(value: 'computed', label: Text('Computed')),
+          segments: [
+            ButtonSegment(value: 'column', label: Text(s.fromColumn)),
+            ButtonSegment(value: 'computed', label: Text(s.computedLabel)),
           ],
           selected: {_feeMode},
           onSelectionChanged: (v) => _setState(() {

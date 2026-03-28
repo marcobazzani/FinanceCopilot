@@ -111,8 +111,8 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
               validator: (v) {
-                if (v == null || v.isEmpty) return 'Required';
-                if (double.tryParse(v) == null) return 'Invalid number';
+                if (v == null || v.isEmpty) return s.required;
+                if (double.tryParse(v) == null) return s.invalidNumber;
                 return null;
               },
             ),
@@ -200,7 +200,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
               if (widget.transaction!.importHash != null) ...[
                 const SizedBox(height: 4),
                 Text(
-                  'Hash: ${widget.transaction!.importHash!.substring(0, 16)}...',
+                  s.hashLabel('${widget.transaction!.importHash!.substring(0, 16)}...'),
                   style: const TextStyle(fontSize: 10, color: Colors.grey),
                 ),
               ],

@@ -236,10 +236,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                     controller: _exchangeRateCtrl,
                     decoration: InputDecoration(
                       labelText: _needsConversion
-                          ? 'Rate $_baseCurrency/$_currency'
-                          : 'Exchange Rate',
+                          ? s.rateLabel2(_baseCurrency, _currency)
+                          : s.exchangeRate,
                       border: const OutlineInputBorder(),
-                      hintText: _needsConversion ? 'e.g. 1.085000' : 'N/A',
+                      hintText: _needsConversion ? s.rateHint : s.notApplicable,
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
@@ -261,8 +261,8 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if (double.tryParse(v) == null) return 'Invalid';
+                        if (v == null || v.isEmpty) return s.required;
+                        if (double.tryParse(v) == null) return s.invalid;
                         return null;
                       },
                     ),
@@ -272,13 +272,13 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                     child: TextFormField(
                       controller: _priceCtrl,
                       decoration: InputDecoration(
-                        labelText: 'Price${_needsConversion ? ' ($_currency)' : ''} *',
+                        labelText: s.priceLabel(_needsConversion ? ' ($_currency)' : ''),
                         border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if (double.tryParse(v) == null) return 'Invalid';
+                        if (v == null || v.isEmpty) return s.required;
+                        if (double.tryParse(v) == null) return s.invalid;
                         return null;
                       },
                     ),
@@ -291,7 +291,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               TextFormField(
                 controller: _amountCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Total${_needsConversion ? ' ($_currency)' : ''} (auto)',
+                  labelText: s.totalAutoLabel(_needsConversion ? ' ($_currency)' : ''),
                   border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -308,7 +308,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               TextFormField(
                 controller: _amountCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Amount${_needsConversion ? ' ($_currency)' : ''} *',
+                  labelText: s.amountLabel(_needsConversion ? ' ($_currency)' : ''),
                   border: const OutlineInputBorder(),
                   hintText: '1000.00',
                   suffixText: converted != null
@@ -317,8 +317,8 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                 validator: (v) {
-                  if (v == null || v.isEmpty) return 'Required';
-                  if (double.tryParse(v) == null) return 'Invalid number';
+                  if (v == null || v.isEmpty) return s.required;
+                  if (double.tryParse(v) == null) return s.invalidNumber;
                   return null;
                 },
               ),

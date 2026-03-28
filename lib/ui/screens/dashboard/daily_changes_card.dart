@@ -106,6 +106,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     // Watch providers to rebuild when period changes
     ref.watch(_priceChangeNumberProvider);
     ref.watch(_priceChangeUnitProvider);
+    final s = ref.watch(appStringsProvider);
     final isPrivate = ref.watch(privacyModeProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
     final theme = Theme.of(context);
@@ -120,7 +121,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           children: [
             Row(
               children: [
-                Text(ref.watch(appStringsProvider).dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                 const Spacer(),
                 SizedBox(
                   width: 56,
@@ -208,12 +209,12 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                 padding: EdgeInsets.all(16),
                 child: CircularProgressIndicator(strokeWidth: 2),
               )),
-              error: (e, _) => Text('Error: $e', style: const TextStyle(color: Colors.red, fontSize: 12)),
+              error: (e, _) => Text(s.error(e), style: const TextStyle(color: Colors.red, fontSize: 12)),
               data: (changes) {
                 if (changes.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Text('No price data available', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  return Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Text(s.dashNoPriceData, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                   );
                 }
 
@@ -252,8 +253,8 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
                         children: [
-                          headerCell('Asset', _SortCol.name, flex: 3, align: TextAlign.left),
-                          headerCell('Price', _SortCol.marketValue, flex: 2),
+                          headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
+                          headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
                           headerCell('Price \u0394 ($symbol)', _SortCol.priceDiff),
                           headerCell('%', _SortCol.pct),
                           headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
@@ -274,7 +275,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                     const Divider(height: 16),
                     _buildRow(
                       theme: theme,
-                      name: 'Total',
+                      name: s.legendTotal,
                       marketValue: null,
                       priceDiff: null,
                       pricePct: totalPct,

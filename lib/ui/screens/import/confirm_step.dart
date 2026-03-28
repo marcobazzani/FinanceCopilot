@@ -58,13 +58,14 @@ extension _ConfirmStep on _ImportScreenState {
   }
 
   Widget _buildConfirm() {
+    final s = ref.watch(appStringsProvider);
     final isAssetImport = _target == ImportTarget.assetEvent;
     final isIncomeImport = _target == ImportTarget.income;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!isAssetImport && !isIncomeImport && widget.preselectedAccountId == null) ...[
-          const Text('Select Account', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(s.selectAccount, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           _buildAccountSelector(),
           const SizedBox(height: 24),
@@ -77,13 +78,13 @@ extension _ConfirmStep on _ImportScreenState {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Import Summary', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.importSummary, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('Source: ${_filePath?.split('/').last ?? "Clipboard"}'),
-                Text('Rows: ${_preview?.totalRows}'),
-                Text('Target: ${isAssetImport ? "Asset Events" : isIncomeImport ? "Income" : "Transactions"}'),
+                Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
+                Text(s.rowCount(_preview?.totalRows ?? 0)),
+                Text('Target: ${isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions}'),
                 const SizedBox(height: 8),
-                const Text('Mappings:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                 ..._mappings.entries
                     .where((e) => e.value != null && !(e.key == 'amount' && _amountFormula.isNotEmpty))
                     .map((e) => Text('  ${e.key} ← ${e.value}')),
@@ -91,15 +92,15 @@ extension _ConfirmStep on _ImportScreenState {
                   Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
                 if (isAssetImport) ...[
                   const SizedBox(height: 12),
-                  const Text('Assets & Exchange:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(s.assetsAndExchange, style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   if (_lookingUpIsins)
-                    const Padding(
-                      padding: EdgeInsets.all(8),
+                    Padding(
+                      padding: const EdgeInsets.all(8),
                       child: Row(children: [
-                        SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                        SizedBox(width: 8),
-                        Text('Looking up exchanges...', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(width: 8),
+                        Text(s.lookingUpExchanges, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                       ]),
                     )
                   else ...[
@@ -107,11 +108,11 @@ extension _ConfirmStep on _ImportScreenState {
                     if (_isinLookupResults != null) ...[
                       Row(
                         children: [
-                          const Text('Default exchange: ', style: TextStyle(fontSize: 12)),
+                          Text(s.defaultExchange, style: const TextStyle(fontSize: 12)),
                           const SizedBox(width: 4),
                           DropdownButton<String>(
                             value: _defaultExchange,
-                            hint: const Text('Auto', style: TextStyle(fontSize: 12)),
+                            hint: Text(s.auto, style: const TextStyle(fontSize: 12)),
                             isDense: true,
                             items: _allExchanges().map((ex) => DropdownMenuItem(value: ex, child: Text(ex, style: const TextStyle(fontSize: 12)))).toList(),
                             onChanged: (v) => _setState(() {
@@ -139,7 +140,7 @@ extension _ConfirmStep on _ImportScreenState {
                           children: [
                             SizedBox(width: 130, child: Text(isin, style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
                             const SizedBox(width: 4),
-                            Text('$count events', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            Text(s.nEventsCount(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                             const SizedBox(width: 8),
                             if (options.length > 1)
                               Expanded(
@@ -159,7 +160,7 @@ extension _ConfirmStep on _ImportScreenState {
                             else if (options.length == 1)
                               Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: const TextStyle(fontSize: 12)))
                             else
-                              const Expanded(child: Text('(not found)', style: TextStyle(fontSize: 12, color: Colors.grey))),
+                              Expanded(child: Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey))),
                           ],
                         ),
                       );
@@ -191,7 +192,7 @@ extension _ConfirmStep on _ImportScreenState {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'Importing $_importedSoFar / $_importTotal rows...',
+                      s.importingProgress(_importedSoFar, _importTotal),
                       style: const TextStyle(fontSize: 13),
                     ),
                   ],
@@ -209,7 +210,7 @@ extension _ConfirmStep on _ImportScreenState {
             children: [
               FilledButton.icon(
                 icon: const Icon(Icons.check),
-                label: const Text('Import'),
+                label: Text(s.importButton),
                 onPressed: (isAssetImport || isIncomeImport || _targetId != null) ? _executeImport : null,
               ),
             ],
@@ -219,17 +220,18 @@ extension _ConfirmStep on _ImportScreenState {
   }
 
   Widget _buildAccountSelector() {
+    final s = ref.watch(appStringsProvider);
     final accountsAsync = ref.watch(accountsProvider);
     return accountsAsync.when(
       data: (accounts) {
         if (accounts.isEmpty) {
           return Column(
             children: [
-              const Text('No accounts yet. Create one first.'),
+              Text(s.noAccountsCreate),
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => _showCreateAccountDialog(),
-                child: const Text('Create Account'),
+                child: Text(s.createAccount),
               ),
             ],
           );
@@ -248,7 +250,7 @@ extension _ConfirmStep on _ImportScreenState {
             }),
             OutlinedButton(
               onPressed: () => _showCreateAccountDialog(),
-              child: const Text('+ New Account'),
+              child: Text(s.newAccount),
             ),
           ],
         );
@@ -259,17 +261,18 @@ extension _ConfirmStep on _ImportScreenState {
   }
 
   Widget _buildAssetSelector() {
+    final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
     return assetsAsync.when(
       data: (assets) {
         if (assets.isEmpty) {
           return Column(
             children: [
-              const Text('No assets yet. Create one first.'),
+              Text(s.noAssetsCreate),
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => _showCreateAssetDialog(),
-                child: const Text('Create Asset'),
+                child: Text(s.createAsset),
               ),
             ],
           );
@@ -288,7 +291,7 @@ extension _ConfirmStep on _ImportScreenState {
             }),
             OutlinedButton(
               onPressed: () => _showCreateAssetDialog(),
-              child: const Text('+ New Asset'),
+              child: Text(s.newAsset),
             ),
           ],
         );
@@ -347,7 +350,7 @@ extension _ConfirmStep on _ImportScreenState {
             children: [
               TextField(
                 controller: isinCtrl,
-                decoration: const InputDecoration(labelText: 'ISIN', hintText: 'e.g. IE00B4L5Y983'),
+                decoration: InputDecoration(labelText: 'ISIN', hintText: s.isinHint),
                 textCapitalization: TextCapitalization.characters,
                 onChanged: (v) async {
                   final isin = v.trim().toUpperCase();
@@ -372,10 +375,10 @@ extension _ConfirmStep on _ImportScreenState {
               ),
               const SizedBox(height: 12),
               if (looking)
-                const Row(children: [
-                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  SizedBox(width: 8),
-                  Text('Looking up ISIN...', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                Row(children: [
+                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 8),
+                  Text(s.lookingUpIsin, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                 ])
               else if (resolvedName != null || resolvedTicker != null)
                 Column(
@@ -388,7 +391,7 @@ extension _ConfirmStep on _ImportScreenState {
                   ],
                 )
               else if (isinCtrl.text.trim().length == 12)
-                const Text('ISIN not found', style: TextStyle(color: Colors.orange, fontSize: 13)),
+                Text(s.isinNotFound, style: const TextStyle(color: Colors.orange, fontSize: 13)),
             ],
           ),
           actions: [

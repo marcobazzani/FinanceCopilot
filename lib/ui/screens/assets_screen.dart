@@ -65,6 +65,7 @@ class AssetsScreen extends ConsumerWidget {
                 baseCurrency: baseCurrency,
                 locale: locale,
                 index: i,
+                strings: s,
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -102,6 +103,7 @@ class _AssetTile extends StatelessWidget {
   final String locale;
   final int index;
   final VoidCallback onTap;
+  final AppStrings strings;
 
   const _AssetTile({
     super.key,
@@ -113,6 +115,7 @@ class _AssetTile extends StatelessWidget {
     required this.locale,
     required this.index,
     required this.onTap,
+    required this.strings,
   });
 
   @override
@@ -261,7 +264,7 @@ class _AssetTile extends StatelessWidget {
                 ],
                 if (!asset.isActive) ...[
                   const SizedBox(height: 2),
-                  Text('Inactive',
+                  Text(strings.inactive,
                       style: theme.textTheme.labelSmall
                           ?.copyWith(color: Colors.grey)),
                 ],
@@ -300,27 +303,27 @@ class _AssetTile extends StatelessWidget {
     );
 
     if (stats == null || stats!.eventCount == 0) {
-      return Text('No events yet', style: style);
+      return Text(strings.noEventsYetShort, style: style);
     }
 
     final parts = <InlineSpan>[];
 
     // Event count
     parts.add(TextSpan(
-      text: '${stats!.eventCount} events',
+      text: strings.nEvents(stats!.eventCount),
       style: style,
     ));
 
     // Date range
     if (stats!.firstDate != null) {
       parts.add(TextSpan(
-        text: '  ·  Since ${dateFormat.format(stats!.firstDate!)}',
+        text: '  ·  ${strings.sinceDate(dateFormat.format(stats!.firstDate!))}',
         style: style,
       ));
     }
     if (stats!.lastDate != null) {
       parts.add(TextSpan(
-        text: '  ·  Last ${dateFormat.format(stats!.lastDate!)}',
+        text: '  ·  ${strings.lastDate(dateFormat.format(stats!.lastDate!))}',
         style: style,
       ));
     }

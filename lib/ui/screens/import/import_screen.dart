@@ -239,7 +239,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final preview = await importer.parseFile(path, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader);
       if (preview.rows.isEmpty) {
         _log.warning('_pickFile: file is empty after parsing');
-        setState(() => _error = 'File is empty or has no data rows.');
+        setState(() => _error = ref.read(appStringsProvider).fileEmpty);
         return;
       }
 
@@ -325,7 +325,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final preview = await importer.parseFile(_filePath!, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader);
       if (preview.rows.isEmpty) {
         _log.warning('_reparseFile: empty after skipping $_skipRows rows');
-        setState(() => _error = 'File is empty after skipping $_skipRows rows.');
+        setState(() => _error = ref.read(appStringsProvider).fileEmptyAfterSkip(_skipRows));
         return;
       }
       _log.info('_reparseFile: OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
@@ -347,14 +347,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
     } catch (e, stack) {
       _log.severe('_reparseFile: error', e, stack);
-      setState(() => _error = 'Error re-parsing file: $e');
+      setState(() => _error = ref.read(appStringsProvider).errorReparsingFile(e));
     }
   }
 
   Future<void> _pasteFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text == null || data!.text!.trim().isEmpty) {
-      setState(() => _error = 'Clipboard is empty');
+      setState(() => _error = ref.read(appStringsProvider).clipboardEmpty);
       return;
     }
     setState(() { _parsing = true; _error = null; _filePath = null; });
@@ -362,7 +362,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final importer = ref.read(importServiceProvider);
       final preview = await importer.parseClipboard(data.text!, skipRows: _skipRows, noHeader: _noHeader);
       if (preview.rows.isEmpty) {
-        setState(() { _error = 'No data rows found in clipboard'; _parsing = false; });
+        setState(() { _error = ref.read(appStringsProvider).noDataRowsClipboard; _parsing = false; });
         return;
       }
       setState(() {
@@ -375,7 +375,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _autoMap(preview.columns);
       });
     } catch (e) {
-      setState(() { _error = 'Error parsing clipboard: $e'; _parsing = false; });
+      setState(() { _error = ref.read(appStringsProvider).errorParsingClipboard(e); _parsing = false; });
     }
   }
 

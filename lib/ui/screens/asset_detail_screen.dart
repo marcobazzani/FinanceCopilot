@@ -79,13 +79,13 @@ class AssetDetailScreen extends ConsumerWidget {
                   if (asset.isin != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text('ISIN: ${asset.isin}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      child: Text(s.isinPrefix(asset.isin!), style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     ),
                   if (asset.taxRate != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        'Tax rate: ${(asset.taxRate! * 100).toStringAsFixed(1)}%',
+                        s.taxRateLabel((asset.taxRate! * 100).toStringAsFixed(1)),
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
@@ -103,7 +103,7 @@ class AssetDetailScreen extends ConsumerWidget {
                 Text(s.eventsLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
                 eventsStream.when(
-                  data: (events) => Text('${events.length} events', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  data: (events) => Text(s.nEvents(events.length), style: const TextStyle(color: Colors.grey, fontSize: 13)),
                   loading: () => const SizedBox(),
                   error: (_, __) => const SizedBox(),
                 ),
@@ -229,8 +229,7 @@ class AssetDetailScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: Text(s.wipeAllEventsTitle),
         content: Text(
-          'This will delete all $evCount events from "${asset.name}" '
-          'but keep the asset itself.\n\n${s.cannotBeUndone}',
+          '${s.wipeEventsBody(evCount, asset.name)}${s.cannotBeUndone}',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
@@ -312,11 +311,12 @@ class _CompositionSection extends ConsumerWidget {
     }
 
     // Display order and labels
-    const typeLabels = {
-      'assetclass': 'Asset Class',
-      'country': 'Geographic',
-      'sector': 'Sector',
-      'holding': 'Top Holdings',
+    final ss = ref.watch(appStringsProvider);
+    final typeLabels = {
+      'assetclass': ss.compositionAssetClass,
+      'country': ss.compositionGeographic,
+      'sector': ss.compositionSector,
+      'holding': ss.compositionTopHoldings,
     };
     const typeOrder = ['assetclass', 'country', 'sector', 'holding'];
 
@@ -404,7 +404,7 @@ class _CompositionSection extends ConsumerWidget {
                       Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 6),
                       Text(
-                        'Source: $sourceLabel',
+                        ss.sourceLabel(sourceLabel),
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.primary,

@@ -102,12 +102,12 @@ class _SafeAppShell extends ConsumerWidget {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 16),
-              Text('Failed to open database:\n$e',
+              Text(ref.read(appStringsProvider).dbOpenFailed(e),
                   textAlign: TextAlign.center),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: () => ref.read(dbPathProvider.notifier).state = null,
-                child: const Text('Back to picker'),
+                child: Text(ref.read(appStringsProvider).backToPicker),
               ),
             ],
           ),
@@ -234,7 +234,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             if (!online) {
               return IconButton(
                 icon: Icon(Icons.signal_wifi_off, color: Colors.red.shade300),
-                tooltip: 'No network — tap to retry',
+                tooltip: ref.read(appStringsProvider).noNetworkRetry,
                 onPressed: () async {
                   final monitor = ref.read(networkMonitorProvider);
                   monitor.reset();

@@ -8,6 +8,7 @@ extension _ResultStep on _ImportScreenState {
 
   Widget _buildResult() {
     final r = _result!;
+    final s = ref.watch(appStringsProvider);
     return Center(
       child: Card(
         child: Padding(
@@ -21,16 +22,16 @@ extension _ResultStep on _ImportScreenState {
                 color: r.errorRows == 0 ? Colors.green : Colors.orange,
               ),
               const SizedBox(height: 16),
-              Text('Import Complete', style: Theme.of(context).textTheme.headlineSmall),
+              Text(s.importComplete, style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 16),
-              _resultRow('Total rows', '${r.totalRows}'),
-              _resultRow('Imported', '${r.importedRows}', color: Colors.green),
-              if (r.deletedRows > 0) _resultRow('Replaced (overlap)', '${r.deletedRows}', color: Colors.orange),
-              if (r.errorRows > 0) _resultRow('Skipped', '${r.errorRows}', color: Colors.red),
+              _resultRow(s.totalRowsLabel, '${r.totalRows}'),
+              _resultRow(s.importedLabel, '${r.importedRows}', color: Colors.green),
+              if (r.deletedRows > 0) _resultRow(s.replacedOverlap, '${r.deletedRows}', color: Colors.orange),
+              if (r.errorRows > 0) _resultRow(s.skippedLabel, '${r.errorRows}', color: Colors.red),
               if (r.errors.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 ...r.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),
-                if (r.errors.length > 5) Text('... and ${r.errors.length - 5} more', style: const TextStyle(fontSize: 12)),
+                if (r.errors.length > 5) Text(s.andMore(r.errors.length - 5), style: const TextStyle(fontSize: 12)),
               ],
               const SizedBox(height: 24),
               Row(
@@ -41,12 +42,12 @@ extension _ResultStep on _ImportScreenState {
                       _reset();
                       _step = 1;
                     }),
-                    child: const Text('Import Another'),
+                    child: Text(s.importAnother),
                   ),
                   const SizedBox(width: 12),
                   FilledButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Done'),
+                    child: Text(s.done),
                   ),
                 ],
               ),
