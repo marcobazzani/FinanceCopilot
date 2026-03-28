@@ -4,6 +4,25 @@ part of 'dashboard_screen.dart';
 // Income/Expense chart widgets (bar + line)
 // ════════════════════════════════════════════════════
 
+/// Mixin for charts with toggleable series that auto-adjust the Y axis
+/// when series are hidden. Provides the hidden set, toggle method, and
+/// a helper to compute maxY from only visible values.
+mixin _ToggleableChartMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
+  final hidden = <String>{};
+
+  void toggle(String key) => setState(() {
+    hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+  });
+
+  bool isVisible(String key) => !hidden.contains(key);
+
+  /// Compute chart maxY from only the visible values, with headroom margin.
+  double visibleMaxY(Iterable<double> values, {double margin = 1.1}) {
+    if (values.isEmpty) return 0.0;
+    return values.fold(0.0, max) * margin;
+  }
+}
+
 /// Bar chart: x=years, bars=Income+Expenses+Savings (Chart 4 equivalent).
 class _YearlyBarChart extends ConsumerStatefulWidget {
   final _IncomeExpenseData data;
@@ -14,13 +33,8 @@ class _YearlyBarChart extends ConsumerStatefulWidget {
   ConsumerState<_YearlyBarChart> createState() => _YearlyBarChartState();
 }
 
-class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
-  final _hidden = <String>{};
-  void _toggle(String key) => setState(() {
-    _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
-  });
-
-  static const _keys = ['income', 'expenses', 'savings'];
+class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
+    with _ToggleableChartMixin {
 
   @override
   Widget build(BuildContext context) {
@@ -36,12 +50,11 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
     final colorIncome   = Colors.green.shade400;
     final colorExpenses = Colors.red.shade400;
     final colorSavings  = Colors.blue.shade400;
-    const barW = 20.0;
 
     // Build bar groups: stacked Expenses+Savings rod + thin Income rod
-    final showIncome = !_hidden.contains('income');
-    final showExp = !_hidden.contains('expenses');
-    final showSav = !_hidden.contains('savings');
+    final showIncome = isVisible('income');
+    final showExp = isVisible('expenses');
+    final showSav = isVisible('savings');
     const stackW = 20.0;
     const incomeW = 3.0;
 
@@ -75,8 +88,10 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
       groups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: 2));
     }
 
-    final allVals = years.expand((y) => [y.income, y.expenses + (y.savings > 0 ? y.savings : 0)]);
-    final maxY = allVals.fold(0.0, max);
+    final maxY = visibleMaxY(years.expand((y) => [
+      if (showIncome) y.income,
+      if (showExp || showSav) (showExp ? y.expenses : 0.0) + (showSav && y.savings > 0 ? y.savings : 0.0),
+    ]), margin: 1.15);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -84,9 +99,9 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Wrap(spacing: 16, children: [
-            _ToggleLegendItem(color: Colors.green.shade400, label: labels[0], enabled: !_hidden.contains('income'), onTap: () => _toggle('income')),
-            _ToggleLegendItem(color: Colors.red.shade400, label: labels[1], enabled: !_hidden.contains('expenses'), onTap: () => _toggle('expenses')),
-            _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: !_hidden.contains('savings'), onTap: () => _toggle('savings')),
+            _ToggleLegendItem(color: Colors.green.shade400, label: labels[0], enabled: isVisible('income'), onTap: () => toggle('income')),
+            _ToggleLegendItem(color: Colors.red.shade400, label: labels[1], enabled: isVisible('expenses'), onTap: () => toggle('expenses')),
+            _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: isVisible('savings'), onTap: () => toggle('savings')),
           ]),
         ),
         _maybeBlur(isPrivate, SizedBox(
@@ -95,7 +110,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> {
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
             child: BarChart(BarChartData(
                   barGroups: groups,
-                  maxY: maxY * 1.15,
+                  maxY: maxY,
                   gridData: const FlGridData(show: true),
                   borderData: FlBorderData(show: false),
                   barTouchData: BarTouchData(
@@ -157,11 +172,8 @@ class _MonthlyAvgBarChart extends ConsumerStatefulWidget {
   ConsumerState<_MonthlyAvgBarChart> createState() => _MonthlyAvgBarChartState();
 }
 
-class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
-  final _hidden = <String>{};
-  void _toggle(String key) => setState(() {
-    _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
-  });
+class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart>
+    with _ToggleableChartMixin {
 
   static const _keys = ['income', 'expenses', 'savings'];
 
@@ -181,7 +193,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
     const barW = 12.0;
     const gap  = 4.0;
 
-    final visibleIndices = [0, 1, 2].where((k) => !_hidden.contains(_keys[k])).toList();
+    final visibleIndices = [0, 1, 2].where((k) => isVisible(_keys[k])).toList();
 
     final groups = <BarChartGroupData>[];
     for (int i = 0; i < years.length; i++) {
@@ -194,7 +206,11 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
       groups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: gap));
     }
 
-    final maxY = years.map((y) => [y.monthlyIncome, y.monthlyExpenses]).expand((l) => l).fold(0.0, max);
+    final maxY = visibleMaxY(years.expand((y) => [
+      if (isVisible('income')) y.monthlyIncome,
+      if (isVisible('expenses')) y.monthlyExpenses,
+      if (isVisible('savings')) y.savings / max(1, y.months.length),
+    ]));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,9 +218,9 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Wrap(spacing: 16, children: [
-            _ToggleLegendItem(color: Colors.green.shade400, label: labels[0], enabled: !_hidden.contains('income'), onTap: () => _toggle('income')),
-            _ToggleLegendItem(color: Colors.red.shade400, label: labels[1], enabled: !_hidden.contains('expenses'), onTap: () => _toggle('expenses')),
-            _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: !_hidden.contains('savings'), onTap: () => _toggle('savings')),
+            _ToggleLegendItem(color: Colors.green.shade400, label: labels[0], enabled: isVisible('income'), onTap: () => toggle('income')),
+            _ToggleLegendItem(color: Colors.red.shade400, label: labels[1], enabled: isVisible('expenses'), onTap: () => toggle('expenses')),
+            _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: isVisible('savings'), onTap: () => toggle('savings')),
           ]),
         ),
         _maybeBlur(isPrivate, SizedBox(
@@ -213,7 +229,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart> {
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
             child: BarChart(BarChartData(
               barGroups: groups,
-              maxY: maxY * 1.1,
+              maxY: maxY,
               gridData: const FlGridData(show: true),
               borderData: FlBorderData(show: false),
               barTouchData: BarTouchData(
@@ -279,11 +295,8 @@ class _MonthlyByYearLineChart extends ConsumerStatefulWidget {
   ConsumerState<_MonthlyByYearLineChart> createState() => _MonthlyByYearLineChartState();
 }
 
-class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart> {
-  final _hidden = <String>{};
-  void _toggle(String key) => setState(() {
-    _hidden.contains(key) ? _hidden.remove(key) : _hidden.add(key);
-  });
+class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart>
+    with _ToggleableChartMixin {
 
   static const _monthAbbr = ['','Jan','Feb','Mar','Apr','May','Jun',
                                  'Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -306,10 +319,10 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
 
     // Build visible line bars only
     final lineBars = <LineChartBarData>[];
-    final yearIndexMap = <int, int>{};   // lineBars index → years index
+    final yearIndexMap = <int, int>{};   // lineBars index -> years index
     for (int i = 0; i < years.length; i++) {
       final key = '${years[i].year}';
-      if (_hidden.contains(key)) continue;
+      if (!isVisible(key)) continue;
       final color = _palette[i % _palette.length];
       final spots = <FlSpot>[];
       for (final mb in years[i].months) {
@@ -328,8 +341,10 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
       ));
     }
 
-    final allVals = years.expand((y) => y.months).map((m) => widget.field == 'income' ? m.income : m.expenses);
-    final maxY    = allVals.isEmpty ? 0.0 : allVals.fold(0.0, max);
+    final visibleYears = years.where((y) => isVisible('${y.year}')).toList();
+    final maxY = visibleMaxY(
+      visibleYears.expand((y) => y.months).map((m) => widget.field == 'income' ? m.income : m.expenses),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,8 +359,8 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                 _ToggleLegendItem(
                   color: _palette[i % _palette.length],
                   label: '${years[i].year}',
-                  enabled: !_hidden.contains('${years[i].year}'),
-                  onTap: () => _toggle('${years[i].year}'),
+                  enabled: isVisible('${years[i].year}'),
+                  onTap: () => toggle('${years[i].year}'),
                 ),
             ],
           ),
@@ -361,7 +376,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                     minX: 1,
                     maxX: 12,
                     minY: 0,
-                    maxY: maxY * 1.1,
+                    maxY: maxY,
                     gridData: const FlGridData(show: true),
                     borderData: FlBorderData(show: false),
                     lineTouchData: LineTouchData(
@@ -434,4 +449,3 @@ String _shortAmount(double v, String sym) {
 }
 
 // (Cash flow rendering is handled by _ChartCard + _UnifiedChart above)
-// ════ end of file ════
