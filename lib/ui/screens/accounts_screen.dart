@@ -103,6 +103,7 @@ class AccountsScreen extends ConsumerWidget {
                   ? () async {
                       await ref.read(accountServiceProvider).create(
                             name: nameCtrl.text.trim(),
+                            currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
                           );
                       if (ctx.mounted) Navigator.pop(ctx);
                     }

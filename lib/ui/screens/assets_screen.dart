@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../services/asset_service.dart';
 import '../../services/investing_com_service.dart';
-import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
+import '../../services/market_price_service.dart' show exchangeCodeToCurrency, investingExchangeToCode, supportedExchanges;
 import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
@@ -523,10 +523,13 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
         FilledButton(
           onPressed: () async {
+            final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
+            final currency = exchangeCodeToCurrency[_selectedExchange] ?? baseCurrency;
             await widget.ref.read(assetServiceProvider).create(
                   name: r.description,
                   ticker: r.symbol.isNotEmpty ? r.symbol : null,
                   exchange: _selectedExchange,
+                  currency: currency,
                 );
             if (mounted) Navigator.pop(context);
           },
@@ -581,11 +584,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ? () async {
                   final name = _manualNameCtrl.text.trim();
                   final id = _manualIdCtrl.text.trim().toUpperCase();
+                  final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
+                  final currency = exchangeCodeToCurrency[_manualExchange] ?? baseCurrency;
                   await widget.ref.read(assetServiceProvider).create(
                         name: name,
                         ticker: id.isNotEmpty ? id : null,
                         isin: id.isNotEmpty ? id : null,
                         exchange: _manualExchange,
+                        currency: currency,
                       );
                   if (mounted) Navigator.pop(context);
                 }

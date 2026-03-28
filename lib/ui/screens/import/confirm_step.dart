@@ -318,6 +318,7 @@ extension _ConfirmStep on _ImportScreenState {
               if (nameCtrl.text.trim().isEmpty) return;
               await ref.read(accountServiceProvider).create(
                     name: nameCtrl.text.trim(),
+                    currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
                   );
               if (ctx.mounted) Navigator.pop(ctx, true);
             },
@@ -401,6 +402,7 @@ extension _ConfirmStep on _ImportScreenState {
                             name: name,
                             ticker: resolvedTicker,
                             isin: isin,
+                            currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
                           );
                       if (ctx.mounted) Navigator.pop(ctx, true);
                     }

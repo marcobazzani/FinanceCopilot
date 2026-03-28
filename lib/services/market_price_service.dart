@@ -46,6 +46,25 @@ const investingExchangeToCode = <String, String>{
   'Tokyo': 'TYO',
 };
 
+/// Exchange code → native currency mapping.
+const exchangeCodeToCurrency = <String, String>{
+  'MIL': 'EUR',
+  'NYQ': 'USD',
+  'NMS': 'USD',
+  'ASE': 'USD',
+  'XETRA': 'EUR',
+  'FRA': 'EUR',
+  'LON': 'GBP',
+  'AMS': 'EUR',
+  'PAR': 'EUR',
+  'BRU': 'EUR',
+  'LIS': 'EUR',
+  'SIX': 'CHF',
+  'TSE': 'CAD',
+  'HKG': 'HKD',
+  'TYO': 'JPY',
+};
+
 /// Abstract base for market price providers.
 /// Handles all DB logic; subclasses only implement the HTTP fetch.
 abstract class MarketPriceService {

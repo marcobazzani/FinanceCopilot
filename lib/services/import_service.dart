@@ -212,6 +212,10 @@ class ImportService {
       }
     }
 
+    // Fetch account's currency for fallback
+    final account = await (_db.select(_db.accounts)..where((a) => a.id.equals(accountId))).getSingle();
+    final accountCurrency = account.currency;
+
     // Pre-resolve field mappings once
     final descMapping = mappingByField['description'];
     final balanceMapping = mappingByField['balanceAfter'];
@@ -264,7 +268,7 @@ class ImportService {
           amount: amount,
           description: descMapping != null ? (_resolveMapping(descMapping, row) ?? '') : '',
           balanceAfterFromColumn: balanceMapping != null ? _tryParseAmount(_resolveMapping(balanceMapping, row)) : null,
-          currency: currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? 'EUR') : 'EUR',
+          currency: currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? accountCurrency) : accountCurrency,
           status: txStatus,
           rawMetadata: rawMetadata,
           hash: null,
@@ -431,8 +435,8 @@ class ImportService {
         }
 
         final currency = currencyMapping != null
-            ? (_resolveMapping(currencyMapping, preview.rows[isinToRows[isin]!.first]) ?? 'EUR')
-            : 'EUR';
+            ? (_resolveMapping(currencyMapping, preview.rows[isinToRows[isin]!.first]) ?? baseCurrency)
+            : baseCurrency;
         final assetId = await _db.into(_db.assets).insert(AssetsCompanion.insert(
           name: name.length > 200 ? name.substring(0, 200) : name,
           assetType: AssetType.stockEtf,
@@ -515,7 +519,7 @@ class ImportService {
           amount: amount,
           quantity: Value(qty),
           price: Value(price),
-          currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? 'EUR') : 'EUR'),
+          currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
           exchangeRate: Value(rate),
           commission: Value(commission),
           notes: Value(descMapping != null ? _resolveMapping(descMapping, row) : null),
@@ -594,7 +598,7 @@ class ImportService {
   Future<ImportResult> importIncomes({
     required FilePreview preview,
     required List<ColumnMapping> mappings,
-    String defaultCurrency = 'EUR',
+    required String defaultCurrency,
     void Function(int processed, int total)? onProgress,
   }) async {
     _log.info('importIncomes: ${preview.totalRows} rows, ${mappings.length} mappings, defaultCurrency=$defaultCurrency');
