@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../database/database.dart';
 import '../../../l10n/app_strings.dart';
@@ -12,7 +12,7 @@ import '../../../utils/logger.dart';
 
 final _log = getLogger('ConnectBankScreen');
 
-const _redirectUrl = 'financecopilot://callback';
+const _redirectUrl = 'https://marcobazzani.github.io/FinanceCopilot/callback.html';
 
 /// Screen to connect a new bank: country → bank picker → WebView auth → account linking.
 class ConnectBankScreen extends ConsumerStatefulWidget {
@@ -29,8 +29,6 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
   String? _error;
 
   // Auth flow state
-  bool _inAuthFlow = false;
-  String? _authUrl;
   String? _selectedBankName;
 
   // Post-auth state
@@ -72,7 +70,6 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
     final s = ref.watch(appStringsProvider);
 
     if (_newSession != null) return _buildSessionResult(s);
-    if (_inAuthFlow && _authUrl != null) return _buildWebView(s);
     return _buildBankPicker(s);
   }
 
@@ -122,36 +119,6 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
     );
   }
 
-  Widget _buildWebView(AppStrings s) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(s.obBankLogin(_selectedBankName ?? '')),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => setState(() {
-            _inAuthFlow = false;
-            _authUrl = null;
-          }),
-        ),
-      ),
-      body: InAppWebView(
-        initialUrlRequest: URLRequest(url: WebUri(_authUrl!)),
-        initialSettings: InAppWebViewSettings(
-          javaScriptEnabled: true,
-          useShouldOverrideUrlLoading: true,
-        ),
-        shouldOverrideUrlLoading: (controller, action) async {
-          final url = action.request.url?.toString() ?? '';
-          if (url.startsWith(_redirectUrl)) {
-            _handleCallback(url);
-            return NavigationActionPolicy.CANCEL;
-          }
-          return NavigationActionPolicy.ALLOW;
-        },
-      ),
-    );
-  }
-
   Widget _buildSessionResult(AppStrings s) {
     final session = _newSession!;
     return _AccountLinkingScreen(
@@ -161,10 +128,12 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
   }
 
   Future<void> _startAuth(Map<String, dynamic> bank) async {
+    final s = ref.read(appStringsProvider);
     final name = bank['name'] as String;
     setState(() {
       _selectedBankName = name;
       _error = null;
+
     });
     try {
       final service = ref.read(enableBankingServiceProvider);
@@ -173,35 +142,69 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
         aspspCountry: _country,
         redirectUrl: _redirectUrl,
       );
-      if (mounted) {
+      // Open bank login in system browser
+      await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+
+      if (!mounted) return;
+      // Show dialog to paste the authorization code
+      final code = await _showCodeDialog(s);
+      if (!mounted) return;
+
+      if (code == null || code.trim().isEmpty) {
         setState(() {
-          _authUrl = authUrl;
-          _inAuthFlow = true;
+
+          _error = null;
         });
+        return;
       }
+      await _completeAuth(code.trim());
     } catch (e) {
       _log.warning('Failed to start auth for $name: $e');
       if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() {});
     }
   }
 
-  Future<void> _handleCallback(String url) async {
-    final uri = Uri.parse(url);
-    final code = uri.queryParameters['code'];
-    if (code == null) {
-      setState(() {
-        _inAuthFlow = false;
-        _authUrl = null;
-        _error = 'No authorization code in callback';
-      });
-      return;
-    }
+  Future<String?> _showCodeDialog(AppStrings s) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.obPasteCodeTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(s.obPasteCodeDesc),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: s.obAuthCode,
+                border: const OutlineInputBorder(),
+              ),
+              autofocus: true,
+              onSubmitted: (v) => Navigator.pop(ctx, v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: Text(s.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: Text(s.obConnect),
+          ),
+        ],
+      ),
+    );
+  }
 
-    setState(() {
-      _inAuthFlow = false;
-      _authUrl = null;
-    });
-
+  Future<void> _completeAuth(String code) async {
     try {
       final service = ref.read(enableBankingServiceProvider);
       final session = await service.createSession(

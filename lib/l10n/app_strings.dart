@@ -678,8 +678,8 @@ class AppStrings {
   String get obStep2Title         => _it ? 'Registra applicazione'             : 'Register Application';
   String get obStep2Desc          => _it ? 'Registra un\'applicazione per ottenere le credenziali API.' : 'Register an application to get API credentials.';
   String get obStep2Instructions  => _it
-      ? '1. Nella dashboard, vai su "API applications"\n2. Clicca "Add a new application"\n3. Nome: "FinanceCopilot"\n4. URL di redirect: financecopilot://callback\n5. Clicca "Register" e scarica il file .pem'
-      : '1. In the dashboard, go to "API applications"\n2. Click "Add a new application"\n3. Name: "FinanceCopilot"\n4. Redirect URL: financecopilot://callback\n5. Click "Register" and download the .pem file';
+      ? '1. Nella dashboard, vai su "API applications"\n2. Clicca "Add a new application"\n3. Nome: "FinanceCopilot"\n4. URL di redirect: https://marcobazzani.github.io/FinanceCopilot/callback.html\n5. Privacy URL e Terms URL: usa qualsiasi pagina web che controlli (es. una pagina GitHub, il tuo sito, o anche un gist pubblico)\n6. Clicca "Register" e scarica il file .pem'
+      : '1. In the dashboard, go to "API applications"\n2. Click "Add a new application"\n3. Name: "FinanceCopilot"\n4. Redirect URL: https://marcobazzani.github.io/FinanceCopilot/callback.html\n5. Privacy URL & Terms URL: use any web page you control (e.g. a GitHub page, your site, or even a public gist)\n6. Click "Register" and download the .pem file';
   String get obOpenDashboard      => _it ? 'Apri Dashboard Enable Banking'     : 'Open Enable Banking Dashboard';
   String get obStep3Title         => _it ? 'Importa credenziali'               : 'Import Credentials';
   String get obStep3Desc          => _it ? 'Importa le credenziali nell\'app.' : 'Import credentials into the app.';
@@ -719,4 +719,10 @@ class AppStrings {
   String get obLinkTo             => _it ? 'Collega a'                         : 'Link to';
   String get obCreateNewAccount   => _it ? '+ Crea nuovo conto'               : '+ Create new account';
   String get obSkipAccount        => _it ? 'Salta (non importare)'            : 'Skip (do not import)';
+  String get obPasteCodeTitle     => _it ? 'Inserisci codice autorizzazione'  : 'Enter authorization code';
+  String get obPasteCodeDesc      => _it
+      ? 'Dopo aver autorizzato la banca nel browser, copia il codice dalla pagina di callback e incollalo qui.'
+      : 'After authorizing in the browser, copy the code from the callback page and paste it here.';
+  String get obAuthCode           => _it ? 'Codice di autorizzazione'          : 'Authorization code';
+  String get obConnect            => _it ? 'Connetti'                          : 'Connect';
 }
