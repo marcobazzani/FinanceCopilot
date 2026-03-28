@@ -304,20 +304,46 @@ class EnableBankingService {
   ) async {
     var imported = 0;
     for (final tx in transactions) {
-      final date = DateTime.tryParse(
-        tx['value_date'] as String? ?? tx['booking_date'] as String? ?? '',
-      );
+      // Date: prefer booking_date (always present), fall back to value_date
+      final dateStr = tx['booking_date'] as String? ??
+          tx['value_date'] as String? ??
+          '';
+      final date = DateTime.tryParse(dateStr);
       if (date == null) continue;
 
-      final amount = double.tryParse(
+      // Value date (may differ from booking date)
+      final valueDateStr = tx['value_date'] as String?;
+      final valueDate = valueDateStr != null ? DateTime.tryParse(valueDateStr) : null;
+
+      // Amount: always positive in API, sign from credit_debit_indicator
+      var amount = double.tryParse(
         '${tx['transaction_amount']?['amount'] ?? tx['amount'] ?? 0}',
       ) ?? 0;
+      final indicator = tx['credit_debit_indicator'] as String? ?? '';
+      if (indicator == 'DBIT') amount = -amount.abs();
 
-      // Description: try remittance info, then creditor/debtor name (nested objects)
-      final desc = tx['remittance_information_unstructured'] as String? ??
-          (tx['creditor'] as Map<String, dynamic>?)?['name'] as String? ??
-          (tx['debtor'] as Map<String, dynamic>?)?['name'] as String? ??
-          '';
+      // Description: join remittance_information array, fall back to creditor/debtor name
+      final remittanceInfo = tx['remittance_information'];
+      String desc;
+      if (remittanceInfo is List && remittanceInfo.isNotEmpty) {
+        desc = remittanceInfo.whereType<String>().join(' — ');
+      } else {
+        desc = tx['remittance_information_unstructured'] as String? ??
+            (tx['creditor'] as Map<String, dynamic>?)?['name'] as String? ??
+            (tx['debtor'] as Map<String, dynamic>?)?['name'] as String? ??
+            '';
+      }
+
+      // Full description: include bank transaction code for context
+      final bankCode = (tx['bank_transaction_code'] as Map<String, dynamic>?)?['code'] as String?;
+      final creditorName = (tx['creditor'] as Map<String, dynamic>?)?['name'] as String?;
+      final debtorName = (tx['debtor'] as Map<String, dynamic>?)?['name'] as String?;
+      final fullDescParts = <String>[
+        if (bankCode != null) '[$bankCode]',
+        if (creditorName != null && creditorName != desc) 'To: $creditorName',
+        if (debtorName != null && debtorName != desc && indicator == 'CRDT') 'From: $debtorName',
+      ];
+      final fullDesc = fullDescParts.isNotEmpty ? fullDescParts.join(' ') : null;
 
       // Dedup: prefer entry_reference (bank-assigned unique ID), fall back to hash
       final entryRef = tx['entry_reference'] as String?;
@@ -331,7 +357,7 @@ class EnableBankingService {
       ).get();
       if (existing.isNotEmpty) continue;
 
-      // Determine balance after (if provided)
+      // Balance after (if provided)
       final balanceAfter = double.tryParse(
         '${tx['balance_after_transaction']?['amount'] ?? ''}',
       );
@@ -339,9 +365,10 @@ class EnableBankingService {
       await _db.into(_db.transactions).insert(TransactionsCompanion.insert(
         accountId: accountId,
         operationDate: date,
-        valueDate: date,
+        valueDate: valueDate ?? date,
         amount: amount,
         description: Value(desc),
+        descriptionFull: Value(fullDesc),
         balanceAfter: Value(balanceAfter),
         currency: Value(currency),
         importHash: Value(hash),
