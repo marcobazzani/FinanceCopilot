@@ -52,7 +52,8 @@
 - `lib/database/database.dart` — Drift DB definition, migrations
 - `lib/database/tables.dart` — All table definitions
 - `lib/database/providers.dart` — Database provider
-- `lib/services/providers.dart` — All Riverpod service/stream providers
+- `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
+- `lib/services/file_parser_service.dart` — CSV/Excel file parsing (isolate-based)
 - `lib/services/market_price_service.dart` — Abstract market price service
 - `lib/services/google_sheets_price_service.dart` — Google Sheets price impl (CSV)
 - `lib/services/asset_service.dart` — Asset CRUD
@@ -60,9 +61,10 @@
 - `lib/services/exchange_rate_service.dart` — FX rates
 - `lib/services/capex_service.dart` — Depreciation/adjustment schedules
 - `lib/services/buffer_service.dart` — Buffer management
-- `lib/ui/screens/dashboard_screen.dart` — Charts (net worth + investment)
+- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 13 part files)
 - `lib/ui/screens/assets_screen.dart` — Asset list + create dialog
 - `lib/ui/screens/accounts_screen.dart` — Account list
 - `lib/ui/screens/capex_screen.dart` — Adjustments screen
-- `lib/ui/screens/import_screen.dart` — CSV import
+- `lib/ui/screens/import/import_screen.dart` — CSV import (split into 4 part files)
+- `lib/utils/date_parser.dart` — Comprehensive multi-format date parser
 - `lib/version.dart` — Version number
