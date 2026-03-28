@@ -20,7 +20,27 @@ class EnableBankingService {
   final Dio _dio;
   EnableBankingConfig? _config;
 
-  EnableBankingService(this._db) : _dio = Dio(BaseOptions(baseUrl: _baseUrl));
+  EnableBankingService(this._db) : _dio = Dio(BaseOptions(
+    baseUrl: _baseUrl,
+    contentType: 'application/json',
+  )) {
+    _dio.interceptors.add(InterceptorsWrapper(
+      onError: (e, handler) {
+        final body = e.response?.data;
+        _log.warning('API error ${e.response?.statusCode}: $body');
+        // Rethrow with the server error message if available
+        if (body is Map && body.containsKey('error')) {
+          handler.reject(DioException(
+            requestOptions: e.requestOptions,
+            response: e.response,
+            message: '${body['error']}: ${body['error_description'] ?? body['message'] ?? ''}',
+          ));
+          return;
+        }
+        handler.next(e);
+      },
+    ));
+  }
 
   /// Load config from disk. Returns false if not configured.
   Future<bool> init() async {
@@ -42,6 +62,7 @@ class EnableBankingService {
     );
     // Test: generate JWT and fetch ASPSPs
     final jwt = await _generateJwt(config);
+    _log.info('Generated JWT (first 50 chars): ${jwt.substring(0, 50)}...');
     final aspsps = await _fetchAspsps(jwt, 'IT');
     // If we got here, credentials work — save config
     await config.save();
@@ -66,6 +87,7 @@ class EnableBankingService {
     final jwt = await _jwt();
     final validUntil =
         DateTime.now().add(Duration(days: validDays)).toUtc().toIso8601String();
+    final state = DateTime.now().millisecondsSinceEpoch.toString();
     final response = await _dio.post(
       '/auth',
       options: Options(headers: {'Authorization': 'Bearer $jwt'}),
@@ -74,6 +96,7 @@ class EnableBankingService {
         'aspsp': {'name': aspspName, 'country': aspspCountry},
         'redirect_url': redirectUrl,
         'psu_type': 'personal',
+        'state': state,
       },
     );
     final authUrl = response.data['url'] as String;
@@ -96,24 +119,96 @@ class EnableBankingService {
       data: {'code': code},
     );
     final data = response.data as Map<String, dynamic>;
+    _log.info('POST /sessions response keys: ${data.keys.toList()}');
+    _log.info('POST /sessions accounts raw: ${data['accounts']}');
+
     final sessionId = data['session_id'] as String;
     final accounts = <BankAccount>[];
 
+    // Accounts are returned as full AccountResource objects only in POST /sessions.
+    // The array may contain either Map objects or plain UID strings.
     final accountsList = data['accounts'] as List<dynamic>? ?? [];
     for (final acc in accountsList) {
-      final accMap = acc as Map<String, dynamic>;
-      accounts.add(BankAccount(
-        uid: accMap['uid'] as String? ?? '',
-        iban: accMap['iban'] as String? ?? accMap['account_id']?['iban'] as String? ?? '',
-        currency: accMap['currency'] as String? ?? 'EUR',
-      ));
+      if (acc is Map<String, dynamic>) {
+        // Full account resource
+        final accountId = acc['account_id'];
+        String iban = '';
+        if (accountId is Map) {
+          iban = accountId['iban'] as String? ?? '';
+        }
+        accounts.add(BankAccount(
+          uid: acc['uid'] as String? ?? '',
+          iban: iban,
+          currency: acc['currency'] as String? ?? 'EUR',
+        ));
+      } else if (acc is String) {
+        // Just a UID string — fetch details separately
+        accounts.add(BankAccount(uid: acc, iban: '', currency: 'EUR'));
+      }
     }
+
+    // If accounts list was empty but session is authorized, try fetching
+    // account details via GET /sessions/{id} (returns UIDs in accounts_data)
+    if (accounts.isEmpty) {
+      _log.info('No accounts in POST response, trying GET /sessions/$sessionId');
+      final sessionData = await _dio.get(
+        '/sessions/$sessionId',
+        options: Options(headers: {'Authorization': 'Bearer ${await _jwt()}'}),
+      );
+      final sData = sessionData.data as Map<String, dynamic>;
+      final accountsData = sData['accounts_data'] as List<dynamic>? ?? [];
+      final accountUids = sData['accounts'] as List<dynamic>? ?? [];
+      _log.info('GET /sessions accounts_data: $accountsData, accounts: $accountUids');
+
+      // Try accounts_data first (has uid + identification_hash)
+      for (final ad in accountsData) {
+        if (ad is Map<String, dynamic>) {
+          accounts.add(BankAccount(
+            uid: ad['uid'] as String? ?? '',
+            iban: '',
+            currency: 'EUR',
+          ));
+        }
+      }
+      // Fall back to plain uid list
+      if (accounts.isEmpty) {
+        for (final uid in accountUids) {
+          if (uid is String) {
+            accounts.add(BankAccount(uid: uid, iban: '', currency: 'EUR'));
+          }
+        }
+      }
+    }
+
+    // For any account without IBAN/currency, try to fetch details
+    for (final account in accounts) {
+      if (account.uid.isEmpty) continue;
+      try {
+        final details = await _dio.get(
+          '/accounts/${account.uid}/details',
+          options: Options(headers: {'Authorization': 'Bearer ${await _jwt()}'}),
+        );
+        final d = details.data as Map<String, dynamic>;
+        _log.info('Account ${account.uid} details: ${d.keys}');
+        final accountId = d['account_id'];
+        if (accountId is Map) {
+          account.iban = accountId['iban'] as String? ?? account.iban;
+        }
+        account.currency = d['currency'] as String? ?? account.currency;
+      } catch (e) {
+        _log.warning('Failed to fetch details for ${account.uid}: $e');
+      }
+    }
+
+    final validUntilDate = data['access'] is Map
+        ? DateTime.tryParse(data['access']['valid_until'] as String? ?? '')
+        : null;
 
     final session = BankSession(
       sessionId: sessionId,
       aspspName: aspspName,
       aspspCountry: aspspCountry,
-      validUntil: DateTime.now().add(Duration(days: validDays)),
+      validUntil: validUntilDate ?? DateTime.now().add(Duration(days: validDays)),
       accounts: accounts,
     );
 

@@ -725,4 +725,7 @@ class AppStrings {
       : 'After authorizing in the browser, copy the code from the callback page and paste it here.';
   String get obAuthCode           => _it ? 'Codice di autorizzazione'          : 'Authorization code';
   String get obConnect            => _it ? 'Connetti'                          : 'Connect';
+  String get obNoAccountsDiscovered => _it
+      ? 'Nessun conto trovato. Assicurati di selezionare i conti durante l\'autorizzazione bancaria, poi riprova.'
+      : 'No accounts found. Make sure to select accounts during bank authorization, then try again.';
 }

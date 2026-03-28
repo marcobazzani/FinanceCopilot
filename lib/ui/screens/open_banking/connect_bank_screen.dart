@@ -205,6 +205,7 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
   }
 
   Future<void> _completeAuth(String code) async {
+    final s = ref.read(appStringsProvider);
     try {
       final service = ref.read(enableBankingServiceProvider);
       final session = await service.createSession(
@@ -213,6 +214,15 @@ class _ConnectBankScreenState extends ConsumerState<ConnectBankScreen> {
         aspspCountry: _country,
         validDays: 90,
       );
+
+      if (session.accounts.isEmpty) {
+        // No accounts discovered — bank consent may have been skipped
+        await service.removeSession(session.sessionId);
+        if (mounted) {
+          setState(() => _error = s.obNoAccountsDiscovered);
+        }
+        return;
+      }
 
       ref.read(openBankingConfigProvider.notifier).state = service.config;
       if (mounted) setState(() => _newSession = session);
