@@ -296,7 +296,7 @@ class EnableBankingService {
     return SyncResult(transactionsImported: totalTx, accountsUpdated: totalUpdated);
   }
 
-  /// Import transactions with dedup based on date + amount + description hash.
+  /// Import transactions with dedup based on entry_reference or date+amount+desc hash.
   Future<int> _importTransactions(
     int accountId,
     String currency,
@@ -304,17 +304,24 @@ class EnableBankingService {
   ) async {
     var imported = 0;
     for (final tx in transactions) {
-      final date = DateTime.tryParse(tx['value_date'] as String? ?? tx['booking_date'] as String? ?? '');
+      final date = DateTime.tryParse(
+        tx['value_date'] as String? ?? tx['booking_date'] as String? ?? '',
+      );
       if (date == null) continue;
 
-      final amount = double.tryParse('${tx['transaction_amount']?['amount'] ?? tx['amount'] ?? 0}') ?? 0;
+      final amount = double.tryParse(
+        '${tx['transaction_amount']?['amount'] ?? tx['amount'] ?? 0}',
+      ) ?? 0;
+
+      // Description: try remittance info, then creditor/debtor name (nested objects)
       final desc = tx['remittance_information_unstructured'] as String? ??
-          tx['creditor_name'] as String? ??
-          tx['debtor_name'] as String? ??
+          (tx['creditor'] as Map<String, dynamic>?)?['name'] as String? ??
+          (tx['debtor'] as Map<String, dynamic>?)?['name'] as String? ??
           '';
 
-      // Dedup hash: date + amount + description
-      final hashInput = '${date.toIso8601String().substring(0, 10)}|$amount|$desc';
+      // Dedup: prefer entry_reference (bank-assigned unique ID), fall back to hash
+      final entryRef = tx['entry_reference'] as String?;
+      final hashInput = entryRef ?? '${date.toIso8601String().substring(0, 10)}|$amount|$desc';
       final hash = md5.convert(utf8.encode(hashInput)).toString();
 
       // Check if already imported
