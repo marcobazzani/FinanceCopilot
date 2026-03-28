@@ -8,8 +8,10 @@ class _MonthlyGrid extends ConsumerWidget {
   const _MonthlyGrid({required this.data, required this.locale,
                       required this.field, this.maxYears});
 
-  static const _monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
-                               'Jul','Aug','Sep','Oct','Nov','Dec'];
+  List<String> _localizedMonths() {
+    final f = DateFormat('MMM', locale);
+    return [for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,7 +60,7 @@ class _MonthlyGrid extends ConsumerWidget {
           // Month rows
           for (int m = 1; m <= 12; m++) ...[
             TableRow(children: [
-              _td(_monthNames[m - 1], bold: true),
+              _td(_localizedMonths()[m - 1], bold: true),
               for (final y in years) ...[
                 Builder(builder: (ctx) {
                   final v = _value(y, m);

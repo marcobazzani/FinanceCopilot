@@ -338,6 +338,14 @@ class _UnifiedChart extends StatelessWidget {
               reservedSize: 48,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
+                // Skip labels too close to edges to prevent clipping
+                final range = meta.max - meta.min;
+                if (range > 0) {
+                  final margin = range * 0.03;
+                  if (value < meta.min + margin || value > meta.max - margin) {
+                    return const SizedBox.shrink();
+                  }
+                }
                 final date = firstDate.add(Duration(days: value.toInt()));
                 return SideTitleWidget(
                   meta: meta,

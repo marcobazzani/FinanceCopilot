@@ -298,8 +298,10 @@ class _MonthlyByYearLineChart extends ConsumerStatefulWidget {
 class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart>
     with _ToggleableChartMixin {
 
-  static const _monthAbbr = ['','Jan','Feb','Mar','Apr','May','Jun',
-                                 'Jul','Aug','Sep','Oct','Nov','Dec'];
+  List<String> _monthAbbr() {
+    final f = DateFormat('MMM', widget.locale);
+    return ['', for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
+  }
   static const _palette = [
     Colors.blue, Colors.red, Colors.green, Colors.orange,
     Colors.purple, Colors.teal, Colors.pink, Colors.amber,
@@ -389,7 +391,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                           final yearIdx = yearIndexMap[barIdx] ?? -1;
                           final yearLabel = yearIdx >= 0 ? '${years[yearIdx].year}' : '';
                           return LineTooltipItem(
-                            '$yearLabel ${_monthAbbr[s.x.round()]}\n${amtFmt.format(s.y)} $sym',
+                            '$yearLabel ${_monthAbbr()[s.x.round()]}\n${amtFmt.format(s.y)} $sym',
                             TextStyle(color: s.bar.color ?? Colors.white, fontSize: 11),
                           );
                         }).toList(),
@@ -405,7 +407,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                             if (m < 1 || m > 12) return const SizedBox.shrink();
                             return Padding(
                               padding: const EdgeInsets.only(top: 4),
-                              child: Text(_monthAbbr[m], style: const TextStyle(fontSize: 9)),
+                              child: Text(_monthAbbr()[m], style: const TextStyle(fontSize: 9)),
                             );
                           },
                         ),
