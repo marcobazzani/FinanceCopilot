@@ -78,7 +78,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
-    final langCode = ref.watch(appLanguageProvider).value ?? 'en';
+    final langCode = ref.watch(portableLanguageProvider);
     final language = langCode.startsWith('it') ? 'it_IT' : 'en_US';
     final s = ref.watch(appStringsProvider);
 
