@@ -271,14 +271,8 @@ class EnableBankingService {
             _log.fine('Balances for ${account.iban}: $balances');
           }
 
-          // Sync transactions
-          final dateFrom = session.lastSyncedAt != null
-              ? _formatDate(session.lastSyncedAt!.subtract(const Duration(days: 3)))
-              : null;
-          final transactions = await getTransactions(
-            account.uid,
-            dateFrom: dateFrom,
-          );
+          // Always fetch full history — dedup handles duplicates
+          final transactions = await getTransactions(account.uid);
           final imported = await _importTransactions(
             account.localAccountId!,
             account.currency,
