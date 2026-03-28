@@ -69,7 +69,7 @@ class CapexService {
     StepFrequency stepFrequency = StepFrequency.monthly,
   }) async {
     _log.info('create: name=$name, amount=$totalAmount, expense=${expenseDate ?? 'none'}, '
-        '$startDate→$endDate, freq=${stepFrequency.name}');
+        '$startDate->$endDate, freq=${stepFrequency.name}');
     final id = await _db.into(_db.depreciationSchedules).insert(
       DepreciationSchedulesCompanion.insert(
         assetName: name,

@@ -417,7 +417,7 @@ extension _ConfirmStep on _ImportScreenState {
   }
 
   Future<void> _executeImport() async {
-    _log.info('_executeImport: starting import — target=${_target.name}, targetId=$_targetId');
+    _log.info('_executeImport: starting import - target=${_target.name}, targetId=$_targetId');
     _setState(() {
       _importing = true;
       _importedSoFar = 0;
@@ -507,7 +507,7 @@ extension _ConfirmStep on _ImportScreenState {
         result = assetResult.result;
       }
 
-      _log.info('_executeImport: complete — imported=${result.importedRows}, deleted=${result.deletedRows}, errors=${result.errorRows}');
+      _log.info('_executeImport: complete - imported=${result.importedRows}, deleted=${result.deletedRows}, errors=${result.errorRows}');
       if (result.errors.isNotEmpty) {
         _log.warning('_executeImport: first error: ${result.errors.first}');
       }

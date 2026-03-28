@@ -243,7 +243,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         return;
       }
 
-      _log.info('_pickFile: parsed OK — ${preview.columns.length} cols, ${preview.totalRows} rows');
+      _log.info('_pickFile: parsed OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
         _parsing = false;
@@ -328,7 +328,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         setState(() => _error = 'File is empty after skipping $_skipRows rows.');
         return;
       }
-      _log.info('_reparseFile: OK — ${preview.columns.length} cols, ${preview.totalRows} rows');
+      _log.info('_reparseFile: OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
         _error = null;
@@ -485,7 +485,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
-      _log.info('_applySavedConfig: result — mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms');
+      _log.info('_applySavedConfig: result - mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms');
     });
   }
 

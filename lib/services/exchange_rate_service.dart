@@ -54,7 +54,7 @@ class ExchangeRateService {
       for (final currency in targetCurrencies) {
         final rate = await _investingService!.getLiveFxRate('EUR', currency);
         if (rate == null) {
-          _log.warning('syncRates: EUR/$currency — no rate from Investing.com');
+          _log.warning('syncRates: EUR/$currency - no rate from Investing.com');
           continue;
         }
         _log.fine('syncRates: EUR/$currency = $rate');

@@ -324,7 +324,7 @@ class ImportService {
       batch.insertAll(_db.transactions, companions);
     });
 
-    _log.info('importTransactions: done — imported=$imported, deleted=$deleted, errors=$errorCount');
+    _log.info('importTransactions: done - imported=$imported, deleted=$deleted, errors=$errorCount');
     return ImportResult(
       totalRows: preview.totalRows,
       importedRows: imported,
@@ -554,7 +554,7 @@ class ImportService {
         updates: {_db.assetEvents},
       );
       totalDeleted += deleted;
-      _log.fine('importAssetEventsGrouped: asset $assetId — deleted $deleted events from ${formatYmd(cutoff)}');
+      _log.fine('importAssetEventsGrouped: asset $assetId - deleted $deleted events from ${formatYmd(cutoff)}');
     }
 
     _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
@@ -581,7 +581,7 @@ class ImportService {
       if (filled > 0) _log.info('importAssetEventsGrouped: filled $filled missing exchange rates');
     }
 
-    _log.info('importAssetEventsGrouped: done — imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}');
+    _log.info('importAssetEventsGrouped: done - imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}');
     return AssetImportResult(
       result: ImportResult(
         totalRows: preview.totalRows,
@@ -657,7 +657,7 @@ class ImportService {
       batch.insertAll(_db.incomes, companions);
     });
 
-    _log.info('importIncomes: done — imported=$imported, errors=$errorCount');
+    _log.info('importIncomes: done - imported=$imported, errors=$errorCount');
     return ImportResult(
       totalRows: preview.totalRows,
       importedRows: imported,
@@ -728,7 +728,7 @@ class ImportService {
         balanceCents += _toCents(rows[i].amount);
         rows[i].balanceAfter = _fromCents(balanceCents);
       }
-      _log.info('_computeBalances: cumulative — final balance=${_fromCents(balanceCents)}');
+      _log.info('_computeBalances: cumulative - final balance=${_fromCents(balanceCents)}');
     } else if (balanceMode == 'filtered') {
       int balanceCents = 0;
       for (final i in indexed) {
@@ -741,7 +741,7 @@ class ImportService {
         }
         rows[i].balanceAfter = _fromCents(balanceCents);
       }
-      _log.info('_computeBalances: filtered — final balance=${_fromCents(balanceCents)}');
+      _log.info('_computeBalances: filtered - final balance=${_fromCents(balanceCents)}');
     }
   }
 }

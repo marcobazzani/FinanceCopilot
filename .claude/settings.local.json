@@ -59,8 +59,6 @@
       "Bash(curl -s \"https://api.investing.com/api/search/v2/search?q=AMZN&t=stock\" -H \"User-Agent: Mozilla/5.0 \\(Macintosh; Intel Mac OS X 10_15_7\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36\" -H 'Accept: application/json' -H 'Origin: https://www.investing.com' -H 'Referer: https://www.investing.com/' -H 'Domain-Id: it')",
       "Bash(DB=\"/Users/marco/Library/Containers/com.assetmanager.assetManager/Data/Documents/AssetManager/asset_manager.db\")",
       "Bash(sqlite3 \"$DB\" \"SELECT COUNT\\(*\\), MIN\\(date\\), MAX\\(date\\) FROM market_prices WHERE asset_id = 23;\")",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
       "Bash(echo Checking for table accessor usage in all dart files...:*)",
       "Bash(sqlite3:*)",
       "Bash(flutter analyze:*)",
@@ -77,7 +75,10 @@
       "Read(//Users/marco/Documents/AssetManager/**)",
       "Bash(tail:*)",
       "Bash(grep:*)",
-      "Bash(prlctl exec:*)"
+      "Bash(prlctl exec:*)",
+      "Bash(gh run:*)",
+      "Bash(gh release:*)",
+      "Bash(find:*)"
     ]
   }
 }

@@ -157,7 +157,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final online = await monitor.check();
     ref.read(networkOnlineProvider.notifier).state = online;
     if (!online) {
-      _log.info('Network offline — skipping background sync');
+      _log.info('Network offline - skipping background sync');
       return;
     }
 
@@ -182,7 +182,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final online = await monitor.check();
     ref.read(networkOnlineProvider.notifier).state = online;
     if (!online) {
-      _log.info('Network offline — skipping price sync');
+      _log.info('Network offline - skipping price sync');
       return;
     }
 

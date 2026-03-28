@@ -81,7 +81,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   for (final asset in assets) {
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) {
-      _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} — no stat or qty=0');
+      _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - no stat or qty=0');
       continue;
     }
     // Use live price for current market values
@@ -91,7 +91,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     }
     price ??= await priceService.getPrice(asset.id, now);
     if (price == null) {
-      _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} — no price');
+      _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
       continue;
     }
     double fxRate = 1.0;
@@ -99,7 +99,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
       fxRate = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
     }
     final value = stat.totalQuantity * price * fxRate;
-    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} — qty=${stat.totalQuantity} price=$price fx=$fxRate → $value');
+    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - qty=${stat.totalQuantity} price=$price fx=$fxRate -> $value');
     result[asset.id] = value;
   }
   _log.info('assetMarketValues: ${result.length} assets with values, total=${result.values.fold(0.0, (a, b) => a + b).toStringAsFixed(2)}');
@@ -166,11 +166,11 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double? latestPrice;
     if (priceService is InvestingComService) {
       latestPrice = await priceService.getLivePrice(asset.id);
-      _log.fine('dailyChanges: ${asset.ticker ?? asset.name} — livePrice=$latestPrice');
+      _log.fine('dailyChanges: ${asset.ticker ?? asset.name} - livePrice=$latestPrice');
     }
     latestPrice ??= await priceService.getPrice(asset.id, today);
     if (latestPrice == null) {
-      _log.warning('dailyChanges: ${asset.ticker ?? asset.name} — no price at all');
+      _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no price at all');
       continue;
     }
 

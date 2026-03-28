@@ -69,7 +69,7 @@ class IsinLookupService {
               ))
           .toList();
 
-      _log.info('lookup: $key → ${options.length} listings: ${options.map((o) => "${o.ticker}@${o.exchange}").join(", ")}');
+      _log.info('lookup: $key -> ${options.length} listings: ${options.map((o) => "${o.ticker}@${o.exchange}").join(", ")}');
       final result = IsinLookupResult(options: options);
       _cache[key] = result;
       return result;
