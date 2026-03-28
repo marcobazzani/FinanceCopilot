@@ -136,7 +136,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 40, 16),
           itemCount: charts.length,
           itemBuilder: (context, index) {
             final chart = charts[index];

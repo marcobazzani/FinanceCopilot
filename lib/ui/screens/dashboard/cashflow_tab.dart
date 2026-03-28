@@ -184,7 +184,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     ];
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 40, 16),
       children: [
         for (int i = 0; i < chartDefs.length; i++) ...[
           Builder(builder: (_) {
