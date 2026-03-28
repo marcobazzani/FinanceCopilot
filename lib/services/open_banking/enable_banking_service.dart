@@ -1,6 +1,3 @@
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide Column;
@@ -290,33 +287,33 @@ class EnableBankingService {
     return SyncResult(transactionsImported: totalTx, accountsUpdated: totalUpdated);
   }
 
-  /// Import transactions with dedup based on entry_reference or date+amount+desc hash.
+  /// Import transactions using replace-on-overlap: find the oldest date in
+  /// the fetched batch, delete all existing transactions from that date onward,
+  /// then insert the full batch.
   Future<int> _importTransactions(
     int accountId,
     String currency,
     List<Map<String, dynamic>> transactions,
   ) async {
-    var imported = 0;
+    if (transactions.isEmpty) return 0;
+
+    // Parse all transactions first
+    final parsed = <_ParsedTx>[];
     for (final tx in transactions) {
-      // Date: prefer booking_date (always present), fall back to value_date
       final dateStr = tx['booking_date'] as String? ??
-          tx['value_date'] as String? ??
-          '';
+          tx['value_date'] as String? ?? '';
       final date = DateTime.tryParse(dateStr);
       if (date == null) continue;
 
-      // Value date (may differ from booking date)
       final valueDateStr = tx['value_date'] as String?;
       final valueDate = valueDateStr != null ? DateTime.tryParse(valueDateStr) : null;
 
-      // Amount: always positive in API, sign from credit_debit_indicator
       var amount = double.tryParse(
         '${tx['transaction_amount']?['amount'] ?? tx['amount'] ?? 0}',
       ) ?? 0;
       final indicator = tx['credit_debit_indicator'] as String? ?? '';
       if (indicator == 'DBIT') amount = -amount.abs();
 
-      // Description: join remittance_information array, fall back to creditor/debtor name
       final remittanceInfo = tx['remittance_information'];
       String desc;
       if (remittanceInfo is List && remittanceInfo.isNotEmpty) {
@@ -328,7 +325,6 @@ class EnableBankingService {
             '';
       }
 
-      // Full description: include bank transaction code for context
       final bankCode = (tx['bank_transaction_code'] as Map<String, dynamic>?)?['code'] as String?;
       final creditorName = (tx['creditor'] as Map<String, dynamic>?)?['name'] as String?;
       final debtorName = (tx['debtor'] as Map<String, dynamic>?)?['name'] as String?;
@@ -337,40 +333,46 @@ class EnableBankingService {
         if (creditorName != null && creditorName != desc) 'To: $creditorName',
         if (debtorName != null && debtorName != desc && indicator == 'CRDT') 'From: $debtorName',
       ];
-      final fullDesc = fullDescParts.isNotEmpty ? fullDescParts.join(' ') : null;
 
-      // Dedup: prefer entry_reference (bank-assigned unique ID), fall back to hash
-      final entryRef = tx['entry_reference'] as String?;
-      final hashInput = entryRef ?? '${date.toIso8601String().substring(0, 10)}|$amount|$desc';
-      final hash = md5.convert(utf8.encode(hashInput)).toString();
-
-      // Check if already imported
-      final existing = await _db.customSelect(
-        'SELECT id FROM transactions WHERE account_id = ? AND import_hash = ?',
-        variables: [Variable.withInt(accountId), Variable.withString(hash)],
-      ).get();
-      if (existing.isNotEmpty) continue;
-
-      // Balance after (if provided)
-      final balanceAfter = double.tryParse(
-        '${tx['balance_after_transaction']?['amount'] ?? ''}',
-      );
-
-      await _db.into(_db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: date,
+      parsed.add(_ParsedTx(
+        date: date,
         valueDate: valueDate ?? date,
         amount: amount,
-        description: Value(desc),
-        descriptionFull: Value(fullDesc),
-        balanceAfter: Value(balanceAfter),
-        currency: Value(currency),
-        importHash: Value(hash),
-        tags: const Value('["open_banking"]'),
+        desc: desc,
+        fullDesc: fullDescParts.isNotEmpty ? fullDescParts.join(' ') : null,
       ));
-      imported++;
     }
-    return imported;
+    if (parsed.isEmpty) return 0;
+
+    // Find oldest date in the batch
+    final oldestDate = parsed.map((t) => t.date).reduce(
+      (a, b) => a.isBefore(b) ? a : b,
+    );
+
+    // Delete all existing transactions from oldestDate onward for this account
+    final deleted = await (_db.delete(_db.transactions)
+      ..where((t) => t.accountId.equals(accountId) & t.operationDate.isBiggerOrEqualValue(oldestDate))
+    ).go();
+    if (deleted > 0) _log.info('Deleted $deleted existing transactions from ${_formatDate(oldestDate)} onward');
+
+    // Insert all parsed transactions
+    await _db.batch((batch) {
+      for (final tx in parsed) {
+        batch.insert(_db.transactions, TransactionsCompanion.insert(
+          accountId: accountId,
+          operationDate: tx.date,
+          valueDate: tx.valueDate,
+          amount: tx.amount,
+          description: Value(tx.desc),
+          descriptionFull: Value(tx.fullDesc),
+          currency: Value(currency),
+          tags: const Value('["open_banking"]'),
+        ));
+      }
+    });
+
+    _log.info('Inserted ${parsed.length} transactions from ${_formatDate(oldestDate)}');
+    return parsed.length;
   }
 
   /// Delete a session and remove it from config.
@@ -432,4 +434,20 @@ class SyncResult {
   });
 
   factory SyncResult.empty() => const SyncResult(transactionsImported: 0, accountsUpdated: 0);
+}
+
+class _ParsedTx {
+  final DateTime date;
+  final DateTime valueDate;
+  final double amount;
+  final String desc;
+  final String? fullDesc;
+
+  const _ParsedTx({
+    required this.date,
+    required this.valueDate,
+    required this.amount,
+    required this.desc,
+    this.fullDesc,
+  });
 }
