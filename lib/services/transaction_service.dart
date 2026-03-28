@@ -41,7 +41,7 @@ class TransactionService {
     String description = '',
     String? descriptionFull,
     double? balanceAfter,
-    String currency = 'EUR',
+    required String currency,
     TransactionStatus status = TransactionStatus.settled,
   }) {
     _log.info('create: accountId=$accountId, date=$operationDate, amount=$amount, desc=$description');

@@ -32,7 +32,7 @@ class AssetEventService {
     required double amount,
     double? quantity,
     double? price,
-    String currency = 'EUR',
+    required String currency,
     double? exchangeRate,
     double? commission,
     String? notes,

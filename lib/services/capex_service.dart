@@ -62,7 +62,7 @@ class CapexService {
   Future<int> create({
     required String name,
     required double totalAmount,
-    String currency = 'EUR',
+    required String currency,
     required DateTime startDate,
     required DateTime endDate,
     DateTime? expenseDate,
