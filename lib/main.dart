@@ -18,6 +18,8 @@ import 'ui/screens/db_picker_screen.dart';
 import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/income_screen.dart';
 import 'utils/bug_reporter.dart';
+import 'ui/screens/open_banking/connections_screen.dart';
+import 'services/open_banking/open_banking_providers.dart';
 import 'utils/logger.dart';
 import 'version.dart';
 
@@ -168,11 +170,26 @@ class _AppShellState extends ConsumerState<AppShell> {
           _syncPrices(),
           ref.read(exchangeRateServiceProvider).syncRates(),
           ref.read(compositionServiceProvider).syncCompositions(),
+          _syncOpenBanking(),
         ]);
       } catch (e) {
         _log.warning('Background sync error: $e');
       }
     });
+  }
+
+  Future<void> _syncOpenBanking() async {
+    try {
+      final service = ref.read(enableBankingServiceProvider);
+      final configured = await service.init();
+      if (!configured) return;
+      final result = await service.syncAll();
+      if (result.transactionsImported > 0) {
+        _log.info('Open Banking sync: ${result.transactionsImported} tx imported');
+      }
+    } catch (e) {
+      _log.warning('Open Banking sync error: $e');
+    }
   }
 
   Future<void> _syncPrices({bool forceToday = false}) async {
@@ -269,6 +286,14 @@ class _AppShellState extends ConsumerState<AppShell> {
             icon: const Icon(Icons.settings),
             tooltip: s.tooltipSettings,
             onPressed: () => _showSettingsDialog(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.account_balance),
+            tooltip: s.obOpenBanking,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OpenBankingConnectionsScreen()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.file_upload),

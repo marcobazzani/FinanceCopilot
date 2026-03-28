@@ -666,4 +666,57 @@ class AppStrings {
   String get ticketerDescriptionLabel => _it ? 'Descrizione del problema' : 'Describe the issue';
   String get ticketerStepsLabel   => _it ? 'Passaggi per riprodurre'   : 'Steps to reproduce';
   String get ticketerStepsHint    => _it ? '1. Apri...\n2. Clicca...'  : '1. Open...\n2. Click...';
+
+  // ── Open Banking ───────────────────────────────────────
+  String get obSetupTitle         => _it ? 'Collega i tuoi conti bancari'     : 'Connect your bank accounts';
+  String get obStep1Title         => _it ? 'Crea account'                      : 'Create Account';
+  String get obStep1Desc          => _it ? 'Per iniziare, crea un account gratuito su Enable Banking.' : 'To get started, create a free account on Enable Banking.';
+  String get obStep1Instructions  => _it
+      ? '1. Clicca il pulsante qui sotto\n2. Inserisci la tua email\n3. Clicca il link di verifica nell\'email'
+      : '1. Click the button below\n2. Enter your email\n3. Click the verification link in the email';
+  String get obCreateAccount      => _it ? 'Crea account Enable Banking'       : 'Create Enable Banking account';
+  String get obStep2Title         => _it ? 'Registra applicazione'             : 'Register Application';
+  String get obStep2Desc          => _it ? 'Registra un\'applicazione per ottenere le credenziali API.' : 'Register an application to get API credentials.';
+  String get obStep2Instructions  => _it
+      ? '1. Nella dashboard, vai su "API applications"\n2. Clicca "Add a new application"\n3. Nome: "FinanceCopilot"\n4. URL di redirect: financecopilot://callback\n5. Clicca "Register" e scarica il file .pem'
+      : '1. In the dashboard, go to "API applications"\n2. Click "Add a new application"\n3. Name: "FinanceCopilot"\n4. Redirect URL: financecopilot://callback\n5. Click "Register" and download the .pem file';
+  String get obOpenDashboard      => _it ? 'Apri Dashboard Enable Banking'     : 'Open Enable Banking Dashboard';
+  String get obStep3Title         => _it ? 'Importa credenziali'               : 'Import Credentials';
+  String get obStep3Desc          => _it ? 'Importa le credenziali nell\'app.' : 'Import credentials into the app.';
+  String get obNoPemSelected      => _it ? 'Nessun file .pem selezionato'      : 'No .pem file selected';
+  String get obSelectPem          => _it ? 'Seleziona .pem'                    : 'Select .pem';
+  String get obAppIdLabel         => 'App ID (UUID)';
+  String get obAppIdHelper        => _it ? 'Rilevato automaticamente dal nome del file .pem' : 'Auto-detected from .pem filename';
+  String get obVerifyAndSave      => _it ? 'Verifica e Salva'                  : 'Verify & Save';
+  String get obStep4Title         => _it ? 'Completato'                        : 'Complete';
+  String get obSetupComplete      => _it ? 'Configurazione completata!'        : 'Setup complete!';
+  String get obConnectFirstBank   => _it ? 'Collega la tua prima banca'        : 'Connect your first bank';
+  String get obConnectionsTitle   => _it ? 'Connessioni Bancarie'              : 'Bank Connections';
+  String get obConnectBank        => _it ? 'Collega banca'                     : 'Connect bank';
+  String get obNoConnections      => _it ? 'Nessuna connessione bancaria.'     : 'No bank connections.';
+  String get obCountry            => _it ? 'Paese:'                            : 'Country:';
+  String obBankLogin(String bank) => _it ? 'Accesso a $bank'                   : 'Login to $bank';
+  String get obConnectionSuccess  => _it ? 'Connessione riuscita'              : 'Connection Successful';
+  String obConnectedTo(String bank) => _it ? 'Connesso a $bank'               : 'Connected to $bank';
+  String obAccountsFound(int n)   => _it ? '$n conti trovati:'                 : '$n accounts found:';
+  String get obSyncNow            => _it ? 'Sincronizza ora'                   : 'Sync now';
+  String get obRemoveConnection   => _it ? 'Rimuovi connessione'               : 'Remove connection';
+  String obRemoveConfirm(String bank) => _it
+      ? 'Rimuovere la connessione a $bank? I conti e le transazioni importate rimarranno.'
+      : 'Remove connection to $bank? Imported accounts and transactions will remain.';
+  String get obActive             => _it ? 'Attiva'                            : 'Active';
+  String get obExpired            => _it ? 'Scaduta'                           : 'Expired';
+  String get obExpiresOn          => _it ? 'Scade il'                          : 'Expires';
+  String get obLastSync           => _it ? 'Ultimo sync'                       : 'Last sync';
+  String get obJustNow            => _it ? 'Adesso'                            : 'Just now';
+  String obMinutesAgo(int n)      => _it ? '$n min fa'                         : '$n min ago';
+  String obHoursAgo(int n)        => _it ? '$n ore fa'                         : '$n hours ago';
+  String obDaysAgo(int n)         => _it ? '$n giorni fa'                      : '$n days ago';
+  String get obOpenBanking        => 'Open Banking';
+  String get obLinkAccountsDesc   => _it
+      ? 'Per ogni conto bancario, scegli se collegarlo a un conto esistente o crearne uno nuovo.'
+      : 'For each bank account, choose to link it to an existing account or create a new one.';
+  String get obLinkTo             => _it ? 'Collega a'                         : 'Link to';
+  String get obCreateNewAccount   => _it ? '+ Crea nuovo conto'               : '+ Create new account';
+  String get obSkipAccount        => _it ? 'Salta (non importare)'            : 'Skip (do not import)';
 }

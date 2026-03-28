@@ -50,6 +50,9 @@ dependencies:
   # Hashing (import dedup)
   crypto: ^3.0.6
 
+  # JWT (Open Banking auth)
+  dart_jsonwebtoken: ^2.14.4
+
   # Utils
   intl: ^0.20.2
   collection: ^1.19.1
