@@ -9,7 +9,6 @@ import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
 import 'services/exchange_rate_service.dart';
-import 'services/investing_com_service.dart';
 import 'services/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
@@ -153,13 +152,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     Future.microtask(() => _startBackgroundSync());
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Provide context for Windows visible WebView CF solve
-    InvestingComService.appContext = context;
-  }
-
   Future<void> _startBackgroundSync() async {
     final monitor = ref.read(networkMonitorProvider);
     final online = await monitor.check();
@@ -169,7 +161,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       return;
     }
 
-    // Run all syncs, then dismiss the Windows WebView dialog
     Future.microtask(() async {
       try {
         await Future.wait([
@@ -179,9 +170,6 @@ class _AppShellState extends ConsumerState<AppShell> {
         ]);
       } catch (e) {
         _log.warning('Background sync error: $e');
-      } finally {
-        final ps = ref.read(marketPriceServiceProvider);
-        if (ps is InvestingComService) ps.dismissWebViewDialog();
       }
     });
   }
@@ -207,9 +195,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       ]);
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
-      // Dismiss Windows WebView dialog if open
-      final ps = ref.read(marketPriceServiceProvider);
-      if (ps is InvestingComService) ps.dismissWebViewDialog();
       if (mounted) setState(() => _isSyncing = false);
     }
   }

@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
@@ -71,6 +68,9 @@ class InvestingComService extends MarketPriceService {
   String _cfCookieStr = '';
   String _cfUserAgent = '';
 
+  /// True after Dio gets a 403 — all subsequent fetches use JS fetch.
+  bool _dioBlocked = false;
+
   InvestingComService(super.db, {Dio? dio}) : _dio = dio ?? Dio();
 
   // ──────────────────────────────────────────────
@@ -86,15 +86,18 @@ class InvestingComService extends MarketPriceService {
   /// Mutex: only one CF solve at a time.
   Completer<bool>? _cfSolving;
 
-  /// Cookie extraction callback shared by headless and visible WebView.
+  /// Cookie extraction callback for headless WebView.
   Future<void> _onCfSolved(InAppWebViewController controller) async {
     _webViewController = controller;
     _webViewReadyAt = DateTime.now();
     try {
       final cookieManager = CookieManager.instance();
-      final cookies = await cookieManager.getCookies(url: WebUri('https://www.investing.com/'));
+      // Collect cookies from both www and api domains
       final merged = <String, String>{};
-      for (final c in cookies) { merged[c.name] = c.value.toString(); }
+      for (final domain in ['https://www.investing.com/', 'https://api.investing.com/']) {
+        final cookies = await cookieManager.getCookies(url: WebUri(domain));
+        for (final c in cookies) { merged[c.name] = c.value.toString(); }
+      }
       _cfCookieStr = merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
       _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
       final hasCf = merged.containsKey('cf_clearance');
@@ -104,25 +107,13 @@ class InvestingComService extends MarketPriceService {
     }
   }
 
-  /// Context for showing visible WebView dialog on Windows.
-  static BuildContext? appContext;
-
-  /// Dismiss the Windows WebView dialog (called after sync completes).
-  BuildContext? _visibleDialogCtx;
-  void dismissWebViewDialog() {
-    if (_visibleDialogCtx != null && _visibleDialogCtx!.mounted) {
-      Navigator.pop(_visibleDialogCtx!);
-      _visibleDialogCtx = null;
-    }
-  }
-
   /// Ensure WebView is running and CF is solved.
-  /// macOS: headless. Windows: visible dialog (headless doesn't get cf_clearance).
+  /// Uses headless WebView on all platforms — no visible dialog needed.
   Future<bool> _ensureWebView() async {
     if (_isWebViewReady) return true;
     if (_cfSolving != null) return _cfSolving!.future;
     _cfSolving = Completer<bool>();
-    final result = Platform.isWindows ? await _solveVisible() : await _solveHeadless();
+    final result = await _solveHeadless();
     _cfSolving?.complete(result);
     _cfSolving = null;
     return result;
@@ -135,18 +126,36 @@ class InvestingComService extends MarketPriceService {
       _webView = null;
       _webViewController = null;
     }
+    _dioBlocked = false; // reset — will probe after solve
     final completer = Completer<bool>();
     Timer? timeout;
+    bool navigatedToApi = false;
     _webView = HeadlessInAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri('https://www.investing.com/')),
+      // Start on api.investing.com so subsequent fetch() calls are same-origin.
+      initialUrlRequest: URLRequest(url: WebUri('https://api.investing.com/')),
       initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
       onLoadStop: (controller, url) async {
+        if (completer.isCompleted) return;
         final title = await controller.getTitle();
-        if (title != null && !title.contains('Just a moment') && !completer.isCompleted) {
-          await _onCfSolved(controller);
-          timeout?.cancel();
-          completer.complete(true);
+        final urlStr = url?.toString() ?? '';
+        _log.fine('CF headless onLoadStop: url=$urlStr title=$title');
+
+        // If CF challenge is still running, wait
+        if (title != null && title.contains('Just a moment')) return;
+
+        // If we landed on www (redirect), navigate to api for same-origin
+        if (urlStr.contains('www.investing.com') && !navigatedToApi) {
+          navigatedToApi = true;
+          _log.info('CF solved on www, navigating to api.investing.com for same-origin...');
+          await controller.loadUrl(
+            urlRequest: URLRequest(url: WebUri('https://api.investing.com/')),
+          );
+          return;
         }
+
+        await _onCfSolved(controller);
+        timeout?.cancel();
+        completer.complete(true);
       },
     );
     timeout = Timer(const Duration(seconds: 30), () async {
@@ -159,141 +168,66 @@ class InvestingComService extends MarketPriceService {
     return completer.future;
   }
 
-  Future<bool> _solveVisible() async {
-    _log.info('Solving CF via visible WebView (Windows)...');
-    final ctx = appContext;
-    if (ctx == null || !ctx.mounted) {
-      _log.warning('No app context — falling back to headless');
-      return _solveHeadless();
-    }
-    final completer = Completer<bool>();
-    showDialog(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (dialogCtx) {
-        _visibleDialogCtx = dialogCtx;
-        Timer? timeout;
-        timeout = Timer(const Duration(seconds: 60), () {
-          if (!completer.isCompleted) {
-            _log.warning('CF visible timed out');
-            completer.complete(false);
-            if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-          }
-        });
-        return AlertDialog(
-          title: const Row(children: [
-            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-            SizedBox(width: 12),
-            Text('Syncing market data...', style: TextStyle(fontSize: 14)),
-          ]),
-          content: SizedBox(
-            width: 1,
-            height: 1, // Tiny — just keeps the WebView alive
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: InAppWebView(
-                initialUrlRequest: URLRequest(url: WebUri('https://www.investing.com/')),
-                initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
-                onLoadStop: (controller, url) async {
-                  if (completer.isCompleted) return;
-                  final title = await controller.getTitle();
-                  if (title != null && !title.contains('Just a moment')) {
-                    _webViewController = controller;
-                    _webViewReadyAt = DateTime.now();
-                    _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
-                    _log.info('CF visible: WebView ready (keeping dialog open for API calls)');
-                    timeout?.cancel();
-                    completer.complete(true);
-                    // DON'T dismiss — keep WebView alive for navigation fetches
-                    // Hide the dialog content instead
-                  }
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    return completer.future;
-  }
-
-  /// Mutex for sequential WebView navigation.
-  Completer<void>? _navQueue;
-
-  /// Fetch API data by navigating the WebView to the URL and reading the body.
-  /// Used on Windows where Dio gets 403 due to TLS fingerprinting.
-  Future<Map<String, dynamic>?> _fetchViaNavigation(String url) async {
-    // Serialize navigations
-    while (_navQueue != null) {
-      await _navQueue!.future;
-    }
-    _navQueue = Completer<void>();
-
+  /// Fetch API data by running fetch() inside the WebView's JS context.
+  /// Same-origin since the WebView is loaded on api.investing.com.
+  Future<Map<String, dynamic>?> _fetchViaJsFetch(String url) async {
+    if (_webViewController == null) return null;
     try {
-      final completer = Completer<String?>();
-      bool handled = false;
-
-      // Use onLoadResource to detect when the API response is ready
-      await _webViewController!.loadUrl(
-        urlRequest: URLRequest(
-          url: WebUri(url),
-          headers: {
-            'domain-id': 'www',
-            'Origin': 'https://www.investing.com',
-            'Referer': 'https://www.investing.com/',
-          },
-        ),
-      );
-
-      // Poll for body content — JSON pages render differently across browsers
-      for (var i = 0; i < 20; i++) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        try {
-          final readyState = await _webViewController!.evaluateJavascript(source: 'document.readyState');
-          if (readyState != 'complete' && readyState != '"complete"') continue;
-
-          // WebView2 renders JSON in a <pre> tag or directly in body
-          final body = await _webViewController!.evaluateJavascript(
-            source: 'document.querySelector("pre")?.textContent || document.body?.innerText || document.body?.textContent || ""',
-          );
-          final text = body?.toString() ?? '';
-          if (text.length > 10 && text != 'null' && !text.contains('@errors')) {
-            _log.info('_fetchViaNavigation: got ${text.length} chars (attempt $i)');
-            completer.complete(text);
-            handled = true;
-            break;
-          } else if (i == 0) {
-            // Log what we see for debugging
-            final html = await _webViewController!.evaluateJavascript(
-              source: 'document.body?.innerHTML?.substring(0, 200)',
-            );
-            _log.info('_fetchViaNavigation: body HTML preview: $html');
+      final js = '''
+        (async () => {
+          try {
+            const r = await fetch('$url', {
+              headers: { 'domain-id': 'www' }
+            });
+            if (!r.ok) return JSON.stringify({__error: r.status});
+            return JSON.stringify(await r.json());
+          } catch(e) {
+            return JSON.stringify({__error: e.toString()});
           }
-        } catch (e) {
-          _log.fine('_fetchViaNavigation poll error: $e');
+        })()
+      ''';
+      final result = await _webViewController!.callAsyncJavaScript(
+        functionBody: '''
+          const r = await fetch('$url', {
+            headers: { 'domain-id': 'www' }
+          });
+          if (!r.ok) return {__error: r.status};
+          return await r.json();
+        ''',
+      );
+      if (result == null || result.value == null) {
+        // Fallback to evaluateJavascript for platforms where callAsyncJavaScript
+        // doesn't work as expected
+        final resultStr = await _webViewController!.evaluateJavascript(source: js);
+        if (resultStr == null) return null;
+        final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
+        if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
+          _log.warning('_fetchViaJsFetch: $url → error ${decoded['__error']}');
+          return null;
         }
+        return decoded as Map<String, dynamic>;
       }
-      if (!handled) completer.complete(null);
-
-      final body = await completer.future;
-      if (body == null || body.isEmpty) return null;
-
-      // Clean up JSON string (WebView may wrap in quotes)
-      var cleaned = body;
-      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-        cleaned = cleaned.substring(1, cleaned.length - 1)
-            .replaceAll(r'\"', '"')
-            .replaceAll(r'\/', '/');
+      final value = result.value;
+      if (value is Map<String, dynamic>) {
+        if (value.containsKey('__error')) {
+          _log.warning('_fetchViaJsFetch: $url → error ${value['__error']}');
+          return null;
+        }
+        return value;
       }
-
-      final decoded = jsonDecode(cleaned);
-      return decoded is Map<String, dynamic> ? decoded : null;
-    } catch (e) {
-      _log.fine('_fetchViaNavigation: $e');
+      // If returned as string, decode it
+      if (value is String) {
+        final decoded = jsonDecode(value);
+        if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
+          _log.warning('_fetchViaJsFetch: $url → error ${decoded['__error']}');
+          return null;
+        }
+        return decoded as Map<String, dynamic>;
+      }
       return null;
-    } finally {
-      _navQueue?.complete();
-      _navQueue = null;
+    } catch (e) {
+      _log.fine('_fetchViaJsFetch: $url → $e');
+      return null;
     }
   }
 
@@ -312,9 +246,10 @@ class InvestingComService extends MarketPriceService {
     'sec-fetch-site': 'same-site',
   };
 
-  /// Make a CF-protected API call using Dio with browser headers.
-  /// On macOS, also sends cf_clearance cookie (extracted from WebView).
-  /// On Windows, relies on sec-* headers only (cf_clearance not extractable).
+  /// Make a CF-protected API call.
+  /// Tries Dio first (faster, supports parallel). If Dio gets 403 (e.g. TLS
+  /// fingerprinting on Windows), switches permanently to JS fetch via headless
+  /// WebView for the rest of the session.
   Future<Map<String, dynamic>?> _webViewFetch(String url) async {
     // Ensure WebView is ready (solves CF, caches cookies)
     if (!_isWebViewReady) {
@@ -322,13 +257,12 @@ class InvestingComService extends MarketPriceService {
       if (!ok) return null;
     }
 
-    try {
-      // On Windows without cf_clearance: use WebView navigation (Dio/HttpClient get 403 due to TLS fingerprint)
-      // On macOS with cf_clearance: use Dio (faster, parallel)
-      if (Platform.isWindows && _webViewController != null) {
-        return await _fetchViaNavigation(url);
-      }
+    // If Dio is known to be blocked, go straight to JS fetch
+    if (_dioBlocked) {
+      return await _fetchViaJsFetch(url);
+    }
 
+    try {
       final headers = Map<String, String>.from(_browserHeaders);
       headers['User-Agent'] = _cfUserAgent.isNotEmpty ? _cfUserAgent
           : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -345,11 +279,11 @@ class InvestingComService extends MarketPriceService {
       return data as Map<String, dynamic>;
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
-        // Don't re-solve — if cf_clearance is missing (Windows), re-solving won't help
-        _log.fine('_webViewFetch: 403');
-      } else {
-        _log.fine('_webViewFetch: ${e.response?.statusCode}');
+        _dioBlocked = true;
+        _log.info('_webViewFetch: Dio 403, switching to JS fetch');
+        return await _fetchViaJsFetch(url);
       }
+      _log.fine('_webViewFetch: ${e.response?.statusCode}');
       return null;
     } catch (e) {
       _log.fine('_webViewFetch: failed — $e');
