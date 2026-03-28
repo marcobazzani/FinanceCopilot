@@ -7,7 +7,8 @@ part of 'dashboard_screen.dart';
 class _CashFlowTab extends ConsumerStatefulWidget {
   final _AllSeriesData allData;
   final String locale;
-  const _CashFlowTab({required this.allData, required this.locale});
+  final String language;
+  const _CashFlowTab({required this.allData, required this.locale, required this.language});
 
   @override
   ConsumerState<_CashFlowTab> createState() => _CashFlowTabState();
@@ -196,6 +197,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
               allData: allData,
               hidden: _hiddenFor(c.id),
               locale: locale,
+              language: widget.language,
               chartHeight: _heightFor(c.id),
               zoomMinX: z.minX,
               zoomMaxX: z.maxX,
@@ -223,22 +225,22 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
               ExpansionTile(
                 title: Text(s.chartYearlyBarTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                 initiallyExpanded: true,
-                children: [_YearlyBarChart(data: ieData, locale: locale)],
+                children: [_YearlyBarChart(data: ieData, locale: locale, language: widget.language)],
               ),
               // Chart 2 equivalent: monthly averages bar chart per year
               ExpansionTile(
                 title: Text(s.chartMonthlyAvgTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyAvgBarChart(data: ieData, locale: locale)],
+                children: [_MonthlyAvgBarChart(data: ieData, locale: locale, language: widget.language)],
               ),
               // Chart 3 equivalent: monthly income by year (x=months, one line per year)
               ExpansionTile(
                 title: Text(s.chartMonthlyIncomeTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, field: 'income')],
+                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'income')],
               ),
               // Chart 5 equivalent: monthly expenses by year (x=months, recent years)
               ExpansionTile(
                 title: Text(s.chartMonthlyExpensesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, field: 'expenses', maxYears: 5)],
+                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'expenses', maxYears: 5)],
               ),
               // Tables
               ExpansionTile(
@@ -247,15 +249,15 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
               ),
               ExpansionTile(
                 title: Text(s.chartMonthlyIncTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyGrid(data: ieData, locale: locale, field: 'income')],
+                children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'income')],
               ),
               ExpansionTile(
                 title: Text(s.chartMonthlyExpTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyGrid(data: ieData, locale: locale, field: 'expenses', maxYears: 5)],
+                children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'expenses', maxYears: 5)],
               ),
               ExpansionTile(
                 title: Text(s.chartYoYTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_YoYDiffTable(data: ieData, locale: locale)],
+                children: [_YoYDiffTable(data: ieData, locale: locale, language: widget.language)],
               ),
               const SizedBox(height: 24),
             ]);

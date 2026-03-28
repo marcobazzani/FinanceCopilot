@@ -3,13 +3,14 @@ part of 'dashboard_screen.dart';
 class _MonthlyGrid extends ConsumerWidget {
   final _IncomeExpenseData data;
   final String locale;
+  final String language;
   final String field; // 'income' or 'expenses'
   final int? maxYears;
   const _MonthlyGrid({required this.data, required this.locale,
-                      required this.field, this.maxYears});
+                      required this.language, required this.field, this.maxYears});
 
   List<String> _localizedMonths() {
-    final f = DateFormat('MMM', locale);
+    final f = DateFormat('MMM', language);
     return [for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
   }
 

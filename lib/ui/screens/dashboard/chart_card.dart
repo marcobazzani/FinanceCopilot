@@ -46,6 +46,7 @@ class _ChartCard extends ConsumerWidget {
   final Set<String> hidden;
   final bool hideComponents;
   final String locale;
+  final String language;
   final double chartHeight;
   final double? zoomMinX;
   final double? zoomMaxX;
@@ -66,6 +67,7 @@ class _ChartCard extends ConsumerWidget {
     required this.hidden,
     this.hideComponents = false,
     required this.locale,
+    required this.language,
     required this.chartHeight,
     this.zoomMinX,
     this.zoomMaxX,
@@ -232,6 +234,7 @@ class _ChartCard extends ConsumerWidget {
                         showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
                         baseCurrency: allData.baseCurrency,
                         locale: locale,
+                        language: language,
                         zoomMinX: zoomMinX,
                         zoomMaxX: zoomMaxX,
                         zoomMinY: zoomMinY,

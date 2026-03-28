@@ -193,6 +193,7 @@ class _UnifiedChart extends StatelessWidget {
   final bool showTotal;
   final String baseCurrency;
   final String locale;
+  final String language;
   final double? zoomMinX;
   final double? zoomMaxX;
   final double? zoomMinY;
@@ -206,6 +207,7 @@ class _UnifiedChart extends StatelessWidget {
     this.showTotal = true,
     required this.baseCurrency,
     required this.locale,
+    required this.language,
     this.zoomMinX,
     this.zoomMaxX,
     this.zoomMinY,
@@ -222,8 +224,8 @@ class _UnifiedChart extends StatelessWidget {
     final symbol = currencySymbol(baseCurrency);
 
     final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
-    final dateFmt = fmt.monthYearFormat(locale);
-    final fullFmt = fmt.fullDateFormat(locale);
+    final dateFmt = fmt.monthYearFormat(language);
+    final fullFmt = fmt.fullDateFormat(language);
     final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
     // ── Dual Y-axis setup ──

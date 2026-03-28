@@ -27,7 +27,8 @@ mixin _ToggleableChartMixin<T extends ConsumerStatefulWidget> on ConsumerState<T
 class _YearlyBarChart extends ConsumerStatefulWidget {
   final _IncomeExpenseData data;
   final String locale;
-  const _YearlyBarChart({required this.data, required this.locale});
+  final String language;
+  const _YearlyBarChart({required this.data, required this.locale, required this.language});
 
   @override
   ConsumerState<_YearlyBarChart> createState() => _YearlyBarChartState();
@@ -166,7 +167,8 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
 class _MonthlyAvgBarChart extends ConsumerStatefulWidget {
   final _IncomeExpenseData data;
   final String locale;
-  const _MonthlyAvgBarChart({required this.data, required this.locale});
+  final String language;
+  const _MonthlyAvgBarChart({required this.data, required this.locale, required this.language});
 
   @override
   ConsumerState<_MonthlyAvgBarChart> createState() => _MonthlyAvgBarChartState();
@@ -286,10 +288,11 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart>
 class _MonthlyByYearLineChart extends ConsumerStatefulWidget {
   final _IncomeExpenseData data;
   final String locale;
+  final String language;
   final String field;    // 'income' or 'expenses'
   final int? maxYears;   // limit to most recent N years
   const _MonthlyByYearLineChart({required this.data, required this.locale,
-                                  required this.field, this.maxYears});
+                                  required this.language, required this.field, this.maxYears});
 
   @override
   ConsumerState<_MonthlyByYearLineChart> createState() => _MonthlyByYearLineChartState();
@@ -299,7 +302,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     with _ToggleableChartMixin {
 
   List<String> _monthAbbr() {
-    final f = DateFormat('MMM', widget.locale);
+    final f = DateFormat('MMM', widget.language);
     return ['', for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
   }
   static const _palette = [

@@ -3,10 +3,11 @@ part of 'dashboard_screen.dart';
 class _YoYDiffTable extends ConsumerWidget {
   final _IncomeExpenseData data;
   final String locale;
-  const _YoYDiffTable({required this.data, required this.locale});
+  final String language;
+  const _YoYDiffTable({required this.data, required this.locale, required this.language});
 
   List<String> _localizedMonths() {
-    final f = DateFormat('MMM', locale);
+    final f = DateFormat('MMM', language);
     return [for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
   }
 

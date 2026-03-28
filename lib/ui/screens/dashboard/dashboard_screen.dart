@@ -78,6 +78,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final language = ref.watch(appLanguageProvider).value ?? 'en';
     final s = ref.watch(appStringsProvider);
 
     return DefaultTabController(
@@ -94,8 +95,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           Expanded(
             child: TabBarView(
               children: [
-                _buildChartsTab(allDataAsync, locale, context, s),
-                _buildCashFlowTab(allDataAsync, locale, context),
+                _buildChartsTab(allDataAsync, locale, language, context, s),
+                _buildCashFlowTab(allDataAsync, locale, language, context),
                 const AllocationTab(),
               ],
             ),
@@ -108,6 +109,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildChartsTab(
     AsyncValue<_AllSeriesData?> allDataAsync,
     String locale,
+    String language,
     BuildContext context,
     AppStrings s,
   ) {
@@ -197,6 +199,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 hidden: hidden,
                 hideComponents: hideComp,
                 locale: locale,
+                language: language,
                 chartHeight: _heightFor(chart.id),
                 zoomMinX: zoom.minX,
                 zoomMaxX: zoom.maxX,
@@ -234,6 +237,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildCashFlowTab(
     AsyncValue<_AllSeriesData?> allDataAsync,
     String locale,
+    String language,
     BuildContext context,
   ) {
     return allDataAsync.when(
@@ -246,7 +250,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 style: TextStyle(color: Colors.grey)),
           );
         }
-        return _CashFlowTab(allData: allData, locale: locale);
+        return _CashFlowTab(allData: allData, locale: locale, language: language);
       },
     );
   }
