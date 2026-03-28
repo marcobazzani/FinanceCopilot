@@ -9,14 +9,14 @@ import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
 import 'services/exchange_rate_service.dart';
-import 'services/providers.dart';
+import 'services/providers/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/capex_screen.dart';
-import 'ui/screens/dashboard_screen.dart';
+import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/db_picker_screen.dart';
-import 'ui/screens/import_screen.dart';
+import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/income_screen.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -402,10 +402,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                         side: BorderSide(color: Theme.of(ctx).colorScheme.error),
                       ),
                       onPressed: () async {
-                        await db.delete(db.marketPrices).go();
-                        await db.delete(db.exchangeRates).go();
-                        await db.delete(db.assetCompositions).go();
-                        _log.info('Cleared all cached data (prices, exchange rates, compositions)');
+                        await ref.read(marketPriceServiceProvider).clearCache();
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             SnackBar(content: Text(s.settingsCacheCleared)),

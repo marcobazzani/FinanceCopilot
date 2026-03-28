@@ -6,11 +6,11 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/capex_service.dart';
 import '../../services/exchange_rate_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 
 final _log = getLogger('CapexEditScreen');
 

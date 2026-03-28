@@ -3,14 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
 import '../../services/capex_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'capex_detail_screen.dart';
 import 'capex_edit_screen.dart';
 import 'income_adj_detail_screen.dart';
 import 'income_adj_edit_screen.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
 class CapexScreen extends ConsumerWidget {

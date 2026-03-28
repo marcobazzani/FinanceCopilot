@@ -8,11 +8,11 @@ import '../../database/database.dart';
 import '../../services/asset_service.dart';
 import '../../services/investing_com_service.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
 class AssetsScreen extends ConsumerWidget {

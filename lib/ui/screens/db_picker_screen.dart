@@ -11,7 +11,7 @@ import '../../database/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/app_settings.dart';
 import '../../services/demo_db_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../services/update_service.dart';
 import '../../utils/logger.dart';
 import '../../version.dart';

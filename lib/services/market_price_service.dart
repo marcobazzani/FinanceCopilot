@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../database/database.dart';
+import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 
 final _log = getLogger('MarketPriceService');
@@ -123,7 +124,7 @@ abstract class MarketPriceService {
       return;
     }
 
-    _log.info('syncPrices: fetching $ticker from ${from.toIso8601String().substring(0, 10)}');
+    _log.info('syncPrices: fetching $ticker from ${formatYmd(from)}');
     final prices = await fetchHistoricalPrices(ticker, asset.currency, from);
 
     if (prices.isEmpty) {
@@ -222,5 +223,13 @@ abstract class MarketPriceService {
       DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
       r.read<double>('close_price'),
     )).toList();
+  }
+
+  /// Clear all cached data (market prices, exchange rates, compositions).
+  Future<void> clearCache() async {
+    await db.delete(db.marketPrices).go();
+    await db.delete(db.exchangeRates).go();
+    await db.delete(db.assetCompositions).go();
+    _log.info('Cleared all cached data (prices, exchange rates, compositions)');
   }
 }

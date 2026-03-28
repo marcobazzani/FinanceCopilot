@@ -1,12 +1,12 @@
 import 'package:drift/drift.dart';
-import 'package:intl/intl.dart';
 
 import '../database/database.dart';
+import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'investing_com_service.dart';
 
 final _log = getLogger('ExchangeRateService');
-final _dateFmt = DateFormat('yyyy-MM-dd');
+
 
 /// Caches exchange rates in the DB.
 /// Uses Investing.com for live and sync rates.
@@ -44,7 +44,7 @@ class ExchangeRateService {
       final yesterday = DateTime(today.year, today.month, today.day - 1);
 
       if (lastDate != null && !lastDate.isBefore(yesterday)) {
-        _log.info('syncRates: already up to date (last=${_dateFmt.format(lastDate)})');
+        _log.info('syncRates: already up to date (last=${formatYmd(lastDate)})');
         return;
       }
 
@@ -72,7 +72,7 @@ class ExchangeRateService {
             batch.insert(_db.exchangeRates, c, onConflict: DoUpdate((_) => c));
           }
         });
-        _log.info('syncRates: stored ${companions.length} rates for ${_dateFmt.format(yesterday)}');
+        _log.info('syncRates: stored ${companions.length} rates for ${formatYmd(yesterday)}');
       }
     } catch (e, stack) {
       _log.warning('syncRates: failed', e, stack);
@@ -159,4 +159,39 @@ class ExchangeRateService {
     if (rate == null) return amount;
     return amount * rate;
   }
+}
+
+/// Cached exchange rate resolver for chart computations.
+/// Wraps [ExchangeRateService] with an in-memory cache keyed by (currency, dayKey).
+class CachedRateResolver {
+  final ExchangeRateService _rateService;
+  final String baseCurrency;
+  final _cache = <String, double>{};
+
+  CachedRateResolver(this._rateService, this.baseCurrency);
+
+  Future<double> getRate(String from, int dayKey) async {
+    if (from == baseCurrency) return 1.0;
+    final key = '$from:$dayKey';
+    if (_cache.containsKey(key)) return _cache[key]!;
+    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+    final rate = await _rateService.getRate(from, baseCurrency, date);
+    _cache[key] = rate ?? 1.0;
+    return rate ?? 1.0;
+  }
+}
+
+/// Convert an amount to base currency using stored rate or live fallback.
+Future<double> convertToBase({
+  required double amount,
+  required String currency,
+  required String baseCurrency,
+  required double? storedRate,
+  required CachedRateResolver resolver,
+  required int dayKey,
+}) async {
+  if (currency == baseCurrency) return amount.abs();
+  if (storedRate != null && storedRate > 0) return amount.abs() / storedRate;
+  final rate = await resolver.getRate(currency, dayKey);
+  return amount.abs() * rate;
 }

@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'income_adj_edit_screen.dart';
 
 class IncomeAdjDetailScreen extends ConsumerWidget {

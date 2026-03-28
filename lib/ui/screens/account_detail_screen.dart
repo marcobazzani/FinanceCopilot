@@ -4,10 +4,10 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
-import 'import_screen.dart';
+import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
 
 final _log = getLogger('AccountDetailScreen');

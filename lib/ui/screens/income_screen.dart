@@ -6,11 +6,11 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/import_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
-import 'dashboard_screen.dart' show currencySymbol;
-import 'import_screen.dart';
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
+import 'import/import_screen.dart';
 import '../widgets/privacy_text.dart';
 
 class IncomeScreen extends ConsumerStatefulWidget {

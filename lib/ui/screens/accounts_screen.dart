@@ -5,10 +5,10 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../services/account_service.dart';
 import '../../l10n/app_strings.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
 class AccountsScreen extends ConsumerWidget {

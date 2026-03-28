@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
+import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'market_price_service.dart';
 
@@ -733,8 +734,8 @@ class InvestingComService extends MarketPriceService {
         if (needsBackfill) {
           backfillRanges[asset.id] = firstBuy;
           _log.info('syncPrices: ${_assetLabel(asset)} — needs backfill from '
-              '${firstBuy.toIso8601String().substring(0, 10)} to '
-              '${firstPrice!.toIso8601String().substring(0, 10)}');
+              '${formatYmd(firstBuy)} to '
+              '${formatYmd(firstPrice!)}');
         }
 
         candidates.add((asset, searchTerm));
@@ -785,7 +786,7 @@ class InvestingComService extends MarketPriceService {
             final firstPrice = await getFirstPriceDate(asset.id);
             if (firstPrice != null) {
               _log.info('syncPrices: $label — backfilling from '
-                  '${backfillFrom.toIso8601String().substring(0, 10)}');
+                  '${formatYmd(backfillFrom)}');
               final gapPrices = await _fetchByCid(cid, backfillFrom, label: label);
               if (gapPrices.isNotEmpty) {
                 await db.batch((batch) {

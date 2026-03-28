@@ -1,159 +1,6 @@
-import 'dart:io';
+part of 'providers.dart';
 
-import 'package:drift/drift.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
-
-import '../database/database.dart';
-import '../database/providers.dart';
-import '../l10n/app_strings.dart';
-import 'account_service.dart';
-import 'asset_event_service.dart';
-import 'asset_service.dart';
-import 'buffer_service.dart';
-import 'capex_service.dart';
-import 'dashboard_chart_service.dart';
-import 'income_adjustment_service.dart';
-import 'income_service.dart';
-import 'exchange_rate_service.dart';
-import 'import_config_service.dart';
-import 'composition_service.dart';
-import 'investing_com_service.dart';
-import 'network_monitor.dart';
-import 'import_service.dart';
-import 'isin_lookup_service.dart';
-import 'market_price_service.dart';
-import 'transaction_service.dart';
-import '../utils/logger.dart';
-
-final _log = getLogger('Providers');
-
-// ── Network ──
-
-final networkMonitorProvider = Provider<NetworkMonitor>((ref) => NetworkMonitor());
-
-/// Whether network is currently available. Polled reactively.
-final networkOnlineProvider = StateProvider<bool>((ref) => true);
-
-// ── Service providers ──
-
-final accountServiceProvider = Provider<AccountService>((ref) {
-  return AccountService(ref.watch(databaseProvider));
-});
-
-final assetServiceProvider = Provider<AssetService>((ref) {
-  return AssetService(ref.watch(databaseProvider));
-});
-
-final importServiceProvider = Provider<ImportService>((ref) {
-  return ImportService(ref.watch(databaseProvider));
-});
-
-final transactionServiceProvider = Provider<TransactionService>((ref) {
-  return TransactionService(ref.watch(databaseProvider));
-});
-
-final assetEventServiceProvider = Provider<AssetEventService>((ref) {
-  return AssetEventService(ref.watch(databaseProvider));
-});
-
-final importConfigServiceProvider = Provider<ImportConfigService>((ref) {
-  return ImportConfigService(ref.watch(databaseProvider));
-});
-
-final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
-  final priceService = ref.watch(marketPriceServiceProvider);
-  return IsinLookupService(priceService as InvestingComService);
-});
-
-final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
-  final priceService = ref.watch(marketPriceServiceProvider);
-  final investing = priceService is InvestingComService ? priceService : null;
-  return ExchangeRateService(ref.watch(databaseProvider), investingService: investing);
-});
-
-final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
-  final db = ref.watch(databaseProvider);
-  return InvestingComService(db);
-});
-
-final compositionServiceProvider = Provider<CompositionService>((ref) {
-  return CompositionService(ref.watch(databaseProvider));
-});
-
-/// Bumped after market price sync to trigger chart rebuilds.
-final priceRefreshCounter = StateProvider<int>((ref) => 0);
-
-/// Privacy mode: blur all monetary amounts for screenshot sharing.
-final privacyModeProvider = StateProvider<bool>((ref) => false);
-
-// ── Reactive stream providers ──
-
-/// Portable language setting (from ~/.config/FinanceCopilot/settings.json).
-/// Used before a DB is opened. Initialized on app start.
-final portableLanguageProvider = StateProvider<String>((ref) => 'en');
-
-/// UI language from AppConfigs, reactive. 'en' (default) or 'it'.
-final appLanguageProvider = StreamProvider<String>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('LANGUAGE')))
-      .watchSingleOrNull()
-      .map((row) => row?.value ?? 'en');
-});
-
-/// Provides the current [AppStrings] instance from portable language setting.
-final appStringsProvider = Provider<AppStrings>((ref) {
-  final lang = ref.watch(portableLanguageProvider);
-  return AppStrings.of(lang);
-});
-
-/// Display locale from AppConfigs, reactive. Empty string = system default.
-final appLocaleProvider = StreamProvider<String>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('LOCALE')))
-      .watchSingleOrNull()
-      .map((row) {
-    final value = row?.value ?? '';
-    return value.isEmpty ? Platform.localeName : value;
-  });
-});
-
-/// Base currency from AppConfigs, reactive. Defaults to EUR.
-final baseCurrencyProvider = StreamProvider<String>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('BASE_CURRENCY')))
-      .watchSingleOrNull()
-      .map((row) => row?.value ?? 'EUR');
-});
-
-
-final accountsProvider = StreamProvider<List<Account>>((ref) {
-  return ref.watch(accountServiceProvider).watchAll();
-});
-
-final accountStatsProvider = StreamProvider<Map<int, AccountStats>>((ref) {
-  return ref.watch(accountServiceProvider).watchStatsForAll();
-});
-
-final assetsProvider = StreamProvider<List<Asset>>((ref) {
-  return ref.watch(assetServiceProvider).watchAll();
-});
-
-/// Asset composition breakdowns (country/sector/holding weights from justETF).
-final assetCompositionsProvider = StreamProvider<Map<int, List<AssetComposition>>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.assetCompositions)).watch().map((rows) {
-    final map = <int, List<AssetComposition>>{};
-    for (final row in rows) {
-      map.putIfAbsent(row.assetId, () => []).add(row);
-    }
-    return map;
-  });
-});
-
-final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
-  return ref.watch(assetServiceProvider).watchStatsForAll();
-});
+// ── Derived / computed data providers ──
 
 /// Account stats with balances converted to base currency using live rates.
 final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
@@ -220,7 +67,7 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
   return result;
 });
 
-/// Market value per asset: qty * lastPrice * fxRate → base currency.
+/// Market value per asset: qty * lastPrice * fxRate -> base currency.
 final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
@@ -267,8 +114,8 @@ class AssetDailyChange {
   final double todayPrice;
   final double previousPrice;
   final double quantity;
-  final double todayFxRate;    // asset currency → base currency (today)
-  final double previousFxRate; // asset currency → base currency (reference date)
+  final double todayFxRate;    // asset currency -> base currency (today)
+  final double previousFxRate; // asset currency -> base currency (reference date)
   final String baseCurrency;
   final String? investingUrl;   // Investing.com page URL
 
@@ -338,16 +185,9 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double? previousPrice;
     final beforeFirstBuy = stat.firstDate != null && referenceDate.isBefore(stat.firstDate!);
     if (beforeFirstBuy) {
-      final avgRow = await priceService.db.customSelect(
-        "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
-        "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
-        "FROM asset_events WHERE asset_id = ? AND type IN ('buy','contribute') AND quantity IS NOT NULL AND price IS NOT NULL",
-        variables: [Variable.withInt(asset.id)],
-      ).getSingleOrNull();
-      final totalCost = avgRow?.readNullable<double>('total_cost') ?? 0;
-      final totalQty = avgRow?.readNullable<double>('total_qty') ?? 0;
-      if (totalQty > 0) {
-        previousPrice = totalCost / totalQty;
+      final avgPrice = await ref.read(assetEventServiceProvider).getAverageBuyPrice(asset.id);
+      if (avgPrice != null) {
+        previousPrice = avgPrice;
         // For cost-basis, use today's FX for both sides (we're comparing price, not FX)
         prevFx = todayFx;
       }
@@ -414,84 +254,4 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
     }
   }
   return result;
-});
-
-/// Transactions for a specific account (pass accountId as family parameter).
-final accountTransactionsProvider = StreamProvider.family<List<Transaction>, int>((ref, accountId) {
-  return ref.watch(transactionServiceProvider).watchByAccount(accountId);
-});
-
-/// Asset events for a specific asset (pass assetId as family parameter).
-final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, assetId) {
-  return ref.watch(assetEventServiceProvider).watchByAsset(assetId);
-});
-
-// ── CAPEX / Buffer providers ──
-
-// ── Dashboard chart providers ──
-
-final dashboardChartServiceProvider = Provider<DashboardChartService>((ref) {
-  return DashboardChartService(ref.watch(databaseProvider));
-});
-
-final dashboardChartsProvider = StreamProvider<List<DashboardChart>>((ref) {
-  return ref.watch(dashboardChartServiceProvider).watchAll();
-});
-
-// ── CAPEX / Buffer providers ──
-
-final capexServiceProvider = Provider<CapexService>((ref) {
-  return CapexService(ref.watch(databaseProvider));
-});
-
-final bufferServiceProvider = Provider<BufferService>((ref) {
-  return BufferService(ref.watch(databaseProvider));
-});
-
-final capexSchedulesProvider = StreamProvider<List<DepreciationSchedule>>((ref) {
-  return ref.watch(capexServiceProvider).watchAll();
-});
-
-final capexStatsProvider = StreamProvider<Map<int, CapexStats>>((ref) {
-  return ref.watch(capexServiceProvider).watchStatsForAll();
-});
-
-final capexScheduleProvider = StreamProvider.family<DepreciationSchedule, int>((ref, scheduleId) {
-  return ref.watch(capexServiceProvider).watchById(scheduleId);
-});
-
-final capexEntriesProvider = StreamProvider.family<List<DepreciationEntry>, int>((ref, scheduleId) {
-  return ref.watch(capexServiceProvider).watchEntries(scheduleId);
-});
-
-final bufferTransactionsProvider = StreamProvider.family<List<BufferTransaction>, int>((ref, bufferId) {
-  return ref.watch(bufferServiceProvider).watchByBuffer(bufferId);
-});
-
-// ── Income adjustment providers ──
-
-final incomeAdjustmentServiceProvider = Provider<IncomeAdjustmentService>((ref) {
-  return IncomeAdjustmentService(ref.watch(databaseProvider));
-});
-
-final incomeAdjustmentsProvider = StreamProvider<List<IncomeAdjustment>>((ref) {
-  return ref.watch(incomeAdjustmentServiceProvider).watchAll();
-});
-
-final incomeAdjustmentProvider = StreamProvider.family<IncomeAdjustment, int>((ref, id) {
-  return ref.watch(incomeAdjustmentServiceProvider).watchById(id);
-});
-
-final incomeAdjustmentExpensesProvider = StreamProvider.family<List<IncomeAdjustmentExpense>, int>((ref, adjustmentId) {
-  return ref.watch(incomeAdjustmentServiceProvider).watchExpenses(adjustmentId);
-});
-
-// ── Income providers ──
-
-final incomeServiceProvider = Provider<IncomeService>((ref) {
-  return IncomeService(ref.watch(databaseProvider));
-});
-
-final incomesProvider = StreamProvider<List<Income>>((ref) {
-  return ref.watch(incomeServiceProvider).watchAll();
 });

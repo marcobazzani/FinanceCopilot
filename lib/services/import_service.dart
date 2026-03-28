@@ -1,18 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:isolate';
 
-import 'package:crypto/crypto.dart';
-import 'package:csv/csv.dart';
 import 'package:drift/drift.dart';
-import 'package:excel/excel.dart' as xl;
 
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/amount_parser.dart' as amt;
-import '../utils/formatters.dart' show monthMap;
+import '../utils/date_parser.dart' as dateParse;
+import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'exchange_rate_service.dart';
+import 'file_parser_service.dart';
 import 'isin_lookup_service.dart';
 
 final _log = getLogger('ImportService');
@@ -99,240 +96,27 @@ class AssetImportResult {
   const AssetImportResult({required this.result, required this.assetsByIsin});
 }
 
-// ──────────────────────────────────────────────
-// Top-level functions for isolate parsing
-// ──────────────────────────────────────────────
-
-FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
-  final content = args['content'] as String;
-  final separator = args['separator'] as String?;
-  final skipRows = args['skipRows'] as int;
-  final noHeader = args['noHeader'] as bool? ?? false;
-
-  // Auto-detect separator
-  final firstLine = content.split('\n').first;
-  final semicolons = ';'.allMatches(firstLine).length;
-  final commas = ','.allMatches(firstLine).length;
-  final tabs = '\t'.allMatches(firstLine).length;
-  final sep = separator ?? (tabs > commas && tabs > semicolons ? '\t' : semicolons > commas ? ';' : ',');
-
-  final rows = Csv(fieldDelimiter: sep, lineDelimiter: '\n').decode(content);
-  if (rows.isEmpty) return const FilePreview(columns: [], rows: [], totalRows: 0);
-
-  var nonEmptyRows = rows.where((row) => row.any((cell) => cell.toString().trim().isNotEmpty)).toList();
-  if (nonEmptyRows.isEmpty) return const FilePreview(columns: [], rows: [], totalRows: 0);
-
-  if (skipRows > 0 && skipRows < nonEmptyRows.length) {
-    nonEmptyRows = nonEmptyRows.sublist(skipRows);
-  }
-
-  final List<String> columns;
-  final List<Map<String, String>> dataRows;
-
-  if (noHeader) {
-    final colCount = nonEmptyRows.first.length;
-    columns = List.generate(colCount, (i) => 'Column ${i + 1}');
-    dataRows = nonEmptyRows.map((row) {
-      final map = <String, String>{};
-      for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = row[i].toString().trim();
-      }
-      return map;
-    }).toList();
-  } else {
-    columns = nonEmptyRows.first.map((e) => e.toString().trim()).toList();
-    dataRows = nonEmptyRows.skip(1).map((row) {
-      final map = <String, String>{};
-      for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = row[i].toString().trim();
-      }
-      return map;
-    }).toList();
-  }
-
-  return FilePreview(columns: columns, rows: dataRows, totalRows: dataRows.length);
-}
-
-FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
-  final bytes = args['bytes'] as List<int>;
-  final sheetName = args['sheetName'] as String?;
-  final skipRows = args['skipRows'] as int;
-  final noHeader = args['noHeader'] as bool? ?? false;
-
-  final excel = xl.Excel.decodeBytes(bytes);
-  final sheet = sheetName != null ? excel.tables[sheetName] : excel.tables.values.first;
-
-  if (sheet == null || sheet.rows.isEmpty) {
-    return const FilePreview(columns: [], rows: [], totalRows: 0);
-  }
-
-  final effectiveRows = skipRows > 0 && skipRows < sheet.rows.length
-      ? sheet.rows.sublist(skipRows)
-      : sheet.rows;
-
-  if (effectiveRows.isEmpty) return const FilePreview(columns: [], rows: [], totalRows: 0);
-
-  final List<String> columns;
-  final List<Map<String, String>> dataRows;
-
-  if (noHeader) {
-    final colCount = effectiveRows.first.length;
-    columns = List.generate(colCount, (i) => 'Column ${i + 1}');
-    dataRows = effectiveRows.map((row) {
-      final map = <String, String>{};
-      for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = row[i]?.value?.toString().trim() ?? '';
-      }
-      return map;
-    }).toList();
-  } else {
-    final headerRow = effectiveRows.first;
-    columns = headerRow.map((cell) => cell?.value?.toString().trim() ?? '').toList();
-    dataRows = effectiveRows.skip(1).map((row) {
-      final map = <String, String>{};
-      for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = row[i]?.value?.toString().trim() ?? '';
-      }
-      return map;
-    }).toList();
-  }
-
-  return FilePreview(columns: columns, rows: dataRows, totalRows: dataRows.length);
-}
-
-List<String> _listSheetsIsolate(List<int> bytes) {
-  final excel = xl.Excel.decodeBytes(bytes);
-  return excel.tables.keys.toList();
-}
-
-/// Generic file importer: reads CSV/XLSX/XLS, previews columns,
-/// applies user column mapping, hashes rows for dedup, and inserts.
+/// Generic file importer: applies user column mapping, hashes rows for dedup,
+/// and inserts. File parsing is delegated to [FileParserService].
 class ImportService {
   final AppDatabase _db;
+  final FileParserService _parser = FileParserService();
 
   ImportService(this._db);
 
   // ──────────────────────────────────────────────
-  // Step 1: Parse file → FilePreview
+  // Step 1: Parse file → FilePreview (delegates to FileParserService)
   // ──────────────────────────────────────────────
 
-  /// Parse a file and return a preview of columns + rows.
-  /// Runs heavy parsing in a separate isolate to avoid UI jank.
-  Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false}) async {
-    _log.info('parseFile: path=$filePath, sheet=$sheetName, skipRows=$skipRows, noHeader=$noHeader');
-    final ext = filePath.toLowerCase().split('.').last;
-    final FilePreview result;
-    switch (ext) {
-      case 'csv':
-      case 'tsv':
-        final content = await File(filePath).readAsString();
-        result = await Isolate.run(() => _parseCsvIsolate({
-          'content': content,
-          'separator': ext == 'tsv' ? '\t' : null,
-          'skipRows': skipRows,
-          'noHeader': noHeader,
-        }));
-      case 'xlsx':
-      case 'xls':
-        final bytes = await File(filePath).readAsBytes();
-        result = await Isolate.run(() => _parseExcelIsolate({
-          'bytes': bytes,
-          'sheetName': sheetName,
-          'skipRows': skipRows,
-          'noHeader': noHeader,
-        }));
-      default:
-        throw UnsupportedError('Unsupported file format: .$ext');
-    }
-    // Cap rows for preview (first 5 + last 5) to save memory; import re-parses
-    final previewRows = _capPreviewRows(result.rows);
-    _log.info('parseFile: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
-    return FilePreview(
-      columns: result.columns,
-      rows: previewRows,
-      totalRows: result.totalRows,
-      filePath: filePath,
-      skipRows: skipRows,
-      noHeader: noHeader,
-      sheetName: sheetName,
-    );
-  }
+  Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false}) =>
+      _parser.parseFile(filePath, sheetName: sheetName, skipRows: skipRows, noHeader: noHeader);
 
-  /// List available sheet names in an Excel file (runs in isolate).
-  Future<List<String>> listSheets(String filePath) async {
-    _log.fine('listSheets: $filePath');
-    final bytes = await File(filePath).readAsBytes();
-    final sheets = await Isolate.run(() => _listSheetsIsolate(bytes));
-    _log.info('listSheets: found ${sheets.length} sheets: $sheets');
-    return sheets;
-  }
+  Future<List<String>> listSheets(String filePath) => _parser.listSheets(filePath);
 
-  /// Parse clipboard/pasted text as CSV/TSV → FilePreview.
-  Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) async {
-    _log.info('parseClipboard: ${text.length} chars, skipRows=$skipRows, noHeader=$noHeader');
-    final result = await Isolate.run(() => _parseCsvIsolate({
-      'content': text,
-      'separator': null, // auto-detect
-      'skipRows': skipRows,
-      'noHeader': noHeader,
-    }));
-    final previewRows = _capPreviewRows(result.rows);
-    _log.info('parseClipboard: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
-    return FilePreview(
-      columns: result.columns,
-      rows: previewRows,
-      totalRows: result.totalRows,
-      clipboardText: text,
-      skipRows: skipRows,
-      noHeader: noHeader,
-    );
-  }
+  Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) =>
+      _parser.parseClipboard(text, skipRows: skipRows, noHeader: noHeader);
 
-  /// Cap rows to first 5 + last 5 for preview display. Saves memory for large files.
-  static List<Map<String, String>> _capPreviewRows(List<Map<String, String>> rows, {int headTail = 5}) {
-    if (rows.length <= headTail * 2) return rows;
-    return [...rows.take(headTail), ...rows.skip(rows.length - headTail)];
-  }
-
-  /// Re-parse the full file to get ALL rows (for import, not preview).
-  /// Returns a FilePreview with all rows — only call this during import.
-  Future<FilePreview> getFullRows(FilePreview preview) async {
-    // If preview already has all rows (small file), return as-is
-    if (preview.rows.length >= preview.totalRows) return preview;
-
-    _log.info('_getFullRows: re-parsing ${preview.totalRows} rows from source');
-    if (preview.filePath != null) {
-      final ext = preview.filePath!.toLowerCase().split('.').last;
-      switch (ext) {
-        case 'csv':
-        case 'tsv':
-          final content = await File(preview.filePath!).readAsString();
-          return Isolate.run(() => _parseCsvIsolate({
-            'content': content,
-            'separator': ext == 'tsv' ? '\t' : null,
-            'skipRows': preview.skipRows,
-            'noHeader': preview.noHeader,
-          }));
-        case 'xlsx':
-        case 'xls':
-          final bytes = await File(preview.filePath!).readAsBytes();
-          return Isolate.run(() => _parseExcelIsolate({
-            'bytes': bytes,
-            'sheetName': preview.sheetName,
-            'skipRows': preview.skipRows,
-            'noHeader': preview.noHeader,
-          }));
-      }
-    } else if (preview.clipboardText != null) {
-      return Isolate.run(() => _parseCsvIsolate({
-        'content': preview.clipboardText!,
-        'separator': null,
-        'skipRows': preview.skipRows,
-        'noHeader': preview.noHeader,
-      }));
-    }
-    return preview;
-  }
+  Future<FilePreview> getFullRows(FilePreview preview) => _parser.getFullRows(preview);
 
   // ──────────────────────────────────────────────
   // Helpers: mapping resolution
@@ -513,7 +297,7 @@ class ImportService {
       variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
       updates: {_db.transactions},
     );
-    _log.info('importTransactions: deleted $deleted rows from ${oldestDate.toIso8601String().substring(0, 10)} onward');
+    _log.info('importTransactions: deleted $deleted rows from ${formatYmd(oldestDate)} onward');
 
     // Report parsing complete, starting DB write
     onProgress?.call(preview.rows.length, preview.rows.length);
@@ -766,7 +550,7 @@ class ImportService {
         updates: {_db.assetEvents},
       );
       totalDeleted += deleted;
-      _log.fine('importAssetEventsGrouped: asset $assetId — deleted $deleted events from ${cutoff.toIso8601String().substring(0, 10)}');
+      _log.fine('importAssetEventsGrouped: asset $assetId — deleted $deleted events from ${formatYmd(cutoff)}');
     }
 
     _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
@@ -883,131 +667,8 @@ class ImportService {
   // ──────────────────────────────────────────────
 
 
-  /// Parse a date string. Supports common formats.
-
-  DateTime _parseDate(String s) {
-    s = s.trim();
-    if (s.isEmpty) throw const FormatException('Empty date');
-
-    // Strip surrounding quotes
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-      s = s.substring(1, s.length - 1).trim();
-    }
-
-    // ── Numeric formats ──
-
-    // dd/MM/yyyy or dd-MM-yyyy or dd.MM.yyyy (with optional HH:mm:ss)
-    final dmy = RegExp(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$').firstMatch(s);
-    if (dmy != null) {
-      return DateTime(
-        int.parse(dmy.group(3)!),
-        int.parse(dmy.group(2)!),
-        int.parse(dmy.group(1)!),
-        int.tryParse(dmy.group(4) ?? '') ?? 0,
-        int.tryParse(dmy.group(5) ?? '') ?? 0,
-        int.tryParse(dmy.group(6) ?? '') ?? 0,
-      );
-    }
-
-    // MM/dd/yyyy (US format — only if month > 12 makes it unambiguous, otherwise treated as dd/MM above)
-    // We handle this via the fallback below.
-
-    // yyyy-MM-dd or yyyy/MM/dd (with optional time T or space separated)
-    final ymd = RegExp(r'^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?').firstMatch(s);
-    if (ymd != null) {
-      return DateTime(
-        int.parse(ymd.group(1)!),
-        int.parse(ymd.group(2)!),
-        int.parse(ymd.group(3)!),
-        int.tryParse(ymd.group(4) ?? '') ?? 0,
-        int.tryParse(ymd.group(5) ?? '') ?? 0,
-        int.tryParse(ymd.group(6) ?? '') ?? 0,
-      );
-    }
-
-    // dd/MM/yy (2-digit year)
-    final dmy2 = RegExp(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$').firstMatch(s);
-    if (dmy2 != null) {
-      var year = int.parse(dmy2.group(3)!);
-      year += year > 50 ? 1900 : 2000;
-      return DateTime(year, int.parse(dmy2.group(2)!), int.parse(dmy2.group(1)!));
-    }
-
-    // yyyyMMdd (compact, no separators)
-    final compact = RegExp(r'^(\d{4})(\d{2})(\d{2})$').firstMatch(s);
-    if (compact != null) {
-      return DateTime(
-        int.parse(compact.group(1)!),
-        int.parse(compact.group(2)!),
-        int.parse(compact.group(3)!),
-      );
-    }
-
-    // ── Named month formats ──
-
-    // dd MMM yyyy or dd-MMM-yyyy (e.g. "20 Feb 2017", "20-Feb-2017")
-    final namedDmy = RegExp(r'^(\d{1,2})[\s\-.](\w+)[\s\-.](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', caseSensitive: false).firstMatch(s);
-    if (namedDmy != null) {
-      final month = monthMap[namedDmy.group(2)!.toLowerCase()];
-      if (month != null) {
-        return DateTime(
-          int.parse(namedDmy.group(3)!),
-          month,
-          int.parse(namedDmy.group(1)!),
-          int.tryParse(namedDmy.group(4) ?? '') ?? 0,
-          int.tryParse(namedDmy.group(5) ?? '') ?? 0,
-          int.tryParse(namedDmy.group(6) ?? '') ?? 0,
-        );
-      }
-    }
-
-    // MMM dd, yyyy (e.g. "Feb 20, 2017", "February 20, 2017")
-    final namedMdy = RegExp(r'^(\w+)\s+(\d{1,2}),?\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', caseSensitive: false).firstMatch(s);
-    if (namedMdy != null) {
-      final month = monthMap[namedMdy.group(1)!.toLowerCase()];
-      if (month != null) {
-        return DateTime(
-          int.parse(namedMdy.group(3)!),
-          month,
-          int.parse(namedMdy.group(2)!),
-          int.tryParse(namedMdy.group(4) ?? '') ?? 0,
-          int.tryParse(namedMdy.group(5) ?? '') ?? 0,
-          int.tryParse(namedMdy.group(6) ?? '') ?? 0,
-        );
-      }
-    }
-
-    // yyyy MMM dd (e.g. "2017 Feb 20")
-    final namedYmd = RegExp(r'^(\d{4})[\s\-.](\w+)[\s\-.](\d{1,2})$', caseSensitive: false).firstMatch(s);
-    if (namedYmd != null) {
-      final month = monthMap[namedYmd.group(2)!.toLowerCase()];
-      if (month != null) {
-        return DateTime(
-          int.parse(namedYmd.group(1)!),
-          month,
-          int.parse(namedYmd.group(3)!),
-        );
-      }
-    }
-
-    // ── Epoch timestamps ──
-
-    // Unix seconds (10 digits) or milliseconds (13 digits)
-    final epoch = RegExp(r'^(\d{10,13})$').firstMatch(s);
-    if (epoch != null) {
-      final n = int.parse(epoch.group(1)!);
-      return n > 9999999999
-          ? DateTime.fromMillisecondsSinceEpoch(n)
-          : DateTime.fromMillisecondsSinceEpoch(n * 1000);
-    }
-
-    // ── Fallback: Dart's DateTime.parse (handles ISO 8601) ──
-    try {
-      return DateTime.parse(s);
-    } catch (_) {
-      throw FormatException('Invalid date format: $s');
-    }
-  }
+  /// Parse a date string. Delegates to shared [dateParse.parseDate].
+  DateTime _parseDate(String s) => dateParse.parseDate(s);
 
   double _parseAmount(String s) => amt.parseAmount(s);
   double? _tryParseAmount(String? s) => amt.tryParseAmount(s);

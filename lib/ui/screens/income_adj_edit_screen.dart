@@ -5,10 +5,10 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 
 class _Expense {
   final int? id; // null = new

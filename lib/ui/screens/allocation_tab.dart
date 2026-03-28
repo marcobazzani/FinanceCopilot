@@ -7,7 +7,7 @@ import '../widgets/privacy_text.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import 'package:intl/intl.dart';
 

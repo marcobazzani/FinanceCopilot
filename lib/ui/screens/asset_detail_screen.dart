@@ -8,12 +8,12 @@ import '../../database/tables.dart';
 import '../../services/investing_com_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 
 final _log = getLogger('AssetDetailScreen');
 
