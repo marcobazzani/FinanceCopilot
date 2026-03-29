@@ -99,7 +99,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   }
 
   Future<void> _checkForUpdates() async {
-    if (appCommit == 'dev') {
+    if (isLocalBuild) {
       _log.info('Skipping update check (local build)');
       return;
     }

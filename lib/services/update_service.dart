@@ -57,7 +57,7 @@ class UpdateService {
     final latestCommit = commitMatch?.group(1);
     if (latestCommit == null) return const UpdateInfo();
 
-    final isNew = appCommit == 'dev' || !latestCommit.startsWith(appCommit);
+    final isNew = isLocalBuild || !latestCommit.startsWith(appCommit);
     _log.info('checkNightly: latest=$latestCommit, current=$appCommit, update=$isNew');
     if (!isNew) return const UpdateInfo();
 
@@ -102,7 +102,7 @@ class UpdateService {
 
   /// Fetch commit titles between current commit and latest.
   Future<List<String>> getChangelog(String? latestCommit) async {
-    if (appCommit == 'dev' || latestCommit == null) return [];
+    if (isLocalBuild || latestCommit == null) return [];
     try {
       final response = await _dio.get(
         'https://api.github.com/repos/marcobazzani/FinanceCopilot/compare/$appCommit...$latestCommit',
