@@ -25,6 +25,13 @@ jobs:
             3. Propose a fix approach (describe it in the issue comment)
             4. Estimate complexity (small/medium/large)
 
+            Language:
+            - Detect the language of the issue (Italian or English)
+            - Reply in the SAME language the user wrote in
+            - If the issue is in Italian, respond entirely in Italian
+            - If the issue is in English, respond entirely in English
+            - Default to English if the language is unclear or neither Italian nor English
+
             Rules:
             - Do NOT open a PR or make code changes automatically
             - Post your findings as an issue comment

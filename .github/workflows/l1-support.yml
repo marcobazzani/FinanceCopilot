@@ -25,6 +25,13 @@ jobs:
             4. Add appropriate labels (bug, enhancement, question, duplicate)
             5. If it's a confirmed bug that needs code changes, add the label "l2-needed"
 
+            Language:
+            - Detect the language of the issue (Italian or English)
+            - Reply in the SAME language the user wrote in
+            - If the issue is in Italian, respond entirely in Italian
+            - If the issue is in English, respond entirely in English
+            - Default to English if the language is unclear or neither Italian nor English
+
             Rules:
             - Do NOT propose code fixes or open PRs
             - Be friendly and professional
