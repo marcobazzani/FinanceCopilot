@@ -283,7 +283,7 @@ extension _ConfirmStep on _ImportScreenState {
               final asset = a as Asset;
               return RadioListTile<int>(
                 title: Text(asset.name),
-                subtitle: Text('${asset.assetType.name} · ${asset.currency}'),
+                subtitle: Text('${asset.instrumentType.name} · ${asset.assetClass.name} · ${asset.currency}'),
                 value: asset.id,
                 groupValue: _targetId,
                 onChanged: (v) => _setState(() => _targetId = v),

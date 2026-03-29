@@ -14,20 +14,16 @@ import 'package:intl/intl.dart';
 // Asset type display names
 // ════════════════════════════════════════════════════
 
-const _assetTypeLabels = <AssetType, String>{
-  AssetType.stock: 'Stock',
-  AssetType.stockEtf: 'Stock ETF',
-  AssetType.bondEtf: 'Bond ETF',
-  AssetType.commEtf: 'Commodity ETF',
-  AssetType.goldEtc: 'Gold ETC',
-  AssetType.monEtf: 'Money Market ETF',
-  AssetType.crypto: 'Crypto',
-  AssetType.cash: 'Cash',
-  AssetType.pension: 'Pension',
-  AssetType.deposit: 'Deposit',
-  AssetType.realEstate: 'Real Estate',
-  AssetType.alternative: 'Alternative',
-  AssetType.liability: 'Liability',
+const _assetClassLabels = <AssetClass, String>{
+  AssetClass.equity: 'Equity',
+  AssetClass.fixedIncome: 'Fixed Income',
+  AssetClass.commodities: 'Commodities',
+  AssetClass.moneyMarket: 'Money Market',
+  AssetClass.cash: 'Cash',
+  AssetClass.crypto: 'Crypto',
+  AssetClass.realEstate: 'Real Estate',
+  AssetClass.alternative: 'Alternative',
+  AssetClass.multiAsset: 'Multi-Asset',
 };
 
 // ════════════════════════════════════════════════════
@@ -192,7 +188,7 @@ class AllocationTab extends ConsumerWidget {
           );
           final byType = _weightedBreakdown(
             assets, marketValues, compositions, 'assetclass',
-            (a) => _assetTypeLabels[a.assetType] ?? a.assetType.name,
+            (a) => _assetClassLabels[a.assetClass] ?? a.assetClass.name,
           );
           final byCurrency = _groupByField(assets, marketValues, (a) => a.currency);
 
@@ -207,7 +203,7 @@ class AllocationTab extends ConsumerWidget {
           );
           final typeDrill = _drillDownData(
             assets, marketValues, compositions, 'assetclass',
-            (a) => _assetTypeLabels[a.assetType] ?? a.assetType.name,
+            (a) => _assetClassLabels[a.assetClass] ?? a.assetClass.name,
           );
 
           final holdingEntries = byHolding.entries.toList();
@@ -236,7 +232,7 @@ class AllocationTab extends ConsumerWidget {
                   ),
                 ),
                 _ChartCard(
-                  title: s.allocAssetType,
+                  title: s.allocAssetClass,
                   child: _DrillableDonut(
                     data: byType,
                     total: total,

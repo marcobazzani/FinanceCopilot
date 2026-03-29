@@ -112,12 +112,15 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     super.dispose();
   }
 
+  bool get _isBond => widget.asset.instrumentType == InstrumentType.bond;
+
   void _onFieldChanged() {
     if (!_usesQtyPrice) return;
     final qty = double.tryParse(_quantityCtrl.text);
     final price = double.tryParse(_priceCtrl.text);
     if (qty != null && price != null) {
-      _amountCtrl.text = (qty * price).toStringAsFixed(2);
+      final raw = qty * price;
+      _amountCtrl.text = (_isBond ? raw / 100 : raw).toStringAsFixed(2);
     }
     // setState triggered by _onRateOrAmountChanged via _amountCtrl listener
   }
@@ -402,9 +405,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     final exchangeRate = _exchangeRateCtrl.text.isNotEmpty ? double.tryParse(_exchangeRateCtrl.text) : null;
 
     // For qty×price types, compute amount; otherwise use the text field directly.
+    // Bond prices are quoted as % of face value → divide by 100.
     final double amount;
     if (_usesQtyPrice && quantity != null && price != null) {
-      amount = quantity * price;
+      amount = _isBond ? quantity * price / 100 : quantity * price;
     } else {
       amount = double.parse(_amountCtrl.text);
     }

@@ -44,6 +44,8 @@ class AssetService {
     String? exchange,
     required String currency,
     double? taxRate,
+    InstrumentType instrumentType = InstrumentType.etf,
+    AssetClass assetClass = AssetClass.equity,
   }) {
     _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange');
     return _db.into(_db.assets).insert(AssetsCompanion.insert(
@@ -55,6 +57,8 @@ class AssetService {
       exchange: Value(exchange),
       currency: Value(currency),
       taxRate: Value(taxRate),
+      instrumentType: Value(instrumentType),
+      assetClass: Value(assetClass),
     ));
   }
 

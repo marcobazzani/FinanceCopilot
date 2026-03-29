@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
+import '../../database/tables.dart';
 import '../../services/asset_service.dart';
 import '../../services/investing_com_service.dart';
 import '../../services/market_price_service.dart' show exchangeCodeToCurrency, investingExchangeToCode, supportedExchanges;
@@ -363,6 +364,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   final _manualNameCtrl = TextEditingController();
   final _manualIdCtrl = TextEditingController();
   String _manualExchange = 'MIL';
+  InstrumentType _instrumentType = InstrumentType.etf;
+  AssetClass _assetClass = AssetClass.equity;
 
   @override
   void dispose() {
@@ -401,10 +404,20 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
 
   void _selectResult(InvestingSearchResult result) {
     final code = investingExchangeToCode[result.exchange];
+    final (instrument, assetCls) = _classifyFromType(result.type);
     setState(() {
       _selected = result;
       _selectedExchange = code ?? 'MIL';
+      _instrumentType = instrument;
+      _assetClass = assetCls;
     });
+  }
+
+  /// Derive instrument type + asset class from investing.com's typeName.
+  /// The `type` field looks like "Stocks - Milano" or "ETFs - Milano".
+  static (InstrumentType, AssetClass) _classifyFromType(String type) {
+    final prefix = type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
+    return classifyFromInvestingType(prefix);
   }
 
   void _backToSearch() {
@@ -520,6 +533,36 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               if (v != null) setState(() => _selectedExchange = v);
             },
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<InstrumentType>(
+                  value: _instrumentType,
+                  decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                  items: InstrumentType.values
+                      .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _instrumentType = v);
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<AssetClass>(
+                  value: _assetClass,
+                  decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                  items: AssetClass.values
+                      .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _assetClass = v);
+                  },
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       actions: [
@@ -533,6 +576,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   ticker: r.symbol.isNotEmpty ? r.symbol : null,
                   exchange: _selectedExchange,
                   currency: currency,
+                  instrumentType: _instrumentType,
+                  assetClass: _assetClass,
                 );
             if (mounted) Navigator.pop(context);
           },
@@ -578,6 +623,36 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               if (v != null) setState(() => _manualExchange = v);
             },
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<InstrumentType>(
+                  value: _instrumentType,
+                  decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                  items: InstrumentType.values
+                      .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _instrumentType = v);
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButtonFormField<AssetClass>(
+                  value: _assetClass,
+                  decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                  items: AssetClass.values
+                      .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _assetClass = v);
+                  },
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       actions: [
@@ -595,6 +670,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                         isin: id.isNotEmpty ? id : null,
                         exchange: _manualExchange,
                         currency: currency,
+                        instrumentType: _instrumentType,
+                        assetClass: _assetClass,
                       );
                   if (mounted) Navigator.pop(context);
                 }

@@ -420,16 +420,27 @@ class ImportService {
         String? ticker;
         String? exchange;
 
+        InstrumentType instrumentType = InstrumentType.etf;
+        AssetClass assetClassValue = AssetClass.equity;
+
         if (selected != null) {
           name = selected.name;
           ticker = selected.ticker;
           exchange = selected.exchange;
+          final (inst, cls) = selected.classification;
+          instrumentType = inst;
+          assetClassValue = cls;
         } else if (isinLookup != null) {
           final lookup = await isinLookup.lookup(isin);
           final best = lookup.bestFor(null);
           name = best?.name ?? isin;
           ticker = best?.ticker;
           exchange = best?.exchange;
+          if (best != null) {
+            final (inst, cls) = best.classification;
+            instrumentType = inst;
+            assetClassValue = cls;
+          }
         } else {
           name = isin;
         }
@@ -440,6 +451,8 @@ class ImportService {
         final assetId = await _db.into(_db.assets).insert(AssetsCompanion.insert(
           name: name.length > 200 ? name.substring(0, 200) : name,
           assetType: AssetType.stockEtf,
+          instrumentType: Value(instrumentType),
+          assetClass: Value(assetClassValue),
           valuationMethod: ValuationMethod.eventDriven,
           ticker: Value(ticker),
           isin: Value(isin),
@@ -448,6 +461,15 @@ class ImportService {
         ));
         assetsByIsin[isin] = assetId;
         _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker, exchange=$exchange');
+      }
+    }
+
+    // Build set of bond ISINs for price divisor
+    final allAssets = await _db.select(_db.assets).get();
+    final _bondIsins = <String>{};
+    for (final a in allAssets) {
+      if (a.instrumentType == InstrumentType.bond && a.isin != null) {
+        _bondIsins.add(a.isin!.toUpperCase());
       }
     }
 
@@ -483,11 +505,13 @@ class ImportService {
         final price = priceMapping != null ? _tryParseAmount(_resolveMapping(priceMapping, row)) : null;
 
         // Amount: from column, or auto-calculated as quantity * price
+        // For bonds, prices are quoted as % of face value → divide by 100
+        final isBond = _bondIsins.contains(isin);
         final double amount;
         if (amountMapping != null) {
           amount = _parseAmount(_resolveMapping(amountMapping, row) ?? '');
         } else if (qty != null && price != null) {
-          amount = qty * price;
+          amount = isBond ? qty * price / 100 : qty * price;
         } else {
           amount = 0;
         }

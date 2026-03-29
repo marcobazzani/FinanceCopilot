@@ -46,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -160,6 +160,38 @@ class AppDatabase extends _$AppDatabase {
             await customStatement(
               'ALTER TABLE incomes DROP COLUMN description',
             );
+          }
+          if (from < 21) {
+            // Add instrument_type and asset_class columns
+            await customStatement(
+              "ALTER TABLE assets ADD COLUMN instrument_type TEXT NOT NULL DEFAULT 'etf'",
+            );
+            await customStatement(
+              "ALTER TABLE assets ADD COLUMN asset_class TEXT NOT NULL DEFAULT 'equity'",
+            );
+            // Migrate from old asset_type to new columns
+            const migration = {
+              'stock':       ('stock',       'equity'),
+              'stockEtf':    ('etf',         'equity'),
+              'bondEtf':     ('etf',         'fixedIncome'),
+              'commEtf':     ('etf',         'commodities'),
+              'goldEtc':     ('etc',         'commodities'),
+              'monEtf':      ('etf',         'moneyMarket'),
+              'crypto':      ('crypto',      'crypto'),
+              'cash':        ('cash',        'cash'),
+              'pension':     ('pension',     'multiAsset'),
+              'deposit':     ('deposit',     'cash'),
+              'realEstate':  ('realEstate',  'realEstate'),
+              'alternative': ('alternative', 'alternative'),
+              'liability':   ('liability',   'fixedIncome'),
+            };
+            for (final entry in migration.entries) {
+              await customStatement(
+                "UPDATE assets SET instrument_type = '${entry.value.$1}', "
+                "asset_class = '${entry.value.$2}' "
+                "WHERE asset_type = '${entry.key}'",
+              );
+            }
           }
         },
       );

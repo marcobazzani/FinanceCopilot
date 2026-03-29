@@ -26,15 +26,25 @@ class CompositionService {
 
   CompositionService(this._db, {Dio? dio}) : _dio = dio ?? Dio();
 
-  static const _assetClassToType = {
-    'Stock ETF': AssetType.stockEtf,
-    'Bond ETF': AssetType.bondEtf,
-    'Commodity ETF': AssetType.commEtf,
-    'Gold ETC': AssetType.goldEtc,
-    'Money Market ETF': AssetType.monEtf,
-    'ETF': AssetType.stockEtf,
-    'Stock': AssetType.stock,
-    'Pension Fund': AssetType.pension,
+  static const _classToInstrument = {
+    'Stock ETF': InstrumentType.etf,
+    'Bond ETF': InstrumentType.etf,
+    'Commodity ETF': InstrumentType.etf,
+    'Gold ETC': InstrumentType.etc,
+    'Money Market ETF': InstrumentType.etf,
+    'ETF': InstrumentType.etf,
+    'Stock': InstrumentType.stock,
+    'Pension Fund': InstrumentType.pension,
+  };
+  static const _classToAssetClass = {
+    'Stock ETF': AssetClass.equity,
+    'Bond ETF': AssetClass.fixedIncome,
+    'Commodity ETF': AssetClass.commodities,
+    'Gold ETC': AssetClass.commodities,
+    'Money Market ETF': AssetClass.moneyMarket,
+    'ETF': AssetClass.equity,
+    'Stock': AssetClass.equity,
+    'Pension Fund': AssetClass.multiAsset,
   };
 
   static const _userAgent =
@@ -89,17 +99,25 @@ class CompositionService {
           }
         });
 
-        // Auto-update assetType from detected asset class
+        // Auto-update instrumentType and assetClass from detected asset class
         final assetClassEntry =
             data.where((e) => e.type == 'assetclass').firstOrNull;
         if (assetClassEntry != null) {
-          final newType = _assetClassToType[assetClassEntry.name];
-          if (newType != null && newType != asset.assetType) {
+          final newInstrument = _classToInstrument[assetClassEntry.name];
+          final newAssetClass = _classToAssetClass[assetClassEntry.name];
+          final updates = AssetsCompanion(
+            instrumentType: newInstrument != null && newInstrument != asset.instrumentType
+                ? Value(newInstrument) : const Value.absent(),
+            assetClass: newAssetClass != null && newAssetClass != asset.assetClass
+                ? Value(newAssetClass) : const Value.absent(),
+          );
+          if (updates.instrumentType.present || updates.assetClass.present) {
             await (_db.update(_db.assets)
                   ..where((a) => a.id.equals(asset.id)))
-                .write(AssetsCompanion(assetType: Value(newType)));
-            _log.info('syncCompositions: ${asset.name} - updated assetType '
-                '${asset.assetType} -> $newType');
+                .write(updates);
+            _log.info('syncCompositions: ${asset.name} - updated classification '
+                '-> instrument=${newInstrument ?? asset.instrumentType}, '
+                'class=${newAssetClass ?? asset.assetClass}');
           }
         }
 

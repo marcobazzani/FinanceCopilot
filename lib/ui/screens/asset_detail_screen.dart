@@ -447,6 +447,8 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   late final TextEditingController _isinCtrl;
   late String _selectedExchange;
   late bool _isActive;
+  late InstrumentType _instrumentType;
+  late AssetClass _assetClass;
 
   @override
   void initState() {
@@ -456,6 +458,8 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     _isinCtrl = TextEditingController(text: widget.asset.isin ?? '');
     _selectedExchange = widget.asset.exchange ?? 'MIL';
     _isActive = widget.asset.isActive;
+    _instrumentType = widget.asset.instrumentType;
+    _assetClass = widget.asset.assetClass;
   }
 
   @override
@@ -517,6 +521,8 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         isin: Value(isin.isNotEmpty ? isin : null),
         exchange: Value(_selectedExchange),
         isActive: Value(_isActive),
+        instrumentType: Value(_instrumentType),
+        assetClass: Value(_assetClass),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -573,6 +579,36 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               onChanged: (v) {
                 if (v != null) setState(() => _selectedExchange = v);
               },
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<InstrumentType>(
+                    value: _instrumentType,
+                    decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                    items: InstrumentType.values
+                        .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _instrumentType = v);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<AssetClass>(
+                    value: _assetClass,
+                    decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                    items: AssetClass.values
+                        .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _assetClass = v);
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             SwitchListTile(

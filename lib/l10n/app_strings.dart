@@ -1,3 +1,5 @@
+import '../database/tables.dart';
+
 /// Simple two-language (EN / IT) string table.
 /// Access via [appStringsProvider] in Riverpod widgets.
 class AppStrings {
@@ -533,7 +535,8 @@ class AppStrings {
   String get unclassified      => _it ? 'Non classificato'          : 'Unclassified';
   String get allocGeographic   => _it ? 'Allocazione geografica'    : 'Geographic Allocation';
   String get allocSector       => _it ? 'Allocazione settoriale'    : 'Sector Allocation';
-  String get allocAssetType    => _it ? 'Tipo di attività'          : 'Asset Type';
+  String get allocAssetClass   => _it ? 'Asset class'               : 'Asset Class';
+  String get allocInstrument   => _it ? 'Tipo strumento'            : 'Instrument Type';
   String get allocCurrency     => _it ? 'Esposizione valutaria'     : 'Currency Exposure';
   String get allocTopHoldings  => _it ? 'Principali posizioni'      : 'Top Holdings';
   String get allocPortfolioVal => _it ? 'Valore portafoglio'        : 'Portfolio Value';
@@ -541,6 +544,33 @@ class AppStrings {
   String get allocWellDiversified       => _it ? 'Ben diversificato'              : 'Well diversified';
   String get allocModeratelyConcentrated => _it ? 'Moderatamente concentrato'     : 'Moderately concentrated';
   String get allocHighlyConcentrated    => _it ? 'Altamente concentrato'          : 'Highly concentrated';
+
+  // ── Instrument Type labels ──
+  String get instrumentStock           => _it ? 'Azione'                         : 'Stock';
+  String get instrumentBond            => _it ? 'Obbligazione'                   : 'Bond';
+  String get instrumentEtf             => 'ETF';
+  String get instrumentEtc             => 'ETC';
+  String get instrumentFund            => _it ? 'Fondo'                          : 'Fund';
+  String get instrumentPension         => _it ? 'Fondo pensione'                 : 'Pension Fund';
+  String get instrumentCrypto          => 'Crypto';
+  String get instrumentCash            => _it ? 'Liquidità'                      : 'Cash';
+  String get instrumentDeposit         => _it ? 'Deposito'                       : 'Deposit';
+  String get instrumentRealEstate      => _it ? 'Immobile'                       : 'Real Estate';
+  String get instrumentAlternative     => _it ? 'Alternativo'                    : 'Alternative';
+  String get instrumentLiability       => _it ? 'Passività'                      : 'Liability';
+
+  // ── Asset Class labels ──
+  String get assetClassEquity          => _it ? 'Azionario'                      : 'Equity';
+  String get assetClassFixedIncome     => _it ? 'Obbligazionario'                : 'Fixed Income';
+  String get assetClassCommodities     => _it ? 'Materie prime'                  : 'Commodities';
+  String get assetClassMoneyMarket     => _it ? 'Monetario'                      : 'Money Market';
+  String get assetClassCash            => _it ? 'Liquidità'                      : 'Cash';
+  String get assetClassCrypto          => 'Crypto';
+  String get assetClassRealEstate      => _it ? 'Immobiliare'                    : 'Real Estate';
+  String get assetClassAlternative     => _it ? 'Alternativi'                    : 'Alternative';
+  String get assetClassMultiAsset      => _it ? 'Misto'                          : 'Multi-Asset';
+
+  // ── Legacy asset type labels (kept for backward compat) ──
   String get assetTypeStock            => _it ? 'Azione'                         : 'Stock';
   String get assetTypeStockEtf         => _it ? 'ETF Azionario'                  : 'Stock ETF';
   String get assetTypeBondEtf          => _it ? 'ETF Obbligazionario'            : 'Bond ETF';
@@ -557,6 +587,33 @@ class AppStrings {
   String get top1                      => 'Top 1';
   String get top3                      => 'Top 3';
   String get top5                      => 'Top 5';
+
+  String instrumentTypeLabel(InstrumentType t) => {
+    InstrumentType.stock:       instrumentStock,
+    InstrumentType.bond:        instrumentBond,
+    InstrumentType.etf:         instrumentEtf,
+    InstrumentType.etc:         instrumentEtc,
+    InstrumentType.fund:        instrumentFund,
+    InstrumentType.pension:     instrumentPension,
+    InstrumentType.crypto:      instrumentCrypto,
+    InstrumentType.cash:        instrumentCash,
+    InstrumentType.deposit:     instrumentDeposit,
+    InstrumentType.realEstate:  instrumentRealEstate,
+    InstrumentType.alternative: instrumentAlternative,
+    InstrumentType.liability:   instrumentLiability,
+  }[t]!;
+
+  String assetClassLabel(AssetClass c) => {
+    AssetClass.equity:      assetClassEquity,
+    AssetClass.fixedIncome: assetClassFixedIncome,
+    AssetClass.commodities: assetClassCommodities,
+    AssetClass.moneyMarket: assetClassMoneyMarket,
+    AssetClass.cash:        assetClassCash,
+    AssetClass.crypto:      assetClassCrypto,
+    AssetClass.realEstate:  assetClassRealEstate,
+    AssetClass.alternative: assetClassAlternative,
+    AssetClass.multiAsset:  assetClassMultiAsset,
+  }[c]!;
 
   // ── DB Picker ────────────────────────────────────────────
   String get dbPickerTitle        => _it ? 'Apri un database'        : 'Open a Database';

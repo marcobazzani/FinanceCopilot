@@ -138,20 +138,22 @@ class DemoDbService {
 
   static Future<void> _insertAssets(AppDatabase db) async {
     final assets = [
-      ('VWCE', 'Vanguard FTSE All-World', AssetType.stockEtf, 'EUR', 'MIL', 'VWCE.MI', 'IE00BK5BQT80', 'global'),
-      ('AGGH', 'iShares Core Global Agg Bond', AssetType.bondEtf, 'EUR', 'MIL', 'AGGH.MI', 'IE00BDBRDM35', 'bonds'),
-      ('VFEA', 'Vanguard FTSE Emerging Markets', AssetType.stockEtf, 'EUR', 'MIL', 'VFEA.MI', 'IE00BK5BR733', 'emerging'),
-      ('CSSPX', 'iShares Core S&P 500 Acc', AssetType.stockEtf, 'EUR', 'MIL', 'CSSPX.MI', 'IE00B5BMR087', 'us-large'),
-      ('SGLD', 'Invesco Physical Gold ETC', AssetType.goldEtc, 'EUR', 'MIL', 'SGLD.MI', 'IE00B579F325', 'commodities'),
-      ('MSFT', 'Microsoft Corp', AssetType.stock, 'USD', 'NYQ', 'MSFT', 'US5949181045', 'us-tech'),
+      ('VWCE', 'Vanguard FTSE All-World', AssetType.stockEtf, InstrumentType.etf, AssetClass.equity, 'EUR', 'MIL', 'VWCE.MI', 'IE00BK5BQT80', 'global'),
+      ('AGGH', 'iShares Core Global Agg Bond', AssetType.bondEtf, InstrumentType.etf, AssetClass.fixedIncome, 'EUR', 'MIL', 'AGGH.MI', 'IE00BDBRDM35', 'bonds'),
+      ('VFEA', 'Vanguard FTSE Emerging Markets', AssetType.stockEtf, InstrumentType.etf, AssetClass.equity, 'EUR', 'MIL', 'VFEA.MI', 'IE00BK5BR733', 'emerging'),
+      ('CSSPX', 'iShares Core S&P 500 Acc', AssetType.stockEtf, InstrumentType.etf, AssetClass.equity, 'EUR', 'MIL', 'CSSPX.MI', 'IE00B5BMR087', 'us-large'),
+      ('SGLD', 'Invesco Physical Gold ETC', AssetType.goldEtc, InstrumentType.etc, AssetClass.commodities, 'EUR', 'MIL', 'SGLD.MI', 'IE00B579F325', 'commodities'),
+      ('MSFT', 'Microsoft Corp', AssetType.stock, InstrumentType.stock, AssetClass.equity, 'USD', 'NYQ', 'MSFT', 'US5949181045', 'us-tech'),
     ];
     for (var i = 0; i < assets.length; i++) {
-      final (ticker, name, type, currency, exchange, yahoo, isin, group) = assets[i];
+      final (ticker, name, type, instrument, assetCls, currency, exchange, yahoo, isin, group) = assets[i];
       await db.into(db.assets).insert(AssetsCompanion.insert(
         name: name,
         ticker: Value(ticker),
         isin: Value(isin),
         assetType: type,
+        instrumentType: Value(instrument),
+        assetClass: Value(assetCls),
         assetGroup: Value(group),
         currency: Value(currency),
         exchange: Value(exchange),

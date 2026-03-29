@@ -15,6 +15,8 @@ void main() {
     return db.into(db.assets).insert(AssetsCompanion.insert(
           name: name,
           assetType: AssetType.stockEtf,
+          instrumentType: const Value(InstrumentType.etf),
+          assetClass: const Value(AssetClass.equity),
           valuationMethod: ValuationMethod.eventDriven,
         ));
   }

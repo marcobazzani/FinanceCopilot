@@ -89,6 +89,8 @@ void main() {
         AssetsCompanion.insert(
           name: 'iShares Core MSCI World',
           assetType: AssetType.stockEtf,
+          instrumentType: const Value(InstrumentType.etf),
+          assetClass: const Value(AssetClass.equity),
           valuationMethod: ValuationMethod.marketPrice,
         ),
       );

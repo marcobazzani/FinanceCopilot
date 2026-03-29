@@ -1,3 +1,4 @@
+import '../database/tables.dart';
 import '../utils/logger.dart';
 import 'investing_com_service.dart';
 
@@ -10,6 +11,7 @@ class IsinExchangeOption {
   final String name;
   final String exchange; // Investing.com exchange name (e.g. "Milano", "London")
   final String? url;
+  final String typeName; // e.g. "Stocks", "ETFs", "ETCs", "Bonds"
 
   const IsinExchangeOption({
     required this.cid,
@@ -17,7 +19,14 @@ class IsinExchangeOption {
     required this.name,
     required this.exchange,
     this.url,
+    this.typeName = '',
   });
+
+  /// Derive instrument type + asset class from the investing.com typeName.
+  (InstrumentType, AssetClass) get classification {
+    final prefix = typeName.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
+    return classifyFromInvestingType(prefix);
+  }
 }
 
 /// Result of an ISIN lookup: all available exchange listings.
@@ -66,6 +75,7 @@ class IsinLookupService {
                 name: r.description,
                 exchange: r.exchange,
                 url: r.url,
+                typeName: r.type.split(' - ').first,
               ))
           .toList();
 

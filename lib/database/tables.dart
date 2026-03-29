@@ -28,6 +28,50 @@ enum AssetType {
   liability,
 }
 
+enum InstrumentType {
+  stock,        // Azione — Individual equity
+  bond,         // Obbligazione — Individual bond
+  etf,          // ETF — Exchange-Traded Fund
+  etc,          // ETC — Exchange-Traded Commodity
+  fund,         // Fondo — Open/closed-end fund
+  pension,      // Fondo pensione — Pension fund
+  crypto,       // Crypto — Cryptocurrency
+  cash,         // Liquidità — Bank account / cash
+  deposit,      // Deposito — Term deposit
+  realEstate,   // Immobile — Property
+  alternative,  // Alternativo — Art, collectibles, etc.
+  liability,    // Passività — Debt / mortgage
+}
+
+enum AssetClass {
+  equity,       // Azionario
+  fixedIncome,  // Obbligazionario
+  commodities,  // Materie Prime
+  moneyMarket,  // Monetario
+  cash,         // Liquidità
+  crypto,       // Crypto
+  realEstate,   // Immobiliare
+  alternative,  // Alternativi
+  multiAsset,   // Misto — Multi-asset / balanced
+}
+
+/// Map investing.com type prefixes (lowercase, singular) to classification.
+const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
+  'etf':    (InstrumentType.etf,    AssetClass.equity),
+  'etc':    (InstrumentType.etc,    AssetClass.commodities),
+  'etn':    (InstrumentType.etf,    AssetClass.equity),
+  'stock':  (InstrumentType.stock,  AssetClass.equity),
+  'equity': (InstrumentType.stock,  AssetClass.equity),
+  'bond':   (InstrumentType.bond,   AssetClass.fixedIncome),
+  'fund':   (InstrumentType.fund,   AssetClass.multiAsset),
+  'crypto': (InstrumentType.crypto, AssetClass.crypto),
+};
+
+/// Classify instrument type + asset class from an investing.com type string.
+/// [prefix] should be lowercase, singular (e.g. "etf", "stock", "bond").
+(InstrumentType, AssetClass) classifyFromInvestingType(String prefix) =>
+    _investingTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
+
 enum ValuationMethod { marketPrice, eventDriven, balance }
 
 enum EventType {
@@ -123,6 +167,8 @@ class Assets extends Table {
   TextColumn get ticker => text().nullable()();
   TextColumn get isin => text().nullable()();
   TextColumn get assetType => textEnum<AssetType>()();
+  TextColumn get instrumentType => textEnum<InstrumentType>().withDefault(Constant(InstrumentType.etf.name))();
+  TextColumn get assetClass => textEnum<AssetClass>().withDefault(Constant(AssetClass.equity.name))();
   TextColumn get assetGroup => text().withDefault(const Constant(''))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get exchange => text().nullable()();

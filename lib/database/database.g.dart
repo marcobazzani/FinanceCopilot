@@ -2605,6 +2605,26 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         type: DriftSqlType.string,
         requiredDuringInsert: true,
       ).withConverter<AssetType>($AssetsTable.$converterassetType);
+  @override
+  late final GeneratedColumnWithTypeConverter<InstrumentType, String>
+  instrumentType = GeneratedColumn<String>(
+    'instrument_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: Constant(InstrumentType.etf.name),
+  ).withConverter<InstrumentType>($AssetsTable.$converterinstrumentType);
+  @override
+  late final GeneratedColumnWithTypeConverter<AssetClass, String> assetClass =
+      GeneratedColumn<String>(
+        'asset_class',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: Constant(AssetClass.equity.name),
+      ).withConverter<AssetClass>($AssetsTable.$converterassetClass);
   static const VerificationMeta _assetGroupMeta = const VerificationMeta(
     'assetGroup',
   );
@@ -2795,6 +2815,8 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     ticker,
     isin,
     assetType,
+    instrumentType,
+    assetClass,
     assetGroup,
     currency,
     exchange,
@@ -2974,6 +2996,18 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
           data['${effectivePrefix}asset_type'],
         )!,
       ),
+      instrumentType: $AssetsTable.$converterinstrumentType.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}instrument_type'],
+        )!,
+      ),
+      assetClass: $AssetsTable.$converterassetClass.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}asset_class'],
+        )!,
+      ),
       assetGroup: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}asset_group'],
@@ -3050,6 +3084,12 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
 
   static JsonTypeConverter2<AssetType, String, String> $converterassetType =
       const EnumNameConverter<AssetType>(AssetType.values);
+  static JsonTypeConverter2<InstrumentType, String, String>
+  $converterinstrumentType = const EnumNameConverter<InstrumentType>(
+    InstrumentType.values,
+  );
+  static JsonTypeConverter2<AssetClass, String, String> $converterassetClass =
+      const EnumNameConverter<AssetClass>(AssetClass.values);
   static JsonTypeConverter2<ValuationMethod, String, String>
   $convertervaluationMethod = const EnumNameConverter<ValuationMethod>(
     ValuationMethod.values,
@@ -3062,6 +3102,8 @@ class Asset extends DataClass implements Insertable<Asset> {
   final String? ticker;
   final String? isin;
   final AssetType assetType;
+  final InstrumentType instrumentType;
+  final AssetClass assetClass;
   final String assetGroup;
   final String currency;
   final String? exchange;
@@ -3084,6 +3126,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     this.ticker,
     this.isin,
     required this.assetType,
+    required this.instrumentType,
+    required this.assetClass,
     required this.assetGroup,
     required this.currency,
     this.exchange,
@@ -3115,6 +3159,16 @@ class Asset extends DataClass implements Insertable<Asset> {
     {
       map['asset_type'] = Variable<String>(
         $AssetsTable.$converterassetType.toSql(assetType),
+      );
+    }
+    {
+      map['instrument_type'] = Variable<String>(
+        $AssetsTable.$converterinstrumentType.toSql(instrumentType),
+      );
+    }
+    {
+      map['asset_class'] = Variable<String>(
+        $AssetsTable.$converterassetClass.toSql(assetClass),
       );
     }
     map['asset_group'] = Variable<String>(assetGroup);
@@ -3165,6 +3219,8 @@ class Asset extends DataClass implements Insertable<Asset> {
           : Value(ticker),
       isin: isin == null && nullToAbsent ? const Value.absent() : Value(isin),
       assetType: Value(assetType),
+      instrumentType: Value(instrumentType),
+      assetClass: Value(assetClass),
       assetGroup: Value(assetGroup),
       currency: Value(currency),
       exchange: exchange == null && nullToAbsent
@@ -3211,6 +3267,12 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetType: $AssetsTable.$converterassetType.fromJson(
         serializer.fromJson<String>(json['assetType']),
       ),
+      instrumentType: $AssetsTable.$converterinstrumentType.fromJson(
+        serializer.fromJson<String>(json['instrumentType']),
+      ),
+      assetClass: $AssetsTable.$converterassetClass.fromJson(
+        serializer.fromJson<String>(json['assetClass']),
+      ),
       assetGroup: serializer.fromJson<String>(json['assetGroup']),
       currency: serializer.fromJson<String>(json['currency']),
       exchange: serializer.fromJson<String?>(json['exchange']),
@@ -3242,6 +3304,12 @@ class Asset extends DataClass implements Insertable<Asset> {
       'assetType': serializer.toJson<String>(
         $AssetsTable.$converterassetType.toJson(assetType),
       ),
+      'instrumentType': serializer.toJson<String>(
+        $AssetsTable.$converterinstrumentType.toJson(instrumentType),
+      ),
+      'assetClass': serializer.toJson<String>(
+        $AssetsTable.$converterassetClass.toJson(assetClass),
+      ),
       'assetGroup': serializer.toJson<String>(assetGroup),
       'currency': serializer.toJson<String>(currency),
       'exchange': serializer.toJson<String?>(exchange),
@@ -3269,6 +3337,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     Value<String?> ticker = const Value.absent(),
     Value<String?> isin = const Value.absent(),
     AssetType? assetType,
+    InstrumentType? instrumentType,
+    AssetClass? assetClass,
     String? assetGroup,
     String? currency,
     Value<String?> exchange = const Value.absent(),
@@ -3291,6 +3361,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     ticker: ticker.present ? ticker.value : this.ticker,
     isin: isin.present ? isin.value : this.isin,
     assetType: assetType ?? this.assetType,
+    instrumentType: instrumentType ?? this.instrumentType,
+    assetClass: assetClass ?? this.assetClass,
     assetGroup: assetGroup ?? this.assetGroup,
     currency: currency ?? this.currency,
     exchange: exchange.present ? exchange.value : this.exchange,
@@ -3315,6 +3387,12 @@ class Asset extends DataClass implements Insertable<Asset> {
       ticker: data.ticker.present ? data.ticker.value : this.ticker,
       isin: data.isin.present ? data.isin.value : this.isin,
       assetType: data.assetType.present ? data.assetType.value : this.assetType,
+      instrumentType: data.instrumentType.present
+          ? data.instrumentType.value
+          : this.instrumentType,
+      assetClass: data.assetClass.present
+          ? data.assetClass.value
+          : this.assetClass,
       assetGroup: data.assetGroup.present
           ? data.assetGroup.value
           : this.assetGroup,
@@ -3350,6 +3428,8 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('ticker: $ticker, ')
           ..write('isin: $isin, ')
           ..write('assetType: $assetType, ')
+          ..write('instrumentType: $instrumentType, ')
+          ..write('assetClass: $assetClass, ')
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
@@ -3377,6 +3457,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     ticker,
     isin,
     assetType,
+    instrumentType,
+    assetClass,
     assetGroup,
     currency,
     exchange,
@@ -3403,6 +3485,8 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.ticker == this.ticker &&
           other.isin == this.isin &&
           other.assetType == this.assetType &&
+          other.instrumentType == this.instrumentType &&
+          other.assetClass == this.assetClass &&
           other.assetGroup == this.assetGroup &&
           other.currency == this.currency &&
           other.exchange == this.exchange &&
@@ -3427,6 +3511,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<String?> ticker;
   final Value<String?> isin;
   final Value<AssetType> assetType;
+  final Value<InstrumentType> instrumentType;
+  final Value<AssetClass> assetClass;
   final Value<String> assetGroup;
   final Value<String> currency;
   final Value<String?> exchange;
@@ -3449,6 +3535,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.ticker = const Value.absent(),
     this.isin = const Value.absent(),
     this.assetType = const Value.absent(),
+    this.instrumentType = const Value.absent(),
+    this.assetClass = const Value.absent(),
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
@@ -3472,6 +3560,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.ticker = const Value.absent(),
     this.isin = const Value.absent(),
     required AssetType assetType,
+    this.instrumentType = const Value.absent(),
+    this.assetClass = const Value.absent(),
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
@@ -3497,6 +3587,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? ticker,
     Expression<String>? isin,
     Expression<String>? assetType,
+    Expression<String>? instrumentType,
+    Expression<String>? assetClass,
     Expression<String>? assetGroup,
     Expression<String>? currency,
     Expression<String>? exchange,
@@ -3520,6 +3612,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (ticker != null) 'ticker': ticker,
       if (isin != null) 'isin': isin,
       if (assetType != null) 'asset_type': assetType,
+      if (instrumentType != null) 'instrument_type': instrumentType,
+      if (assetClass != null) 'asset_class': assetClass,
       if (assetGroup != null) 'asset_group': assetGroup,
       if (currency != null) 'currency': currency,
       if (exchange != null) 'exchange': exchange,
@@ -3545,6 +3639,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<String?>? ticker,
     Value<String?>? isin,
     Value<AssetType>? assetType,
+    Value<InstrumentType>? instrumentType,
+    Value<AssetClass>? assetClass,
     Value<String>? assetGroup,
     Value<String>? currency,
     Value<String?>? exchange,
@@ -3568,6 +3664,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       ticker: ticker ?? this.ticker,
       isin: isin ?? this.isin,
       assetType: assetType ?? this.assetType,
+      instrumentType: instrumentType ?? this.instrumentType,
+      assetClass: assetClass ?? this.assetClass,
       assetGroup: assetGroup ?? this.assetGroup,
       currency: currency ?? this.currency,
       exchange: exchange ?? this.exchange,
@@ -3605,6 +3703,16 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     if (assetType.present) {
       map['asset_type'] = Variable<String>(
         $AssetsTable.$converterassetType.toSql(assetType.value),
+      );
+    }
+    if (instrumentType.present) {
+      map['instrument_type'] = Variable<String>(
+        $AssetsTable.$converterinstrumentType.toSql(instrumentType.value),
+      );
+    }
+    if (assetClass.present) {
+      map['asset_class'] = Variable<String>(
+        $AssetsTable.$converterassetClass.toSql(assetClass.value),
       );
     }
     if (assetGroup.present) {
@@ -3668,6 +3776,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('ticker: $ticker, ')
           ..write('isin: $isin, ')
           ..write('assetType: $assetType, ')
+          ..write('instrumentType: $instrumentType, ')
+          ..write('assetClass: $assetClass, ')
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
@@ -15027,6 +15137,8 @@ typedef $$AssetsTableCreateCompanionBuilder =
       Value<String?> ticker,
       Value<String?> isin,
       required AssetType assetType,
+      Value<InstrumentType> instrumentType,
+      Value<AssetClass> assetClass,
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
@@ -15051,6 +15163,8 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<String?> ticker,
       Value<String?> isin,
       Value<AssetType> assetType,
+      Value<InstrumentType> instrumentType,
+      Value<AssetClass> assetClass,
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
@@ -15186,6 +15300,18 @@ class $$AssetsTableFilterComposer
         column: $table.assetType,
         builder: (column) => ColumnWithTypeConverterFilters(column),
       );
+
+  ColumnWithTypeConverterFilters<InstrumentType, InstrumentType, String>
+  get instrumentType => $composableBuilder(
+    column: $table.instrumentType,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<AssetClass, AssetClass, String>
+  get assetClass => $composableBuilder(
+    column: $table.assetClass,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 
   ColumnFilters<String> get assetGroup => $composableBuilder(
     column: $table.assetGroup,
@@ -15403,6 +15529,16 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get instrumentType => $composableBuilder(
+    column: $table.instrumentType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get assetClass => $composableBuilder(
+    column: $table.assetClass,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get assetGroup => $composableBuilder(
     column: $table.assetGroup,
     builder: (column) => ColumnOrderings(column),
@@ -15507,6 +15643,18 @@ class $$AssetsTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<AssetType, String> get assetType =>
       $composableBuilder(column: $table.assetType, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<InstrumentType, String> get instrumentType =>
+      $composableBuilder(
+        column: $table.instrumentType,
+        builder: (column) => column,
+      );
+
+  GeneratedColumnWithTypeConverter<AssetClass, String> get assetClass =>
+      $composableBuilder(
+        column: $table.assetClass,
+        builder: (column) => column,
+      );
 
   GeneratedColumn<String> get assetGroup => $composableBuilder(
     column: $table.assetGroup,
@@ -15705,6 +15853,8 @@ class $$AssetsTableTableManager
                 Value<String?> ticker = const Value.absent(),
                 Value<String?> isin = const Value.absent(),
                 Value<AssetType> assetType = const Value.absent(),
+                Value<InstrumentType> instrumentType = const Value.absent(),
+                Value<AssetClass> assetClass = const Value.absent(),
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
@@ -15727,6 +15877,8 @@ class $$AssetsTableTableManager
                 ticker: ticker,
                 isin: isin,
                 assetType: assetType,
+                instrumentType: instrumentType,
+                assetClass: assetClass,
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
@@ -15751,6 +15903,8 @@ class $$AssetsTableTableManager
                 Value<String?> ticker = const Value.absent(),
                 Value<String?> isin = const Value.absent(),
                 required AssetType assetType,
+                Value<InstrumentType> instrumentType = const Value.absent(),
+                Value<AssetClass> assetClass = const Value.absent(),
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
@@ -15773,6 +15927,8 @@ class $$AssetsTableTableManager
                 ticker: ticker,
                 isin: isin,
                 assetType: assetType,
+                instrumentType: instrumentType,
+                assetClass: assetClass,
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
