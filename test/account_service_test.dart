@@ -19,7 +19,7 @@ void main() {
 
   group('create and retrieve', () {
     test('create returns an id and getById retrieves it', () async {
-      final id = await service.create(name: 'Checking');
+      final id = await service.create(name: 'Checking', currency: 'EUR');
       expect(id, greaterThan(0));
 
       final account = await service.getById(id);
@@ -41,8 +41,8 @@ void main() {
     });
 
     test('getAll returns all created accounts', () async {
-      await service.create(name: 'A');
-      await service.create(name: 'B');
+      await service.create(name: 'A', currency: 'EUR');
+      await service.create(name: 'B', currency: 'EUR');
 
       final all = await service.getAll();
       expect(all.length, 2);
@@ -51,9 +51,9 @@ void main() {
 
   group('sortOrder auto-increment', () {
     test('each new account gets incrementing sortOrder', () async {
-      await service.create(name: 'First');
-      await service.create(name: 'Second');
-      await service.create(name: 'Third');
+      await service.create(name: 'First', currency: 'EUR');
+      await service.create(name: 'Second', currency: 'EUR');
+      await service.create(name: 'Third', currency: 'EUR');
 
       final all = await service.getAll();
       expect(all[0].name, 'First');
@@ -67,7 +67,7 @@ void main() {
 
   group('update', () {
     test('update name', () async {
-      final id = await service.create(name: 'Old Name');
+      final id = await service.create(name: 'Old Name', currency: 'EUR');
       final result = await service.update(
         id,
         const AccountsCompanion(name: Value('New Name')),
@@ -79,7 +79,7 @@ void main() {
     });
 
     test('update currency', () async {
-      final id = await service.create(name: 'Test');
+      final id = await service.create(name: 'Test', currency: 'EUR');
       await service.update(id, const AccountsCompanion(currency: Value('GBP')));
 
       final updated = await service.getById(id);
@@ -97,7 +97,7 @@ void main() {
 
   group('delete', () {
     test('delete removes the account', () async {
-      final id = await service.create(name: 'ToDelete');
+      final id = await service.create(name: 'ToDelete', currency: 'EUR');
       final deleted = await service.delete(id);
       expect(deleted, 1);
 
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('delete cascades transactions', () async {
-      final accountId = await service.create(name: 'WithTx');
+      final accountId = await service.create(name: 'WithTx', currency: 'EUR');
 
       // Insert transactions directly
       await db.into(db.transactions).insert(TransactionsCompanion.insert(
@@ -141,9 +141,9 @@ void main() {
 
   group('reorder', () {
     test('reorder updates sortOrder for all accounts', () async {
-      final id1 = await service.create(name: 'A');
-      final id2 = await service.create(name: 'B');
-      final id3 = await service.create(name: 'C');
+      final id1 = await service.create(name: 'A', currency: 'EUR');
+      final id2 = await service.create(name: 'B', currency: 'EUR');
+      final id3 = await service.create(name: 'C', currency: 'EUR');
 
       // Reverse the order
       await service.reorder([id3, id2, id1]);
@@ -160,13 +160,13 @@ void main() {
 
   group('getStatsForAll', () {
     test('returns empty map when no transactions', () async {
-      await service.create(name: 'Empty');
+      await service.create(name: 'Empty', currency: 'EUR');
       final stats = await service.getStatsForAll();
       expect(stats, isEmpty);
     });
 
     test('returns correct stats with transactions', () async {
-      final accountId = await service.create(name: 'Stats');
+      final accountId = await service.create(name: 'Stats', currency: 'EUR');
 
       await db.into(db.transactions).insert(TransactionsCompanion.insert(
             accountId: accountId,
@@ -194,8 +194,8 @@ void main() {
     });
 
     test('stats for multiple accounts', () async {
-      final id1 = await service.create(name: 'Acc1');
-      final id2 = await service.create(name: 'Acc2');
+      final id1 = await service.create(name: 'Acc1', currency: 'EUR');
+      final id2 = await service.create(name: 'Acc2', currency: 'EUR');
 
       await db.into(db.transactions).insert(TransactionsCompanion.insert(
             accountId: id1,

@@ -37,6 +37,7 @@ void main() {
         amount: 1000.0,
         quantity: 10.0,
         price: 100.0,
+        currency: 'EUR',
       );
       expect(id, greaterThan(0));
 
@@ -83,18 +84,21 @@ void main() {
         date: DateTime(2024, 1, 1),
         type: EventType.buy,
         amount: 100.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 6, 1),
         type: EventType.buy,
         amount: 200.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 3, 1),
         type: EventType.dividend,
         amount: 50.0,
+        currency: 'EUR',
       );
 
       final events = await service.getByAsset(assetId);
@@ -114,6 +118,7 @@ void main() {
         date: DateTime(2024, 1, 1),
         type: EventType.buy,
         amount: 100.0,
+        currency: 'EUR',
       );
 
       final result = await service.update(
@@ -143,12 +148,14 @@ void main() {
         date: DateTime(2024, 1, 1),
         type: EventType.buy,
         amount: 100.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 2, 1),
         type: EventType.buy,
         amount: 200.0,
+        currency: 'EUR',
       );
 
       final deleted = await service.delete(id1);
@@ -166,18 +173,21 @@ void main() {
         date: DateTime(2024, 1, 1),
         type: EventType.buy,
         amount: 100.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 2, 1),
         type: EventType.sell,
         amount: 50.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 3, 1),
         type: EventType.dividend,
         amount: 10.0,
+        currency: 'EUR',
       );
 
       final deleted = await service.deleteByAsset(assetId);
@@ -198,6 +208,7 @@ void main() {
         type: EventType.buy,
         amount: 1000.0,
         quantity: 10.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
@@ -205,12 +216,14 @@ void main() {
         type: EventType.sell,
         amount: 500.0,
         quantity: 5.0,
+        currency: 'EUR',
       );
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 6, 1),
         type: EventType.dividend,
         amount: 25.0,
+        currency: 'EUR',
       );
 
       final events = await service.getByAsset(assetId);

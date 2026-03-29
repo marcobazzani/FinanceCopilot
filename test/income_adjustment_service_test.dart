@@ -20,6 +20,7 @@ void main() {
       final id = await service.create(
         name: 'Bonus 2024',
         totalAmount: 5000,
+        currency: 'EUR',
         incomeDate: DateTime(2024, 6, 15),
       );
 
@@ -34,16 +35,19 @@ void main() {
       await service.create(
         name: 'Oldest',
         totalAmount: 1000,
+        currency: 'EUR',
         incomeDate: DateTime(2023, 1, 1),
       );
       await service.create(
         name: 'Newest',
         totalAmount: 2000,
+        currency: 'EUR',
         incomeDate: DateTime(2025, 1, 1),
       );
       await service.create(
         name: 'Middle',
         totalAmount: 1500,
+        currency: 'EUR',
         incomeDate: DateTime(2024, 6, 1),
       );
 
@@ -58,6 +62,7 @@ void main() {
       final id = await service.create(
         name: 'Original',
         totalAmount: 1000,
+        currency: 'EUR',
         incomeDate: DateTime(2024, 1, 1),
       );
 
@@ -78,6 +83,7 @@ void main() {
       final id = await service.create(
         name: 'To Delete',
         totalAmount: 3000,
+        currency: 'EUR',
         incomeDate: DateTime(2024, 1, 1),
       );
 
@@ -117,6 +123,7 @@ void main() {
       adjustmentId = await service.create(
         name: 'Test Adjustment',
         totalAmount: 5000,
+        currency: 'EUR',
         incomeDate: DateTime(2024, 6, 1),
       );
     });

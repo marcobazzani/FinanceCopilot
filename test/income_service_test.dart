@@ -36,6 +36,7 @@ void main() {
       final id = await service.create(
         date: DateTime(2024, 1, 1),
         amount: 1000,
+        currency: 'EUR',
       );
 
       final income = await service.getById(id);
@@ -44,9 +45,9 @@ void main() {
     });
 
     test('getAll returns ordered by date desc', () async {
-      await service.create(date: DateTime(2023, 1, 1), amount: 1000);
-      await service.create(date: DateTime(2025, 1, 1), amount: 2000, type: IncomeType.refund);
-      await service.create(date: DateTime(2024, 6, 1), amount: 1500);
+      await service.create(date: DateTime(2023, 1, 1), amount: 1000, currency: 'EUR');
+      await service.create(date: DateTime(2025, 1, 1), amount: 2000, type: IncomeType.refund, currency: 'EUR');
+      await service.create(date: DateTime(2024, 6, 1), amount: 1500, currency: 'EUR');
 
       final all = await service.getAll();
       expect(all, hasLength(3));
@@ -60,6 +61,7 @@ void main() {
       final id = await service.create(
         date: DateTime(2024, 1, 1),
         amount: 1000,
+        currency: 'EUR',
       );
 
       await service.update(
@@ -79,6 +81,7 @@ void main() {
       final id = await service.create(
         date: DateTime(2024, 1, 1),
         amount: 1000,
+        currency: 'EUR',
       );
 
       await service.delete(id);

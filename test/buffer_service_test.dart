@@ -49,11 +49,13 @@ void main() {
       final bufferId = await service.create(name: 'To Delete');
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: 100,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 2, 1),
         amount: 200,
       );
@@ -84,16 +86,19 @@ void main() {
     test('create transactions with auto-computed balanceAfter', () async {
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: 100,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 2, 1),
         amount: 250,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 3, 1),
         amount: -50,
       );
@@ -108,16 +113,19 @@ void main() {
     test('getByBuffer ordered asc by date', () async {
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 6, 1),
         amount: 300,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: 100,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 3, 1),
         amount: 200,
       );
@@ -132,16 +140,19 @@ void main() {
     test('computeBalance returns sum of amounts', () async {
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: 500,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 2, 1),
         amount: 300,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 3, 1),
         amount: -100,
       );
@@ -158,11 +169,13 @@ void main() {
     test('deleteTransaction removes single transaction', () async {
       final txId1 = await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: 100,
       );
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 2, 1),
         amount: 200,
       );
@@ -177,6 +190,7 @@ void main() {
     test('updateTransaction updates description', () async {
       final txId = await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: 100,
         description: 'Initial',
@@ -194,6 +208,7 @@ void main() {
     test('createTransaction with isReimbursement flag', () async {
       await service.createTransaction(
         bufferId: bufferId,
+        currency: 'EUR',
         operationDate: DateTime(2024, 1, 1),
         amount: -50,
         isReimbursement: true,

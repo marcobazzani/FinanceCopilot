@@ -21,6 +21,7 @@ void main() {
       final id = await service.create(
         name: 'Laptop',
         totalAmount: 1200,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 12, 1),
       );
@@ -38,6 +39,7 @@ void main() {
       final id = await service.create(
         name: 'Desk',
         totalAmount: 600,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 6, 1),
       );
@@ -56,6 +58,7 @@ void main() {
       final id = await service.create(
         name: 'Chair',
         totalAmount: 300,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 3, 1),
       );
@@ -77,6 +80,7 @@ void main() {
       final id = await service.create(
         name: 'Monitor',
         totalAmount: 400,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 4, 1),
       );
@@ -99,6 +103,7 @@ void main() {
       final id = await service.create(
         name: 'Keyboard',
         totalAmount: 120,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 4, 1),
       );
@@ -113,6 +118,7 @@ void main() {
       await service.create(
         name: 'Active',
         totalAmount: 100,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 3, 1),
       );
@@ -236,6 +242,7 @@ void main() {
       final id = await service.create(
         name: 'Quarterly Item',
         totalAmount: 1200,
+        currency: 'EUR',
         startDate: DateTime(2024, 1, 1),
         endDate: DateTime(2024, 10, 1),
         stepFrequency: StepFrequency.quarterly,
