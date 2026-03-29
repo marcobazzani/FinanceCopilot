@@ -400,7 +400,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   // 1. Load incomes (excluding refunds), convert to base currency
   final rows = await db.customSelect(
-    "SELECT date, amount, currency FROM incomes WHERE type = 'income' ORDER BY date ASC",
+    "SELECT date, amount, currency FROM incomes WHERE type != 'refund' ORDER BY date ASC",
   ).get();
 
   final incomeByMonth = <(int, int), double>{};

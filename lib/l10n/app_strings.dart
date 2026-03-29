@@ -388,6 +388,13 @@ class AppStrings {
   String get incomeTypeLabel       => _it ? 'Tipo'                      : 'Type';
   String get incomeTypeIncome      => _it ? 'Reddito'                   : 'Income';
   String get incomeTypeRefund      => _it ? 'Rimborso'                  : 'Refund';
+  String get incomeTypeSalary      => _it ? 'Stipendio'                 : 'Salary';
+  String get incomeTypeDonation    => _it ? 'Donazione'                 : 'Donation';
+  String get incomeTypeCoupon      => _it ? 'Cedola'                    : 'Coupon';
+  String get incomeTypeOther       => _it ? 'Altro reddito'             : 'Other Income';
+  String get flagAsIncomeTooltip   => _it ? 'Segna come reddito'        : 'Flag as Income';
+  String get flagAsIncomeTitle     => _it ? 'Segna come reddito'        : 'Flag as Income';
+  String get incomeFlaggedSnack    => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
   String get invalidDateOrAmount   => _it ? 'Data o importo non valido' : 'Invalid date or amount';
   String get deleteIncomeTitle     => _it ? 'Elimina reddito?'          : 'Delete Income?';
   String deleteIncomeConfirm(String amt, String cur, String d) => _it

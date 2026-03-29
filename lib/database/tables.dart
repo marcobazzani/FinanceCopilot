@@ -87,7 +87,7 @@ enum EventType {
   transferOut,
 }
 
-enum IncomeType { income, refund }
+enum IncomeType { income, refund, salary, donation, coupon, other }
 
 enum DepreciationMethod { linear, decliningBalance, custom }
 

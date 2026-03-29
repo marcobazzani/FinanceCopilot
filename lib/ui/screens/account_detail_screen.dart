@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
+import '../../database/tables.dart';
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
@@ -154,13 +155,41 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         style: const TextStyle(fontSize: 14),
                       ),
                       subtitle: Text(dateFmt.format(tx.operationDate), style: const TextStyle(fontSize: 12)),
-                      trailing: Text(
-                        amtFmt.format(tx.amount),
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
-                          fontSize: 14,
-                        ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            amtFmt.format(tx.amount),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (isPositive) ...[
+                            const SizedBox(width: 4),
+                            PopupMenuButton<String>(
+                              iconSize: 18,
+                              padding: EdgeInsets.zero,
+                              tooltip: s.flagAsIncomeTooltip,
+                              itemBuilder: (_) => [
+                                PopupMenuItem(
+                                  value: 'flag_income',
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.label_important_outline, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(s.flagAsIncomeTooltip),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              onSelected: (v) {
+                                if (v == 'flag_income') _flagAsIncome(tx);
+                              },
+                            ),
+                          ],
+                        ],
                       ),
                       onTap: () => _openTransaction(tx),
                     );
@@ -234,6 +263,56 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         builder: (_) => TransactionEditScreen(account: widget.account),
       ),
     );
+  }
+
+  Future<void> _flagAsIncome(Transaction tx) async {
+    final s = ref.read(appStringsProvider);
+    var selectedType = IncomeType.salary;
+
+    String typeLabel(IncomeType t) => switch (t) {
+      IncomeType.income   => s.incomeTypeIncome,
+      IncomeType.refund   => s.incomeTypeRefund,
+      IncomeType.salary   => s.incomeTypeSalary,
+      IncomeType.donation => s.incomeTypeDonation,
+      IncomeType.coupon   => s.incomeTypeCoupon,
+      IncomeType.other    => s.incomeTypeOther,
+    };
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(s.flagAsIncomeTitle),
+          content: DropdownButtonFormField<IncomeType>(
+            value: selectedType,
+            decoration: InputDecoration(labelText: s.incomeTypeLabel),
+            items: IncomeType.values
+                .map((t) => DropdownMenuItem(value: t, child: Text(typeLabel(t))))
+                .toList(),
+            onChanged: (v) => setDialogState(() => selectedType = v!),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await ref.read(incomeServiceProvider).create(
+      date: tx.operationDate,
+      amount: tx.amount,
+      type: selectedType,
+      currency: tx.currency,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.incomeFlaggedSnack)),
+      );
+    }
   }
 
   Future<void> _confirmWipeTransactions(BuildContext context) async {
