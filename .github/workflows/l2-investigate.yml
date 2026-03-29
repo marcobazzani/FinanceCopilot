@@ -1,0 +1,31 @@
+name: L2 - Bug Investigation
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  investigate:
+    if: github.event.label.name == 'l2-needed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            You are L2 support for FinanceCopilot, a Flutter/Dart personal finance app.
+            An L1 triage has escalated this issue as a confirmed bug.
+
+            Investigate the codebase and:
+            1. Identify the likely root cause
+            2. List the relevant files and code paths involved
+            3. Propose a fix approach (describe it in the issue comment)
+            4. Estimate complexity (small/medium/large)
+
+            Rules:
+            - Do NOT open a PR or make code changes automatically
+            - Post your findings as an issue comment
+            - Wait for a maintainer to approve before any code changes

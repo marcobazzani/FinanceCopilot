@@ -1,0 +1,32 @@
+name: L1 Support - Issue Triage
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          trigger_phrase: ""
+          direct_prompt: |
+            You are L1 support for FinanceCopilot, a Flutter/Dart personal finance app.
+            Read this issue and:
+
+            1. Classify it as: bug, feature-request, question, or duplicate
+            2. If it's a usage question, reply with helpful guidance
+            3. If it's a bug report, ask for reproduction steps if missing (OS, app version, steps to reproduce)
+            4. Add appropriate labels (bug, enhancement, question, duplicate)
+            5. If it's a confirmed bug that needs code changes, add the label "l2-needed"
+
+            Rules:
+            - Do NOT propose code fixes or open PRs
+            - Be friendly and professional
+            - If you're unsure, ask clarifying questions
+            - Your job is triage and user support only
