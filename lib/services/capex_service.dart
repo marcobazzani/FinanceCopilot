@@ -62,14 +62,14 @@ class CapexService {
   Future<int> create({
     required String name,
     required double totalAmount,
-    String currency = 'EUR',
+    required String currency,
     required DateTime startDate,
     required DateTime endDate,
     DateTime? expenseDate,
     StepFrequency stepFrequency = StepFrequency.monthly,
   }) async {
     _log.info('create: name=$name, amount=$totalAmount, expense=${expenseDate ?? 'none'}, '
-        '$startDate→$endDate, freq=${stepFrequency.name}');
+        '$startDate->$endDate, freq=${stepFrequency.name}');
     final id = await _db.into(_db.depreciationSchedules).insert(
       DepreciationSchedulesCompanion.insert(
         assetName: name,

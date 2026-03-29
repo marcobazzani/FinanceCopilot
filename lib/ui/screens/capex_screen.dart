@@ -3,14 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
 import '../../services/capex_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'capex_detail_screen.dart';
 import 'capex_edit_screen.dart';
 import 'income_adj_detail_screen.dart';
 import 'income_adj_edit_screen.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
 class CapexScreen extends ConsumerWidget {
@@ -235,7 +235,7 @@ class _CapexTile extends StatelessWidget {
                   if (stats != null && stats!.totalReimbursed > 0) ...[
                     const SizedBox(height: 2),
                     PrivacyText(
-                      'Reimb: ${amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}',
+                      strings.reimbLabel('${amtFormat.format(stats!.totalReimbursed)} ${currencySymbol(schedule.currency)}'),
                       style: TextStyle(fontSize: 11, color: Colors.green.shade600),
                     ),
                   ],
@@ -255,7 +255,7 @@ class _CapexTile extends StatelessWidget {
                 ),
                 if (stats != null)
                   Text(
-                    '${stats!.entryCount} steps · ${schedule.stepFrequency.name}',
+                    strings.nSteps(stats!.entryCount, schedule.stepFrequency.name),
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
               ],
@@ -317,13 +317,13 @@ class _IncomeAdjTile extends ConsumerWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Income: ${shortDate.format(adjustment.incomeDate)}',
+                    ref.read(appStringsProvider).incomeLabel(shortDate.format(adjustment.incomeDate)),
                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   if (totalSpent > 0) ...[
                     const SizedBox(height: 2),
                     PrivacyText(
-                      'Spent: ${amtFormat.format(totalSpent)} $sym · Remaining: ${amtFormat.format(remaining)} $sym',
+                      ref.read(appStringsProvider).spentRemaining('${amtFormat.format(totalSpent)} $sym', '${amtFormat.format(remaining)} $sym'),
                       style: TextStyle(fontSize: 11, color: remaining > 0 ? Colors.orange.shade600 : Colors.green.shade600),
                     ),
                   ],

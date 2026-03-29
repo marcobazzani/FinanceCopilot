@@ -5,10 +5,10 @@ import 'package:intl/intl.dart' show DateFormat;
 
 import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 
 class _Expense {
   final int? id; // null = new
@@ -123,7 +123,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || double.tryParse(v.replaceAll(',', '.')) == null) return 'Invalid';
+                      if (v == null || double.tryParse(v.replaceAll(',', '.')) == null) return s.invalid;
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -145,7 +145,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
             const SizedBox(height: 12),
 
             _DateField(
-              label: 'Income Date (when money arrived)',
+              label: s.incomeDateHelp,
               value: _incomeDate,
               format: dateFmt,
               onPicked: (d) => setState(() => _incomeDate = d),
@@ -170,7 +170,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                       ),
                       const Spacer(),
                       Text(
-                        'Spent: ${_totalSpent.toStringAsFixed(2)} / ${totalAmount.toStringAsFixed(2)} $sym',
+                        s.spentOf('${_totalSpent.toStringAsFixed(2)} $sym', '${totalAmount.toStringAsFixed(2)} $sym'),
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
@@ -200,7 +200,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                   leading: const Icon(Icons.shopping_cart_outlined, color: Colors.orange, size: 18),
                   title: Text(
                     '${dateFmt.format(_expenses[i].date)} — '
-                    '${_expenses[i].description.isNotEmpty ? _expenses[i].description : "Expense"}',
+                    '${_expenses[i].description.isNotEmpty ? _expenses[i].description : s.expense}',
                     style: const TextStyle(fontSize: 13),
                   ),
                   trailing: Row(
@@ -273,7 +273,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
               const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text('Date: ${dateFmt.format(date)}'),
+                title: Text(s.datePrefix(dateFmt.format(date))),
                 trailing: const Icon(Icons.calendar_today, size: 18),
                 onTap: () async {
                   final picked = await showDatePicker(

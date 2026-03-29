@@ -4,10 +4,10 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
-import 'import_screen.dart';
+import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
 
 final _log = getLogger('AccountDetailScreen');
@@ -120,8 +120,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   return Center(
                     child: Text(
                       transactions.isEmpty
-                          ? 'No transactions yet.\nImport a file to add transactions.'
-                          : 'No matching transactions.',
+                          ? s.noTransactionsImport
+                          : s.noMatchingTransactions,
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.grey),
                     ),
@@ -148,7 +148,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         ),
                       ),
                       title: Text(
-                        tx.description.isNotEmpty ? tx.description : '(no description)',
+                        tx.description.isNotEmpty ? tx.description : s.noDescription,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 14),
@@ -192,11 +192,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${transactions.length} transactions', style: const TextStyle(fontSize: 13)),
+                    Text('${transactions.length} ${s.transactions}', style: const TextStyle(fontSize: 13)),
                     Text(
                       balance != null
-                          ? 'Balance: ${amtFmt.format(balance)}'
-                          : '${transactions.length} records',
+                          ? '${s.balance}: ${amtFmt.format(balance)}'
+                          : '${transactions.length} ${s.records}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -250,9 +250,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       builder: (ctx) => AlertDialog(
         title: Text(s.wipeAllTransactionsTitle),
         content: Text(
-          'This will delete all $txCount transactions from "${widget.account.name}" '
-          'but keep the account and its import configuration (column mappings, '
-          'dedup keys, balance settings).\n\n${s.cannotBeUndone}',
+          '${s.wipeTransactionsBody(widget.account.name)}${s.cannotBeUndone}',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
@@ -451,19 +449,19 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   const SizedBox(height: 12),
 
                   if (balanceMode == 'column')
-                    const Text(
-                      'Balance is read from the imported CSV column (set during import)',
-                      style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                    Text(
+                      s.balanceFromColumnHelp,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
                     ),
 
                   if (balanceMode == 'cumulative')
-                    const Text(
-                      'Balance = running sum of amount from oldest to newest',
-                      style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                    Text(
+                      s.balanceCumulativeHelp,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
                     ),
 
                   if (balanceMode == 'filtered') ...[
-                    const Text('Filter column:', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                    Text(s.filterColumnLabel, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String>(
                       value: filterColumn,
@@ -474,7 +472,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         border: OutlineInputBorder(),
                       ),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('— None —', style: TextStyle(color: Colors.grey))),
+                        DropdownMenuItem(value: null, child: Text('\u2014 ${s.none} \u2014', style: const TextStyle(color: Colors.grey))),
                         ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                       ],
                       onChanged: (v) => setDialogState(() {
@@ -487,12 +485,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Text('Include values:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                          Text(s.includeValues, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                           const Spacer(),
                           TextButton(
                             onPressed: () => setDialogState(() => filterInclude.addAll(uniqueValues(filterColumn!))),
                             style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                            child: const Text('All', style: TextStyle(fontSize: 11)),
+                            child: Text(s.all, style: const TextStyle(fontSize: 11)),
                           ),
                           TextButton(
                             onPressed: () => setDialogState(() => filterInclude.clear()),
@@ -560,7 +558,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                             : [],
                       );
                     },
-              child: const Text('Recalculate'),
+              child: Text(s.recalculate),
             ),
           ],
         ),
@@ -576,6 +574,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     Map<String, dynamic> mappings,
   ) async {
     _log.info('balanceRecalc: mode=$balanceMode, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
+    final s = ref.read(appStringsProvider);
     final txSvc = ref.read(transactionServiceProvider);
     final updated = await txSvc.recalculateBalances(
       widget.account.id,
@@ -584,7 +583,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recalculated $updated balances.')),
+        SnackBar(content: Text(s.recalculatedBalances(updated))),
       );
     }
   }

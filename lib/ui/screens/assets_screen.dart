@@ -7,12 +7,12 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../services/asset_service.dart';
 import '../../services/investing_com_service.dart';
-import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
-import '../../services/providers.dart';
+import '../../services/market_price_service.dart' show exchangeCodeToCurrency, investingExchangeToCode, supportedExchanges;
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
 class AssetsScreen extends ConsumerWidget {
@@ -65,6 +65,7 @@ class AssetsScreen extends ConsumerWidget {
                 baseCurrency: baseCurrency,
                 locale: locale,
                 index: i,
+                strings: s,
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -102,6 +103,7 @@ class _AssetTile extends StatelessWidget {
   final String locale;
   final int index;
   final VoidCallback onTap;
+  final AppStrings strings;
 
   const _AssetTile({
     super.key,
@@ -113,6 +115,7 @@ class _AssetTile extends StatelessWidget {
     required this.locale,
     required this.index,
     required this.onTap,
+    required this.strings,
   });
 
   @override
@@ -261,7 +264,7 @@ class _AssetTile extends StatelessWidget {
                 ],
                 if (!asset.isActive) ...[
                   const SizedBox(height: 2),
-                  Text('Inactive',
+                  Text(strings.inactive,
                       style: theme.textTheme.labelSmall
                           ?.copyWith(color: Colors.grey)),
                 ],
@@ -300,27 +303,27 @@ class _AssetTile extends StatelessWidget {
     );
 
     if (stats == null || stats!.eventCount == 0) {
-      return Text('No events yet', style: style);
+      return Text(strings.noEventsYetShort, style: style);
     }
 
     final parts = <InlineSpan>[];
 
     // Event count
     parts.add(TextSpan(
-      text: '${stats!.eventCount} events',
+      text: strings.nEvents(stats!.eventCount),
       style: style,
     ));
 
     // Date range
     if (stats!.firstDate != null) {
       parts.add(TextSpan(
-        text: '  ·  Since ${dateFormat.format(stats!.firstDate!)}',
+        text: '  ·  ${strings.sinceDate(dateFormat.format(stats!.firstDate!))}',
         style: style,
       ));
     }
     if (stats!.lastDate != null) {
       parts.add(TextSpan(
-        text: '  ·  Last ${dateFormat.format(stats!.lastDate!)}',
+        text: '  ·  ${strings.lastDate(dateFormat.format(stats!.lastDate!))}',
         style: style,
       ));
     }
@@ -523,10 +526,13 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
         FilledButton(
           onPressed: () async {
+            final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
+            final currency = exchangeCodeToCurrency[_selectedExchange] ?? baseCurrency;
             await widget.ref.read(assetServiceProvider).create(
                   name: r.description,
                   ticker: r.symbol.isNotEmpty ? r.symbol : null,
                   exchange: _selectedExchange,
+                  currency: currency,
                 );
             if (mounted) Navigator.pop(context);
           },
@@ -581,11 +587,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ? () async {
                   final name = _manualNameCtrl.text.trim();
                   final id = _manualIdCtrl.text.trim().toUpperCase();
+                  final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
+                  final currency = exchangeCodeToCurrency[_manualExchange] ?? baseCurrency;
                   await widget.ref.read(assetServiceProvider).create(
                         name: name,
                         ticker: id.isNotEmpty ? id : null,
                         isin: id.isNotEmpty ? id : null,
                         exchange: _manualExchange,
+                        currency: currency,
                       );
                   if (mounted) Navigator.pop(context);
                 }

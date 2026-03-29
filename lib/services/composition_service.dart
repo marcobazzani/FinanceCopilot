@@ -58,7 +58,7 @@ class CompositionService {
       if (existing != null) {
         final age = DateTime.now().difference(existing.updatedAt);
         if (age.inDays < 7) {
-          _log.fine('syncCompositions: ${asset.name} — fresh (${age.inDays}d), skipping');
+          _log.fine('syncCompositions: ${asset.name} - fresh (${age.inDays}d), skipping');
           continue;
         }
       }
@@ -66,7 +66,7 @@ class CompositionService {
       try {
         final data = await _fetchForAsset(asset);
         if (data.isEmpty) {
-          _log.fine('syncCompositions: ${asset.name} — no data resolved');
+          _log.fine('syncCompositions: ${asset.name} - no data resolved');
           continue;
         }
 
@@ -98,14 +98,14 @@ class CompositionService {
             await (_db.update(_db.assets)
                   ..where((a) => a.id.equals(asset.id)))
                 .write(AssetsCompanion(assetType: Value(newType)));
-            _log.info('syncCompositions: ${asset.name} — updated assetType '
-                '${asset.assetType} → $newType');
+            _log.info('syncCompositions: ${asset.name} - updated assetType '
+                '${asset.assetType} -> $newType');
           }
         }
 
-        _log.info('syncCompositions: ${asset.name} — stored ${data.length} entries');
+        _log.info('syncCompositions: ${asset.name} - stored ${data.length} entries');
       } catch (e) {
-        _log.warning('syncCompositions: ${asset.name} — failed: $e');
+        _log.warning('syncCompositions: ${asset.name} - failed: $e');
       }
     }
 
@@ -157,7 +157,7 @@ class CompositionService {
     // Check if justETF actually has this fund (redirect to search = not found)
     if (!html.contains('data-testid="etf-basics_data_table"') &&
         !html.contains('data-testid="etf-holdings_')) {
-      _log.fine('fetchEtf: ${asset.name} — not found on justETF');
+      _log.fine('fetchEtf: ${asset.name} - not found on justETF');
       return [];
     }
 
@@ -208,7 +208,7 @@ class CompositionService {
     }
 
     if (focus != null && focus.isNotEmpty) {
-      _log.fine('parseInvestmentFocus: ${asset.name} → "$focus"');
+      _log.fine('parseInvestmentFocus: ${asset.name} -> "$focus"');
       final parts = focus.split(',').map((s) => s.trim()).toList();
 
       if (parts.isNotEmpty) {
@@ -307,7 +307,7 @@ class CompositionService {
   Future<List<_Entry>> _fetchFundFromInvestingCom(Asset asset) async {
     // First, find the fund URL via investing.com search API
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
-    _log.fine('fetchFund: ${asset.name} — searching investing.com for "$searchTerm"');
+    _log.fine('fetchFund: ${asset.name} - searching investing.com for "$searchTerm"');
 
     String? fundUrl;
     try {
@@ -330,7 +330,7 @@ class CompositionService {
 
     // Fetch the holdings page
     final holdingsUrl = 'https://www.investing.com${fundUrl.replaceAll(RegExp(r'/$'), '')}-holdings';
-    _log.fine('fetchFund: ${asset.name} → $holdingsUrl');
+    _log.fine('fetchFund: ${asset.name} -> $holdingsUrl');
 
     final html = await _fetchHtml(holdingsUrl);
     if (html == null) return [];
@@ -454,7 +454,7 @@ class CompositionService {
       );
       return response.data as String;
     } catch (e) {
-      _log.warning('fetchHtml: $url — $e');
+      _log.warning('fetchHtml: $url - $e');
       return null;
     }
   }

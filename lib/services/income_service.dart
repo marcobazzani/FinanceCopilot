@@ -39,7 +39,7 @@ class IncomeService {
     required DateTime date,
     required double amount,
     IncomeType type = IncomeType.income,
-    String currency = 'EUR',
+    required String currency,
   }) async {
     _log.info('create: amount=$amount, date=$date, type=$type, currency=$currency');
     return _db.into(_db.incomes).insert(

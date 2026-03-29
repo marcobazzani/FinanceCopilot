@@ -5,6 +5,18 @@
   flutter build macos --release && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
 
+## Windows VM (Parallels)
+
+- A Parallels "Windows 11" VM runs on this Mac. Use `prlctl exec "Windows 11"` to run commands.
+- Flutter path: `C:\Users\marco\dev\flutter\bin\flutter.bat`
+- Project path: `C:\Users\marco\dev\FinanceCopilot`
+- Build: `prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release 2>&1"`
+- Kill before rebuild: `prlctl exec "Windows 11" cmd /c "taskkill /F /IM FinanceCopilot.exe 2>&1"`
+- **Launch GUI app** — `prlctl exec` runs in a non-interactive service session (Session 0), so use a scheduled task to launch in the user's interactive session:
+  ```
+  prlctl exec "Windows 11" cmd /c "schtasks /Create /TN LaunchFC /TR \"C:\Users\marco\dev\FinanceCopilot\build\windows\x64\runner\Release\FinanceCopilot.exe\" /SC ONCE /ST 00:00 /F /RU marco 2>&1 && schtasks /Run /TN LaunchFC 2>&1 && schtasks /Delete /TN LaunchFC /F 2>&1"
+  ```
+
 # Git Workflow
 
 - Commit into git when detecting the user is starting a new task (not iterating on a previous task).
@@ -52,7 +64,8 @@
 - `lib/database/database.dart` — Drift DB definition, migrations
 - `lib/database/tables.dart` — All table definitions
 - `lib/database/providers.dart` — Database provider
-- `lib/services/providers.dart` — All Riverpod service/stream providers
+- `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
+- `lib/services/file_parser_service.dart` — CSV/Excel file parsing (isolate-based)
 - `lib/services/market_price_service.dart` — Abstract market price service
 - `lib/services/google_sheets_price_service.dart` — Google Sheets price impl (CSV)
 - `lib/services/asset_service.dart` — Asset CRUD
@@ -60,9 +73,10 @@
 - `lib/services/exchange_rate_service.dart` — FX rates
 - `lib/services/capex_service.dart` — Depreciation/adjustment schedules
 - `lib/services/buffer_service.dart` — Buffer management
-- `lib/ui/screens/dashboard_screen.dart` — Charts (net worth + investment)
+- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 13 part files)
 - `lib/ui/screens/assets_screen.dart` — Asset list + create dialog
 - `lib/ui/screens/accounts_screen.dart` — Account list
 - `lib/ui/screens/capex_screen.dart` — Adjustments screen
-- `lib/ui/screens/import_screen.dart` — CSV import
+- `lib/ui/screens/import/import_screen.dart` — CSV import (split into 4 part files)
+- `lib/utils/date_parser.dart` — Comprehensive multi-format date parser
 - `lib/version.dart` — Version number

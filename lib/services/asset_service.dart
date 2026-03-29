@@ -42,7 +42,7 @@ class AssetService {
     String? ticker,
     String? isin,
     String? exchange,
-    String currency = 'EUR',
+    required String currency,
     double? taxRate,
   }) {
     _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange');

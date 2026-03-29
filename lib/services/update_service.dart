@@ -38,7 +38,7 @@ class UpdateService {
     try {
       return channel == 'nightly' ? await _checkNightly() : await _checkStable();
     } catch (e) {
-      _log.warning('checkForUpdate: failed — $e');
+      _log.warning('checkForUpdate: failed - $e');
       return const UpdateInfo();
     }
   }
@@ -114,7 +114,7 @@ class UpdateService {
         return msg.split('\n').first; // first line only
       }).toList();
     } catch (e) {
-      _log.warning('getChangelog: failed — $e');
+      _log.warning('getChangelog: failed - $e');
       return [];
     }
   }
@@ -145,7 +145,7 @@ class UpdateService {
         throw UnsupportedError('Auto-update not supported on this platform');
       }
     } catch (e) {
-      _log.severe('applyUpdate: failed — $e');
+      _log.severe('applyUpdate: failed - $e');
       rethrow;
     }
     // tempDir cleanup happens on next launch or OS cleanup

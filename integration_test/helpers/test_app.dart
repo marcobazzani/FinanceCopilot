@@ -9,7 +9,7 @@ import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/main.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart';
-import 'package:finance_copilot/services/providers.dart';
+import 'package:finance_copilot/services/providers/providers.dart';
 
 /// No-op market price service that never makes HTTP calls.
 class _NoOpMarketPriceService extends MarketPriceService {

@@ -6,11 +6,11 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/capex_service.dart';
 import '../../services/exchange_rate_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 
 final _log = getLogger('CapexEditScreen');
 
@@ -218,7 +218,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || double.tryParse(v) == null) return 'Invalid';
+                      if (v == null || double.tryParse(v) == null) return s.invalid;
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -244,7 +244,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                 controller: _exchangeRateCtrl,
                 decoration: InputDecoration(
                   labelText: s.rateLabel(_baseCurrency, _currency),
-                  hintText: 'e.g. 1.08',
+                  hintText: s.rateHint,
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
@@ -252,7 +252,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
             // Expense date
             _DateField(
-              label: 'Expense Date (when money left)',
+              label: s.expenseDateHelp,
               value: _expenseDate,
               format: dateFmt,
               onPicked: (d) => setState(() => _expenseDate = d),
@@ -279,7 +279,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                   leading: const Icon(Icons.arrow_back, color: Colors.green, size: 18),
                   title: Text(
                     '${dateFmt.format(_reimbursements[i].date)} — '
-                    '${_reimbursements[i].description.isNotEmpty ? _reimbursements[i].description : "Reimbursement"}',
+                    '${_reimbursements[i].description.isNotEmpty ? _reimbursements[i].description : s.reimbursement}',
                     style: const TextStyle(fontSize: 13),
                   ),
                   trailing: Row(
@@ -305,7 +305,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    'Effective amount to spread: ${effective?.toStringAsFixed(2) ?? '?'} $sym',
+                    s.effectiveAmountToSpread(effective?.toStringAsFixed(2) ?? '?', sym),
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -360,9 +360,9 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             const SizedBox(height: 4),
             Text(
               switch (_spreadMode) {
-                _SpreadMode.backward => 'Spread savings from start date up to expense date',
-                _SpreadMode.forward => 'Spread cost from expense date to end date',
-                _SpreadMode.startSteps => 'Spread from start date for N steps',
+                _SpreadMode.backward => s.spreadBackwardHelp,
+                _SpreadMode.forward => s.spreadForwardHelp,
+                _SpreadMode.startSteps => s.spreadStartStepsHelp,
               },
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
@@ -373,7 +373,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
             const SizedBox(height: 4),
             Text(
-              '${previewDates.length} steps from ${dateFmt.format(_startDate)} to ${dateFmt.format(_endDate)}',
+              s.stepsFromTo(previewDates.length, dateFmt.format(_startDate), dateFmt.format(_endDate)),
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
 
@@ -470,11 +470,12 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
   }
 
   List<Widget> _buildModeFields(DateFormat dateFmt) {
+    final s = ref.read(appStringsProvider);
     switch (_spreadMode) {
       case _SpreadMode.backward:
         return [
           _DateField(
-            label: 'Start Date',
+            label: s.startDate,
             value: _boundaryDate,
             format: dateFmt,
             onPicked: (d) => setState(() => _boundaryDate = d),
@@ -483,7 +484,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
       case _SpreadMode.forward:
         return [
           _DateField(
-            label: 'End Date',
+            label: s.endDate,
             value: _boundaryDate,
             format: dateFmt,
             onPicked: (d) => setState(() => _boundaryDate = d),
@@ -492,7 +493,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
       case _SpreadMode.startSteps:
         return [
           _DateField(
-            label: 'Start Date',
+            label: s.startDate,
             value: _boundaryDate,
             format: dateFmt,
             onPicked: (d) => setState(() => _boundaryDate = d),
@@ -500,11 +501,11 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _stepsCtrl,
-            decoration: InputDecoration(labelText: ref.read(appStringsProvider).numberOfSteps),
+            decoration: InputDecoration(labelText: s.numberOfSteps),
             keyboardType: TextInputType.number,
             validator: (v) {
               final n = int.tryParse(v ?? '');
-              if (n == null || n < 1) return 'Min 1';
+              if (n == null || n < 1) return s.minOne;
               return null;
             },
             onChanged: (_) => setState(() {}),
@@ -543,7 +544,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
               const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text('Date: ${dateFmt.format(date)}'),
+                title: Text(s.datePrefix(dateFmt.format(date))),
                 trailing: const Icon(Icons.calendar_today, size: 18),
                 onTap: () async {
                   final picked = await showDatePicker(

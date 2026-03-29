@@ -41,7 +41,7 @@ class IncomeAdjustmentService {
   Future<int> create({
     required String name,
     required double totalAmount,
-    String currency = 'EUR',
+    required String currency,
     required DateTime incomeDate,
   }) async {
     _log.info('create: name=$name, amount=$totalAmount, date=$incomeDate');

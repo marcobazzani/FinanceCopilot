@@ -67,7 +67,7 @@ class BufferService {
     DateTime? valueDate,
     String description = '',
     required double amount,
-    String currency = 'EUR',
+    required String currency,
     bool isReimbursement = false,
   }) async {
     _log.info('createTransaction: bufferId=$bufferId, amount=$amount, reimb=$isReimbursement');

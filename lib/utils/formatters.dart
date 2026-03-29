@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'date_parser.dart' as dateParse;
+
 /// Locale-aware number/date formatters.
 /// All functions accept a locale string (e.g. 'it_IT', 'en_US').
 
@@ -11,6 +13,10 @@ NumberFormat qtyFormat(String locale) =>
 
 NumberFormat currencyFormat(String locale, String symbol, {int? decimalDigits}) =>
     NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: decimalDigits);
+
+/// Format a date as yyyy-MM-dd without DateFormat overhead.
+String formatYmd(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 DateFormat shortDateFormat(String locale) => DateFormat.yMd(locale);
 DateFormat monthYearFormat(String locale) => DateFormat.yMMM(locale);
@@ -62,29 +68,5 @@ double? parseFlexibleNumber(String text) {
   return double.tryParse(s);
 }
 
-/// Flexible date parser: tries multiple formats + multi-language month names.
-DateTime? parseFlexibleDate(String text) {
-  final t = text.trim();
-  if (t.isEmpty) return null;
-
-  // Try common numeric formats
-  for (final fmt in [DateFormat('dd/MM/yyyy'), DateFormat('yyyy-MM-dd'), DateFormat('MM/dd/yyyy')]) {
-    try {
-      return fmt.parseStrict(t);
-    } catch (_) {}
-  }
-
-  // Named month: "1 luglio 2013", "20 Feb 2017", etc.
-  final namedMatch = RegExp(r'(\d{1,2})\s+(\w+)\s+(\d{4})').firstMatch(t);
-  if (namedMatch != null) {
-    final day = int.tryParse(namedMatch.group(1)!);
-    final monthName = namedMatch.group(2)!.toLowerCase();
-    final year = int.tryParse(namedMatch.group(3)!);
-    final month = monthMap[monthName];
-    if (day != null && month != null && year != null) {
-      return DateTime(year, month, day);
-    }
-  }
-
-  return null;
-}
+/// Flexible date parser: delegates to comprehensive [dateParse.tryParseDate].
+DateTime? parseFlexibleDate(String text) => dateParse.tryParseDate(text);

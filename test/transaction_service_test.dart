@@ -33,6 +33,7 @@ void main() {
         operationDate: DateTime(2024, 3, 15),
         amount: 100.0,
         description: 'Salary',
+        currency: 'EUR',
       );
       expect(id, greaterThan(0));
 
@@ -76,18 +77,21 @@ void main() {
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
         description: 'Jan',
+        currency: 'EUR',
       );
       await service.create(
         accountId: accountId,
         operationDate: DateTime(2024, 6, 1),
         amount: 200.0,
         description: 'Jun',
+        currency: 'EUR',
       );
       await service.create(
         accountId: accountId,
         operationDate: DateTime(2024, 3, 1),
         amount: 150.0,
         description: 'Mar',
+        currency: 'EUR',
       );
       // Same date as Jun, should be ordered by id desc (this one has higher id)
       await service.create(
@@ -95,6 +99,7 @@ void main() {
         operationDate: DateTime(2024, 6, 1),
         amount: 250.0,
         description: 'Jun2',
+        currency: 'EUR',
       );
 
       final txs = await service.getByAccount(accountId);
@@ -115,6 +120,7 @@ void main() {
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
         description: 'Old',
+        currency: 'EUR',
       );
 
       final result = await service.update(
@@ -143,6 +149,7 @@ void main() {
         accountId: accountId,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
 
       final deleted = await service.delete(id);
@@ -160,6 +167,7 @@ void main() {
         accountId: accountId,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
 
       await service.updateHash(id, 'abc123');
@@ -176,11 +184,13 @@ void main() {
         accountId: accountId,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
       final id2 = await service.create(
         accountId: accountId,
         operationDate: DateTime(2024, 1, 2),
         amount: 200.0,
+        currency: 'EUR',
       );
 
       await service.batchUpdateBalances({id1: 100.0, id2: 300.0});
@@ -198,6 +208,7 @@ void main() {
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
         balanceAfter: 100.0,
+        currency: 'EUR',
       );
 
       await service.batchUpdateBalances({id: null});
@@ -214,16 +225,19 @@ void main() {
         accountId: accountId,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
       await service.create(
         accountId: accountId,
         operationDate: DateTime(2024, 2, 1),
         amount: 200.0,
+        currency: 'EUR',
       );
       await service.create(
         accountId: accountId,
         operationDate: DateTime(2024, 3, 1),
         amount: 300.0,
+        currency: 'EUR',
       );
 
       final deleted = await service.deleteByAccount(accountId);
@@ -241,11 +255,13 @@ void main() {
         accountId: acc1,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
       await service.create(
         accountId: acc2,
         operationDate: DateTime(2024, 1, 1),
         amount: 200.0,
+        currency: 'EUR',
       );
 
       await service.deleteByAccount(acc1);
@@ -310,11 +326,13 @@ void main() {
         accountId: accountId,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
       await service.create(
         accountId: accountId,
         operationDate: DateTime(2024, 1, 1),
         amount: 100.0,
+        currency: 'EUR',
       );
 
       final deleted = await service.removeDuplicates(accountId);

@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 
 class PrivacyText extends ConsumerWidget {
   final String text;

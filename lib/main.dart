@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,15 +8,16 @@ import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
 import 'services/exchange_rate_service.dart';
-import 'services/providers.dart';
+import 'services/providers/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/capex_screen.dart';
-import 'ui/screens/dashboard_screen.dart';
+import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/db_picker_screen.dart';
-import 'ui/screens/import_screen.dart';
+import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/income_screen.dart';
+import 'utils/bug_reporter.dart';
 import 'utils/logger.dart';
 import 'version.dart';
 
@@ -102,12 +102,12 @@ class _SafeAppShell extends ConsumerWidget {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 16),
-              Text('Failed to open database:\n$e',
+              Text(ref.read(appStringsProvider).dbOpenFailed(e),
                   textAlign: TextAlign.center),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: () => ref.read(dbPathProvider.notifier).state = null,
-                child: const Text('Back to picker'),
+                child: Text(ref.read(appStringsProvider).backToPicker),
               ),
             ],
           ),
@@ -129,6 +129,7 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
   bool _isSyncing = false;
+  final _repaintKey = GlobalKey();
 
   List<NavigationDestination> _destinations(AppStrings s) => [
     NavigationDestination(icon: const Icon(Icons.dashboard), label: s.navDashboard),
@@ -157,7 +158,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final online = await monitor.check();
     ref.read(networkOnlineProvider.notifier).state = online;
     if (!online) {
-      _log.info('Network offline — skipping background sync');
+      _log.info('Network offline - skipping background sync');
       return;
     }
 
@@ -182,7 +183,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final online = await monitor.check();
     ref.read(networkOnlineProvider.notifier).state = online;
     if (!online) {
-      _log.info('Network offline — skipping price sync');
+      _log.info('Network offline - skipping price sync');
       return;
     }
 
@@ -215,7 +216,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     final isWide = MediaQuery.sizeOf(context).width >= 600;
     final s = ref.watch(appStringsProvider);
 
-    return Scaffold(
+    return RepaintBoundary(
+      key: _repaintKey,
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('FinanceCopilot'),
         actions: [
@@ -234,7 +237,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             if (!online) {
               return IconButton(
                 icon: Icon(Icons.signal_wifi_off, color: Colors.red.shade300),
-                tooltip: 'No network — tap to retry',
+                tooltip: ref.read(appStringsProvider).noNetworkRetry,
                 onPressed: () async {
                   final monitor = ref.read(networkMonitorProvider);
                   monitor.reset();
@@ -292,9 +295,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                     ),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
-                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -309,9 +325,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                 Positioned(
                   left: 8,
                   bottom: 4,
-                  child: Text(
-                    'v$appVersion',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'v$appVersion',
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -323,7 +352,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
               destinations: _destinations(s),
             ),
-    );
+    ));
   }
 
   static const _localeOptions = [
@@ -347,6 +376,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
         ? currentLocale
         : '';
+    var selectedLanguage = ref.read(portableLanguageProvider);
 
     await showDialog(
       context: context,
@@ -360,7 +390,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<String>(
-                  value: selectedCurrency,
+                  initialValue: selectedCurrency,
                   decoration: InputDecoration(labelText: s.settingsCurrency),
                   items: ExchangeRateService.allCurrencies
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
@@ -369,12 +399,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedLocale,
+                  initialValue: selectedLocale,
                   decoration: InputDecoration(labelText: s.settingsNumberFormat),
                   items: _localeOptions
                       .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
                       .toList(),
                   onChanged: (v) => setDialogState(() => selectedLocale = v!),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedLanguage,
+                  decoration: InputDecoration(labelText: s.settingsLanguage),
+                  items: const [
+                    DropdownMenuItem(value: 'en', child: Text('English')),
+                    DropdownMenuItem(value: 'it', child: Text('Italiano')),
+                  ],
+                  onChanged: (v) => setDialogState(() => selectedLanguage = v!),
                 ),
                 const SizedBox(height: 20),
                 const Divider(),
@@ -402,10 +442,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                         side: BorderSide(color: Theme.of(ctx).colorScheme.error),
                       ),
                       onPressed: () async {
-                        await db.delete(db.marketPrices).go();
-                        await db.delete(db.exchangeRates).go();
-                        await db.delete(db.assetCompositions).go();
-                        _log.info('Cleared all cached data (prices, exchange rates, compositions)');
+                        await ref.read(marketPriceServiceProvider).clearCache();
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             SnackBar(content: Text(s.settingsCacheCleared)),
@@ -429,7 +466,9 @@ class _AppShellState extends ConsumerState<AppShell> {
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
-                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale');
+                await AppSettings.setLanguage(selectedLanguage);
+                ref.read(portableLanguageProvider.notifier).state = selectedLanguage;
+                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale, lang=$selectedLanguage');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text(s.save),

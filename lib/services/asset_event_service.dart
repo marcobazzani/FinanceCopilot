@@ -32,7 +32,7 @@ class AssetEventService {
     required double amount,
     double? quantity,
     double? price,
-    String currency = 'EUR',
+    required String currency,
     double? exchangeRate,
     double? commission,
     String? notes,
@@ -67,5 +67,20 @@ class AssetEventService {
   Future<int> deleteByAsset(int assetId) {
     _log.warning('deleteByAsset: assetId=$assetId');
     return (_db.delete(_db.assetEvents)..where((e) => e.assetId.equals(assetId))).go();
+  }
+
+  /// Weighted average buy price: total_cost / total_qty for buy/contribute events.
+  /// Returns null if no qualifying events exist.
+  Future<double?> getAverageBuyPrice(int assetId) async {
+    final row = await _db.customSelect(
+      "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
+      "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
+      "FROM asset_events WHERE asset_id = ? AND type IN ('buy','contribute') "
+      "AND quantity IS NOT NULL AND price IS NOT NULL",
+      variables: [Variable.withInt(assetId)],
+    ).getSingleOrNull();
+    final totalCost = row?.readNullable<double>('total_cost') ?? 0;
+    final totalQty = row?.readNullable<double>('total_qty') ?? 0;
+    return totalQty > 0 ? totalCost / totalQty : null;
   }
 }

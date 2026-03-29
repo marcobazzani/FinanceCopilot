@@ -8,11 +8,11 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 
 import '../../database/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../services/app_settings.dart';
 import '../../services/demo_db_service.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../services/update_service.dart';
+import '../../utils/bug_reporter.dart';
 import '../../utils/logger.dart';
 import '../../version.dart';
 
@@ -80,6 +80,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   bool _isLoading = true;
   bool _isGenerating = false;
   double _demoProgress = 0;
+  final _repaintKey = GlobalKey();
   String _demoLabel = '';
   String _channel = 'nightly';
 
@@ -127,7 +128,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
             icon: const Icon(Icons.system_update, size: 36, color: Colors.blue),
-            title: Text('Update Available — ${info.latestVersion ?? ""}'),
+            title: Text(ref.read(appStringsProvider).updateAvailable(info.latestVersion ?? '')),
             content: SizedBox(
               width: 400,
               child: Column(
@@ -135,7 +136,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (changelog.isNotEmpty) ...[
-                    const Text('Changes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text(ref.read(appStringsProvider).changesLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 4),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 200),
@@ -150,12 +151,12 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                       ),
                     ),
                   ] else
-                    Text(info.releaseNotes ?? 'A new version is available.'),
+                    Text(info.releaseNotes ?? ref.read(appStringsProvider).newVersionAvailable),
                   if (downloading) ...[
                     const SizedBox(height: 16),
                     LinearProgressIndicator(value: progress > 0 ? progress : null),
                     const SizedBox(height: 4),
-                    Text('Downloading... ${(progress * 100).toStringAsFixed(0)}%',
+                    Text(ref.read(appStringsProvider).downloadingProgress((progress * 100).round()),
                         style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ],
@@ -166,11 +167,11 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                 : [
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Later'),
+                      child: Text(ref.read(appStringsProvider).later),
                     ),
                     FilledButton.icon(
                       icon: const Icon(Icons.download, size: 18),
-                      label: const Text('Update & Restart'),
+                      label: Text(ref.read(appStringsProvider).updateAndRestart),
                       onPressed: info.downloadUrl == null
                           ? null
                           : () async {
@@ -184,7 +185,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                                 if (ctx.mounted) {
                                   setDialogState(() => downloading = false);
                                   ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(content: Text('Update failed: $e')),
+                                    SnackBar(content: Text(ref.read(appStringsProvider).updateFailed(e))),
                                   );
                                 }
                               }
@@ -234,7 +235,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['db'],
-        dialogTitle: 'Open Database',
+        dialogTitle: ref.read(appStringsProvider).openDatabase,
       );
       if (result != null && result.files.single.path != null) {
         _selectDb(result.files.single.path!);
@@ -246,7 +247,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
 
   Future<void> _createEmpty() async {
     final result = await FilePicker.platform.saveFile(
-      dialogTitle: 'Create new project',
+      dialogTitle: ref.read(appStringsProvider).createNewProject,
       fileName: 'FinanceCopilot.db',
       allowedExtensions: ['db'],
       type: FileType.custom,
@@ -265,7 +266,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   Future<void> _generateDemo() async {
     // Ask user where to save
     final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Choose folder for demo database',
+      dialogTitle: ref.read(appStringsProvider).chooseDemoFolder,
     );
     if (dir == null) return;
 
@@ -299,7 +300,9 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     final theme = Theme.of(context);
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
-    return Scaffold(
+    return RepaintBoundary(
+      key: _repaintKey,
+      child: Scaffold(
       appBar: AppBar(title: const Text('FinanceCopilot')),
       body: Center(
         child: ConstrainedBox(
@@ -406,21 +409,21 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                     'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 4),
                   GestureDetector(
-                    onTap: () async {
-                      final current = ref.read(portableLanguageProvider);
-                      final next = current == 'en' ? 'it' : 'en';
-                      await AppSettings.setLanguage(next);
-                      ref.read(portableLanguageProvider.notifier).state = next;
-                    },
+                    onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey),
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Text(
-                        ref.watch(portableLanguageProvider) == 'it' ? '🇮🇹' : '🇬🇧',
-                        style: const TextStyle(fontSize: 14),
-                      ),
+                      child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  _LanguageDropdown(
+                    value: ref.watch(portableLanguageProvider),
+                    onChanged: (lang) async {
+                      await AppSettings.setLanguage(lang);
+                      ref.read(portableLanguageProvider.notifier).state = lang;
+                    },
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
@@ -444,6 +447,34 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
           ),
         ),
       ),
+    ));
+  }
+}
+
+class _LanguageDropdown extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const _LanguageDropdown({required this.value, required this.onChanged});
+
+  static const _options = [
+    ('en', 'English'),
+    ('it', 'Italiano'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<String>(
+      value: value,
+      underline: const SizedBox.shrink(),
+      isDense: true,
+      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary),
+      items: _options
+          .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+          .toList(),
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
     );
   }
 }

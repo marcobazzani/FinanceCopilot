@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
-import '../../services/providers.dart';
+import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
-import 'dashboard_screen.dart' show currencySymbol;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'income_adj_edit_screen.dart';
 
 class IncomeAdjDetailScreen extends ConsumerWidget {
@@ -80,12 +80,12 @@ class _DetailBody extends ConsumerWidget {
                     children: [
                       Chip(label: Text(adjustment.currency)),
                       const SizedBox(width: 8),
-                      const Chip(label: Text('Income')),
+                      Chip(label: Text(s.incomeChip)),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _infoRow('Total', amtFmt.format(adjustment.totalAmount)),
-                  _infoRow('Income Date', dateFmt.format(adjustment.incomeDate)),
+                  _infoRow(s.totalLabel, amtFmt.format(adjustment.totalAmount)),
+                  _infoRow(s.incomeDateFieldLabel, dateFmt.format(adjustment.incomeDate)),
                   expensesAsync.when(
                     data: (expenses) {
                       final totalSpent = expenses.fold(0.0, (sum, e) => sum + e.amount);
@@ -93,8 +93,8 @@ class _DetailBody extends ConsumerWidget {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _infoRow('Spent', amtFmt.format(totalSpent)),
-                          _infoRow('Remaining', amtFmt.format(remaining)),
+                          _infoRow(s.spentLabel, amtFmt.format(totalSpent)),
+                          _infoRow(s.remainingLabel, amtFmt.format(remaining)),
                         ],
                       );
                     },
@@ -211,7 +211,7 @@ class _DetailBody extends ConsumerWidget {
               const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text('Date: ${dateFmt.format(date)}'),
+                title: Text(s.datePrefix(dateFmt.format(date))),
                 trailing: const Icon(Icons.calendar_today, size: 18),
                 onTap: () async {
                   final picked = await showDatePicker(

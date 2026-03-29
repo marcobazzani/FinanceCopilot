@@ -50,7 +50,7 @@ class AccountService {
 
   Future<int> create({
     required String name,
-    String currency = 'EUR',
+    required String currency,
     String institution = '',
   }) async {
     _log.info('create: name=$name, currency=$currency');

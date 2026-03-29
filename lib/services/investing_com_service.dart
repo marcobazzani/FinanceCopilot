@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
+import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'market_price_service.dart';
 
@@ -101,7 +102,7 @@ class InvestingComService extends MarketPriceService {
       _cfCookieStr = merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
       _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
       final hasCf = merged.containsKey('cf_clearance');
-      _log.info('Cloudflare solved — ${merged.length} cookies (cf_clearance: $hasCf)');
+      _log.info('Cloudflare solved - ${merged.length} cookies (cf_clearance: $hasCf)');
     } catch (e) {
       _log.warning('Failed to extract cookies: $e');
     }
@@ -202,7 +203,7 @@ class InvestingComService extends MarketPriceService {
         if (resultStr == null) return null;
         final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
         if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
-          _log.warning('_fetchViaJsFetch: $url → error ${decoded['__error']}');
+          _log.warning('_fetchViaJsFetch: $url -> error ${decoded['__error']}');
           return null;
         }
         return decoded as Map<String, dynamic>;
@@ -210,7 +211,7 @@ class InvestingComService extends MarketPriceService {
       final value = result.value;
       if (value is Map<String, dynamic>) {
         if (value.containsKey('__error')) {
-          _log.warning('_fetchViaJsFetch: $url → error ${value['__error']}');
+          _log.warning('_fetchViaJsFetch: $url -> error ${value['__error']}');
           return null;
         }
         return value;
@@ -219,14 +220,14 @@ class InvestingComService extends MarketPriceService {
       if (value is String) {
         final decoded = jsonDecode(value);
         if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
-          _log.warning('_fetchViaJsFetch: $url → error ${decoded['__error']}');
+          _log.warning('_fetchViaJsFetch: $url -> error ${decoded['__error']}');
           return null;
         }
         return decoded as Map<String, dynamic>;
       }
       return null;
     } catch (e) {
-      _log.fine('_fetchViaJsFetch: $url → $e');
+      _log.fine('_fetchViaJsFetch: $url -> $e');
       return null;
     }
   }
@@ -286,7 +287,7 @@ class InvestingComService extends MarketPriceService {
       _log.fine('_webViewFetch: ${e.response?.statusCode}');
       return null;
     } catch (e) {
-      _log.fine('_webViewFetch: failed — $e');
+      _log.fine('_webViewFetch: failed - $e');
       return null;
     }
   }
@@ -371,7 +372,7 @@ class InvestingComService extends MarketPriceService {
           ));
         }
 
-        _log.info('searchCid: found $ticker → cid=${r.cid} (${r.exchange})');
+        _log.info('searchCid: found $ticker -> cid=${r.cid} (${r.exchange})');
         return r.cid;
       }
     }
@@ -542,7 +543,7 @@ class InvestingComService extends MarketPriceService {
       }
       return null;
     } catch (e) {
-      _log.warning('_fetchFxRate: $pairKey failed — $e');
+      _log.warning('_fetchFxRate: $pairKey failed - $e');
       return null;
     }
   }
@@ -567,7 +568,7 @@ class InvestingComService extends MarketPriceService {
 
     final dataMap = await _webViewFetch(url);
     if (dataMap == null) {
-      _log.fine('fetch: $tag (cid=$cid) — WebView fetch returned null');
+      _log.fine('fetch: $tag (cid=$cid) - WebView fetch returned null');
       return {};
     }
     final rows = (dataMap['data'] as List?) ?? [];
@@ -599,7 +600,7 @@ class InvestingComService extends MarketPriceService {
       prices[day] = price;
     }
 
-    _log.info('fetch: $tag (cid=$cid) → ${prices.length} prices');
+    _log.info('fetch: $tag (cid=$cid) -> ${prices.length} prices');
     return prices;
   }
 
@@ -673,7 +674,7 @@ class InvestingComService extends MarketPriceService {
             await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
               key: urlKey, value: r.url!, description: Value('Investing.com URL for $searchTerm'),
             ));
-            _log.info('backfillUrls: cached URL for $searchTerm → ${r.url}');
+            _log.info('backfillUrls: cached URL for $searchTerm -> ${r.url}');
             break;
           }
         }
@@ -726,15 +727,15 @@ class InvestingComService extends MarketPriceService {
         final needsForward = forceToday || from.isBefore(now);
 
         if (!needsForward && !needsBackfill) {
-          _log.fine('syncPrices: ${_assetLabel(asset)} — already up to date');
+          _log.fine('syncPrices: ${_assetLabel(asset)} - already up to date');
           continue;
         }
 
         if (needsBackfill) {
           backfillRanges[asset.id] = firstBuy;
-          _log.info('syncPrices: ${_assetLabel(asset)} — needs backfill from '
-              '${firstBuy.toIso8601String().substring(0, 10)} to '
-              '${firstPrice!.toIso8601String().substring(0, 10)}');
+          _log.info('syncPrices: ${_assetLabel(asset)} - needs backfill from '
+              '${formatYmd(firstBuy)} to '
+              '${formatYmd(firstPrice!)}');
         }
 
         candidates.add((asset, searchTerm));
@@ -753,9 +754,9 @@ class InvestingComService extends MarketPriceService {
         final cid = await _searchCid(searchTerm, asset.exchange ?? 'MIL');
         if (cid != null) {
           assetCids[asset] = cid;
-          _log.info('syncPrices: $label — resolved cid=$cid');
+          _log.info('syncPrices: $label - resolved cid=$cid');
         } else {
-          _log.warning('syncPrices: $label — could not resolve CID, skipping');
+          _log.warning('syncPrices: $label - could not resolve CID, skipping');
         }
       });
 
@@ -784,8 +785,8 @@ class InvestingComService extends MarketPriceService {
           if (backfillFrom != null) {
             final firstPrice = await getFirstPriceDate(asset.id);
             if (firstPrice != null) {
-              _log.info('syncPrices: $label — backfilling from '
-                  '${backfillFrom.toIso8601String().substring(0, 10)}');
+              _log.info('syncPrices: $label - backfilling from '
+                  '${formatYmd(backfillFrom)}');
               final gapPrices = await _fetchByCid(cid, backfillFrom, label: label);
               if (gapPrices.isNotEmpty) {
                 await db.batch((batch) {
@@ -800,7 +801,7 @@ class InvestingComService extends MarketPriceService {
                         onConflict: DoUpdate((_) => c));
                   }
                 });
-                _log.info('syncPrices: $label — backfilled ${gapPrices.length} prices');
+                _log.info('syncPrices: $label - backfilled ${gapPrices.length} prices');
               }
             }
           }
@@ -829,11 +830,11 @@ class InvestingComService extends MarketPriceService {
                       onConflict: DoUpdate((_) => c));
                 }
               });
-              _log.info('syncPrices: $label — stored ${prices.length} prices');
+              _log.info('syncPrices: $label - stored ${prices.length} prices');
             }
           }
         } catch (e) {
-          _log.warning('syncPrices: $label (cid=$cid) — failed: $e');
+          _log.warning('syncPrices: $label (cid=$cid) - failed: $e');
         }
       });
 
