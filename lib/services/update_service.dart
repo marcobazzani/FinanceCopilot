@@ -191,7 +191,7 @@ class UpdateService {
     exit(0);
   }
 
-  /// Windows: extract ZIP, replace files via batch script, restart.
+  /// Windows: extract ZIP, replace files via hidden PowerShell script, restart.
   Future<void> _applyWindows(String zipPath, String tempDir) async {
     final extractDir = p.join(tempDir, 'extracted');
     await Directory(extractDir).create();
@@ -207,29 +207,30 @@ class UpdateService {
     // Current exe directory
     final currentDir = p.dirname(Platform.resolvedExecutable);
     final currentExe = Platform.resolvedExecutable;
-    final batchPath = p.join(tempDir, 'update.bat');
+    final scriptPath = p.join(tempDir, 'update.ps1');
 
-    // Write a batch script that waits for the app to exit, copies files, and relaunches
+    // Write a PowerShell script that waits for this process to exit, copies files, and relaunches
     _log.info('applyUpdate Windows: writing update script...');
-    final exeName = p.basename(currentExe);
-    final batch = '@echo off\r\n'
-        'echo Waiting for FinanceCopilot to exit...\r\n'
-        ':waitloop\r\n'
-        'tasklist /fi "imagename eq $exeName" 2>nul | find /i "$exeName" >nul\r\n'
-        'if not errorlevel 1 (\r\n'
-        '  timeout /t 1 /nobreak >nul\r\n'
-        '  goto waitloop\r\n'
-        ')\r\n'
-        'echo Copying new files...\r\n'
-        'xcopy /s /y /q "$extractDir\\*" "$currentDir\\"\r\n'
-        'echo Restarting...\r\n'
-        'start "" "$currentExe"\r\n'
-        'del "%~f0"\r\n';
-    await File(batchPath).writeAsString(batch);
+    final currentPid = pid;
+    final ps1 = '''
+# Wait for this specific process to exit
+try { Wait-Process -Id $currentPid -ErrorAction SilentlyContinue } catch {}
+# Copy new files over the old ones
+Copy-Item -Path "$extractDir\\*" -Destination "$currentDir\\" -Recurse -Force
+# Relaunch the app
+Start-Process "$currentExe"
+# Clean up this script
+Remove-Item -Path \$MyInvocation.MyCommand.Source -Force
+''';
+    await File(scriptPath).writeAsString(ps1);
 
-    // Launch the batch script detached and exit
+    // Launch PowerShell hidden and exit
     _log.info('applyUpdate Windows: launching update script and exiting...');
-    await Process.start('cmd', ['/c', batchPath], mode: ProcessStartMode.detached);
+    await Process.start(
+      'powershell',
+      ['-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      mode: ProcessStartMode.detached,
+    );
     exit(0);
   }
 
