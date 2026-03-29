@@ -363,7 +363,7 @@ class _ChartLegend extends StatelessWidget {
                   : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ),
             child: Text(label, style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w600,
+              fontSize: 13, fontWeight: FontWeight.w600,
               color: !allHidden
                   ? Theme.of(context).colorScheme.onSurface
                   : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
@@ -491,7 +491,7 @@ class _ToggleLegendItem extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 fontWeight: bold ? FontWeight.bold : FontWeight.normal,
                 color: enabled ? null : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
                 decoration: enabled ? null : TextDecoration.lineThrough,

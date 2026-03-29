@@ -328,7 +328,7 @@ class _UnifiedChart extends StatelessWidget {
               getTitlesWidget: (scaledY, meta) {
                 final actualY = unscaleRight(scaledY);
                 final label = isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(actualY);
-                return Text(label, style: TextStyle(fontSize: 9, color: textColor));
+                return Text(label, style: TextStyle(fontSize: 11, color: textColor));
               },
             ),
           ),
@@ -343,7 +343,7 @@ class _UnifiedChart extends StatelessWidget {
                   meta: meta,
                   angle: -0.5,
                   child: Text(dateFmt.format(date),
-                      style: TextStyle(fontSize: 10, color: textColor)),
+                      style: TextStyle(fontSize: 12, color: textColor)),
                 );
               },
             ),
@@ -358,7 +358,7 @@ class _UnifiedChart extends StatelessWidget {
                 return SideTitleWidget(
                   meta: meta,
                   child: Text(label,
-                      style: TextStyle(fontSize: 10, color: textColor)),
+                      style: TextStyle(fontSize: 12, color: textColor)),
                 );
               },
             ),
@@ -370,6 +370,8 @@ class _UnifiedChart extends StatelessWidget {
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
+            tooltipHorizontalAlignment: FLHorizontalAlignment.left,
+            tooltipHorizontalOffset: -60,
             tooltipMargin: 16,
             maxContentWidth: 200,
             getTooltipItems: (spots) {
@@ -385,14 +387,14 @@ class _UnifiedChart extends StatelessWidget {
                 if (isTotal) {
                   items.add(LineTooltipItem(
                     '${fullFmt.format(date)}\nTotal: ${currFmt.format(spot.y)}',
-                    const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                   ));
                 } else if (seriesIdx >= 0 && seriesIdx < visible.length) {
                   final s = visible[seriesIdx];
                   final displayY = s.rightAxis ? unscaleRight(spot.y) : spot.y;
                   items.add(LineTooltipItem(
                     '$datePrefix${s.name}: ${currFmt.format(displayY)}${s.rightAxis ? ' (\u2192)' : ''}',
-                    TextStyle(color: s.color, fontSize: 11),
+                    TextStyle(color: s.color, fontSize: 12),
                   ));
                 } else {
                   items.add(null);
