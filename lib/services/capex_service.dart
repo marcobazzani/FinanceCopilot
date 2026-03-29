@@ -68,7 +68,7 @@ class CapexService {
     DateTime? expenseDate,
     StepFrequency stepFrequency = StepFrequency.monthly,
   }) async {
-    _log.info('create: name=$name, amount=$totalAmount, expense=${expenseDate ?? 'none'}, '
+    _log.info('create: name=$name, expense=${expenseDate ?? 'none'}, '
         '$startDate->$endDate, freq=${stepFrequency.name}');
     final id = await _db.into(_db.depreciationSchedules).insert(
       DepreciationSchedulesCompanion.insert(
@@ -121,8 +121,7 @@ class CapexService {
     final reimbursed = await _totalReimbursed(schedule);
     final amountToSpread = schedule.totalAmount - reimbursed;
     final stepAmount = amountToSpread / dates.length;
-    _log.info('generateEntries: scheduleId=$scheduleId, ${dates.length} steps, '
-        '${stepAmount.toStringAsFixed(2)} each (total=${schedule.totalAmount}, reimbursed=$reimbursed)');
+    _log.info('generateEntries: scheduleId=$scheduleId, ${dates.length} steps');
 
     await _db.transaction(() async {
       await (_db.delete(_db.depreciationEntries)..where((e) => e.scheduleId.equals(scheduleId))).go();

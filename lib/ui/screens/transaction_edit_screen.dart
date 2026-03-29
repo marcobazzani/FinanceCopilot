@@ -240,7 +240,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
     final svc = ref.read(transactionServiceProvider);
 
     if (_isEditing) {
-      _log.info('saving transaction id=${widget.transaction!.id}, amount=$amount');
+      _log.info('saving transaction id=${widget.transaction!.id}');
       await svc.update(
         widget.transaction!.id,
         TransactionsCompanion(
@@ -255,7 +255,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
         ),
       );
     } else {
-      _log.info('creating transaction for account=${widget.account.id}, amount=$amount');
+      _log.info('creating transaction for account=${widget.account.id}');
       await svc.create(
         accountId: widget.account.id,
         operationDate: _selectedDate,

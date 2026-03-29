@@ -752,7 +752,7 @@ class ImportService {
         balanceCents += _toCents(rows[i].amount);
         rows[i].balanceAfter = _fromCents(balanceCents);
       }
-      _log.info('_computeBalances: cumulative - final balance=${_fromCents(balanceCents)}');
+      _log.info('_computeBalances: cumulative - done');
     } else if (balanceMode == 'filtered') {
       int balanceCents = 0;
       for (final i in indexed) {
@@ -765,7 +765,7 @@ class ImportService {
         }
         rows[i].balanceAfter = _fromCents(balanceCents);
       }
-      _log.info('_computeBalances: filtered - final balance=${_fromCents(balanceCents)}');
+      _log.info('_computeBalances: filtered - done');
     }
   }
 }

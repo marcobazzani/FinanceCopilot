@@ -37,7 +37,7 @@ class AssetEventService {
     double? commission,
     String? notes,
   }) {
-    _log.info('create: assetId=$assetId, date=$date, type=${type.name}, amount=$amount');
+    _log.info('create: assetId=$assetId, date=$date, type=${type.name}');
     return _db.into(_db.assetEvents).insert(AssetEventsCompanion.insert(
       assetId: assetId,
       date: date,

@@ -24,7 +24,7 @@ class BufferService {
     double? targetAmount,
     int? linkedDepreciationId,
   }) {
-    _log.info('create: name=$name, target=$targetAmount, linkedDepId=$linkedDepreciationId');
+    _log.info('create: name=$name, linkedDepId=$linkedDepreciationId');
     return _db.into(_db.buffers).insert(BuffersCompanion.insert(
       name: name,
       targetAmount: Value(targetAmount),
@@ -70,7 +70,7 @@ class BufferService {
     required String currency,
     bool isReimbursement = false,
   }) async {
-    _log.info('createTransaction: bufferId=$bufferId, amount=$amount, reimb=$isReimbursement');
+    _log.info('createTransaction: bufferId=$bufferId, reimb=$isReimbursement');
     final balance = (await computeBalance(bufferId)) + amount;
     return _db.into(_db.bufferTransactions).insert(
       BufferTransactionsCompanion.insert(

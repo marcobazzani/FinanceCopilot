@@ -44,7 +44,7 @@ class TransactionService {
     required String currency,
     TransactionStatus status = TransactionStatus.settled,
   }) {
-    _log.info('create: accountId=$accountId, date=$operationDate, amount=$amount, desc=$description');
+    _log.info('create: accountId=$accountId, date=$operationDate');
     return _db.into(_db.transactions).insert(TransactionsCompanion.insert(
       accountId: accountId,
       operationDate: operationDate,

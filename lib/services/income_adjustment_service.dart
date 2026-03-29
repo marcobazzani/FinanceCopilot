@@ -44,7 +44,7 @@ class IncomeAdjustmentService {
     required String currency,
     required DateTime incomeDate,
   }) async {
-    _log.info('create: name=$name, amount=$totalAmount, date=$incomeDate');
+    _log.info('create: name=$name, date=$incomeDate');
     return _db.into(_db.incomeAdjustments).insert(
       IncomeAdjustmentsCompanion.insert(
         name: name,
@@ -95,7 +95,7 @@ class IncomeAdjustmentService {
     required double amount,
     String description = '',
   }) async {
-    _log.info('addExpense: adjustmentId=$adjustmentId, amount=$amount, date=$date');
+    _log.info('addExpense: adjustmentId=$adjustmentId, date=$date');
     return _db.into(_db.incomeAdjustmentExpenses).insert(
       IncomeAdjustmentExpensesCompanion.insert(
         adjustmentId: adjustmentId,

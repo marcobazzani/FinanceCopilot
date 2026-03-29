@@ -99,10 +99,10 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
       fxRate = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
     }
     final value = stat.totalQuantity * price * fxRate;
-    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - qty=${stat.totalQuantity} price=$price fx=$fxRate -> $value');
+    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - computed');
     result[asset.id] = value;
   }
-  _log.info('assetMarketValues: ${result.length} assets with values, total=${result.values.fold(0.0, (a, b) => a + b).toStringAsFixed(2)}');
+  _log.info('assetMarketValues: ${result.length} assets with values');
   return result;
 });
 
@@ -166,7 +166,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double? latestPrice;
     if (priceService is InvestingComService) {
       latestPrice = await priceService.getLivePrice(asset.id);
-      _log.fine('dailyChanges: ${asset.ticker ?? asset.name} - livePrice=$latestPrice');
+      _log.fine('dailyChanges: ${asset.ticker ?? asset.name} - livePrice found');
     }
     latestPrice ??= await priceService.getPrice(asset.id, today);
     if (latestPrice == null) {

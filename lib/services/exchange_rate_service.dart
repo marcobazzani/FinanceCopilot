@@ -57,7 +57,7 @@ class ExchangeRateService {
           _log.warning('syncRates: EUR/$currency - no rate from Investing.com');
           continue;
         }
-        _log.fine('syncRates: EUR/$currency = $rate');
+        _log.fine('syncRates: EUR/$currency fetched');
         companions.add(ExchangeRatesCompanion(
           fromCurrency: const Value('EUR'),
           toCurrency: Value(currency),

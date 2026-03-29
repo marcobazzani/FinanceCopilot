@@ -417,7 +417,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
 
     if (_isEditing) {
       _log.info('saving event id=${widget.event!.id}, type=${_eventType.name}, '
-          'amount=$amount, currency=$_currency, rate=$exchangeRate');
+          'currency=$_currency');
       await svc.update(
         widget.event!.id,
         AssetEventsCompanion(
@@ -434,7 +434,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
       );
     } else {
       _log.info('creating event for asset=${widget.asset.id}, type=${_eventType.name}, '
-          'amount=$amount, currency=$_currency, rate=$exchangeRate');
+          'currency=$_currency');
       await svc.create(
         assetId: widget.asset.id,
         date: _selectedDate,
