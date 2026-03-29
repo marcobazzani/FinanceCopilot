@@ -28,11 +28,6 @@ jobs:
             4. Add appropriate labels (bug, enhancement, question, duplicate)
             5. If it's a confirmed bug that needs code changes, add the label "l2-needed"
 
-            Labeling rules:
-            - When you ask the user a question or request more info, ALWAYS add the "waiting-for-response" label
-            - This ensures the issue auto-closes after 21 days if the user never replies
-            - If the issue is clear and complete (no follow-up needed), do NOT add "waiting-for-response"
-
             Language:
             - Detect the language of the issue (Italian or English)
             - Reply in the SAME language the user wrote in
