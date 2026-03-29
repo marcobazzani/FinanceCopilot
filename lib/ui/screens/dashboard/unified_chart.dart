@@ -36,8 +36,8 @@ class _DragZoomWrapper extends StatefulWidget {
   final double xMax;
   final double yMin;
   final double yMax;
-  final double leftReserved;
-  final double bottomReserved;
+  final double leftReserved = 60;
+  final double bottomReserved = 28;
   final DateTime firstDate;
   final String baseCurrency;
   final String locale;
@@ -49,8 +49,6 @@ class _DragZoomWrapper extends StatefulWidget {
     required this.xMax,
     this.yMin = 0,
     this.yMax = 1,
-    this.leftReserved = 60,
-    this.bottomReserved = 28,
     required this.firstDate,
     required this.baseCurrency,
     required this.locale,
@@ -356,7 +354,7 @@ class _UnifiedChart extends StatelessWidget {
               reservedSize: 80,
               interval: yRange > 0 ? yRange / 4 : 100,
               getTitlesWidget: (value, meta) {
-                final label = this.isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(value);
+                final label = isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(value);
                 return SideTitleWidget(
                   meta: meta,
                   child: Text(label,
@@ -368,6 +366,7 @@ class _UnifiedChart extends StatelessWidget {
         ),
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
+          enabled: !isPrivate,
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,

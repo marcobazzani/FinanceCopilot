@@ -8,11 +8,11 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 
 import '../../database/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../services/app_settings.dart';
 import '../../services/demo_db_service.dart';
 import '../../services/providers/providers.dart';
 import '../../services/update_service.dart';
+import '../../utils/bug_reporter.dart';
 import '../../utils/logger.dart';
 import '../../version.dart';
 
@@ -80,6 +80,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   bool _isLoading = true;
   bool _isGenerating = false;
   double _demoProgress = 0;
+  final _repaintKey = GlobalKey();
   String _demoLabel = '';
   String _channel = 'nightly';
 
@@ -299,7 +300,9 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     final theme = Theme.of(context);
     final dateFmt = DateFormat('yyyy-MM-dd HH:mm');
 
-    return Scaffold(
+    return RepaintBoundary(
+      key: _repaintKey,
+      child: Scaffold(
       appBar: AppBar(title: const Text('FinanceCopilot')),
       body: Center(
         child: ConstrainedBox(
@@ -406,21 +409,21 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                     'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 4),
                   GestureDetector(
-                    onTap: () async {
-                      final current = ref.read(portableLanguageProvider);
-                      final next = current == 'en' ? 'it' : 'en';
-                      await AppSettings.setLanguage(next);
-                      ref.read(portableLanguageProvider.notifier).state = next;
-                    },
+                    onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey),
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Text(
-                        ref.watch(portableLanguageProvider) == 'it' ? '🇮🇹' : '🇬🇧',
-                        style: const TextStyle(fontSize: 14),
-                      ),
+                      child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  _LanguageDropdown(
+                    value: ref.watch(portableLanguageProvider),
+                    onChanged: (lang) async {
+                      await AppSettings.setLanguage(lang);
+                      ref.read(portableLanguageProvider.notifier).state = lang;
+                    },
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
@@ -444,6 +447,34 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
           ),
         ),
       ),
+    ));
+  }
+}
+
+class _LanguageDropdown extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const _LanguageDropdown({required this.value, required this.onChanged});
+
+  static const _options = [
+    ('en', 'English'),
+    ('it', 'Italiano'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<String>(
+      value: value,
+      underline: const SizedBox.shrink(),
+      isDense: true,
+      style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary),
+      items: _options
+          .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
+          .toList(),
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
     );
   }
 }

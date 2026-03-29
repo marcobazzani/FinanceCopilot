@@ -8,7 +8,6 @@ import '../widgets/privacy_text.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import 'package:intl/intl.dart';
 
 // ════════════════════════════════════════════════════
@@ -112,7 +111,7 @@ Map<String, double> _weightedBreakdown(
 }
 
 /// Compute drill-down data: for each key in the breakdown, which assets contribute.
-/// Returns Map<sliceKey, Map<assetName, value>>.
+/// Returns `Map<sliceKey, Map<assetName, value>>`.
 Map<String, Map<String, double>> _drillDownData(
   List<Asset> assets,
   Map<int, double> marketValues,
@@ -279,14 +278,13 @@ class AllocationTab extends ConsumerWidget {
 class _ChartCard extends StatelessWidget {
   final String title;
   final Widget child;
-  final double width;
 
-  const _ChartCard({required this.title, required this.child, this.width = 480});
+  const _ChartCard({required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: width,
+      width: 480,
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -539,6 +537,7 @@ class _TopHoldingsChart extends ConsumerWidget {
       return SizedBox(height: 200, child: Center(child: Text(ref.watch(appStringsProvider).noData)));
     }
 
+    final isPrivate = ref.watch(privacyModeProvider);
     final reversed = holdings.reversed.toList();
     final maxValue = holdings.first.value;
 
@@ -549,6 +548,7 @@ class _TopHoldingsChart extends ConsumerWidget {
           alignment: BarChartAlignment.spaceAround,
           maxY: maxValue * 1.15,
           barTouchData: BarTouchData(
+            enabled: !isPrivate,
             touchTooltipData: BarTouchTooltipData(
               getTooltipItem: (group, groupIndex, rod, rodIndex) {
                 final entry = reversed[group.x.toInt()];

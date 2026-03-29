@@ -585,4 +585,28 @@ class AppStrings {
   String get backToPicker        => _it ? 'Torna alla selezione'     : 'Back to picker';
   String get noNetworkRetry      => _it ? 'Nessuna rete - tocca per riprovare' : 'No network - tap to retry';
   String get systemDefault       => _it ? 'Predefinito di sistema'   : 'System Default';
+
+  // ── Bug Reporter / Ticketer ────────────────────────────
+  String get ticketerTitle        => _it ? 'Segnala un bug'            : 'Report a Bug';
+  String get ticketerConfirmDesc  => _it
+      ? 'Questa operazione:\n• Nasconderà gli importi\n• Catturerà uno screenshot\n• Raccoglierà i log della sessione\n• Aprirà una segnalazione GitHub nel browser'
+      : 'This will:\n• Hide amounts\n• Take a screenshot\n• Collect session logs\n• Open a GitHub issue in your browser';
+  String get ticketerLoginReminder => _it
+      ? 'Assicurati di aver effettuato l\'accesso a GitHub nel tuo browser predefinito.'
+      : 'Make sure you are logged into GitHub in your default browser.';
+  String get ticketerContinue     => _it ? 'Continua'                  : 'Continue';
+  String get ticketerClose        => _it ? 'Chiudi'                    : 'Close';
+  String get ticketerOpenIssue    => _it ? 'Apri segnalazione GitHub'  : 'Open GitHub Issue';
+  String get ticketerFilesSaved    => _it ? 'File salvati sul Desktop:'  : 'Files saved to Desktop:';
+  String get ticketerUploadReminder => _it
+      ? 'Apri la cartella, poi trascina i file nella segnalazione GitHub.'
+      : 'Open the folder, then drag the files into the GitHub issue.';
+  String get ticketerRevealFile   => _it ? 'Apri cartella'             : 'Show in Finder';
+  String get ticketerTapToPreview => _it ? 'Tocca per ingrandire e verificare' : 'Tap to enlarge and verify';
+  String get ticketerScreenshotBanner => _it
+      ? 'Questo screenshot deve essere caricato nella segnalazione GitHub'
+      : 'This screenshot must be uploaded to the GitHub issue';
+  String get ticketerDescriptionLabel => _it ? 'Descrizione del problema' : 'Describe the issue';
+  String get ticketerStepsLabel   => _it ? 'Passaggi per riprodurre'   : 'Steps to reproduce';
+  String get ticketerStepsHint    => _it ? '1. Apri...\n2. Clicca...'  : '1. Open...\n2. Click...';
 }

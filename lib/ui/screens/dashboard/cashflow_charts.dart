@@ -105,7 +105,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
             _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: isVisible('savings'), onTap: () => toggle('savings')),
           ]),
         ),
-        _maybeBlur(isPrivate, SizedBox(
+        SizedBox(
           height: 280,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
@@ -115,6 +115,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
                   gridData: const FlGridData(show: true),
                   borderData: FlBorderData(show: false),
                   barTouchData: BarTouchData(
+                    enabled: !isPrivate,
                     touchTooltipData: BarTouchTooltipData(
                       fitInsideHorizontally: true,
                       fitInsideVertically: true,
@@ -135,7 +136,10 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 80,
-                        getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                        getTitlesWidget: (v, _) => Text(
+                          isPrivate ? '\u2022\u2022\u2022\u2022' : _shortAmount(v, sym),
+                          style: const TextStyle(fontSize: 10),
+                        ),
                       ),
                     ),
                     bottomTitles: AxisTitles(
@@ -157,7 +161,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
                   ),
                 )),
           ),
-        )),
+        ),
       ],
     );
   }
@@ -225,7 +229,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart>
             _ToggleLegendItem(color: Colors.blue.shade400, label: labels[2], enabled: isVisible('savings'), onTap: () => toggle('savings')),
           ]),
         ),
-        _maybeBlur(isPrivate, SizedBox(
+        SizedBox(
           height: 260,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
@@ -235,6 +239,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart>
               gridData: const FlGridData(show: true),
               borderData: FlBorderData(show: false),
               barTouchData: BarTouchData(
+                enabled: !isPrivate,
                 touchTooltipData: BarTouchTooltipData(
                   fitInsideHorizontally: true,
                   fitInsideVertically: true,
@@ -255,7 +260,10 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart>
                   sideTitles: SideTitles(
                     showTitles: true,
                     reservedSize: 80,
-                    getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                    getTitlesWidget: (v, _) => Text(
+                      isPrivate ? '\u2022\u2022\u2022\u2022' : _shortAmount(v, sym),
+                      style: const TextStyle(fontSize: 10),
+                    ),
                   ),
                 ),
                 bottomTitles: AxisTitles(
@@ -277,7 +285,7 @@ class _MonthlyAvgBarChartState extends ConsumerState<_MonthlyAvgBarChart>
               ),
             )),
           ),
-        )),
+        ),
       ],
     );
   }
@@ -370,7 +378,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
             ],
           ),
         ),
-        _maybeBlur(isPrivate, SizedBox(
+        SizedBox(
           height: 260,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
@@ -385,6 +393,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                     gridData: const FlGridData(show: true),
                     borderData: FlBorderData(show: false),
                     lineTouchData: LineTouchData(
+                      enabled: !isPrivate,
                       touchTooltipData: LineTouchTooltipData(
                         tooltipMargin: 16,
                         fitInsideHorizontally: true,
@@ -419,7 +428,10 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                         sideTitles: SideTitles(
                           showTitles: true,
                           reservedSize: 80,
-                          getTitlesWidget: (v, _) => Text(_shortAmount(v, sym), style: const TextStyle(fontSize: 10)),
+                          getTitlesWidget: (v, _) => Text(
+                            isPrivate ? '\u2022\u2022\u2022\u2022' : _shortAmount(v, sym),
+                            style: const TextStyle(fontSize: 10),
+                          ),
                         ),
                       ),
                       topTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -427,26 +439,13 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
                     ),
                   )),
           ),
-        )),
+        ),
       ],
     );
   }
 }
 
 // Shared helpers
-Widget _maybeBlur(bool isPrivate, Widget child) => isPrivate
-    ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
-    : child;
-
-Widget _legendDot(Color color, String label) => Row(
-  mainAxisSize: MainAxisSize.min,
-  children: [
-    Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-    const SizedBox(width: 4),
-    Text(label, style: const TextStyle(fontSize: 11)),
-  ],
-);
-
 String _shortAmount(double v, String sym) {
   if (v.abs() >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M $sym';
   if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(0)}k $sym';
