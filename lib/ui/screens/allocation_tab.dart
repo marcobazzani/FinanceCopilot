@@ -60,6 +60,23 @@ Map<String, double> _groupByField(
   return Map.fromEntries(sorted);
 }
 
+/// Drill-down for simple field grouping: for each group key, which assets contribute.
+Map<String, Map<String, double>> _drillDownByField(
+  List<Asset> assets,
+  Map<int, double> values,
+  String Function(Asset) keyFn,
+) {
+  final result = <String, Map<String, double>>{};
+  for (final asset in assets) {
+    final val = values[asset.id];
+    if (val == null || val <= 0) continue;
+    final key = keyFn(asset);
+    result.putIfAbsent(key, () => {});
+    result[key]![asset.name] = (result[key]![asset.name] ?? 0) + val;
+  }
+  return result;
+}
+
 String _pct(double value, double total) =>
     total > 0 ? '${(value / total * 100).toStringAsFixed(1)}%' : '0%';
 
@@ -193,6 +210,12 @@ class AllocationTab extends ConsumerWidget {
             assets, marketValues, compositions, 'sector',
             (a) => a.sector ?? s.unclassified,
           );
+          final typeDrill = _drillDownByField(
+            assets, marketValues, (a) => s.assetClassLabel(a.assetClass),
+          );
+          final instrumentDrill = _drillDownByField(
+            assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
+          );
 
           final holdingEntries = byHolding.entries.toList();
           final topHoldings = holdingEntries.take(10).toList();
@@ -221,11 +244,19 @@ class AllocationTab extends ConsumerWidget {
                 ),
                 _ChartCard(
                   title: s.allocAssetClass,
-                  child: _DonutChart(data: byType, total: total),
+                  child: _DrillableDonut(
+                    data: byType,
+                    total: total,
+                    drillDown: typeDrill,
+                  ),
                 ),
                 _ChartCard(
                   title: s.allocInstrument,
-                  child: _DonutChart(data: byInstrument, total: total),
+                  child: _DrillableDonut(
+                    data: byInstrument,
+                    total: total,
+                    drillDown: instrumentDrill,
+                  ),
                 ),
                 _ChartCard(
                   title: s.allocCurrency,
