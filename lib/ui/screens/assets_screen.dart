@@ -33,6 +33,7 @@ class _DraggedAsset {
 class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   final _expandedGroups = <int?>{};
   bool _initialized = false;
+  bool _isDragging = false;
 
   @override
   Widget build(BuildContext context) {
@@ -77,12 +78,13 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             padding: const EdgeInsets.only(bottom: 80),
             children: [
               for (final groupId in groupOrder)
-                _buildGroup(
-                  context, s, groupId,
-                  groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
-                  grouped[groupId] ?? [],
-                  stats, convertedStats, marketValues, baseCurrency, locale,
-                ),
+                if (_isDragging || (grouped[groupId]?.isNotEmpty ?? false))
+                  _buildGroup(
+                    context, s, groupId,
+                    groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
+                    grouped[groupId] ?? [],
+                    stats, convertedStats, marketValues, baseCurrency, locale,
+                  ),
             ],
           );
         },
@@ -194,6 +196,9 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                   return LongPressDraggable<_DraggedAsset>(
                     delay: const Duration(milliseconds: 150),
                     data: _DraggedAsset(asset.id, asset.intermediaryId),
+                    onDragStarted: () => setState(() => _isDragging = true),
+                    onDragEnd: (_) => setState(() => _isDragging = false),
+                    onDraggableCanceled: (_, __) => setState(() => _isDragging = false),
                     feedback: Material(
                       elevation: 4,
                       borderRadius: BorderRadius.circular(8),
