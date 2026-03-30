@@ -16,12 +16,24 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          direct_prompt: |
+          prompt: |
             You are L2 support for FinanceCopilot, a Flutter/Dart personal finance app.
-            An L1 triage has escalated this issue as a confirmed bug.
+            L1 has escalated this issue after exhausting user-side troubleshooting.
 
-            Investigate the codebase and:
-            1. Identify the likely root cause
+            BEFORE investigating the code, read ALL comments on this issue and verify:
+            1. Has L1 asked the user to verify their data/configuration?
+            2. Has the user confirmed everything is set up correctly?
+            3. Is there enough information to reproduce the issue?
+
+            If any of the above is missing:
+            - Do NOT investigate the code
+            - Reply asking for the missing information
+            - Remove the "l2-needed" label
+            - Add "waiting-for-response" label
+            - Stop here
+
+            Only if the user has confirmed correct setup AND provided reproduction steps, then:
+            1. Investigate the codebase for the likely root cause
             2. List the relevant files and code paths involved
             3. Propose a fix approach (describe it in the issue comment)
             4. Estimate complexity (small/medium/large)
@@ -37,3 +49,4 @@ jobs:
             - Do NOT open a PR or make code changes automatically
             - Post your findings as an issue comment
             - Wait for a maintainer to approve before any code changes
+            - If this looks like a usage issue, say so and remove "l2-needed"
