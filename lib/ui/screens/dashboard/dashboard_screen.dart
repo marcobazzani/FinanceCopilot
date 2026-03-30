@@ -34,6 +34,7 @@ part 'yearly_summary_table.dart';
 part 'monthly_grid.dart';
 part 'yoy_diff_table.dart';
 part 'cashflow_charts.dart';
+part 'totals_table.dart';
 
 final _log = getLogger('DashboardScreen');
 
@@ -157,6 +158,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
                     ),
                     _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
+                    const SizedBox(height: 16),
+                    _SummaryTotalsTable(allData: allData, locale: locale),
                   ],
                 ),
               );
