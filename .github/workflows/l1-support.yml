@@ -16,8 +16,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger_phrase: ""
-          allowed_tools: ""
-          direct_prompt: |
+          prompt: |
             You are L1 support for FinanceCopilot, a Flutter/Dart personal finance app.
             You are a TRIAGE agent only. You must NEVER read code, edit files, create branches, or propose fixes.
 
