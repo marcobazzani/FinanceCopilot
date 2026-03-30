@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -23,6 +24,12 @@ class AssetsScreen extends ConsumerStatefulWidget {
   ConsumerState<AssetsScreen> createState() => _AssetsScreenState();
 }
 
+class _DraggedAsset {
+  final int assetId;
+  final int? currentIntermediaryId;
+  const _DraggedAsset(this.assetId, this.currentIntermediaryId);
+}
+
 class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   final _expandedGroups = <int?>{};
   bool _initialized = false;
@@ -41,7 +48,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     return Scaffold(
       body: assetsAsync.when(
         data: (assets) {
-          if (assets.isEmpty) {
+          if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
             return Center(
               child: Text(s.noAssetsYet, textAlign: TextAlign.center),
             );
@@ -56,7 +63,6 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             _initialized = true;
           }
 
-          // Group assets by intermediaryId
           final grouped = <int?, List<Asset>>{};
           for (final asset in assets) {
             (grouped[asset.intermediaryId] ??= []).add(asset);
@@ -64,34 +70,43 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
 
           final groupOrder = <int?>[
             ...intermediaries.map((i) => i.id),
-            if (grouped.containsKey(null)) null,
+            null,
           ];
 
           return ListView(
             padding: const EdgeInsets.only(bottom: 80),
             children: [
-              for (final groupId in groupOrder) ...[
-                if (grouped.containsKey(groupId))
-                  _buildGroup(
-                    context, s, groupId,
-                    groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
-                    grouped[groupId]!,
-                    stats, convertedStats, marketValues, baseCurrency, locale,
-                    intermediaries,
-                  ),
-              ],
+              for (final groupId in groupOrder)
+                _buildGroup(
+                  context, s, groupId,
+                  groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
+                  grouped[groupId] ?? [],
+                  stats, convertedStats, marketValues, baseCurrency, locale,
+                ),
             ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => showDialog(
-          context: context,
-          builder: (ctx) => _CreateAssetDialog(ref: ref),
-        ),
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'add_intermediary_assets',
+            onPressed: () => _showIntermediaryDialog(context),
+            child: const Icon(Icons.business),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'add_asset',
+            onPressed: () => showDialog(
+              context: context,
+              builder: (ctx) => _CreateAssetDialog(ref: ref),
+            ),
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
@@ -107,78 +122,174 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     Map<int, double> marketValues,
     String baseCurrency,
     String locale,
-    List<Intermediary> allIntermediaries,
   ) {
     final isExpanded = _expandedGroups.contains(groupId);
     final title = intermediary?.name ?? s.unassigned;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: () => setState(() {
-            if (isExpanded) {
-              _expandedGroups.remove(groupId);
-            } else {
-              _expandedGroups.add(groupId);
-            }
-          }),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Icon(
-                  isExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 20,
-                  color: Colors.grey,
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  intermediary != null ? Icons.business : Icons.folder_open,
-                  size: 18,
-                  color: Colors.grey,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$title (${assets.length})',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade400,
-                    ),
+    return DragTarget<_DraggedAsset>(
+      onWillAcceptWithDetails: (details) => details.data.currentIntermediaryId != groupId,
+      onAcceptWithDetails: (details) {
+        ref.read(intermediaryServiceProvider).moveAsset(details.data.assetId, groupId);
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovering = candidateData.isNotEmpty;
+        return Container(
+          color: isHovering ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: () => setState(() {
+                  if (isExpanded) {
+                    _expandedGroups.remove(groupId);
+                  } else {
+                    _expandedGroups.add(groupId);
+                  }
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isExpanded ? Icons.expand_less : Icons.expand_more,
+                        size: 20,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        intermediary != null ? Icons.business : Icons.folder_open,
+                        size: 18,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$title (${assets.length})',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ),
+                      if (intermediary != null)
+                        PopupMenuButton<String>(
+                          iconSize: 18,
+                          padding: EdgeInsets.zero,
+                          itemBuilder: (_) => [
+                            PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
+                            PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
+                          ],
+                          onSelected: (v) {
+                            if (v == 'edit') _showIntermediaryDialog(context, intermediary: intermediary);
+                            if (v == 'delete') _confirmDeleteIntermediary(context, intermediary);
+                          },
+                        ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-        if (isExpanded)
-          ...assets.map((asset) {
-            final stat = stats[asset.id];
-            return _AssetTile(
-              key: ValueKey(asset.id),
-              asset: asset,
-              stats: stat,
-              convertedInvested: convertedStats[asset.id],
-              marketValue: marketValues[asset.id],
-              baseCurrency: baseCurrency,
-              locale: locale,
-              strings: s,
-              allIntermediaries: allIntermediaries,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AssetDetailScreen(asset: asset),
-                ),
               ),
-              onMoveToIntermediary: (intId) {
-                ref.read(intermediaryServiceProvider).moveAsset(asset.id, intId);
-              },
-            );
-          }),
-        const Divider(height: 1),
-      ],
+              if (isExpanded)
+                ...assets.map((asset) {
+                  final stat = stats[asset.id];
+                  return LongPressDraggable<_DraggedAsset>(
+                    data: _DraggedAsset(asset.id, asset.intermediaryId),
+                    feedback: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(asset.ticker ?? asset.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.3,
+                      child: _AssetTile(
+                        asset: asset, stats: stat,
+                        convertedInvested: convertedStats[asset.id],
+                        marketValue: marketValues[asset.id],
+                        baseCurrency: baseCurrency, locale: locale, strings: s,
+                        onTap: () {},
+                      ),
+                    ),
+                    child: _AssetTile(
+                      key: ValueKey(asset.id),
+                      asset: asset, stats: stat,
+                      convertedInvested: convertedStats[asset.id],
+                      marketValue: marketValues[asset.id],
+                      baseCurrency: baseCurrency, locale: locale, strings: s,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
+                      ),
+                    ),
+                  );
+                }),
+              const Divider(height: 1),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Future<void> _showIntermediaryDialog(BuildContext context, {Intermediary? intermediary}) async {
+    final s = ref.read(appStringsProvider);
+    final nameCtrl = TextEditingController(text: intermediary?.name ?? '');
+    final isEdit = intermediary != null;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(isEdit ? s.editIntermediary : s.addIntermediary),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(labelText: s.intermediaryName),
+            autofocus: true,
+            onChanged: (_) => setDialogState(() {}),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: nameCtrl.text.trim().isNotEmpty
+                  ? () async {
+                      final svc = ref.read(intermediaryServiceProvider);
+                      if (isEdit) {
+                        await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
+                      } else {
+                        await svc.create(name: nameCtrl.text.trim());
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    }
+                  : null,
+              child: Text(isEdit ? s.save : s.create),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteIntermediary(BuildContext context, Intermediary intermediary) async {
+    final s = ref.read(appStringsProvider);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.deleteIntermediary),
+        content: Text(s.deleteIntermediaryConfirm(intermediary.name)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(intermediaryServiceProvider).delete(intermediary.id);
+    }
   }
 }
 
@@ -191,8 +302,6 @@ class _AssetTile extends StatelessWidget {
   final String locale;
   final VoidCallback onTap;
   final AppStrings strings;
-  final List<Intermediary> allIntermediaries;
-  final void Function(int?) onMoveToIntermediary;
 
   const _AssetTile({
     super.key,
@@ -204,8 +313,6 @@ class _AssetTile extends StatelessWidget {
     required this.locale,
     required this.onTap,
     required this.strings,
-    required this.allIntermediaries,
-    required this.onMoveToIntermediary,
   });
 
   @override
@@ -353,20 +460,7 @@ class _AssetTile extends StatelessWidget {
                 ],
               ],
             ),
-            // Move menu
-            PopupMenuButton<int?>(
-              iconSize: 18,
-              padding: EdgeInsets.zero,
-              tooltip: strings.selectIntermediary,
-              itemBuilder: (_) => [
-                ...allIntermediaries
-                    .where((i) => i.id != asset.intermediaryId)
-                    .map((i) => PopupMenuItem(value: i.id, child: Text(i.name))),
-                if (asset.intermediaryId != null)
-                  PopupMenuItem(value: null, child: Text(strings.unassigned)),
-              ],
-              onSelected: onMoveToIntermediary,
-            ),
+            const SizedBox(width: 4),
             const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ],
         ),
