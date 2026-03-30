@@ -1,7 +1,7 @@
 name: L1 Support - Issue Triage
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 jobs:
   triage:
