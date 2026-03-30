@@ -86,18 +86,12 @@ class ExchangeRateService {
   }
 
   /// Backfill historical exchange rates for all currency pairs needed by the DB.
-  /// Detects pairs dynamically from assets/accounts/incomes currencies vs base currency.
-  /// Skips pairs that already have sufficient historical data.
+  /// Always fetches EUR/X pairs from Investing.com (reliable quoting convention)
+  /// and stores both directions. Cross-rates are computed from EUR pairs at lookup time.
   Future<void> backfillHistoricalRates() async {
     if (_investingService == null) return;
 
-    // Determine base currency
-    final baseCurrencyRow = await _db.customSelect(
-      "SELECT value FROM app_configs WHERE key = 'BASE_CURRENCY'",
-    ).getSingleOrNull();
-    final baseCurrency = baseCurrencyRow?.read<String>('value') ?? 'EUR';
-
-    // Collect all distinct currencies used across the DB
+    // Collect all distinct currencies used across the DB (including base currency)
     final rows = await _db.customSelect(
       'SELECT DISTINCT currency FROM assets '
       'UNION SELECT DISTINCT currency FROM accounts '
@@ -105,7 +99,7 @@ class ExchangeRateService {
       'UNION SELECT DISTINCT currency FROM depreciation_schedules',
     ).get();
     final currencies = rows.map((r) => r.read<String>('currency')).toSet()
-      ..remove(baseCurrency);
+      ..remove('EUR'); // EUR is always the "from" side
 
     if (currencies.isEmpty) return;
 
@@ -123,39 +117,38 @@ class ExchangeRateService {
     final since = DateTime.fromMillisecondsSinceEpoch(earliestEpoch * 1000);
 
     for (final currency in currencies) {
-      // Check if this pair already has enough historical data
+      // Check if EUR/X already has enough historical data
       final countRow = await _db.customSelect(
         'SELECT COUNT(DISTINCT date) AS cnt FROM exchange_rates '
-        'WHERE from_currency = ? AND to_currency = ?',
-        variables: [Variable.withString(baseCurrency), Variable.withString(currency)],
+        "WHERE from_currency = 'EUR' AND to_currency = ?",
+        variables: [Variable.withString(currency)],
       ).getSingle();
       final existingCount = countRow.read<int>('cnt');
       if (existingCount >= 100) {
-        _log.fine('backfillHistoricalRates: $baseCurrency/$currency already has $existingCount dates, skipping');
+        _log.fine('backfillHistoricalRates: EUR/$currency already has $existingCount dates, skipping');
         continue;
       }
 
-      _log.info('backfillHistoricalRates: fetching $baseCurrency/$currency from ${formatYmd(since)}');
+      _log.info('backfillHistoricalRates: fetching EUR/$currency from ${formatYmd(since)}');
       try {
-        final rates = await _investingService!.fetchHistoricalFxRates(baseCurrency, currency, since);
+        final rates = await _investingService!.fetchHistoricalFxRates('EUR', currency, since);
         if (rates.isEmpty) {
-          _log.warning('backfillHistoricalRates: $baseCurrency/$currency - no data returned');
+          _log.warning('backfillHistoricalRates: EUR/$currency - no data returned');
           continue;
         }
 
-        // Build companions for both directions
+        // Store EUR→X and the inverse X→EUR
         final companions = <ExchangeRatesCompanion>[];
         for (final entry in rates.entries) {
           companions.add(ExchangeRatesCompanion(
-            fromCurrency: Value(baseCurrency),
+            fromCurrency: const Value('EUR'),
             toCurrency: Value(currency),
             date: Value(entry.key),
             rate: Value(entry.value),
           ));
-          // Store inverse pair too
           companions.add(ExchangeRatesCompanion(
             fromCurrency: Value(currency),
-            toCurrency: Value(baseCurrency),
+            toCurrency: const Value('EUR'),
             date: Value(entry.key),
             rate: Value(1.0 / entry.value),
           ));
@@ -166,9 +159,9 @@ class ExchangeRateService {
             batch.insert(_db.exchangeRates, c, onConflict: DoNothing());
           }
         });
-        _log.info('backfillHistoricalRates: $baseCurrency/$currency - stored ${rates.length} dates');
+        _log.info('backfillHistoricalRates: EUR/$currency - stored ${rates.length} dates');
       } catch (e) {
-        _log.warning('backfillHistoricalRates: $baseCurrency/$currency failed - $e');
+        _log.warning('backfillHistoricalRates: EUR/$currency failed - $e');
       }
     }
   }
