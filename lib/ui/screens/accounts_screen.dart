@@ -84,7 +84,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         children: [
           FloatingActionButton.small(
             heroTag: 'add_intermediary',
-            onPressed: () => _showIntermediaryDialog(context),
+            onPressed: () => _showManageIntermediariesDialog(context),
             child: const Icon(Icons.business),
           ),
           const SizedBox(height: 8),
@@ -283,6 +283,90 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     if (confirmed == true) {
       await ref.read(intermediaryServiceProvider).delete(intermediary.id);
     }
+  }
+
+  Future<void> _showManageIntermediariesDialog(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final intermediaries = ref.watch(intermediariesProvider).value ?? [];
+          return AlertDialog(
+            title: Text(s.intermediaries),
+            content: SizedBox(
+              width: 350,
+              height: 400,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: intermediaries.isEmpty
+                        ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
+                        : ReorderableListView.builder(
+                            shrinkWrap: true,
+                            buildDefaultDragHandles: false,
+                            itemCount: intermediaries.length,
+                            onReorder: (oldIndex, newIndex) {
+                              if (newIndex > oldIndex) newIndex--;
+                              final reordered = List<Intermediary>.from(intermediaries);
+                              final item = reordered.removeAt(oldIndex);
+                              reordered.insert(newIndex, item);
+                              ref.read(intermediaryServiceProvider)
+                                  .reorder(reordered.map((i) => i.id).toList());
+                            },
+                            itemBuilder: (ctx, i) {
+                              final inter = intermediaries[i];
+                              return ListTile(
+                                key: ValueKey(inter.id),
+                                leading: ReorderableDragStartListener(
+                                  index: i,
+                                  child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+                                ),
+                                title: Text(inter.name),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 18),
+                                      onPressed: () {
+                                        Navigator.pop(ctx);
+                                        _showIntermediaryDialog(context, intermediary: inter);
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, size: 18),
+                                      onPressed: () {
+                                        Navigator.pop(ctx);
+                                        _confirmDeleteIntermediary(context, inter);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showIntermediaryDialog(context);
+                },
+                child: Text(s.addIntermediary),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(s.close),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _showCreateDialog(BuildContext context) async {

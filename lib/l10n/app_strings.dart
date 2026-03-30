@@ -637,6 +637,7 @@ class AppStrings {
       : 'Delete "$name"? Accounts and assets will be moved to "Unassigned".';
   String get intermediaryMoved     => _it ? 'Spostato con successo'     : 'Moved successfully';
   String get selectIntermediary    => _it ? 'Seleziona intermediario'   : 'Select Intermediary';
+  String get close                 => _it ? 'Chiudi'                    : 'Close';
 
   // ── DB Picker ────────────────────────────────────────────
   String get dbPickerTitle        => _it ? 'Apri un database'        : 'Open a Database';
