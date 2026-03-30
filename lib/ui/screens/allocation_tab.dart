@@ -14,17 +14,7 @@ import 'package:intl/intl.dart';
 // Asset type display names
 // ════════════════════════════════════════════════════
 
-const _assetClassLabels = <AssetClass, String>{
-  AssetClass.equity: 'Equity',
-  AssetClass.fixedIncome: 'Fixed Income',
-  AssetClass.commodities: 'Commodities',
-  AssetClass.moneyMarket: 'Money Market',
-  AssetClass.cash: 'Cash',
-  AssetClass.crypto: 'Crypto',
-  AssetClass.realEstate: 'Real Estate',
-  AssetClass.alternative: 'Alternative',
-  AssetClass.multiAsset: 'Multi-Asset',
-};
+// Labels are now provided via AppStrings.assetClassLabel() and instrumentTypeLabel()
 
 // ════════════════════════════════════════════════════
 // Chart colors
@@ -188,7 +178,10 @@ class AllocationTab extends ConsumerWidget {
           );
           final byType = _weightedBreakdown(
             assets, marketValues, compositions, 'assetclass',
-            (a) => _assetClassLabels[a.assetClass] ?? a.assetClass.name,
+            (a) => s.assetClassLabel(a.assetClass),
+          );
+          final byInstrument = _groupByField(
+            assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
           );
           final byCurrency = _groupByField(assets, marketValues, (a) => a.currency);
 
@@ -203,7 +196,7 @@ class AllocationTab extends ConsumerWidget {
           );
           final typeDrill = _drillDownData(
             assets, marketValues, compositions, 'assetclass',
-            (a) => _assetClassLabels[a.assetClass] ?? a.assetClass.name,
+            (a) => s.assetClassLabel(a.assetClass),
           );
 
           final holdingEntries = byHolding.entries.toList();
@@ -238,6 +231,10 @@ class AllocationTab extends ConsumerWidget {
                     total: total,
                     drillDown: typeDrill,
                   ),
+                ),
+                _ChartCard(
+                  title: s.allocInstrument,
+                  child: _DonutChart(data: byInstrument, total: total),
                 ),
                 _ChartCard(
                   title: s.allocCurrency,
