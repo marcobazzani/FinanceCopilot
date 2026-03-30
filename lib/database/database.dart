@@ -13,6 +13,7 @@ part 'database.g.dart';
 final _log = getLogger('Database');
 
 @DriftDatabase(tables: [
+  Intermediaries,
   Accounts,
   Categories,
   Transactions,
@@ -46,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -199,6 +200,42 @@ class AppDatabase extends _$AppDatabase {
                 );
               }
             }
+          }
+          if (from < 22) {
+            if (!await _tableExists('intermediaries')) {
+              await customStatement(
+                'CREATE TABLE intermediaries ('
+                'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'name TEXT NOT NULL, '
+                'sort_order INTEGER NOT NULL DEFAULT 0, '
+                "created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', CURRENT_TIMESTAMP) AS INTEGER)), "
+                "updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', CURRENT_TIMESTAMP) AS INTEGER))"
+                ')',
+              );
+            }
+            if (!await _hasColumn('accounts', 'intermediary_id')) {
+              await customStatement(
+                'ALTER TABLE accounts ADD COLUMN intermediary_id INTEGER REFERENCES intermediaries(id)',
+              );
+            }
+            if (!await _hasColumn('assets', 'intermediary_id')) {
+              await customStatement(
+                'ALTER TABLE assets ADD COLUMN intermediary_id INTEGER REFERENCES intermediaries(id)',
+              );
+            }
+            // Create intermediaries from existing account institutions
+            await customStatement(
+              "INSERT OR IGNORE INTO intermediaries (name) "
+              "SELECT DISTINCT institution FROM accounts "
+              "WHERE institution != '' AND institution IS NOT NULL",
+            );
+            // Link accounts to their intermediary
+            await customStatement(
+              'UPDATE accounts SET intermediary_id = ('
+              '  SELECT id FROM intermediaries WHERE intermediaries.name = accounts.institution'
+              ") WHERE institution != '' AND institution IS NOT NULL AND intermediary_id IS NULL",
+            );
+            _log.info('Migration 22: intermediaries table created, accounts linked');
           }
         },
       );

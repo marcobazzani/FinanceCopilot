@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -11,14 +12,23 @@ import 'account_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
-class AccountsScreen extends ConsumerWidget {
+class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AccountsScreen> createState() => _AccountsScreenState();
+}
+
+class _AccountsScreenState extends ConsumerState<AccountsScreen> {
+  final _expandedGroups = <int?>{};
+  bool _initialized = false;
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final accountsAsync = ref.watch(accountsProvider);
     final statsAsync = ref.watch(accountStatsProvider);
+    final intermediariesAsync = ref.watch(intermediariesProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final convertedStats = ref.watch(convertedAccountStatsProvider).value ?? {};
@@ -33,52 +43,220 @@ class AccountsScreen extends ConsumerWidget {
           }
 
           final stats = statsAsync.value ?? {};
+          final intermediaries = intermediariesAsync.value ?? [];
 
-          return ReorderableListView.builder(
-            buildDefaultDragHandles: false,
-            itemCount: accounts.length,
-            onReorder: (oldIndex, newIndex) {
-              if (newIndex > oldIndex) newIndex--;
-              final reordered = List<Account>.from(accounts);
-              final item = reordered.removeAt(oldIndex);
-              reordered.insert(newIndex, item);
-              ref
-                  .read(accountServiceProvider)
-                  .reorder(reordered.map((a) => a.id).toList());
-            },
-            itemBuilder: (ctx, i) {
-              final account = accounts[i] as Account;
-              final stat = stats[account.id];
+          // Auto-expand all groups on first build
+          if (!_initialized) {
+            _expandedGroups.addAll(intermediaries.map((i) => i.id));
+            _expandedGroups.add(null); // unassigned group
+            _initialized = true;
+          }
 
-              return _AccountTile(
-                key: ValueKey(account.id),
-                account: account,
-                stats: stat,
-                convertedBalance: convertedStats[account.id],
-                baseCurrency: baseCurrency,
-                locale: locale,
-                index: i,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AccountDetailScreen(account: account),
+          // Group accounts by intermediaryId
+          final grouped = <int?, List<Account>>{};
+          for (final account in accounts) {
+            (grouped[account.intermediaryId] ??= []).add(account);
+          }
+
+          // Build ordered groups: intermediaries first (by sortOrder), then unassigned
+          final groupOrder = <int?>[
+            ...intermediaries.map((i) => i.id),
+            if (grouped.containsKey(null)) null,
+          ];
+
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 80),
+            children: [
+              for (final groupId in groupOrder) ...[
+                if (grouped.containsKey(groupId))
+                  _buildGroup(
+                    context, s, groupId,
+                    groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
+                    grouped[groupId]!,
+                    stats, convertedStats, baseCurrency, locale,
+                    intermediaries,
                   ),
-                ),
-              );
-            },
+              ],
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateDialog(context, ref),
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'add_intermediary',
+            onPressed: () => _showIntermediaryDialog(context),
+            child: const Icon(Icons.business),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton(
+            heroTag: 'add_account',
+            onPressed: () => _showCreateDialog(context),
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
+  Widget _buildGroup(
+    BuildContext context,
+    AppStrings s,
+    int? groupId,
+    Intermediary? intermediary,
+    List<Account> accounts,
+    Map<int, AccountStats> stats,
+    Map<int, double?> convertedStats,
+    String baseCurrency,
+    String locale,
+    List<Intermediary> allIntermediaries,
+  ) {
+    final isExpanded = _expandedGroups.contains(groupId);
+    final title = intermediary?.name ?? s.unassigned;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() {
+            if (isExpanded) {
+              _expandedGroups.remove(groupId);
+            } else {
+              _expandedGroups.add(groupId);
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  isExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  intermediary != null ? Icons.business : Icons.folder_open,
+                  size: 18,
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$title (${accounts.length})',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                ),
+                if (intermediary != null)
+                  PopupMenuButton<String>(
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
+                      PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
+                    ],
+                    onSelected: (v) {
+                      if (v == 'edit') _showIntermediaryDialog(context, intermediary: intermediary);
+                      if (v == 'delete') _confirmDeleteIntermediary(context, intermediary);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded)
+          ...accounts.asMap().entries.map((entry) {
+            final account = entry.value;
+            return _AccountTile(
+              key: ValueKey(account.id),
+              account: account,
+              stats: stats[account.id],
+              convertedBalance: convertedStats[account.id],
+              baseCurrency: baseCurrency,
+              locale: locale,
+              allIntermediaries: allIntermediaries,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AccountDetailScreen(account: account),
+                ),
+              ),
+              onMoveToIntermediary: (intId) {
+                ref.read(intermediaryServiceProvider).moveAccount(account.id, intId);
+              },
+            );
+          }),
+        const Divider(height: 1),
+      ],
+    );
+  }
+
+  Future<void> _showIntermediaryDialog(BuildContext context, {Intermediary? intermediary}) async {
+    final s = ref.read(appStringsProvider);
+    final nameCtrl = TextEditingController(text: intermediary?.name ?? '');
+    final isEdit = intermediary != null;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(isEdit ? s.editIntermediary : s.addIntermediary),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(labelText: s.intermediaryName),
+            autofocus: true,
+            onChanged: (_) => setDialogState(() {}),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: nameCtrl.text.trim().isNotEmpty
+                  ? () async {
+                      final svc = ref.read(intermediaryServiceProvider);
+                      if (isEdit) {
+                        await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
+                      } else {
+                        await svc.create(name: nameCtrl.text.trim());
+                      }
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    }
+                  : null,
+              child: Text(isEdit ? s.save : s.create),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteIntermediary(BuildContext context, Intermediary intermediary) async {
+    final s = ref.read(appStringsProvider);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.deleteIntermediary),
+        content: Text(s.deleteIntermediaryConfirm(intermediary.name)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(intermediaryServiceProvider).delete(intermediary.id);
+    }
+  }
+
+  Future<void> _showCreateDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController();
 
@@ -123,8 +301,9 @@ class _AccountTile extends ConsumerWidget {
   final double? convertedBalance;
   final String baseCurrency;
   final String locale;
-  final int index;
+  final List<Intermediary> allIntermediaries;
   final VoidCallback onTap;
+  final void Function(int?) onMoveToIntermediary;
 
   const _AccountTile({
     super.key,
@@ -133,8 +312,9 @@ class _AccountTile extends ConsumerWidget {
     this.convertedBalance,
     required this.baseCurrency,
     required this.locale,
-    required this.index,
+    required this.allIntermediaries,
     required this.onTap,
+    required this.onMoveToIntermediary,
   });
 
   @override
@@ -150,14 +330,7 @@ class _AccountTile extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            // Drag handle
-            ReorderableDragStartListener(
-              index: index,
-              child: const Padding(
-                padding: EdgeInsets.only(right: 12),
-                child: Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-              ),
-            ),
+            const SizedBox(width: 28), // indent under group header
             // Account icon
             Container(
               width: 40,
@@ -182,7 +355,6 @@ class _AccountTile extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Name + currency badge
                   Row(
                     children: [
                       Flexible(
@@ -195,24 +367,14 @@ class _AccountTile extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (account.institution.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          account.institution,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                   const SizedBox(height: 3),
-                  // Stats line
                   _buildStatsLine(context, dateFormat, s),
                 ],
               ),
             ),
-            // Balance + currency + chevron
+            // Balance + currency
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -228,7 +390,6 @@ class _AccountTile extends ConsumerWidget {
                           : Colors.grey,
                     ),
                   ),
-                  // Show converted balance if currency differs from base
                   if (account.currency != baseCurrency && convertedBalance != null) ...[
                     const SizedBox(height: 2),
                     PrivacyText(
@@ -261,7 +422,20 @@ class _AccountTile extends ConsumerWidget {
                 ],
               ],
             ),
-            const SizedBox(width: 4),
+            // Move menu
+            PopupMenuButton<int?>(
+              iconSize: 18,
+              padding: EdgeInsets.zero,
+              tooltip: s.selectIntermediary,
+              itemBuilder: (_) => [
+                ...allIntermediaries
+                    .where((i) => i.id != account.intermediaryId)
+                    .map((i) => PopupMenuItem(value: i.id, child: Text(i.name))),
+                if (account.intermediaryId != null)
+                  PopupMenuItem(value: null, child: Text(s.unassigned)),
+              ],
+              onSelected: onMoveToIntermediary,
+            ),
             const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ],
         ),

@@ -350,6 +350,9 @@ class ImportService {
     /// If provided, fills missing exchange rates from historical data after import.
     ExchangeRateService? rateService,
     required String baseCurrency,
+    /// If set, new assets are assigned to this intermediary and deletion
+    /// is scoped to ALL assets under this intermediary.
+    int? intermediaryId,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -458,6 +461,7 @@ class ImportService {
           isin: Value(isin),
           currency: Value(currency),
           exchange: Value(exchange),
+          intermediaryId: Value(intermediaryId),
         ));
         assetsByIsin[isin] = assetId;
         _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker, exchange=$exchange');
@@ -560,25 +564,42 @@ class ImportService {
 
     onProgress?.call(preview.rows.length, preview.rows.length);
 
-    // Date-based wipe-and-replace: for each asset, delete events from oldest CSV date onward
+    // Date-based wipe-and-replace
     var totalDeleted = 0;
-    // Group companions by assetId and find oldest date per asset
+    // Group companions by assetId (needed for rate backfill later)
     final byAsset = <int, List<AssetEventsCompanion>>{};
     for (final c in companions) {
       (byAsset[c.assetId.value] ??= []).add(c);
     }
-    for (final entry in byAsset.entries) {
-      final assetId = entry.key;
-      final events = entry.value;
-      final oldestDate = events.map((e) => e.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
-      final cutoff = DateTime(oldestDate.year, oldestDate.month, oldestDate.day);
-      final deleted = await _db.customUpdate(
-        'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
-        variables: [Variable.withInt(assetId), Variable.withInt(cutoff.millisecondsSinceEpoch ~/ 1000)],
+    // Find global oldest date across all companions
+    final globalOldest = companions.map((c) => c.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
+    final globalCutoff = DateTime(globalOldest.year, globalOldest.month, globalOldest.day);
+    final cutoffEpoch = globalCutoff.millisecondsSinceEpoch ~/ 1000;
+
+    if (intermediaryId != null) {
+      // Intermediary-scoped: delete events for ALL assets under this intermediary
+      totalDeleted = await _db.customUpdate(
+        'DELETE FROM asset_events WHERE asset_id IN '
+        '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
+        variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
         updates: {_db.assetEvents},
       );
-      totalDeleted += deleted;
-      _log.fine('importAssetEventsGrouped: asset $assetId - deleted $deleted events from ${formatYmd(cutoff)}');
+      _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
+    } else {
+      // Per-asset: delete events only for assets appearing in this import
+      for (final entry in byAsset.entries) {
+        final assetId = entry.key;
+        final events = entry.value;
+        final oldestDate = events.map((e) => e.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
+        final cutoff = DateTime(oldestDate.year, oldestDate.month, oldestDate.day);
+        final deleted = await _db.customUpdate(
+          'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
+          variables: [Variable.withInt(assetId), Variable.withInt(cutoff.millisecondsSinceEpoch ~/ 1000)],
+          updates: {_db.assetEvents},
+        );
+        totalDeleted += deleted;
+        _log.fine('importAssetEventsGrouped: asset $assetId - deleted $deleted events from ${formatYmd(cutoff)}');
+      }
     }
 
     _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');

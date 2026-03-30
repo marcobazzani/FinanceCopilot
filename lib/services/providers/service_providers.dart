@@ -2,6 +2,10 @@ part of 'providers.dart';
 
 // ── Service providers ──
 
+final intermediaryServiceProvider = Provider<IntermediaryService>((ref) {
+  return IntermediaryService(ref.watch(databaseProvider));
+});
+
 final accountServiceProvider = Provider<AccountService>((ref) {
   return AccountService(ref.watch(databaseProvider));
 });

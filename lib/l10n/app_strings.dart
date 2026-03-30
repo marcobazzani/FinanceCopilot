@@ -622,6 +622,20 @@ class AppStrings {
     AssetClass.multiAsset:  assetClassMultiAsset,
   }[c]!;
 
+  // ── Intermediaries ─────────────────────────────────────────
+  String get intermediary          => _it ? 'Intermediario'             : 'Intermediary';
+  String get intermediaries        => _it ? 'Intermediari'              : 'Intermediaries';
+  String get addIntermediary       => _it ? 'Aggiungi intermediario'    : 'Add Intermediary';
+  String get editIntermediary      => _it ? 'Modifica intermediario'    : 'Edit Intermediary';
+  String get deleteIntermediary    => _it ? 'Elimina intermediario'     : 'Delete Intermediary';
+  String get intermediaryName      => _it ? 'Nome intermediario'        : 'Intermediary Name';
+  String get unassigned            => _it ? 'Non assegnato'             : 'Unassigned';
+  String deleteIntermediaryConfirm(String name) => _it
+      ? 'Eliminare "$name"? Conti e strumenti verranno spostati in "Non assegnato".'
+      : 'Delete "$name"? Accounts and assets will be moved to "Unassigned".';
+  String get intermediaryMoved     => _it ? 'Spostato con successo'     : 'Moved successfully';
+  String get selectIntermediary    => _it ? 'Seleziona intermediario'   : 'Select Intermediary';
+
   // ── DB Picker ────────────────────────────────────────────
   String get dbPickerTitle        => _it ? 'Apri un database'        : 'Open a Database';
   String get dbPickerOpenFile     => _it ? 'Apri file...'            : 'Open File...';

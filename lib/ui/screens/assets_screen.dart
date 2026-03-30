@@ -16,14 +16,23 @@ import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
 
-class AssetsScreen extends ConsumerWidget {
+class AssetsScreen extends ConsumerStatefulWidget {
   const AssetsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AssetsScreen> createState() => _AssetsScreenState();
+}
+
+class _AssetsScreenState extends ConsumerState<AssetsScreen> {
+  final _expandedGroups = <int?>{};
+  bool _initialized = false;
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
     final statsAsync = ref.watch(assetStatsProvider);
+    final intermediariesAsync = ref.watch(intermediariesProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final convertedStats = ref.watch(convertedAssetStatsProvider).value ?? {};
@@ -34,63 +43,141 @@ class AssetsScreen extends ConsumerWidget {
         data: (assets) {
           if (assets.isEmpty) {
             return Center(
-              child: Text(s.noAssetsYet,
-                  textAlign: TextAlign.center),
+              child: Text(s.noAssetsYet, textAlign: TextAlign.center),
             );
           }
 
           final stats = statsAsync.value ?? {};
+          final intermediaries = intermediariesAsync.value ?? [];
 
-          return ReorderableListView.builder(
-            buildDefaultDragHandles: false,
-            itemCount: assets.length,
-            onReorder: (oldIndex, newIndex) {
-              if (newIndex > oldIndex) newIndex--;
-              final reordered = List<Asset>.from(assets);
-              final item = reordered.removeAt(oldIndex);
-              reordered.insert(newIndex, item);
-              ref
-                  .read(assetServiceProvider)
-                  .reorder(reordered.map((a) => a.id).toList());
-            },
-            itemBuilder: (ctx, i) {
-              final asset = assets[i] as Asset;
-              final stat = stats[asset.id];
+          if (!_initialized) {
+            _expandedGroups.addAll(intermediaries.map((i) => i.id));
+            _expandedGroups.add(null);
+            _initialized = true;
+          }
 
-              return _AssetTile(
-                key: ValueKey(asset.id),
-                asset: asset,
-                stats: stat,
-                convertedInvested: convertedStats[asset.id],
-                marketValue: marketValues[asset.id],
-                baseCurrency: baseCurrency,
-                locale: locale,
-                index: i,
-                strings: s,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AssetDetailScreen(asset: asset),
+          // Group assets by intermediaryId
+          final grouped = <int?, List<Asset>>{};
+          for (final asset in assets) {
+            (grouped[asset.intermediaryId] ??= []).add(asset);
+          }
+
+          final groupOrder = <int?>[
+            ...intermediaries.map((i) => i.id),
+            if (grouped.containsKey(null)) null,
+          ];
+
+          return ListView(
+            padding: const EdgeInsets.only(bottom: 80),
+            children: [
+              for (final groupId in groupOrder) ...[
+                if (grouped.containsKey(groupId))
+                  _buildGroup(
+                    context, s, groupId,
+                    groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
+                    grouped[groupId]!,
+                    stats, convertedStats, marketValues, baseCurrency, locale,
+                    intermediaries,
                   ),
-                ),
-              );
-            },
+              ],
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateDialog(context, ref),
+        onPressed: () => showDialog(
+          context: context,
+          builder: (ctx) => _CreateAssetDialog(ref: ref),
+        ),
         child: const Icon(Icons.add),
       ),
     );
   }
 
-  Future<void> _showCreateDialog(BuildContext context, WidgetRef ref) async {
-    await showDialog(
-      context: context,
-      builder: (ctx) => _CreateAssetDialog(ref: ref),
+  Widget _buildGroup(
+    BuildContext context,
+    AppStrings s,
+    int? groupId,
+    Intermediary? intermediary,
+    List<Asset> assets,
+    Map<int, AssetStats> stats,
+    Map<int, double?> convertedStats,
+    Map<int, double> marketValues,
+    String baseCurrency,
+    String locale,
+    List<Intermediary> allIntermediaries,
+  ) {
+    final isExpanded = _expandedGroups.contains(groupId);
+    final title = intermediary?.name ?? s.unassigned;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() {
+            if (isExpanded) {
+              _expandedGroups.remove(groupId);
+            } else {
+              _expandedGroups.add(groupId);
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  isExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  intermediary != null ? Icons.business : Icons.folder_open,
+                  size: 18,
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$title (${assets.length})',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded)
+          ...assets.map((asset) {
+            final stat = stats[asset.id];
+            return _AssetTile(
+              key: ValueKey(asset.id),
+              asset: asset,
+              stats: stat,
+              convertedInvested: convertedStats[asset.id],
+              marketValue: marketValues[asset.id],
+              baseCurrency: baseCurrency,
+              locale: locale,
+              strings: s,
+              allIntermediaries: allIntermediaries,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AssetDetailScreen(asset: asset),
+                ),
+              ),
+              onMoveToIntermediary: (intId) {
+                ref.read(intermediaryServiceProvider).moveAsset(asset.id, intId);
+              },
+            );
+          }),
+        const Divider(height: 1),
+      ],
     );
   }
 }
@@ -102,9 +189,10 @@ class _AssetTile extends StatelessWidget {
   final double? marketValue;
   final String baseCurrency;
   final String locale;
-  final int index;
   final VoidCallback onTap;
   final AppStrings strings;
+  final List<Intermediary> allIntermediaries;
+  final void Function(int?) onMoveToIntermediary;
 
   const _AssetTile({
     super.key,
@@ -114,9 +202,10 @@ class _AssetTile extends StatelessWidget {
     this.marketValue,
     required this.baseCurrency,
     required this.locale,
-    required this.index,
     required this.onTap,
     required this.strings,
+    required this.allIntermediaries,
+    required this.onMoveToIntermediary,
   });
 
   @override
@@ -132,14 +221,7 @@ class _AssetTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            // Drag handle
-            ReorderableDragStartListener(
-              index: index,
-              child: const Padding(
-                padding: EdgeInsets.only(right: 12),
-                child: Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-              ),
-            ),
+            const SizedBox(width: 28), // indent under group header
             // Asset icon
             Container(
               width: 40,
@@ -271,7 +353,20 @@ class _AssetTile extends StatelessWidget {
                 ],
               ],
             ),
-            const SizedBox(width: 4),
+            // Move menu
+            PopupMenuButton<int?>(
+              iconSize: 18,
+              padding: EdgeInsets.zero,
+              tooltip: strings.selectIntermediary,
+              itemBuilder: (_) => [
+                ...allIntermediaries
+                    .where((i) => i.id != asset.intermediaryId)
+                    .map((i) => PopupMenuItem(value: i.id, child: Text(i.name))),
+                if (asset.intermediaryId != null)
+                  PopupMenuItem(value: null, child: Text(strings.unassigned)),
+              ],
+              onSelected: onMoveToIntermediary,
+            ),
             const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
           ],
         ),

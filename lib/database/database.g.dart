@@ -3,6 +3,354 @@
 part of 'database.dart';
 
 // ignore_for_file: type=lint
+class $IntermediariesTable extends Intermediaries
+    with TableInfo<$IntermediariesTable, Intermediary> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $IntermediariesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 100,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'intermediaries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Intermediary> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Intermediary map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Intermediary(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $IntermediariesTable createAlias(String alias) {
+    return $IntermediariesTable(attachedDatabase, alias);
+  }
+}
+
+class Intermediary extends DataClass implements Insertable<Intermediary> {
+  final int id;
+  final String name;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const Intermediary({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  IntermediariesCompanion toCompanion(bool nullToAbsent) {
+    return IntermediariesCompanion(
+      id: Value(id),
+      name: Value(name),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory Intermediary.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Intermediary(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  Intermediary copyWith({
+    int? id,
+    String? name,
+    int? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => Intermediary(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  Intermediary copyWithCompanion(IntermediariesCompanion data) {
+    return Intermediary(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Intermediary(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, sortOrder, createdAt, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Intermediary &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const IntermediariesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  IntermediariesCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<Intermediary> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  IntermediariesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return IntermediariesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IntermediariesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -71,6 +419,20 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _intermediaryIdMeta = const VerificationMeta(
+    'intermediaryId',
+  );
+  @override
+  late final GeneratedColumn<int> intermediaryId = GeneratedColumn<int>(
+    'intermediary_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES intermediaries (id)',
+    ),
   );
   static const VerificationMeta _isActiveMeta = const VerificationMeta(
     'isActive',
@@ -145,6 +507,7 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     type,
     currency,
     institution,
+    intermediaryId,
     isActive,
     includeInNetWorth,
     sortOrder,
@@ -186,6 +549,15 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         institution.isAcceptableOrUnknown(
           data['institution']!,
           _institutionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('intermediary_id')) {
+      context.handle(
+        _intermediaryIdMeta,
+        intermediaryId.isAcceptableOrUnknown(
+          data['intermediary_id']!,
+          _intermediaryIdMeta,
         ),
       );
     }
@@ -253,6 +625,10 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         DriftSqlType.string,
         data['${effectivePrefix}institution'],
       )!,
+      intermediaryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}intermediary_id'],
+      ),
       isActive: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
@@ -291,6 +667,7 @@ class Account extends DataClass implements Insertable<Account> {
   final AccountType type;
   final String currency;
   final String institution;
+  final int? intermediaryId;
   final bool isActive;
   final bool includeInNetWorth;
   final int sortOrder;
@@ -302,6 +679,7 @@ class Account extends DataClass implements Insertable<Account> {
     required this.type,
     required this.currency,
     required this.institution,
+    this.intermediaryId,
     required this.isActive,
     required this.includeInNetWorth,
     required this.sortOrder,
@@ -318,6 +696,9 @@ class Account extends DataClass implements Insertable<Account> {
     }
     map['currency'] = Variable<String>(currency);
     map['institution'] = Variable<String>(institution);
+    if (!nullToAbsent || intermediaryId != null) {
+      map['intermediary_id'] = Variable<int>(intermediaryId);
+    }
     map['is_active'] = Variable<bool>(isActive);
     map['include_in_net_worth'] = Variable<bool>(includeInNetWorth);
     map['sort_order'] = Variable<int>(sortOrder);
@@ -333,6 +714,9 @@ class Account extends DataClass implements Insertable<Account> {
       type: Value(type),
       currency: Value(currency),
       institution: Value(institution),
+      intermediaryId: intermediaryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(intermediaryId),
       isActive: Value(isActive),
       includeInNetWorth: Value(includeInNetWorth),
       sortOrder: Value(sortOrder),
@@ -354,6 +738,7 @@ class Account extends DataClass implements Insertable<Account> {
       ),
       currency: serializer.fromJson<String>(json['currency']),
       institution: serializer.fromJson<String>(json['institution']),
+      intermediaryId: serializer.fromJson<int?>(json['intermediaryId']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       includeInNetWorth: serializer.fromJson<bool>(json['includeInNetWorth']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
@@ -372,6 +757,7 @@ class Account extends DataClass implements Insertable<Account> {
       ),
       'currency': serializer.toJson<String>(currency),
       'institution': serializer.toJson<String>(institution),
+      'intermediaryId': serializer.toJson<int?>(intermediaryId),
       'isActive': serializer.toJson<bool>(isActive),
       'includeInNetWorth': serializer.toJson<bool>(includeInNetWorth),
       'sortOrder': serializer.toJson<int>(sortOrder),
@@ -386,6 +772,7 @@ class Account extends DataClass implements Insertable<Account> {
     AccountType? type,
     String? currency,
     String? institution,
+    Value<int?> intermediaryId = const Value.absent(),
     bool? isActive,
     bool? includeInNetWorth,
     int? sortOrder,
@@ -397,6 +784,9 @@ class Account extends DataClass implements Insertable<Account> {
     type: type ?? this.type,
     currency: currency ?? this.currency,
     institution: institution ?? this.institution,
+    intermediaryId: intermediaryId.present
+        ? intermediaryId.value
+        : this.intermediaryId,
     isActive: isActive ?? this.isActive,
     includeInNetWorth: includeInNetWorth ?? this.includeInNetWorth,
     sortOrder: sortOrder ?? this.sortOrder,
@@ -412,6 +802,9 @@ class Account extends DataClass implements Insertable<Account> {
       institution: data.institution.present
           ? data.institution.value
           : this.institution,
+      intermediaryId: data.intermediaryId.present
+          ? data.intermediaryId.value
+          : this.intermediaryId,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       includeInNetWorth: data.includeInNetWorth.present
           ? data.includeInNetWorth.value
@@ -430,6 +823,7 @@ class Account extends DataClass implements Insertable<Account> {
           ..write('type: $type, ')
           ..write('currency: $currency, ')
           ..write('institution: $institution, ')
+          ..write('intermediaryId: $intermediaryId, ')
           ..write('isActive: $isActive, ')
           ..write('includeInNetWorth: $includeInNetWorth, ')
           ..write('sortOrder: $sortOrder, ')
@@ -446,6 +840,7 @@ class Account extends DataClass implements Insertable<Account> {
     type,
     currency,
     institution,
+    intermediaryId,
     isActive,
     includeInNetWorth,
     sortOrder,
@@ -461,6 +856,7 @@ class Account extends DataClass implements Insertable<Account> {
           other.type == this.type &&
           other.currency == this.currency &&
           other.institution == this.institution &&
+          other.intermediaryId == this.intermediaryId &&
           other.isActive == this.isActive &&
           other.includeInNetWorth == this.includeInNetWorth &&
           other.sortOrder == this.sortOrder &&
@@ -474,6 +870,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
   final Value<AccountType> type;
   final Value<String> currency;
   final Value<String> institution;
+  final Value<int?> intermediaryId;
   final Value<bool> isActive;
   final Value<bool> includeInNetWorth;
   final Value<int> sortOrder;
@@ -485,6 +882,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
     this.institution = const Value.absent(),
+    this.intermediaryId = const Value.absent(),
     this.isActive = const Value.absent(),
     this.includeInNetWorth = const Value.absent(),
     this.sortOrder = const Value.absent(),
@@ -497,6 +895,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
     this.institution = const Value.absent(),
+    this.intermediaryId = const Value.absent(),
     this.isActive = const Value.absent(),
     this.includeInNetWorth = const Value.absent(),
     this.sortOrder = const Value.absent(),
@@ -509,6 +908,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Expression<String>? type,
     Expression<String>? currency,
     Expression<String>? institution,
+    Expression<int>? intermediaryId,
     Expression<bool>? isActive,
     Expression<bool>? includeInNetWorth,
     Expression<int>? sortOrder,
@@ -521,6 +921,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
       if (type != null) 'type': type,
       if (currency != null) 'currency': currency,
       if (institution != null) 'institution': institution,
+      if (intermediaryId != null) 'intermediary_id': intermediaryId,
       if (isActive != null) 'is_active': isActive,
       if (includeInNetWorth != null) 'include_in_net_worth': includeInNetWorth,
       if (sortOrder != null) 'sort_order': sortOrder,
@@ -535,6 +936,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Value<AccountType>? type,
     Value<String>? currency,
     Value<String>? institution,
+    Value<int?>? intermediaryId,
     Value<bool>? isActive,
     Value<bool>? includeInNetWorth,
     Value<int>? sortOrder,
@@ -547,6 +949,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
       type: type ?? this.type,
       currency: currency ?? this.currency,
       institution: institution ?? this.institution,
+      intermediaryId: intermediaryId ?? this.intermediaryId,
       isActive: isActive ?? this.isActive,
       includeInNetWorth: includeInNetWorth ?? this.includeInNetWorth,
       sortOrder: sortOrder ?? this.sortOrder,
@@ -575,6 +978,9 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     if (institution.present) {
       map['institution'] = Variable<String>(institution.value);
     }
+    if (intermediaryId.present) {
+      map['intermediary_id'] = Variable<int>(intermediaryId.value);
+    }
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
@@ -601,6 +1007,7 @@ class AccountsCompanion extends UpdateCompanion<Account> {
           ..write('type: $type, ')
           ..write('currency: $currency, ')
           ..write('institution: $institution, ')
+          ..write('intermediaryId: $intermediaryId, ')
           ..write('isActive: $isActive, ')
           ..write('includeInNetWorth: $includeInNetWorth, ')
           ..write('sortOrder: $sortOrder, ')
@@ -2625,6 +3032,20 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         requiredDuringInsert: false,
         defaultValue: Constant(AssetClass.equity.name),
       ).withConverter<AssetClass>($AssetsTable.$converterassetClass);
+  static const VerificationMeta _intermediaryIdMeta = const VerificationMeta(
+    'intermediaryId',
+  );
+  @override
+  late final GeneratedColumn<int> intermediaryId = GeneratedColumn<int>(
+    'intermediary_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES intermediaries (id)',
+    ),
+  );
   static const VerificationMeta _assetGroupMeta = const VerificationMeta(
     'assetGroup',
   );
@@ -2817,6 +3238,7 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     assetType,
     instrumentType,
     assetClass,
+    intermediaryId,
     assetGroup,
     currency,
     exchange,
@@ -2867,6 +3289,15 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
       context.handle(
         _isinMeta,
         isin.isAcceptableOrUnknown(data['isin']!, _isinMeta),
+      );
+    }
+    if (data.containsKey('intermediary_id')) {
+      context.handle(
+        _intermediaryIdMeta,
+        intermediaryId.isAcceptableOrUnknown(
+          data['intermediary_id']!,
+          _intermediaryIdMeta,
+        ),
       );
     }
     if (data.containsKey('asset_group')) {
@@ -3008,6 +3439,10 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
           data['${effectivePrefix}asset_class'],
         )!,
       ),
+      intermediaryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}intermediary_id'],
+      ),
       assetGroup: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}asset_group'],
@@ -3104,6 +3539,7 @@ class Asset extends DataClass implements Insertable<Asset> {
   final AssetType assetType;
   final InstrumentType instrumentType;
   final AssetClass assetClass;
+  final int? intermediaryId;
   final String assetGroup;
   final String currency;
   final String? exchange;
@@ -3128,6 +3564,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.assetType,
     required this.instrumentType,
     required this.assetClass,
+    this.intermediaryId,
     required this.assetGroup,
     required this.currency,
     this.exchange,
@@ -3170,6 +3607,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       map['asset_class'] = Variable<String>(
         $AssetsTable.$converterassetClass.toSql(assetClass),
       );
+    }
+    if (!nullToAbsent || intermediaryId != null) {
+      map['intermediary_id'] = Variable<int>(intermediaryId);
     }
     map['asset_group'] = Variable<String>(assetGroup);
     map['currency'] = Variable<String>(currency);
@@ -3221,6 +3661,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetType: Value(assetType),
       instrumentType: Value(instrumentType),
       assetClass: Value(assetClass),
+      intermediaryId: intermediaryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(intermediaryId),
       assetGroup: Value(assetGroup),
       currency: Value(currency),
       exchange: exchange == null && nullToAbsent
@@ -3273,6 +3716,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetClass: $AssetsTable.$converterassetClass.fromJson(
         serializer.fromJson<String>(json['assetClass']),
       ),
+      intermediaryId: serializer.fromJson<int?>(json['intermediaryId']),
       assetGroup: serializer.fromJson<String>(json['assetGroup']),
       currency: serializer.fromJson<String>(json['currency']),
       exchange: serializer.fromJson<String?>(json['exchange']),
@@ -3310,6 +3754,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       'assetClass': serializer.toJson<String>(
         $AssetsTable.$converterassetClass.toJson(assetClass),
       ),
+      'intermediaryId': serializer.toJson<int?>(intermediaryId),
       'assetGroup': serializer.toJson<String>(assetGroup),
       'currency': serializer.toJson<String>(currency),
       'exchange': serializer.toJson<String?>(exchange),
@@ -3339,6 +3784,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     AssetType? assetType,
     InstrumentType? instrumentType,
     AssetClass? assetClass,
+    Value<int?> intermediaryId = const Value.absent(),
     String? assetGroup,
     String? currency,
     Value<String?> exchange = const Value.absent(),
@@ -3363,6 +3809,9 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetType: assetType ?? this.assetType,
     instrumentType: instrumentType ?? this.instrumentType,
     assetClass: assetClass ?? this.assetClass,
+    intermediaryId: intermediaryId.present
+        ? intermediaryId.value
+        : this.intermediaryId,
     assetGroup: assetGroup ?? this.assetGroup,
     currency: currency ?? this.currency,
     exchange: exchange.present ? exchange.value : this.exchange,
@@ -3393,6 +3842,9 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetClass: data.assetClass.present
           ? data.assetClass.value
           : this.assetClass,
+      intermediaryId: data.intermediaryId.present
+          ? data.intermediaryId.value
+          : this.intermediaryId,
       assetGroup: data.assetGroup.present
           ? data.assetGroup.value
           : this.assetGroup,
@@ -3430,6 +3882,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('assetType: $assetType, ')
           ..write('instrumentType: $instrumentType, ')
           ..write('assetClass: $assetClass, ')
+          ..write('intermediaryId: $intermediaryId, ')
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
@@ -3459,6 +3912,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetType,
     instrumentType,
     assetClass,
+    intermediaryId,
     assetGroup,
     currency,
     exchange,
@@ -3487,6 +3941,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.assetType == this.assetType &&
           other.instrumentType == this.instrumentType &&
           other.assetClass == this.assetClass &&
+          other.intermediaryId == this.intermediaryId &&
           other.assetGroup == this.assetGroup &&
           other.currency == this.currency &&
           other.exchange == this.exchange &&
@@ -3513,6 +3968,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<AssetType> assetType;
   final Value<InstrumentType> instrumentType;
   final Value<AssetClass> assetClass;
+  final Value<int?> intermediaryId;
   final Value<String> assetGroup;
   final Value<String> currency;
   final Value<String?> exchange;
@@ -3537,6 +3993,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.assetType = const Value.absent(),
     this.instrumentType = const Value.absent(),
     this.assetClass = const Value.absent(),
+    this.intermediaryId = const Value.absent(),
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
@@ -3562,6 +4019,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     required AssetType assetType,
     this.instrumentType = const Value.absent(),
     this.assetClass = const Value.absent(),
+    this.intermediaryId = const Value.absent(),
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
@@ -3589,6 +4047,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? assetType,
     Expression<String>? instrumentType,
     Expression<String>? assetClass,
+    Expression<int>? intermediaryId,
     Expression<String>? assetGroup,
     Expression<String>? currency,
     Expression<String>? exchange,
@@ -3614,6 +4073,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (assetType != null) 'asset_type': assetType,
       if (instrumentType != null) 'instrument_type': instrumentType,
       if (assetClass != null) 'asset_class': assetClass,
+      if (intermediaryId != null) 'intermediary_id': intermediaryId,
       if (assetGroup != null) 'asset_group': assetGroup,
       if (currency != null) 'currency': currency,
       if (exchange != null) 'exchange': exchange,
@@ -3641,6 +4101,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<AssetType>? assetType,
     Value<InstrumentType>? instrumentType,
     Value<AssetClass>? assetClass,
+    Value<int?>? intermediaryId,
     Value<String>? assetGroup,
     Value<String>? currency,
     Value<String?>? exchange,
@@ -3666,6 +4127,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       assetType: assetType ?? this.assetType,
       instrumentType: instrumentType ?? this.instrumentType,
       assetClass: assetClass ?? this.assetClass,
+      intermediaryId: intermediaryId ?? this.intermediaryId,
       assetGroup: assetGroup ?? this.assetGroup,
       currency: currency ?? this.currency,
       exchange: exchange ?? this.exchange,
@@ -3714,6 +4176,9 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       map['asset_class'] = Variable<String>(
         $AssetsTable.$converterassetClass.toSql(assetClass.value),
       );
+    }
+    if (intermediaryId.present) {
+      map['intermediary_id'] = Variable<int>(intermediaryId.value);
     }
     if (assetGroup.present) {
       map['asset_group'] = Variable<String>(assetGroup.value);
@@ -3778,6 +4243,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('assetType: $assetType, ')
           ..write('instrumentType: $instrumentType, ')
           ..write('assetClass: $assetClass, ')
+          ..write('intermediaryId: $intermediaryId, ')
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
@@ -12755,6 +13221,7 @@ class AssetCompositionsCompanion extends UpdateCompanion<AssetComposition> {
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $IntermediariesTable intermediaries = $IntermediariesTable(this);
   late final $AccountsTable accounts = $AccountsTable(this);
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $TransactionsTable transactions = $TransactionsTable(this);
@@ -12794,6 +13261,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
+    intermediaries,
     accounts,
     categories,
     transactions,
@@ -12819,6 +13287,409 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   ];
 }
 
+typedef $$IntermediariesTableCreateCompanionBuilder =
+    IntermediariesCompanion Function({
+      Value<int> id,
+      required String name,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$IntermediariesTableUpdateCompanionBuilder =
+    IntermediariesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$IntermediariesTableReferences
+    extends BaseReferences<_$AppDatabase, $IntermediariesTable, Intermediary> {
+  $$IntermediariesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<$AccountsTable, List<Account>> _accountsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.accounts,
+    aliasName: $_aliasNameGenerator(
+      db.intermediaries.id,
+      db.accounts.intermediaryId,
+    ),
+  );
+
+  $$AccountsTableProcessedTableManager get accountsRefs {
+    final manager = $$AccountsTableTableManager(
+      $_db,
+      $_db.accounts,
+    ).filter((f) => f.intermediaryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_accountsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$AssetsTable, List<Asset>> _assetsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.assets,
+    aliasName: $_aliasNameGenerator(
+      db.intermediaries.id,
+      db.assets.intermediaryId,
+    ),
+  );
+
+  $$AssetsTableProcessedTableManager get assetsRefs {
+    final manager = $$AssetsTableTableManager(
+      $_db,
+      $_db.assets,
+    ).filter((f) => f.intermediaryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_assetsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$IntermediariesTableFilterComposer
+    extends Composer<_$AppDatabase, $IntermediariesTable> {
+  $$IntermediariesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> accountsRefs(
+    Expression<bool> Function($$AccountsTableFilterComposer f) f,
+  ) {
+    final $$AccountsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.accounts,
+      getReferencedColumn: (t) => t.intermediaryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountsTableFilterComposer(
+            $db: $db,
+            $table: $db.accounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> assetsRefs(
+    Expression<bool> Function($$AssetsTableFilterComposer f) f,
+  ) {
+    final $$AssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.intermediaryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$IntermediariesTableOrderingComposer
+    extends Composer<_$AppDatabase, $IntermediariesTable> {
+  $$IntermediariesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$IntermediariesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $IntermediariesTable> {
+  $$IntermediariesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> accountsRefs<T extends Object>(
+    Expression<T> Function($$AccountsTableAnnotationComposer a) f,
+  ) {
+    final $$AccountsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.accounts,
+      getReferencedColumn: (t) => t.intermediaryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> assetsRefs<T extends Object>(
+    Expression<T> Function($$AssetsTableAnnotationComposer a) f,
+  ) {
+    final $$AssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.intermediaryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$IntermediariesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $IntermediariesTable,
+          Intermediary,
+          $$IntermediariesTableFilterComposer,
+          $$IntermediariesTableOrderingComposer,
+          $$IntermediariesTableAnnotationComposer,
+          $$IntermediariesTableCreateCompanionBuilder,
+          $$IntermediariesTableUpdateCompanionBuilder,
+          (Intermediary, $$IntermediariesTableReferences),
+          Intermediary,
+          PrefetchHooks Function({bool accountsRefs, bool assetsRefs})
+        > {
+  $$IntermediariesTableTableManager(
+    _$AppDatabase db,
+    $IntermediariesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$IntermediariesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$IntermediariesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$IntermediariesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => IntermediariesCompanion(
+                id: id,
+                name: name,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => IntermediariesCompanion.insert(
+                id: id,
+                name: name,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$IntermediariesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({accountsRefs = false, assetsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (accountsRefs) db.accounts,
+                if (assetsRefs) db.assets,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (accountsRefs)
+                    await $_getPrefetchedData<
+                      Intermediary,
+                      $IntermediariesTable,
+                      Account
+                    >(
+                      currentTable: table,
+                      referencedTable: $$IntermediariesTableReferences
+                          ._accountsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$IntermediariesTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).accountsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.intermediaryId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                  if (assetsRefs)
+                    await $_getPrefetchedData<
+                      Intermediary,
+                      $IntermediariesTable,
+                      Asset
+                    >(
+                      currentTable: table,
+                      referencedTable: $$IntermediariesTableReferences
+                          ._assetsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$IntermediariesTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).assetsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where(
+                            (e) => e.intermediaryId == item.id,
+                          ),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$IntermediariesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $IntermediariesTable,
+      Intermediary,
+      $$IntermediariesTableFilterComposer,
+      $$IntermediariesTableOrderingComposer,
+      $$IntermediariesTableAnnotationComposer,
+      $$IntermediariesTableCreateCompanionBuilder,
+      $$IntermediariesTableUpdateCompanionBuilder,
+      (Intermediary, $$IntermediariesTableReferences),
+      Intermediary,
+      PrefetchHooks Function({bool accountsRefs, bool assetsRefs})
+    >;
 typedef $$AccountsTableCreateCompanionBuilder =
     AccountsCompanion Function({
       Value<int> id,
@@ -12826,6 +13697,7 @@ typedef $$AccountsTableCreateCompanionBuilder =
       Value<AccountType> type,
       Value<String> currency,
       Value<String> institution,
+      Value<int?> intermediaryId,
       Value<bool> isActive,
       Value<bool> includeInNetWorth,
       Value<int> sortOrder,
@@ -12839,6 +13711,7 @@ typedef $$AccountsTableUpdateCompanionBuilder =
       Value<AccountType> type,
       Value<String> currency,
       Value<String> institution,
+      Value<int?> intermediaryId,
       Value<bool> isActive,
       Value<bool> includeInNetWorth,
       Value<int> sortOrder,
@@ -12849,6 +13722,25 @@ typedef $$AccountsTableUpdateCompanionBuilder =
 final class $$AccountsTableReferences
     extends BaseReferences<_$AppDatabase, $AccountsTable, Account> {
   $$AccountsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias(
+        $_aliasNameGenerator(db.accounts.intermediaryId, db.intermediaries.id),
+      );
+
+  $$IntermediariesTableProcessedTableManager? get intermediaryId {
+    final $_column = $_itemColumn<int>('intermediary_id');
+    if ($_column == null) return null;
+    final manager = $$IntermediariesTableTableManager(
+      $_db,
+      $_db.intermediaries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_intermediaryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$TransactionsTable, List<Transaction>>
   _transactionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
@@ -12946,6 +13838,29 @@ class $$AccountsTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$IntermediariesTableFilterComposer get intermediaryId {
+    final $$IntermediariesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableFilterComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> transactionsRefs(
     Expression<bool> Function($$TransactionsTableFilterComposer f) f,
@@ -13056,6 +13971,29 @@ class $$AccountsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$IntermediariesTableOrderingComposer get intermediaryId {
+    final $$IntermediariesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableOrderingComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AccountsTableAnnotationComposer
@@ -13100,6 +14038,29 @@ class $$AccountsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$IntermediariesTableAnnotationComposer get intermediaryId {
+    final $$IntermediariesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<T> transactionsRefs<T extends Object>(
     Expression<T> Function($$TransactionsTableAnnotationComposer a) f,
@@ -13166,6 +14127,7 @@ class $$AccountsTableTableManager
           (Account, $$AccountsTableReferences),
           Account,
           PrefetchHooks Function({
+            bool intermediaryId,
             bool transactionsRefs,
             bool importConfigsRefs,
           })
@@ -13188,6 +14150,7 @@ class $$AccountsTableTableManager
                 Value<AccountType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String> institution = const Value.absent(),
+                Value<int?> intermediaryId = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<bool> includeInNetWorth = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
@@ -13199,6 +14162,7 @@ class $$AccountsTableTableManager
                 type: type,
                 currency: currency,
                 institution: institution,
+                intermediaryId: intermediaryId,
                 isActive: isActive,
                 includeInNetWorth: includeInNetWorth,
                 sortOrder: sortOrder,
@@ -13212,6 +14176,7 @@ class $$AccountsTableTableManager
                 Value<AccountType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String> institution = const Value.absent(),
+                Value<int?> intermediaryId = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<bool> includeInNetWorth = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
@@ -13223,6 +14188,7 @@ class $$AccountsTableTableManager
                 type: type,
                 currency: currency,
                 institution: institution,
+                intermediaryId: intermediaryId,
                 isActive: isActive,
                 includeInNetWorth: includeInNetWorth,
                 sortOrder: sortOrder,
@@ -13238,14 +14204,49 @@ class $$AccountsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({transactionsRefs = false, importConfigsRefs = false}) {
+              ({
+                intermediaryId = false,
+                transactionsRefs = false,
+                importConfigsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (transactionsRefs) db.transactions,
                     if (importConfigsRefs) db.importConfigs,
                   ],
-                  addJoins: null,
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (intermediaryId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.intermediaryId,
+                                    referencedTable: $$AccountsTableReferences
+                                        ._intermediaryIdTable(db),
+                                    referencedColumn: $$AccountsTableReferences
+                                        ._intermediaryIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (transactionsRefs)
@@ -13310,7 +14311,11 @@ typedef $$AccountsTableProcessedTableManager =
       $$AccountsTableUpdateCompanionBuilder,
       (Account, $$AccountsTableReferences),
       Account,
-      PrefetchHooks Function({bool transactionsRefs, bool importConfigsRefs})
+      PrefetchHooks Function({
+        bool intermediaryId,
+        bool transactionsRefs,
+        bool importConfigsRefs,
+      })
     >;
 typedef $$CategoriesTableCreateCompanionBuilder =
     CategoriesCompanion Function({
@@ -15139,6 +16144,7 @@ typedef $$AssetsTableCreateCompanionBuilder =
       required AssetType assetType,
       Value<InstrumentType> instrumentType,
       Value<AssetClass> assetClass,
+      Value<int?> intermediaryId,
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
@@ -15165,6 +16171,7 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<AssetType> assetType,
       Value<InstrumentType> instrumentType,
       Value<AssetClass> assetClass,
+      Value<int?> intermediaryId,
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
@@ -15186,6 +16193,25 @@ typedef $$AssetsTableUpdateCompanionBuilder =
 final class $$AssetsTableReferences
     extends BaseReferences<_$AppDatabase, $AssetsTable, Asset> {
   $$AssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias(
+        $_aliasNameGenerator(db.assets.intermediaryId, db.intermediaries.id),
+      );
+
+  $$IntermediariesTableProcessedTableManager? get intermediaryId {
+    final $_column = $_itemColumn<int>('intermediary_id');
+    if ($_column == null) return null;
+    final manager = $$IntermediariesTableTableManager(
+      $_db,
+      $_db.intermediaries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_intermediaryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$AssetEventsTable, List<AssetEvent>>
   _assetEventsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
@@ -15393,6 +16419,29 @@ class $$AssetsTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$IntermediariesTableFilterComposer get intermediaryId {
+    final $$IntermediariesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableFilterComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> assetEventsRefs(
     Expression<bool> Function($$AssetEventsTableFilterComposer f) f,
@@ -15618,6 +16667,29 @@ class $$AssetsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$IntermediariesTableOrderingComposer get intermediaryId {
+    final $$IntermediariesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableOrderingComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AssetsTableAnnotationComposer
@@ -15712,6 +16784,29 @@ class $$AssetsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$IntermediariesTableAnnotationComposer get intermediaryId {
+    final $$IntermediariesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<T> assetEventsRefs<T extends Object>(
     Expression<T> Function($$AssetEventsTableAnnotationComposer a) f,
@@ -15829,6 +16924,7 @@ class $$AssetsTableTableManager
           (Asset, $$AssetsTableReferences),
           Asset,
           PrefetchHooks Function({
+            bool intermediaryId,
             bool assetEventsRefs,
             bool assetSnapshotsRefs,
             bool marketPricesRefs,
@@ -15855,6 +16951,7 @@ class $$AssetsTableTableManager
                 Value<AssetType> assetType = const Value.absent(),
                 Value<InstrumentType> instrumentType = const Value.absent(),
                 Value<AssetClass> assetClass = const Value.absent(),
+                Value<int?> intermediaryId = const Value.absent(),
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
@@ -15879,6 +16976,7 @@ class $$AssetsTableTableManager
                 assetType: assetType,
                 instrumentType: instrumentType,
                 assetClass: assetClass,
+                intermediaryId: intermediaryId,
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
@@ -15905,6 +17003,7 @@ class $$AssetsTableTableManager
                 required AssetType assetType,
                 Value<InstrumentType> instrumentType = const Value.absent(),
                 Value<AssetClass> assetClass = const Value.absent(),
+                Value<int?> intermediaryId = const Value.absent(),
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
@@ -15929,6 +17028,7 @@ class $$AssetsTableTableManager
                 assetType: assetType,
                 instrumentType: instrumentType,
                 assetClass: assetClass,
+                intermediaryId: intermediaryId,
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
@@ -15954,6 +17054,7 @@ class $$AssetsTableTableManager
               .toList(),
           prefetchHooksCallback:
               ({
+                intermediaryId = false,
                 assetEventsRefs = false,
                 assetSnapshotsRefs = false,
                 marketPricesRefs = false,
@@ -15967,7 +17068,38 @@ class $$AssetsTableTableManager
                     if (marketPricesRefs) db.marketPrices,
                     if (assetCompositionsRefs) db.assetCompositions,
                   ],
-                  addJoins: null,
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (intermediaryId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.intermediaryId,
+                                    referencedTable: $$AssetsTableReferences
+                                        ._intermediaryIdTable(db),
+                                    referencedColumn: $$AssetsTableReferences
+                                        ._intermediaryIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (assetEventsRefs)
@@ -16075,6 +17207,7 @@ typedef $$AssetsTableProcessedTableManager =
       (Asset, $$AssetsTableReferences),
       Asset,
       PrefetchHooks Function({
+        bool intermediaryId,
         bool assetEventsRefs,
         bool assetSnapshotsRefs,
         bool marketPricesRefs,
@@ -22404,6 +23537,8 @@ typedef $$AssetCompositionsTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
+  $$IntermediariesTableTableManager get intermediaries =>
+      $$IntermediariesTableTableManager(_db, _db.intermediaries);
   $$AccountsTableTableManager get accounts =>
       $$AccountsTableTableManager(_db, _db.accounts);
   $$CategoriesTableTableManager get categories =>

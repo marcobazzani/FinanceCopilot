@@ -23,6 +23,7 @@ import '../network_monitor.dart';
 import '../import_service.dart';
 import '../isin_lookup_service.dart';
 import '../market_price_service.dart';
+import '../intermediary_service.dart';
 import '../transaction_service.dart';
 import '../../utils/logger.dart';
 

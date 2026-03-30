@@ -108,12 +108,21 @@ enum RegisteredEventType {
 // Tables
 // ──────────────────────────────────────────────
 
+class Intermediaries extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 100)();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 class Accounts extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 100)();
   TextColumn get type => textEnum<AccountType>().withDefault(Constant(AccountType.bank.name))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get institution => text().withDefault(const Constant(''))();
+  IntColumn get intermediaryId => integer().nullable().references(Intermediaries, #id)();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get includeInNetWorth => boolean().withDefault(const Constant(true))();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
@@ -169,6 +178,7 @@ class Assets extends Table {
   TextColumn get assetType => textEnum<AssetType>()();
   TextColumn get instrumentType => textEnum<InstrumentType>().withDefault(Constant(InstrumentType.etf.name))();
   TextColumn get assetClass => textEnum<AssetClass>().withDefault(Constant(AssetClass.equity.name))();
+  IntColumn get intermediaryId => integer().nullable().references(Intermediaries, #id)();
   TextColumn get assetGroup => text().withDefault(const Constant(''))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get exchange => text().nullable()();

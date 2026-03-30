@@ -2,6 +2,10 @@ part of 'providers.dart';
 
 // ── Reactive stream providers ──
 
+final intermediariesProvider = StreamProvider<List<Intermediary>>((ref) {
+  return ref.watch(intermediaryServiceProvider).watchAll();
+});
+
 final accountsProvider = StreamProvider<List<Account>>((ref) {
   return ref.watch(accountServiceProvider).watchAll();
 });

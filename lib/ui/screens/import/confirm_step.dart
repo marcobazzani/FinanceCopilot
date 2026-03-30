@@ -70,6 +70,12 @@ extension _ConfirmStep on _ImportScreenState {
           _buildAccountSelector(),
           const SizedBox(height: 24),
         ],
+        if (isAssetImport) ...[
+          Text(s.selectIntermediary, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          _buildIntermediarySelector(),
+          const SizedBox(height: 24),
+        ],
 
         // Summary
         Card(
@@ -257,6 +263,36 @@ extension _ConfirmStep on _ImportScreenState {
       },
       loading: () => const CircularProgressIndicator(),
       error: (e, _) => Text(ref.watch(appStringsProvider).error(e)),
+    );
+  }
+
+  Widget _buildIntermediarySelector() {
+    final s = ref.watch(appStringsProvider);
+    final intermediariesAsync = ref.watch(intermediariesProvider);
+    return intermediariesAsync.when(
+      data: (intermediaries) {
+        if (intermediaries.isEmpty) {
+          return Text(s.unassigned, style: const TextStyle(color: Colors.grey));
+        }
+        return Column(
+          children: [
+            ...intermediaries.map((i) => RadioListTile<int>(
+              title: Text(i.name),
+              value: i.id,
+              groupValue: _selectedIntermediaryId,
+              onChanged: (v) => _setState(() => _selectedIntermediaryId = v),
+            )),
+            RadioListTile<int?>(
+              title: Text(s.unassigned),
+              value: null,
+              groupValue: _selectedIntermediaryId,
+              onChanged: (_) => _setState(() => _selectedIntermediaryId = null),
+            ),
+          ],
+        );
+      },
+      loading: () => const CircularProgressIndicator(),
+      error: (e, _) => Text(s.error(e)),
     );
   }
 
@@ -506,6 +542,7 @@ extension _ConfirmStep on _ImportScreenState {
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           rateService: ref.read(exchangeRateServiceProvider),
           baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
+          intermediaryId: _selectedIntermediaryId,
         );
         result = assetResult.result;
       }

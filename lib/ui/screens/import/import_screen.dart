@@ -71,6 +71,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   final _skipRowsCtrl = TextEditingController(text: '0');
   ImportTarget _target = ImportTarget.transaction;
   int? _targetId; // accountId or assetId
+  int? _selectedIntermediaryId; // for asset imports
 
   // Asset import mode: 'historic' (date+rate required) or 'current' (default to today, rate auto-fetched)
   String _assetImportMode = 'historic';
