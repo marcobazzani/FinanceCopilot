@@ -85,6 +85,22 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
           children: [
             Text(s.dashTotals, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
+            // Column headers
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const SizedBox(width: 26), // align with expand icon
+                  Expanded(
+                    child: Text('', style: _headerStyle(theme)),
+                  ),
+                  Text(s.vsATH, style: _headerStyle(theme)),
+                  const SizedBox(width: 12),
+                  Text(s.value, style: _headerStyle(theme)),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
             ...rows.map((row) => _buildTotalRow(row, amtFmt, theme)),
           ],
         ),
@@ -139,13 +155,27 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     );
   }
 
+  static TextStyle _headerStyle(ThemeData theme) => TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+    color: theme.colorScheme.onSurfaceVariant,
+  );
+
+  static IconData _iconForSeriesKey(String key) {
+    if (key.startsWith('account:')) return Icons.account_balance;
+    if (key.startsWith('asset_market:')) return Icons.show_chart;
+    if (key.startsWith('asset_invested:')) return Icons.pie_chart;
+    if (key.startsWith('adjustment:')) return Icons.calendar_month;
+    if (key.startsWith('income_adj:')) return Icons.receipt_long;
+    return Icons.circle;
+  }
+
   List<Widget> _buildDrillDown(List<_Series> series, NumberFormat amtFmt, ThemeData theme) {
-    // Get last value for each series
-    final items = <MapEntry<String, double>>[];
+    final items = <({String key, String name, double value})>[];
     for (final s in series) {
       final val = s.spots.isNotEmpty ? s.spots.last.y : 0.0;
       if (val.abs() > 0.01) {
-        items.add(MapEntry(s.name, val));
+        items.add((key: s.key, name: s.name, value: val));
       }
     }
     items.sort((a, b) => b.value.abs().compareTo(a.value.abs()));
@@ -154,9 +184,11 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
       padding: const EdgeInsets.only(left: 34, right: 0, top: 2, bottom: 2),
       child: Row(
         children: [
+          Icon(_iconForSeriesKey(entry.key), size: 14, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
           Expanded(
             child: Text(
-              entry.key,
+              entry.name,
               style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
             ),
           ),

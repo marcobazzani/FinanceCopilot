@@ -623,6 +623,8 @@ class AppStrings {
   }[c]!;
 
   // ── Intermediaries ─────────────────────────────────────────
+  String get vsATH                 => _it ? 'vs Max'                    : 'vs ATH';
+  String get value                 => _it ? 'Valore'                    : 'Value';
   String get intermediary          => _it ? 'Intermediario'             : 'Intermediary';
   String get intermediaries        => _it ? 'Intermediari'              : 'Intermediaries';
   String get addIntermediary       => _it ? 'Aggiungi intermediario'    : 'Add Intermediary';
