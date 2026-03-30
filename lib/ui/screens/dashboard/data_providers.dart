@@ -69,8 +69,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
 
   final perAssetDeltas = <int, Map<int, double>>{};
   final perAssetQtyDeltas = <int, Map<int, double>>{};
-  // assetId → { currency → { dayKey → delta } } for FX-aware invested series
-  final perAssetInvestedDeltas = <int, Map<String, Map<int, double>>>{};
+
 
   if (assetIds.isNotEmpty) {
     final assetPlaceholders = assetIds.map((_) => '?').join(',');
@@ -105,13 +104,6 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       final dayKey = toDayKey(dt);
 
       final netAmount = amount - commission;
-
-      // Store delta in original currency for FX-aware invested series
-      perAssetInvestedDeltas.putIfAbsent(assetId, () => {});
-      perAssetInvestedDeltas[assetId]!.putIfAbsent(currency, () => {});
-      perAssetInvestedDeltas[assetId]![currency]![dayKey] =
-          (perAssetInvestedDeltas[assetId]![currency]![dayKey] ?? 0) + sign * netAmount.abs();
-
       final baseAmount = await convertToBase(
         amount: netAmount, currency: currency, baseCurrency: baseCurrency,
         storedRate: storedRate, resolver: rates, dayKey: dayKey,
@@ -162,34 +154,24 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     colorIdx++;
   }
 
-  // ── Build asset invested series (cumulative, FX-aware) ──
+  // ── Build asset invested series (cumulative) ──
   final assetInvestedSeries = <_Series>[];
   for (final asset in activeAssets) {
-    if (!perAssetInvestedDeltas.containsKey(asset.id)) continue;
-    final currencyDeltas = perAssetInvestedDeltas[asset.id]!;
+    if (!perAssetDeltas.containsKey(asset.id)) continue;
+    final deltaMap = perAssetDeltas[asset.id]!;
     final spots = <FlSpot>[];
-    // Track cumulative invested per original currency
-    final cumByCurrency = <String, double>{};
+    var cumulative = 0.0;
     var started = false;
 
     for (final dayKey in sortedDays) {
-      for (final entry in currencyDeltas.entries) {
-        final delta = entry.value[dayKey];
-        if (delta != null) {
-          cumByCurrency[entry.key] = (cumByCurrency[entry.key] ?? 0) + delta;
-          started = true;
-        }
+      if (deltaMap.containsKey(dayKey)) {
+        cumulative += deltaMap[dayKey]!;
+        started = true;
       }
       if (started) {
-        // Convert each currency's cumulative to base at this day's rate
-        var total = 0.0;
-        for (final entry in cumByCurrency.entries) {
-          final rate = await rates.getRate(entry.key, dayKey);
-          total += entry.value * rate;
-        }
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, total));
+        spots.add(FlSpot(x, cumulative));
       }
     }
 
@@ -304,21 +286,22 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
 
     if (deltaMap.isEmpty) continue;
 
+    final capexDays = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
     var cumulative = 0.0;
-    var started = false;
+    double? prevY;
 
-    for (final dayKey in sortedDays) {
-      if (deltaMap.containsKey(dayKey)) {
-        cumulative += deltaMap[dayKey]!;
-        started = true;
+    for (final dayKey in capexDays) {
+      final rate = await rates.getRate(schedule.currency, dayKey);
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = dt.difference(firstDate).inDays.toDouble();
+      if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
+        spots.add(FlSpot(x - 0.5, prevY));
       }
-      if (started) {
-        final rate = await rates.getRate(schedule.currency, dayKey);
-        final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, cumulative * rate));
-      }
+      cumulative += deltaMap[dayKey]!;
+      final y = cumulative * rate;
+      spots.add(FlSpot(x, y));
+      prevY = y;
     }
 
     adjustmentSeries.add(_Series(
@@ -362,21 +345,22 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
 
     if (deltaMap.isEmpty) continue;
 
+    final adjDays = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
     var cumulative = 0.0;
-    var started = false;
+    double? prevY;
 
-    for (final dayKey in sortedDays) {
-      if (deltaMap.containsKey(dayKey)) {
-        cumulative += deltaMap[dayKey]!;
-        started = true;
+    for (final dayKey in adjDays) {
+      final rate = await rates.getRate(adj.currency, dayKey);
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = dt.difference(firstDate).inDays.toDouble();
+      if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
+        spots.add(FlSpot(x - 0.5, prevY));
       }
-      if (started) {
-        final rate = await rates.getRate(adj.currency, dayKey);
-        final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, cumulative * rate));
-      }
+      cumulative += deltaMap[dayKey]!;
+      final y = cumulative * rate;
+      spots.add(FlSpot(x, y));
+      prevY = y;
     }
 
     incomeAdjSeries.add(_Series(
