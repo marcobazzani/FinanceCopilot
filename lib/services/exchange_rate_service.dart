@@ -38,6 +38,12 @@ class ExchangeRateService {
       _log.warning('syncRates: no InvestingComService configured');
       return;
     }
+    // Backfill historical rates for any sparse currency pairs
+    try {
+      await backfillHistoricalRates();
+    } catch (e, stack) {
+      _log.warning('backfillHistoricalRates failed', e, stack);
+    }
     try {
       final lastDate = await getLastSyncDate();
       final today = DateTime.now();
@@ -79,6 +85,94 @@ class ExchangeRateService {
     }
   }
 
+  /// Backfill historical exchange rates for all currency pairs needed by the DB.
+  /// Detects pairs dynamically from assets/accounts/incomes currencies vs base currency.
+  /// Skips pairs that already have sufficient historical data.
+  Future<void> backfillHistoricalRates() async {
+    if (_investingService == null) return;
+
+    // Determine base currency
+    final baseCurrencyRow = await _db.customSelect(
+      "SELECT value FROM app_configs WHERE key = 'BASE_CURRENCY'",
+    ).getSingleOrNull();
+    final baseCurrency = baseCurrencyRow?.read<String>('value') ?? 'EUR';
+
+    // Collect all distinct currencies used across the DB
+    final rows = await _db.customSelect(
+      'SELECT DISTINCT currency FROM assets '
+      'UNION SELECT DISTINCT currency FROM accounts '
+      'UNION SELECT DISTINCT currency FROM incomes '
+      'UNION SELECT DISTINCT currency FROM depreciation_schedules',
+    ).get();
+    final currencies = rows.map((r) => r.read<String>('currency')).toSet()
+      ..remove(baseCurrency);
+
+    if (currencies.isEmpty) return;
+
+    // Find earliest date across all data
+    final earliestRow = await _db.customSelect(
+      'SELECT MIN(d) AS earliest FROM ('
+      '  SELECT MIN(date) AS d FROM asset_events'
+      '  UNION ALL SELECT MIN(date) AS d FROM market_prices'
+      '  UNION ALL SELECT MIN(operation_date) AS d FROM transactions'
+      '  UNION ALL SELECT MIN(date) AS d FROM incomes'
+      ')',
+    ).getSingleOrNull();
+    final earliestEpoch = earliestRow?.readNullable<int>('earliest');
+    if (earliestEpoch == null) return;
+    final since = DateTime.fromMillisecondsSinceEpoch(earliestEpoch * 1000);
+
+    for (final currency in currencies) {
+      // Check if this pair already has enough historical data
+      final countRow = await _db.customSelect(
+        'SELECT COUNT(DISTINCT date) AS cnt FROM exchange_rates '
+        'WHERE from_currency = ? AND to_currency = ?',
+        variables: [Variable.withString(baseCurrency), Variable.withString(currency)],
+      ).getSingle();
+      final existingCount = countRow.read<int>('cnt');
+      if (existingCount >= 100) {
+        _log.fine('backfillHistoricalRates: $baseCurrency/$currency already has $existingCount dates, skipping');
+        continue;
+      }
+
+      _log.info('backfillHistoricalRates: fetching $baseCurrency/$currency from ${formatYmd(since)}');
+      try {
+        final rates = await _investingService!.fetchHistoricalFxRates(baseCurrency, currency, since);
+        if (rates.isEmpty) {
+          _log.warning('backfillHistoricalRates: $baseCurrency/$currency - no data returned');
+          continue;
+        }
+
+        // Build companions for both directions
+        final companions = <ExchangeRatesCompanion>[];
+        for (final entry in rates.entries) {
+          companions.add(ExchangeRatesCompanion(
+            fromCurrency: Value(baseCurrency),
+            toCurrency: Value(currency),
+            date: Value(entry.key),
+            rate: Value(entry.value),
+          ));
+          // Store inverse pair too
+          companions.add(ExchangeRatesCompanion(
+            fromCurrency: Value(currency),
+            toCurrency: Value(baseCurrency),
+            date: Value(entry.key),
+            rate: Value(1.0 / entry.value),
+          ));
+        }
+
+        await _db.batch((batch) {
+          for (final c in companions) {
+            batch.insert(_db.exchangeRates, c, onConflict: DoNothing());
+          }
+        });
+        _log.info('backfillHistoricalRates: $baseCurrency/$currency - stored ${rates.length} dates');
+      } catch (e) {
+        _log.warning('backfillHistoricalRates: $baseCurrency/$currency failed - $e');
+      }
+    }
+  }
+
   /// Get the latest date stored in the exchange_rates table.
   Future<DateTime?> getLastSyncDate() async {
     final row = await _db.customSelect(
@@ -92,34 +186,32 @@ class ExchangeRateService {
   // ──────────────────────────────────────────────
 
   /// Get exchange rate from [from] to [to] on or before [date].
-  /// Returns null if no rate data is available.
+  /// Tries direct pair, then inverse, then EUR cross-rate as fallback.
   Future<double?> getRate(String from, String to, DateTime date) async {
     if (from == to) return 1.0;
-
-    if (from == 'EUR') {
-      return _lookupEurRate(to, date);
-    }
-    if (to == 'EUR') {
-      final r = await _lookupEurRate(from, date);
-      return r != null ? 1.0 / r : null;
-    }
-    // Cross rate: EUR→to / EUR→from
-    final rTo = await _lookupEurRate(to, date);
-    final rFrom = await _lookupEurRate(from, date);
-    if (rTo != null && rFrom != null && rFrom != 0) {
-      return rTo / rFrom;
+    // 1. Direct lookup: from→to
+    final direct = await _lookupDirectRate(from, to, date);
+    if (direct != null) return direct;
+    // 2. Inverse lookup: to→from
+    final inverse = await _lookupDirectRate(to, from, date);
+    if (inverse != null) return 1.0 / inverse;
+    // 3. EUR cross-rate fallback (legacy data)
+    if (from != 'EUR' && to != 'EUR') {
+      final rTo = await _lookupDirectRate('EUR', to, date);
+      final rFrom = await _lookupDirectRate('EUR', from, date);
+      if (rTo != null && rFrom != null && rFrom != 0) return rTo / rFrom;
     }
     return null;
   }
 
-  /// Look up EUR→[currency] rate on or before [date].
-  Future<double?> _lookupEurRate(String currency, DateTime date) async {
+  /// Look up rate for any [from]→[to] pair on or before [date].
+  Future<double?> _lookupDirectRate(String from, String to, DateTime date) async {
     final epochSec = date.millisecondsSinceEpoch ~/ 1000;
     final row = await _db.customSelect(
       'SELECT rate FROM exchange_rates '
-      "WHERE from_currency = 'EUR' AND to_currency = ? "
+      'WHERE from_currency = ? AND to_currency = ? '
       'AND date <= ? ORDER BY date DESC LIMIT 1',
-      variables: [Variable.withString(currency), Variable.withInt(epochSec)],
+      variables: [Variable.withString(from), Variable.withString(to), Variable.withInt(epochSec)],
     ).getSingleOrNull();
     return row?.readNullable<double>('rate');
   }

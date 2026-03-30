@@ -548,6 +548,41 @@ class InvestingComService extends MarketPriceService {
     }
   }
 
+  /// Fetch historical FX rates for a currency pair from [since] to today.
+  /// Returns a map of date → rate (closing price).
+  Future<Map<DateTime, double>> fetchHistoricalFxRates(
+      String from, String to, DateTime since) async {
+    final pairKey = '$from/$to';
+    // Resolve CID (same pattern as _fetchFxRate)
+    var cid = _fxCidCache[pairKey];
+    if (cid == null) {
+      final cidKey = 'INVESTING_FX_CID_$pairKey';
+      final cidRow = await db.customSelect(
+        'SELECT value FROM app_configs WHERE key = ?',
+        variables: [Variable.withString(cidKey)],
+      ).getSingleOrNull();
+      if (cidRow != null) {
+        cid = int.tryParse(cidRow.read<String>('value'));
+      }
+      if (cid == null) {
+        final results = await search(pairKey);
+        for (final r in results) {
+          if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') ||
+              r.symbol == pairKey) {
+            cid = r.cid;
+            break;
+          }
+        }
+        if (cid == null) return {};
+        await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+          key: cidKey, value: cid.toString(), description: Value('Investing.com FX cid for $pairKey'),
+        ));
+      }
+      _fxCidCache[pairKey] = cid;
+    }
+    return _fetchByCid(cid, since, label: pairKey);
+  }
+
   // ──────────────────────────────────────────────
   // Investing.com API: Historical prices
   // ──────────────────────────────────────────────
