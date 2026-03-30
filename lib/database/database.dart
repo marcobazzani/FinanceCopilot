@@ -139,62 +139,82 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('ALTER TABLE dashboard_charts ADD COLUMN source_chart_ids TEXT');
           }
           if (from < 18) {
-            await customStatement("ALTER TABLE dashboard_charts ADD COLUMN widget_type TEXT NOT NULL DEFAULT 'chart'");
-            await customStatement('UPDATE dashboard_charts SET sort_order = sort_order + 1');
-            await customStatement(
-              "INSERT INTO dashboard_charts (title, widget_type, sort_order, series_json) "
-              "VALUES ('Price Changes', 'price_changes', 0, '[]')"
-            );
+            if (!await _hasColumn('dashboard_charts', 'widget_type')) {
+              await customStatement("ALTER TABLE dashboard_charts ADD COLUMN widget_type TEXT NOT NULL DEFAULT 'chart'");
+              await customStatement('UPDATE dashboard_charts SET sort_order = sort_order + 1');
+              await customStatement(
+                "INSERT INTO dashboard_charts (title, widget_type, sort_order, series_json) "
+                "VALUES ('Price Changes', 'price_changes', 0, '[]')"
+              );
+            }
           }
           if (from < 19) {
-            await m.createTable(assetCompositions);
+            if (!await _tableExists('asset_compositions')) {
+              await m.createTable(assetCompositions);
+            }
           }
           if (from < 20) {
-            // Add type column, migrate description→type, drop description
-            await customStatement(
-              "ALTER TABLE incomes ADD COLUMN type TEXT NOT NULL DEFAULT 'income'",
-            );
-            await customStatement(
-              "UPDATE incomes SET type = 'refund' WHERE LOWER(description) LIKE '%rimborso%'",
-            );
-            await customStatement(
-              'ALTER TABLE incomes DROP COLUMN description',
-            );
+            if (!await _hasColumn('incomes', 'type')) {
+              await customStatement(
+                "ALTER TABLE incomes ADD COLUMN type TEXT NOT NULL DEFAULT 'income'",
+              );
+              await customStatement(
+                "UPDATE incomes SET type = 'refund' WHERE LOWER(description) LIKE '%rimborso%'",
+              );
+            }
+            if (await _hasColumn('incomes', 'description')) {
+              await customStatement(
+                'ALTER TABLE incomes DROP COLUMN description',
+              );
+            }
           }
           if (from < 21) {
-            // Add instrument_type and asset_class columns
-            await customStatement(
-              "ALTER TABLE assets ADD COLUMN instrument_type TEXT NOT NULL DEFAULT 'etf'",
-            );
-            await customStatement(
-              "ALTER TABLE assets ADD COLUMN asset_class TEXT NOT NULL DEFAULT 'equity'",
-            );
-            // Migrate from old asset_type to new columns
-            const migration = {
-              'stock':       ('stock',       'equity'),
-              'stockEtf':    ('etf',         'equity'),
-              'bondEtf':     ('etf',         'fixedIncome'),
-              'commEtf':     ('etf',         'commodities'),
-              'goldEtc':     ('etc',         'commodities'),
-              'monEtf':      ('etf',         'moneyMarket'),
-              'crypto':      ('crypto',      'crypto'),
-              'cash':        ('cash',        'cash'),
-              'pension':     ('pension',     'multiAsset'),
-              'deposit':     ('deposit',     'cash'),
-              'realEstate':  ('realEstate',  'realEstate'),
-              'alternative': ('alternative', 'alternative'),
-              'liability':   ('liability',   'fixedIncome'),
-            };
-            for (final entry in migration.entries) {
+            if (!await _hasColumn('assets', 'instrument_type')) {
               await customStatement(
-                "UPDATE assets SET instrument_type = '${entry.value.$1}', "
-                "asset_class = '${entry.value.$2}' "
-                "WHERE asset_type = '${entry.key}'",
+                "ALTER TABLE assets ADD COLUMN instrument_type TEXT NOT NULL DEFAULT 'etf'",
               );
+              await customStatement(
+                "ALTER TABLE assets ADD COLUMN asset_class TEXT NOT NULL DEFAULT 'equity'",
+              );
+              const migration = {
+                'stock':       ('stock',       'equity'),
+                'stockEtf':    ('etf',         'equity'),
+                'bondEtf':     ('etf',         'fixedIncome'),
+                'commEtf':     ('etf',         'commodities'),
+                'goldEtc':     ('etc',         'commodities'),
+                'monEtf':      ('etf',         'moneyMarket'),
+                'crypto':      ('crypto',      'crypto'),
+                'cash':        ('cash',        'cash'),
+                'pension':     ('pension',     'multiAsset'),
+                'deposit':     ('deposit',     'cash'),
+                'realEstate':  ('realEstate',  'realEstate'),
+                'alternative': ('alternative', 'alternative'),
+                'liability':   ('liability',   'fixedIncome'),
+              };
+              for (final entry in migration.entries) {
+                await customStatement(
+                  "UPDATE assets SET instrument_type = '${entry.value.$1}', "
+                  "asset_class = '${entry.value.$2}' "
+                  "WHERE asset_type = '${entry.key}'",
+                );
+              }
             }
           }
         },
       );
+
+  Future<bool> _hasColumn(String table, String column) async {
+    final rows = await customSelect('PRAGMA table_info($table)').get();
+    return rows.any((r) => r.read<String>('name') == column);
+  }
+
+  Future<bool> _tableExists(String table) async {
+    final row = await customSelect(
+      "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name=?",
+      variables: [Variable.withString(table)],
+    ).getSingle();
+    return row.read<int>('cnt') > 0;
+  }
 
   Future<void> _createIndexes() async {
     await customStatement(
