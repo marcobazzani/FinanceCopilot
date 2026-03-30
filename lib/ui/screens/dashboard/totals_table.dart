@@ -113,7 +113,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                   child: Text(row.label, style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
                 if (row.deltaVsMax.abs() > 0.5) ...[
-                  Text(
+                  PrivacyText(
                     '${row.deltaVsMax >= 0 ? '+' : ''}${amtFmt.format(row.deltaVsMax)}',
                     style: TextStyle(
                       fontSize: 11,
@@ -122,7 +122,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                   ),
                   const SizedBox(width: 12),
                 ],
-                Text(
+                PrivacyText(
                   amtFmt.format(row.total),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
@@ -160,7 +160,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
               style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
-          Text(
+          PrivacyText(
             amtFmt.format(entry.value),
             style: TextStyle(
               fontSize: 12,
