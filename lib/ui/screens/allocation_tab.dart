@@ -14,7 +14,7 @@ import 'package:intl/intl.dart';
 // Asset type display names
 // ════════════════════════════════════════════════════
 
-// Labels are now provided via AppStrings.assetClassLabel() and instrumentTypeLabel()
+// Asset Class and Instrument Type use direct asset fields, not composition data.
 
 // ════════════════════════════════════════════════════
 // Chart colors
@@ -176,9 +176,8 @@ class AllocationTab extends ConsumerWidget {
             assets, marketValues, compositions, 'holding',
             (a) => a.name,
           );
-          final byType = _weightedBreakdown(
-            assets, marketValues, compositions, 'assetclass',
-            (a) => s.assetClassLabel(a.assetClass),
+          final byType = _groupByField(
+            assets, marketValues, (a) => s.assetClassLabel(a.assetClass),
           );
           final byInstrument = _groupByField(
             assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
@@ -193,10 +192,6 @@ class AllocationTab extends ConsumerWidget {
           final sectorDrill = _drillDownData(
             assets, marketValues, compositions, 'sector',
             (a) => a.sector ?? s.unclassified,
-          );
-          final typeDrill = _drillDownData(
-            assets, marketValues, compositions, 'assetclass',
-            (a) => s.assetClassLabel(a.assetClass),
           );
 
           final holdingEntries = byHolding.entries.toList();
@@ -226,11 +221,7 @@ class AllocationTab extends ConsumerWidget {
                 ),
                 _ChartCard(
                   title: s.allocAssetClass,
-                  child: _DrillableDonut(
-                    data: byType,
-                    total: total,
-                    drillDown: typeDrill,
-                  ),
+                  child: _DonutChart(data: byType, total: total),
                 ),
                 _ChartCard(
                   title: s.allocInstrument,
