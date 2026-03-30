@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             You are L2 support for FinanceCopilot, a Flutter/Dart personal finance app.
             L1 has escalated this issue after exhausting user-side troubleshooting.
