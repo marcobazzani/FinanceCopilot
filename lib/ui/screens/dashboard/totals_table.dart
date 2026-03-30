@@ -26,20 +26,28 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
 
     final d = widget.allData;
 
-    // Compute last value for each group
-    double lastValue(List<List<FlSpot>> spotLists) {
+    // Compute last value and historical max (excluding last point) for each group
+    (double current, double histMax) lastValueAndMax(List<List<FlSpot>> spotLists) {
       final total = buildTotalSpots(spotLists);
-      return total.isNotEmpty ? total.last.y : 0.0;
+      if (total.isEmpty) return (0.0, 0.0);
+      final current = total.last.y;
+      // Historical max excluding the last point (today)
+      var hMax = double.negativeInfinity;
+      for (var i = 0; i < total.length - 1; i++) {
+        if (total[i].y > hMax) hMax = total[i].y;
+      }
+      if (hMax == double.negativeInfinity) hMax = current;
+      return (current, hMax);
     }
 
     // Cash = accounts + spread adjustments
-    final cashTotal = lastValue([
+    final (cashTotal, cashMax) = lastValueAndMax([
       ...d.accounts.map((s) => s.spots),
       ...d.adjustments.map((s) => s.spots),
     ]);
 
     // Saving = accounts + invested + adjustments + income adj
-    final savingTotal = lastValue([
+    final (savingTotal, savingMax) = lastValueAndMax([
       ...d.accounts.map((s) => s.spots),
       ...d.assetInvested.map((s) => s.spots),
       ...d.adjustments.map((s) => s.spots),
@@ -47,17 +55,25 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     ]);
 
     // Invested = cost basis of invested assets
-    final investedTotal = lastValue(d.assetInvested.map((s) => s.spots).toList());
+    final (investedTotal, investedMax) = lastValueAndMax(d.assetInvested.map((s) => s.spots).toList());
 
     // Portfolio = current market value of assets
-    final portfolioTotal = lastValue(d.assetMarket.map((s) => s.spots).toList());
+    final (portfolioTotal, portfolioMax) = lastValueAndMax(d.assetMarket.map((s) => s.spots).toList());
 
-    // Build rows: label, total, series for drill-down
+    // Total Assets = accounts + market values + adjustments
+    final (totalAssetsTotal, totalAssetsMax) = lastValueAndMax([
+      ...d.accounts.map((s) => s.spots),
+      ...d.assetMarket.map((s) => s.spots),
+      ...d.adjustments.map((s) => s.spots),
+    ]);
+
+    // Build rows: label, total, delta vs historical max, series for drill-down
     final rows = <_TotalRow>[
-      _TotalRow(s.dashCash, cashTotal, [...d.accounts, ...d.adjustments]),
-      _TotalRow(s.dashSaving, savingTotal, [...d.accounts, ...d.assetInvested, ...d.adjustments, ...d.incomeAdjustments]),
-      _TotalRow(s.dashInvested, investedTotal, d.assetInvested),
-      _TotalRow(s.dashPortfolio, portfolioTotal, d.assetMarket),
+      _TotalRow(s.dashTotalAssets, totalAssetsTotal, totalAssetsTotal - totalAssetsMax, [...d.accounts, ...d.assetMarket, ...d.adjustments]),
+      _TotalRow(s.dashCash, cashTotal, cashTotal - cashMax, [...d.accounts, ...d.adjustments]),
+      _TotalRow(s.dashSaving, savingTotal, savingTotal - savingMax, [...d.accounts, ...d.assetInvested, ...d.adjustments, ...d.incomeAdjustments]),
+      _TotalRow(s.dashInvested, investedTotal, investedTotal - investedMax, d.assetInvested),
+      _TotalRow(s.dashPortfolio, portfolioTotal, portfolioTotal - portfolioMax, d.assetMarket),
     ];
 
     return Card(
@@ -96,6 +112,16 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                 Expanded(
                   child: Text(row.label, style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
+                if (row.deltaVsMax.abs() > 0.5) ...[
+                  Text(
+                    '${row.deltaVsMax >= 0 ? '+' : ''}${amtFmt.format(row.deltaVsMax)}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: row.deltaVsMax >= 0 ? Colors.green.shade300 : Colors.red.shade300,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Text(
                   amtFmt.format(row.total),
                   style: TextStyle(
@@ -150,6 +176,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
 class _TotalRow {
   final String label;
   final double total;
+  final double deltaVsMax; // current - historical max (excluding today)
   final List<_Series> series;
-  const _TotalRow(this.label, this.total, this.series);
+  const _TotalRow(this.label, this.total, this.deltaVsMax, this.series);
 }
