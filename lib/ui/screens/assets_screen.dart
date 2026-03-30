@@ -192,6 +192,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                 ...assets.map((asset) {
                   final stat = stats[asset.id];
                   return LongPressDraggable<_DraggedAsset>(
+                    delay: const Duration(milliseconds: 150),
                     data: _DraggedAsset(asset.id, asset.intermediaryId),
                     feedback: Material(
                       elevation: 4,

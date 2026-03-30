@@ -177,6 +177,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
               if (isExpanded)
                 ...accounts.map((account) {
                   return LongPressDraggable<_DraggedAccount>(
+                    delay: const Duration(milliseconds: 150),
                     data: _DraggedAccount(account.id, account.intermediaryId),
                     feedback: Material(
                       elevation: 4,
