@@ -178,9 +178,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     final items = <({String key, String name, double value})>[];
     for (final s in series) {
       final val = s.spots.isNotEmpty ? s.spots.last.y : 0.0;
-      if (val.abs() > 0.01) {
-        items.add((key: s.key, name: s.name, value: val));
-      }
+      items.add((key: s.key, name: s.name, value: val));
     }
     items.sort((a, b) => b.value.abs().compareTo(a.value.abs()));
 
