@@ -121,7 +121,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
               children: [
                 Icon(
                   isExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 18,
+                  size: 22,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
@@ -139,7 +139,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                   const SizedBox(width: 12),
                 ],
                 PrivacyText(
-                  amtFmt.format(row.total),
+                  '${row.total >= 0 ? '+' : ''}${amtFmt.format(row.total)}',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: row.total >= 0 ? Colors.green.shade400 : Colors.red.shade400,
@@ -193,7 +193,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
             ),
           ),
           PrivacyText(
-            amtFmt.format(entry.value),
+            '${entry.value >= 0 ? '+' : ''}${amtFmt.format(entry.value)}',
             style: TextStyle(
               fontSize: 12,
               color: entry.value >= 0 ? Colors.green.shade300 : Colors.red.shade300,

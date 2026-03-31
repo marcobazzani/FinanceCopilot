@@ -169,14 +169,13 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                           '$title (${assets.length})',
                           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade400,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
                       if (intermediary != null)
                         PopupMenuButton<String>(
-                          iconSize: 18,
-                          padding: EdgeInsets.zero,
+                          iconSize: 22,
                           itemBuilder: (_) => [
                             PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
                             PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
@@ -578,7 +577,7 @@ class _AssetTile extends StatelessWidget {
   Widget _buildStatsLine(BuildContext context, DateFormat dateFormat) {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
-      color: Colors.grey.shade600,
+      color: theme.colorScheme.onSurfaceVariant,
       fontSize: 12,
     );
 
