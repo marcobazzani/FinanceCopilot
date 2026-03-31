@@ -203,12 +203,15 @@ class _DetailBody extends ConsumerWidget {
                 controller: amountCtrl,
                 decoration: InputDecoration(labelText: s.amount),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.next,
                 autofocus: true,
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: descCtrl,
                 decoration: InputDecoration(labelText: s.description, hintText: s.expenseHint),
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => Navigator.pop(ctx, true),
               ),
               const SizedBox(height: 8),
               ListTile(

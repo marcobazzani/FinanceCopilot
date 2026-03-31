@@ -208,6 +208,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             TextFormField(
               controller: _nameCtrl,
               decoration: InputDecoration(labelText: s.name, hintText: s.capexNameHint),
+              textInputAction: TextInputAction.next,
               validator: (v) => v == null || v.trim().isEmpty ? s.required : null,
             ),
             const SizedBox(height: 12),
@@ -221,6 +222,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                     controller: _amountCtrl,
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.next,
                     validator: (v) {
                       if (v == null || fmt.tryParseLocalized(v, locale: locale) == null) return s.invalid;
                       return null;
@@ -251,6 +253,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                   hintText: s.rateHint,
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.next,
               ),
             if (_needsConversion) const SizedBox(height: 12),
 
@@ -507,6 +510,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
             controller: _stepsCtrl,
             decoration: InputDecoration(labelText: s.numberOfSteps),
             keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
             validator: (v) {
               final n = int.tryParse(v ?? '');
               if (n == null || n < 1) return s.minOne;

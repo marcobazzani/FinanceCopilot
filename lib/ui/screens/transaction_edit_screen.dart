@@ -113,6 +113,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 hintText: '-123.45',
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+              textInputAction: TextInputAction.next,
               validator: (v) {
                 if (v == null || v.isEmpty) return s.required;
                 if (fmt.tryParseLocalized(v, locale: locale) == null) return s.invalidNumber;
@@ -128,6 +129,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 labelText: s.description,
                 border: const OutlineInputBorder(),
               ),
+              textInputAction: TextInputAction.next,
               maxLines: 1,
             ),
             const SizedBox(height: 12),
@@ -139,6 +141,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 labelText: s.fullDescription,
                 border: const OutlineInputBorder(),
               ),
+              textInputAction: TextInputAction.next,
               maxLines: 3,
             ),
             const SizedBox(height: 12),
@@ -151,6 +154,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 border: const OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+              textInputAction: TextInputAction.done,
             ),
             const SizedBox(height: 12),
 

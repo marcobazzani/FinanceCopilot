@@ -259,12 +259,15 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 TextField(
                   controller: dateCtl,
                   decoration: InputDecoration(labelText: s.dateFormatHint),
+                  textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountCtl,
                   decoration: InputDecoration(labelText: s.amount),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => Navigator.pop(ctx, true),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<IncomeType>(
@@ -337,12 +340,15 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 TextField(
                   controller: dateCtl,
                   decoration: InputDecoration(labelText: s.dateFormatHint),
+                  textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountCtl,
                   decoration: InputDecoration(labelText: s.amount),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => Navigator.pop(ctx, 'save'),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<IncomeType>(
