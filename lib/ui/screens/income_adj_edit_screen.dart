@@ -113,6 +113,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
             TextFormField(
               controller: _nameCtrl,
               decoration: InputDecoration(labelText: s.name, hintText: s.incomeAdjNameHint),
+              textInputAction: TextInputAction.next,
               validator: (v) => v == null || v.trim().isEmpty ? s.required : null,
             ),
             const SizedBox(height: 12),
@@ -125,6 +126,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                     controller: _amountCtrl,
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.next,
                     validator: (v) {
                       if (v == null || fmt.tryParseLocalized(v, locale: locale) == null) return s.invalid;
                       return null;
@@ -266,12 +268,15 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                 controller: amountCtrl,
                 decoration: InputDecoration(labelText: s.amount),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.next,
                 autofocus: true,
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: descCtrl,
                 decoration: InputDecoration(labelText: s.description, hintText: s.expenseHint),
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => Navigator.pop(ctx, true),
               ),
               const SizedBox(height: 8),
               ListTile(

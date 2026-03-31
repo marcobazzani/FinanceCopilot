@@ -548,6 +548,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
             TextField(
               controller: _nameCtrl,
               decoration: InputDecoration(labelText: s.name),
+              textInputAction: TextInputAction.next,
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
@@ -558,6 +559,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                 hintText: s.tickerHint,
               ),
               textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
             TextField(
@@ -567,6 +569,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                 hintText: s.optional,
               ),
               textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.done,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(

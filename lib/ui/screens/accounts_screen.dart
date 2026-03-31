@@ -246,7 +246,18 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
             controller: nameCtrl,
             decoration: InputDecoration(labelText: s.intermediaryName),
             autofocus: true,
+            textInputAction: TextInputAction.done,
             onChanged: (_) => setDialogState(() {}),
+            onSubmitted: (_) async {
+              if (nameCtrl.text.trim().isEmpty) return;
+              final svc = ref.read(intermediaryServiceProvider);
+              if (isEdit) {
+                await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
+              } else {
+                await svc.create(name: nameCtrl.text.trim());
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
@@ -389,7 +400,16 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
             decoration: InputDecoration(
                 labelText: s.name, hintText: s.accountNameHint),
             autofocus: true,
+            textInputAction: TextInputAction.done,
             onChanged: (_) => setDialogState(() {}),
+            onSubmitted: (_) async {
+              if (nameCtrl.text.trim().isEmpty) return;
+              await ref.read(accountServiceProvider).create(
+                    name: nameCtrl.text.trim(),
+                    currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
+                  );
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
           ),
           actions: [
             TextButton(

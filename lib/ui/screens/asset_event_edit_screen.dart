@@ -248,6 +248,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                       hintText: _needsConversion ? s.rateHint : s.notApplicable,
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.next,
                   ),
                 ),
               ],
@@ -266,6 +267,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                         border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
                       validator: (v) {
                         if (v == null || v.isEmpty) return s.required;
                         if (fmt.tryParseLocalized(v, locale: locale) == null) return s.invalid;
@@ -282,6 +284,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                         border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
                       validator: (v) {
                         if (v == null || v.isEmpty) return s.required;
                         if (fmt.tryParseLocalized(v, locale: locale) == null) return s.invalid;
@@ -322,6 +325,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                       : null,
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                textInputAction: TextInputAction.next,
                 validator: (v) {
                   if (v == null || v.isEmpty) return s.required;
                   if (fmt.tryParseLocalized(v, locale: locale) == null) return s.invalidNumber;
@@ -339,6 +343,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                 border: const OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
 
@@ -349,6 +354,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                 labelText: s.notes,
                 border: const OutlineInputBorder(),
               ),
+              textInputAction: TextInputAction.done,
               maxLines: 3,
             ),
 
