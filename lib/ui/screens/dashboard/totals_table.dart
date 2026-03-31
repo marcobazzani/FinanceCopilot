@@ -21,7 +21,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final symbol = currencySymbol(widget.allData.baseCurrency);
-    final amtFmt = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 0);
+    final amtFmt = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 2);
     final theme = Theme.of(context);
 
     final d = widget.allData;
