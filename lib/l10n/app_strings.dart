@@ -128,6 +128,9 @@ class AppStrings {
   String get colMonth         => _it ? 'Mese'           : 'Month';
   String get colYTD           => 'YTD';
   String get eoyLabel         => _it ? '  Pre. anno~'   : '  EOY~';
+  String get eoyFormula       => _it
+      ? 'Formula: totale anno prec. × progresso anno corr. ÷ stesso periodo anno prec.'
+      : 'Formula: prev year total × current year progress ÷ prev year same period';
   String get needMoreYears    => _it ? 'Necessari almeno 2 anni di dati.' : 'Need at least 2 years of data.';
 
   // ── Dashboard chart legend/tooltip labels ────────────────
