@@ -202,7 +202,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                   subtitle: Text(
                     '${dateFmt.format(income.date)} · ${_typeLabel(s, income.type)}',
                   ),
-                  trailing: Text(income.currency, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                   onTap: () => _showEditDialog(context, income),
                   onLongPress: () => _confirmDelete(context, income),
                 );

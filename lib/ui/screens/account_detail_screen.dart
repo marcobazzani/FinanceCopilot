@@ -159,7 +159,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            amtFmt.format(tx.amount),
+                            '${isPositive ? '+' : ''}${amtFmt.format(tx.amount)}',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
@@ -224,7 +224,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     Text('${transactions.length} ${s.transactions}', style: const TextStyle(fontSize: 13)),
                     Text(
                       balance != null
-                          ? '${s.balance}: ${amtFmt.format(balance)}'
+                          ? '${s.balance}: ${balance >= 0 ? '+' : ''}${amtFmt.format(balance)}'
                           : '${transactions.length} ${s.records}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,

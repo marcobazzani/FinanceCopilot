@@ -156,7 +156,7 @@ class AssetDetailScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            amtFmt.format(ev.amount),
+                            '${ev.amount >= 0 ? '+' : ''}${amtFmt.format(ev.amount)}',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,

@@ -65,10 +65,10 @@ class _YearlySummaryTable extends ConsumerWidget {
       DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style)),
       DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style)),
       DataCell(PrivacyText(
-        '${amtFmt.format(y.savings)} $sym',
+        '${y.savings >= 0 ? '+' : ''}${amtFmt.format(y.savings)} $sym',
         style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
       )),
-      DataCell(Text(pctFmt.format(y.savingsRate), style: style?.copyWith(color: savingsColor))),
+      DataCell(Text('${y.savingsRate >= 0 ? '+' : ''}${pctFmt.format(y.savingsRate)}', style: style?.copyWith(color: savingsColor))),
       DataCell(PrivacyText('${amtFmt.format(y.monthlyIncome)} $sym', style: style)),
       DataCell(PrivacyText('${amtFmt.format(y.monthlyExpenses)} $sym', style: style)),
       DataCell(PrivacyText('${amtFmt.format(y.dailyIncome)} $sym', style: style)),
