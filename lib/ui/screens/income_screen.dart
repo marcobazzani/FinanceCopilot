@@ -176,9 +176,19 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
           data: (incomes) {
             if (incomes.isEmpty) {
               return Center(
-                child: Text(
-                  s.noIncomeYet,
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.payments, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    const SizedBox(height: 16),
+                    Text(s.noIncomeYet, textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () => _showAddDialog(context, baseCurrency),
+                      icon: const Icon(Icons.add),
+                      label: Text(s.addIncomeTitle),
+                    ),
+                  ],
                 ),
               );
             }

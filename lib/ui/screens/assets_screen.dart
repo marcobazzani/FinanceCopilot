@@ -53,7 +53,23 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         data: (assets) {
           if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
             return Center(
-              child: Text(s.noAssetsYet, textAlign: TextAlign.center),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.pie_chart, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(height: 16),
+                  Text(s.noAssetsYet, textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (ctx) => _CreateAssetDialog(ref: ref),
+                    ),
+                    icon: const Icon(Icons.add),
+                    label: Text(s.createAsset),
+                  ),
+                ],
+              ),
             );
           }
 
