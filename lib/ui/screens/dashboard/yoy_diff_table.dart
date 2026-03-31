@@ -109,58 +109,6 @@ class _YoYDiffTable extends ConsumerWidget {
               ],
             ],
           ),
-          // EOY~ prediction row: extrapolate full-year diff from current progress
-          TableRow(
-            decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
-            children: [
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            child: Text(s.eoyLabel.trim(), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontStyle: FontStyle.italic,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.5)))),
-              for (final p in pairs) ...[
-                Builder(builder: (ctx) {
-                  // If the year is complete (12 months), show actual full-year diff
-                  if (p.$2.months.length >= 12) {
-                    return _diffCell(p.$2.income - p.$1.income);
-                  }
-                  // Predict: use same proportional scaling as Yearly Summary EOY~
-                  // prevPairFullDiff × currentPairProgress / prevPairSameMonths
-                  // We need a prior pair to extrapolate from
-                  final pairIdx = pairs.indexOf(p);
-                  if (pairIdx + 1 >= pairs.length) return _diffCell(null);
-                  final prevPair = pairs[pairIdx + 1];
-                  final n = p.$2.months.length;
-                  // Sum diffs for months 1..n in the previous pair (reference)
-                  double prevSame = 0;
-                  bool prevValid = false;
-                  for (int m = 1; m <= n; m++) {
-                    final d = _diff(prevPair.$1, prevPair.$2, m);
-                    if (d != null) { prevSame += d; prevValid = true; }
-                  }
-                  if (!prevValid || prevSame == 0) return _diffCell(null);
-                  // Full-year diff of the previous pair
-                  final prevFull = prevPair.$2.income - prevPair.$1.income;
-                  // Current pair sum so far
-                  double curSum = 0;
-                  bool curValid = false;
-                  for (int m = 1; m <= n; m++) {
-                    final d = _diff(p.$1, p.$2, m);
-                    if (d != null) { curSum += d; curValid = true; }
-                  }
-                  if (!curValid) return _diffCell(null);
-                  final predicted = prevFull * curSum / prevSame;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    child: PrivacyText(
-                      '~${predicted >= 0 ? '+' : ''}${amtFmt.format(predicted)} $sym',
-                      style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic,
-                        color: (predicted >= 0 ? Colors.green.shade700 : Colors.red.shade700).withValues(alpha: 0.7)),
-                      textAlign: TextAlign.right,
-                    ),
-                  );
-                }),
-              ],
-            ],
-          ),
         ],
       ),
     );
