@@ -296,7 +296,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (result != true) return;
 
     final date = _tryParseDate(dateCtl.text);
-    final amount = double.tryParse(amountCtl.text.replaceAll(',', '.'));
+    final amount = fmt.tryParseLocalized(amountCtl.text);
     if (date == null || amount == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -389,7 +389,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (result != 'save') return;
 
     final date = _tryParseDate(dateCtl.text);
-    final amount = double.tryParse(amountCtl.text.replaceAll(',', '.'));
+    final amount = fmt.tryParseLocalized(amountCtl.text);
     if (date == null || amount == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

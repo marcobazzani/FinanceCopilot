@@ -23,11 +23,12 @@ class _CollapsedChartRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.expand_more, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            const SizedBox(width: 4),
-            Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            )),
+            Expanded(
+              child: Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              )),
+            ),
+            Icon(Icons.expand_more, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -139,15 +140,11 @@ class _ChartCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title bar
-          Row(
+          // Title bar — entire row clickable to collapse
+          InkWell(
+            onTap: onCollapse,
+            child: Row(
             children: [
-              if (onCollapse != null)
-                GestureDetector(
-                  onTap: onCollapse,
-                  child: const Icon(Icons.expand_less, size: 18, color: Colors.grey),
-                ),
-              if (onCollapse != null) const SizedBox(width: 4),
               Expanded(
                 child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
               ),
@@ -175,8 +172,10 @@ class _ChartCard extends ConsumerWidget {
                   tooltip: s.resetZoom,
                 ),
               if (headerExtra != null) headerExtra!,
+              if (onCollapse != null)
+                Icon(Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ],
-          ),
+          )),
           const SizedBox(height: 4),
 
           // Legend
