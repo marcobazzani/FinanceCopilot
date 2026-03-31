@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart' hide Column;
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../database/database.dart';
@@ -36,6 +38,7 @@ class CapexEditScreen extends ConsumerStatefulWidget {
 }
 
 class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
+  String get locale => ref.read(appLocaleProvider).value ?? Platform.localeName;
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _amountCtrl;
@@ -80,6 +83,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
   double get _totalReimbursed => _reimbursements.fold(0.0, (sum, r) => sum + r.amount);
   double? get _effectiveAmount {
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final total = fmt.tryParseLocalized(_amountCtrl.text, locale: locale);
     if (total == null) return null;
     return total - _totalReimbursed;
@@ -165,7 +169,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
     final sym = currencySymbol(_currency);
 
@@ -519,7 +523,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
-    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(

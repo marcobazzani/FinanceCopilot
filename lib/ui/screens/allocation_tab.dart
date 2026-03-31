@@ -1,6 +1,8 @@
 import 'dart:math';
+import 'dart:io';
 
 import 'package:fl_chart/fl_chart.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/privacy_text.dart';
@@ -170,7 +172,7 @@ class AllocationTab extends ConsumerWidget {
         data: (marketValues) {
           final compositions = compositionsAsync.value ?? {};
           final baseCurrency = baseCurrencyAsync.value ?? 'EUR';
-          final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+          final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
           final total = marketValues.values.fold(0.0, (a, b) => a + b);
 
           if (total == 0) {

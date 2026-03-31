@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:fl_chart/fl_chart.dart';
@@ -78,7 +80,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final allDataAsync = ref.watch(_allSeriesDataProvider);
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final langCode = ref.watch(portableLanguageProvider);
     final language = langCode.startsWith('it') ? 'it_IT' : 'en_US';
     final s = ref.watch(appStringsProvider);

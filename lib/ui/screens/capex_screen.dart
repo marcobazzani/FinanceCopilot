@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
 import '../../database/database.dart';
 import '../../services/capex_service.dart';
@@ -58,7 +60,7 @@ class _SpreadTab extends ConsumerWidget {
     final schedulesAsync = ref.watch(capexSchedulesProvider);
     final statsAsync = ref.watch(capexStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
 
     return Scaffold(
       body: schedulesAsync.when(
@@ -278,7 +280,7 @@ class _IncomeAdjTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final amtFormat = fmt.amountFormat(locale);
     final shortDate = fmt.shortDateFormat(locale);
     final sym = currencySymbol(adjustment.currency);
