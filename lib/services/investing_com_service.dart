@@ -325,14 +325,14 @@ class InvestingComService extends MarketPriceService {
 
     return quotes.map((q) {
       final exchange = (q['exchange'] as String?) ?? '';
-      final typeName = (q['typeName'] as String?) ?? '';
+      final typeName = (q['typeName'] as String?) ?? (q['type'] as String?) ?? '';
       return InvestingSearchResult(
         cid: q['id'] as int,
         description: (q['description'] as String?) ?? '',
         symbol: (q['symbol'] as String?) ?? '',
         exchange: exchange,
         flag: (q['flag'] as String?) ?? '',
-        type: typeName.isNotEmpty ? '$typeName - $exchange' : exchange,
+        type: typeName.isNotEmpty ? typeName : exchange,
         url: q['url'] as String?,
       );
     }).toList();
