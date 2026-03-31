@@ -112,7 +112,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
               validator: (v) {
                 if (v == null || v.isEmpty) return s.required;
-                if (fmt.tryParseLocalized(v) == null) return s.invalidNumber;
+                if (fmt.tryParseLocalized(v, locale: locale) == null) return s.invalidNumber;
                 return null;
               },
             ),
@@ -235,8 +235,8 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final amount = fmt.tryParseLocalized(_amountCtrl.text)!;
-    final balance = _balanceCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_balanceCtrl.text) : null;
+    final amount = fmt.tryParseLocalized(_amountCtrl.text, locale: locale)!;
+    final balance = _balanceCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_balanceCtrl.text, locale: locale) : null;
     final svc = ref.read(transactionServiceProvider);
 
     if (_isEditing) {

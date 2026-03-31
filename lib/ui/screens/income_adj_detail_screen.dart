@@ -234,7 +234,7 @@ class _DetailBody extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final amount = fmt.tryParseLocalized(amountCtrl.text);
+      final amount = fmt.tryParseLocalized(amountCtrl.text, locale: locale);
       if (amount == null || amount <= 0) return;
 
       await ref.read(incomeAdjustmentServiceProvider).addExpense(
