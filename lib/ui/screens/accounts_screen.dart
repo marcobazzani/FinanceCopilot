@@ -41,7 +41,20 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         data: (accounts) {
           if (accounts.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
             return Center(
-              child: Text(s.noAccountsYet, textAlign: TextAlign.center),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.account_balance, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(height: 16),
+                  Text(s.noAccountsYet, textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: () => _showCreateDialog(context),
+                    icon: const Icon(Icons.add),
+                    label: Text(s.newAccountTitle),
+                  ),
+                ],
+              ),
             );
           }
 

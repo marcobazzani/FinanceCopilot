@@ -184,7 +184,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
               )
             : null,
       ),
-      body: Padding(
+      body: Column(
+        children: [
+          LinearProgressIndicator(value: _step / 3),
+          Expanded(
+            child: Padding(
         padding: const EdgeInsets.all(16),
         child: switch (_step) {
           1 => _buildColumnMapper(),
@@ -192,6 +196,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           3 => _buildResult(),
           _ => const SizedBox(),
         },
+      )),
+        ],
       ),
     );
   }
