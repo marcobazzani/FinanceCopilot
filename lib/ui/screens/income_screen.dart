@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart' hide Column;
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
@@ -21,7 +23,7 @@ class IncomeScreen extends ConsumerStatefulWidget {
 }
 
 class _IncomeScreenState extends ConsumerState<IncomeScreen> {
-  String get _locale => ref.read(appLocaleProvider).value ?? 'en_US';
+  String get _locale => ref.read(appLocaleProvider).value ?? Platform.localeName;
   final _focusNode = FocusNode();
 
   @override
@@ -154,7 +156,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final s = ref.watch(appStringsProvider);
     final incomesAsync = ref.watch(incomesProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final amtFormat = fmt.amountFormat(locale);
     final dateFmt = fmt.shortDateFormat(locale);
 
@@ -296,7 +298,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (result != true) return;
 
     final date = _tryParseDate(dateCtl.text);
-    final amount = fmt.tryParseLocalized(amountCtl.text, locale: locale);
+    final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -389,7 +391,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (result != 'save') return;
 
     final date = _tryParseDate(dateCtl.text);
-    final amount = fmt.tryParseLocalized(amountCtl.text, locale: locale);
+    final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart' as drift;
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
@@ -37,6 +39,7 @@ class AssetEventEditScreen extends ConsumerStatefulWidget {
 }
 
 class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
+  String get locale => ref.read(appLocaleProvider).value ?? Platform.localeName;
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _dateCtrl;
   late TextEditingController _amountCtrl;
@@ -70,7 +73,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   void initState() {
     super.initState();
     final ev = widget.event;
-    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
 
     _selectedDate = ev?.date ?? DateTime.now();
@@ -389,7 +392,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).value ?? 'en_US').format(picked);
+        _dateCtrl.text = fmt.shortDateFormat(ref.read(appLocaleProvider).value ?? Platform.localeName).format(picked);
       });
       _fetchExchangeRate();
       _fetchAssetPrice();

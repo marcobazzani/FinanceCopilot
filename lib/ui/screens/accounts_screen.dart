@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart' hide Column;
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -31,7 +33,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     final statsAsync = ref.watch(accountStatsProvider);
     final intermediariesAsync = ref.watch(intermediariesProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final convertedStats = ref.watch(convertedAccountStatsProvider).value ?? {};
 
     return Scaffold(

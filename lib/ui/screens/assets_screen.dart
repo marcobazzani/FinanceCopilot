@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -42,7 +44,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     final statsAsync = ref.watch(assetStatsProvider);
     final intermediariesAsync = ref.watch(intermediariesProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final convertedStats = ref.watch(convertedAssetStatsProvider).value ?? {};
     final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
 

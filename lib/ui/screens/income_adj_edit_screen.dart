@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart' hide Column;
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
@@ -27,6 +29,7 @@ class IncomeAdjEditScreen extends ConsumerStatefulWidget {
 }
 
 class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
+  String get locale => ref.read(appLocaleProvider).value ?? Platform.localeName;
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _amountCtrl;
@@ -73,7 +76,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
     final sym = currencySymbol(_currency);
 
@@ -248,7 +251,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     final amountCtrl = TextEditingController(text: existing?.amount.toString() ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
     var date = existing?.date ?? DateTime.now();
-    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(

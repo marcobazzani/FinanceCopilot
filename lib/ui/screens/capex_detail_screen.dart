@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 import '../../database/database.dart';
 import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
@@ -38,7 +40,7 @@ class _DetailBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final entriesAsync = ref.watch(capexEntriesProvider(schedule.id));
-    final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final sym = currencySymbol(schedule.currency);
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, sym);
@@ -256,7 +258,7 @@ class _DetailBody extends ConsumerWidget {
     final amountCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     var date = DateTime.now();
-    final locale = ref.read(appLocaleProvider).value ?? 'en_US';
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
 
     final confirmed = await showDialog<bool>(
