@@ -78,8 +78,10 @@ class _YearlySummaryTable extends ConsumerWidget {
 
   DataRow _eoyRow(_YearBucket current, _YearBucket prev,
       NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme, AppStrings s) {
-    final eoyInc = _eoyPrediction(current, prev);
-    final eoyExp = _eoyPrediction(current, prev, expenses: true);
+    final incD = _eoyDetails(current, prev);
+    final expD = _eoyDetails(current, prev, expenses: true);
+    final eoyInc = incD?.value;
+    final eoyExp = expD?.value;
     final eoySav = (eoyInc != null && eoyExp != null) ? eoyInc - eoyExp : null;
     final eoyRate = (eoyInc != null && eoyInc > 0 && eoySav != null) ? eoySav / eoyInc : null;
 
@@ -92,7 +94,17 @@ class _YearlySummaryTable extends ConsumerWidget {
     String fmt_(double? v) => v != null ? '~${amtFmt.format(v)} $sym' : '\u2014';
 
     return DataRow(cells: [
-      DataCell(Text(s.eoyLabel, style: style)),
+      DataCell(Builder(builder: (ctx) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(s.eoyLabel, style: style),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => _showEoyExplanation(ctx, current, prev, incD, expD, eoyInc, eoyExp, eoySav, eoyRate, amtFmt, pctFmt, sym, s),
+            child: Icon(Icons.info_outline, size: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+          ),
+        ],
+      ))),
       DataCell(PrivacyText(fmt_(eoyInc), style: style)),
       DataCell(PrivacyText(fmt_(eoyExp), style: style)),
       DataCell(PrivacyText(fmt_(eoySav), style: style)),
@@ -103,4 +115,80 @@ class _YearlySummaryTable extends ConsumerWidget {
       DataCell(const Text('')),
     ]);
   }
+
+  void _showEoyExplanation(
+    BuildContext context,
+    _YearBucket current, _YearBucket prev,
+    _EoyDetails? incD, _EoyDetails? expD,
+    double? eoyInc, double? eoyExp, double? eoySav, double? eoyRate,
+    NumberFormat amtFmt, NumberFormat pctFmt, String sym, AppStrings s,
+  ) {
+    final n = current.months.length;
+    final monthRange = n == 1 ? 'Jan' : 'Jan-${_monthAbbr(n)}';
+
+    String line(String label, _EoyDetails? d, double? result) {
+      if (d == null || result == null) return '$label: —';
+      return '$label: ${amtFmt.format(d.prevTotal)} $sym (${prev.year}) '
+          '× ${amtFmt.format(d.currentTotal)} $sym (${current.year} $monthRange) '
+          '÷ ${amtFmt.format(d.prevSame)} $sym (${prev.year} $monthRange) '
+          '= ~${amtFmt.format(result)} $sym';
+    }
+
+    final lines = [
+      '${s.eoyLabel} — ${s.colYear} ${current.year}',
+      '',
+      line(s.colIncome, incD, eoyInc),
+      line(s.colExpenses, expD, eoyExp),
+      if (eoySav != null) '${s.colSavings}: ~${amtFmt.format(eoyInc!)} $sym - ~${amtFmt.format(eoyExp!)} $sym = ~${amtFmt.format(eoySav)} $sym',
+      if (eoyRate != null) '${s.colRate}: ~${amtFmt.format(eoySav!)} / ~${amtFmt.format(eoyInc!)} = ~${pctFmt.format(eoyRate)}',
+      '',
+      s.eoyFormula,
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.eoyLabel),
+        content: SelectableText(
+          lines.join('\n'),
+          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.close)),
+        ],
+      ),
+    );
+  }
+
+  static String _monthAbbr(int month) {
+    const abbrs = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return abbrs[(month - 1).clamp(0, 11)];
+  }
+}
+
+class _EoyDetails {
+  final double value;
+  final double prevTotal;
+  final double prevSame;
+  final double currentTotal;
+  final int months;
+  const _EoyDetails({required this.value, required this.prevTotal, required this.prevSame, required this.currentTotal, required this.months});
+}
+
+_EoyDetails? _eoyDetails(_YearBucket current, _YearBucket prev, {bool expenses = false}) {
+  if (current.months.isEmpty) return null;
+  final n = current.months.length;
+  final prevSame = prev.months
+      .where((m) => m.month <= n)
+      .fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income));
+  if (prevSame == 0) return null;
+  final currentTotal = expenses ? current.expenses : current.income;
+  final prevTotal = expenses ? prev.expenses : prev.income;
+  return _EoyDetails(
+    value: prevTotal * currentTotal / prevSame,
+    prevTotal: prevTotal,
+    prevSame: prevSame,
+    currentTotal: currentTotal,
+    months: n,
+  );
 }
