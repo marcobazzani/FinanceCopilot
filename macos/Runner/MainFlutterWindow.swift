@@ -11,5 +11,8 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
+
+    // Allow screen capture for accessibility/review tools
+    self.sharingType = .readWrite
   }
 }

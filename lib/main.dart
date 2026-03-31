@@ -139,6 +139,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationDestination(icon: const Icon(Icons.payments), label: s.navIncome),
   ];
 
+  List<(IconData, String)> _sidebarItems(AppStrings s) => [
+    (Icons.dashboard, s.navDashboard),
+    (Icons.account_balance, s.navAccounts),
+    (Icons.pie_chart, s.navAssets),
+    (Icons.account_balance_wallet, s.navAdjustments),
+    (Icons.payments, s.navIncome),
+  ];
+
   List<NavigationRailDestination> _railDestinations(AppStrings s) => [
     NavigationRailDestination(icon: const Icon(Icons.dashboard), label: Text(s.navDashboard)),
     NavigationRailDestination(icon: const Icon(Icons.account_balance), label: Text(s.navAccounts)),
@@ -283,37 +291,68 @@ class _AppShellState extends ConsumerState<AppShell> {
       body: isWide
           ? Row(
               children: [
-                Column(
-                  children: [
-                    Expanded(
-                      child: NavigationRail(
-                        selectedIndex: _selectedIndex,
-                        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-                        labelType: NavigationRailLabelType.all,
-                        destinations: _railDestinations(s),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
-                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                          ),
-                          const SizedBox(width: 4),
-                          GestureDetector(
-                            onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
-                            child: MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
+                SizedBox(
+                  width: 180,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 8),
+                      ..._sidebarItems(s).asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final item = entry.value;
+                        final isSelected = i == _selectedIndex;
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => setState(() => _selectedIndex = i),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: isSelected
+                                  ? BoxDecoration(
+                                      border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3)),
+                                      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                                    )
+                                  : null,
+                              child: Row(
+                                children: [
+                                  Icon(item.$1, size: 20, color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    item.$2,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                      color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
+                        );
+                      }),
+                      const Spacer(),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8, left: 16),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
+                              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const VerticalDivider(thickness: 1, width: 1),
                 Expanded(child: _body()),

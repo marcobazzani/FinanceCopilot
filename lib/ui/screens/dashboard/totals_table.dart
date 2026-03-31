@@ -90,13 +90,10 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  const SizedBox(width: 26), // align with expand icon
-                  Expanded(
-                    child: Text('', style: _headerStyle(theme)),
-                  ),
-                  Text(s.vsATH, style: _headerStyle(theme)),
-                  const SizedBox(width: 12),
-                  Text(s.value, style: _headerStyle(theme)),
+                  const SizedBox(width: 30),
+                  Expanded(child: Text('', style: _headerStyle(theme))),
+                  SizedBox(width: 110, child: Text(s.vsATH, style: _headerStyle(theme), textAlign: TextAlign.right)),
+                  SizedBox(width: 120, child: Text(s.value, style: _headerStyle(theme), textAlign: TextAlign.right)),
                 ],
               ),
             ),
@@ -128,21 +125,28 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                 Expanded(
                   child: Text(row.label, style: const TextStyle(fontWeight: FontWeight.w600)),
                 ),
-                if (row.deltaVsMax.abs() > 0.5) ...[
-                  PrivacyText(
-                    '${row.deltaVsMax >= 0 ? '+' : ''}${amtFmt.format(row.deltaVsMax)}',
+                SizedBox(
+                  width: 110,
+                  child: row.deltaVsMax.abs() > 0.5
+                      ? PrivacyText(
+                          '${row.deltaVsMax >= 0 ? '+' : ''}${amtFmt.format(row.deltaVsMax)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: row.deltaVsMax >= 0 ? Colors.green.shade300 : Colors.red.shade300,
+                          ),
+                          textAlign: TextAlign.right,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                SizedBox(
+                  width: 120,
+                  child: PrivacyText(
+                    '${row.total >= 0 ? '+' : ''}${amtFmt.format(row.total)}',
                     style: TextStyle(
-                      fontSize: 11,
-                      color: row.deltaVsMax >= 0 ? Colors.green.shade300 : Colors.red.shade300,
+                      fontWeight: FontWeight.bold,
+                      color: row.total >= 0 ? Colors.green.shade400 : Colors.red.shade400,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                PrivacyText(
-                  '${row.total >= 0 ? '+' : ''}${amtFmt.format(row.total)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: row.total >= 0 ? Colors.green.shade400 : Colors.red.shade400,
+                    textAlign: TextAlign.right,
                   ),
                 ),
               ],
