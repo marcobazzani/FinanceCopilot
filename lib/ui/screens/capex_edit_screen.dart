@@ -80,7 +80,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
   double get _totalReimbursed => _reimbursements.fold(0.0, (sum, r) => sum + r.amount);
   double? get _effectiveAmount {
-    final total = fmt.tryParseLocalized(_amountCtrl.text);
+    final total = fmt.tryParseLocalized(_amountCtrl.text, locale: locale);
     if (total == null) return null;
     return total - _totalReimbursed;
   }
@@ -218,7 +218,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || fmt.tryParseLocalized(v) == null) return s.invalid;
+                      if (v == null || fmt.tryParseLocalized(v, locale: locale) == null) return s.invalid;
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -567,7 +567,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
     );
 
     if (confirmed != true) return null;
-    final amount = fmt.tryParseLocalized(amountCtrl.text);
+    final amount = fmt.tryParseLocalized(amountCtrl.text, locale: locale);
     if (amount == null || amount <= 0) return null;
     return _Reimbursement(
       id: existing?.id,
@@ -599,7 +599,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
         scheduleId,
         DepreciationSchedulesCompanion(
           assetName: Value(_nameCtrl.text.trim()),
-          totalAmount: Value(fmt.tryParseLocalized(_amountCtrl.text)!),
+          totalAmount: Value(fmt.tryParseLocalized(_amountCtrl.text, locale: locale)!),
           currency: Value(_currency),
           expenseDate: Value(_expenseDate),
           startDate: Value(_startDate),
@@ -653,7 +653,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
       _log.info('creating new schedule: ${_nameCtrl.text.trim()}');
       final scheduleId = await service.create(
         name: _nameCtrl.text.trim(),
-        totalAmount: fmt.tryParseLocalized(_amountCtrl.text)!,
+        totalAmount: fmt.tryParseLocalized(_amountCtrl.text, locale: locale)!,
         currency: _currency,
         expenseDate: _expenseDate,
         startDate: _startDate,

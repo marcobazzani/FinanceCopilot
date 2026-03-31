@@ -83,7 +83,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
       expAsync.whenData((exps) => _loadExistingExpenses(exps));
     }
 
-    final totalAmount = fmt.tryParseLocalized(_amountCtrl.text) ?? 0;
+    final totalAmount = fmt.tryParseLocalized(_amountCtrl.text, locale: locale) ?? 0;
     final remaining = totalAmount - _totalSpent;
 
     final s = ref.watch(appStringsProvider);
@@ -123,7 +123,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || fmt.tryParseLocalized(v) == null) return s.invalid;
+                      if (v == null || fmt.tryParseLocalized(v, locale: locale) == null) return s.invalid;
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -296,7 +296,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     );
 
     if (confirmed != true) return null;
-    final amount = fmt.tryParseLocalized(amountCtrl.text);
+    final amount = fmt.tryParseLocalized(amountCtrl.text, locale: locale);
     if (amount == null || amount <= 0) return null;
     return _Expense(
       id: existing?.id,
@@ -324,7 +324,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
       final id = widget.adjustment!.id;
       await service.update(id, IncomeAdjustmentsCompanion(
         name: Value(_nameCtrl.text.trim()),
-        totalAmount: Value(fmt.tryParseLocalized(_amountCtrl.text)!),
+        totalAmount: Value(fmt.tryParseLocalized(_amountCtrl.text, locale: locale)!),
         currency: Value(_currency),
         incomeDate: Value(_incomeDate),
       ));
@@ -356,7 +356,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
     } else {
       final id = await service.create(
         name: _nameCtrl.text.trim(),
-        totalAmount: fmt.tryParseLocalized(_amountCtrl.text)!,
+        totalAmount: fmt.tryParseLocalized(_amountCtrl.text, locale: locale)!,
         currency: _currency,
         incomeDate: _incomeDate,
       );

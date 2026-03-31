@@ -5,23 +5,17 @@ import 'date_parser.dart' as dateParse;
 /// Locale-aware number/date formatters.
 /// All functions accept a locale string (e.g. 'it_IT', 'en_US').
 
-/// Parse a number string that may use comma as decimal separator (Italian locale).
-/// Handles: "1.234,56" → 1234.56, "1,234.56" → 1234.56, "1234.56" → 1234.56
-double? tryParseLocalized(String text) {
+/// Parse a number string using the configured locale's conventions.
+/// Uses NumberFormat from intl to correctly handle the locale's
+/// decimal/grouping separators (e.g. "1.234,56" in it_IT, "1,234.56" in en_US).
+double? tryParseLocalized(String text, {required String locale}) {
   final trimmed = text.trim();
   if (trimmed.isEmpty) return null;
-  // If both , and . present, the last one is the decimal separator
-  final lastComma = trimmed.lastIndexOf(',');
-  final lastDot = trimmed.lastIndexOf('.');
-  String normalized;
-  if (lastComma > lastDot) {
-    // Comma is decimal separator (e.g. "1.234,56" or "1234,56")
-    normalized = trimmed.replaceAll('.', '').replaceAll(',', '.');
-  } else {
-    // Dot is decimal separator (e.g. "1,234.56" or "1234.56")
-    normalized = trimmed.replaceAll(',', '');
+  try {
+    return NumberFormat.decimalPattern(locale).parse(trimmed).toDouble();
+  } catch (_) {
+    return null;
   }
-  return double.tryParse(normalized);
 }
 
 NumberFormat amountFormat(String locale) =>
