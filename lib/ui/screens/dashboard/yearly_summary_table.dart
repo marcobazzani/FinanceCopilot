@@ -124,34 +124,61 @@ class _YearlySummaryTable extends ConsumerWidget {
     NumberFormat amtFmt, NumberFormat pctFmt, String sym, AppStrings s,
   ) {
     final n = current.months.length;
-    final monthRange = n == 1 ? 'Jan' : 'Jan-${_monthAbbr(n)}';
+    final monthRange = n == 1 ? 'Jan' : 'Jan–${_monthAbbr(n)}';
+    final isIt = s.eoyFormula.contains('anno'); // detect language
 
-    String line(String label, _EoyDetails? d, double? result) {
-      if (d == null || result == null) return '$label: —';
-      return '$label: ${amtFmt.format(d.prevTotal)} $sym (${prev.year}) '
-          '× ${amtFmt.format(d.currentTotal)} $sym (${current.year} $monthRange) '
-          '÷ ${amtFmt.format(d.prevSame)} $sym (${prev.year} $monthRange) '
-          '= ~${amtFmt.format(result)} $sym';
+    String describeMetric(String label, _EoyDetails? d, double? result) {
+      if (d == null || result == null) return '';
+      final prevPct = d.prevSame != 0 ? (d.currentTotal / d.prevSame * 100).toStringAsFixed(1) : '?';
+      if (isIt) {
+        return '━ $label\n'
+            '  Nel ${prev.year}, il totale annuo è stato ${amtFmt.format(d.prevTotal)} $sym.\n'
+            '  Nello stesso periodo ($monthRange) del ${prev.year}: ${amtFmt.format(d.prevSame)} $sym.\n'
+            '  Nel ${current.year} ($monthRange) finora: ${amtFmt.format(d.currentTotal)} $sym ($prevPct% rispetto al ${prev.year}).\n'
+            '  Proiezione: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${amtFmt.format(result)} $sym\n';
+      }
+      return '━ $label\n'
+          '  In ${prev.year}, the full-year total was ${amtFmt.format(d.prevTotal)} $sym.\n'
+          '  Over the same period ($monthRange) in ${prev.year}: ${amtFmt.format(d.prevSame)} $sym.\n'
+          '  In ${current.year} ($monthRange) so far: ${amtFmt.format(d.currentTotal)} $sym ($prevPct% vs ${prev.year}).\n'
+          '  Projection: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${amtFmt.format(result)} $sym\n';
     }
 
-    final lines = [
-      '${s.eoyLabel} — ${s.colYear} ${current.year}',
-      '',
-      line(s.colIncome, incD, eoyInc),
-      line(s.colExpenses, expD, eoyExp),
-      if (eoySav != null) '${s.colSavings}: ~${amtFmt.format(eoyInc!)} $sym - ~${amtFmt.format(eoyExp!)} $sym = ~${amtFmt.format(eoySav)} $sym',
-      if (eoyRate != null) '${s.colRate}: ~${amtFmt.format(eoySav!)} / ~${amtFmt.format(eoyInc!)} = ~${pctFmt.format(eoyRate)}',
-      '',
-      s.eoyFormula,
-    ];
+    final buf = StringBuffer();
+
+    if (isIt) {
+      buf.writeln('Previsione fine anno ${current.year}');
+      buf.writeln('Basata sull\'andamento del ${prev.year} come riferimento stagionale.\n');
+    } else {
+      buf.writeln('End-of-year ${current.year} prediction');
+      buf.writeln('Based on ${prev.year} as the seasonal reference.\n');
+    }
+
+    buf.write(describeMetric(s.colIncome, incD, eoyInc));
+    buf.write(describeMetric(s.colExpenses, expD, eoyExp));
+
+    if (eoySav != null) {
+      buf.writeln('━ ${s.colSavings}');
+      buf.writeln('  ~${amtFmt.format(eoyInc!)} $sym − ~${amtFmt.format(eoyExp!)} $sym = ~${amtFmt.format(eoySav)} $sym');
+    }
+    if (eoyRate != null) {
+      buf.writeln('━ ${s.colRate}');
+      buf.writeln('  ~${amtFmt.format(eoySav!)} ÷ ~${amtFmt.format(eoyInc!)} = ~${pctFmt.format(eoyRate)}');
+    }
+
+    buf.writeln('');
+    buf.writeln(s.eoyFormula);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(s.eoyLabel),
-        content: SelectableText(
-          lines.join('\n'),
-          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+        title: Text(isIt ? 'Previsione fine anno' : 'End-of-year prediction'),
+        content: SizedBox(
+          width: 480,
+          child: SelectableText(
+            buf.toString(),
+            style: const TextStyle(fontSize: 12, height: 1.6),
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.close)),
