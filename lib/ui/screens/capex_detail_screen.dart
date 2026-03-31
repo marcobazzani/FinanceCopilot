@@ -306,7 +306,7 @@ class _DetailBody extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      final amount = double.tryParse(amountCtrl.text);
+      final amount = fmt.tryParseLocalized(amountCtrl.text);
       if (amount == null || amount <= 0) return;
 
       await ref.read(bufferServiceProvider).createTransaction(

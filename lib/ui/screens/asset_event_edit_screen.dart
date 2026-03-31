@@ -60,8 +60,8 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   /// Compute the base-currency equivalent, or null if not applicable.
   double? get _convertedAmount {
     if (!_needsConversion) return null;
-    final amount = double.tryParse(_amountCtrl.text);
-    final rate = double.tryParse(_exchangeRateCtrl.text);
+    final amount = fmt.tryParseLocalized(_amountCtrl.text);
+    final rate = fmt.tryParseLocalized(_exchangeRateCtrl.text);
     if (amount == null || rate == null || rate == 0) return null;
     return amount / rate;
   }
@@ -116,8 +116,8 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
 
   void _onFieldChanged() {
     if (!_usesQtyPrice) return;
-    final qty = double.tryParse(_quantityCtrl.text);
-    final price = double.tryParse(_priceCtrl.text);
+    final qty = fmt.tryParseLocalized(_quantityCtrl.text);
+    final price = fmt.tryParseLocalized(_priceCtrl.text);
     if (qty != null && price != null) {
       final raw = qty * price;
       _amountCtrl.text = (_isBond ? raw / 100 : raw).toStringAsFixed(2);
@@ -265,7 +265,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
                         if (v == null || v.isEmpty) return s.required;
-                        if (double.tryParse(v) == null) return s.invalid;
+                        if (fmt.tryParseLocalized(v) == null) return s.invalid;
                         return null;
                       },
                     ),
@@ -281,7 +281,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
                         if (v == null || v.isEmpty) return s.required;
-                        if (double.tryParse(v) == null) return s.invalid;
+                        if (fmt.tryParseLocalized(v) == null) return s.invalid;
                         return null;
                       },
                     ),
@@ -321,7 +321,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                 validator: (v) {
                   if (v == null || v.isEmpty) return s.required;
-                  if (double.tryParse(v) == null) return s.invalidNumber;
+                  if (fmt.tryParseLocalized(v) == null) return s.invalidNumber;
                   return null;
                 },
               ),
@@ -399,10 +399,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final quantity = _quantityCtrl.text.isNotEmpty ? double.tryParse(_quantityCtrl.text) : null;
-    final price = _priceCtrl.text.isNotEmpty ? double.tryParse(_priceCtrl.text) : null;
-    final commission = _commissionCtrl.text.isNotEmpty ? double.tryParse(_commissionCtrl.text) : null;
-    final exchangeRate = _exchangeRateCtrl.text.isNotEmpty ? double.tryParse(_exchangeRateCtrl.text) : null;
+    final quantity = _quantityCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_quantityCtrl.text) : null;
+    final price = _priceCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_priceCtrl.text) : null;
+    final commission = _commissionCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_commissionCtrl.text) : null;
+    final exchangeRate = _exchangeRateCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_exchangeRateCtrl.text) : null;
 
     // For qty×price types, compute amount; otherwise use the text field directly.
     // Bond prices are quoted as % of face value → divide by 100.
@@ -410,7 +410,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     if (_usesQtyPrice && quantity != null && price != null) {
       amount = _isBond ? quantity * price / 100 : quantity * price;
     } else {
-      amount = double.parse(_amountCtrl.text);
+      amount = fmt.tryParseLocalized(_amountCtrl.text)!;
     }
 
     final svc = ref.read(assetEventServiceProvider);

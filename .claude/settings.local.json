@@ -78,7 +78,10 @@
       "Bash(prlctl exec:*)",
       "Bash(gh run:*)",
       "Bash(gh release:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(for f:*)",
+      "Bash(do grep:*)",
+      "Bash(done)"
     ]
   }
 }

@@ -80,7 +80,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
   double get _totalReimbursed => _reimbursements.fold(0.0, (sum, r) => sum + r.amount);
   double? get _effectiveAmount {
-    final total = double.tryParse(_amountCtrl.text);
+    final total = fmt.tryParseLocalized(_amountCtrl.text);
     if (total == null) return null;
     return total - _totalReimbursed;
   }
@@ -218,7 +218,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                     decoration: InputDecoration(labelText: s.totalAmount),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
-                      if (v == null || double.tryParse(v) == null) return s.invalid;
+                      if (v == null || fmt.tryParseLocalized(v) == null) return s.invalid;
                       return null;
                     },
                     onChanged: (_) => setState(() {}),
@@ -567,7 +567,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
     );
 
     if (confirmed != true) return null;
-    final amount = double.tryParse(amountCtrl.text);
+    final amount = fmt.tryParseLocalized(amountCtrl.text);
     if (amount == null || amount <= 0) return null;
     return _Reimbursement(
       id: existing?.id,
@@ -599,7 +599,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
         scheduleId,
         DepreciationSchedulesCompanion(
           assetName: Value(_nameCtrl.text.trim()),
-          totalAmount: Value(double.parse(_amountCtrl.text)),
+          totalAmount: Value(fmt.tryParseLocalized(_amountCtrl.text)!),
           currency: Value(_currency),
           expenseDate: Value(_expenseDate),
           startDate: Value(_startDate),
@@ -653,7 +653,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
       _log.info('creating new schedule: ${_nameCtrl.text.trim()}');
       final scheduleId = await service.create(
         name: _nameCtrl.text.trim(),
-        totalAmount: double.parse(_amountCtrl.text),
+        totalAmount: fmt.tryParseLocalized(_amountCtrl.text)!,
         currency: _currency,
         expenseDate: _expenseDate,
         startDate: _startDate,
