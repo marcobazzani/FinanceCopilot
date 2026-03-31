@@ -442,28 +442,33 @@ class _DrillableDonutState extends State<_DrillableDonut> {
         Wrap(
           spacing: 12,
           runSpacing: 4,
-          children: List.generate(entries.length, (i) {
-            final label = '${entries[i].key} ${_pct(entries[i].value, total)}';
-            final child = Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(width: 10, height: 10, color: _colorAt(i)),
-                const SizedBox(width: 4),
-                Text(label, style: const TextStyle(fontSize: 12)),
+          children: [
+            for (var i = 0; i < entries.length; i++)
+              if (entries[i].value / total * 100 >= 0.5) ...[
+                Builder(builder: (_) {
+                  final label = '${entries[i].key} ${_pct(entries[i].value, total)}';
+                  final child = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 10, height: 10, color: _colorAt(i)),
+                      const SizedBox(width: 4),
+                      Text(label, style: const TextStyle(fontSize: 12)),
+                    ],
+                  );
+                  if (onSliceTap != null) {
+                    return InkWell(
+                      onTap: () => onSliceTap(entries[i].key),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: child,
+                      ),
+                    );
+                  }
+                  return child;
+                }),
               ],
-            );
-            if (onSliceTap != null) {
-              return InkWell(
-                onTap: () => onSliceTap(entries[i].key),
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: child,
-                ),
-              );
-            }
-            return child;
-          }),
+          ],
         ),
       ],
     );
@@ -512,17 +517,19 @@ class _DonutChart extends ConsumerWidget {
         Wrap(
           spacing: 12,
           runSpacing: 4,
-          children: List.generate(entries.length, (i) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(width: 10, height: 10, color: _colorAt(i)),
-                const SizedBox(width: 4),
-                Text('${entries[i].key} ${_pct(entries[i].value, total)}',
-                    style: const TextStyle(fontSize: 12)),
-              ],
-            );
-          }),
+          children: [
+            for (var i = 0; i < entries.length; i++)
+              if (entries[i].value / total * 100 >= 0.5)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 10, height: 10, color: _colorAt(i)),
+                    const SizedBox(width: 4),
+                    Text('${entries[i].key} ${_pct(entries[i].value, total)}',
+                        style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+          ],
         ),
       ],
     );

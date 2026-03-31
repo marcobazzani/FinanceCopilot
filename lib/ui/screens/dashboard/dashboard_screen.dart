@@ -153,10 +153,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
-                    ),
                     _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
                     const SizedBox(height: 16),
                     _SummaryTotalsTable(allData: allData, locale: locale),
