@@ -359,81 +359,59 @@ class InvestingComService extends MarketPriceService {
     return results.values.toList();
   }
 
-  /// Fallback search using the Investing.com website search page (JS-rendered).
-  /// Uses the headless WebView to render the page and extract results.
+  /// Fallback search using the Investing.com website search page (SSR HTML).
+  /// The search page includes results in server-rendered HTML.
   Future<List<InvestingSearchResult>> _webSearchFallback(String query) async {
-    if (!await _ensureWebView()) return [];
     try {
       final url = 'https://www.investing.com/search/?q=${Uri.encodeComponent(query)}&tab=quotes';
-      final js = '''
-        const response = await fetch("$url");
-        const html = await response.text();
-        // Parse the search results from the rendered page
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const rows = doc.querySelectorAll('[data-test="search-results-table"] tr, .js-search-results tr, .searchSectionMain a[href]');
-        if (rows.length === 0) {
-          // Try alternative: navigate and extract
-          return JSON.stringify([]);
-        }
-        return JSON.stringify([]);
-      ''';
-      // Instead of parsing HTML in JS, navigate the WebView directly
-      await _webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
-      await Future.delayed(const Duration(seconds: 3));
+      final response = await _dio.get(url, options: Options(
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        responseType: ResponseType.plain,
+        followRedirects: true,
+      ));
+      final html = response.data as String;
 
-      // Extract search results from the rendered page
-      final extractJs = '''
-        (function() {
-          const results = [];
-          // Try multiple selectors for search result rows
-          const links = document.querySelectorAll('.search-results-quotes a[href], .js-search-results a[href], [data-test="quotes-list"] a[href]');
-          for (const link of links) {
-            const href = link.getAttribute('href') || '';
-            const text = link.textContent.trim();
-            if (href && text && !href.includes('javascript:')) {
-              results.push({href, text});
-            }
-          }
-          // Also try the table format
-          const rows = document.querySelectorAll('table tr[data-id]');
-          for (const row of rows) {
-            const id = row.getAttribute('data-id');
-            const name = row.querySelector('.second')?.textContent?.trim() || '';
-            const symbol = row.querySelector('.third')?.textContent?.trim() || '';
-            const exchange = row.querySelector('.fourth')?.textContent?.trim() || '';
-            const type = row.querySelector('.fifth')?.textContent?.trim() || '';
-            if (id && name) {
-              results.push({id, name, symbol, exchange, type});
-            }
-          }
-          return JSON.stringify(results);
-        })()
-      ''';
-      final resultJson = await _webViewController!.evaluateJavascript(source: extractJs);
-      if (resultJson == null || resultJson == 'null') return [];
+      // Parse results: each quote row is an <a> with class "js-inner-all-results-quote-item"
+      // Structure: <a href="/rates-bonds/..."> containing:
+      //   .second = symbol, .third = name, .fourth = "type exchange"
+      final results = <InvestingSearchResult>[];
+      final rowPattern = RegExp(
+        r'js-inner-all-results-quote-item[^"]*"\s+href="([^"]+)".*?'
+        r'second">([^<]*)<.*?'
+        r'third">([^<]*)<.*?'
+        r'fourth[^>]*>([^<]*)<',
+        dotAll: true,
+      );
 
-      final parsed = jsonDecode(resultJson is String ? resultJson : resultJson.toString()) as List;
-      final searchResults = <InvestingSearchResult>[];
+      for (final match in rowPattern.allMatches(html)) {
+        final href = match.group(1)?.trim() ?? '';
+        final symbol = match.group(2)?.trim() ?? '';
+        final name = match.group(3)?.trim() ?? '';
+        final typeExchange = match.group(4)?.trim() ?? '';
 
-      for (final item in parsed) {
-        if (item is Map && item.containsKey('id')) {
-          final cid = int.tryParse(item['id'].toString());
-          if (cid == null) continue;
-          searchResults.add(InvestingSearchResult(
-            cid: cid,
-            description: item['name'] ?? '',
-            symbol: item['symbol'] ?? '',
-            exchange: item['exchange'] ?? '',
-            flag: '',
-            type: item['type'] ?? '',
-            url: null,
-          ));
-        }
+        // Skip template rows
+        if (name.contains('{{')) continue;
+
+        // Generate a pseudo CID from the URL hash (stable per URL)
+        final cid = href.hashCode.abs();
+
+        results.add(InvestingSearchResult(
+          cid: cid,
+          description: name,
+          symbol: symbol,
+          exchange: '',
+          flag: '',
+          type: typeExchange,
+          url: href,
+        ));
       }
 
-      _log.info('_webSearchFallback: found ${searchResults.length} results');
-      return searchResults;
+      _log.info('_webSearchFallback: found ${results.length} results');
+      return results;
     } catch (e) {
       _log.warning('_webSearchFallback: failed: $e');
       return [];
