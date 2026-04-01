@@ -1,8 +1,200 @@
 part of 'dashboard_screen.dart';
 
 // ════════════════════════════════════════════════════
-// Financial Health Tab
+// Financial Health Tab — KPIs + Investment Costs
 // ════════════════════════════════════════════════════
+
+// ── Rating system ──
+
+enum _Rating { ottimo, buono, sufficiente, scarso, alto, na }
+
+extension _RatingExt on _Rating {
+  String label(AppStrings s) => switch (this) {
+    _Rating.ottimo => s.ratingOttimo,
+    _Rating.buono => s.ratingBuono,
+    _Rating.sufficiente => s.ratingSufficiente,
+    _Rating.scarso => s.ratingScarso,
+    _Rating.alto => s.ratingAlto,
+    _Rating.na => s.ratingNa,
+  };
+
+  Color get color => switch (this) {
+    _Rating.ottimo => const Color(0xFF4CAF50),
+    _Rating.buono => const Color(0xFF2196F3),
+    _Rating.sufficiente => const Color(0xFFFF9800),
+    _Rating.scarso => const Color(0xFFF44336),
+    _Rating.alto => const Color(0xFF4CAF50),
+    _Rating.na => Colors.grey,
+  };
+
+  int get score => switch (this) {
+    _Rating.ottimo => 100,
+    _Rating.buono || _Rating.alto => 75,
+    _Rating.sufficiente => 50,
+    _Rating.scarso => 25,
+    _Rating.na => 0,
+  };
+}
+
+// ── KPI data model ──
+
+class _HealthKpi {
+  final String name;
+  final double? value;
+  final String unit; // '%', ' mesi', '×', etc.
+  final _Rating rating;
+  final String description;
+
+  const _HealthKpi({
+    required this.name,
+    this.value,
+    this.unit = '%',
+    this.rating = _Rating.na,
+    this.description = '',
+  });
+}
+
+class _KpiCategory {
+  final String name;
+  final List<_HealthKpi> kpis;
+  final _Rating overallRating;
+
+  const _KpiCategory({required this.name, required this.kpis, required this.overallRating});
+}
+
+// ── KPI computation ──
+
+_Rating _rateNormal(double value, double scarso, double suff, double buono) {
+  if (value >= buono) return _Rating.ottimo;
+  if (value >= suff) return _Rating.buono;
+  if (value >= scarso) return _Rating.sufficiente;
+  return _Rating.scarso;
+}
+
+_Rating _rateInverted(double value, double ottimo, double buono, double suff) {
+  if (value <= ottimo) return _Rating.ottimo;
+  if (value <= buono) return _Rating.buono;
+  if (value <= suff) return _Rating.sufficiente;
+  return _Rating.scarso;
+}
+
+_Rating _categoryRating(List<_HealthKpi> kpis) {
+  final rated = kpis.where((k) => k.rating != _Rating.na).toList();
+  if (rated.isEmpty) return _Rating.na;
+  final avg = rated.map((k) => k.rating.score).reduce((a, b) => a + b) / rated.length;
+  if (avg >= 87) return _Rating.ottimo;
+  if (avg >= 62) return _Rating.buono;
+  if (avg >= 37) return _Rating.sufficiente;
+  return _Rating.scarso;
+}
+
+List<_KpiCategory> _computeKpis({
+  required double cash,
+  required double investments,
+  required double liabilities,
+  required double annualIncome,
+  required double annualExpenses,
+  required double annualSavings,
+  required double monthlyExpenses,
+  required AppStrings s,
+}) {
+  final netWorth = cash + investments - liabilities;
+
+  // ── Liquidità ──
+  final liquidityRatio = netWorth > 0 ? cash / netWorth * 100 : 0.0;
+  final liquidityRating = _rateNormal(liquidityRatio, 10, 15, 25);
+
+  final coverageMonths = monthlyExpenses > 0 ? cash / monthlyExpenses : 0.0;
+  final coverageRating = _rateNormal(coverageMonths, 3, 6, 12);
+
+  final savingsRate = annualIncome > 0 ? annualSavings / annualIncome * 100 : 0.0;
+  final savingsRating = _rateNormal(savingsRate, 10, 20, 40);
+
+  final liquidityKpis = [
+    _HealthKpi(
+      name: s.kpiLiquidityRatio,
+      value: liquidityRatio,
+      rating: liquidityRating,
+      description: s.kpiLiquidityDesc(liquidityRating == _Rating.ottimo ? 'ottimo' : liquidityRating == _Rating.buono ? 'buono' : liquidityRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
+    ),
+    _HealthKpi(
+      name: s.kpiExpenseCoverage,
+      value: coverageMonths,
+      unit: _unitMonths(s),
+      rating: coverageRating,
+      description: s.kpiCoverageDesc(coverageMonths.round()),
+    ),
+    _HealthKpi(
+      name: s.kpiSavingsRate,
+      value: savingsRate,
+      rating: savingsRating,
+      description: s.kpiSavingsDesc(savingsRating == _Rating.ottimo ? 'ottimo' : savingsRating == _Rating.buono ? 'buono' : savingsRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
+    ),
+  ];
+
+  // ── Indebitamento ──
+  final debtSust = annualIncome > 0 ? (annualIncome - liabilities.abs()) / annualIncome * 100 : 100.0;
+  final debtSustRating = liabilities == 0 ? _Rating.ottimo : _rateNormal(debtSust.clamp(0, 100), 50, 70, 90);
+
+  final debtRatio = netWorth > 0 ? liabilities / netWorth * 100 : 0.0;
+  final debtRatioRating = liabilities == 0 ? _Rating.ottimo : _rateInverted(debtRatio, 15, 30, 50);
+
+  final debtKpis = [
+    _HealthKpi(
+      name: s.kpiDebtSustainability,
+      value: liabilities == 0 ? 100.0 : debtSust.clamp(0, 100),
+      rating: debtSustRating,
+      description: s.kpiDebtSustDesc(debtSustRating == _Rating.ottimo ? 'ottimo' : 'altro'),
+    ),
+    _HealthKpi(
+      name: s.kpiDebtRatio,
+      value: debtRatio,
+      rating: debtRatioRating,
+      description: s.kpiDebtRatioDesc(debtRatioRating == _Rating.ottimo || debtRatioRating == _Rating.buono ? 'ottimo' : 'altro'),
+    ),
+  ];
+
+  // ── Finanziari e Ricchezza ──
+  final investWeight = netWorth > 0 ? investments / netWorth * 100 : 0.0;
+  final investWeightRating = investWeight >= 60 ? _Rating.alto : _rateNormal(investWeight, 20, 40, 60);
+
+  final liquidAssetRatio = netWorth > 0 ? (cash + investments) / netWorth * 100 : 0.0;
+  final liquidAssetRating = _rateNormal(liquidAssetRatio, 50, 65, 80);
+
+  final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
+  final incomeToWealthRating = _rateNormal(incomeToWealth, 5, 10, 20);
+
+  final wealthKpis = [
+    _HealthKpi(
+      name: s.kpiInvestmentWeight,
+      value: investWeight,
+      rating: investWeightRating,
+      description: s.kpiInvestWeightDesc(investWeightRating.name),
+    ),
+    _HealthKpi(
+      name: s.kpiLiquidAssetRatio,
+      value: liquidAssetRatio,
+      rating: liquidAssetRating,
+      description: s.kpiLiquidAssetDesc(liquidAssetRating == _Rating.ottimo || liquidAssetRating == _Rating.buono ? 'ottimo' : 'altro'),
+    ),
+    _HealthKpi(
+      name: s.kpiIncomeToWealth,
+      value: incomeToWealth,
+      rating: incomeToWealthRating,
+      description: s.kpiIncomeWealthDesc(incomeToWealthRating == _Rating.ottimo || incomeToWealthRating == _Rating.buono ? 'ottimo' : 'altro'),
+    ),
+  ];
+
+  return [
+    _KpiCategory(name: s.healthCatLiquidity, kpis: liquidityKpis, overallRating: _categoryRating(liquidityKpis)),
+    _KpiCategory(name: s.healthCatDebt, kpis: debtKpis, overallRating: _categoryRating(debtKpis)),
+    _KpiCategory(name: s.healthCatWealth, kpis: wealthKpis, overallRating: _categoryRating(wealthKpis)),
+  ];
+}
+
+String _unitMonths(AppStrings s) => s.ratingOttimo == 'Ottimo' ? ' mesi' : ' months';
+
+// ── Main widget ──
 
 class _FinancialHealthTab extends ConsumerWidget {
   const _FinancialHealthTab();
@@ -12,6 +204,8 @@ class _FinancialHealthTab extends ConsumerWidget {
     final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
+    final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
+    final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final isPrivate = ref.watch(privacyModeProvider);
@@ -25,73 +219,90 @@ class _FinancialHealthTab extends ConsumerWidget {
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (assets) {
         final marketValues = marketValuesAsync.value ?? {};
+        final accountStats = accountStatsAsync.value ?? {};
+        final ieData = ieAsync.value;
+
+        // Compute totals
+        final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
         final activeAssets = assets.where((a) => a.isActive).toList();
-
-        // Build cost rows for assets with TER
-        final rows = <_CostRow>[];
-        double totalValue = 0;
-        double totalCost = 0;
-
+        double investments = 0;
+        double liabilities = 0;
         for (final asset in activeAssets) {
-          final mv = marketValues[asset.id];
-          if (mv == null || mv <= 0) continue;
-          totalValue += mv;
-          if (asset.ter != null && asset.ter! > 0) {
-            final annualCost = mv * asset.ter! / 100;
-            rows.add(_CostRow(
-              name: asset.ticker ?? asset.name,
-              fullName: asset.name,
-              ter: asset.ter!,
-              marketValue: mv,
-              annualCost: annualCost,
-            ));
-            totalCost += annualCost;
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (asset.assetType == AssetType.liability) {
+            liabilities += mv.abs();
           } else {
-            rows.add(_CostRow(
-              name: asset.ticker ?? asset.name,
-              fullName: asset.name,
-              ter: null,
-              marketValue: mv,
-              annualCost: 0,
-            ));
+            investments += mv;
           }
         }
 
-        // Sort by annual cost descending
-        rows.sort((a, b) => b.annualCost.compareTo(a.annualCost));
+        // Income/expense from current year
+        double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
+        if (ieData != null && ieData.years.isNotEmpty) {
+          final currentYear = ieData.years.last;
+          annualIncome = currentYear.income;
+          annualExpenses = currentYear.expenses > 0 ? currentYear.expenses : 0;
+          annualSavings = currentYear.savings;
+          monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
+        }
 
-        final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
+        final categories = _computeKpis(
+          cash: cash, investments: investments, liabilities: liabilities,
+          annualIncome: annualIncome, annualExpenses: annualExpenses,
+          annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
+          s: s,
+        );
+
+        // Overall score
+        final allKpis = categories.expand((c) => c.kpis).toList();
+        final ratedKpis = allKpis.where((k) => k.rating != _Rating.na).toList();
+        final overallScore = ratedKpis.isEmpty ? 0.0
+            : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
+        final overallRating = overallScore >= 87 ? _Rating.ottimo
+            : overallScore >= 62 ? _Rating.buono
+            : overallScore >= 37 ? _Rating.sufficiente
+            : _Rating.scarso;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Investment Costs Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(s.healthInvestmentCosts,
-                          style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 16),
-                      if (rows.isEmpty)
-                        Text(s.healthNoTer, style: TextStyle(color: Colors.grey))
-                      else ...[
-                        // Header row
-                        _buildHeaderRow(context, s),
-                        const Divider(height: 1),
-                        // Data rows
-                        ...rows.map((row) => _buildCostRow(context, row, amtFmt, pctFmt, isPrivate)),
-                        // Total row
-                        const Divider(height: 16, thickness: 2),
-                        _buildTotalRow(context, s, totalValue, totalCost, weightedTer, amtFmt, pctFmt, isPrivate),
-                      ],
-                    ],
-                  ),
+              // ── Summary row ──
+              _SummarySection(
+                score: overallScore,
+                overallRating: overallRating,
+                categories: categories,
+                s: s,
+                isPrivate: isPrivate,
+              ),
+              const SizedBox(height: 24),
+
+              // ── KPI Cards ──
+              Text(s.healthKpis, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              for (final cat in categories) ...[
+                const SizedBox(height: 16),
+                Text(cat.name, style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                )),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: cat.kpis.map((kpi) => SizedBox(
+                    width: 320,
+                    child: _KpiCard(kpi: kpi, pctFmt: pctFmt, s: s, isPrivate: isPrivate),
+                  )).toList(),
                 ),
+              ],
+
+              // ── Investment Costs table ──
+              const SizedBox(height: 32),
+              _InvestmentCostsSection(
+                assets: activeAssets, marketValues: marketValues,
+                amtFmt: amtFmt, pctFmt: pctFmt, s: s, isPrivate: isPrivate,
+                context: context,
               ),
             ],
           ),
@@ -99,121 +310,378 @@ class _FinancialHealthTab extends ConsumerWidget {
       },
     );
   }
+}
 
-  Widget _buildHeaderRow(BuildContext context, AppStrings s) {
-    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
-      fontWeight: FontWeight.w600,
-      color: Colors.grey,
+// ── Summary section ──
+
+class _SummarySection extends StatelessWidget {
+  final double score;
+  final _Rating overallRating;
+  final List<_KpiCategory> categories;
+  final AppStrings s;
+  final bool isPrivate;
+
+  const _SummarySection({
+    required this.score, required this.overallRating,
+    required this.categories, required this.s, required this.isPrivate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // Score gauge
+            SizedBox(
+              width: 120,
+              height: 120,
+              child: CustomPaint(
+                painter: _ScoreGaugePainter(score: score, color: overallRating.color),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isPrivate ? '••' : score.round().toString(),
+                        style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: overallRating.color),
+                      ),
+                      Text(overallRating.label(s), style: TextStyle(fontSize: 12, color: overallRating.color)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 24),
+            // Category ratings
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.healthSummary, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  for (final cat in categories)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(cat.name, style: const TextStyle(fontSize: 13))),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: cat.overallRating.color.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              cat.overallRating.label(s),
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cat.overallRating.color),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+}
+
+// ── Circular score gauge painter ──
+
+class _ScoreGaugePainter extends CustomPainter {
+  final double score;
+  final Color color;
+  _ScoreGaugePainter({required this.score, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 8;
+    const startAngle = 2.3; // ~132°
+    const sweepAngle = 4.6; // ~264° arc
+
+    // Background arc
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle, sweepAngle, false,
+      Paint()..color = Colors.grey.shade800..style = PaintingStyle.stroke..strokeWidth = 8..strokeCap = StrokeCap.round,
+    );
+
+    // Filled arc
+    final fillSweep = sweepAngle * (score / 100).clamp(0, 1);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngle, fillSweep, false,
+      Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 8..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScoreGaugePainter oldDelegate) =>
+      oldDelegate.score != score || oldDelegate.color != color;
+}
+
+// ── KPI Card ──
+
+class _KpiCard extends StatefulWidget {
+  final _HealthKpi kpi;
+  final NumberFormat pctFmt;
+  final AppStrings s;
+  final bool isPrivate;
+
+  const _KpiCard({required this.kpi, required this.pctFmt, required this.s, required this.isPrivate});
+
+  @override
+  State<_KpiCard> createState() => _KpiCardState();
+}
+
+class _KpiCardState extends State<_KpiCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final kpi = widget.kpi;
+    final theme = Theme.of(context);
+
+    final valueText = kpi.value != null
+        ? (kpi.unit == '%'
+            ? '${widget.pctFmt.format(kpi.value!)}%'
+            : '${kpi.value!.round()}${kpi.unit}')
+        : '-';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Value + rating badge
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: PrivacyText(
+                    valueText,
+                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: kpi.rating.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: kpi.rating.color.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    kpi.rating.label(widget.s),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kpi.rating.color),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // KPI name
+            Text(kpi.name, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 6),
+            // Expand toggle
+            InkWell(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Row(
+                children: [
+                  Text(widget.s.healthDetails, style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: theme.colorScheme.primary),
+                ],
+              ),
+            ),
+            if (_expanded) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    kpi.rating == _Rating.scarso ? Icons.error : kpi.rating == _Rating.sufficiente ? Icons.warning : Icons.check_circle,
+                    size: 16,
+                    color: kpi.rating.color,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(kpi.description, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              _TrafficLightGauge(rating: kpi.rating, value: kpi.value ?? 0),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Traffic light gauge ──
+
+class _TrafficLightGauge extends StatelessWidget {
+  final _Rating rating;
+  final double value;
+
+  const _TrafficLightGauge({required this.rating, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    // 4-zone gauge: scarso | sufficiente | buono | ottimo
+    final position = (rating.score / 100).clamp(0.05, 0.95);
+    return SizedBox(
+      height: 14,
+      child: CustomPaint(
+        size: const Size(double.infinity, 14),
+        painter: _GaugePainter(position: position),
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  final double position;
+  _GaugePainter({required this.position});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final h = size.height;
+    final w = size.width;
+    final r = h / 2;
+
+    final zones = [
+      (const Color(0xFFF44336), 0.25), // red
+      (const Color(0xFFFF9800), 0.25), // orange
+      (const Color(0xFF4CAF50).withValues(alpha: 0.5), 0.25), // light green
+      (const Color(0xFF4CAF50), 0.25), // green
+    ];
+
+    var x = 0.0;
+    for (final (color, fraction) in zones) {
+      final zoneWidth = w * fraction;
+      final rect = RRect.fromLTRBR(x, 2, x + zoneWidth, h - 2, Radius.circular(r));
+      canvas.drawRRect(rect, Paint()..color = color);
+      x += zoneWidth;
+    }
+
+    // Marker
+    final markerX = (w * position).clamp(r, w - r);
+    canvas.drawCircle(Offset(markerX, h / 2), 6, Paint()..color = Colors.white..style = PaintingStyle.fill);
+    canvas.drawCircle(Offset(markerX, h / 2), 6, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GaugePainter old) => old.position != position;
+}
+
+// ── Investment Costs Section (extracted from old _FinancialHealthTab) ──
+
+class _InvestmentCostsSection extends StatelessWidget {
+  final List<Asset> assets;
+  final Map<int, double> marketValues;
+  final NumberFormat amtFmt;
+  final NumberFormat pctFmt;
+  final AppStrings s;
+  final bool isPrivate;
+  final BuildContext context;
+
+  const _InvestmentCostsSection({
+    required this.assets, required this.marketValues,
+    required this.amtFmt, required this.pctFmt,
+    required this.s, required this.isPrivate, required this.context,
+  });
+
+  @override
+  Widget build(BuildContext innerContext) {
+    final theme = Theme.of(context);
+    final rows = <_CostRow>[];
+    double totalValue = 0, totalCost = 0;
+
+    for (final asset in assets) {
+      final mv = marketValues[asset.id];
+      if (mv == null || mv <= 0) continue;
+      totalValue += mv;
+      if (asset.ter != null && asset.ter! > 0) {
+        final annualCost = mv * asset.ter! / 100;
+        rows.add(_CostRow(name: asset.ticker ?? asset.name, fullName: asset.name, ter: asset.ter!, marketValue: mv, annualCost: annualCost));
+        totalCost += annualCost;
+      } else {
+        rows.add(_CostRow(name: asset.ticker ?? asset.name, fullName: asset.name, ter: null, marketValue: mv, annualCost: 0));
+      }
+    }
+    rows.sort((a, b) => b.annualCost.compareTo(a.annualCost));
+    final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(s.healthInvestmentCosts, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 16),
+            if (rows.isEmpty)
+              Text(s.healthNoTer, style: const TextStyle(color: Colors.grey))
+            else ...[
+              _buildHeader(theme),
+              const Divider(height: 1),
+              ...rows.map((row) => _buildRow(row, theme)),
+              const Divider(height: 16, thickness: 2),
+              _buildTotal(theme, totalValue, totalCost, weightedTer),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    final style = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(flex: 4, child: Text(s.healthAsset, style: style)),
-          Expanded(flex: 2, child: Text(s.healthTer, style: style, textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text(s.healthMarketValue, style: style, textAlign: TextAlign.right)),
-          Expanded(flex: 3, child: Text(s.healthAnnualCost, style: style, textAlign: TextAlign.right)),
-        ],
-      ),
+      child: Row(children: [
+        Expanded(flex: 4, child: Text(s.healthAsset, style: style)),
+        Expanded(flex: 2, child: Text(s.healthTer, style: style, textAlign: TextAlign.right)),
+        Expanded(flex: 3, child: Text(s.healthMarketValue, style: style, textAlign: TextAlign.right)),
+        Expanded(flex: 3, child: Text(s.healthAnnualCost, style: style, textAlign: TextAlign.right)),
+      ]),
     );
   }
 
-  Widget _buildCostRow(BuildContext context, _CostRow row, NumberFormat amtFmt, NumberFormat pctFmt, bool isPrivate) {
-    final theme = Theme.of(context);
-    final nameStyle = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
-    final valueStyle = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
-
+  Widget _buildRow(_CostRow row, ThemeData theme) {
+    final vs = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Tooltip(
-              message: row.fullName,
-              child: Text(row.name, style: nameStyle, overflow: TextOverflow.ellipsis),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              row.ter != null ? '${pctFmt.format(row.ter)}%' : '-',
-              style: valueStyle?.copyWith(
-                color: row.ter != null ? _terColor(row.ter!) : Colors.grey,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: PrivacyText(
-              amtFmt.format(row.marketValue),
-              style: valueStyle,
-              textAlign: TextAlign.right,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: PrivacyText(
-              row.ter != null ? amtFmt.format(row.annualCost) : '-',
-              style: valueStyle?.copyWith(
-                color: row.ter != null ? Colors.red.shade300 : Colors.grey,
-                fontWeight: row.ter != null ? FontWeight.w600 : null,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Expanded(flex: 4, child: Tooltip(message: row.fullName, child: Text(row.name, style: vs, overflow: TextOverflow.ellipsis))),
+        Expanded(flex: 2, child: Text(row.ter != null ? '${pctFmt.format(row.ter)}%' : '-', style: vs?.copyWith(color: row.ter != null ? _terColor(row.ter!) : Colors.grey), textAlign: TextAlign.right)),
+        Expanded(flex: 3, child: PrivacyText(amtFmt.format(row.marketValue), style: vs, textAlign: TextAlign.right)),
+        Expanded(flex: 3, child: PrivacyText(row.ter != null ? amtFmt.format(row.annualCost) : '-', style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey, fontWeight: row.ter != null ? FontWeight.w600 : null), textAlign: TextAlign.right)),
+      ]),
     );
   }
 
-  Widget _buildTotalRow(BuildContext context, AppStrings s, double totalValue,
-      double totalCost, double weightedTer, NumberFormat amtFmt, NumberFormat pctFmt, bool isPrivate) {
-    final theme = Theme.of(context);
-    final boldStyle = theme.textTheme.bodySmall?.copyWith(
-      fontSize: 13,
-      fontWeight: FontWeight.bold,
-    );
-
+  Widget _buildTotal(ThemeData theme, double totalValue, double totalCost, double weightedTer) {
+    final bs = theme.textTheme.bodySmall?.copyWith(fontSize: 13, fontWeight: FontWeight.bold);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(s.healthWeightedTer, style: boldStyle),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              '${pctFmt.format(weightedTer)}%',
-              style: boldStyle?.copyWith(color: _terColor(weightedTer)),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: PrivacyText(
-              amtFmt.format(totalValue),
-              style: boldStyle,
-              textAlign: TextAlign.right,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: PrivacyText(
-              amtFmt.format(totalCost),
-              style: boldStyle?.copyWith(color: Colors.red.shade400),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Expanded(flex: 4, child: Text(s.healthWeightedTer, style: bs)),
+        Expanded(flex: 2, child: Text('${pctFmt.format(weightedTer)}%', style: bs?.copyWith(color: _terColor(weightedTer)), textAlign: TextAlign.right)),
+        Expanded(flex: 3, child: PrivacyText(amtFmt.format(totalValue), style: bs, textAlign: TextAlign.right)),
+        Expanded(flex: 3, child: PrivacyText(amtFmt.format(totalCost), style: bs?.copyWith(color: Colors.red.shade400), textAlign: TextAlign.right)),
+      ]),
     );
   }
 
-  /// Color TER values: green (low cost) → yellow → red (high cost)
   static Color _terColor(double ter) {
     if (ter <= 0.20) return Colors.green.shade400;
     if (ter <= 0.50) return Colors.lightGreen;
@@ -223,16 +691,8 @@ class _FinancialHealthTab extends ConsumerWidget {
 }
 
 class _CostRow {
-  final String name;
-  final String fullName;
+  final String name, fullName;
   final double? ter;
-  final double marketValue;
-  final double annualCost;
-  const _CostRow({
-    required this.name,
-    required this.fullName,
-    required this.ter,
-    required this.marketValue,
-    required this.annualCost,
-  });
+  final double marketValue, annualCost;
+  const _CostRow({required this.name, required this.fullName, required this.ter, required this.marketValue, required this.annualCost});
 }

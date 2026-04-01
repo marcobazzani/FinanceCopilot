@@ -84,6 +84,84 @@ class AppStrings {
   String get healthTotalCost       => _it ? 'Costo totale'            : 'Total Cost';
   String get healthNoTer           => _it ? 'Nessun TER disponibile'  : 'No TER data available';
   String get healthWeightedTer     => _it ? 'TER medio ponderato'     : 'Weighted Avg TER';
+
+  // ── Health KPIs ──
+  String get healthSummary         => _it ? 'Riepilogo'               : 'Summary';
+  String get healthKpis            => _it ? 'Indicatori ed Indici'    : 'KPIs & Indices';
+  String get healthDetails         => _it ? 'Dettagli'                : 'Details';
+
+  // Ratings
+  String get ratingOttimo          => _it ? 'Ottimo'                  : 'Excellent';
+  String get ratingBuono           => _it ? 'Buono'                   : 'Good';
+  String get ratingSufficiente     => _it ? 'Sufficiente'             : 'Fair';
+  String get ratingScarso          => _it ? 'Scarso'                  : 'Poor';
+  String get ratingAlto            => _it ? 'Alto'                    : 'High';
+  String get ratingNa              => _it ? 'N/D'                     : 'N/A';
+
+  // Category headers
+  String get healthCatLiquidity    => _it ? 'Liquidità'               : 'Liquidity';
+  String get healthCatDebt         => _it ? 'Indebitamento'           : 'Debt';
+  String get healthCatWealth       => _it ? 'Finanziari e Ricchezza'  : 'Financial & Wealth';
+
+  // KPI names
+  String get kpiLiquidityRatio     => _it ? 'Indice di liquidità patrimoniale' : 'Net Worth Liquidity Ratio';
+  String get kpiExpenseCoverage    => _it ? 'Indice di copertura delle spese'  : 'Expense Coverage';
+  String get kpiSavingsRate        => _it ? 'Tasso di risparmio'               : 'Savings Rate';
+  String get kpiDebtSustainability => _it ? 'Tasso di sostenibilità del debito': 'Debt Sustainability Rate';
+  String get kpiDebtRatio          => _it ? 'Tasso di indebitamento'           : 'Debt Ratio';
+  String get kpiInvestmentWeight   => _it ? 'Peso del capitale investito'      : 'Investment Weight';
+  String get kpiLiquidAssetRatio   => _it ? 'Indice di liquidabilità patrimoniale' : 'Liquid Asset Ratio';
+  String get kpiIncomeToWealth     => _it ? 'Tasso disproporzione entrate/patrimonio' : 'Income-to-Wealth Ratio';
+
+  // KPI descriptions by rating
+  String kpiLiquidityDesc(String rating) => _it
+      ? (rating == 'ottimo' ? 'Ottima liquidità! Hai un buon cuscinetto per le emergenze.'
+        : rating == 'buono' ? 'Buona liquidità, sei in una posizione solida.'
+        : rating == 'sufficiente' ? 'La tua liquidità è sufficiente, ma fai attenzione a spese impreviste.'
+        : 'Liquidità bassa. Valuta di aumentare le riserve di emergenza.')
+      : (rating == 'ottimo' ? 'Excellent liquidity! You have a good emergency cushion.'
+        : rating == 'buono' ? 'Good liquidity, you are in a solid position.'
+        : rating == 'sufficiente' ? 'Liquidity is fair, but watch out for unexpected expenses.'
+        : 'Low liquidity. Consider building up emergency reserves.');
+  String kpiCoverageDesc(int months) => _it
+      ? 'La tua liquidità copre le tue spese per $months mesi.'
+      : 'Your cash covers your expenses for $months months.';
+  String kpiSavingsDesc(String rating) => _it
+      ? (rating == 'ottimo' ? 'Sei in un\'ottima situazione! Puoi dedicarti ad altri aspetti della tua vita finanziaria.'
+        : rating == 'buono' ? 'Buon tasso di risparmio, continua così!'
+        : rating == 'sufficiente' ? 'Tasso di risparmio nella media, cerca di migliorarlo.'
+        : 'Tasso di risparmio basso. Cerca di ridurre le spese non essenziali.')
+      : (rating == 'ottimo' ? 'Excellent! You can focus on other aspects of your financial life.'
+        : rating == 'buono' ? 'Good savings rate, keep it up!'
+        : rating == 'sufficiente' ? 'Average savings rate, try to improve it.'
+        : 'Low savings rate. Try reducing non-essential expenses.');
+  String kpiDebtSustDesc(String rating) => _it
+      ? (rating == 'ottimo' ? 'Le rate sono ampiamente coperte dalle tue entrate. Situazione solida.'
+        : 'Fai attenzione al livello di debito rispetto alle tue entrate.')
+      : (rating == 'ottimo' ? 'Debt payments are well covered by your income. Solid position.'
+        : 'Watch your debt level relative to your income.');
+  String kpiDebtRatioDesc(String rating) => _it
+      ? (rating == 'ottimo' || rating == 'buono' ? 'La tua situazione finanziaria è solida, continua così!'
+        : 'Il tuo livello di indebitamento merita attenzione.')
+      : (rating == 'ottimo' || rating == 'buono' ? 'Your financial situation is solid, keep it up!'
+        : 'Your debt level deserves attention.');
+  String kpiInvestWeightDesc(String rating) => _it
+      ? 'I tuoi investimenti finanziari hanno il giusto spazio nel tuo patrimonio complessivo.'
+      : 'Your financial investments have the right weight in your overall wealth.';
+  String kpiLiquidAssetDesc(String rating) => _it
+      ? (rating == 'ottimo' || rating == 'buono'
+        ? 'Gran parte del tuo patrimonio è liquidabile in breve tempo: le spese impreviste non sono un problema.'
+        : 'Una parte significativa del tuo patrimonio non è facilmente liquidabile.')
+      : (rating == 'ottimo' || rating == 'buono'
+        ? 'Most of your wealth is quickly convertible to cash: unexpected expenses are manageable.'
+        : 'A significant portion of your wealth is not easily convertible to cash.');
+  String kpiIncomeWealthDesc(String rating) => _it
+      ? (rating == 'ottimo' || rating == 'buono'
+        ? 'Le tue entrate sono proporzionate al tuo patrimonio.'
+        : 'Le tue entrate sono troppo basse rispetto al tuo patrimonio. Fai attenzione ai tuoi investimenti.')
+      : (rating == 'ottimo' || rating == 'buono'
+        ? 'Your income is proportional to your wealth.'
+        : 'Your income is too low relative to your wealth. Pay attention to your investments.');
   String get dashNoData          => _it
       ? 'Nessun dato. Importa transazioni o aggiungi attività per iniziare.'
       : 'No data yet. Import transactions or add assets to get started.';
