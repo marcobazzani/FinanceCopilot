@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/formatters.dart' as fmt;
 
 import '../../../database/database.dart';
+import '../../../database/tables.dart';
 import '../../../database/providers.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/exchange_rate_service.dart';

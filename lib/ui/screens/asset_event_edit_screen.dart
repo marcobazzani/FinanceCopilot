@@ -1,8 +1,9 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' as drift;
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
@@ -69,6 +70,12 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     return amount / rate;
   }
 
+  /// Format a number for display in text fields using the user's locale.
+  String _fmtNum(double? value, {int decimals = 2}) {
+    if (value == null) return '';
+    return NumberFormat.decimalPatternDigits(locale: locale, decimalDigits: decimals).format(value);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -78,11 +85,11 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
 
     _selectedDate = ev?.date ?? DateTime.now();
     _dateCtrl = TextEditingController(text: dateFmt.format(_selectedDate));
-    _amountCtrl = TextEditingController(text: ev?.amount.toString() ?? '');
-    _quantityCtrl = TextEditingController(text: ev?.quantity?.toString() ?? '');
-    _priceCtrl = TextEditingController(text: ev?.price?.toString() ?? '');
-    _commissionCtrl = TextEditingController(text: ev?.commission?.toString() ?? '');
-    _exchangeRateCtrl = TextEditingController(text: ev?.exchangeRate?.toString() ?? '');
+    _amountCtrl = TextEditingController(text: _fmtNum(ev?.amount));
+    _quantityCtrl = TextEditingController(text: _fmtNum(ev?.quantity, decimals: 4));
+    _priceCtrl = TextEditingController(text: _fmtNum(ev?.price, decimals: 4));
+    _commissionCtrl = TextEditingController(text: _fmtNum(ev?.commission));
+    _exchangeRateCtrl = TextEditingController(text: _fmtNum(ev?.exchangeRate, decimals: 4));
     _notesCtrl = TextEditingController(text: ev?.notes ?? '');
     _eventType = ev?.type ?? EventType.buy;
     _currency = ev?.currency ?? widget.asset.currency;
@@ -123,7 +130,9 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     final price = fmt.tryParseLocalized(_priceCtrl.text, locale: locale);
     if (qty != null && price != null) {
       final raw = qty * price;
-      _amountCtrl.text = (_isBond ? raw / 100 : raw).toStringAsFixed(2);
+      final amount = _isBond ? raw / 100 : raw;
+      _log.info('_onFieldChanged: qty=$qty, price=$price, isBond=$_isBond, amount=$amount');
+      _amountCtrl.text = _fmtNum(amount);
     }
     // setState triggered by _onRateOrAmountChanged via _amountCtrl listener
   }
@@ -156,7 +165,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     final price = await priceService.getPrice(widget.asset.id, _selectedDate);
     if (price != null && mounted) {
       setState(() {
-        _priceCtrl.text = price.toStringAsFixed(4);
+        _priceCtrl.text = _fmtNum(price, decimals: 4);
       });
       _onFieldChanged();
     }
@@ -414,7 +423,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     final exchangeRate = _exchangeRateCtrl.text.isNotEmpty ? fmt.tryParseLocalized(_exchangeRateCtrl.text, locale: locale) : null;
 
     // For qty×price types, compute amount; otherwise use the text field directly.
-    // Bond prices are quoted as % of face value → divide by 100.
+    // Bond prices: user enters quoted price (per 100), we store per-unit and compute amount accordingly.
     final double amount;
     if (_usesQtyPrice && quantity != null && price != null) {
       amount = _isBond ? quantity * price / 100 : quantity * price;
