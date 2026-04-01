@@ -33,8 +33,6 @@ class _DraggedAsset {
 }
 
 class _AssetsScreenState extends ConsumerState<AssetsScreen> {
-  final _expandedGroups = <int?>{};
-  bool _initialized = false;
   bool _isDragging = false;
 
   @override
@@ -75,12 +73,6 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
 
           final stats = statsAsync.value ?? {};
           final intermediaries = intermediariesAsync.value ?? [];
-
-          if (!_initialized) {
-            _expandedGroups.addAll(intermediaries.map((i) => i.id));
-            _expandedGroups.add(null);
-            _initialized = true;
-          }
 
           final grouped = <int?, List<Asset>>{};
           for (final asset in assets) {
@@ -143,7 +135,6 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     String baseCurrency,
     String locale,
   ) {
-    final isExpanded = _expandedGroups.contains(groupId);
     final title = intermediary?.name ?? s.unassigned;
 
     return DragTarget<_DraggedAsset>(
@@ -158,57 +149,41 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InkWell(
-                onTap: () => setState(() {
-                  if (isExpanded) {
-                    _expandedGroups.remove(groupId);
-                  } else {
-                    _expandedGroups.add(groupId);
-                  }
-                }),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isExpanded ? Icons.expand_less : Icons.expand_more,
-                        size: 20,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        intermediary != null ? Icons.business : Icons.folder_open,
-                        size: 18,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '$title (${assets.length})',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      intermediary != null ? Icons.business : Icons.folder_open,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '$title (${assets.length})',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      if (intermediary != null)
-                        PopupMenuButton<String>(
-                          iconSize: 22,
-                          itemBuilder: (_) => [
-                            PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
-                            PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
-                          ],
-                          onSelected: (v) {
-                            if (v == 'edit') _showIntermediaryDialog(context, intermediary: intermediary);
-                            if (v == 'delete') _confirmDeleteIntermediary(context, intermediary);
-                          },
-                        ),
-                    ],
-                  ),
+                    ),
+                    if (intermediary != null)
+                      PopupMenuButton<String>(
+                        iconSize: 22,
+                        itemBuilder: (_) => [
+                          PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
+                          PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
+                        ],
+                        onSelected: (v) {
+                          if (v == 'edit') _showIntermediaryDialog(context, intermediary: intermediary);
+                          if (v == 'delete') _confirmDeleteIntermediary(context, intermediary);
+                        },
+                      ),
+                  ],
                 ),
               ),
-              if (isExpanded)
-                ...assets.map((asset) {
+              ...assets.map((asset) {
                   final stat = stats[asset.id];
                   return LongPressDraggable<_DraggedAsset>(
                     delay: const Duration(milliseconds: 150),
