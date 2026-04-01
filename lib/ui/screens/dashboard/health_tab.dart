@@ -98,15 +98,21 @@ List<_KpiCategory> _computeKpis({
   required double monthlyExpenses,
   required AppStrings s,
 }) {
-  final netWorth = cash + investments - liabilities;
+  // Gross Assets = sum of all positive pillars (no liability subtraction)
+  // Net Worth = Gross Assets - Liabilities
+  final grossAssets = cash + investments;
+  final netWorth = grossAssets - liabilities;
 
   // ── Liquidità ──
+  // Indice di liquidità patrimoniale = Cash / Net Worth
   final liquidityRatio = netWorth > 0 ? cash / netWorth * 100 : 0.0;
   final liquidityRating = _rateNormal(liquidityRatio, 10, 15, 25);
 
+  // Indice di copertura spese = Cash / Monthly Expenses (in months)
   final coverageMonths = monthlyExpenses > 0 ? cash / monthlyExpenses : 0.0;
   final coverageRating = _rateNormal(coverageMonths, 3, 6, 12);
 
+  // Tasso di risparmio = Savings / Income
   final savingsRate = annualIncome > 0 ? annualSavings / annualIncome * 100 : 0.0;
   final savingsRating = _rateNormal(savingsRate, 10, 20, 40);
 
@@ -133,10 +139,12 @@ List<_KpiCategory> _computeKpis({
   ];
 
   // ── Indebitamento ──
+  // Tasso di sostenibilità debito = (Income - Debt payments) / Income
   final debtSust = annualIncome > 0 ? (annualIncome - liabilities.abs()) / annualIncome * 100 : 100.0;
   final debtSustRating = liabilities == 0 ? _Rating.ottimo : _rateNormal(debtSust.clamp(0, 100), 50, 70, 90);
 
-  final debtRatio = netWorth > 0 ? liabilities / netWorth * 100 : 0.0;
+  // Tasso di indebitamento = Liabilities / Gross Assets
+  final debtRatio = grossAssets > 0 ? liabilities / grossAssets * 100 : 0.0;
   final debtRatioRating = liabilities == 0 ? _Rating.ottimo : _rateInverted(debtRatio, 15, 30, 50);
 
   final debtKpis = [
@@ -155,12 +163,15 @@ List<_KpiCategory> _computeKpis({
   ];
 
   // ── Finanziari e Ricchezza ──
-  final investWeight = netWorth > 0 ? investments / netWorth * 100 : 0.0;
+  // Peso capitale investito = Investments / Gross Assets
+  final investWeight = grossAssets > 0 ? investments / grossAssets * 100 : 0.0;
   final investWeightRating = investWeight >= 60 ? _Rating.alto : _rateNormal(investWeight, 20, 40, 60);
 
-  final liquidAssetRatio = netWorth > 0 ? (cash + investments) / netWorth * 100 : 0.0;
+  // Liquidabilità patrimoniale = (Cash + Investments) / Gross Assets
+  final liquidAssetRatio = grossAssets > 0 ? (cash + investments) / grossAssets * 100 : 0.0;
   final liquidAssetRating = _rateNormal(liquidAssetRatio, 50, 65, 80);
 
+  // Disproporzione entrate/patrimonio = Income / Net Worth
   final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
   final incomeToWealthRating = _rateNormal(incomeToWealth, 5, 10, 20);
 
