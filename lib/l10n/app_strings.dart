@@ -73,6 +73,17 @@ class AppStrings {
   String get dashTabOverall      => _it ? 'Generale'         : 'Overall';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';
   String get dashTabAllocation   => _it ? 'Allocazione'      : 'Allocation';
+  String get dashTabHealth       => _it ? 'Salute'            : 'Health';
+
+  // ── Financial Health ──
+  String get healthInvestmentCosts => _it ? 'Costi degli investimenti' : 'Investment Costs';
+  String get healthAsset           => _it ? 'Strumento'               : 'Asset';
+  String get healthTer             => 'TER';
+  String get healthMarketValue     => _it ? 'Valore'                  : 'Value';
+  String get healthAnnualCost      => _it ? 'Costo annuo'             : 'Annual Cost';
+  String get healthTotalCost       => _it ? 'Costo totale'            : 'Total Cost';
+  String get healthNoTer           => _it ? 'Nessun TER disponibile'  : 'No TER data available';
+  String get healthWeightedTer     => _it ? 'TER medio ponderato'     : 'Weighted Avg TER';
   String get dashNoData          => _it
       ? 'Nessun dato. Importa transazioni o aggiungi attività per iniziare.'
       : 'No data yet. Import transactions or add assets to get started.';

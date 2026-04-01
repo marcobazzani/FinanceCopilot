@@ -654,14 +654,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
 
   // Step 2: selected result
   InvestingSearchResult? _selected;
-  String _selectedExchange = 'MIL';
+  String? _selectedExchange;
 
   // Manual entry
   final _manualNameCtrl = TextEditingController();
   final _manualIdCtrl = TextEditingController();
   String _manualExchange = 'MIL';
-  InstrumentType _instrumentType = InstrumentType.etf;
-  AssetClass _assetClass = AssetClass.equity;
+  InstrumentType? _instrumentType;
+  AssetClass? _assetClass;
 
   @override
   void dispose() {
@@ -836,6 +836,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 child: DropdownButtonFormField<InstrumentType>(
                   value: _instrumentType,
                   decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                  hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: InstrumentType.values
                       .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
                       .toList(),
@@ -849,6 +850,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 child: DropdownButtonFormField<AssetClass>(
                   value: _assetClass,
                   decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                  hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: AssetClass.values
                       .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
                       .toList(),
@@ -866,11 +868,12 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         FilledButton(
           onPressed: () async {
             final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-            final currency = exchangeCodeToCurrency[_selectedExchange] ?? baseCurrency;
+            final exchange = _selectedExchange ?? 'MIL';
+            final currency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
             await widget.ref.read(assetServiceProvider).create(
                   name: r.description,
                   ticker: r.symbol.isNotEmpty ? r.symbol : null,
-                  exchange: _selectedExchange,
+                  exchange: exchange,
                   currency: currency,
                   instrumentType: _instrumentType,
                   assetClass: _assetClass,
@@ -926,6 +929,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 child: DropdownButtonFormField<InstrumentType>(
                   value: _instrumentType,
                   decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                  hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: InstrumentType.values
                       .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
                       .toList(),
@@ -939,6 +943,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 child: DropdownButtonFormField<AssetClass>(
                   value: _assetClass,
                   decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                  hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: AssetClass.values
                       .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
                       .toList(),

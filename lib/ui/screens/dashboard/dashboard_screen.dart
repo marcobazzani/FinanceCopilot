@@ -38,6 +38,7 @@ part 'monthly_grid.dart';
 part 'yoy_diff_table.dart';
 part 'cashflow_charts.dart';
 part 'totals_table.dart';
+part 'health_tab.dart';
 
 final _log = getLogger('DashboardScreen');
 
@@ -87,7 +88,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final s = ref.watch(appStringsProvider);
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           TabBar(
@@ -95,6 +96,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Tab(text: s.dashTabOverall),
               Tab(text: s.dashTabCashFlow),
               Tab(text: s.dashTabAllocation),
+              Tab(text: s.dashTabHealth),
             ],
           ),
           Expanded(
@@ -103,6 +105,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 _buildChartsTab(allDataAsync, locale, language, context, s),
                 _buildCashFlowTab(allDataAsync, locale, language, context),
                 const AllocationTab(),
+                const _FinancialHealthTab(),
               ],
             ),
           ),

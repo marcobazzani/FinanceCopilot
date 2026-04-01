@@ -68,6 +68,10 @@ class CompositionService {
       if (existing != null) {
         final age = DateTime.now().difference(existing.updatedAt);
         if (age.inDays < 7) {
+          // Even if compositions are fresh, fetch TER if missing
+          if (asset.ter == null && asset.isin != null) {
+            await _fetchTerOnly(asset);
+          }
           _log.fine('syncCompositions: ${asset.name} - fresh (${age.inDays}d), skipping');
           continue;
         }
@@ -162,6 +166,58 @@ class CompositionService {
     return _fetchFundFromInvestingCom(asset);
   }
 
+  /// Quick TER-only fetch (justETF for ETFs, Investing.com for funds).
+  Future<void> _fetchTerOnly(Asset asset) async {
+    // Try justETF first (for ETFs/ETCs)
+    final isin = asset.isin!;
+    final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
+    final html = await _fetchHtml(url);
+    if (html != null) {
+      final doc = parse(html);
+      final terText = doc.querySelector('[data-testid="tl_etf-basics_value_ter"]')?.text.trim();
+      if (terText != null) {
+        final terMatch = RegExp(r'([\d,.]+)\s*%').firstMatch(terText);
+        if (terMatch != null) {
+          final ter = double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
+          if (ter != null) {
+            await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
+                .write(AssetsCompanion(ter: Value(ter)));
+            _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (justETF)');
+            return;
+          }
+        }
+      }
+    }
+
+    // Try Investing.com (for funds/pension)
+    final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
+    try {
+      final searchUrl = 'https://api.investing.com/api/search/v2/search'
+          '?q=${Uri.encodeComponent(searchTerm)}';
+      final searchResp = await _dio.get(searchUrl, options: Options(
+        headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
+        responseType: ResponseType.json,
+      ));
+      final quotes = (searchResp.data as Map<String, dynamic>)['quotes'] as List? ?? [];
+      if (quotes.isEmpty) return;
+      final fundPath = quotes[0]['url'] as String?;
+      if (fundPath == null || fundPath.isEmpty) return;
+
+      final fundHtml = await _fetchHtml('https://www.investing.com$fundPath');
+      if (fundHtml == null) return;
+      final expMatch = RegExp(r'Expenses.*?(\d+[.,]\d+)\s*%', dotAll: true).firstMatch(fundHtml);
+      if (expMatch == null) return;
+      final ter = double.tryParse(expMatch.group(1)!.replaceAll(',', '.'));
+      if (ter != null) {
+        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
+            .write(AssetsCompanion(ter: Value(ter)));
+        _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (investing.com)');
+      }
+    } catch (e) {
+      _log.fine('_fetchTerOnly: ${asset.name} - investing.com failed: $e');
+    }
+  }
+
   // ── ETFs/ETCs: justETF ──────────────────────────────────
 
   Future<List<_Entry>> _fetchEtf(Asset asset) async {
@@ -197,6 +253,20 @@ class CompositionService {
     final assetClass = _detectAssetClass(doc);
     if (assetClass != null) {
       entries.add(_Entry('assetclass', assetClass, 100));
+    }
+
+    // Extract TER and update asset
+    final terText = doc.querySelector('[data-testid="tl_etf-basics_value_ter"]')?.text.trim();
+    if (terText != null) {
+      final terMatch = RegExp(r'([\d,.]+)\s*%').firstMatch(terText);
+      if (terMatch != null) {
+        final ter = double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
+        if (ter != null && ter != asset.ter) {
+          await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
+              .write(AssetsCompanion(ter: Value(ter)));
+          _log.info('syncCompositions: ${asset.name} - updated TER to $ter%');
+        }
+      }
     }
 
     // Store source URL
@@ -332,7 +402,7 @@ class CompositionService {
       final searchUrl = 'https://api.investing.com/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
       final searchResp = await _dio.get(searchUrl, options: Options(
-        headers: {'User-Agent': _userAgent, 'Accept': 'application/json'},
+        headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
         responseType: ResponseType.json,
       ));
       final quotes = (searchResp.data as Map<String, dynamic>)['quotes'] as List? ?? [];
@@ -346,8 +416,24 @@ class CompositionService {
 
     if (fundUrl == null || fundUrl.isEmpty) return [];
 
+    final baseFundUrl = 'https://www.investing.com${fundUrl.replaceAll(RegExp(r'/$'), '')}';
+
+    // Fetch main fund page for expenses/TER
+    final mainHtml = await _fetchHtml(baseFundUrl);
+    if (mainHtml != null) {
+      final expMatch = RegExp(r'Expenses.*?(\d+[.,]\d+)\s*%', dotAll: true).firstMatch(mainHtml);
+      if (expMatch != null) {
+        final ter = double.tryParse(expMatch.group(1)!.replaceAll(',', '.'));
+        if (ter != null && ter != asset.ter) {
+          await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
+              .write(AssetsCompanion(ter: Value(ter)));
+          _log.info('fetchFund: ${asset.name} - updated TER to $ter% from investing.com');
+        }
+      }
+    }
+
     // Fetch the holdings page
-    final holdingsUrl = 'https://www.investing.com${fundUrl.replaceAll(RegExp(r'/$'), '')}-holdings';
+    final holdingsUrl = '$baseFundUrl-holdings';
     _log.fine('fetchFund: ${asset.name} -> $holdingsUrl');
 
     final html = await _fetchHtml(holdingsUrl);
@@ -464,6 +550,7 @@ class CompositionService {
           headers: {
             'User-Agent': _userAgent,
             'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9',
           },
           responseType: ResponseType.plain,
           followRedirects: true,
