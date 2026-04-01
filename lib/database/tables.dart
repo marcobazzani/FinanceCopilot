@@ -57,14 +57,19 @@ enum AssetClass {
 
 /// Map investing.com type prefixes (lowercase, singular) to classification.
 const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
-  'etf':    (InstrumentType.etf,    AssetClass.equity),
-  'etc':    (InstrumentType.etc,    AssetClass.commodities),
-  'etn':    (InstrumentType.etf,    AssetClass.equity),
-  'stock':  (InstrumentType.stock,  AssetClass.equity),
-  'equity': (InstrumentType.stock,  AssetClass.equity),
-  'bond':   (InstrumentType.bond,   AssetClass.fixedIncome),
-  'fund':   (InstrumentType.fund,   AssetClass.multiAsset),
-  'crypto': (InstrumentType.crypto, AssetClass.crypto),
+  'etf':            (InstrumentType.etf,    AssetClass.equity),
+  'etc':            (InstrumentType.etc,    AssetClass.commodities),
+  'etn':            (InstrumentType.etf,    AssetClass.equity),
+  'stock':          (InstrumentType.stock,  AssetClass.equity),
+  'equity':         (InstrumentType.stock,  AssetClass.equity),
+  'bond':           (InstrumentType.bond,   AssetClass.fixedIncome),
+  'fund':           (InstrumentType.fund,   AssetClass.multiAsset),
+  'crypto':         (InstrumentType.crypto, AssetClass.crypto),
+  // Italian translations from Investing.com
+  'azione':         (InstrumentType.stock,  AssetClass.equity),
+  'obbligazione':   (InstrumentType.bond,   AssetClass.fixedIncome),
+  'fondo':          (InstrumentType.fund,   AssetClass.multiAsset),
+  'criptovaluta':   (InstrumentType.crypto, AssetClass.crypto),
 };
 
 /// Classify instrument type + asset class from an investing.com type string.

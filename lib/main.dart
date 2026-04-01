@@ -266,7 +266,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                   )
                 : const Icon(Icons.refresh),
             tooltip: s.tooltipRefreshPrices,
-            onPressed: _isSyncing ? null : () => _syncPrices(forceToday: true),
+            onPressed: _isSyncing ? null : () async {
+              await _syncPrices(forceToday: true);
+              await ref.read(compositionServiceProvider).syncCompositions();
+            },
           ),
           IconButton(
             icon: const Icon(Icons.swap_horiz),

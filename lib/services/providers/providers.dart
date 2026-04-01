@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../database/database.dart';
+import '../../database/tables.dart';
 import '../../database/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../account_service.dart';

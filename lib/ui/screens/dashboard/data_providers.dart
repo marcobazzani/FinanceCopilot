@@ -230,7 +230,8 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
         final fxRate = await rates.getRate(asset.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
-        spots.add(FlSpot(x, cumQuantity * lastPrice * fxRate));
+        final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+        spots.add(FlSpot(x, cumQuantity * lastPrice / bondDiv * fxRate));
       }
     }
 

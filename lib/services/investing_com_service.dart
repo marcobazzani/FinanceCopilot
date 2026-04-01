@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
+import '../database/tables.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'market_price_service.dart';

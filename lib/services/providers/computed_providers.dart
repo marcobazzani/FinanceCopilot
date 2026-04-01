@@ -98,8 +98,9 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     if (asset.currency != baseCurrency) {
       fxRate = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
     }
-    final value = stat.totalQuantity * price * fxRate;
-    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - price=$price fx=$fxRate');
+    final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+    final value = stat.totalQuantity * price / bondDiv * fxRate;
+    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - price=$price fx=$fxRate bondDiv=$bondDiv');
     result[asset.id] = value;
   }
   _log.info('assetMarketValues: ${result.length} assets with values');
@@ -118,6 +119,7 @@ class AssetDailyChange {
   final double previousFxRate; // asset currency -> base currency (reference date)
   final String baseCurrency;
   final String? investingUrl;   // Investing.com page URL
+  final double priceDivisor;   // 100 for bonds (quoted per 100 nominal), 1 otherwise
 
   const AssetDailyChange({
     required this.name,
@@ -130,13 +132,14 @@ class AssetDailyChange {
     required this.previousFxRate,
     required this.baseCurrency,
     this.investingUrl,
+    this.priceDivisor = 1.0,
   });
 
   double get priceDiff => todayPrice - previousPrice;
   double get pricePct => previousPrice != 0 ? (priceDiff / previousPrice) * 100 : 0;
   /// Value change in base currency, captures both price AND FX movements.
   double get valueDiff =>
-      (todayPrice * quantity * todayFxRate) - (previousPrice * quantity * previousFxRate);
+      (todayPrice * quantity / priceDivisor * todayFxRate) - (previousPrice * quantity / priceDivisor * previousFxRate);
 }
 
 /// Compare latest price vs price on or before [referenceDate].
@@ -222,6 +225,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       previousFxRate: prevFx,
       baseCurrency: baseCurrency,
       investingUrl: investingUrl,
+      priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
     ));
   }
   return result;
