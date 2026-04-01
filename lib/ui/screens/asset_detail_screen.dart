@@ -447,6 +447,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _tickerCtrl;
   late final TextEditingController _isinCtrl;
+  late final TextEditingController _terCtrl;
   late String _selectedExchange;
   late bool _isActive;
   late InstrumentType _instrumentType;
@@ -458,6 +459,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     _nameCtrl = TextEditingController(text: widget.asset.name);
     _tickerCtrl = TextEditingController(text: widget.asset.ticker ?? '');
     _isinCtrl = TextEditingController(text: widget.asset.isin ?? '');
+    _terCtrl = TextEditingController(text: widget.asset.ter?.toString() ?? '');
     _selectedExchange = widget.asset.exchange ?? 'MIL';
     _isActive = widget.asset.isActive;
     _instrumentType = widget.asset.instrumentType;
@@ -471,6 +473,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     _nameCtrl.dispose();
     _tickerCtrl.dispose();
     _isinCtrl.dispose();
+    _terCtrl.dispose();
     super.dispose();
   }
 
@@ -514,6 +517,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     final name = _nameCtrl.text.trim();
     final ticker = _tickerCtrl.text.trim().toUpperCase();
     final isin = _isinCtrl.text.trim().toUpperCase();
+    final ter = double.tryParse(_terCtrl.text.trim());
     _log.info('saving asset id=${widget.asset.id}, name=$name');
     await widget.ref.read(assetServiceProvider).update(
       widget.asset.id,
@@ -525,6 +529,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         isActive: Value(_isActive),
         instrumentType: Value(_instrumentType),
         assetClass: Value(_assetClass),
+        ter: Value(ter),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -614,6 +619,16 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _terCtrl,
+              decoration: InputDecoration(
+                labelText: '${s.healthTer} (%)',
+                hintText: '0.22',
+                isDense: true,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 8),
             SwitchListTile(

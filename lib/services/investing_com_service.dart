@@ -298,7 +298,7 @@ class InvestingComService extends MarketPriceService {
   // Investing.com API: Search
   // ──────────────────────────────────────────────
 
-  static Options _searchOptions() => Options(
+  static Options _searchOptions(String domainId) => Options(
         responseType: ResponseType.json,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
@@ -306,37 +306,152 @@ class InvestingComService extends MarketPriceService {
           'Accept': 'application/json',
           'Origin': 'https://www.investing.com',
           'Referer': 'https://www.investing.com/',
-          'Domain-Id': 'it',
+          'Domain-Id': domainId,
         },
       );
 
   /// Search Investing.com for any query (name, ISIN, ticker, fund ID).
-  /// Returns a list of search results.
+  /// Searches both international (www) and Italian (it) domains, merges results.
+  /// Type names always come from the English (www) domain for consistent classification.
   Future<List<InvestingSearchResult>> search(String query) async {
     final url =
         'https://api.investing.com/api/search/v2/search?q=${Uri.encodeComponent(query)}';
 
     _log.info('search: $query');
 
-    final response = await _dio.get(url, options: _searchOptions());
-    final data = response.data as Map<String, dynamic>;
-    final quotes = (data['quotes'] as List?) ?? [];
+    // Search international first (English type names for classification)
+    final results = <int, InvestingSearchResult>{};
+    try {
+      final wwwResp = await _dio.get(url, options: _searchOptions('www'));
+      final wwwQuotes = ((wwwResp.data as Map<String, dynamic>)['quotes'] as List?) ?? [];
+      for (final q in wwwQuotes) {
+        final r = _parseSearchResult(q);
+        results[r.cid] = r;
+      }
+    } catch (e) {
+      _log.warning('search: www domain failed: $e');
+    }
 
-    _log.info('search: got ${quotes.length} results for $query');
+    // Also search Italian domain for local instruments (bonds, funds)
+    try {
+      final itResp = await _dio.get(url, options: _searchOptions('it'));
+      final itQuotes = ((itResp.data as Map<String, dynamic>)['quotes'] as List?) ?? [];
+      for (final q in itQuotes) {
+        final r = _parseSearchResult(q);
+        if (!results.containsKey(r.cid)) {
+          results[r.cid] = r;
+        }
+      }
+    } catch (e) {
+      _log.warning('search: it domain failed: $e');
+    }
 
-    return quotes.map((q) {
-      final exchange = (q['exchange'] as String?) ?? '';
-      final typeName = (q['typeName'] as String?) ?? (q['type'] as String?) ?? '';
-      return InvestingSearchResult(
-        cid: q['id'] as int,
-        description: (q['description'] as String?) ?? '',
-        symbol: (q['symbol'] as String?) ?? '',
-        exchange: exchange,
-        flag: (q['flag'] as String?) ?? '',
-        type: typeName.isNotEmpty ? typeName : exchange,
-        url: q['url'] as String?,
-      );
-    }).toList();
+    // Fallback: if API search found nothing, try the web search via WebView
+    if (results.isEmpty) {
+      _log.info('search: API returned nothing, trying web search fallback');
+      final webResults = await _webSearchFallback(query);
+      for (final r in webResults) {
+        results.putIfAbsent(r.cid, () => r);
+      }
+    }
+
+    _log.info('search: got ${results.length} results for $query');
+    return results.values.toList();
+  }
+
+  /// Fallback search using the Investing.com website search page (JS-rendered).
+  /// Uses the headless WebView to render the page and extract results.
+  Future<List<InvestingSearchResult>> _webSearchFallback(String query) async {
+    if (!await _ensureWebView()) return [];
+    try {
+      final url = 'https://www.investing.com/search/?q=${Uri.encodeComponent(query)}&tab=quotes';
+      final js = '''
+        const response = await fetch("$url");
+        const html = await response.text();
+        // Parse the search results from the rendered page
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const rows = doc.querySelectorAll('[data-test="search-results-table"] tr, .js-search-results tr, .searchSectionMain a[href]');
+        if (rows.length === 0) {
+          // Try alternative: navigate and extract
+          return JSON.stringify([]);
+        }
+        return JSON.stringify([]);
+      ''';
+      // Instead of parsing HTML in JS, navigate the WebView directly
+      await _webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+      await Future.delayed(const Duration(seconds: 3));
+
+      // Extract search results from the rendered page
+      final extractJs = '''
+        (function() {
+          const results = [];
+          // Try multiple selectors for search result rows
+          const links = document.querySelectorAll('.search-results-quotes a[href], .js-search-results a[href], [data-test="quotes-list"] a[href]');
+          for (const link of links) {
+            const href = link.getAttribute('href') || '';
+            const text = link.textContent.trim();
+            if (href && text && !href.includes('javascript:')) {
+              results.push({href, text});
+            }
+          }
+          // Also try the table format
+          const rows = document.querySelectorAll('table tr[data-id]');
+          for (const row of rows) {
+            const id = row.getAttribute('data-id');
+            const name = row.querySelector('.second')?.textContent?.trim() || '';
+            const symbol = row.querySelector('.third')?.textContent?.trim() || '';
+            const exchange = row.querySelector('.fourth')?.textContent?.trim() || '';
+            const type = row.querySelector('.fifth')?.textContent?.trim() || '';
+            if (id && name) {
+              results.push({id, name, symbol, exchange, type});
+            }
+          }
+          return JSON.stringify(results);
+        })()
+      ''';
+      final resultJson = await _webViewController!.evaluateJavascript(source: extractJs);
+      if (resultJson == null || resultJson == 'null') return [];
+
+      final parsed = jsonDecode(resultJson is String ? resultJson : resultJson.toString()) as List;
+      final searchResults = <InvestingSearchResult>[];
+
+      for (final item in parsed) {
+        if (item is Map && item.containsKey('id')) {
+          final cid = int.tryParse(item['id'].toString());
+          if (cid == null) continue;
+          searchResults.add(InvestingSearchResult(
+            cid: cid,
+            description: item['name'] ?? '',
+            symbol: item['symbol'] ?? '',
+            exchange: item['exchange'] ?? '',
+            flag: '',
+            type: item['type'] ?? '',
+            url: null,
+          ));
+        }
+      }
+
+      _log.info('_webSearchFallback: found ${searchResults.length} results');
+      return searchResults;
+    } catch (e) {
+      _log.warning('_webSearchFallback: failed: $e');
+      return [];
+    }
+  }
+
+  static InvestingSearchResult _parseSearchResult(dynamic q) {
+    final exchange = (q['exchange'] as String?) ?? '';
+    final typeName = (q['typeName'] as String?) ?? (q['type'] as String?) ?? '';
+    return InvestingSearchResult(
+      cid: q['id'] as int,
+      description: (q['description'] as String?) ?? '',
+      symbol: (q['symbol'] as String?) ?? '',
+      exchange: exchange,
+      flag: (q['flag'] as String?) ?? '',
+      type: typeName.isNotEmpty ? typeName : exchange,
+      url: q['url'] as String?,
+    );
   }
 
   /// Search for a ticker on Investing.com, filtered by exchange.

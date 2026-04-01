@@ -65,8 +65,9 @@ const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
   'bond':           (InstrumentType.bond,   AssetClass.fixedIncome),
   'fund':           (InstrumentType.fund,   AssetClass.multiAsset),
   'crypto':         (InstrumentType.crypto, AssetClass.crypto),
-  // Italian translations from Investing.com
+  // Italian fallbacks (in case Investing.com returns localized types)
   'azione':         (InstrumentType.stock,  AssetClass.equity),
+  'titolo':         (InstrumentType.stock,  AssetClass.equity),
   'obbligazione':   (InstrumentType.bond,   AssetClass.fixedIncome),
   'fondo':          (InstrumentType.fund,   AssetClass.multiAsset),
   'criptovaluta':   (InstrumentType.crypto, AssetClass.crypto),
