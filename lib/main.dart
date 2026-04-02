@@ -158,7 +158,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => _startBackgroundSync());
+    // Defer sync until after the first few frames so UI renders smoothly.
+    // The WebView CF challenge competes for the platform thread (especially
+    // on Windows where UI and platform threads are merged), so starting
+    // immediately causes visible jank.
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) _startBackgroundSync();
+    });
   }
 
   Future<void> _startBackgroundSync() async {
@@ -172,8 +178,10 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     Future.microtask(() async {
       try {
+        // Run sequentially: CF solve first (heaviest on UI thread),
+        // then prices, then the rest. Avoids parallel WebView contention.
+        await _syncPrices();
         await Future.wait([
-          _syncPrices(),
           ref.read(exchangeRateServiceProvider).syncRates(),
           ref.read(compositionServiceProvider).syncCompositions(),
         ]);
