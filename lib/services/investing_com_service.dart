@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -814,8 +815,9 @@ class InvestingComService extends MarketPriceService {
   }
 
   @override
-  /// Max concurrent HTTP requests to Investing.com to avoid rate-limiting.
-  static const _maxConcurrency = 3;
+  /// Max concurrent fetches. On Windows the WebView runs on the UI thread,
+  /// so we limit to 1 to avoid compounding jank from parallel JS calls.
+  static final int _maxConcurrency = Platform.isWindows ? 1 : 3;
 
   Future<void> syncPrices({bool forceToday = false}) async {
     try {
@@ -986,8 +988,9 @@ class InvestingComService extends MarketPriceService {
         if (i >= items.length) return;
         await action(items[i]);
         // Yield to the event loop so the UI thread can process frames.
-        // Critical on Windows where UI and platform threads are merged.
-        await Future.delayed(Duration.zero);
+        // On Windows (merged UI + platform thread), WebView JS calls block
+        // rendering, so we give ~50ms for frames between fetches.
+        await Future.delayed(Duration(milliseconds: Platform.isWindows ? 50 : 0));
       }
     }
     await Future.wait(List.generate(
