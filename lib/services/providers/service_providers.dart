@@ -47,7 +47,11 @@ final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
 });
 
 final compositionServiceProvider = Provider<CompositionService>((ref) {
-  return CompositionService(ref.watch(databaseProvider));
+  final investing = ref.watch(marketPriceServiceProvider);
+  return CompositionService(
+    ref.watch(databaseProvider),
+    investingService: investing is InvestingComService ? investing : null,
+  );
 });
 
 // ── Dashboard chart providers ──

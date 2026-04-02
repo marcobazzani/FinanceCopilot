@@ -9,6 +9,7 @@ import 'package:html/parser.dart' show parse;
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/logger.dart';
+import 'investing_com_service.dart';
 
 final _log = getLogger('CompositionService');
 
@@ -23,8 +24,11 @@ final _log = getLogger('CompositionService');
 class CompositionService {
   final AppDatabase _db;
   final Dio _dio;
+  final InvestingComService? _investingService;
 
-  CompositionService(this._db, {Dio? dio}) : _dio = dio ?? Dio();
+  CompositionService(this._db, {Dio? dio, InvestingComService? investingService})
+      : _dio = dio ?? Dio(),
+        _investingService = investingService;
 
   static const _classToInstrument = {
     'Stock ETF': InstrumentType.etf,
@@ -558,6 +562,15 @@ class CompositionService {
         ),
       );
       return response.data as String;
+    } on DioException catch (e) {
+      // On CF-protected pages (investing.com), fall back to WebView fetch
+      if (e.response?.statusCode == 403 && _investingService != null &&
+          url.contains('investing.com')) {
+        _log.fine('fetchHtml: Dio 403, trying WebView fetch for $url');
+        return await _investingService!.fetchHtml(url);
+      }
+      _log.warning('fetchHtml: $url - ${e.response?.statusCode ?? e.message}');
+      return null;
     } catch (e) {
       _log.warning('fetchHtml: $url - $e');
       return null;

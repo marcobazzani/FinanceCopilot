@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -229,6 +230,31 @@ class InvestingComService extends MarketPriceService {
       return null;
     } catch (e) {
       _log.fine('_fetchViaJsFetch: $url -> $e');
+      return null;
+    }
+  }
+
+  /// Fetch HTML via the WebView's JS context (bypasses CF for pages like
+  /// investing.com/equities/* that block plain Dio). Used by CompositionService.
+  Future<String?> fetchHtml(String url) async {
+    if (!_isWebViewReady) {
+      final ok = await _ensureWebView();
+      if (!ok) return null;
+    }
+    if (_webViewController == null) return null;
+    try {
+      final result = await _webViewController!.evaluateJavascript(source: '''
+        (async () => {
+          try {
+            const r = await fetch('$url');
+            if (!r.ok) return null;
+            return await r.text();
+          } catch(e) { return null; }
+        })()
+      ''');
+      return result is String && result.isNotEmpty ? result : null;
+    } catch (e) {
+      _log.fine('fetchHtml: $url -> $e');
       return null;
     }
   }
