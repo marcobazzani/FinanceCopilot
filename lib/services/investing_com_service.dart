@@ -985,9 +985,6 @@ class InvestingComService extends MarketPriceService {
         final i = index++;
         if (i >= items.length) return;
         await action(items[i]);
-        // Yield to the event loop so the UI thread can process frames.
-        // Critical on Windows where UI and platform threads are merged.
-        await Future.delayed(Duration.zero);
       }
     }
     await Future.wait(List.generate(
