@@ -44,6 +44,7 @@ class _HealthKpi {
   final String unit; // '%', ' mesi', '×', etc.
   final _Rating rating;
   final String description;
+  final String formula; // e.g. "Cash / Net Worth × 100 = 15.000 / 100.000 × 100"
 
   const _HealthKpi({
     required this.name,
@@ -51,6 +52,7 @@ class _HealthKpi {
     this.unit = '%',
     this.rating = _Rating.na,
     this.description = '',
+    this.formula = '',
   });
 }
 
@@ -91,28 +93,26 @@ _Rating _categoryRating(List<_HealthKpi> kpis) {
 List<_KpiCategory> _computeKpis({
   required double cash,
   required double investments,
-  required double liabilities,
   required double annualIncome,
   required double annualExpenses,
   required double annualSavings,
   required double monthlyExpenses,
   required AppStrings s,
+  required String locale,
 }) {
-  // Gross Assets = sum of all positive pillars (no liability subtraction)
-  // Net Worth = Gross Assets - Liabilities
+  final f = NumberFormat.decimalPattern(locale);
+  String n(double v) => f.format(v.round());
+
   final grossAssets = cash + investments;
-  final netWorth = grossAssets - liabilities;
+  final netWorth = grossAssets;
 
   // ── Liquidità ──
-  // Indice di liquidità patrimoniale = Cash / Net Worth
   final liquidityRatio = netWorth > 0 ? cash / netWorth * 100 : 0.0;
   final liquidityRating = _rateNormal(liquidityRatio, 10, 15, 25);
 
-  // Indice di copertura spese = Cash / Monthly Expenses (in months)
   final coverageMonths = monthlyExpenses > 0 ? cash / monthlyExpenses : 0.0;
   final coverageRating = _rateNormal(coverageMonths, 3, 6, 12);
 
-  // Tasso di risparmio = Savings / Income
   final savingsRate = annualIncome > 0 ? annualSavings / annualIncome * 100 : 0.0;
   final savingsRating = _rateNormal(savingsRate, 10, 20, 40);
 
@@ -122,6 +122,7 @@ List<_KpiCategory> _computeKpis({
       value: liquidityRatio,
       rating: liquidityRating,
       description: s.kpiLiquidityDesc(liquidityRating == _Rating.ottimo ? 'ottimo' : liquidityRating == _Rating.buono ? 'buono' : liquidityRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
+      formula: 'Cash / Net Worth × 100\n${n(cash)} / ${n(netWorth)} × 100',
     ),
     _HealthKpi(
       name: s.kpiExpenseCoverage,
@@ -129,49 +130,24 @@ List<_KpiCategory> _computeKpis({
       unit: _unitMonths(s),
       rating: coverageRating,
       description: s.kpiCoverageDesc(coverageMonths.round()),
+      formula: 'Cash / Monthly Expenses\n${n(cash)} / ${n(monthlyExpenses)}',
     ),
     _HealthKpi(
       name: s.kpiSavingsRate,
       value: savingsRate,
       rating: savingsRating,
       description: s.kpiSavingsDesc(savingsRating == _Rating.ottimo ? 'ottimo' : savingsRating == _Rating.buono ? 'buono' : savingsRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
-    ),
-  ];
-
-  // ── Indebitamento ──
-  // Tasso di sostenibilità debito = (Income - Debt payments) / Income
-  final debtSust = annualIncome > 0 ? (annualIncome - liabilities.abs()) / annualIncome * 100 : 100.0;
-  final debtSustRating = liabilities == 0 ? _Rating.ottimo : _rateNormal(debtSust.clamp(0, 100), 50, 70, 90);
-
-  // Tasso di indebitamento = Liabilities / Gross Assets
-  final debtRatio = grossAssets > 0 ? liabilities / grossAssets * 100 : 0.0;
-  final debtRatioRating = liabilities == 0 ? _Rating.ottimo : _rateInverted(debtRatio, 15, 30, 50);
-
-  final debtKpis = [
-    _HealthKpi(
-      name: s.kpiDebtSustainability,
-      value: liabilities == 0 ? 100.0 : debtSust.clamp(0, 100),
-      rating: debtSustRating,
-      description: s.kpiDebtSustDesc(debtSustRating == _Rating.ottimo ? 'ottimo' : 'altro'),
-    ),
-    _HealthKpi(
-      name: s.kpiDebtRatio,
-      value: debtRatio,
-      rating: debtRatioRating,
-      description: s.kpiDebtRatioDesc(debtRatioRating == _Rating.ottimo || debtRatioRating == _Rating.buono ? 'ottimo' : 'altro'),
+      formula: 'Savings / Income × 100\n${n(annualSavings)} / ${n(annualIncome)} × 100',
     ),
   ];
 
   // ── Finanziari e Ricchezza ──
-  // Peso capitale investito = Investments / Gross Assets
   final investWeight = grossAssets > 0 ? investments / grossAssets * 100 : 0.0;
   final investWeightRating = investWeight >= 60 ? _Rating.alto : _rateNormal(investWeight, 20, 40, 60);
 
-  // Liquidabilità patrimoniale = (Cash + Investments) / Gross Assets
   final liquidAssetRatio = grossAssets > 0 ? (cash + investments) / grossAssets * 100 : 0.0;
   final liquidAssetRating = _rateNormal(liquidAssetRatio, 50, 65, 80);
 
-  // Disproporzione entrate/patrimonio = Income / Net Worth
   final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
   final incomeToWealthRating = _rateNormal(incomeToWealth, 5, 10, 20);
 
@@ -181,24 +157,26 @@ List<_KpiCategory> _computeKpis({
       value: investWeight,
       rating: investWeightRating,
       description: s.kpiInvestWeightDesc(investWeightRating.name),
+      formula: 'Investments / Gross Assets × 100\n${n(investments)} / ${n(grossAssets)} × 100',
     ),
     _HealthKpi(
       name: s.kpiLiquidAssetRatio,
       value: liquidAssetRatio,
       rating: liquidAssetRating,
       description: s.kpiLiquidAssetDesc(liquidAssetRating == _Rating.ottimo || liquidAssetRating == _Rating.buono ? 'ottimo' : 'altro'),
+      formula: '(Cash + Investments) / Gross Assets × 100\n(${n(cash)} + ${n(investments)}) / ${n(grossAssets)} × 100',
     ),
     _HealthKpi(
       name: s.kpiIncomeToWealth,
       value: incomeToWealth,
       rating: incomeToWealthRating,
       description: s.kpiIncomeWealthDesc(incomeToWealthRating == _Rating.ottimo || incomeToWealthRating == _Rating.buono ? 'ottimo' : 'altro'),
+      formula: 'Income / Net Worth × 100\n${n(annualIncome)} / ${n(netWorth)} × 100',
     ),
   ];
 
   return [
     _KpiCategory(name: s.healthCatLiquidity, kpis: liquidityKpis, overallRating: _categoryRating(liquidityKpis)),
-    _KpiCategory(name: s.healthCatDebt, kpis: debtKpis, overallRating: _categoryRating(debtKpis)),
     _KpiCategory(name: s.healthCatWealth, kpis: wealthKpis, overallRating: _categoryRating(wealthKpis)),
   ];
 }
@@ -237,31 +215,25 @@ class _FinancialHealthTab extends ConsumerWidget {
         final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
         final activeAssets = assets.where((a) => a.isActive).toList();
         double investments = 0;
-        double liabilities = 0;
         for (final asset in activeAssets) {
-          final mv = marketValues[asset.id] ?? 0.0;
-          if (asset.assetType == AssetType.liability) {
-            liabilities += mv.abs();
-          } else {
-            investments += mv;
-          }
+          investments += marketValues[asset.id] ?? 0.0;
         }
 
-        // Income/expense from current year
+        // Income/expense from last complete year (second-to-last), fallback to current
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
         if (ieData != null && ieData.years.isNotEmpty) {
-          final currentYear = ieData.years.last;
-          annualIncome = currentYear.income;
-          annualExpenses = currentYear.expenses > 0 ? currentYear.expenses : 0;
-          annualSavings = currentYear.savings;
-          monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
+          final year = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : ieData.years.last;
+          annualIncome = year.income;
+          annualExpenses = year.expenses > 0 ? year.expenses : 0;
+          annualSavings = year.savings;
+          monthlyExpenses = year.monthlyExpenses > 0 ? year.monthlyExpenses : 0;
         }
 
         final categories = _computeKpis(
-          cash: cash, investments: investments, liabilities: liabilities,
+          cash: cash, investments: investments,
           annualIncome: annualIncome, annualExpenses: annualExpenses,
           annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
-          s: s,
+          s: s, locale: locale,
         );
 
         // Overall score
@@ -500,15 +472,32 @@ class _KpiCardState extends State<_KpiCard> {
             // KPI name
             Text(kpi.name, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
             const SizedBox(height: 6),
-            // Expand toggle
-            InkWell(
-              onTap: () => setState(() => _expanded = !_expanded),
-              child: Row(
-                children: [
-                  Text(widget.s.healthDetails, style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
-                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: theme.colorScheme.primary),
-                ],
-              ),
+            // Expand toggle + info
+            Row(
+              children: [
+                InkWell(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Row(
+                    children: [
+                      Text(widget.s.healthDetails, style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
+                      Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: theme.colorScheme.primary),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                if (kpi.formula.isNotEmpty)
+                  InkWell(
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(kpi.name, style: const TextStyle(fontSize: 14)),
+                        content: Text(kpi.formula, style: TextStyle(fontSize: 13, fontFamily: 'monospace', color: theme.colorScheme.onSurfaceVariant)),
+                        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                      ),
+                    ),
+                    child: Icon(Icons.info_outline, size: 16, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                  ),
+              ],
             ),
             if (_expanded) ...[
               const SizedBox(height: 8),

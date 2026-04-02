@@ -100,15 +100,12 @@ class AppStrings {
 
   // Category headers
   String get healthCatLiquidity    => _it ? 'Liquidità'               : 'Liquidity';
-  String get healthCatDebt         => _it ? 'Indebitamento'           : 'Debt';
   String get healthCatWealth       => _it ? 'Finanziari e Ricchezza'  : 'Financial & Wealth';
 
   // KPI names
   String get kpiLiquidityRatio     => _it ? 'Indice di liquidità patrimoniale' : 'Net Worth Liquidity Ratio';
   String get kpiExpenseCoverage    => _it ? 'Indice di copertura delle spese'  : 'Expense Coverage';
   String get kpiSavingsRate        => _it ? 'Tasso di risparmio'               : 'Savings Rate';
-  String get kpiDebtSustainability => _it ? 'Tasso di sostenibilità del debito': 'Debt Sustainability Rate';
-  String get kpiDebtRatio          => _it ? 'Tasso di indebitamento'           : 'Debt Ratio';
   String get kpiInvestmentWeight   => _it ? 'Peso del capitale investito'      : 'Investment Weight';
   String get kpiLiquidAssetRatio   => _it ? 'Indice di liquidabilità patrimoniale' : 'Liquid Asset Ratio';
   String get kpiIncomeToWealth     => _it ? 'Tasso disproporzione entrate/patrimonio' : 'Income-to-Wealth Ratio';
@@ -135,16 +132,6 @@ class AppStrings {
         : rating == 'buono' ? 'Good savings rate, keep it up!'
         : rating == 'sufficiente' ? 'Average savings rate, try to improve it.'
         : 'Low savings rate. Try reducing non-essential expenses.');
-  String kpiDebtSustDesc(String rating) => _it
-      ? (rating == 'ottimo' ? 'Le rate sono ampiamente coperte dalle tue entrate. Situazione solida.'
-        : 'Fai attenzione al livello di debito rispetto alle tue entrate.')
-      : (rating == 'ottimo' ? 'Debt payments are well covered by your income. Solid position.'
-        : 'Watch your debt level relative to your income.');
-  String kpiDebtRatioDesc(String rating) => _it
-      ? (rating == 'ottimo' || rating == 'buono' ? 'La tua situazione finanziaria è solida, continua così!'
-        : 'Il tuo livello di indebitamento merita attenzione.')
-      : (rating == 'ottimo' || rating == 'buono' ? 'Your financial situation is solid, keep it up!'
-        : 'Your debt level deserves attention.');
   String kpiInvestWeightDesc(String rating) => _it
       ? 'I tuoi investimenti finanziari hanno il giusto spazio nel tuo patrimonio complessivo.'
       : 'Your financial investments have the right weight in your overall wealth.';
