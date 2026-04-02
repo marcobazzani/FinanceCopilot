@@ -111,12 +111,28 @@ class InvestingComService extends MarketPriceService {
   }
 
   /// Ensure WebView is running and CF is solved.
-  /// Uses headless WebView on all platforms — no visible dialog needed.
+  /// After solving, probes Dio once to check if it works or gets 403.
   Future<bool> _ensureWebView() async {
     if (_isWebViewReady) return true;
     if (_cfSolving != null) return _cfSolving!.future;
     _cfSolving = Completer<bool>();
     final result = await _solveHeadless();
+    // Probe Dio once so all subsequent calls know whether to use Dio or JS
+    if (result && !_dioBlocked) {
+      try {
+        final headers = Map<String, String>.from(_browserHeaders);
+        if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
+        if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
+        await _dio.get('https://api.investing.com/api/search/v2/search?q=test',
+            options: Options(headers: headers, validateStatus: (s) => s != null && s < 400));
+        _log.info('Dio probe: OK');
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 403) {
+          _dioBlocked = true;
+          _log.info('Dio probe: 403 — all fetches will use WebView JS');
+        }
+      } catch (_) {}
+    }
     _cfSolving?.complete(result);
     _cfSolving = null;
     return result;
@@ -173,14 +189,14 @@ class InvestingComService extends MarketPriceService {
 
   /// Fetch API data by running fetch() inside the WebView's JS context.
   /// Same-origin since the WebView is loaded on api.investing.com.
-  Future<Map<String, dynamic>?> _fetchViaJsFetch(String url) async {
+  Future<Map<String, dynamic>?> _fetchViaJsFetch(String url, {String domainId = 'www'}) async {
     if (_webViewController == null) return null;
     try {
       final js = '''
         (async () => {
           try {
             const r = await fetch('$url', {
-              headers: { 'domain-id': 'www' }
+              headers: { 'domain-id': '$domainId' }
             });
             if (!r.ok) return JSON.stringify({__error: r.status});
             return JSON.stringify(await r.json());
@@ -192,7 +208,7 @@ class InvestingComService extends MarketPriceService {
       final result = await _webViewController!.callAsyncJavaScript(
         functionBody: '''
           const r = await fetch('$url', {
-            headers: { 'domain-id': 'www' }
+            headers: { 'domain-id': '$domainId' }
           });
           if (!r.ok) return {__error: r.status};
           return await r.json();
@@ -278,8 +294,8 @@ class InvestingComService extends MarketPriceService {
   /// Tries Dio first (faster, supports parallel). If Dio gets 403 (e.g. TLS
   /// fingerprinting on Windows), switches permanently to JS fetch via headless
   /// WebView for the rest of the session.
-  Future<Map<String, dynamic>?> _webViewFetch(String url) async {
-    // Ensure WebView is ready (solves CF, caches cookies)
+  Future<Map<String, dynamic>?> _webViewFetch(String url, {String domainId = 'www'}) async {
+    // Ensure WebView is ready (solves CF, caches cookies, probes Dio)
     if (!_isWebViewReady) {
       final ok = await _ensureWebView();
       if (!ok) return null;
@@ -287,7 +303,7 @@ class InvestingComService extends MarketPriceService {
 
     // If Dio is known to be blocked, go straight to JS fetch
     if (_dioBlocked) {
-      return await _fetchViaJsFetch(url);
+      return await _fetchViaJsFetch(url, domainId: domainId);
     }
 
     try {
@@ -309,7 +325,7 @@ class InvestingComService extends MarketPriceService {
       if (e.response?.statusCode == 403) {
         _dioBlocked = true;
         _log.info('_webViewFetch: Dio 403, switching to JS fetch');
-        return await _fetchViaJsFetch(url);
+        return await _fetchViaJsFetch(url, domainId: domainId);
       }
       _log.fine('_webViewFetch: ${e.response?.statusCode}');
       return null;
@@ -345,11 +361,11 @@ class InvestingComService extends MarketPriceService {
 
     _log.info('search: $query');
 
-    // Search international first (English type names for classification)
+    // Search via _webViewFetch (Dio or JS depending on _dioBlocked)
     final results = <int, InvestingSearchResult>{};
     try {
-      final wwwResp = await _dio.get(url, options: _searchOptions('www'));
-      final wwwQuotes = ((wwwResp.data as Map<String, dynamic>)['quotes'] as List?) ?? [];
+      final wwwData = await _webViewFetch(url, domainId: 'www');
+      final wwwQuotes = (wwwData?['quotes'] as List?) ?? [];
       for (final q in wwwQuotes) {
         final r = _parseSearchResult(q);
         results[r.cid] = r;
@@ -360,8 +376,8 @@ class InvestingComService extends MarketPriceService {
 
     // Also search Italian domain for local instruments (bonds, funds)
     try {
-      final itResp = await _dio.get(url, options: _searchOptions('it'));
-      final itQuotes = ((itResp.data as Map<String, dynamic>)['quotes'] as List?) ?? [];
+      final itData = await _webViewFetch(url, domainId: 'it');
+      final itQuotes = (itData?['quotes'] as List?) ?? [];
       for (final q in itQuotes) {
         final r = _parseSearchResult(q);
         if (!results.containsKey(r.cid)) {
@@ -372,7 +388,7 @@ class InvestingComService extends MarketPriceService {
       _log.warning('search: it domain failed: $e');
     }
 
-    // Fallback: if API search found nothing, try the web search via WebView
+    // Fallback: if search found nothing, try web search
     if (results.isEmpty) {
       _log.info('search: API returned nothing, trying web search fallback');
       final webResults = await _webSearchFallback(query);
@@ -386,20 +402,26 @@ class InvestingComService extends MarketPriceService {
   }
 
   /// Fallback search using the Investing.com website search page (SSR HTML).
-  /// The search page includes results in server-rendered HTML.
+  /// Uses WebView fetch when Dio is blocked.
   Future<List<InvestingSearchResult>> _webSearchFallback(String query) async {
     try {
       final url = 'https://www.investing.com/search/?q=${Uri.encodeComponent(query)}&tab=quotes';
-      final response = await _dio.get(url, options: Options(
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        responseType: ResponseType.plain,
-        followRedirects: true,
-      ));
-      final html = response.data as String;
+      String? html;
+      if (_dioBlocked) {
+        html = await fetchHtml(url);
+      } else {
+        final response = await _dio.get(url, options: Options(
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          responseType: ResponseType.plain,
+          followRedirects: true,
+        ));
+        html = response.data as String;
+      }
+      if (html == null) return [];
 
       // Parse results: each quote row is an <a> with class "js-inner-all-results-quote-item"
       // Structure: <a href="/rates-bonds/..."> containing:
