@@ -160,23 +160,6 @@ void main() {
     });
   });
 
-  group('updateHash', () {
-    test('sets importHash on a transaction', () async {
-      final accountId = await createAccount('Hash');
-      final id = await service.create(
-        accountId: accountId,
-        operationDate: DateTime(2024, 1, 1),
-        amount: 100.0,
-        currency: 'EUR',
-      );
-
-      await service.updateHash(id, 'abc123');
-
-      final txs = await service.getByAccount(accountId);
-      expect(txs.first.importHash, 'abc123');
-    });
-  });
-
   group('batchUpdateBalances', () {
     test('updates balanceAfter for multiple transactions', () async {
       final accountId = await createAccount('Batch');
@@ -273,95 +256,4 @@ void main() {
     });
   });
 
-  group('removeDuplicates', () {
-    test('keeps first occurrence (lowest id) per importHash', () async {
-      final accountId = await createAccount('Dedup');
-
-      // Insert 3 transactions with same hash directly to control importHash
-      final id1 = await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 100.0,
-            importHash: const Value('hash_a'),
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 100.0,
-            importHash: const Value('hash_a'),
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 100.0,
-            importHash: const Value('hash_a'),
-          ));
-
-      // One unique transaction
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 2),
-            valueDate: DateTime(2024, 1, 2),
-            amount: 200.0,
-            importHash: const Value('hash_b'),
-          ));
-
-      final deleted = await service.removeDuplicates(accountId);
-      expect(deleted, 2);
-
-      final txs = await service.getByAccount(accountId);
-      expect(txs.length, 2);
-      // The kept hash_a transaction should be the one with lowest id
-      final hashATx = txs.firstWhere((t) => t.importHash == 'hash_a');
-      expect(hashATx.id, id1);
-    });
-
-    test('transactions without importHash are not affected', () async {
-      final accountId = await createAccount('NoHash');
-
-      await service.create(
-        accountId: accountId,
-        operationDate: DateTime(2024, 1, 1),
-        amount: 100.0,
-        currency: 'EUR',
-      );
-      await service.create(
-        accountId: accountId,
-        operationDate: DateTime(2024, 1, 1),
-        amount: 100.0,
-        currency: 'EUR',
-      );
-
-      final deleted = await service.removeDuplicates(accountId);
-      expect(deleted, 0);
-
-      final txs = await service.getByAccount(accountId);
-      expect(txs.length, 2);
-    });
-
-    test('returns 0 when no duplicates exist', () async {
-      final accountId = await createAccount('NoDup');
-
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 100.0,
-            importHash: const Value('unique_1'),
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 2),
-            valueDate: DateTime(2024, 1, 2),
-            amount: 200.0,
-            importHash: const Value('unique_2'),
-          ));
-
-      final deleted = await service.removeDuplicates(accountId);
-      expect(deleted, 0);
-    });
-  });
 }

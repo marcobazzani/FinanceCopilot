@@ -204,13 +204,6 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                   style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
                 ),
               ),
-              if (widget.transaction!.importHash != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  s.hashLabel('${widget.transaction!.importHash!.substring(0, 16)}...'),
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                ),
-              ],
             ],
 
             const SizedBox(height: 24),

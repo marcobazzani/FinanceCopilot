@@ -70,12 +70,6 @@ class TransactionService {
     return (_db.delete(_db.transactions)..where((t) => t.id.equals(id))).go();
   }
 
-  /// Update the importHash for a single transaction.
-  Future<void> updateHash(int id, String hash) {
-    return (_db.update(_db.transactions)..where((t) => t.id.equals(id)))
-        .write(TransactionsCompanion(importHash: Value(hash)));
-  }
-
   /// Batch-update balanceAfter for multiple transactions in a single DB transaction.
   Future<void> batchUpdateBalances(Map<int, double?> updates) async {
     await _db.batch((batch) {
@@ -90,46 +84,10 @@ class TransactionService {
     _log.info('batchUpdateBalances: updated ${updates.length} balances');
   }
 
-  /// Batch-update importHash for multiple transactions in a single DB transaction.
-  Future<void> batchUpdateHashes(Map<int, String> updates) async {
-    await _db.batch((batch) {
-      for (final entry in updates.entries) {
-        batch.update(
-          _db.transactions,
-          TransactionsCompanion(importHash: Value(entry.value)),
-          where: (t) => t.id.equals(entry.key),
-        );
-      }
-    });
-    _log.info('batchUpdateHashes: updated ${updates.length} hashes');
-  }
-
   /// Delete all transactions for an account.
   Future<int> deleteByAccount(int accountId) {
     _log.warning('deleteByAccount: wiping all transactions for account $accountId');
     return (_db.delete(_db.transactions)..where((t) => t.accountId.equals(accountId))).go();
-  }
-
-  /// Remove duplicate transactions for an account based on importHash.
-  /// Keeps the first occurrence (lowest id), deletes the rest.
-  /// Returns number of deleted duplicates.
-  Future<int> removeDuplicates(int accountId) async {
-    final txs = await getByAccount(accountId);
-    final seen = <String>{};
-    var deleted = 0;
-    // Process in id order (ascending) to keep earliest
-    final sorted = List.of(txs)..sort((a, b) => a.id.compareTo(b.id));
-    for (final tx in sorted) {
-      if (tx.importHash == null) continue;
-      if (seen.contains(tx.importHash)) {
-        await delete(tx.id);
-        deleted++;
-      } else {
-        seen.add(tx.importHash!);
-      }
-    }
-    if (deleted > 0) _log.info('removeDuplicates: deleted $deleted duplicates for account $accountId');
-    return deleted;
   }
 
   /// Recalculate balanceAfter for all transactions in an account.

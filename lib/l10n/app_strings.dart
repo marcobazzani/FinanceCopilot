@@ -365,7 +365,6 @@ class AppStrings {
   String priceLabel(String suffix)     => _it ? 'Prezzo$suffix *'        : 'Price$suffix *';
   String totalAutoLabel(String suffix) => _it ? 'Totale$suffix (auto)'   : 'Total$suffix (auto)';
   String amountLabel(String suffix)    => _it ? 'Importo$suffix *'       : 'Amount$suffix *';
-  String hashLabel(String h)           => 'Hash: $h';
 
   // ── Transaction Edit ─────────────────────────────────────
   String get editTransactionTitle   => _it ? 'Modifica transazione'  : 'Edit Transaction';
