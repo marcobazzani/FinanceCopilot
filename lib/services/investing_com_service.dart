@@ -123,13 +123,13 @@ class InvestingComService extends MarketPriceService {
         final headers = Map<String, String>.from(_browserHeaders);
         if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
         if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
-        await _dio.get('https://api.investing.com/api/search/v2/search?q=test',
+        await _dio.get('https://api.investing.com/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
             options: Options(headers: headers, validateStatus: (s) => s != null && s < 400));
-        _log.info('Dio probe: OK');
+        _log.info('Dio probe: OK - using Dio for API calls');
       } on DioException catch (e) {
         if (e.response?.statusCode == 403) {
           _dioBlocked = true;
-          _log.info('Dio probe: 403 — all fetches will use WebView JS');
+          _log.info('Dio probe: 403 - all fetches will use WebView JS');
         }
       } catch (_) {}
     }
