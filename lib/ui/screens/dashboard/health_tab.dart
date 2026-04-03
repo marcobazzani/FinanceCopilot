@@ -23,10 +23,11 @@ class _FinancialHealthTab extends ConsumerWidget {
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
-    // Price changes for Today, YTD, All
+    // Price changes for Today, YTD, All — use midnight dates to match History tab
     final now = DateTime.now();
-    final todayChanges = ref.watch(assetDailyChangesProvider(now.subtract(const Duration(days: 1))));
-    final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(now.year, 1, 1)));
+    final today = DateTime(now.year, now.month, now.day);
+    final todayChanges = ref.watch(assetDailyChangesProvider(today.subtract(const Duration(days: 1))));
+    final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, 1, 1)));
     final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
     final isPrivate = ref.watch(privacyModeProvider);
 
