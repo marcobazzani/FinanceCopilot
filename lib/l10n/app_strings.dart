@@ -70,7 +70,7 @@ class AppStrings {
   String get settingsCacheCleared       => _it ? 'Dati in cache cancellati'   : 'Cached data cleared';
 
   // ── Dashboard ───────────────────────────────────────────
-  String get dashTabOverall      => _it ? 'Generale'         : 'Overall';
+  String get dashTabHistory      => _it ? 'Storico'           : 'History';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';
   String get dashTabAllocation   => _it ? 'Allocazione'      : 'Allocation';
   String get dashTabHealth       => _it ? 'Salute'            : 'Health';
@@ -88,6 +88,10 @@ class AppStrings {
   // ── Health KPIs ──
   String get healthSummary         => _it ? 'Riepilogo'               : 'Summary';
   String get healthKpis            => _it ? 'Indicatori ed Indici'    : 'KPIs & Indices';
+  String get healthPerformance     => _it ? 'Performance e Diversificazione' : 'Performance & Diversification';
+  String get kpiToday              => _it ? 'Oggi'                   : 'Today';
+  String get kpiYtd                => _it ? 'Da inizio anno'         : 'YTD';
+  String get kpiAllTime            => _it ? 'Dall\'inizio'           : 'All Time';
   String get healthDetails         => _it ? 'Dettagli'                : 'Details';
 
   // Ratings
