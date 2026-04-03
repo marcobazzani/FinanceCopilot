@@ -74,6 +74,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final priceService = ref.watch(marketPriceServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  ref.watch(priceRefreshCounter); // rebuild after price sync
 
   final result = <int, double>{};
   final now = DateTime.now();
@@ -96,7 +97,12 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     }
     double fxRate = 1.0;
     if (asset.currency != baseCurrency) {
-      fxRate = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
+      final rate = await rateService.getLiveRate(asset.currency, baseCurrency);
+      if (rate != null) {
+        fxRate = rate;
+      } else {
+        _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+      }
     }
     final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
     final value = stat.totalQuantity * price / bondDiv * fxRate;
@@ -120,6 +126,7 @@ class AssetDailyChange {
   final String baseCurrency;
   final String? investingUrl;   // Investing.com page URL
   final double priceDivisor;   // 100 for bonds (quoted per 100 nominal), 1 otherwise
+  final bool marketOpen;       // true if today's date has a stored price
 
   const AssetDailyChange({
     required this.name,
@@ -133,6 +140,7 @@ class AssetDailyChange {
     required this.baseCurrency,
     this.investingUrl,
     this.priceDivisor = 1.0,
+    this.marketOpen = false,
   });
 
   double get priceDiff => todayPrice - previousPrice;
@@ -180,7 +188,12 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double todayFx = 1.0;
     double prevFx = 1.0;
     if (asset.currency != baseCurrency) {
-      todayFx = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
+      final liveFx = await rateService.getLiveRate(asset.currency, baseCurrency);
+      if (liveFx != null) {
+        todayFx = liveFx;
+      } else {
+        _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no live ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+      }
       prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
     }
 
@@ -214,6 +227,13 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       }
     }
 
+    // Check if market traded today (latest stored price date == today)
+    final lastSync = await priceService.getLastSyncDate(asset.id);
+    final isMarketOpen = lastSync != null &&
+        lastSync.year == today.year &&
+        lastSync.month == today.month &&
+        lastSync.day == today.day;
+
     result.add(AssetDailyChange(
       name: asset.name,
       ticker: asset.ticker,
@@ -226,6 +246,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       baseCurrency: baseCurrency,
       investingUrl: investingUrl,
       priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
+      marketOpen: isMarketOpen,
     ));
   }
   return result;

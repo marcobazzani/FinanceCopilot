@@ -96,6 +96,10 @@ jobs:
           echo "$ENTITLEMENTS"
           echo "$ENTITLEMENTS" | grep -q "user-selected" || (echo "ERROR: file access entitlement missing from signed app" && exit 1)
 
+      - name: Strip quarantine attributes
+        if: matrix.platform == 'macos'
+        run: xattr -cr build/macos/Build/Products/Release/FinanceCopilot.app
+
       - name: Create macOS DMG
         if: matrix.platform == 'macos'
         run: |
@@ -109,6 +113,7 @@ jobs:
             --app-drop-link 450 190 \
             build/FinanceCopilot-macos.dmg \
             build/macos/Build/Products/Release/FinanceCopilot.app
+          xattr -d com.apple.quarantine build/FinanceCopilot-macos.dmg 2>/dev/null || true
 
       - name: Upload artifact (macOS)
         if: matrix.platform == 'macos'

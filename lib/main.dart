@@ -147,14 +147,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     (Icons.payments, s.navIncome),
   ];
 
-  List<NavigationRailDestination> _railDestinations(AppStrings s) => [
-    NavigationRailDestination(icon: const Icon(Icons.dashboard), label: Text(s.navDashboard)),
-    NavigationRailDestination(icon: const Icon(Icons.account_balance), label: Text(s.navAccounts)),
-    NavigationRailDestination(icon: const Icon(Icons.pie_chart), label: Text(s.navAssets)),
-    NavigationRailDestination(icon: const Icon(Icons.account_balance_wallet), label: Text(s.navAdjustments)),
-    NavigationRailDestination(icon: const Icon(Icons.payments), label: Text(s.navIncome)),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -340,7 +332,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
+                              'v$appVersion ($appCommit)',
                               style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(width: 4),

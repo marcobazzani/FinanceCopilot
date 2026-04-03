@@ -213,10 +213,27 @@ class UpdateService {
     _log.info('applyUpdate Windows: writing update script...');
     final currentPid = pid;
     final ps1 = '''
-# Wait for this specific process to exit
-try { Wait-Process -Id $currentPid -ErrorAction SilentlyContinue } catch {}
-# Copy new files over the old ones
-Copy-Item -Path "$extractDir\\*" -Destination "$currentDir\\" -Recurse -Force
+# Wait for the app process to fully exit
+try { Wait-Process -Id $currentPid -Timeout 30 -ErrorAction SilentlyContinue } catch {}
+Start-Sleep -Seconds 2
+
+# Find actual content (handle nested folder from Expand-Archive)
+\$src = "$extractDir"
+\$nested = Get-ChildItem "$extractDir" -Directory
+if (\$nested.Count -eq 1 -and (Test-Path "\$(\$nested[0].FullName)\\FinanceCopilot.exe")) {
+    \$src = \$nested[0].FullName
+}
+
+# Copy new files over old (retry for locked DLLs)
+for (\$i = 0; \$i -lt 3; \$i++) {
+    try {
+        Copy-Item -Path "\$src\\*" -Destination "$currentDir\\" -Recurse -Force -ErrorAction Stop
+        break
+    } catch {
+        Start-Sleep -Seconds 2
+    }
+}
+
 # Relaunch the app
 Start-Process "$currentExe"
 # Clean up this script

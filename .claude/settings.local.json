@@ -83,7 +83,8 @@
       "Bash(do grep:*)",
       "Bash(done)",
       "Bash(du -sh /Users/marco/Project/FinanceCopilot/.dart_tool/*/)",
-      "Bash(flutter clean:*)"
+      "Bash(flutter clean:*)",
+      "Bash(dart fix:*)"
     ]
   }
 }

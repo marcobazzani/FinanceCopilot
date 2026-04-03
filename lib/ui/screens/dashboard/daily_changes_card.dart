@@ -269,6 +269,8 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       amtFmt: amtFmt,
                       url: c.investingUrl,
                       isPrivate: isPrivate,
+                      marketOpen: c.marketOpen,
+                      s: s,
                     )),
                     const Divider(height: 16),
                     _buildRow(
@@ -303,6 +305,8 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     bool bold = false,
     String? url,
     required bool isPrivate,
+    bool? marketOpen,
+    AppStrings? s,
   }) {
     final isPositive = valueDiff >= 0;
     final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
@@ -319,28 +323,47 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         children: [
           Expanded(
             flex: 3,
-            child: url != null
-                ? MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () => launchUrl(Uri.parse(url)),
-                      child: Text(
-                        name,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: weight,
-                          color: theme.colorScheme.primary,
-                          decoration: TextDecoration.underline,
-                          decorationColor: theme.colorScheme.primary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (marketOpen != null)
+                  Tooltip(
+                    message: marketOpen ? (s?.marketOpen ?? '') : (s?.marketClosed ?? ''),
+                    child: Container(
+                      width: 7, height: 7,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: marketOpen ? Colors.green : Colors.grey,
                       ),
                     ),
-                  )
-                : Text(
-                    name,
-                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
-                    overflow: TextOverflow.ellipsis,
                   ),
+                Flexible(
+                  child: url != null
+                      ? MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => launchUrl(Uri.parse(url)),
+                            child: Text(
+                              name,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: weight,
+                                color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                                decorationColor: theme.colorScheme.primary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          name,
+                          style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                ),
+              ],
+            ),
           ),
           Expanded(
             flex: 2,

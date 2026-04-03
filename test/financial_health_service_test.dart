@@ -1,0 +1,480 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:finance_copilot/services/financial_health_service.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
+
+void main() {
+  const s = AppStrings.en;
+  const locale = 'en_US';
+
+  group('rateNormal', () {
+    // Thresholds: scarso < 10, sufficiente [10,15), buono [15,25), ottimo >= 25
+    test('returns scarso when value is below scarso threshold', () {
+      expect(rateNormal(5, 10, 15, 25), Rating.scarso);
+    });
+
+    test('returns sufficiente when value equals scarso threshold', () {
+      expect(rateNormal(10, 10, 15, 25), Rating.sufficiente);
+    });
+
+    test('returns buono when value equals suff threshold', () {
+      expect(rateNormal(15, 10, 15, 25), Rating.buono);
+    });
+
+    test('returns ottimo when value equals buono threshold', () {
+      expect(rateNormal(25, 10, 15, 25), Rating.ottimo);
+    });
+
+    test('returns ottimo when value exceeds buono threshold', () {
+      expect(rateNormal(50, 10, 15, 25), Rating.ottimo);
+    });
+  });
+
+  group('categoryRating', () {
+    test('returns na for empty list', () {
+      expect(categoryRating([]), Rating.na);
+    });
+
+    test('returns na when all kpis are na', () {
+      final kpis = [
+        const HealthKpi(name: 'a', rating: Rating.na),
+        const HealthKpi(name: 'b', rating: Rating.na),
+      ];
+      expect(categoryRating(kpis), Rating.na);
+    });
+
+    test('returns ottimo when avg score >= 87', () {
+      // All ottimo (score 100) -> avg 100
+      final kpis = [
+        const HealthKpi(name: 'a', rating: Rating.ottimo),
+        const HealthKpi(name: 'b', rating: Rating.ottimo),
+      ];
+      expect(categoryRating(kpis), Rating.ottimo);
+    });
+
+    test('returns buono when avg score >= 62 and < 87', () {
+      // ottimo (100) + sufficiente (50) -> avg 75
+      final kpis = [
+        const HealthKpi(name: 'a', rating: Rating.ottimo),
+        const HealthKpi(name: 'b', rating: Rating.sufficiente),
+      ];
+      expect(categoryRating(kpis), Rating.buono);
+    });
+
+    test('returns sufficiente when avg score >= 37 and < 62', () {
+      // buono (75) + scarso (25) -> avg 50
+      final kpis = [
+        const HealthKpi(name: 'a', rating: Rating.buono),
+        const HealthKpi(name: 'b', rating: Rating.scarso),
+      ];
+      expect(categoryRating(kpis), Rating.sufficiente);
+    });
+
+    test('returns scarso when avg score < 37', () {
+      // All scarso (score 25) -> avg 25
+      final kpis = [
+        const HealthKpi(name: 'a', rating: Rating.scarso),
+        const HealthKpi(name: 'b', rating: Rating.scarso),
+      ];
+      expect(categoryRating(kpis), Rating.scarso);
+    });
+
+    test('ignores na-rated kpis in average', () {
+      final kpis = [
+        const HealthKpi(name: 'a', rating: Rating.ottimo),
+        const HealthKpi(name: 'b', rating: Rating.na),
+      ];
+      // Only ottimo counts -> avg 100
+      expect(categoryRating(kpis), Rating.ottimo);
+    });
+  });
+
+  group('computeKpis', () {
+    test('returns exactly 2 categories (Liquidity and Wealth)', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 50000,
+        annualIncome: 60000, annualExpenses: 40000,
+        annualSavings: 20000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      expect(cats.length, 2);
+      expect(cats[0].name, s.healthCatLiquidity);
+      expect(cats[1].name, s.healthCatWealth);
+    });
+
+    test('Liquidity category has 3 KPIs', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 50000,
+        annualIncome: 60000, annualExpenses: 40000,
+        annualSavings: 20000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      expect(cats[0].kpis.length, 3);
+    });
+
+    test('Wealth category has 3 KPIs', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 50000,
+        annualIncome: 60000, annualExpenses: 40000,
+        annualSavings: 20000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      expect(cats[1].kpis.length, 3);
+    });
+  });
+
+  group('Liquidity ratio thresholds', () {
+    // liquidityRatio = cash / (cash + investments) * 100
+    // Thresholds: scarso < 10, sufficiente [10,15), buono [15,25), ottimo >= 25
+
+    test('0% cash -> scarso', () {
+      final cats = computeKpis(
+        cash: 0, investments: 100000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[0]; // liquidity ratio
+      expect(kpi.rating, Rating.scarso);
+    });
+
+    test('12% cash -> sufficiente', () {
+      // cash=12000, investments=88000 -> 12%
+      final cats = computeKpis(
+        cash: 12000, investments: 88000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[0];
+      expect(kpi.rating, Rating.sufficiente);
+    });
+
+    test('20% cash -> buono', () {
+      // cash=20000, investments=80000 -> 20%
+      final cats = computeKpis(
+        cash: 20000, investments: 80000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[0];
+      expect(kpi.rating, Rating.buono);
+    });
+
+    test('30% cash -> ottimo', () {
+      // cash=30000, investments=70000 -> 30%
+      final cats = computeKpis(
+        cash: 30000, investments: 70000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[0];
+      expect(kpi.rating, Rating.ottimo);
+    });
+  });
+
+  group('Expense coverage thresholds', () {
+    // coverageMonths = cash / monthlyExpenses
+    // Thresholds: scarso < 3, sufficiente [3,6), buono [6,12), ottimo >= 12
+
+    test('1 month coverage -> scarso', () {
+      final cats = computeKpis(
+        cash: 1000, investments: 0,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 1000,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[1]; // expense coverage
+      expect(kpi.rating, Rating.scarso);
+    });
+
+    test('4 months coverage -> sufficiente', () {
+      final cats = computeKpis(
+        cash: 4000, investments: 0,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 1000,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[1];
+      expect(kpi.rating, Rating.sufficiente);
+    });
+
+    test('8 months coverage -> buono', () {
+      final cats = computeKpis(
+        cash: 8000, investments: 0,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 1000,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[1];
+      expect(kpi.rating, Rating.buono);
+    });
+
+    test('15 months coverage -> ottimo', () {
+      final cats = computeKpis(
+        cash: 15000, investments: 0,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 1000,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[1];
+      expect(kpi.rating, Rating.ottimo);
+    });
+  });
+
+  group('Savings rate thresholds', () {
+    // savingsRate = annualSavings / annualIncome * 100
+    // Thresholds: scarso < 10, sufficiente [10,20), buono [20,40), ottimo >= 40
+
+    test('5% savings rate -> scarso', () {
+      final cats = computeKpis(
+        cash: 0, investments: 0,
+        annualIncome: 100000, annualExpenses: 95000,
+        annualSavings: 5000, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[2]; // savings rate
+      expect(kpi.rating, Rating.scarso);
+    });
+
+    test('15% savings rate -> sufficiente', () {
+      final cats = computeKpis(
+        cash: 0, investments: 0,
+        annualIncome: 100000, annualExpenses: 85000,
+        annualSavings: 15000, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[2];
+      expect(kpi.rating, Rating.sufficiente);
+    });
+
+    test('25% savings rate -> buono', () {
+      final cats = computeKpis(
+        cash: 0, investments: 0,
+        annualIncome: 100000, annualExpenses: 75000,
+        annualSavings: 25000, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[2];
+      expect(kpi.rating, Rating.buono);
+    });
+
+    test('50% savings rate -> ottimo', () {
+      final cats = computeKpis(
+        cash: 0, investments: 0,
+        annualIncome: 100000, annualExpenses: 50000,
+        annualSavings: 50000, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[0].kpis[2];
+      expect(kpi.rating, Rating.ottimo);
+    });
+  });
+
+  group('Investment weight thresholds', () {
+    // investWeight = investments / (cash + investments) * 100
+    // Thresholds: scarso < 20, sufficiente [20,40), buono [40,60), alto >= 60
+
+    test('10% investment weight -> scarso', () {
+      final cats = computeKpis(
+        cash: 90000, investments: 10000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[1].kpis[0]; // investment weight
+      expect(kpi.rating, Rating.scarso);
+    });
+
+    test('30% investment weight -> sufficiente', () {
+      final cats = computeKpis(
+        cash: 70000, investments: 30000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[1].kpis[0];
+      expect(kpi.rating, Rating.sufficiente);
+    });
+
+    test('50% investment weight -> buono', () {
+      final cats = computeKpis(
+        cash: 50000, investments: 50000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[1].kpis[0];
+      expect(kpi.rating, Rating.buono);
+    });
+
+    test('70% investment weight -> alto', () {
+      final cats = computeKpis(
+        cash: 30000, investments: 70000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final kpi = cats[1].kpis[0];
+      expect(kpi.rating, Rating.alto);
+    });
+  });
+
+  group('Edge cases', () {
+    test('zero income does not crash, savings rate is 0', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 50000,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      final savingsKpi = cats[0].kpis[2]; // savings rate
+      expect(savingsKpi.value, 0.0);
+      expect(savingsKpi.rating, Rating.scarso);
+    });
+
+    test('zero assets does not crash, all ratios are 0', () {
+      final cats = computeKpis(
+        cash: 0, investments: 0,
+        annualIncome: 50000, annualExpenses: 40000,
+        annualSavings: 10000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      final liquidityRatio = cats[0].kpis[0];
+      expect(liquidityRatio.value, 0.0);
+      final investWeight = cats[1].kpis[0];
+      expect(investWeight.value, 0.0);
+    });
+
+    test('all zeros does not crash', () {
+      final cats = computeKpis(
+        cash: 0, investments: 0,
+        annualIncome: 0, annualExpenses: 0,
+        annualSavings: 0, monthlyExpenses: 0,
+        s: s, locale: locale,
+      );
+      expect(cats.length, 2);
+      for (final cat in cats) {
+        for (final kpi in cat.kpis) {
+          expect(kpi.value, isNotNull);
+        }
+      }
+    });
+  });
+
+  group('Rating properties', () {
+    test('score values are correct', () {
+      expect(Rating.ottimo.score, 100);
+      expect(Rating.buono.score, 75);
+      expect(Rating.alto.score, 75);
+      expect(Rating.sufficiente.score, 50);
+      expect(Rating.scarso.score, 25);
+      expect(Rating.na.score, 0);
+    });
+
+    test('labels return localized strings', () {
+      expect(Rating.ottimo.label(s), s.ratingOttimo);
+      expect(Rating.scarso.label(s), s.ratingScarso);
+    });
+  });
+
+  group('liquid asset ratio with liquidInvestments', () {
+    test('only liquid investments count toward liquid asset ratio', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 100000,
+        liquidInvestments: 60000, // 40000 is illiquid (pension, real estate)
+        annualIncome: 50000, annualExpenses: 40000,
+        annualSavings: 10000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      // Liquid asset ratio = (cash + liquidInvestments) / grossAssets
+      // = (10000 + 60000) / 110000 = 63.6%
+      final liquidKpi = cats[1].kpis[1]; // Liquid Asset Ratio is 2nd in Wealth
+      expect(liquidKpi.value, closeTo(63.6, 0.1));
+    });
+
+    test('defaults to 0 liquid investments when not specified', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 100000,
+        annualIncome: 50000, annualExpenses: 40000,
+        annualSavings: 10000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      // liquidInvestments defaults to 0, so ratio = cash / grossAssets = 10000/110000 = 9.1%
+      final liquidKpi = cats[1].kpis[1];
+      expect(liquidKpi.value, closeTo(9.1, 0.1));
+    });
+  });
+
+  group('computePriceChangePct', () {
+    test('returns 0 for empty list', () {
+      expect(computePriceChangePct([]), 0.0);
+    });
+
+    test('computes positive change', () {
+      final pct = computePriceChangePct([(100.0, 110.0)]);
+      expect(pct, closeTo(10.0, 0.01));
+    });
+
+    test('computes negative change', () {
+      final pct = computePriceChangePct([(100.0, 90.0)]);
+      expect(pct, closeTo(-10.0, 0.01));
+    });
+
+    test('aggregates multiple assets', () {
+      final pct = computePriceChangePct([(100.0, 120.0), (200.0, 210.0)]);
+      // prev=300, now=330, change=10%
+      expect(pct, closeTo(10.0, 0.01));
+    });
+
+    test('returns 0 when previous total is 0', () {
+      expect(computePriceChangePct([(0.0, 100.0)]), 0.0);
+    });
+  });
+
+  group('ratePriceChange', () {
+    test('ottimo for >= 10%', () => expect(ratePriceChange(15.0), Rating.ottimo));
+    test('buono for >= 0%', () => expect(ratePriceChange(5.0), Rating.buono));
+    test('sufficiente for >= -10%', () => expect(ratePriceChange(-5.0), Rating.sufficiente));
+    test('scarso for < -10%', () => expect(ratePriceChange(-15.0), Rating.scarso));
+    test('boundary 0% is buono', () => expect(ratePriceChange(0.0), Rating.buono));
+    test('boundary 10% is ottimo', () => expect(ratePriceChange(10.0), Rating.ottimo));
+  });
+
+  group('computeHhi', () {
+    test('returns 0 for empty map', () {
+      expect(computeHhi({}), 0.0);
+    });
+
+    test('single holding = 10000 (max concentration)', () {
+      expect(computeHhi({'A': 100.0}), closeTo(10000, 0.01));
+    });
+
+    test('two equal holdings = 5000', () {
+      expect(computeHhi({'A': 50.0, 'B': 50.0}), closeTo(5000, 0.01));
+    });
+
+    test('four equal holdings = 2500', () {
+      expect(computeHhi({'A': 25.0, 'B': 25.0, 'C': 25.0, 'D': 25.0}), closeTo(2500, 0.01));
+    });
+
+    test('ten equal holdings = 1000', () {
+      final m = {for (var i = 0; i < 10; i++) 'H$i': 10.0};
+      expect(computeHhi(m), closeTo(1000, 0.01));
+    });
+
+    test('unequal distribution', () {
+      // 80/10/10 = 0.64 + 0.01 + 0.01 = 0.66 * 10000 = 6600
+      expect(computeHhi({'A': 80.0, 'B': 10.0, 'C': 10.0}), closeTo(6600, 0.01));
+    });
+  });
+
+  group('rateHhi', () {
+    test('ottimo for < 1500', () => expect(rateHhi(1000), Rating.ottimo));
+    test('buono for < 2500', () => expect(rateHhi(2000), Rating.buono));
+    test('scarso for >= 2500', () => expect(rateHhi(3000), Rating.scarso));
+    test('boundary 1500 is buono', () => expect(rateHhi(1500), Rating.buono));
+    test('boundary 2500 is scarso', () => expect(rateHhi(2500), Rating.scarso));
+  });
+}

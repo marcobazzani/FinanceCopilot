@@ -223,7 +223,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic')
                 _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
-                _buildAmountFormulaRow(columns)
+                _buildAmountFormulaRow(columns, s)
               else if (_target == ImportTarget.assetEvent) ...[
                 // Amount: either from column or auto-calculated
                 Row(
@@ -232,7 +232,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                         ? Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Row(children: [
-                              SizedBox(width: 100, child: Text('amount', style: TextStyle(
+                              SizedBox(width: 100, child: Text(s.amount, style: TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 13,
                                 color: Theme.of(context).colorScheme.primary,
                               ))),
@@ -598,7 +598,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               padding: const EdgeInsets.only(left: 16),
               child: Row(
                 children: [
-                  const Text('Include values:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                  Text(s.includeValues, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                   const Spacer(),
                   TextButton(
                     onPressed: () => _setState(() {
@@ -668,7 +668,7 @@ extension _ColumnMapperStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Buy / Sell Detection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        Text(s.buySellDetection, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         const SizedBox(height: 4),
         SegmentedButton<String>(
           segments: [
@@ -691,7 +691,7 @@ extension _ColumnMapperStep on _ImportScreenState {
           _buildMappingRow('type', columns),
           if (typeCol != null && uniqueVals.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Map values to Buy / Sell:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            Text(s.mapBuySell, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
             const SizedBox(height: 4),
             ...uniqueVals.map((val) {
               final isBuy = _buyValues.contains(val);
@@ -745,7 +745,7 @@ extension _ColumnMapperStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Fee / Commission', style: TextStyle(fontWeight: FontWeight.bold)),
+        Text(s.feeCommission, style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         SegmentedButton<String>(
           segments: [
@@ -852,7 +852,7 @@ extension _ColumnMapperStep on _ImportScreenState {
   }
 
   /// Visual formula builder for the amount field.
-  Widget _buildAmountFormulaRow(List<String> columns) {
+  Widget _buildAmountFormulaRow(List<String> columns, AppStrings s) {
     final mode = _amountMode;
 
     // -- Balance-diff mode --
@@ -864,9 +864,9 @@ extension _ColumnMapperStep on _ImportScreenState {
           children: [
             Row(
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 140,
-                  child: Text('amount *', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(s.amountRequired, style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(width: 24),
                 _buildAmountModeButtons(columns, currentMode: mode),
@@ -879,7 +879,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                 children: [
                   Row(
                     children: [
-                      Text('Balance column:', style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
+                      Text(s.balanceColumn, style: TextStyle(fontSize: 13, color: Colors.grey.shade400)),
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
@@ -917,9 +917,9 @@ extension _ColumnMapperStep on _ImportScreenState {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 140,
-              child: Text('amount *', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: Text(s.amountRequired, style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
             const Icon(Icons.arrow_forward, size: 16),
             const SizedBox(width: 8),
@@ -954,9 +954,9 @@ extension _ColumnMapperStep on _ImportScreenState {
         children: [
           Row(
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 140,
-                child: Text('amount *', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Text(s.amountRequired, style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(width: 24),
               _buildAmountModeButtons(columns, currentMode: mode),

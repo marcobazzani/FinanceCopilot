@@ -64,6 +64,9 @@ class CompositionService {
     _log.info('syncCompositions: ${assets.length} active assets');
 
     for (final asset in assets) {
+      // Skip manual/eventDriven assets — composition is user-managed
+      if (asset.valuationMethod == ValuationMethod.eventDriven) continue;
+
       // Skip if we have recent data (< 7 days old)
       final existing = await (_db.select(_db.assetCompositions)
             ..where((c) => c.assetId.equals(asset.id))

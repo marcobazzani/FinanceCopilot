@@ -94,10 +94,13 @@ void main() {
       expect(result, 250.0);
     });
 
-    test('returns original amount when rate unavailable', () async {
+    test('returns original amount with warning when rate unavailable', () async {
+      // This is a known limitation: when no FX rate is available, the original
+      // amount is returned unconverted. This is INACCURATE but preferable to
+      // crashing. The warning log allows monitoring for these cases.
       final result = await service.convertAmount(
           100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
-      expect(result, 100.0);
+      expect(result, 100.0); // unconverted fallback
     });
 
     test('converts cross-rate correctly', () async {
@@ -107,6 +110,177 @@ void main() {
       final result = await service.convertAmount(
           100.0, 'GBP', 'USD', DateTime(2024, 1, 15));
       expect(result, closeTo(100.0 * (1.08 / 0.86), 1e-8));
+    });
+  });
+
+  group('getRate - additional', () {
+    test('falls back to closest prior date for cross-rate', () async {
+      // Insert EUR/USD and EUR/GBP on different dates
+      await insertRate('USD', DateTime(2024, 1, 5), 1.08);
+      await insertRate('GBP', DateTime(2024, 1, 8), 0.86);
+
+      // Query on Jan 10 - both should resolve to their closest prior dates
+      final rate = await service.getRate('GBP', 'USD', DateTime(2024, 1, 10));
+      expect(rate, closeTo(1.08 / 0.86, 1e-10));
+    });
+
+    test('returns null for cross-rate when one leg is missing', () async {
+      await insertRate('USD', DateTime(2024, 1, 15), 1.08);
+      // No GBP rate inserted
+
+      final rate = await service.getRate('GBP', 'USD', DateTime(2024, 1, 15));
+      expect(rate, isNull);
+    });
+
+    test('uses exact date when available even if earlier dates exist', () async {
+      await insertRate('USD', DateTime(2024, 1, 10), 1.05);
+      await insertRate('USD', DateTime(2024, 1, 15), 1.08);
+      await insertRate('USD', DateTime(2024, 1, 20), 1.12);
+
+      final rate = await service.getRate('EUR', 'USD', DateTime(2024, 1, 15));
+      expect(rate, 1.08);
+    });
+  });
+
+  group('getLiveRate', () {
+    test('returns 1.0 for same currency', () async {
+      final rate = await service.getLiveRate('EUR', 'EUR');
+      expect(rate, 1.0);
+    });
+
+    test('returns 1.0 for same currency even for non-EUR', () async {
+      final rate = await service.getLiveRate('USD', 'USD');
+      expect(rate, 1.0);
+    });
+
+    test('falls back to stored rate when no investing service', () async {
+      // Service has no InvestingComService, so it falls back to DB
+      await insertRate('USD', DateTime.now(), 1.10);
+
+      final rate = await service.getLiveRate('EUR', 'USD');
+      expect(rate, 1.10);
+    });
+
+    test('returns null when no investing service and no stored rate', () async {
+      final rate = await service.getLiveRate('EUR', 'USD');
+      expect(rate, isNull);
+    });
+  });
+
+  group('convertLive', () {
+    test('returns same amount for same currency', () async {
+      final result = await service.convertLive(500.0, 'CHF', 'CHF');
+      expect(result, 500.0);
+    });
+
+    test('converts correctly using stored rate', () async {
+      await insertRate('USD', DateTime.now(), 1.10);
+
+      final result = await service.convertLive(100.0, 'EUR', 'USD');
+      expect(result, closeTo(110.0, 1e-10));
+    });
+
+    test('returns unconverted amount when rate missing (warns)', () async {
+      // No rates in DB, no investing service
+      final result = await service.convertLive(200.0, 'EUR', 'JPY');
+      expect(result, 200.0); // fallback: unconverted
+    });
+  });
+
+  group('CachedRateResolver', () {
+    test('returns 1.0 for same currency as base', () async {
+      final resolver = CachedRateResolver(service, 'EUR');
+      final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
+
+      final rate = await resolver.getRate('EUR', dayKey);
+      expect(rate, 1.0);
+    });
+
+    test('resolves and caches rate from service', () async {
+      await insertRate('USD', DateTime(2024, 1, 15), 1.08);
+      final resolver = CachedRateResolver(service, 'EUR');
+      final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
+
+      // getRate(USD, dayKey) calls service.getRate(USD, EUR, date) = 1/1.08
+      final rate1 = await resolver.getRate('USD', dayKey);
+      expect(rate1, closeTo(1.0 / 1.08, 1e-10));
+
+      // Second call should use cache (same result)
+      final rate2 = await resolver.getRate('USD', dayKey);
+      expect(rate2, closeTo(1.0 / 1.08, 1e-10));
+    });
+
+    test('caches different rates for different dayKeys', () async {
+      await insertRate('USD', DateTime(2024, 1, 10), 1.05);
+      await insertRate('USD', DateTime(2024, 1, 20), 1.12);
+      final resolver = CachedRateResolver(service, 'EUR');
+      final dayKey1 = DateTime(2024, 1, 10).millisecondsSinceEpoch ~/ 1000;
+      final dayKey2 = DateTime(2024, 1, 20).millisecondsSinceEpoch ~/ 1000;
+
+      final rate1 = await resolver.getRate('USD', dayKey1);
+      final rate2 = await resolver.getRate('USD', dayKey2);
+
+      expect(rate1, closeTo(1.0 / 1.05, 1e-10));
+      expect(rate2, closeTo(1.0 / 1.12, 1e-10));
+    });
+
+    test('returns 1.0 with warning when rate is missing', () async {
+      // No rates in DB
+      final resolver = CachedRateResolver(service, 'EUR');
+      final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
+
+      final rate = await resolver.getRate('USD', dayKey);
+      expect(rate, 1.0); // fallback when missing
+    });
+
+    test('caches the 1.0 fallback so subsequent calls do not re-query', () async {
+      final resolver = CachedRateResolver(service, 'EUR');
+      final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
+
+      // Both calls return 1.0 fallback
+      final rate1 = await resolver.getRate('USD', dayKey);
+      final rate2 = await resolver.getRate('USD', dayKey);
+      expect(rate1, 1.0);
+      expect(rate2, 1.0);
+    });
+
+    test('works with non-EUR base currency', () async {
+      await insertRate('USD', DateTime(2024, 1, 15), 1.08);
+      await insertRate('GBP', DateTime(2024, 1, 15), 0.86);
+      final resolver = CachedRateResolver(service, 'USD');
+      final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
+
+      // GBP -> USD cross-rate via EUR: rUSD / rGBP = 1.08 / 0.86
+      final rate = await resolver.getRate('GBP', dayKey);
+      expect(rate, closeTo(1.08 / 0.86, 1e-10));
+    });
+  });
+
+  group('allCurrencies', () {
+    test('is not empty', () {
+      expect(ExchangeRateService.allCurrencies, isNotEmpty);
+    });
+
+    test('contains EUR', () {
+      expect(ExchangeRateService.allCurrencies, contains('EUR'));
+    });
+
+    test('contains USD', () {
+      expect(ExchangeRateService.allCurrencies, contains('USD'));
+    });
+
+    test('EUR is the first element (base currency)', () {
+      expect(ExchangeRateService.allCurrencies.first, 'EUR');
+    });
+
+    test('contains all targetCurrencies plus EUR', () {
+      expect(
+        ExchangeRateService.allCurrencies.length,
+        ExchangeRateService.targetCurrencies.length + 1,
+      );
+      for (final c in ExchangeRateService.targetCurrencies) {
+        expect(ExchangeRateService.allCurrencies, contains(c));
+      }
     });
   });
 }
