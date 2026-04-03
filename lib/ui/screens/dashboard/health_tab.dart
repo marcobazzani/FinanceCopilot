@@ -132,7 +132,8 @@ class _FinancialHealthTab extends ConsumerWidget {
 
                 final compositions = compositionsAsync.value ?? {};
                 final byHolding = weightedBreakdown(activeAssets, marketValues, compositions, 'holding', (a) => a.name);
-                final hhi = computeHhi(byHolding);
+                final holdingTotal = byHolding.values.fold(0.0, (a, b) => a + b);
+                final conc = computeConcentration(byHolding.entries.toList(), holdingTotal);
 
                 return Wrap(
                   spacing: 12,
@@ -142,7 +143,7 @@ class _FinancialHealthTab extends ConsumerWidget {
                     SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiYtd, ytdChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
                     SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiAllTime, allChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
                     SizedBox(width: 320, child: _KpiCard(
-                      kpi: HealthKpi(name: 'HHI', value: hhi, unit: '', rating: rateHhi(hhi),
+                      kpi: HealthKpi(name: 'HHI', value: conc.hhi, unit: '', rating: rateHhi(conc.hhi),
                         formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
                       pctFmt: pctFmt, s: s, isPrivate: isPrivate,
                     )),
