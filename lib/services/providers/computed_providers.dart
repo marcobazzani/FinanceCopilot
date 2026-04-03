@@ -91,7 +91,23 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
       price = await priceService.getLivePrice(asset.id);
     }
     price ??= await priceService.getPrice(asset.id, now);
+    // Fallback: use latest revalue event as total value (not per-unit)
     if (price == null) {
+      final revalueAmount = await ref.read(assetEventServiceProvider).getLatestRevalueAmount(asset.id);
+      if (revalueAmount != null) {
+        double fxR = 1.0;
+        if (asset.currency != baseCurrency) {
+          final rate = await rateService.getLiveRate(asset.currency, baseCurrency);
+          if (rate != null) {
+            fxR = rate;
+          } else {
+            _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate for revalue, using 1.0 (INACCURATE)');
+          }
+        }
+        result[asset.id] = revalueAmount * fxR;
+        _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - revalue=$revalueAmount fx=$fxR');
+        continue;
+      }
       _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
       continue;
     }
