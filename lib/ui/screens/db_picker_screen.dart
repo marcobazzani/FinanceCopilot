@@ -407,7 +407,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
+                    'v$appVersion ($appCommit)',
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                   ),
                   const SizedBox(width: 4),
