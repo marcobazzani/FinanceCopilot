@@ -233,4 +233,49 @@ void main() {
       expect(types, containsAll([EventType.buy, EventType.sell, EventType.dividend]));
     });
   });
+
+  group('getLatestRevalueAmount', () {
+    test('returns null when no revalue events exist', () async {
+      final assetId = await createAsset('NoRevalue');
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 1000, currency: 'EUR',
+      );
+      final result = await service.getLatestRevalueAmount(assetId);
+      expect(result, isNull);
+    });
+
+    test('returns latest revalue amount', () async {
+      final assetId = await createAsset('BFP');
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 1, 1),
+        type: EventType.revalue, amount: 5000, currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 6, 1),
+        type: EventType.revalue, amount: 5200, currency: 'EUR',
+      );
+      final result = await service.getLatestRevalueAmount(assetId);
+      expect(result, 5200);
+    });
+
+    test('ignores non-revalue events', () async {
+      final assetId = await createAsset('Mixed');
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 1, 1),
+        type: EventType.revalue, amount: 3000, currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 6, 1),
+        type: EventType.buy, amount: 9999, currency: 'EUR',
+      );
+      final result = await service.getLatestRevalueAmount(assetId);
+      expect(result, 3000);
+    });
+
+    test('returns null for non-existent asset', () async {
+      final result = await service.getLatestRevalueAmount(99999);
+      expect(result, isNull);
+    });
+  });
 }
