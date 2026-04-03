@@ -4,177 +4,8 @@ part of 'dashboard_screen.dart';
 // Financial Health Tab — KPIs + Investment Costs
 // ════════════════════════════════════════════════════
 
-// ── Rating system ──
-
-enum _Rating { ottimo, buono, sufficiente, scarso, alto, na }
-
-extension _RatingExt on _Rating {
-  String label(AppStrings s) => switch (this) {
-    _Rating.ottimo => s.ratingOttimo,
-    _Rating.buono => s.ratingBuono,
-    _Rating.sufficiente => s.ratingSufficiente,
-    _Rating.scarso => s.ratingScarso,
-    _Rating.alto => s.ratingAlto,
-    _Rating.na => s.ratingNa,
-  };
-
-  Color get color => switch (this) {
-    _Rating.ottimo => const Color(0xFF4CAF50),
-    _Rating.buono => const Color(0xFF2196F3),
-    _Rating.sufficiente => const Color(0xFFFF9800),
-    _Rating.scarso => const Color(0xFFF44336),
-    _Rating.alto => const Color(0xFF4CAF50),
-    _Rating.na => Colors.grey,
-  };
-
-  int get score => switch (this) {
-    _Rating.ottimo => 100,
-    _Rating.buono || _Rating.alto => 75,
-    _Rating.sufficiente => 50,
-    _Rating.scarso => 25,
-    _Rating.na => 0,
-  };
-}
-
-// ── KPI data model ──
-
-class _HealthKpi {
-  final String name;
-  final double? value;
-  final String unit; // '%', ' mesi', '×', etc.
-  final _Rating rating;
-  final String description;
-  final String formula; // e.g. "Cash / Net Worth × 100 = 15.000 / 100.000 × 100"
-
-  const _HealthKpi({
-    required this.name,
-    this.value,
-    this.unit = '%',
-    this.rating = _Rating.na,
-    this.description = '',
-    this.formula = '',
-  });
-}
-
-class _KpiCategory {
-  final String name;
-  final List<_HealthKpi> kpis;
-  final _Rating overallRating;
-
-  const _KpiCategory({required this.name, required this.kpis, required this.overallRating});
-}
-
-// ── KPI computation ──
-
-_Rating _rateNormal(double value, double scarso, double suff, double buono) {
-  if (value >= buono) return _Rating.ottimo;
-  if (value >= suff) return _Rating.buono;
-  if (value >= scarso) return _Rating.sufficiente;
-  return _Rating.scarso;
-}
-
-_Rating _categoryRating(List<_HealthKpi> kpis) {
-  final rated = kpis.where((k) => k.rating != _Rating.na).toList();
-  if (rated.isEmpty) return _Rating.na;
-  final avg = rated.map((k) => k.rating.score).reduce((a, b) => a + b) / rated.length;
-  if (avg >= 87) return _Rating.ottimo;
-  if (avg >= 62) return _Rating.buono;
-  if (avg >= 37) return _Rating.sufficiente;
-  return _Rating.scarso;
-}
-
-List<_KpiCategory> _computeKpis({
-  required double cash,
-  required double investments,
-  required double annualIncome,
-  required double annualExpenses,
-  required double annualSavings,
-  required double monthlyExpenses,
-  required AppStrings s,
-  required String locale,
-}) {
-  final f = NumberFormat.decimalPattern(locale);
-  String n(double v) => f.format(v.round());
-
-  final grossAssets = cash + investments;
-  final netWorth = grossAssets;
-
-  // ── Liquidità ──
-  final liquidityRatio = netWorth > 0 ? cash / netWorth * 100 : 0.0;
-  final liquidityRating = _rateNormal(liquidityRatio, 10, 15, 25);
-
-  final coverageMonths = monthlyExpenses > 0 ? cash / monthlyExpenses : 0.0;
-  final coverageRating = _rateNormal(coverageMonths, 3, 6, 12);
-
-  final savingsRate = annualIncome > 0 ? annualSavings / annualIncome * 100 : 0.0;
-  final savingsRating = _rateNormal(savingsRate, 10, 20, 40);
-
-  final liquidityKpis = [
-    _HealthKpi(
-      name: s.kpiLiquidityRatio,
-      value: liquidityRatio,
-      rating: liquidityRating,
-      description: s.kpiLiquidityDesc(liquidityRating == _Rating.ottimo ? 'ottimo' : liquidityRating == _Rating.buono ? 'buono' : liquidityRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
-      formula: 'Cash / Net Worth × 100\n${n(cash)} / ${n(netWorth)} × 100',
-    ),
-    _HealthKpi(
-      name: s.kpiExpenseCoverage,
-      value: coverageMonths,
-      unit: _unitMonths(s),
-      rating: coverageRating,
-      description: s.kpiCoverageDesc(coverageMonths.round()),
-      formula: 'Cash / Monthly Expenses\n${n(cash)} / ${n(monthlyExpenses)}',
-    ),
-    _HealthKpi(
-      name: s.kpiSavingsRate,
-      value: savingsRate,
-      rating: savingsRating,
-      description: s.kpiSavingsDesc(savingsRating == _Rating.ottimo ? 'ottimo' : savingsRating == _Rating.buono ? 'buono' : savingsRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
-      formula: 'Savings / Income × 100\n${n(annualSavings)} / ${n(annualIncome)} × 100',
-    ),
-  ];
-
-  // ── Finanziari e Ricchezza ──
-  final investWeight = grossAssets > 0 ? investments / grossAssets * 100 : 0.0;
-  final investWeightRating = investWeight >= 60 ? _Rating.alto : _rateNormal(investWeight, 20, 40, 60);
-
-  final liquidAssetRatio = grossAssets > 0 ? (cash + investments) / grossAssets * 100 : 0.0;
-  final liquidAssetRating = _rateNormal(liquidAssetRatio, 50, 65, 80);
-
-  final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
-  final incomeToWealthRating = _rateNormal(incomeToWealth, 5, 10, 20);
-
-  final wealthKpis = [
-    _HealthKpi(
-      name: s.kpiInvestmentWeight,
-      value: investWeight,
-      rating: investWeightRating,
-      description: s.kpiInvestWeightDesc(investWeightRating.name),
-      formula: 'Investments / Gross Assets × 100\n${n(investments)} / ${n(grossAssets)} × 100',
-    ),
-    _HealthKpi(
-      name: s.kpiLiquidAssetRatio,
-      value: liquidAssetRatio,
-      rating: liquidAssetRating,
-      description: s.kpiLiquidAssetDesc(liquidAssetRating == _Rating.ottimo || liquidAssetRating == _Rating.buono ? 'ottimo' : 'altro'),
-      formula: '(Cash + Investments) / Gross Assets × 100\n(${n(cash)} + ${n(investments)}) / ${n(grossAssets)} × 100',
-    ),
-    _HealthKpi(
-      name: s.kpiIncomeToWealth,
-      value: incomeToWealth,
-      rating: incomeToWealthRating,
-      description: s.kpiIncomeWealthDesc(incomeToWealthRating == _Rating.ottimo || incomeToWealthRating == _Rating.buono ? 'ottimo' : 'altro'),
-      formula: 'Income / Net Worth × 100\n${n(annualIncome)} / ${n(netWorth)} × 100',
-    ),
-  ];
-
-  return [
-    _KpiCategory(name: s.healthCatLiquidity, kpis: liquidityKpis, overallRating: _categoryRating(liquidityKpis)),
-    _KpiCategory(name: s.healthCatWealth, kpis: wealthKpis, overallRating: _categoryRating(wealthKpis)),
-  ];
-}
-
-String _unitMonths(AppStrings s) => s.ratingOttimo == 'Ottimo' ? ' mesi' : ' months';
+// KPI computation logic lives in lib/services/financial_health_service.dart
+// (Rating, HealthKpi, KpiCategory, rateNormal, categoryRating, computeKpis)
 
 // ── Main widget ──
 
@@ -222,7 +53,7 @@ class _FinancialHealthTab extends ConsumerWidget {
           monthlyExpenses = year.monthlyExpenses > 0 ? year.monthlyExpenses : 0;
         }
 
-        final categories = _computeKpis(
+        final categories = computeKpis(
           cash: cash, investments: investments,
           annualIncome: annualIncome, annualExpenses: annualExpenses,
           annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
@@ -231,13 +62,13 @@ class _FinancialHealthTab extends ConsumerWidget {
 
         // Overall score
         final allKpis = categories.expand((c) => c.kpis).toList();
-        final ratedKpis = allKpis.where((k) => k.rating != _Rating.na).toList();
+        final ratedKpis = allKpis.where((k) => k.rating != Rating.na).toList();
         final overallScore = ratedKpis.isEmpty ? 0.0
             : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
-        final overallRating = overallScore >= 87 ? _Rating.ottimo
-            : overallScore >= 62 ? _Rating.buono
-            : overallScore >= 37 ? _Rating.sufficiente
-            : _Rating.scarso;
+        final overallRating = overallScore >= 87 ? Rating.ottimo
+            : overallScore >= 62 ? Rating.buono
+            : overallScore >= 37 ? Rating.sufficiente
+            : Rating.scarso;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -292,8 +123,8 @@ class _FinancialHealthTab extends ConsumerWidget {
 
 class _SummarySection extends StatelessWidget {
   final double score;
-  final _Rating overallRating;
-  final List<_KpiCategory> categories;
+  final Rating overallRating;
+  final List<KpiCategory> categories;
   final AppStrings s;
   final bool isPrivate;
 
@@ -406,7 +237,7 @@ class _ScoreGaugePainter extends CustomPainter {
 // ── KPI Card ──
 
 class _KpiCard extends StatefulWidget {
-  final _HealthKpi kpi;
+  final HealthKpi kpi;
   final NumberFormat pctFmt;
   final AppStrings s;
   final bool isPrivate;
@@ -498,7 +329,7 @@ class _KpiCardState extends State<_KpiCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    kpi.rating == _Rating.scarso ? Icons.error : kpi.rating == _Rating.sufficiente ? Icons.warning : Icons.check_circle,
+                    kpi.rating == Rating.scarso ? Icons.error : kpi.rating == Rating.sufficiente ? Icons.warning : Icons.check_circle,
                     size: 16,
                     color: kpi.rating.color,
                   ),
@@ -521,7 +352,7 @@ class _KpiCardState extends State<_KpiCard> {
 // ── Traffic light gauge ──
 
 class _TrafficLightGauge extends StatelessWidget {
-  final _Rating rating;
+  final Rating rating;
   final double value;
 
   const _TrafficLightGauge({required this.rating, required this.value});

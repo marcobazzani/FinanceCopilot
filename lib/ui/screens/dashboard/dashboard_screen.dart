@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../utils/chart_math.dart' as chart_math;
 import '../../../utils/formatters.dart' as fmt;
 
 import '../../../database/database.dart';
@@ -18,6 +19,7 @@ import '../../../database/providers.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/exchange_rate_service.dart';
 import '../../../services/investing_com_service.dart';
+import '../../../services/financial_health_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
