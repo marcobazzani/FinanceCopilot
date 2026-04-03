@@ -19,7 +19,6 @@ class _FinancialHealthTab extends ConsumerWidget {
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
-    final compositionsAsync = ref.watch(assetCompositionsProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
     // Price changes for Today, YTD, All — use midnight dates to match History tab
@@ -137,10 +136,14 @@ class _FinancialHealthTab extends ConsumerWidget {
                   return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
                 }
 
-                final compositions = compositionsAsync.value ?? {};
-                final byHolding = weightedBreakdown(activeAssets, marketValues, compositions, 'holding', (a) => a.name);
-                final holdingTotal = byHolding.values.fold(0.0, (a, b) => a + b);
-                final conc = computeConcentration(byHolding.entries.toList(), holdingTotal);
+                // HHI uses actual portfolio positions, not ETF look-through
+                final byPosition = <String, double>{};
+                for (final asset in activeAssets) {
+                  final mv = marketValues[asset.id] ?? 0.0;
+                  if (mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
+                }
+                final positionTotal = byPosition.values.fold(0.0, (a, b) => a + b);
+                final conc = computeConcentration(byPosition.entries.toList(), positionTotal);
 
                 return Wrap(
                   spacing: 12,
