@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/privacy_text.dart';
 
 import '../../database/database.dart';
+import '../../services/allocation_computation_service.dart' as alloc;
 import '../../services/providers/providers.dart';
 import 'package:intl/intl.dart';
 
@@ -48,34 +49,16 @@ Map<String, double> _groupByField(
   List<Asset> assets,
   Map<int, double> values,
   String Function(Asset) keyFn,
-) {
-  final map = <String, double>{};
-  for (final asset in assets) {
-    final val = values[asset.id];
-    if (val == null || val == 0) continue;
-    final key = keyFn(asset);
-    map[key] = (map[key] ?? 0) + val;
-  }
-  final sorted = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-  return Map.fromEntries(sorted);
-}
+) =>
+    alloc.groupByField(assets, values, keyFn);
 
 /// Drill-down for simple field grouping: for each group key, which assets contribute.
 Map<String, Map<String, double>> _drillDownByField(
   List<Asset> assets,
   Map<int, double> values,
   String Function(Asset) keyFn,
-) {
-  final result = <String, Map<String, double>>{};
-  for (final asset in assets) {
-    final val = values[asset.id];
-    if (val == null || val <= 0) continue;
-    final key = keyFn(asset);
-    result.putIfAbsent(key, () => {});
-    result[key]![asset.name] = (result[key]![asset.name] ?? 0) + val;
-  }
-  return result;
-}
+) =>
+    alloc.drillDownByField(assets, values, keyFn);
 
 String _pct(double value, double total) =>
     total > 0 ? '${(value / total * 100).toStringAsFixed(1)}%' : '0%';
@@ -90,28 +73,8 @@ Map<String, double> _weightedBreakdown(
   Map<int, List<AssetComposition>> compositions,
   String compositionType,
   String Function(Asset) fallback,
-) {
-  final result = <String, double>{};
-  for (final asset in assets) {
-    final mv = marketValues[asset.id] ?? 0;
-    if (mv <= 0) continue;
-
-    final comps = compositions[asset.id]
-        ?.where((c) => c.type == compositionType)
-        .toList();
-
-    if (comps != null && comps.isNotEmpty) {
-      for (final c in comps) {
-        result[c.name] = (result[c.name] ?? 0) + mv * c.weight / 100;
-      }
-    } else {
-      final key = fallback(asset);
-      result[key] = (result[key] ?? 0) + mv;
-    }
-  }
-  final sorted = result.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-  return Map.fromEntries(sorted);
-}
+) =>
+    alloc.weightedBreakdown(assets, marketValues, compositions, compositionType, fallback);
 
 /// Compute drill-down data: for each key in the breakdown, which assets contribute.
 /// Returns `Map<sliceKey, Map<assetName, value>>`.
@@ -121,30 +84,8 @@ Map<String, Map<String, double>> _drillDownData(
   Map<int, List<AssetComposition>> compositions,
   String compositionType,
   String Function(Asset) fallback,
-) {
-  final result = <String, Map<String, double>>{};
-  for (final asset in assets) {
-    final mv = marketValues[asset.id] ?? 0;
-    if (mv <= 0) continue;
-
-    final comps = compositions[asset.id]
-        ?.where((c) => c.type == compositionType)
-        .toList();
-
-    if (comps != null && comps.isNotEmpty) {
-      for (final c in comps) {
-        final contribution = mv * c.weight / 100;
-        result.putIfAbsent(c.name, () => {});
-        result[c.name]![asset.name] = (result[c.name]![asset.name] ?? 0) + contribution;
-      }
-    } else {
-      final key = fallback(asset);
-      result.putIfAbsent(key, () => {});
-      result[key]![asset.name] = (result[key]![asset.name] ?? 0) + mv;
-    }
-  }
-  return result;
-}
+) =>
+    alloc.drillDownData(assets, marketValues, compositions, compositionType, fallback);
 
 // ════════════════════════════════════════════════════
 // AllocationTab
@@ -648,18 +589,7 @@ class _ConcentrationCard extends ConsumerWidget {
     final isPrivate = ref.watch(privacyModeProvider);
     final sl = ref.watch(appStringsProvider);
     final count = holdings.length;
-    final top1 = count >= 1 ? holdings[0].value / total * 100 : 0.0;
-    final top3 = count >= 3
-        ? holdings.take(3).fold(0.0, (a, b) => a + b.value) / total * 100
-        : (count > 0 ? holdings.fold(0.0, (a, b) => a + b.value) / total * 100 : 0.0);
-    final top5 = count >= 5
-        ? holdings.take(5).fold(0.0, (a, b) => a + b.value) / total * 100
-        : (count > 0 ? holdings.fold(0.0, (a, b) => a + b.value) / total * 100 : 0.0);
-
-    // Herfindahl-Hirschman Index
-    final hhi = total > 0
-        ? holdings.fold(0.0, (sum, e) => sum + pow(e.value / total, 2)) * 10000
-        : 0.0;
+    final conc = alloc.computeConcentration(holdings, total);
 
     return SizedBox(
       width: 480,
@@ -675,16 +605,16 @@ class _ConcentrationCard extends ConsumerWidget {
               _metricRow(sl.allocPortfolioVal, _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
               _metricRow(sl.allocHoldings, '$count'),
               const Divider(),
-              _metricRow('Top 1', '${top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
-              _metricRow('Top 3', '${top3.toStringAsFixed(1)}%'),
-              _metricRow('Top 5', '${top5.toStringAsFixed(1)}%'),
+              _metricRow('Top 1', '${conc.top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
+              _metricRow('Top 3', '${conc.top3.toStringAsFixed(1)}%'),
+              _metricRow('Top 5', '${conc.top5.toStringAsFixed(1)}%'),
               const Divider(),
-              _metricRow('HHI', hhi.toStringAsFixed(0)),
+              _metricRow('HHI', conc.hhi.toStringAsFixed(0)),
               Text(
-                hhi < 1500 ? sl.allocWellDiversified : hhi < 2500 ? sl.allocModeratelyConcentrated : sl.allocHighlyConcentrated,
+                conc.classification == 'diversified' ? sl.allocWellDiversified : conc.classification == 'moderate' ? sl.allocModeratelyConcentrated : sl.allocHighlyConcentrated,
                 style: TextStyle(
                   fontSize: 12,
-                  color: hhi < 1500 ? Colors.green : hhi < 2500 ? Colors.orange : Colors.red,
+                  color: conc.classification == 'diversified' ? Colors.green : conc.classification == 'moderate' ? Colors.orange : Colors.red,
                 ),
               ),
             ],
