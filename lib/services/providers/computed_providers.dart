@@ -74,6 +74,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final priceService = ref.watch(marketPriceServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  ref.watch(priceRefreshCounter); // rebuild after price sync
 
   final result = <int, double>{};
   final now = DateTime.now();
