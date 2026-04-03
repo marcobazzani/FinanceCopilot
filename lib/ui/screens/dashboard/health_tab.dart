@@ -4,184 +4,8 @@ part of 'dashboard_screen.dart';
 // Financial Health Tab — KPIs + Investment Costs
 // ════════════════════════════════════════════════════
 
-// ── Rating system ──
-
-enum _Rating { ottimo, buono, sufficiente, scarso, alto, na }
-
-extension _RatingExt on _Rating {
-  String label(AppStrings s) => switch (this) {
-    _Rating.ottimo => s.ratingOttimo,
-    _Rating.buono => s.ratingBuono,
-    _Rating.sufficiente => s.ratingSufficiente,
-    _Rating.scarso => s.ratingScarso,
-    _Rating.alto => s.ratingAlto,
-    _Rating.na => s.ratingNa,
-  };
-
-  Color get color => switch (this) {
-    _Rating.ottimo => const Color(0xFF4CAF50),
-    _Rating.buono => const Color(0xFF2196F3),
-    _Rating.sufficiente => const Color(0xFFFF9800),
-    _Rating.scarso => const Color(0xFFF44336),
-    _Rating.alto => const Color(0xFF4CAF50),
-    _Rating.na => Colors.grey,
-  };
-
-  int get score => switch (this) {
-    _Rating.ottimo => 100,
-    _Rating.buono || _Rating.alto => 75,
-    _Rating.sufficiente => 50,
-    _Rating.scarso => 25,
-    _Rating.na => 0,
-  };
-}
-
-// ── KPI data model ──
-
-class _HealthKpi {
-  final String name;
-  final double? value;
-  final String unit; // '%', ' mesi', '×', etc.
-  final _Rating rating;
-  final String description;
-  final String formula; // e.g. "Cash / Net Worth × 100 = 15.000 / 100.000 × 100"
-
-  const _HealthKpi({
-    required this.name,
-    this.value,
-    this.unit = '%',
-    this.rating = _Rating.na,
-    this.description = '',
-    this.formula = '',
-  });
-}
-
-class _KpiCategory {
-  final String name;
-  final List<_HealthKpi> kpis;
-  final _Rating overallRating;
-
-  const _KpiCategory({required this.name, required this.kpis, required this.overallRating});
-}
-
-// ── KPI computation ──
-
-_Rating _rateNormal(double value, double scarso, double suff, double buono) {
-  if (value >= buono) return _Rating.ottimo;
-  if (value >= suff) return _Rating.buono;
-  if (value >= scarso) return _Rating.sufficiente;
-  return _Rating.scarso;
-}
-
-_Rating _rateInverted(double value, double ottimo, double buono, double suff) {
-  if (value <= ottimo) return _Rating.ottimo;
-  if (value <= buono) return _Rating.buono;
-  if (value <= suff) return _Rating.sufficiente;
-  return _Rating.scarso;
-}
-
-_Rating _categoryRating(List<_HealthKpi> kpis) {
-  final rated = kpis.where((k) => k.rating != _Rating.na).toList();
-  if (rated.isEmpty) return _Rating.na;
-  final avg = rated.map((k) => k.rating.score).reduce((a, b) => a + b) / rated.length;
-  if (avg >= 87) return _Rating.ottimo;
-  if (avg >= 62) return _Rating.buono;
-  if (avg >= 37) return _Rating.sufficiente;
-  return _Rating.scarso;
-}
-
-List<_KpiCategory> _computeKpis({
-  required double cash,
-  required double investments,
-  required double annualIncome,
-  required double annualExpenses,
-  required double annualSavings,
-  required double monthlyExpenses,
-  required AppStrings s,
-  required String locale,
-}) {
-  final f = NumberFormat.decimalPattern(locale);
-  String n(double v) => f.format(v.round());
-
-  final grossAssets = cash + investments;
-  final netWorth = grossAssets;
-
-  // ── Liquidità ──
-  final liquidityRatio = netWorth > 0 ? cash / netWorth * 100 : 0.0;
-  final liquidityRating = _rateNormal(liquidityRatio, 10, 15, 25);
-
-  final coverageMonths = monthlyExpenses > 0 ? cash / monthlyExpenses : 0.0;
-  final coverageRating = _rateNormal(coverageMonths, 3, 6, 12);
-
-  final savingsRate = annualIncome > 0 ? annualSavings / annualIncome * 100 : 0.0;
-  final savingsRating = _rateNormal(savingsRate, 10, 20, 40);
-
-  final liquidityKpis = [
-    _HealthKpi(
-      name: s.kpiLiquidityRatio,
-      value: liquidityRatio,
-      rating: liquidityRating,
-      description: s.kpiLiquidityDesc(liquidityRating == _Rating.ottimo ? 'ottimo' : liquidityRating == _Rating.buono ? 'buono' : liquidityRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
-      formula: 'Cash / Net Worth × 100\n${n(cash)} / ${n(netWorth)} × 100',
-    ),
-    _HealthKpi(
-      name: s.kpiExpenseCoverage,
-      value: coverageMonths,
-      unit: _unitMonths(s),
-      rating: coverageRating,
-      description: s.kpiCoverageDesc(coverageMonths.round()),
-      formula: 'Cash / Monthly Expenses\n${n(cash)} / ${n(monthlyExpenses)}',
-    ),
-    _HealthKpi(
-      name: s.kpiSavingsRate,
-      value: savingsRate,
-      rating: savingsRating,
-      description: s.kpiSavingsDesc(savingsRating == _Rating.ottimo ? 'ottimo' : savingsRating == _Rating.buono ? 'buono' : savingsRating == _Rating.sufficiente ? 'sufficiente' : 'scarso'),
-      formula: 'Savings / Income × 100\n${n(annualSavings)} / ${n(annualIncome)} × 100',
-    ),
-  ];
-
-  // ── Finanziari e Ricchezza ──
-  final investWeight = grossAssets > 0 ? investments / grossAssets * 100 : 0.0;
-  final investWeightRating = investWeight >= 60 ? _Rating.alto : _rateNormal(investWeight, 20, 40, 60);
-
-  final liquidAssetRatio = grossAssets > 0 ? (cash + investments) / grossAssets * 100 : 0.0;
-  final liquidAssetRating = _rateNormal(liquidAssetRatio, 50, 65, 80);
-
-  final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
-  final incomeToWealthRating = _rateNormal(incomeToWealth, 5, 10, 20);
-
-  final wealthKpis = [
-    _HealthKpi(
-      name: s.kpiInvestmentWeight,
-      value: investWeight,
-      rating: investWeightRating,
-      description: s.kpiInvestWeightDesc(investWeightRating.name),
-      formula: 'Investments / Gross Assets × 100\n${n(investments)} / ${n(grossAssets)} × 100',
-    ),
-    _HealthKpi(
-      name: s.kpiLiquidAssetRatio,
-      value: liquidAssetRatio,
-      rating: liquidAssetRating,
-      description: s.kpiLiquidAssetDesc(liquidAssetRating == _Rating.ottimo || liquidAssetRating == _Rating.buono ? 'ottimo' : 'altro'),
-      formula: '(Cash + Investments) / Gross Assets × 100\n(${n(cash)} + ${n(investments)}) / ${n(grossAssets)} × 100',
-    ),
-    _HealthKpi(
-      name: s.kpiIncomeToWealth,
-      value: incomeToWealth,
-      rating: incomeToWealthRating,
-      description: s.kpiIncomeWealthDesc(incomeToWealthRating == _Rating.ottimo || incomeToWealthRating == _Rating.buono ? 'ottimo' : 'altro'),
-      formula: 'Income / Net Worth × 100\n${n(annualIncome)} / ${n(netWorth)} × 100',
-    ),
-  ];
-
-  return [
-    _KpiCategory(name: s.healthCatLiquidity, kpis: liquidityKpis, overallRating: _categoryRating(liquidityKpis)),
-    _KpiCategory(name: s.healthCatWealth, kpis: wealthKpis, overallRating: _categoryRating(wealthKpis)),
-  ];
-}
-
-String _unitMonths(AppStrings s) => s.ratingOttimo == 'Ottimo' ? ' mesi' : ' months';
+// KPI computation logic lives in lib/services/financial_health_service.dart
+// (Rating, HealthKpi, KpiCategory, rateNormal, categoryRating, computeKpis)
 
 // ── Main widget ──
 
@@ -195,13 +19,23 @@ class _FinancialHealthTab extends ConsumerWidget {
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
-    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+
+    // Price changes for Today, YTD, All — use midnight dates to match History tab
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final todayChanges = ref.watch(assetDailyChangesProvider(today.subtract(const Duration(days: 1))));
+    final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, 1, 1)));
+    final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
     final isPrivate = ref.watch(privacyModeProvider);
 
-    final symbol = currencySymbol(baseCurrency);
-    final amtFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
     final pctFmt = NumberFormat('0.00', locale);
+
+    // Wait for all required data before rendering — avoids flicker with zeros
+    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (assetsAsync.hasError) return Center(child: Text(s.error(assetsAsync.error ?? '')));
 
     return assetsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -211,40 +45,106 @@ class _FinancialHealthTab extends ConsumerWidget {
         final accountStats = accountStatsAsync.value ?? {};
         final ieData = ieAsync.value;
 
-        // Compute totals
+        // Compute totals — split liquid vs illiquid investments
         final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
         final activeAssets = assets.where((a) => a.isActive).toList();
-        double investments = 0;
+        const illiquidTypes = {InstrumentType.pension, InstrumentType.realEstate, InstrumentType.alternative, InstrumentType.liability};
+        double liquidInvestments = 0;
+        double illiquidInvestments = 0;
         for (final asset in activeAssets) {
-          investments += marketValues[asset.id] ?? 0.0;
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (illiquidTypes.contains(asset.instrumentType)) {
+            illiquidInvestments += mv;
+          } else {
+            liquidInvestments += mv;
+          }
         }
+        final investments = liquidInvestments + illiquidInvestments;
 
-        // Income/expense from last complete year (second-to-last), fallback to current
+        // Current year for savings/expenses. Rolling 12m for income-to-wealth.
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
+        double rollingIncome = 0;
         if (ieData != null && ieData.years.isNotEmpty) {
-          final year = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : ieData.years.last;
-          annualIncome = year.income;
-          annualExpenses = year.expenses > 0 ? year.expenses : 0;
-          annualSavings = year.savings;
-          monthlyExpenses = year.monthlyExpenses > 0 ? year.monthlyExpenses : 0;
+          final currentYear = ieData.years.last;
+          annualIncome = currentYear.income;
+          annualExpenses = currentYear.expenses > 0 ? currentYear.expenses : 0;
+          annualSavings = currentYear.savings;
+          monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
+          // Rolling 12 months income for income-to-wealth ratio
+          final now = DateTime.now();
+          final cutoff = DateTime(now.year - 1, now.month, now.day);
+          for (final year in ieData.years) {
+            for (final month in year.months) {
+              if (DateTime(month.year, month.month).isAfter(cutoff)) {
+                rollingIncome += month.income;
+              }
+            }
+          }
         }
 
-        final categories = _computeKpis(
+        final categories = computeKpis(
           cash: cash, investments: investments,
-          annualIncome: annualIncome, annualExpenses: annualExpenses,
+          liquidInvestments: liquidInvestments,
+          annualIncome: annualIncome, rollingIncome: rollingIncome,
+          annualExpenses: annualExpenses,
           annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
           s: s, locale: locale,
         );
 
-        // Overall score
-        final allKpis = categories.expand((c) => c.kpis).toList();
-        final ratedKpis = allKpis.where((k) => k.rating != _Rating.na).toList();
+        // Build Performance & Diversification category
+        HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
+          final data = changes.value;
+          if (data == null || data.isEmpty) return HealthKpi(name: name, value: 0, rating: Rating.na);
+          final pairs = data.map((c) => (
+            c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
+            c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
+          )).toList();
+          final pct = computePriceChangePct(pairs);
+          return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
+        }
+        final byPosition = <String, double>{};
+        for (final asset in activeAssets) {
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
+        }
+        final positionTotal = byPosition.values.fold(0.0, (a, b) => a + b);
+        final conc = computeConcentration(byPosition.entries.toList(), positionTotal);
+
+        var terCost = 0.0, terTotal = 0.0;
+        for (final asset in activeAssets) {
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (mv <= 0) continue;
+          terTotal += mv;
+          if (asset.ter != null && asset.ter! > 0) terCost += mv * asset.ter! / 100;
+        }
+        final weightedTer = terTotal > 0 ? terCost / terTotal * 100 : 0.0;
+
+        final perfKpis = [
+          changeKpi(s.kpiToday, todayChanges),
+          changeKpi(s.kpiYtd, ytdChanges),
+          changeKpi(s.kpiAllTime, allChanges),
+          HealthKpi(name: 'HHI', value: conc.hhi, unit: '', rating: rateHhi(conc.hhi),
+            formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
+          HealthKpi(name: s.healthTer, value: weightedTer, unit: '%',
+            rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
+            formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%'),
+        ];
+        final perfCategory = KpiCategory(
+          name: s.healthPerformance,
+          kpis: perfKpis,
+          overallRating: categoryRating(perfKpis),
+        );
+        final allCategories = [...categories, perfCategory];
+
+        // Overall score includes all categories
+        final allKpis = allCategories.expand((c) => c.kpis).toList();
+        final ratedKpis = allKpis.where((k) => k.rating != Rating.na).toList();
         final overallScore = ratedKpis.isEmpty ? 0.0
             : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
-        final overallRating = overallScore >= 87 ? _Rating.ottimo
-            : overallScore >= 62 ? _Rating.buono
-            : overallScore >= 37 ? _Rating.sufficiente
-            : _Rating.scarso;
+        final overallRating = overallScore >= 87 ? Rating.ottimo
+            : overallScore >= 62 ? Rating.buono
+            : overallScore >= 37 ? Rating.sufficiente
+            : Rating.scarso;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -255,16 +155,16 @@ class _FinancialHealthTab extends ConsumerWidget {
               _SummarySection(
                 score: overallScore,
                 overallRating: overallRating,
-                categories: categories,
+                categories: allCategories,
                 s: s,
                 isPrivate: isPrivate,
               ),
               const SizedBox(height: 24),
 
-              // ── KPI Cards ──
+              // ── KPI Cards (all categories including Performance & Diversification) ──
               Text(s.healthKpis, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
-              for (final cat in categories) ...[
+              for (final cat in allCategories) ...[
                 const SizedBox(height: 16),
                 Text(cat.name, style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -279,14 +179,6 @@ class _FinancialHealthTab extends ConsumerWidget {
                   )).toList(),
                 ),
               ],
-
-              // ── Investment Costs table ──
-              const SizedBox(height: 32),
-              _InvestmentCostsSection(
-                assets: activeAssets, marketValues: marketValues,
-                amtFmt: amtFmt, pctFmt: pctFmt, s: s, isPrivate: isPrivate,
-                context: context,
-              ),
             ],
           ),
         );
@@ -299,8 +191,8 @@ class _FinancialHealthTab extends ConsumerWidget {
 
 class _SummarySection extends StatelessWidget {
   final double score;
-  final _Rating overallRating;
-  final List<_KpiCategory> categories;
+  final Rating overallRating;
+  final List<KpiCategory> categories;
   final AppStrings s;
   final bool isPrivate;
 
@@ -413,7 +305,7 @@ class _ScoreGaugePainter extends CustomPainter {
 // ── KPI Card ──
 
 class _KpiCard extends StatefulWidget {
-  final _HealthKpi kpi;
+  final HealthKpi kpi;
   final NumberFormat pctFmt;
   final AppStrings s;
   final bool isPrivate;
@@ -505,7 +397,7 @@ class _KpiCardState extends State<_KpiCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    kpi.rating == _Rating.scarso ? Icons.error : kpi.rating == _Rating.sufficiente ? Icons.warning : Icons.check_circle,
+                    kpi.rating == Rating.scarso ? Icons.error : kpi.rating == Rating.sufficiente ? Icons.warning : Icons.check_circle,
                     size: 16,
                     color: kpi.rating.color,
                   ),
@@ -528,7 +420,7 @@ class _KpiCardState extends State<_KpiCard> {
 // ── Traffic light gauge ──
 
 class _TrafficLightGauge extends StatelessWidget {
-  final _Rating rating;
+  final Rating rating;
   final double value;
 
   const _TrafficLightGauge({required this.rating, required this.value});
@@ -582,117 +474,3 @@ class _GaugePainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugePainter old) => old.position != position;
 }
 
-// ── Investment Costs Section (extracted from old _FinancialHealthTab) ──
-
-class _InvestmentCostsSection extends StatelessWidget {
-  final List<Asset> assets;
-  final Map<int, double> marketValues;
-  final NumberFormat amtFmt;
-  final NumberFormat pctFmt;
-  final AppStrings s;
-  final bool isPrivate;
-  final BuildContext context;
-
-  const _InvestmentCostsSection({
-    required this.assets, required this.marketValues,
-    required this.amtFmt, required this.pctFmt,
-    required this.s, required this.isPrivate, required this.context,
-  });
-
-  @override
-  Widget build(BuildContext innerContext) {
-    final theme = Theme.of(context);
-    final rows = <_CostRow>[];
-    double totalValue = 0, totalCost = 0;
-
-    for (final asset in assets) {
-      final mv = marketValues[asset.id];
-      if (mv == null || mv <= 0) continue;
-      totalValue += mv;
-      if (asset.ter != null && asset.ter! > 0) {
-        final annualCost = mv * asset.ter! / 100;
-        rows.add(_CostRow(name: asset.ticker ?? asset.name, fullName: asset.name, ter: asset.ter!, marketValue: mv, annualCost: annualCost));
-        totalCost += annualCost;
-      } else {
-        rows.add(_CostRow(name: asset.ticker ?? asset.name, fullName: asset.name, ter: null, marketValue: mv, annualCost: 0));
-      }
-    }
-    rows.sort((a, b) => b.annualCost.compareTo(a.annualCost));
-    final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(s.healthInvestmentCosts, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 16),
-            if (rows.isEmpty)
-              Text(s.healthNoTer, style: const TextStyle(color: Colors.grey))
-            else ...[
-              _buildHeader(theme),
-              const Divider(height: 1),
-              ...rows.map((row) => _buildRow(row, theme)),
-              const Divider(height: 16, thickness: 2),
-              _buildTotal(theme, totalValue, totalCost, weightedTer),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(ThemeData theme) {
-    final style = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(children: [
-        Expanded(flex: 4, child: Text(s.healthAsset, style: style)),
-        Expanded(flex: 2, child: Text(s.healthTer, style: style, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: Text(s.healthMarketValue, style: style, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: Text(s.healthAnnualCost, style: style, textAlign: TextAlign.right)),
-      ]),
-    );
-  }
-
-  Widget _buildRow(_CostRow row, ThemeData theme) {
-    final vs = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Expanded(flex: 4, child: Tooltip(message: row.fullName, child: Text(row.name, style: vs, overflow: TextOverflow.ellipsis))),
-        Expanded(flex: 2, child: Text(row.ter != null ? '${pctFmt.format(row.ter)}%' : '-', style: vs?.copyWith(color: row.ter != null ? _terColor(row.ter!) : Colors.grey), textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(amtFmt.format(row.marketValue), style: vs, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(row.ter != null ? amtFmt.format(row.annualCost) : '-', style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey, fontWeight: row.ter != null ? FontWeight.w600 : null), textAlign: TextAlign.right)),
-      ]),
-    );
-  }
-
-  Widget _buildTotal(ThemeData theme, double totalValue, double totalCost, double weightedTer) {
-    final bs = theme.textTheme.bodySmall?.copyWith(fontSize: 13, fontWeight: FontWeight.bold);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Expanded(flex: 4, child: Text(s.healthWeightedTer, style: bs)),
-        Expanded(flex: 2, child: Text('${pctFmt.format(weightedTer)}%', style: bs?.copyWith(color: _terColor(weightedTer)), textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(amtFmt.format(totalValue), style: bs, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(amtFmt.format(totalCost), style: bs?.copyWith(color: Colors.red.shade400), textAlign: TextAlign.right)),
-      ]),
-    );
-  }
-
-  static Color _terColor(double ter) {
-    if (ter <= 0.20) return Colors.green.shade400;
-    if (ter <= 0.50) return Colors.lightGreen;
-    if (ter <= 1.00) return Colors.orange;
-    return Colors.red.shade400;
-  }
-}
-
-class _CostRow {
-  final String name, fullName;
-  final double? ter;
-  final double marketValue, annualCost;
-  const _CostRow({required this.name, required this.fullName, required this.ter, required this.marketValue, required this.annualCost});
-}

@@ -70,9 +70,10 @@ class AppStrings {
   String get settingsCacheCleared       => _it ? 'Dati in cache cancellati'   : 'Cached data cleared';
 
   // ── Dashboard ───────────────────────────────────────────
-  String get dashTabOverall      => _it ? 'Generale'         : 'Overall';
+  String get dashTabHistory      => _it ? 'Storico'           : 'History';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';
   String get dashTabAllocation   => _it ? 'Allocazione'      : 'Allocation';
+  String get dashTabAssetsOverview => _it ? 'Panoramica Asset' : 'Assets Overview';
   String get dashTabHealth       => _it ? 'Salute'            : 'Health';
 
   // ── Financial Health ──
@@ -88,6 +89,10 @@ class AppStrings {
   // ── Health KPIs ──
   String get healthSummary         => _it ? 'Riepilogo'               : 'Summary';
   String get healthKpis            => _it ? 'Indicatori ed Indici'    : 'KPIs & Indices';
+  String get healthPerformance     => _it ? 'Performance e Diversificazione' : 'Performance & Diversification';
+  String get kpiToday              => _it ? 'Oggi'                   : 'Today';
+  String get kpiYtd                => _it ? 'Da inizio anno'         : 'YTD';
+  String get kpiAllTime            => _it ? 'Dall\'inizio'           : 'All Time';
   String get healthDetails         => _it ? 'Dettagli'                : 'Details';
 
   // Ratings
@@ -616,6 +621,17 @@ class AppStrings {
   // ── Allocation ───────────────────────────────────────────
   String get noMarketValues    => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';
   String get noData            => _it ? 'Nessun dato'               : 'No data';
+  String get noDataYet         => _it ? 'Nessun dato ancora.'       : 'No data yet.';
+  String get marketOpen        => _it ? 'Mercato aperto'            : 'Market open';
+  String get marketClosed      => _it ? 'Mercato chiuso'            : 'Market closed';
+  String get currentValue      => _it ? 'Valore attuale'            : 'Current Value';
+
+  // ── Import wizard ──────────────────────────────────────────
+  String get buySellDetection  => _it ? 'Rilevamento Acquisto / Vendita' : 'Buy / Sell Detection';
+  String get mapBuySell        => _it ? 'Mappa valori in Acquisto / Vendita:' : 'Map values to Buy / Sell:';
+  String get feeCommission     => _it ? 'Commissione'               : 'Fee / Commission';
+  String get balanceColumn     => _it ? 'Colonna saldo:'            : 'Balance column:';
+  String get amountRequired    => _it ? 'importo *'                 : 'amount *';
   String get concentrationRisk => _it ? 'Rischio concentrazione'    : 'Concentration Risk';
   String get unclassified      => _it ? 'Non classificato'          : 'Unclassified';
   String get allocGeographic   => _it ? 'Allocazione geografica'    : 'Geographic Allocation';

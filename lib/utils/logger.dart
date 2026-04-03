@@ -18,7 +18,7 @@ void _debugLog(String msg) {
 }
 
 /// Initialize logging for the whole app. Call once in main().
-/// Logs to <app documents>/FinanceCopilot/app.log (sandbox-safe)
+/// Logs to `<app documents>`/FinanceCopilot/app.log (sandbox-safe)
 /// and also to stderr for debug console visibility.
 Future<void> initLogging() async {
   Logger.root.level = Level.ALL;

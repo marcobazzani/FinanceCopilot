@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../utils/chart_math.dart' as chart_math;
 import '../../../utils/formatters.dart' as fmt;
 
 import '../../../database/database.dart';
@@ -18,8 +19,9 @@ import '../../../database/providers.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/exchange_rate_service.dart';
 import '../../../services/investing_com_service.dart';
+import '../../../services/financial_health_service.dart';
+import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
-import '../../../utils/logger.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
 
@@ -37,8 +39,6 @@ part 'yoy_diff_table.dart';
 part 'cashflow_charts.dart';
 part 'totals_table.dart';
 part 'health_tab.dart';
-
-final _log = getLogger('DashboardScreen');
 
 // ════════════════════════════════════════════════════
 // Dashboard screen with dynamic custom charts
@@ -91,19 +91,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: [
           TabBar(
             tabs: [
-              Tab(text: s.dashTabOverall),
-              Tab(text: s.dashTabCashFlow),
-              Tab(text: s.dashTabAllocation),
               Tab(text: s.dashTabHealth),
+              Tab(text: s.dashTabHistory),
+              Tab(text: s.dashTabCashFlow),
+              Tab(text: s.dashTabAssetsOverview),
             ],
           ),
           Expanded(
             child: TabBarView(
               children: [
-                _buildChartsTab(allDataAsync, locale, language, context, s),
-                _buildCashFlowTab(allDataAsync, locale, language, context),
-                const AllocationTab(),
                 const _FinancialHealthTab(),
+                _buildChartsTab(allDataAsync, locale, language, context, s),
+                _buildCashFlowTab(allDataAsync, locale, language, context, s),
+                const AllocationTab(),
               ],
             ),
           ),
@@ -121,7 +121,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
         if (allData == null) {
           return Center(
@@ -243,15 +243,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     String locale,
     String language,
     BuildContext context,
+    AppStrings s,
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
         if (allData == null) {
-          return const Center(
-            child: Text('No data yet.',
-                style: TextStyle(color: Colors.grey)),
+          return Center(
+            child: Text(s.noDataYet,
+                style: const TextStyle(color: Colors.grey)),
           );
         }
         return _CashFlowTab(allData: allData, locale: locale, language: language);

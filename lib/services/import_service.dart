@@ -5,7 +5,7 @@ import 'package:drift/drift.dart';
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/amount_parser.dart' as amt;
-import '../utils/date_parser.dart' as dateParse;
+import '../utils/date_parser.dart' as date_parse;
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'exchange_rate_service.dart';
@@ -410,8 +410,6 @@ class ImportService {
     }
 
     // Resolve new ISINs — use selected exchanges from UI if provided
-    final newIsins = isinToRows.keys.where((i) => !existingByIsin.containsKey(i)).toList();
-
     for (final isin in isinToRows.keys) {
       if (existingByIsin.containsKey(isin)) {
         assetsByIsin[isin] = existingByIsin[isin]!;
@@ -716,8 +714,8 @@ class ImportService {
   // ──────────────────────────────────────────────
 
 
-  /// Parse a date string. Delegates to shared [dateParse.parseDate].
-  DateTime _parseDate(String s) => dateParse.parseDate(s);
+  /// Parse a date string. Delegates to shared [date_parse.parseDate].
+  DateTime _parseDate(String s) => date_parse.parseDate(s);
 
   double _parseAmount(String s) => amt.parseAmount(s);
   double? _tryParseAmount(String? s) => amt.tryParseAmount(s);

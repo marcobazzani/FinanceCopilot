@@ -83,4 +83,15 @@ class AssetEventService {
     final totalQty = row?.readNullable<double>('total_qty') ?? 0;
     return totalQty > 0 ? totalCost / totalQty : null;
   }
+
+  /// Latest revalue amount for an asset (used as manual market value fallback).
+  /// Returns null if no revalue events exist.
+  Future<double?> getLatestRevalueAmount(int assetId) async {
+    final row = await _db.customSelect(
+      "SELECT amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' "
+      "ORDER BY date DESC LIMIT 1",
+      variables: [Variable.withInt(assetId)],
+    ).getSingleOrNull();
+    return row?.readNullable<double>('amount');
+  }
 }

@@ -112,7 +112,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 6, 1),
-            type: EventType.dividend,
+            type: EventType.buy,
             amount: 50.0,
           ));
 
@@ -214,8 +214,8 @@ void main() {
       expect(s.totalQuantity, 7.0); // 10 - 3
     });
 
-    test('dividend events do not affect quantity or invested', () async {
-      final assetId = await service.create(name: 'DivTest', currency: 'EUR');
+    test('revalue events do not affect quantity or invested', () async {
+      final assetId = await service.create(name: 'RevalueTest', currency: 'EUR');
 
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
@@ -227,15 +227,15 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 6, 1),
-            type: EventType.dividend,
-            amount: 50.0,
+            type: EventType.revalue,
+            amount: 1200.0,
           ));
 
       final stats = await service.getStatsForAll();
       final s = stats[assetId]!;
       expect(s.eventCount, 2);
-      expect(s.totalInvested, 1000.0);
-      expect(s.totalQuantity, 10.0);
+      expect(s.totalInvested, 1000.0); // revalue doesn't count as invested
+      expect(s.totalQuantity, 10.0);   // revalue doesn't change quantity
     });
   });
 }

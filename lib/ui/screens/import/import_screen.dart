@@ -12,6 +12,7 @@ import 'dart:convert';
 import '../../../database/database.dart';
 import '../../../services/import_service.dart';
 import '../../../services/isin_lookup_service.dart';
+import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
 import '../../../utils/logger.dart';
 

@@ -17,7 +17,6 @@ class _YoYDiffTable extends ConsumerWidget {
     final amtFmt = fmt.amountFormat(locale);
     final theme  = Theme.of(context);
     final sym    = currencySymbol(data.baseCurrency);
-    final now    = DateTime.now();
     final years  = data.years;
 
     if (years.length < 2) {

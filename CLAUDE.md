@@ -1,6 +1,6 @@
 # Build & Deploy
 
-- Always run `dart fix --apply` before building to fix lint warnings.
+- Always run `dart fix --apply` then `dart analyze lib/` before building. Fix all issues — zero warnings/infos allowed.
 - When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
   dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
@@ -30,6 +30,8 @@
 
 - Never duplicate code. Extract shared logic into utilities or service methods.
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
+- **Financial accuracy**: NEVER silently fallback to wrong values when data is missing. No `?? 1.0` for FX rates, no returning original amounts when conversion fails. Missing data must be surfaced (log warning, show indicator, skip the calculation) — never hidden behind a default that produces silently incorrect financial figures.
+- **Tests are mandatory**: Every new feature, bug fix, or service method MUST include tests. Coverage must increase, never decrease. If an existing test needs to change, the change must be proven necessary (the old behavior was wrong), not blindly modified to make it pass.
 
 # Localization
 

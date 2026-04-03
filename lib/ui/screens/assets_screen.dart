@@ -634,8 +634,6 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
 
   // Manual entry
   final _manualNameCtrl = TextEditingController();
-  final _manualIdCtrl = TextEditingController();
-  String _manualExchange = 'MIL';
   InstrumentType? _instrumentType;
   AssetClass? _assetClass;
 
@@ -644,7 +642,6 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     _debounce?.cancel();
     _searchCtrl.dispose();
     _manualNameCtrl.dispose();
-    _manualIdCtrl.dispose();
     super.dispose();
   }
 
@@ -877,29 +874,6 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
             autofocus: true,
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _manualIdCtrl,
-            decoration: InputDecoration(
-              labelText: s.identifierLabel,
-              hintText: s.optional,
-            ),
-            textCapitalization: TextCapitalization.characters,
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _manualExchange,
-            decoration: InputDecoration(
-              labelText: s.stockExchange,
-              isDense: true,
-            ),
-            items: supportedExchanges.entries
-                .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) setState(() => _manualExchange = v);
-            },
-          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -940,15 +914,11 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           onPressed: _manualNameCtrl.text.trim().isNotEmpty
               ? () async {
                   final name = _manualNameCtrl.text.trim();
-                  final id = _manualIdCtrl.text.trim().toUpperCase();
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-                  final currency = exchangeCodeToCurrency[_manualExchange] ?? baseCurrency;
                   await widget.ref.read(assetServiceProvider).create(
                         name: name,
-                        ticker: id.isNotEmpty ? id : null,
-                        isin: id.isNotEmpty ? id : null,
-                        exchange: _manualExchange,
-                        currency: currency,
+                        currency: baseCurrency,
+                        valuationMethod: ValuationMethod.eventDriven,
                         instrumentType: _instrumentType,
                         assetClass: _assetClass,
                       );
