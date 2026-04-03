@@ -204,8 +204,6 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               items: const [
                 EventType.buy,
                 EventType.sell,
-                EventType.dividend,
-                EventType.contribute,
                 EventType.revalue,
               ].map((t) => DropdownMenuItem(value: t, child: Text(t.name))).toList(),
               onChanged: (v) {
