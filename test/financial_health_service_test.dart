@@ -379,6 +379,34 @@ void main() {
     });
   });
 
+  group('liquid asset ratio with liquidInvestments', () {
+    test('only liquid investments count toward liquid asset ratio', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 100000,
+        liquidInvestments: 60000, // 40000 is illiquid (pension, real estate)
+        annualIncome: 50000, annualExpenses: 40000,
+        annualSavings: 10000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      // Liquid asset ratio = (cash + liquidInvestments) / grossAssets
+      // = (10000 + 60000) / 110000 = 63.6%
+      final liquidKpi = cats[1].kpis[1]; // Liquid Asset Ratio is 2nd in Wealth
+      expect(liquidKpi.value, closeTo(63.6, 0.1));
+    });
+
+    test('defaults to 0 liquid investments when not specified', () {
+      final cats = computeKpis(
+        cash: 10000, investments: 100000,
+        annualIncome: 50000, annualExpenses: 40000,
+        annualSavings: 10000, monthlyExpenses: 3333,
+        s: s, locale: locale,
+      );
+      // liquidInvestments defaults to 0, so ratio = cash / grossAssets = 10000/110000 = 9.1%
+      final liquidKpi = cats[1].kpis[1];
+      expect(liquidKpi.value, closeTo(9.1, 0.1));
+    });
+  });
+
   group('computePriceChangePct', () {
     test('returns 0 for empty list', () {
       expect(computePriceChangePct([]), 0.0);
