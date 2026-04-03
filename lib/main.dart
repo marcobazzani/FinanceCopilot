@@ -332,7 +332,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'v$appVersion (${appCommit.length >= 8 ? appCommit.substring(0, 8) : appCommit})',
+                              'v$appVersion ($appCommit)',
                               style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(width: 4),
