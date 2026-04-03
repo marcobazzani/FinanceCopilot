@@ -339,147 +339,149 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     return RepaintBoundary(
       key: _repaintKey,
       child: Scaffold(
-      appBar: AppBar(title: const Text('FinanceCopilot')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.storage, size: 48, color: theme.colorScheme.primary),
-              const SizedBox(height: 16),
-              Text(s.dbPickerTitle, style: theme.textTheme.headlineSmall),
-              const SizedBox(height: 20),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 12,
-                runSpacing: 8,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
                 children: [
-                  FilledButton.icon(
-                    onPressed: _openFilePicker,
-                    icon: const Icon(Icons.folder_open),
-                    label: Text(s.dbPickerOpenFile),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _createEmpty,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: Text(s.dbPickerNewProject),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _isGenerating ? null : _generateDemo,
-                    icon: _isGenerating
-                        ? const SizedBox(
-                            width: 16, height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.auto_awesome),
-                    label: Text(_isGenerating ? s.dbPickerGenerating : s.dbPickerCreateDemo),
-                  ),
-                ],
-              ),
-              if (_isGenerating) ...[
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    children: [
-                      LinearProgressIndicator(value: _demoProgress > 0 ? _demoProgress : null),
-                      const SizedBox(height: 4),
-                      Text(_demoLabel, style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
-                    ],
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              if (_isLoading)
-                const CircularProgressIndicator()
-              else if (_recentPaths.isNotEmpty) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(s.dbPickerRecent, style: theme.textTheme.titleSmall?.copyWith(color: Colors.grey)),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _recentPaths.length,
-                    itemBuilder: (context, index) {
-                      final path = _recentPaths[index];
-                      final file = File(path);
-                      final stat = file.statSync();
-                      final sizeKb = stat.size ~/ 1024;
-                      final sizeMb = sizeKb / 1024;
-                      final sizeStr = sizeMb >= 1
-                          ? '${sizeMb.toStringAsFixed(1)} MB'
-                          : '$sizeKb KB';
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: ListTile(
-                          leading: const Icon(Icons.description),
-                          title: Text(p.basename(path)),
-                          subtitle: Text(
-                            '${p.dirname(path)}\n$sizeStr  \u2022  ${dateFmt.format(stat.modified)}',
-                          ),
-                          isThreeLine: true,
-                          trailing: IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            tooltip: s.dbPickerRemoveRecent,
-                            onPressed: () => _removeRecent(path),
-                          ),
-                          onTap: () => _selectDb(path),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-              const SizedBox(height: 24),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'v$appVersion ($appCommit)',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                  ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey),
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
+                  const Spacer(flex: 2),
+                  // App icon + branding
+                  Image.asset('assets/app_icon.png', width: 120, height: 120),
+                  const SizedBox(height: 16),
+                  Text('FinanceCopilot', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('Personal Finance', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  const Spacer(),
+                  // Recent databases
+                  if (_isLoading)
+                    const CircularProgressIndicator()
+                  else if (_recentPaths.isNotEmpty) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(s.dbPickerRecent, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  _LanguageDropdown(
-                    value: ref.watch(portableLanguageProvider),
-                    onChanged: (lang) async {
-                      await AppSettings.setLanguage(lang);
-                      ref.read(portableLanguageProvider.notifier).state = lang;
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () async {
-                      final next = _channel == 'nightly' ? 'stable' : 'nightly';
-                      await AppSettings.setUpdateChannel(next);
-                      if (mounted) setState(() => _channel = next);
-                    },
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: Text(
-                        _channel,
-                        style: TextStyle(fontSize: 10, color: theme.colorScheme.primary,
-                            decoration: TextDecoration.underline),
+                    const SizedBox(height: 4),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _recentPaths.length,
+                        itemBuilder: (context, index) {
+                          final path = _recentPaths[index];
+                          final file = File(path);
+                          final stat = file.statSync();
+                          final sizeKb = stat.size ~/ 1024;
+                          final sizeMb = sizeKb / 1024;
+                          final sizeStr = sizeMb >= 1
+                              ? '${sizeMb.toStringAsFixed(1)} MB'
+                              : '$sizeKb KB';
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              leading: const Icon(Icons.description),
+                              title: Text(p.basename(path)),
+                              subtitle: Text(
+                                '${p.dirname(path)}\n$sizeStr  \u2022  ${dateFmt.format(stat.modified)}',
+                              ),
+                              isThreeLine: true,
+                              trailing: IconButton(
+                                icon: const Icon(Icons.close, size: 18),
+                                tooltip: s.dbPickerRemoveRecent,
+                                onPressed: () => _removeRecent(path),
+                              ),
+                              onTap: () => _selectDb(path),
+                            ),
+                          );
+                        },
                       ),
                     ),
+                    const SizedBox(height: 16),
+                  ] else
+                    const Spacer(),
+                  // Action buttons
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: _openFilePicker,
+                        icon: const Icon(Icons.folder_open),
+                        label: Text(s.dbPickerOpenFile),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _createEmpty,
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: Text(s.dbPickerNewProject),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isGenerating ? null : _generateDemo,
+                        icon: _isGenerating
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.auto_awesome),
+                        label: Text(_isGenerating ? s.dbPickerGenerating : s.dbPickerCreateDemo),
+                      ),
+                    ],
                   ),
+                  if (_isGenerating) ...[
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(value: _demoProgress > 0 ? _demoProgress : null),
+                    const SizedBox(height: 4),
+                    Text(_demoLabel, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                  const SizedBox(height: 24),
+                  // Footer: version, bug report, language, channel
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'v$appVersion ($appCommit)',
+                        style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(width: 4),
+                      GestureDetector(
+                        onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Icon(Icons.bug_report, size: 14, color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _LanguageDropdown(
+                        value: ref.watch(portableLanguageProvider),
+                        onChanged: (lang) async {
+                          await AppSettings.setLanguage(lang);
+                          ref.read(portableLanguageProvider.notifier).state = lang;
+                        },
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: () async {
+                          final next = _channel == 'nightly' ? 'stable' : 'nightly';
+                          await AppSettings.setUpdateChannel(next);
+                          if (mounted) setState(() => _channel = next);
+                        },
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Text(
+                            _channel,
+                            style: TextStyle(fontSize: 10, color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
