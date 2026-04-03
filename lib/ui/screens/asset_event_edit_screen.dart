@@ -19,8 +19,6 @@ final _log = getLogger('AssetEventEditScreen');
 const _qtyPriceTypes = {
   EventType.buy,
   EventType.sell,
-  EventType.vest,
-  EventType.split,
 };
 
 /// Edit an existing asset event or create a new one.

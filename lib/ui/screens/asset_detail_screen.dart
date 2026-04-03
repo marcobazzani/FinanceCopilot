@@ -198,13 +198,10 @@ class AssetDetailScreen extends ConsumerWidget {
 
   Color _colorForEventType(EventType type) {
     return switch (type) {
-      EventType.buy || EventType.contribute => Colors.blue,
+      EventType.buy => Colors.blue,
       EventType.sell => Colors.orange,
-      EventType.dividend || EventType.interest => Colors.green,
-      EventType.split || EventType.vest => Colors.purple,
       EventType.revalue => Colors.teal,
-      EventType.transferIn => Colors.indigo,
-      EventType.transferOut => Colors.brown,
+      _ => Colors.grey, // legacy types (contribute, dividend, split, etc.)
     };
   }
 
