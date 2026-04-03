@@ -1,5 +1,5 @@
-import 'dart:math';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -160,76 +160,46 @@ class AllocationTab extends ConsumerWidget {
           );
 
           final holdingEntries = byHolding.entries.toList();
-          final topHoldings = holdingEntries.take(10).toList();
           // Concentration uses actual portfolio positions, not ETF look-through
           final byPosition = _groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
           final positionEntries = byPosition.entries.toList();
 
+          final cards = <Widget>[
+            _ChartCard(title: s.allocGeographic, child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill)),
+            _ChartCard(title: s.allocSector, child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill)),
+            _ChartCard(title: s.allocAssetClass, child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill)),
+            _ChartCard(title: s.allocInstrument, child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill)),
+            _ChartCard(title: s.allocCurrency, child: _DonutChart(data: byCurrency, total: total)),
+            _ChartCard(title: s.allocTopHoldings, child: _TopHoldingsInteractive(allHoldings: holdingEntries, total: total, baseCurrency: baseCurrency, locale: locale)),
+            _ConcentrationCard(holdings: positionEntries, total: total, baseCurrency: baseCurrency, locale: locale),
+            _InvestmentCostsCard(assets: assets.where((a) => a.isActive).toList(), marketValues: marketValues, baseCurrency: baseCurrency, locale: locale),
+          ];
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                _ChartCard(
-                  title: s.allocGeographic,
-                  child: _DrillableDonut(
-                    data: byCountry,
-                    total: total,
-                    drillDown: countryDrill,
+            child: LayoutBuilder(builder: (ctx, constraints) {
+              const cardMin = 400.0;
+              const gap = 16.0;
+              final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
+
+              final rows = <Widget>[];
+              for (var i = 0; i < cards.length; i += cols) {
+                final rowCards = cards.sublist(i, min(i + cols, cards.length));
+                rows.add(IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var j = 0; j < cols; j++) ...[
+                        if (j > 0) const SizedBox(width: gap),
+                        Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
+                      ],
+                    ],
                   ),
-                ),
-                _ChartCard(
-                  title: s.allocSector,
-                  child: _DrillableDonut(
-                    data: bySector,
-                    total: total,
-                    drillDown: sectorDrill,
-                  ),
-                ),
-                _ChartCard(
-                  title: s.allocAssetClass,
-                  child: _DrillableDonut(
-                    data: byType,
-                    total: total,
-                    drillDown: typeDrill,
-                  ),
-                ),
-                _ChartCard(
-                  title: s.allocInstrument,
-                  child: _DrillableDonut(
-                    data: byInstrument,
-                    total: total,
-                    drillDown: instrumentDrill,
-                  ),
-                ),
-                _ChartCard(
-                  title: s.allocCurrency,
-                  child: _DonutChart(data: byCurrency, total: total),
-                ),
-                _ChartCard(
-                  title: s.allocTopHoldings,
-                  child: _TopHoldingsChart(
-                    holdings: topHoldings,
-                    total: total,
-                    baseCurrency: baseCurrency,
-                    locale: locale,
-                  ),
-                ),
-                _ConcentrationCard(
-                  holdings: positionEntries,
-                  total: total,
-                  baseCurrency: baseCurrency,
-                  locale: locale,
-                ),
-                _InvestmentCostsCard(
-                  assets: assets.where((a) => a.isActive).toList(),
-                  marketValues: marketValues,
-                  baseCurrency: baseCurrency,
-                  locale: locale,
-                ),
-              ],
-            ),
+                ));
+                if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
+              }
+              return Column(children: rows);
+            }),
           );
         },
       ),
@@ -249,9 +219,7 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480),
-      child: Card(
+    return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -264,8 +232,7 @@ class _ChartCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -488,90 +455,115 @@ class _DonutChart extends ConsumerWidget {
 }
 
 // ════════════════════════════════════════════════════
-// Top Holdings Bar Chart
+// Top Holdings — Interactive horizontal bars
 // ════════════════════════════════════════════════════
 
-class _TopHoldingsChart extends ConsumerWidget {
-  final List<MapEntry<String, double>> holdings;
+class _TopHoldingsInteractive extends ConsumerStatefulWidget {
+  final List<MapEntry<String, double>> allHoldings;
   final double total;
   final String baseCurrency;
   final String locale;
 
-  const _TopHoldingsChart({
-    required this.holdings,
+  static const _displayCount = 5;
+
+  const _TopHoldingsInteractive({
+    required this.allHoldings,
     required this.total,
     required this.baseCurrency,
     required this.locale,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (holdings.isEmpty) {
-      return SizedBox(height: 200, child: Center(child: Text(ref.watch(appStringsProvider).noData)));
+  ConsumerState<_TopHoldingsInteractive> createState() => _TopHoldingsInteractiveState();
+}
+
+class _TopHoldingsInteractiveState extends ConsumerState<_TopHoldingsInteractive> {
+  final _hidden = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    final isPrivate = ref.watch(privacyModeProvider);
+    final theme = Theme.of(context);
+
+    if (widget.allHoldings.isEmpty) {
+      return SizedBox(height: 100, child: Center(child: Text(s.noData)));
     }
 
-    final isPrivate = ref.watch(privacyModeProvider);
-    final reversed = holdings.reversed.toList();
-    final maxValue = holdings.first.value;
+    // Filter out hidden, take displayCount
+    final visible = widget.allHoldings
+        .where((e) => !_hidden.contains(e.key))
+        .take(_TopHoldingsInteractive._displayCount)
+        .toList();
+    final visibleTotal = visible.fold(0.0, (s, e) => s + e.value);
+    final maxValue = visible.isEmpty ? 1.0 : visible.first.value;
 
-    return SizedBox(
-      height: max(200, holdings.length * 36.0),
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: maxValue * 1.15,
-          barTouchData: BarTouchData(
-            enabled: !isPrivate,
-            touchTooltipData: BarTouchTooltipData(
-              getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                final entry = reversed[group.x.toInt()];
-                return BarTooltipItem(
-                  '${entry.key}\n${_fmtMoney(entry.value, locale, baseCurrency)} (${_pct(entry.value, total)})',
-                  const TextStyle(color: Colors.white, fontSize: 12),
-                );
-              },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < visible.length; i++) ...[
+          _buildBar(visible[i], i, maxValue, visibleTotal, theme, isPrivate),
+          if (i < visible.length - 1) const SizedBox(height: 6),
+        ],
+        if (_hidden.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () => setState(() => _hidden.clear()),
+            child: Text(
+              '${s.showComponents} (${_hidden.length})',
+              style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
             ),
           ),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 100,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= reversed.length) return const SizedBox();
-                  final name = reversed[idx].key;
-                  return SideTitleWidget(
-                    meta: meta,
-                    child: Text(
-                      name.length > 14 ? '${name.substring(0, 12)}…' : name,
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  );
-                },
-              ),
-            ),
-            bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          ),
-          borderData: FlBorderData(show: false),
-          gridData: const FlGridData(show: false),
-          barGroups: List.generate(reversed.length, (i) {
-            return BarChartGroupData(
-              x: i,
-              barRods: [
-                BarChartRodData(
-                  toY: reversed[i].value,
-                  color: _colorAt(reversed.length - 1 - i),
-                  width: 18,
-                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBar(MapEntry<String, double> entry, int index, double maxValue, double visibleTotal, ThemeData theme, bool isPrivate) {
+    final pct = visibleTotal > 0 ? entry.value / visibleTotal * 100 : 0.0;
+    final barFraction = maxValue > 0 ? entry.value / maxValue : 0.0;
+    final color = _colorAt(index);
+    final amtStr = _fmtMoney(entry.value, widget.locale, widget.baseCurrency);
+
+    return InkWell(
+      onTap: () => setState(() => _hidden.add(entry.key)),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    entry.key,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: 8),
+                Text('${pct.toStringAsFixed(1)}%',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+                if (!isPrivate) ...[
+                  const SizedBox(width: 8),
+                  Text(amtStr, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+                ],
               ],
-            );
-          }),
+            ),
+            const SizedBox(height: 3),
+            LayoutBuilder(builder: (ctx, constraints) {
+              return Container(
+                height: 14,
+                width: constraints.maxWidth * barFraction,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              );
+            }),
+          ],
         ),
-        duration: const Duration(milliseconds: 300),
       ),
     );
   }
@@ -601,9 +593,7 @@ class _ConcentrationCard extends ConsumerWidget {
     final count = holdings.length;
     final conc = alloc.computeConcentration(holdings, total);
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480),
-      child: Card(
+    return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -630,7 +620,6 @@ class _ConcentrationCard extends ConsumerWidget {
             ],
           ),
         ),
-      ),
     );
   }
 
