@@ -126,6 +126,7 @@ class AssetDailyChange {
   final String baseCurrency;
   final String? investingUrl;   // Investing.com page URL
   final double priceDivisor;   // 100 for bonds (quoted per 100 nominal), 1 otherwise
+  final bool marketOpen;       // true if today's date has a stored price
 
   const AssetDailyChange({
     required this.name,
@@ -139,6 +140,7 @@ class AssetDailyChange {
     required this.baseCurrency,
     this.investingUrl,
     this.priceDivisor = 1.0,
+    this.marketOpen = false,
   });
 
   double get priceDiff => todayPrice - previousPrice;
@@ -225,6 +227,13 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       }
     }
 
+    // Check if market traded today (latest stored price date == today)
+    final lastSync = await priceService.getLastSyncDate(asset.id);
+    final isMarketOpen = lastSync != null &&
+        lastSync.year == today.year &&
+        lastSync.month == today.month &&
+        lastSync.day == today.day;
+
     result.add(AssetDailyChange(
       name: asset.name,
       ticker: asset.ticker,
@@ -237,6 +246,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       baseCurrency: baseCurrency,
       investingUrl: investingUrl,
       priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
+      marketOpen: isMarketOpen,
     ));
   }
   return result;
