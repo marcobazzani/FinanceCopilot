@@ -94,10 +94,13 @@ void main() {
       expect(result, 250.0);
     });
 
-    test('returns original amount when rate unavailable', () async {
+    test('returns original amount with warning when rate unavailable', () async {
+      // This is a known limitation: when no FX rate is available, the original
+      // amount is returned unconverted. This is INACCURATE but preferable to
+      // crashing. The warning log allows monitoring for these cases.
       final result = await service.convertAmount(
           100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
-      expect(result, 100.0);
+      expect(result, 100.0); // unconverted fallback
     });
 
     test('converts cross-rate correctly', () async {

@@ -210,12 +210,15 @@ class ExchangeRateService {
   }
 
   /// Convert [amount] from [from] currency to [to] currency at [date].
-  /// Returns original amount if rate is unavailable.
+  /// Returns original amount if rate is unavailable (with warning).
   Future<double> convertAmount(
       double amount, String from, String to, DateTime date) async {
     if (from == to) return amount;
     final rate = await getRate(from, to, date);
-    if (rate == null) return amount;
+    if (rate == null) {
+      _log.warning('convertAmount: no $from/$to rate for ${date.toIso8601String().substring(0, 10)} - returning unconverted $amount $from');
+      return amount;
+    }
     return amount * rate;
   }
 
@@ -241,7 +244,10 @@ class ExchangeRateService {
   Future<double> convertLive(double amount, String from, String to) async {
     if (from == to) return amount;
     final rate = await getLiveRate(from, to);
-    if (rate == null) return amount;
+    if (rate == null) {
+      _log.warning('convertLive: no $from/$to rate available - returning unconverted $amount $from');
+      return amount;
+    }
     return amount * rate;
   }
 }
@@ -261,6 +267,9 @@ class CachedRateResolver {
     if (_cache.containsKey(key)) return _cache[key]!;
     final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
     final rate = await _rateService.getRate(from, baseCurrency, date);
+    if (rate == null) {
+      _log.warning('CachedRateResolver: no $from/$baseCurrency rate for ${date.toIso8601String().substring(0, 10)} - using 1.0 (INACCURATE)');
+    }
     _cache[key] = rate ?? 1.0;
     return rate ?? 1.0;
   }
