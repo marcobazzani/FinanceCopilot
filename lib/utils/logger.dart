@@ -1,11 +1,21 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 IOSink? _logSink;
 String? logFilePath;
+
+/// Write a log line to the debug console (logcat on Android, Xcode on iOS, stderr on desktop).
+void _debugLog(String msg) {
+  if (Platform.isAndroid || Platform.isIOS) {
+    debugPrint(msg);
+  } else {
+    stderr.writeln(msg);
+  }
+}
 
 /// Initialize logging for the whole app. Call once in main().
 /// Logs to `<app documents>`/FinanceCopilot/app.log (sandbox-safe)
@@ -33,7 +43,7 @@ Future<void> initLogging() async {
     _logSink = logFile.openWrite(mode: FileMode.append);
     _logSink!.writeln('\n--- App started at ${DateTime.now().toIso8601String()} ---');
   } catch (e) {
-    stderr.writeln('Failed to open log file: $e');
+    _debugLog('Failed to open log file: $e');
   }
 
   // Suppress repeated identical messages
@@ -59,7 +69,7 @@ Future<void> initLogging() async {
       if (repeatCount == 5) {
         final suppressed = '$ts WARN  [Logger] Suppressing repeated: ${record.message.length > 60 ? record.message.substring(0, 60) : record.message}...';
         _logSink?.writeln(suppressed);
-        stderr.writeln(suppressed);
+        _debugLog(suppressed);
       }
       if (repeatCount >= 5) return; // suppress after 5 repeats
     } else {
@@ -77,7 +87,7 @@ Future<void> initLogging() async {
         ? '$fullMsg\n  ${record.stackTrace}' : fullMsg;
 
     _logSink?.writeln(withStack);
-    stderr.writeln(withStack);
+    _debugLog(withStack);
 
     // Periodic rotation check (every 10000 lines)
     lineCount++;

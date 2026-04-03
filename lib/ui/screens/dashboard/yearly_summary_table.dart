@@ -173,8 +173,8 @@ class _YearlySummaryTable extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(isIt ? 'Previsione fine anno' : 'End-of-year prediction'),
-        content: SizedBox(
-          width: 480,
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
           child: SelectableText(
             buf.toString(),
             style: const TextStyle(fontSize: 12, height: 1.6),

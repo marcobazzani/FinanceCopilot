@@ -173,8 +173,8 @@ class _FinancialHealthTab extends ConsumerWidget {
                 Wrap(
                   spacing: 12,
                   runSpacing: 12,
-                  children: cat.kpis.map((kpi) => SizedBox(
-                    width: 320,
+                  children: cat.kpis.map((kpi) => ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 320),
                     child: _KpiCard(kpi: kpi, pctFmt: pctFmt, s: s, isPrivate: isPrivate),
                   )).toList(),
                 ),

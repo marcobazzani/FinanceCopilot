@@ -2,8 +2,11 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import '../utils/logger.dart';
 import 'tables.dart';
@@ -344,8 +347,18 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
+/// Ensure sqlite3 native library is configured (needed on Android).
+Future<void> _ensureSqliteConfigured() async {
+  if (Platform.isAndroid) {
+    await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
+  }
+  final cacheDir = await getTemporaryDirectory();
+  sqlite3.tempDirectory = cacheDir.path;
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
+    await _ensureSqliteConfigured();
     final dir = await getApplicationDocumentsDirectory();
     final dbFolder = Directory(p.join(dir.path, 'FinanceCopilot'));
     if (!await dbFolder.exists()) {
@@ -362,6 +375,7 @@ LazyDatabase _openConnection() {
 
 LazyDatabase _openAtPath(String path) {
   return LazyDatabase(() async {
+    await _ensureSqliteConfigured();
     final file = File(path);
     final parent = file.parent;
     if (!await parent.exists()) {

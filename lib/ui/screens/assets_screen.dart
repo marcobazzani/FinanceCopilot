@@ -299,59 +299,61 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           final intermediaries = ref.watch(intermediariesProvider).value ?? [];
           return AlertDialog(
             title: Text(s.intermediaries),
-            content: SizedBox(
-              width: 350,
-              height: 400,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: intermediaries.isEmpty
-                        ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
-                        : ReorderableListView.builder(
-                            shrinkWrap: true,
-                            buildDefaultDragHandles: false,
-                            itemCount: intermediaries.length,
-                            onReorder: (oldIndex, newIndex) {
-                              if (newIndex > oldIndex) newIndex--;
-                              final reordered = List<Intermediary>.from(intermediaries);
-                              final item = reordered.removeAt(oldIndex);
-                              reordered.insert(newIndex, item);
-                              ref.read(intermediaryServiceProvider)
-                                  .reorder(reordered.map((i) => i.id).toList());
-                            },
-                            itemBuilder: (ctx, i) {
-                              final inter = intermediaries[i];
-                              return ListTile(
-                                key: ValueKey(inter.id),
-                                leading: ReorderableDragStartListener(
-                                  index: i,
-                                  child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-                                ),
-                                title: Text(inter.name),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, size: 18),
-                                      onPressed: () {
-                                        Navigator.pop(ctx);
-                                        _showIntermediaryDialog(context, intermediary: inter);
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, size: 18),
-                                      onPressed: () {
-                                        Navigator.pop(ctx);
-                                        _confirmDeleteIntermediary(context, inter);
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 350),
+              child: SizedBox(
+                height: 400,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: intermediaries.isEmpty
+                          ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
+                          : ReorderableListView.builder(
+                              shrinkWrap: true,
+                              buildDefaultDragHandles: false,
+                              itemCount: intermediaries.length,
+                              onReorder: (oldIndex, newIndex) {
+                                if (newIndex > oldIndex) newIndex--;
+                                final reordered = List<Intermediary>.from(intermediaries);
+                                final item = reordered.removeAt(oldIndex);
+                                reordered.insert(newIndex, item);
+                                ref.read(intermediaryServiceProvider)
+                                    .reorder(reordered.map((i) => i.id).toList());
+                              },
+                              itemBuilder: (ctx, i) {
+                                final inter = intermediaries[i];
+                                return ListTile(
+                                  key: ValueKey(inter.id),
+                                  leading: ReorderableDragStartListener(
+                                    index: i,
+                                    child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+                                  ),
+                                  title: Text(inter.name),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit, size: 18),
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          _showIntermediaryDialog(context, intermediary: inter);
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, size: 18),
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          _confirmDeleteIntermediary(context, inter);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [
@@ -705,62 +707,64 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
       title: Text(s.newAssetTitle),
-      content: SizedBox(
-        width: 400,
-        height: 350,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                labelText: s.search,
-                hintText: s.searchAssetsHint,
-                prefixIcon: const Icon(Icons.search),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SizedBox(
+          height: 350,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  labelText: s.search,
+                  hintText: s.searchAssetsHint,
+                  prefixIcon: const Icon(Icons.search),
+                ),
+                autofocus: true,
+                onChanged: _onSearchChanged,
               ),
-              autofocus: true,
-              onChanged: _onSearchChanged,
-            ),
-            const SizedBox(height: 12),
-            if (_searching)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else if (_results.isNotEmpty)
-              Expanded(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _results.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final r = _results[i];
-                    return ListTile(
-                      dense: true,
-                      title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
-                      subtitle: Text(
-                        '${r.symbol}  ·  ${r.type}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      onTap: () => _selectResult(r),
-                    );
-                  },
+              const SizedBox(height: 12),
+              if (_searching)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (_results.isNotEmpty)
+                Expanded(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _results.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final r = _results[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
+                        subtitle: Text(
+                          '${r.symbol}  ·  ${r.type}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        onTap: () => _selectResult(r),
+                      );
+                    },
+                  ),
+                )
+              else if (_searchCtrl.text.trim().length >= 3)
+                Expanded(
+                  child: Center(
+                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
+                  ),
+                )
+              else
+                Expanded(
+                  child: Center(
+                    child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  ),
                 ),
-              )
-            else if (_searchCtrl.text.trim().length >= 3)
-              Expanded(
-                child: Center(
-                  child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-                ),
-              )
-            else
-              Expanded(
-                child: Center(
-                  child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [

@@ -247,8 +247,8 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 480,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -624,8 +624,8 @@ class _ConcentrationCard extends ConsumerWidget {
     final count = holdings.length;
     final conc = alloc.computeConcentration(holdings, total);
 
-    return SizedBox(
-      width: 480,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(16),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
 
@@ -22,9 +23,18 @@ class DemoDbService {
   static const _minBalance = 2000.0;
 
   /// Runs demo generation in a separate isolate so the UI stays responsive.
-  /// [onProgress] receives (step, totalSteps, label) updates from the isolate.
+  /// On mobile, runs on the main thread (isolates can't load native SQLite).
+  /// [onProgress] receives (step, totalSteps, label) updates.
   static Future<void> generateDemoDb(String path, {void Function(int step, int total, String label)? onProgress}) async {
-    _log.info('Generating demo DB at $path (in isolate)');
+    _log.info('Generating demo DB at $path');
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      // On mobile, SQLite native library isn't available in spawned isolates.
+      // Run on main thread with progress callbacks.
+      await _generateDemoDb(path, onProgressCallback: onProgress);
+      _log.info('Demo DB generation complete');
+      return;
+    }
 
     final receivePort = ReceivePort();
     await Isolate.spawn(
@@ -48,11 +58,15 @@ class DemoDbService {
     _log.info('Demo DB generation complete');
   }
 
-  static Future<void> _generateDemoDb(String path, {SendPort? sendPort}) async {
+  static Future<void> _generateDemoDb(String path, {SendPort? sendPort, void Function(int step, int total, String label)? onProgressCallback}) async {
     final db = AppDatabase.withPath(path);
     const total = 9;
     var step = 0;
-    void progress(String label) { step++; sendPort?.send([step, total, label]); }
+    void progress(String label) {
+      step++;
+      sendPort?.send([step, total, label]);
+      onProgressCallback?.call(step, total, label);
+    }
 
     try {
       await db.customSelect('SELECT 1').get();
