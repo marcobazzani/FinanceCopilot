@@ -55,14 +55,24 @@ class _FinancialHealthTab extends ConsumerWidget {
         }
         final investments = liquidInvestments + illiquidInvestments;
 
-        // All KPIs use current year data
+        // Current year for expenses/savings. Rolling 12 months for income.
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
         if (ieData != null && ieData.years.isNotEmpty) {
           final currentYear = ieData.years.last;
-          annualIncome = currentYear.income;
           annualExpenses = currentYear.expenses > 0 ? currentYear.expenses : 0;
           annualSavings = currentYear.savings;
           monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
+          // Rolling 12 months income: sum monthly income across year boundaries
+          final now = DateTime.now();
+          final cutoff = DateTime(now.year - 1, now.month, now.day);
+          for (final year in ieData.years) {
+            for (final month in year.months) {
+              final monthDate = DateTime(month.year, month.month);
+              if (monthDate.isAfter(cutoff)) {
+                annualIncome += month.income;
+              }
+            }
+          }
         }
 
         final categories = computeKpis(
