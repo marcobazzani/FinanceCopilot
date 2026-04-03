@@ -43,14 +43,17 @@ class _FinancialHealthTab extends ConsumerWidget {
           investments += marketValues[asset.id] ?? 0.0;
         }
 
-        // Income/expense from last complete year (second-to-last), fallback to current
+        // Current year for expenses/savings (most recent data).
+        // Last complete year for income (current year is incomplete).
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
         if (ieData != null && ieData.years.isNotEmpty) {
-          final year = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : ieData.years.last;
-          annualIncome = year.income;
-          annualExpenses = year.expenses > 0 ? year.expenses : 0;
-          annualSavings = year.savings;
-          monthlyExpenses = year.monthlyExpenses > 0 ? year.monthlyExpenses : 0;
+          final currentYear = ieData.years.last;
+          annualExpenses = currentYear.expenses > 0 ? currentYear.expenses : 0;
+          annualSavings = currentYear.savings;
+          monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
+          // Income from last complete year (second-to-last) for accurate annual figure
+          final incomeYear = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : currentYear;
+          annualIncome = incomeYear.income;
         }
 
         final categories = computeKpis(
