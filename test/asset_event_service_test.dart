@@ -98,7 +98,7 @@ void main() {
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 3, 1),
-        type: EventType.dividend,
+        type: EventType.buy,
         amount: 50.0,
         currency: 'EUR',
       );
@@ -187,7 +187,7 @@ void main() {
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 3, 1),
-        type: EventType.dividend,
+        type: EventType.buy,
         amount: 10.0,
         currency: 'EUR',
       );
@@ -223,14 +223,14 @@ void main() {
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 6, 1),
-        type: EventType.dividend,
+        type: EventType.buy,
         amount: 25.0,
         currency: 'EUR',
       );
 
       final events = await service.getByAsset(assetId);
       final types = events.map((e) => e.type).toSet();
-      expect(types, containsAll([EventType.buy, EventType.sell, EventType.dividend]));
+      expect(types, containsAll([EventType.buy, EventType.sell]));
     });
   });
 

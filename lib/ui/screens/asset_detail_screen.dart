@@ -201,7 +201,6 @@ class AssetDetailScreen extends ConsumerWidget {
       EventType.buy => Colors.blue,
       EventType.sell => Colors.orange,
       EventType.revalue => Colors.teal,
-      _ => Colors.grey, // legacy types (contribute, dividend, split, etc.)
     };
   }
 
