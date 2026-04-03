@@ -101,7 +101,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: TabBarView(
               children: [
                 _buildChartsTab(allDataAsync, locale, language, context, s),
-                _buildCashFlowTab(allDataAsync, locale, language, context),
+                _buildCashFlowTab(allDataAsync, locale, language, context, s),
                 const AllocationTab(),
                 const _FinancialHealthTab(),
               ],
@@ -121,7 +121,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
         if (allData == null) {
           return Center(
@@ -243,15 +243,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     String locale,
     String language,
     BuildContext context,
+    AppStrings s,
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Error: $e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
         if (allData == null) {
-          return const Center(
-            child: Text('No data yet.',
-                style: TextStyle(color: Colors.grey)),
+          return Center(
+            child: Text(s.noDataYet,
+                style: const TextStyle(color: Colors.grey)),
           );
         }
         return _CashFlowTab(allData: allData, locale: locale, language: language);

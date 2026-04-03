@@ -616,6 +616,14 @@ class AppStrings {
   // ── Allocation ───────────────────────────────────────────
   String get noMarketValues    => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';
   String get noData            => _it ? 'Nessun dato'               : 'No data';
+  String get noDataYet         => _it ? 'Nessun dato ancora.'       : 'No data yet.';
+
+  // ── Import wizard ──────────────────────────────────────────
+  String get buySellDetection  => _it ? 'Rilevamento Acquisto / Vendita' : 'Buy / Sell Detection';
+  String get mapBuySell        => _it ? 'Mappa valori in Acquisto / Vendita:' : 'Map values to Buy / Sell:';
+  String get feeCommission     => _it ? 'Commissione'               : 'Fee / Commission';
+  String get balanceColumn     => _it ? 'Colonna saldo:'            : 'Balance column:';
+  String get amountRequired    => _it ? 'importo *'                 : 'amount *';
   String get concentrationRisk => _it ? 'Rischio concentrazione'    : 'Concentration Risk';
   String get unclassified      => _it ? 'Non classificato'          : 'Unclassified';
   String get allocGeographic   => _it ? 'Allocazione geografica'    : 'Geographic Allocation';
