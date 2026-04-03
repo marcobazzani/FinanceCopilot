@@ -13,7 +13,7 @@ void _debugLog(String msg) {
   if (Platform.isAndroid || Platform.isIOS) {
     debugPrint(msg);
   } else {
-    _debugLog(msg);
+    stderr.writeln(msg);
   }
 }
 
