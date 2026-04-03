@@ -13,25 +13,39 @@ import '../../services/demo_db_service.dart';
 import '../../services/providers/providers.dart';
 import '../../services/update_service.dart';
 import '../../utils/bug_reporter.dart';
+import 'package:path_provider/path_provider.dart';
+
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import '../../version.dart';
 
 final _log = getLogger('DbPicker');
 
-/// Persisted recent-databases list stored in ~/.config/FinanceCopilot/recent_dbs.json.
+/// Persisted recent-databases list stored in config dir.
 class _RecentDbs {
-  static final _configDir = Directory(
-    p.join(
-      fmt.homeDir,
-      '.config', 'FinanceCopilot',
-    ),
-  );
-  static File get _file => File(p.join(_configDir.path, 'recent_dbs.json'));
+  static Directory? _resolvedDir;
+
+  static Future<Directory> _getConfigDir() async {
+    if (_resolvedDir != null) return _resolvedDir!;
+    if (Platform.isAndroid || Platform.isIOS) {
+      final docs = await getApplicationDocumentsDirectory();
+      _resolvedDir = Directory(p.join(docs.path, 'FinanceCopilot'));
+    } else {
+      _resolvedDir = Directory(
+        p.join(fmt.homeDir, '.config', 'FinanceCopilot'),
+      );
+    }
+    return _resolvedDir!;
+  }
+
+  static Future<File> _getFile() async {
+    final dir = await _getConfigDir();
+    return File(p.join(dir.path, 'recent_dbs.json'));
+  }
 
   /// Load the list of recent DB paths (most-recent first). Filters out deleted files.
   static Future<List<String>> load() async {
-    final file = _file;
+    final file = await _getFile();
     if (!await file.exists()) return [];
     try {
       final list = (jsonDecode(await file.readAsString()) as List).cast<String>();
@@ -63,8 +77,10 @@ class _RecentDbs {
   }
 
   static Future<void> _save(List<String> list) async {
-    if (!await _configDir.exists()) await _configDir.create(recursive: true);
-    await _file.writeAsString(jsonEncode(list));
+    final dir = await _getConfigDir();
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final file = await _getFile();
+    await file.writeAsString(jsonEncode(list));
   }
 }
 
@@ -100,6 +116,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   }
 
   Future<void> _checkForUpdates() async {
+    if (Platform.isAndroid || Platform.isIOS) return; // updates handled by app stores
     if (isLocalBuild) {
       _log.info('Skipping update check (local build)');
       return;
@@ -130,8 +147,8 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
           builder: (ctx, setDialogState) => AlertDialog(
             icon: const Icon(Icons.system_update, size: 36, color: Colors.blue),
             title: Text(ref.read(appStringsProvider).updateAvailable(info.latestVersion ?? '')),
-            content: SizedBox(
-              width: 400,
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,15 +264,24 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   }
 
   Future<void> _createEmpty() async {
-    final result = await FilePicker.platform.saveFile(
-      dialogTitle: ref.read(appStringsProvider).createNewProject,
-      fileName: 'FinanceCopilot.db',
-      allowedExtensions: ['db'],
-      type: FileType.custom,
-    );
-    if (result == null) return;
+    String path;
+    if (Platform.isAndroid || Platform.isIOS) {
+      // On mobile, create DB in app documents directory
+      final docs = await getApplicationDocumentsDirectory();
+      final dbDir = Directory(p.join(docs.path, 'FinanceCopilot'));
+      if (!await dbDir.exists()) await dbDir.create(recursive: true);
+      path = p.join(dbDir.path, 'finance_copilot.db');
+    } else {
+      final result = await FilePicker.platform.saveFile(
+        dialogTitle: ref.read(appStringsProvider).createNewProject,
+        fileName: 'FinanceCopilot.db',
+        allowedExtensions: ['db'],
+        type: FileType.custom,
+      );
+      if (result == null) return;
+      path = result.endsWith('.db') ? result : '$result.db';
+    }
 
-    final path = result.endsWith('.db') ? result : '$result.db';
     final file = File(path);
     if (await file.exists()) await file.delete();
 
@@ -265,11 +291,20 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   }
 
   Future<void> _generateDemo() async {
-    // Ask user where to save
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: ref.read(appStringsProvider).chooseDemoFolder,
-    );
-    if (dir == null) return;
+    String dir;
+    if (Platform.isAndroid || Platform.isIOS) {
+      // On mobile, save demo DB in app documents directory
+      final docs = await getApplicationDocumentsDirectory();
+      final dbDir = Directory(p.join(docs.path, 'FinanceCopilot'));
+      if (!await dbDir.exists()) await dbDir.create(recursive: true);
+      dir = dbDir.path;
+    } else {
+      final picked = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: ref.read(appStringsProvider).chooseDemoFolder,
+      );
+      if (picked == null) return;
+      dir = picked;
+    }
 
     setState(() => _isGenerating = true);
     try {
@@ -315,21 +350,21 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
               const SizedBox(height: 16),
               Text(s.dbPickerTitle, style: theme.textTheme.headlineSmall),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
                 children: [
                   FilledButton.icon(
                     onPressed: _openFilePicker,
                     icon: const Icon(Icons.folder_open),
                     label: Text(s.dbPickerOpenFile),
                   ),
-                  const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: _createEmpty,
                     icon: const Icon(Icons.add_circle_outline),
                     label: Text(s.dbPickerNewProject),
                   ),
-                  const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: _isGenerating ? null : _generateDemo,
                     icon: _isGenerating

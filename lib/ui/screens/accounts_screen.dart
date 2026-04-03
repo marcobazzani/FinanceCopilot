@@ -299,59 +299,61 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
           final intermediaries = ref.watch(intermediariesProvider).value ?? [];
           return AlertDialog(
             title: Text(s.intermediaries),
-            content: SizedBox(
-              width: 350,
-              height: 400,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: intermediaries.isEmpty
-                        ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
-                        : ReorderableListView.builder(
-                            shrinkWrap: true,
-                            buildDefaultDragHandles: false,
-                            itemCount: intermediaries.length,
-                            onReorder: (oldIndex, newIndex) {
-                              if (newIndex > oldIndex) newIndex--;
-                              final reordered = List<Intermediary>.from(intermediaries);
-                              final item = reordered.removeAt(oldIndex);
-                              reordered.insert(newIndex, item);
-                              ref.read(intermediaryServiceProvider)
-                                  .reorder(reordered.map((i) => i.id).toList());
-                            },
-                            itemBuilder: (ctx, i) {
-                              final inter = intermediaries[i];
-                              return ListTile(
-                                key: ValueKey(inter.id),
-                                leading: ReorderableDragStartListener(
-                                  index: i,
-                                  child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-                                ),
-                                title: Text(inter.name),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, size: 18),
-                                      onPressed: () {
-                                        Navigator.pop(ctx);
-                                        _showIntermediaryDialog(context, intermediary: inter);
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, size: 18),
-                                      onPressed: () {
-                                        Navigator.pop(ctx);
-                                        _confirmDeleteIntermediary(context, inter);
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 350),
+              child: SizedBox(
+                height: 400,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: intermediaries.isEmpty
+                          ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
+                          : ReorderableListView.builder(
+                              shrinkWrap: true,
+                              buildDefaultDragHandles: false,
+                              itemCount: intermediaries.length,
+                              onReorder: (oldIndex, newIndex) {
+                                if (newIndex > oldIndex) newIndex--;
+                                final reordered = List<Intermediary>.from(intermediaries);
+                                final item = reordered.removeAt(oldIndex);
+                                reordered.insert(newIndex, item);
+                                ref.read(intermediaryServiceProvider)
+                                    .reorder(reordered.map((i) => i.id).toList());
+                              },
+                              itemBuilder: (ctx, i) {
+                                final inter = intermediaries[i];
+                                return ListTile(
+                                  key: ValueKey(inter.id),
+                                  leading: ReorderableDragStartListener(
+                                    index: i,
+                                    child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+                                  ),
+                                  title: Text(inter.name),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.edit, size: 18),
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          _showIntermediaryDialog(context, intermediary: inter);
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, size: 18),
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          _confirmDeleteIntermediary(context, inter);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
               ),
             ),
             actions: [

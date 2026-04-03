@@ -501,8 +501,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text(s.recalcBalanceTitle),
-          content: SizedBox(
-            width: 500,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
