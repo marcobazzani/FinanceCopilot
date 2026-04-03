@@ -94,7 +94,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               Tab(text: s.dashTabHealth),
               Tab(text: s.dashTabHistory),
               Tab(text: s.dashTabCashFlow),
-              Tab(text: s.dashTabAllocation),
+              Tab(text: s.dashTabAssetsOverview),
             ],
           ),
           Expanded(

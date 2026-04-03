@@ -8,6 +8,7 @@ import '../widgets/privacy_text.dart';
 
 import '../../database/database.dart';
 import '../../services/allocation_computation_service.dart' as alloc;
+import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../../services/providers/providers.dart';
 import 'package:intl/intl.dart';
 
@@ -215,6 +216,12 @@ class AllocationTab extends ConsumerWidget {
                 _ConcentrationCard(
                   holdings: holdingEntries,
                   total: total,
+                  baseCurrency: baseCurrency,
+                  locale: locale,
+                ),
+                _InvestmentCostsCard(
+                  assets: assets.where((a) => a.isActive).toList(),
+                  marketValues: marketValues,
                   baseCurrency: baseCurrency,
                   locale: locale,
                 ),
@@ -635,6 +642,102 @@ class _ConcentrationCard extends ConsumerWidget {
               ? PrivacyText(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))
               : Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════
+// Investment Costs Table
+// ════════════════════════════════════════════════════
+
+class _InvestmentCostsCard extends ConsumerWidget {
+  final List<Asset> assets;
+  final Map<int, double> marketValues;
+  final String baseCurrency;
+  final String locale;
+
+  const _InvestmentCostsCard({
+    required this.assets, required this.marketValues,
+    required this.baseCurrency, required this.locale,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final isPrivate = ref.watch(privacyModeProvider);
+    final symbol = currencySymbol(baseCurrency);
+    final amtFmt = NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: 0);
+    final pctFmt = NumberFormat('0.00', locale);
+    final theme = Theme.of(context);
+
+    final rows = <({String name, String fullName, double? ter, double mv, double cost})>[];
+    double totalValue = 0, totalCost = 0;
+
+    for (final asset in assets) {
+      final mv = marketValues[asset.id] ?? 0.0;
+      if (mv <= 0) continue;
+      totalValue += mv;
+      final cost = (asset.ter != null && asset.ter! > 0) ? mv * asset.ter! / 100 : 0.0;
+      if (cost > 0) totalCost += cost;
+      rows.add((name: asset.ticker ?? asset.name, fullName: asset.name, ter: asset.ter, mv: mv, cost: cost));
+    }
+    rows.sort((a, b) => b.cost.compareTo(a.cost));
+    final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
+
+    Color terColor(double ter) => ter <= 0.20 ? Colors.green.shade400 : ter <= 0.50 ? Colors.lightGreen : ter <= 1.00 ? Colors.orange : Colors.red.shade400;
+
+    final hs = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant);
+    final vs = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
+
+    return SizedBox(
+      width: 960,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(s.healthInvestmentCosts, style: theme.textTheme.titleMedium),
+              const SizedBox(height: 12),
+              if (rows.isEmpty)
+                Text(s.healthNoTer, style: const TextStyle(color: Colors.grey))
+              else ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(children: [
+                    Expanded(flex: 4, child: Text(s.healthAsset, style: hs)),
+                    Expanded(flex: 2, child: Text(s.healthTer, style: hs, textAlign: TextAlign.right)),
+                    Expanded(flex: 3, child: Text(s.healthMarketValue, style: hs, textAlign: TextAlign.right)),
+                    Expanded(flex: 3, child: Text(s.healthAnnualCost, style: hs, textAlign: TextAlign.right)),
+                  ]),
+                ),
+                const Divider(height: 1),
+                for (final row in rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      Expanded(flex: 4, child: Tooltip(message: row.fullName, child: Text(row.name, style: vs, overflow: TextOverflow.ellipsis))),
+                      Expanded(flex: 2, child: Text(row.ter != null ? '${pctFmt.format(row.ter)}%' : '-', style: vs?.copyWith(color: row.ter != null ? terColor(row.ter!) : Colors.grey), textAlign: TextAlign.right)),
+                      Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right) : Text(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right)),
+                      Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(row.cost), style: vs, textAlign: TextAlign.right) : Text(row.ter != null ? amtFmt.format(row.cost) : '-', style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey), textAlign: TextAlign.right)),
+                    ]),
+                  ),
+                const Divider(height: 16, thickness: 2),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    Expanded(flex: 4, child: Text(s.healthWeightedTer, style: vs?.copyWith(fontWeight: FontWeight.bold))),
+                    Expanded(flex: 2, child: Text('${pctFmt.format(weightedTer)}%', style: vs?.copyWith(fontWeight: FontWeight.bold, color: terColor(weightedTer)), textAlign: TextAlign.right)),
+                    Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(totalValue), style: vs?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.right) : Text(amtFmt.format(totalValue), style: vs?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+                    Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(totalCost), style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400), textAlign: TextAlign.right) : Text(amtFmt.format(totalCost), style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400), textAlign: TextAlign.right)),
+                  ]),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

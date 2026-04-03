@@ -20,7 +20,6 @@ class _FinancialHealthTab extends ConsumerWidget {
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final compositionsAsync = ref.watch(assetCompositionsProvider);
-    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
     // Price changes for Today, YTD, All — use midnight dates to match History tab
@@ -31,8 +30,6 @@ class _FinancialHealthTab extends ConsumerWidget {
     final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
     final isPrivate = ref.watch(privacyModeProvider);
 
-    final symbol = currencySymbol(baseCurrency);
-    final amtFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
     final pctFmt = NumberFormat('0.00', locale);
 
     return assetsAsync.when(
@@ -161,13 +158,34 @@ class _FinancialHealthTab extends ConsumerWidget {
                 );
               }),
 
-              // ── Investment Costs table ──
-              const SizedBox(height: 32),
-              _InvestmentCostsSection(
-                assets: activeAssets, marketValues: marketValues,
-                amtFmt: amtFmt, pctFmt: pctFmt, s: s, isPrivate: isPrivate,
-                context: context,
-              ),
+              // ── Weighted Avg TER KPI ──
+              const SizedBox(height: 16),
+              Builder(builder: (_) {
+                var totalCost = 0.0, totalValue = 0.0;
+                for (final asset in activeAssets) {
+                  final mv = marketValues[asset.id] ?? 0.0;
+                  if (mv > 0 && asset.ter != null && asset.ter! > 0) {
+                    totalCost += mv * asset.ter! / 100;
+                    totalValue += mv;
+                  }
+                }
+                final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
+                return Wrap(
+                  spacing: 12, runSpacing: 12,
+                  children: [
+                    SizedBox(width: 320, child: _KpiCard(
+                      kpi: HealthKpi(
+                        name: s.healthTer,
+                        value: weightedTer,
+                        unit: '%',
+                        rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
+                        formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%',
+                      ),
+                      pctFmt: pctFmt, s: s, isPrivate: isPrivate,
+                    )),
+                  ],
+                );
+              }),
             ],
           ),
         );
@@ -463,117 +481,3 @@ class _GaugePainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugePainter old) => old.position != position;
 }
 
-// ── Investment Costs Section (extracted from old _FinancialHealthTab) ──
-
-class _InvestmentCostsSection extends StatelessWidget {
-  final List<Asset> assets;
-  final Map<int, double> marketValues;
-  final NumberFormat amtFmt;
-  final NumberFormat pctFmt;
-  final AppStrings s;
-  final bool isPrivate;
-  final BuildContext context;
-
-  const _InvestmentCostsSection({
-    required this.assets, required this.marketValues,
-    required this.amtFmt, required this.pctFmt,
-    required this.s, required this.isPrivate, required this.context,
-  });
-
-  @override
-  Widget build(BuildContext innerContext) {
-    final theme = Theme.of(context);
-    final rows = <_CostRow>[];
-    double totalValue = 0, totalCost = 0;
-
-    for (final asset in assets) {
-      final mv = marketValues[asset.id];
-      if (mv == null || mv <= 0) continue;
-      totalValue += mv;
-      if (asset.ter != null && asset.ter! > 0) {
-        final annualCost = mv * asset.ter! / 100;
-        rows.add(_CostRow(name: asset.ticker ?? asset.name, fullName: asset.name, ter: asset.ter!, marketValue: mv, annualCost: annualCost));
-        totalCost += annualCost;
-      } else {
-        rows.add(_CostRow(name: asset.ticker ?? asset.name, fullName: asset.name, ter: null, marketValue: mv, annualCost: 0));
-      }
-    }
-    rows.sort((a, b) => b.annualCost.compareTo(a.annualCost));
-    final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(s.healthInvestmentCosts, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 16),
-            if (rows.isEmpty)
-              Text(s.healthNoTer, style: const TextStyle(color: Colors.grey))
-            else ...[
-              _buildHeader(theme),
-              const Divider(height: 1),
-              ...rows.map((row) => _buildRow(row, theme)),
-              const Divider(height: 16, thickness: 2),
-              _buildTotal(theme, totalValue, totalCost, weightedTer),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(ThemeData theme) {
-    final style = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(children: [
-        Expanded(flex: 4, child: Text(s.healthAsset, style: style)),
-        Expanded(flex: 2, child: Text(s.healthTer, style: style, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: Text(s.healthMarketValue, style: style, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: Text(s.healthAnnualCost, style: style, textAlign: TextAlign.right)),
-      ]),
-    );
-  }
-
-  Widget _buildRow(_CostRow row, ThemeData theme) {
-    final vs = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Expanded(flex: 4, child: Tooltip(message: row.fullName, child: Text(row.name, style: vs, overflow: TextOverflow.ellipsis))),
-        Expanded(flex: 2, child: Text(row.ter != null ? '${pctFmt.format(row.ter)}%' : '-', style: vs?.copyWith(color: row.ter != null ? _terColor(row.ter!) : Colors.grey), textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(amtFmt.format(row.marketValue), style: vs, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(row.ter != null ? amtFmt.format(row.annualCost) : '-', style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey, fontWeight: row.ter != null ? FontWeight.w600 : null), textAlign: TextAlign.right)),
-      ]),
-    );
-  }
-
-  Widget _buildTotal(ThemeData theme, double totalValue, double totalCost, double weightedTer) {
-    final bs = theme.textTheme.bodySmall?.copyWith(fontSize: 13, fontWeight: FontWeight.bold);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Expanded(flex: 4, child: Text(s.healthWeightedTer, style: bs)),
-        Expanded(flex: 2, child: Text('${pctFmt.format(weightedTer)}%', style: bs?.copyWith(color: _terColor(weightedTer)), textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(amtFmt.format(totalValue), style: bs, textAlign: TextAlign.right)),
-        Expanded(flex: 3, child: PrivacyText(amtFmt.format(totalCost), style: bs?.copyWith(color: Colors.red.shade400), textAlign: TextAlign.right)),
-      ]),
-    );
-  }
-
-  static Color _terColor(double ter) {
-    if (ter <= 0.20) return Colors.green.shade400;
-    if (ter <= 0.50) return Colors.lightGreen;
-    if (ter <= 1.00) return Colors.orange;
-    return Colors.red.shade400;
-  }
-}
-
-class _CostRow {
-  final String name, fullName;
-  final double? ter;
-  final double marketValue, annualCost;
-  const _CostRow({required this.name, required this.fullName, required this.ter, required this.marketValue, required this.annualCost});
-}
