@@ -245,7 +245,7 @@ extension _ConfirmStep on _ImportScreenState {
         return Column(
           children: [
             ...accounts.map((a) {
-              final account = a as Account;
+              final account = a;
               return RadioListTile<int>(
                 title: Text(account.name),
                 subtitle: Text('${account.type.name} · ${account.currency}'),
@@ -316,7 +316,7 @@ extension _ConfirmStep on _ImportScreenState {
         return Column(
           children: [
             ...assets.map((a) {
-              final asset = a as Asset;
+              final asset = a;
               return RadioListTile<int>(
                 title: Text(asset.name),
                 subtitle: Text('${asset.instrumentType.name} · ${asset.assetClass.name} · ${asset.currency}'),

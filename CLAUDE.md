@@ -1,8 +1,9 @@
 # Build & Deploy
 
+- Always run `dart fix --apply` before building to fix lint warnings.
 - When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
-  flutter build macos --release && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
+  dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
 
 ## Windows VM (Parallels)
@@ -67,13 +68,20 @@
 - `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
 - `lib/services/file_parser_service.dart` — CSV/Excel file parsing (isolate-based)
 - `lib/services/market_price_service.dart` — Abstract market price service
-- `lib/services/google_sheets_price_service.dart` — Google Sheets price impl (CSV)
+- `lib/services/investing_com_service.dart` — Investing.com price/search/composition (WebView + Dio)
+- `lib/services/composition_service.dart` — ETF/stock composition from justETF, stockanalysis.com
 - `lib/services/asset_service.dart` — Asset CRUD
 - `lib/services/asset_event_service.dart` — Asset events (buy/sell/dividend)
 - `lib/services/exchange_rate_service.dart` — FX rates
+- `lib/services/intermediary_service.dart` — Broker/institution grouping
+- `lib/services/income_service.dart` — Income tracking
+- `lib/services/income_adjustment_service.dart` — Income adjustments
 - `lib/services/capex_service.dart` — Depreciation/adjustment schedules
 - `lib/services/buffer_service.dart` — Buffer management
-- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 13 part files)
+- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 15 part files)
+- `lib/ui/screens/dashboard/health_tab.dart` — Financial Health KPIs
+- `lib/ui/screens/dashboard/totals_table.dart` — Totals with drill-down
+- `lib/ui/screens/allocation_tab.dart` — Portfolio allocation donuts
 - `lib/ui/screens/assets_screen.dart` — Asset list + create dialog
 - `lib/ui/screens/accounts_screen.dart` — Account list
 - `lib/ui/screens/capex_screen.dart` — Adjustments screen

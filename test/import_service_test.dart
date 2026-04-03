@@ -22,7 +22,7 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  File _writeCsv(String name, String content) {
+  File writeCsv(String name, String content) {
     final file = File('${tempDir.path}/$name');
     file.writeAsStringSync(content);
     return file;
@@ -30,7 +30,7 @@ void main() {
 
   group('CSV parsing', () {
     test('parse comma-separated CSV', () async {
-      final file = _writeCsv('test.csv', '''
+      final file = writeCsv('test.csv', '''
 Date,Amount,Description
 15/01/2024,-42.50,Supermarket
 16/01/2024,1500.00,Salary
@@ -44,7 +44,7 @@ Date,Amount,Description
     });
 
     test('parse semicolon-separated CSV (European)', () async {
-      final file = _writeCsv('test.csv', '''
+      final file = writeCsv('test.csv', '''
 Data_Operazione;Data_Valuta;Entrate;Uscite;Descrizione
 15/01/2024;15/01/2024;;42.50;Supermercato
 16/01/2024;16/01/2024;1500.00;;Stipendio
@@ -62,7 +62,7 @@ Data_Operazione;Data_Valuta;Entrate;Uscite;Descrizione
         AccountsCompanion.insert(name: 'Fineco'),
       );
 
-      final file = _writeCsv('fineco.csv', '''
+      final file = writeCsv('fineco.csv', '''
 Date,Amount,Description,Extra
 15/01/2024,-42.50,Supermarket,some extra data
 16/01/2024,1500.00,Salary,more extra
@@ -98,7 +98,7 @@ Date,Amount,Description,Extra
         AccountsCompanion.insert(name: 'Fineco'),
       );
 
-      final file = _writeCsv('fineco.csv', '''
+      final file = writeCsv('fineco.csv', '''
 Date,Amount,Description
 15/01/2024,-42.50,Supermarket
 16/01/2024,1500.00,Salary
@@ -129,7 +129,7 @@ Date,Amount,Description
       );
 
       // First import: 3 rows spanning Jan-Feb
-      final file1 = _writeCsv('rev1.csv', '''
+      final file1 = writeCsv('rev1.csv', '''
 Date,Amount,Desc
 15/01/2024,-10.00,Coffee
 01/02/2024,-20.00,Lunch
@@ -148,7 +148,7 @@ Date,Amount,Desc
       expect((await db.select(db.transactions).get()).length, 3);
 
       // Second import: 2 rows from Feb onward (deletes Feb rows, keeps Jan)
-      final file2 = _writeCsv('rev2.csv', '''
+      final file2 = writeCsv('rev2.csv', '''
 Date,Amount,Desc
 01/02/2024,-20.00,Lunch updated
 03/02/2024,-15.00,Brunch
@@ -174,7 +174,7 @@ Date,Amount,Desc
 
   group('Date parsing', () {
     test('handles dd/MM/yyyy format', () async {
-      final file = _writeCsv('dates.csv', '''
+      final file = writeCsv('dates.csv', '''
 Date,Amount
 15/01/2024,-10
 ''');
@@ -197,7 +197,7 @@ Date,Amount
     });
 
     test('handles yyyy-MM-dd format', () async {
-      final file = _writeCsv('dates.csv', '''
+      final file = writeCsv('dates.csv', '''
 Date,Amount
 2024-03-14,-10
 ''');
@@ -221,7 +221,7 @@ Date,Amount
 
   group('Amount parsing', () {
     test('handles European format with comma decimal', () async {
-      final file = _writeCsv('amounts.csv', '''
+      final file = writeCsv('amounts.csv', '''
 Date,Amount
 01/01/2024,"1.234,56"
 ''');

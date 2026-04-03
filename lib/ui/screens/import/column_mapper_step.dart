@@ -372,7 +372,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               if (!isMulti)
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _mappings[field],
+                    initialValue: _mappings[field],
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -440,7 +440,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                     const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: multiCols[i],
+                        initialValue: multiCols[i],
                         decoration: const InputDecoration(
                           isDense: true,
                           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -568,7 +568,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                 const SizedBox(width: 8),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _balanceFilterColumn,
+                    initialValue: _balanceFilterColumn,
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -883,7 +883,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _balanceDiffColumn,
+                          initialValue: _balanceDiffColumn,
                           decoration: const InputDecoration(
                             isDense: true,
                             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -925,7 +925,7 @@ extension _ColumnMapperStep on _ImportScreenState {
             const SizedBox(width: 8),
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _mappings['amount'],
+                initialValue: _mappings['amount'],
                 decoration: InputDecoration(
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -999,7 +999,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                   const SizedBox(width: 8),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _amountFormula[i].sourceColumn,
+                      initialValue: _amountFormula[i].sourceColumn,
                       decoration: const InputDecoration(
                         isDense: true,
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),

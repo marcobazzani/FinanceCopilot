@@ -3,14 +3,13 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../utils/formatters.dart' show homeDir;
+
 /// Global app settings stored in ~/.config/FinanceCopilot/settings.json
 /// (portable between platforms, accessible before DB is opened).
 class AppSettings {
   static final _configDir = Directory(
-    p.join(
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.',
-      '.config', 'FinanceCopilot',
-    ),
+    p.join(homeDir, '.config', 'FinanceCopilot'),
   );
   static File get _file => File(p.join(_configDir.path, 'settings.json'));
 

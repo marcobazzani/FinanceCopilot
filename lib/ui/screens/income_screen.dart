@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
@@ -195,7 +194,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
             return ListView.separated(
               itemCount: incomes.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (ctx, i) {
                 final income = incomes[i];
                 final sym = currencySymbol(income.currency);
@@ -281,7 +280,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<IncomeType>(
-                  value: type,
+                  initialValue: type,
                   decoration: InputDecoration(labelText: s.incomeTypeLabel),
                   items: IncomeType.values
                       .map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t))))
@@ -290,7 +289,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: currency,
+                  initialValue: currency,
                   decoration: InputDecoration(labelText: s.currency),
                   items: ExchangeRateService.allCurrencies
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
@@ -362,7 +361,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<IncomeType>(
-                  value: type,
+                  initialValue: type,
                   decoration: InputDecoration(labelText: s.incomeTypeLabel),
                   items: IncomeType.values
                       .map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t))))
@@ -371,7 +370,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: currency,
+                  initialValue: currency,
                   decoration: InputDecoration(labelText: s.currency),
                   items: ExchangeRateService.allCurrencies
                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))

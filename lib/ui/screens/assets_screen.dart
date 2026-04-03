@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -190,7 +189,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                     data: _DraggedAsset(asset.id, asset.intermediaryId),
                     onDragStarted: () => setState(() => _isDragging = true),
                     onDragEnd: (_) => setState(() => _isDragging = false),
-                    onDraggableCanceled: (_, __) => setState(() => _isDragging = false),
+                    onDraggableCanceled: (_, _) => setState(() => _isDragging = false),
                     feedback: Material(
                       elevation: 4,
                       borderRadius: BorderRadius.circular(8),
@@ -513,7 +512,7 @@ class _AssetTile extends StatelessWidget {
                       children: [
                         if (marketValue != null) ...[
                           TextSpan(
-                            text: '${amtFormat.format(marketValue! / stats!.totalQuantity)}',
+                            text: amtFormat.format(marketValue! / stats!.totalQuantity),
                             style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
                           ),
                           if (asset.currency != baseCurrency)
@@ -736,7 +735,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _results.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final r = _results[i];
                     return ListTile(
@@ -792,7 +791,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           Text(s.typeLabel(r.type), style: const TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _selectedExchange,
+            initialValue: _selectedExchange,
             decoration: InputDecoration(
               labelText: s.stockExchange,
               isDense: true,
@@ -809,7 +808,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<InstrumentType>(
-                  value: _instrumentType,
+                  initialValue: _instrumentType,
                   decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
                   hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: InstrumentType.values
@@ -823,7 +822,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<AssetClass>(
-                  value: _assetClass,
+                  initialValue: _assetClass,
                   decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
                   hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: AssetClass.values
@@ -885,7 +884,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _manualExchange,
+            initialValue: _manualExchange,
             decoration: InputDecoration(
               labelText: s.stockExchange,
               isDense: true,
@@ -902,7 +901,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
             children: [
               Expanded(
                 child: DropdownButtonFormField<InstrumentType>(
-                  value: _instrumentType,
+                  initialValue: _instrumentType,
                   decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
                   hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: InstrumentType.values
@@ -916,7 +915,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               const SizedBox(width: 12),
               Expanded(
                 child: DropdownButtonFormField<AssetClass>(
-                  value: _assetClass,
+                  initialValue: _assetClass,
                   decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
                   hint: const Text('-', style: TextStyle(fontSize: 13)),
                   items: AssetClass.values

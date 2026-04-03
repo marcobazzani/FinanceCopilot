@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:io';
 
 import '../../database/database.dart';
 import '../../services/capex_service.dart';
@@ -76,7 +75,7 @@ class _SpreadTab extends ConsumerWidget {
 
           return ListView.separated(
             itemCount: schedules.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (ctx, i) {
               final schedule = schedules[i];
               final stat = stats[schedule.id];
@@ -135,7 +134,7 @@ class _IncomeTab extends ConsumerWidget {
 
           return ListView.separated(
             itemCount: adjustments.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (ctx, i) {
               final adj = adjustments[i];
               return _IncomeAdjTile(

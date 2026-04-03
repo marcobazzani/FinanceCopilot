@@ -13,6 +13,7 @@ import '../../services/demo_db_service.dart';
 import '../../services/providers/providers.dart';
 import '../../services/update_service.dart';
 import '../../utils/bug_reporter.dart';
+import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import '../../version.dart';
 
@@ -22,7 +23,7 @@ final _log = getLogger('DbPicker');
 class _RecentDbs {
   static final _configDir = Directory(
     p.join(
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.',
+      fmt.homeDir,
       '.config', 'FinanceCopilot',
     ),
   );
@@ -204,7 +205,7 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
     final sandboxDb = File(
       '/Users/marco/Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot/finance_copilot.db',
     );
-    final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+    final home = fmt.homeDir;
     if (home == '.') return; // No home directory found
     final target = File(p.join(home, 'Documents', 'FinanceCopilot.db'));
     if (await sandboxDb.exists() && !await target.exists()) {

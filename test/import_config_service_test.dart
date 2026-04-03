@@ -1,11 +1,9 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/import_config_service.dart';
 
 void main() {

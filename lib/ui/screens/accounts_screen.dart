@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -172,7 +171,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                     data: _DraggedAccount(account.id, account.intermediaryId),
                     onDragStarted: () => setState(() => _isDragging = true),
                     onDragEnd: (_) => setState(() => _isDragging = false),
-                    onDraggableCanceled: (_, __) => setState(() => _isDragging = false),
+                    onDraggableCanceled: (_, _) => setState(() => _isDragging = false),
                     feedback: Material(
                       elevation: 4,
                       borderRadius: BorderRadius.circular(8),

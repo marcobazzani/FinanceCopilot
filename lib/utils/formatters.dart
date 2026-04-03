@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:intl/intl.dart';
 
 import 'date_parser.dart' as dateParse;
@@ -83,3 +84,7 @@ double? parseFlexibleNumber(String text) {
 
 /// Flexible date parser: delegates to comprehensive [dateParse.tryParseDate].
 DateTime? parseFlexibleDate(String text) => dateParse.tryParseDate(text);
+
+/// Cross-platform home directory (macOS/Linux HOME, Windows USERPROFILE).
+String get homeDir =>
+    Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';

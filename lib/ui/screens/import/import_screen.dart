@@ -10,11 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 
 import '../../../database/database.dart';
-import '../../../database/tables.dart';
 import '../../../services/import_service.dart';
 import '../../../services/isin_lookup_service.dart';
 import '../../../services/providers/providers.dart';
-import '../../../l10n/app_strings.dart';
 import '../../../utils/logger.dart';
 
 part 'column_mapper_step.dart';
@@ -565,10 +563,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         if (v.isNotEmpty) values.add(v);
       }
       final sorted = values.toList()..sort();
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _fullUniqueValues[column] = sorted;
         _loadingUniqueValues = false;
       });
+      }
     } catch (e) {
       _log.warning('_loadFullUniqueValues failed: $e');
       if (mounted) setState(() => _loadingUniqueValues = false);

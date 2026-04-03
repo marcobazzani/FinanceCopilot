@@ -29,8 +29,8 @@ class DemoDbService {
     final receivePort = ReceivePort();
     await Isolate.spawn(
       (message) async {
-        final sendPort = message.$1 as SendPort;
-        final dbPath = message.$2 as String;
+        final sendPort = message.$1;
+        final dbPath = message.$2;
         await _generateDemoDb(dbPath, sendPort: sendPort);
         sendPort.send('DONE');
         Isolate.exit();

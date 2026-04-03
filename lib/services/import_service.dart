@@ -470,10 +470,10 @@ class ImportService {
 
     // Build set of bond ISINs for price divisor
     final allAssets = await _db.select(_db.assets).get();
-    final _bondIsins = <String>{};
+    final bondIsins = <String>{};
     for (final a in allAssets) {
       if (a.instrumentType == InstrumentType.bond && a.isin != null) {
-        _bondIsins.add(a.isin!.toUpperCase());
+        bondIsins.add(a.isin!.toUpperCase());
       }
     }
 
@@ -510,7 +510,7 @@ class ImportService {
 
         // Amount: from column, or auto-calculated as quantity * price
         // For bonds, prices are quoted as % of face value → divide by 100
-        final isBond = _bondIsins.contains(isin);
+        final isBond = bondIsins.contains(isin);
         final double amount;
         if (amountMapping != null) {
           amount = _parseAmount(_resolveMapping(amountMapping, row) ?? '');
@@ -764,14 +764,14 @@ class ImportService {
     });
 
     // All arithmetic in integer cents to avoid floating point errors
-    int _toCents(double v) => (v * 100).round();
-    double _fromCents(int c) => c / 100;
+    int toCents(double v) => (v * 100).round();
+    double fromCents(int c) => c / 100;
 
     if (balanceMode == 'cumulative') {
       int balanceCents = 0;
       for (final i in indexed) {
-        balanceCents += _toCents(rows[i].amount);
-        rows[i].balanceAfter = _fromCents(balanceCents);
+        balanceCents += toCents(rows[i].amount);
+        rows[i].balanceAfter = fromCents(balanceCents);
       }
       _log.info('_computeBalances: cumulative - done');
     } else if (balanceMode == 'filtered') {
@@ -782,9 +782,9 @@ class ImportService {
             balanceFilterInclude.isEmpty ||
             balanceFilterInclude.contains(filterVal);
         if (included) {
-          balanceCents += _toCents(rows[i].amount);
+          balanceCents += toCents(rows[i].amount);
         }
-        rows[i].balanceAfter = _fromCents(balanceCents);
+        rows[i].balanceAfter = fromCents(balanceCents);
       }
       _log.info('_computeBalances: filtered - done');
     }

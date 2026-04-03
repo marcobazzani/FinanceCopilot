@@ -36,7 +36,7 @@ class _MonthlyGrid extends ConsumerWidget {
       bottom: borderSide,
     );
 
-    double _value(_YearBucket y, int m) {
+    double value(_YearBucket y, int m) {
       final mb = y.months.where((b) => b.month == m).firstOrNull;
       return mb == null ? double.nan : (field == 'income' ? mb.income : mb.expenses);
     }
@@ -64,7 +64,7 @@ class _MonthlyGrid extends ConsumerWidget {
               _td(_localizedMonths()[m - 1], bold: true),
               for (final y in years) ...[
                 Builder(builder: (ctx) {
-                  final v = _value(y, m);
+                  final v = value(y, m);
                   final isFuture = v.isNaN;
                   final isCurrent = y.year == now.year;
                   return _tdPrivacy(
@@ -74,7 +74,7 @@ class _MonthlyGrid extends ConsumerWidget {
                 }),
               ],
               Builder(builder: (ctx) {
-                final vals = years.map((y) => _value(y, m)).where((v) => !v.isNaN).toList();
+                final vals = years.map((y) => value(y, m)).where((v) => !v.isNaN).toList();
                 final avg = vals.isEmpty ? null : vals.reduce((a, b) => a + b) / vals.length;
                 return _tdPrivacy(avg == null ? '\u2014' : '${amtFmt.format(avg)} $sym');
               }),

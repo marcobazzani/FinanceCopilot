@@ -171,7 +171,7 @@ class _ChartCard extends ConsumerWidget {
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: s.resetZoom,
                 ),
-              if (headerExtra != null) headerExtra!,
+              ?headerExtra,
               if (onCollapse != null)
                 Icon(Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ],

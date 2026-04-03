@@ -567,7 +567,7 @@ class CompositionService {
       if (e.response?.statusCode == 403 && _investingService != null &&
           url.contains('investing.com')) {
         _log.fine('fetchHtml: Dio 403, trying WebView fetch for $url');
-        return await _investingService!.fetchHtml(url);
+        return await _investingService.fetchHtml(url);
       }
       _log.warning('fetchHtml: $url - ${e.response?.statusCode ?? e.message}');
       return null;

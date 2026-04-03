@@ -1,14 +1,12 @@
 import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
 import '../../database/database.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 
@@ -137,7 +135,7 @@ class _IncomeAdjEditScreenState extends ConsumerState<IncomeAdjEditScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _currency,
+                    initialValue: _currency,
                     decoration: InputDecoration(labelText: s.currency),
                     items: ExchangeRateService.allCurrencies
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
