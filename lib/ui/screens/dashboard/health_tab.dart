@@ -170,13 +170,26 @@ class _FinancialHealthTab extends ConsumerWidget {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 )),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: cat.kpis.map((kpi) => ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 320),
-                    child: _KpiCard(kpi: kpi, pctFmt: pctFmt, s: s, isPrivate: isPrivate),
-                  )).toList(),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cards = cat.kpis.map((kpi) => _KpiCard(kpi: kpi, pctFmt: pctFmt, s: s, isPrivate: isPrivate)).toList();
+                    if (constraints.maxWidth < 680) {
+                      return Column(
+                        children: cards.map((card) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: card,
+                        )).toList(),
+                      );
+                    }
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: cards.map((card) => ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 320),
+                        child: card,
+                      )).toList(),
+                    );
+                  },
                 ),
               ],
             ],

@@ -220,7 +220,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       key: _repaintKey,
       child: Scaffold(
       appBar: AppBar(
-        title: const Text('FinanceCopilot'),
         actions: [
           Consumer(builder: (context, ref, _) {
             final isPrivate = ref.watch(privacyModeProvider);
