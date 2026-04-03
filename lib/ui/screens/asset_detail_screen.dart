@@ -551,27 +551,29 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: _tickerCtrl,
-              decoration: InputDecoration(
-                labelText: s.tickerLabel,
-                hintText: s.tickerHint,
+            if (widget.asset.valuationMethod != ValuationMethod.eventDriven) ...[
+              TextField(
+                controller: _tickerCtrl,
+                decoration: InputDecoration(
+                  labelText: s.tickerLabel,
+                  hintText: s.tickerHint,
+                ),
+                textCapitalization: TextCapitalization.characters,
+                textInputAction: TextInputAction.next,
               ),
-              textCapitalization: TextCapitalization.characters,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _isinCtrl,
-              decoration: InputDecoration(
-                labelText: s.isinLabel,
-                hintText: s.optional,
+              const SizedBox(height: 12),
+              TextField(
+                controller: _isinCtrl,
+                decoration: InputDecoration(
+                  labelText: s.isinLabel,
+                  hintText: s.optional,
+                ),
+                textCapitalization: TextCapitalization.characters,
+                textInputAction: TextInputAction.done,
               ),
-              textCapitalization: TextCapitalization.characters,
-              textInputAction: TextInputAction.done,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
+              const SizedBox(height: 16),
+            ],
+            if (widget.asset.valuationMethod != ValuationMethod.eventDriven) DropdownButtonFormField<String>(
               initialValue: _selectedExchange,
               decoration: InputDecoration(
                 labelText: s.stockExchange,
@@ -635,14 +637,15 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => setState(() {
-            _searchCtrl.clear();
-            _results = [];
-            _searchMode = true;
-          }),
-          child: Text(s.search),
-        ),
+        if (widget.asset.valuationMethod != ValuationMethod.eventDriven)
+          TextButton(
+            onPressed: () => setState(() {
+              _searchCtrl.clear();
+              _results = [];
+              _searchMode = true;
+            }),
+            child: Text(s.search),
+          ),
         TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
         FilledButton(
           onPressed: _nameCtrl.text.trim().isNotEmpty ? _save : null,
