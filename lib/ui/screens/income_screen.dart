@@ -312,7 +312,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final date = _tryParseDate(dateCtl.text);
     final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(s.invalidDateOrAmount)),
         );
@@ -400,7 +400,9 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     );
 
     if (result == 'delete') {
-      await _confirmDelete(context, income);
+      if (context.mounted) {
+        await _confirmDelete(context, income);
+      }
       return;
     }
     if (result != 'save') return;
@@ -408,7 +410,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final date = _tryParseDate(dateCtl.text);
     final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(s.invalidDateOrAmount)),
         );

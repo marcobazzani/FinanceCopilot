@@ -574,7 +574,9 @@ class InvestingComService extends MarketPriceService {
         double? price;
         if (closeRaw is num) {
           price = closeRaw.toDouble();
-        } else if (closeRaw is String) price = double.tryParse(closeRaw);
+        } else if (closeRaw is String) {
+          price = double.tryParse(closeRaw);
+        }
         if (price != null && price > 0) {
           _livePriceCache[assetId] = (price, DateTime.now());
           return price;
@@ -669,7 +671,9 @@ class InvestingComService extends MarketPriceService {
         double? price;
         if (closeRaw is num) {
           price = closeRaw.toDouble();
-        } else if (closeRaw is String) price = double.tryParse(closeRaw);
+        } else if (closeRaw is String) {
+          price = double.tryParse(closeRaw);
+        }
         if (price != null && price > 0) return price;
       }
       return null;

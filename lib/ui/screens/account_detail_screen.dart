@@ -345,7 +345,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     if (confirmed == true) {
       _log.warning('wiping transactions for account ${widget.account.id}');
       final deleted = await ref.read(transactionServiceProvider).deleteByAccount(widget.account.id);
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(s.wipedTransactions(deleted))),
         );
@@ -355,7 +355,6 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
     final s = ref.read(appStringsProvider);
-    final txCount = ref.read(accountTransactionsProvider(widget.account.id)).value?.length ?? 0;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -374,7 +373,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     if (confirmed == true) {
       _log.warning('deleting account id=${widget.account.id} name=${widget.account.name}');
       await ref.read(accountServiceProvider).delete(widget.account.id);
-      if (mounted) Navigator.pop(context);
+      if (context.mounted) Navigator.pop(context);
     }
   }
 
@@ -448,7 +447,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     // Get all transactions with rawMetadata to discover available columns
     final txs = await ref.read(transactionServiceProvider).getByAccount(widget.account.id);
     if (txs.isEmpty) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(s.noTransactionsToRecalc)),
         );
@@ -494,7 +493,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       return vals.toList()..sort();
     }
 
-    if (!mounted) return;
+    if (!context.mounted) return;
 
     await showDialog(
       context: context,

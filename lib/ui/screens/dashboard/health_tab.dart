@@ -73,13 +73,6 @@ _Rating _rateNormal(double value, double scarso, double suff, double buono) {
   return _Rating.scarso;
 }
 
-_Rating _rateInverted(double value, double ottimo, double buono, double suff) {
-  if (value <= ottimo) return _Rating.ottimo;
-  if (value <= buono) return _Rating.buono;
-  if (value <= suff) return _Rating.sufficiente;
-  return _Rating.scarso;
-}
-
 _Rating _categoryRating(List<_HealthKpi> kpis) {
   final rated = kpis.where((k) => k.rating != _Rating.na).toList();
   if (rated.isEmpty) return _Rating.na;

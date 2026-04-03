@@ -19,7 +19,6 @@ import '../../../l10n/app_strings.dart';
 import '../../../services/exchange_rate_service.dart';
 import '../../../services/investing_com_service.dart';
 import '../../../services/providers/providers.dart';
-import '../../../utils/logger.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
 
@@ -37,8 +36,6 @@ part 'yoy_diff_table.dart';
 part 'cashflow_charts.dart';
 part 'totals_table.dart';
 part 'health_tab.dart';
-
-final _log = getLogger('DashboardScreen');
 
 // ════════════════════════════════════════════════════
 // Dashboard screen with dynamic custom charts

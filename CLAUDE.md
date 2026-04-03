@@ -1,6 +1,6 @@
 # Build & Deploy
 
-- Always run `dart fix --apply` before building to fix lint warnings.
+- Always run `dart fix --apply` then `dart analyze lib/` before building. Fix all issues — zero warnings/infos allowed.
 - When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
   dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
