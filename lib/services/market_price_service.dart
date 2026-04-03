@@ -198,6 +198,8 @@ abstract class MarketPriceService {
   }
 
   /// Get close price on or before [date] for [assetId].
+  /// Falls back to revalue events: returns revalue_amount / total_quantity
+  /// so the result is always a per-unit price.
   Future<double?> getPrice(int assetId, DateTime date) async {
     final epochSec = date.millisecondsSinceEpoch ~/ 1000;
     final row = await db.customSelect(
@@ -205,7 +207,30 @@ abstract class MarketPriceService {
       'WHERE asset_id = ? AND date <= ? ORDER BY date DESC LIMIT 1',
       variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
     ).getSingleOrNull();
-    return row?.readNullable<double>('close_price');
+    if (row != null) return row.readNullable<double>('close_price');
+    // Fallback: revalue amount / quantity = per-unit price
+    return _revaluePrice(assetId, epochSec);
+  }
+
+  /// Derive a per-unit price from a revalue event.
+  /// Returns revalue_amount / total_quantity, or revalue_amount if qty <= 0.
+  Future<double?> _revaluePrice(int assetId, int epochSec) async {
+    final revalue = await db.customSelect(
+      "SELECT amount FROM asset_events "
+      "WHERE asset_id = ? AND type = 'revalue' AND date <= ? ORDER BY date DESC LIMIT 1",
+      variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
+    ).getSingleOrNull();
+    if (revalue == null) return null;
+    final amount = revalue.read<double>('amount');
+    // Get total quantity to convert total value -> per-unit price
+    final qtyRow = await db.customSelect(
+      "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
+      "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
+      "FROM asset_events WHERE asset_id = ?",
+      variables: [Variable.withInt(assetId)],
+    ).getSingleOrNull();
+    final qty = qtyRow?.readNullable<double>('qty') ?? 0;
+    return qty > 0 ? amount / qty : amount;
   }
 
   /// Get the two most recent prices for an asset (latest and previous).
@@ -232,16 +257,39 @@ abstract class MarketPriceService {
   }
 
   /// Get all prices for an asset, sorted by date ascending.
+  /// Falls back to revalue events (converted to per-unit prices) if no market prices exist.
   Future<List<MapEntry<DateTime, double>>> getPriceHistory(int assetId) async {
     final rows = await db.customSelect(
       'SELECT date, close_price FROM market_prices '
       'WHERE asset_id = ? ORDER BY date ASC',
       variables: [Variable.withInt(assetId)],
     ).get();
-    return rows.map((r) => MapEntry(
-      DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
-      r.read<double>('close_price'),
-    )).toList();
+    if (rows.isNotEmpty) {
+      return rows.map((r) => MapEntry(
+        DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+        r.read<double>('close_price'),
+      )).toList();
+    }
+    // Fallback: revalue events as per-unit price history
+    final qtyRow = await db.customSelect(
+      "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
+      "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
+      "FROM asset_events WHERE asset_id = ?",
+      variables: [Variable.withInt(assetId)],
+    ).getSingleOrNull();
+    final qty = qtyRow?.readNullable<double>('qty') ?? 0;
+    final revalueRows = await db.customSelect(
+      "SELECT date, amount FROM asset_events "
+      "WHERE asset_id = ? AND type = 'revalue' ORDER BY date ASC",
+      variables: [Variable.withInt(assetId)],
+    ).get();
+    return revalueRows.map((r) {
+      final amount = r.read<double>('amount');
+      return MapEntry(
+        DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+        qty > 0 ? amount / qty : amount,
+      );
+    }).toList();
   }
 
   /// Clear all cached data (market prices, exchange rates, compositions).
