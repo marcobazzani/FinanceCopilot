@@ -242,23 +242,25 @@ extension _ConfirmStep on _ImportScreenState {
             ],
           );
         }
-        return Column(
-          children: [
-            ...accounts.map((a) {
-              final account = a;
-              return RadioListTile<int>(
-                title: Text(account.name),
-                subtitle: Text('${account.type.name} · ${account.currency}'),
-                value: account.id,
-                groupValue: _targetId,
-                onChanged: (v) => _setState(() => _targetId = v),
-              );
-            }),
-            OutlinedButton(
-              onPressed: () => _showCreateAccountDialog(),
-              child: Text(s.newAccount),
-            ),
-          ],
+        return RadioGroup<int>(
+          groupValue: _targetId,
+          onChanged: (v) => _setState(() => _targetId = v),
+          child: Column(
+            children: [
+              ...accounts.map((a) {
+                final account = a;
+                return RadioListTile<int>(
+                  title: Text(account.name),
+                  subtitle: Text('${account.type.name} · ${account.currency}'),
+                  value: account.id,
+                );
+              }),
+              OutlinedButton(
+                onPressed: () => _showCreateAccountDialog(),
+                child: Text(s.newAccount),
+              ),
+            ],
+          ),
         );
       },
       loading: () => const CircularProgressIndicator(),
@@ -274,66 +276,25 @@ extension _ConfirmStep on _ImportScreenState {
         if (intermediaries.isEmpty) {
           return Text(s.unassigned, style: const TextStyle(color: Colors.grey));
         }
-        return Column(
-          children: [
-            ...intermediaries.map((i) => RadioListTile<int>(
-              title: Text(i.name),
-              value: i.id,
-              groupValue: _selectedIntermediaryId,
-              onChanged: (v) => _setState(() => _selectedIntermediaryId = v),
-            )),
-            RadioListTile<int?>(
-              title: Text(s.unassigned),
-              value: null,
-              groupValue: _selectedIntermediaryId,
-              onChanged: (_) => _setState(() => _selectedIntermediaryId = null),
-            ),
-          ],
+        return RadioGroup<int?>(
+          groupValue: _selectedIntermediaryId,
+          onChanged: (v) => _setState(() => _selectedIntermediaryId = v),
+          child: Column(
+            children: [
+              ...intermediaries.map((i) => RadioListTile<int>(
+                title: Text(i.name),
+                value: i.id,
+              )),
+              RadioListTile<int?>(
+                title: Text(s.unassigned),
+                value: null,
+              ),
+            ],
+          ),
         );
       },
       loading: () => const CircularProgressIndicator(),
       error: (e, _) => Text(s.error(e)),
-    );
-  }
-
-  Widget _buildAssetSelector() {
-    final s = ref.watch(appStringsProvider);
-    final assetsAsync = ref.watch(assetsProvider);
-    return assetsAsync.when(
-      data: (assets) {
-        if (assets.isEmpty) {
-          return Column(
-            children: [
-              Text(s.noAssetsCreate),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () => _showCreateAssetDialog(),
-                child: Text(s.createAsset),
-              ),
-            ],
-          );
-        }
-        return Column(
-          children: [
-            ...assets.map((a) {
-              final asset = a;
-              return RadioListTile<int>(
-                title: Text(asset.name),
-                subtitle: Text('${asset.instrumentType.name} · ${asset.assetClass.name} · ${asset.currency}'),
-                value: asset.id,
-                groupValue: _targetId,
-                onChanged: (v) => _setState(() => _targetId = v),
-              );
-            }),
-            OutlinedButton(
-              onPressed: () => _showCreateAssetDialog(),
-              child: Text(s.newAsset),
-            ),
-          ],
-        );
-      },
-      loading: () => const CircularProgressIndicator(),
-      error: (e, _) => Text(ref.watch(appStringsProvider).error(e)),
     );
   }
 
@@ -364,92 +325,6 @@ extension _ConfirmStep on _ImportScreenState {
             child: Text(s.create),
           ),
         ],
-      ),
-    );
-    if (created == true) _setState(() {});
-  }
-
-  Future<void> _showCreateAssetDialog() async {
-    final s = ref.read(appStringsProvider);
-    final isinCtrl = TextEditingController();
-    String? resolvedName;
-    String? resolvedTicker;
-    bool looking = false;
-
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.newAssetTitle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: isinCtrl,
-                decoration: InputDecoration(labelText: 'ISIN', hintText: s.isinHint),
-                textCapitalization: TextCapitalization.characters,
-                onChanged: (v) async {
-                  final isin = v.trim().toUpperCase();
-                  if (isin.length == 12) {
-                    setDialogState(() => looking = true);
-                    final result = await ref.read(isinLookupServiceProvider).lookup(isin);
-                    final best = result.bestFor(null);
-                    if (ctx.mounted) {
-                      setDialogState(() {
-                        resolvedName = best?.name;
-                        resolvedTicker = best?.ticker;
-                        looking = false;
-                      });
-                    }
-                  } else {
-                    setDialogState(() {
-                      resolvedName = null;
-                      resolvedTicker = null;
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              if (looking)
-                Row(children: [
-                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                  const SizedBox(width: 8),
-                  Text(s.lookingUpIsin, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                ])
-              else if (resolvedName != null || resolvedTicker != null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (resolvedName != null)
-                      Text(resolvedName!, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    if (resolvedTicker != null)
-                      Text('Ticker: $resolvedTicker', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                  ],
-                )
-              else if (isinCtrl.text.trim().length == 12)
-                Text(s.isinNotFound, style: const TextStyle(color: Colors.orange, fontSize: 13)),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: isinCtrl.text.trim().length == 12 && !looking
-                  ? () async {
-                      final isin = isinCtrl.text.trim().toUpperCase();
-                      final name = resolvedName ?? isin;
-                      await ref.read(assetServiceProvider).create(
-                            name: name,
-                            ticker: resolvedTicker,
-                            isin: isin,
-                            currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-                          );
-                      if (ctx.mounted) Navigator.pop(ctx, true);
-                    }
-                  : null,
-              child: Text(s.create),
-            ),
-          ],
-        ),
       ),
     );
     if (created == true) _setState(() {});

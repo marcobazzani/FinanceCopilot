@@ -1,7 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:intl/intl.dart';
 
-import 'date_parser.dart' as dateParse;
+import 'date_parser.dart' as date_parse;
 
 /// Locale-aware number/date formatters.
 /// All functions accept a locale string (e.g. 'it_IT', 'en_US').
@@ -82,8 +82,8 @@ double? parseFlexibleNumber(String text) {
   return double.tryParse(s);
 }
 
-/// Flexible date parser: delegates to comprehensive [dateParse.tryParseDate].
-DateTime? parseFlexibleDate(String text) => dateParse.tryParseDate(text);
+/// Flexible date parser: delegates to comprehensive [date_parse.tryParseDate].
+DateTime? parseFlexibleDate(String text) => date_parse.tryParseDate(text);
 
 /// Cross-platform home directory (macOS/Linux HOME, Windows USERPROFILE).
 String get homeDir =>

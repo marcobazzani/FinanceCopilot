@@ -481,16 +481,3 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   );
 });
 
-/// EOY prediction: extrapolate current year total based on prior-year pattern.
-/// Returns null if insufficient data.
-double? _eoyPrediction(_YearBucket current, _YearBucket prev, {bool expenses = false}) {
-  if (current.months.isEmpty) return null;
-  final n = current.months.length;
-  final prevSame = prev.months
-      .where((m) => m.month <= n)
-      .fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income));
-  if (prevSame == 0) return null;
-  final currentTotal = expenses ? current.expenses : current.income;
-  final prevTotal    = expenses ? prev.expenses    : prev.income;
-  return prevTotal * currentTotal / prevSame;
-}
