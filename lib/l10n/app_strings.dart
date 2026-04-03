@@ -73,6 +73,7 @@ class AppStrings {
   String get dashTabHistory      => _it ? 'Storico'           : 'History';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';
   String get dashTabAllocation   => _it ? 'Allocazione'      : 'Allocation';
+  String get dashTabAssetsOverview => _it ? 'Panoramica Asset' : 'Assets Overview';
   String get dashTabHealth       => _it ? 'Salute'            : 'Health';
 
   // ── Financial Health ──
