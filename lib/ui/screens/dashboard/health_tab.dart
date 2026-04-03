@@ -31,6 +31,12 @@ class _FinancialHealthTab extends ConsumerWidget {
 
     final pctFmt = NumberFormat('0.00', locale);
 
+    // Wait for all required data before rendering — avoids flicker with zeros
+    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (assetsAsync.hasError) return Center(child: Text(s.error(assetsAsync.error ?? '')));
+
     return assetsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(s.error(e))),
