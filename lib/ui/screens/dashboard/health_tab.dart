@@ -91,8 +91,53 @@ class _FinancialHealthTab extends ConsumerWidget {
           s: s, locale: locale,
         );
 
-        // Overall score
-        final allKpis = categories.expand((c) => c.kpis).toList();
+        // Build Performance & Diversification category
+        HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
+          final data = changes.value;
+          if (data == null || data.isEmpty) return HealthKpi(name: name, value: 0, rating: Rating.na);
+          final pairs = data.map((c) => (
+            c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
+            c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
+          )).toList();
+          final pct = computePriceChangePct(pairs);
+          return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
+        }
+        final byPosition = <String, double>{};
+        for (final asset in activeAssets) {
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
+        }
+        final positionTotal = byPosition.values.fold(0.0, (a, b) => a + b);
+        final conc = computeConcentration(byPosition.entries.toList(), positionTotal);
+
+        var terCost = 0.0, terTotal = 0.0;
+        for (final asset in activeAssets) {
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (mv <= 0) continue;
+          terTotal += mv;
+          if (asset.ter != null && asset.ter! > 0) terCost += mv * asset.ter! / 100;
+        }
+        final weightedTer = terTotal > 0 ? terCost / terTotal * 100 : 0.0;
+
+        final perfKpis = [
+          changeKpi(s.kpiToday, todayChanges),
+          changeKpi(s.kpiYtd, ytdChanges),
+          changeKpi(s.kpiAllTime, allChanges),
+          HealthKpi(name: 'HHI', value: conc.hhi, unit: '', rating: rateHhi(conc.hhi),
+            formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
+          HealthKpi(name: s.healthTer, value: weightedTer, unit: '%',
+            rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
+            formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%'),
+        ];
+        final perfCategory = KpiCategory(
+          name: s.healthPerformance,
+          kpis: perfKpis,
+          overallRating: categoryRating(perfKpis),
+        );
+        final allCategories = [...categories, perfCategory];
+
+        // Overall score includes all categories
+        final allKpis = allCategories.expand((c) => c.kpis).toList();
         final ratedKpis = allKpis.where((k) => k.rating != Rating.na).toList();
         final overallScore = ratedKpis.isEmpty ? 0.0
             : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
@@ -110,16 +155,16 @@ class _FinancialHealthTab extends ConsumerWidget {
               _SummarySection(
                 score: overallScore,
                 overallRating: overallRating,
-                categories: categories,
+                categories: allCategories,
                 s: s,
                 isPrivate: isPrivate,
               ),
               const SizedBox(height: 24),
 
-              // ── KPI Cards ──
+              // ── KPI Cards (all categories including Performance & Diversification) ──
               Text(s.healthKpis, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
-              for (final cat in categories) ...[
+              for (final cat in allCategories) ...[
                 const SizedBox(height: 16),
                 Text(cat.name, style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -134,73 +179,6 @@ class _FinancialHealthTab extends ConsumerWidget {
                   )).toList(),
                 ),
               ],
-
-              // ── Performance & Diversification ──
-              const SizedBox(height: 16),
-              Text(s.healthPerformance, style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              )),
-              const SizedBox(height: 8),
-              Builder(builder: (_) {
-                // Build KPIs from service functions
-                HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
-                  final data = changes.value;
-                  if (data == null || data.isEmpty) return HealthKpi(name: name, value: 0, rating: Rating.na);
-                  final pairs = data.map((c) => (
-                    c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
-                    c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
-                  )).toList();
-                  final pct = computePriceChangePct(pairs);
-                  return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
-                }
-
-                // HHI uses actual portfolio positions, not ETF look-through
-                final byPosition = <String, double>{};
-                for (final asset in activeAssets) {
-                  final mv = marketValues[asset.id] ?? 0.0;
-                  if (mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
-                }
-                final positionTotal = byPosition.values.fold(0.0, (a, b) => a + b);
-                final conc = computeConcentration(byPosition.entries.toList(), positionTotal);
-
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiToday, todayChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
-                    SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiYtd, ytdChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
-                    SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiAllTime, allChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
-                    SizedBox(width: 320, child: _KpiCard(
-                      kpi: HealthKpi(name: 'HHI', value: conc.hhi, unit: '', rating: rateHhi(conc.hhi),
-                        formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
-                      pctFmt: pctFmt, s: s, isPrivate: isPrivate,
-                    )),
-                    // Weighted Avg TER
-                    Builder(builder: (_) {
-                      var totalCost = 0.0, totalValue = 0.0;
-                      for (final asset in activeAssets) {
-                        final mv = marketValues[asset.id] ?? 0.0;
-                        if (mv <= 0) continue;
-                        totalValue += mv;
-                        if (asset.ter != null && asset.ter! > 0) {
-                          totalCost += mv * asset.ter! / 100;
-                        }
-                      }
-                      final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
-                      return SizedBox(width: 320, child: _KpiCard(
-                        kpi: HealthKpi(
-                          name: s.healthTer,
-                          value: weightedTer,
-                          unit: '%',
-                          rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
-                          formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%',
-                        ),
-                        pctFmt: pctFmt, s: s, isPrivate: isPrivate,
-                      ));
-                    }),
-                  ],
-                );
-              }),
             ],
           ),
         );
