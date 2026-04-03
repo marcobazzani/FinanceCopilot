@@ -36,6 +36,7 @@ String? _lastDirectory;
 
 Future<String?> _loadLastDirectory() async {
   if (_lastDirectory != null) return _lastDirectory;
+  if (Platform.isAndroid || Platform.isIOS) return null; // no persistent last-dir on mobile
   try {
     final prefsDir = Directory(p.join(
       Platform.environment['HOME'] ?? '',
@@ -51,6 +52,7 @@ Future<String?> _loadLastDirectory() async {
 
 Future<void> _saveLastDirectory(String dir) async {
   _lastDirectory = dir;
+  if (Platform.isAndroid || Platform.isIOS) return; // no persistent last-dir on mobile
   try {
     final prefsDir = Directory(p.join(
       Platform.environment['HOME'] ?? '',

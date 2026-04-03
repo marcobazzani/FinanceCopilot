@@ -38,8 +38,8 @@ Future<void> openBugReporter(
           Text(s.ticketerTitle),
         ],
       ),
-      content: SizedBox(
-        width: 480,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(ctx).width - 80),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,11 +102,16 @@ Future<void> openBugReporter(
   String? logsPath;
   String? saveDir;
 
-  final desktopDir = Platform.isMacOS || Platform.isLinux
-      ? p.join(Platform.environment['HOME'] ?? '/tmp', 'Desktop')
-      : Platform.environment['USERPROFILE'] != null
-          ? p.join(Platform.environment['USERPROFILE']!, 'Desktop')
-          : Directory.systemTemp.path;
+  final String saveBaseDir;
+  if (Platform.isAndroid || Platform.isIOS) {
+    saveBaseDir = Directory.systemTemp.path;
+  } else if (Platform.isMacOS || Platform.isLinux) {
+    saveBaseDir = p.join(Platform.environment['HOME'] ?? '/tmp', 'Desktop');
+  } else {
+    saveBaseDir = Platform.environment['USERPROFILE'] != null
+        ? p.join(Platform.environment['USERPROFILE']!, 'Desktop')
+        : Directory.systemTemp.path;
+  }
   final timestamp = DateTime.now()
       .toIso8601String()
       .replaceAll(':', '-')
@@ -123,9 +128,9 @@ Future<void> openBugReporter(
         final byteData =
             await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
-          saveDir = desktopDir;
+          saveDir = saveBaseDir;
           final screenshotFile =
-              File(p.join(desktopDir, 'fc-bug-$timestamp.png'));
+              File(p.join(saveBaseDir, 'fc-bug-$timestamp.png'));
           await screenshotFile
               .writeAsBytes(byteData.buffer.asUint8List());
           screenshotPath = screenshotFile.path;
@@ -139,10 +144,10 @@ Future<void> openBugReporter(
       final lastStart = logContent.lastIndexOf('--- App started at');
       final sessionLogs =
           lastStart >= 0 ? logContent.substring(lastStart) : logContent;
-      final logsFile = File(p.join(desktopDir, 'fc-bug-$timestamp.log'));
+      final logsFile = File(p.join(saveBaseDir, 'fc-bug-$timestamp.log'));
       await logsFile.writeAsString(sessionLogs);
       logsPath = logsFile.path;
-      saveDir = desktopDir;
+      saveDir = saveBaseDir;
     }
   } catch (e) {
     _log.warning('Bug reporter capture failed: $e');
@@ -198,8 +203,8 @@ Future<void> openBugReporter(
           Text(s.ticketerTitle),
         ],
       ),
-      content: SizedBox(
-        width: 520,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(ctx).width - 80),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -250,13 +255,15 @@ Future<void> openBugReporter(
                     child: Text(s.ticketerUploadReminder,
                         style: const TextStyle(fontStyle: FontStyle.italic)),
                   ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.folder_open, size: 16),
-                    label: Text(s.ticketerRevealFile),
-                    onPressed: () => _revealInFileManager(
-                        screenshotPath ?? logsPath!),
-                  ),
+                  if (_canRevealInFileManager) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.folder_open, size: 16),
+                      label: Text(s.ticketerRevealFile),
+                      onPressed: () => _revealInFileManager(
+                          screenshotPath ?? logsPath!),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -287,6 +294,10 @@ Future<void> openBugReporter(
     ),
   );
 }
+
+/// Whether the current platform supports revealing files in a file manager.
+bool get _canRevealInFileManager =>
+    Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
 /// Opens the system file manager with the given file selected.
 Future<void> _revealInFileManager(String filePath) async {

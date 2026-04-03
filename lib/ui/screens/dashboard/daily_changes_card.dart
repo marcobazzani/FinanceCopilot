@@ -118,10 +118,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                const Spacer(),
                 SizedBox(
                   width: 56,
                   child: TextField(
@@ -176,28 +179,24 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                     },
                   ),
                 ),
-                const SizedBox(width: 4),
                 ..._units.map((u) {
                   final selected = u == _unit;
-                  return Padding(
-                    padding: const EdgeInsets.only(left: 2),
-                    child: ChoiceChip(
-                      label: Text(u),
-                      selected: selected,
-                      onSelected: (_) => setState(() {
-                        _unit = u;
-                        if (_isSpecialUnit) {
-                          _numberController.text = '';
-                        } else if (_numberController.text.isEmpty) {
-                          _number = 1;
-                          _numberController.text = '1';
-                        }
-                      }),
-                      labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: EdgeInsets.zero,
-                    ),
+                  return ChoiceChip(
+                    label: Text(u),
+                    selected: selected,
+                    onSelected: (_) => setState(() {
+                      _unit = u;
+                      if (_isSpecialUnit) {
+                        _numberController.text = '';
+                      } else if (_numberController.text.isEmpty) {
+                        _number = 1;
+                        _numberController.text = '1';
+                      }
+                    }),
+                    labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: EdgeInsets.zero,
                   );
                 }),
               ],

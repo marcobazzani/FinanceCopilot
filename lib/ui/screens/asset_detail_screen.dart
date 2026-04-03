@@ -660,62 +660,64 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
       title: Text(s.searchAssetTitle),
-      content: SizedBox(
-        width: 400,
-        height: 350,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                labelText: s.search,
-                hintText: s.searchAssetsHint,
-                prefixIcon: const Icon(Icons.search),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SizedBox(
+          height: 350,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  labelText: s.search,
+                  hintText: s.searchAssetsHint,
+                  prefixIcon: const Icon(Icons.search),
+                ),
+                autofocus: true,
+                onChanged: _onSearchChanged,
               ),
-              autofocus: true,
-              onChanged: _onSearchChanged,
-            ),
-            const SizedBox(height: 12),
-            if (_searching)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else if (_results.isNotEmpty)
-              Expanded(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _results.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final r = _results[i];
-                    return ListTile(
-                      dense: true,
-                      title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
-                      subtitle: Text(
-                        '${r.symbol}  ·  ${r.type}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      onTap: () => _selectResult(r),
-                    );
-                  },
+              const SizedBox(height: 12),
+              if (_searching)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (_results.isNotEmpty)
+                Expanded(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _results.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final r = _results[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
+                        subtitle: Text(
+                          '${r.symbol}  ·  ${r.type}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        onTap: () => _selectResult(r),
+                      );
+                    },
+                  ),
+                )
+              else if (_searchCtrl.text.trim().length >= 3)
+                Expanded(
+                  child: Center(
+                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
+                  ),
+                )
+              else
+                Expanded(
+                  child: Center(
+                    child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  ),
                 ),
-              )
-            else if (_searchCtrl.text.trim().length >= 3)
-              Expanded(
-                child: Center(
-                  child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-                ),
-              )
-            else
-              Expanded(
-                child: Center(
-                  child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [
