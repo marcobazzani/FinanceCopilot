@@ -118,10 +118,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                const Spacer(),
                 SizedBox(
                   width: 56,
                   child: TextField(
@@ -242,46 +245,58 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                   );
                 }
 
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
-                          headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
-                          headerCell('Price \u0394 ($symbol)', _SortCol.priceDiff),
-                          headerCell('%', _SortCol.pct),
-                          headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
-                        ],
-                      ),
-                    ),
-                    ...sorted.map((c) => _buildRow(
-                      theme: theme,
-                      name: c.ticker ?? c.name,
-                      marketValue: c.todayPrice * c.todayFxRate,
-                      priceDiff: c.priceDiff * c.todayFxRate,
-                      pricePct: c.pricePct,
-                      valueDiff: c.valueDiff,
-                      amtFmt: amtFmt,
-                      url: c.investingUrl,
-                      isPrivate: isPrivate,
-                      marketOpen: c.marketOpen,
-                      s: s,
-                    )),
-                    const Divider(height: 16),
-                    _buildRow(
-                      theme: theme,
-                      name: s.legendTotal,
-                      marketValue: null,
-                      priceDiff: null,
-                      pricePct: totalPct,
-                      valueDiff: totalDiff,
-                      amtFmt: amtFmt,
-                      bold: true,
-                      isPrivate: isPrivate,
-                    ),
-                  ],
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final tableContent = Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
+                              headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
+                              headerCell('Price \u0394 ($symbol)', _SortCol.priceDiff),
+                              headerCell('%', _SortCol.pct),
+                              headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
+                            ],
+                          ),
+                        ),
+                        ...sorted.map((c) => _buildRow(
+                          theme: theme,
+                          name: c.ticker ?? c.name,
+                          marketValue: c.todayPrice * c.todayFxRate,
+                          priceDiff: c.priceDiff * c.todayFxRate,
+                          pricePct: c.pricePct,
+                          valueDiff: c.valueDiff,
+                          amtFmt: amtFmt,
+                          url: c.investingUrl,
+                          isPrivate: isPrivate,
+                          marketOpen: c.marketOpen,
+                          s: s,
+                        )),
+                        const Divider(height: 16),
+                        _buildRow(
+                          theme: theme,
+                          name: s.legendTotal,
+                          marketValue: null,
+                          priceDiff: null,
+                          pricePct: totalPct,
+                          valueDiff: totalDiff,
+                          amtFmt: amtFmt,
+                          bold: true,
+                          isPrivate: isPrivate,
+                        ),
+                      ],
+                    );
+                    // On narrow screens, allow horizontal scrolling for the data table
+                    if (constraints.maxWidth < 500) {
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(width: 500, child: tableContent),
+                      );
+                    }
+                    return tableContent;
+                  },
                 );
               },
             ),
