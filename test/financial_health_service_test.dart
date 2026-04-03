@@ -378,4 +378,75 @@ void main() {
       expect(Rating.scarso.label(s), s.ratingScarso);
     });
   });
+
+  group('computePriceChangePct', () {
+    test('returns 0 for empty list', () {
+      expect(computePriceChangePct([]), 0.0);
+    });
+
+    test('computes positive change', () {
+      final pct = computePriceChangePct([(100.0, 110.0)]);
+      expect(pct, closeTo(10.0, 0.01));
+    });
+
+    test('computes negative change', () {
+      final pct = computePriceChangePct([(100.0, 90.0)]);
+      expect(pct, closeTo(-10.0, 0.01));
+    });
+
+    test('aggregates multiple assets', () {
+      final pct = computePriceChangePct([(100.0, 120.0), (200.0, 210.0)]);
+      // prev=300, now=330, change=10%
+      expect(pct, closeTo(10.0, 0.01));
+    });
+
+    test('returns 0 when previous total is 0', () {
+      expect(computePriceChangePct([(0.0, 100.0)]), 0.0);
+    });
+  });
+
+  group('ratePriceChange', () {
+    test('ottimo for >= 10%', () => expect(ratePriceChange(15.0), Rating.ottimo));
+    test('buono for >= 0%', () => expect(ratePriceChange(5.0), Rating.buono));
+    test('sufficiente for >= -10%', () => expect(ratePriceChange(-5.0), Rating.sufficiente));
+    test('scarso for < -10%', () => expect(ratePriceChange(-15.0), Rating.scarso));
+    test('boundary 0% is buono', () => expect(ratePriceChange(0.0), Rating.buono));
+    test('boundary 10% is ottimo', () => expect(ratePriceChange(10.0), Rating.ottimo));
+  });
+
+  group('computeHhi', () {
+    test('returns 0 for empty map', () {
+      expect(computeHhi({}), 0.0);
+    });
+
+    test('single holding = 10000 (max concentration)', () {
+      expect(computeHhi({'A': 100.0}), closeTo(10000, 0.01));
+    });
+
+    test('two equal holdings = 5000', () {
+      expect(computeHhi({'A': 50.0, 'B': 50.0}), closeTo(5000, 0.01));
+    });
+
+    test('four equal holdings = 2500', () {
+      expect(computeHhi({'A': 25.0, 'B': 25.0, 'C': 25.0, 'D': 25.0}), closeTo(2500, 0.01));
+    });
+
+    test('ten equal holdings = 1000', () {
+      final m = {for (var i = 0; i < 10; i++) 'H$i': 10.0};
+      expect(computeHhi(m), closeTo(1000, 0.01));
+    });
+
+    test('unequal distribution', () {
+      // 80/10/10 = 0.64 + 0.01 + 0.01 = 0.66 * 10000 = 6600
+      expect(computeHhi({'A': 80.0, 'B': 10.0, 'C': 10.0}), closeTo(6600, 0.01));
+    });
+  });
+
+  group('rateHhi', () {
+    test('ottimo for < 1500', () => expect(rateHhi(1000), Rating.ottimo));
+    test('buono for < 2500', () => expect(rateHhi(2000), Rating.buono));
+    test('scarso for >= 2500', () => expect(rateHhi(3000), Rating.scarso));
+    test('boundary 1500 is buono', () => expect(rateHhi(1500), Rating.buono));
+    test('boundary 2500 is scarso', () => expect(rateHhi(2500), Rating.scarso));
+  });
 }

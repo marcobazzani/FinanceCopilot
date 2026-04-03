@@ -20,6 +20,7 @@ import '../../../l10n/app_strings.dart';
 import '../../../services/exchange_rate_service.dart';
 import '../../../services/investing_com_service.dart';
 import '../../../services/financial_health_service.dart';
+import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
@@ -90,19 +91,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: [
           TabBar(
             tabs: [
-              Tab(text: s.dashTabOverall),
+              Tab(text: s.dashTabHealth),
+              Tab(text: s.dashTabHistory),
               Tab(text: s.dashTabCashFlow),
               Tab(text: s.dashTabAllocation),
-              Tab(text: s.dashTabHealth),
             ],
           ),
           Expanded(
             child: TabBarView(
               children: [
+                const _FinancialHealthTab(),
                 _buildChartsTab(allDataAsync, locale, language, context, s),
                 _buildCashFlowTab(allDataAsync, locale, language, context, s),
                 const AllocationTab(),
-                const _FinancialHealthTab(),
               ],
             ),
           ),

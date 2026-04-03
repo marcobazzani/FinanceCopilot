@@ -19,8 +19,15 @@ class _FinancialHealthTab extends ConsumerWidget {
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
+    final compositionsAsync = ref.watch(assetCompositionsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+
+    // Price changes for Today, YTD, All
+    final now = DateTime.now();
+    final todayChanges = ref.watch(assetDailyChangesProvider(now.subtract(const Duration(days: 1))));
+    final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(now.year, 1, 1)));
+    final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
     final isPrivate = ref.watch(privacyModeProvider);
 
     final symbol = currencySymbol(baseCurrency);
@@ -103,6 +110,45 @@ class _FinancialHealthTab extends ConsumerWidget {
                   )).toList(),
                 ),
               ],
+
+              // ── Performance & Diversification ──
+              const SizedBox(height: 16),
+              Text(s.healthPerformance, style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              )),
+              const SizedBox(height: 8),
+              Builder(builder: (_) {
+                // Build KPIs from service functions
+                HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
+                  final data = changes.value;
+                  if (data == null || data.isEmpty) return HealthKpi(name: name, value: 0, rating: Rating.na);
+                  final pairs = data.map((c) => (
+                    c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
+                    c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
+                  )).toList();
+                  final pct = computePriceChangePct(pairs);
+                  return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
+                }
+
+                final compositions = compositionsAsync.value ?? {};
+                final byHolding = weightedBreakdown(activeAssets, marketValues, compositions, 'holding', (a) => a.name);
+                final hhi = computeHhi(byHolding);
+
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiToday, todayChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
+                    SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiYtd, ytdChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
+                    SizedBox(width: 320, child: _KpiCard(kpi: changeKpi(s.kpiAllTime, allChanges), pctFmt: pctFmt, s: s, isPrivate: isPrivate)),
+                    SizedBox(width: 320, child: _KpiCard(
+                      kpi: HealthKpi(name: 'HHI', value: hhi, unit: '', rating: rateHhi(hhi),
+                        formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
+                      pctFmt: pctFmt, s: s, isPrivate: isPrivate,
+                    )),
+                  ],
+                );
+              }),
 
               // ── Investment Costs table ──
               const SizedBox(height: 32),

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -174,3 +175,27 @@ List<KpiCategory> computeKpis({
 }
 
 String unitMonths(AppStrings s) => s.ratingOttimo == 'Ottimo' ? ' mesi' : ' months';
+
+/// Compute portfolio price change % from a list of (previousValue, currentValue) pairs.
+/// Each pair represents an asset's base-currency value at the reference date vs today.
+double computePriceChangePct(List<(double prev, double now)> assetValues) {
+  final totalPrev = assetValues.fold(0.0, (s, v) => s + v.$1);
+  final totalNow = assetValues.fold(0.0, (s, v) => s + v.$2);
+  return totalPrev > 0 ? (totalNow - totalPrev) / totalPrev * 100 : 0.0;
+}
+
+/// Rate a price change percentage.
+Rating ratePriceChange(double pct) =>
+    pct >= 10 ? Rating.ottimo : pct >= 0 ? Rating.buono : pct >= -10 ? Rating.sufficiente : Rating.scarso;
+
+/// Compute HHI (Herfindahl-Hirschman Index) from a map of holding values.
+/// Returns 0-10000. Lower = more diversified.
+double computeHhi(Map<String, double> holdingValues) {
+  final total = holdingValues.values.fold(0.0, (a, b) => a + b);
+  if (total <= 0) return 0;
+  return holdingValues.values.fold(0.0, (sum, v) => sum + pow(v / total, 2)) * 10000;
+}
+
+/// Rate an HHI value.
+Rating rateHhi(double hhi) =>
+    hhi < 1500 ? Rating.ottimo : hhi < 2500 ? Rating.buono : Rating.scarso;
