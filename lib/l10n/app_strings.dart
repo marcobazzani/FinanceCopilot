@@ -619,6 +619,7 @@ class AppStrings {
   String get noDataYet         => _it ? 'Nessun dato ancora.'       : 'No data yet.';
   String get marketOpen        => _it ? 'Mercato aperto'            : 'Market open';
   String get marketClosed      => _it ? 'Mercato chiuso'            : 'Market closed';
+  String get currentValue      => _it ? 'Valore attuale'            : 'Current Value';
 
   // ── Import wizard ──────────────────────────────────────────
   String get buySellDetection  => _it ? 'Rilevamento Acquisto / Vendita' : 'Buy / Sell Detection';
