@@ -44,15 +44,16 @@ class AssetService {
     String? exchange,
     required String currency,
     double? taxRate,
+    ValuationMethod valuationMethod = ValuationMethod.marketPrice,
     InstrumentType? instrumentType,
     AssetClass? assetClass,
   }) {
     _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange, '
-        'instrument=${instrumentType?.name}, class=${assetClass?.name}');
+        'valuation=${valuationMethod.name}, instrument=${instrumentType?.name}, class=${assetClass?.name}');
     return _db.into(_db.assets).insert(AssetsCompanion.insert(
       name: name,
       assetType: AssetType.stockEtf,
-      valuationMethod: ValuationMethod.eventDriven,
+      valuationMethod: valuationMethod,
       ticker: Value(ticker),
       isin: Value(isin),
       exchange: Value(exchange),
