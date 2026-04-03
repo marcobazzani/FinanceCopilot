@@ -33,7 +33,7 @@ class _YoYDiffTable extends ConsumerWidget {
       pairs.add((years[i - 1], years[i]));
     }
 
-    double? _diff(_YearBucket prev, _YearBucket cur, int month) {
+    double? diff(_YearBucket prev, _YearBucket cur, int month) {
       final p = prev.months.where((m) => m.month == month).firstOrNull;
       final c = cur.months.where((m) => m.month == month).firstOrNull;
       if (p == null || c == null) return null;
@@ -47,7 +47,7 @@ class _YoYDiffTable extends ConsumerWidget {
       bottom: borderSide,
     );
 
-    Widget _diffCell(double? v) {
+    Widget diffCell(double? v) {
       if (v == null) return const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5), child: Text('\u2014', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: Colors.grey)));
       final color = v >= 0 ? Colors.green.shade700 : Colors.red.shade700;
       final text  = '${v >= 0 ? '+' : ''}${amtFmt.format(v)} $sym';
@@ -87,7 +87,7 @@ class _YoYDiffTable extends ConsumerWidget {
                       child: Text(_localizedMonths()[m - 1],
                         style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
               for (final p in pairs)
-                _diffCell(_diff(p.$1, p.$2, m)),
+                diffCell(diff(p.$1, p.$2, m)),
             ]),
           // YoY row: sum of all monthly diffs for months available so far
           TableRow(
@@ -101,10 +101,10 @@ class _YoYDiffTable extends ConsumerWidget {
                   double sum = 0;
                   bool valid = false;
                   for (int m = 1; m <= maxM; m++) {
-                    final d = _diff(p.$1, p.$2, m);
+                    final d = diff(p.$1, p.$2, m);
                     if (d != null) { sum += d; valid = true; }
                   }
-                  return _diffCell(valid ? sum : null);
+                  return diffCell(valid ? sum : null);
                 }),
               ],
             ],

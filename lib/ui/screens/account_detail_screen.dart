@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
@@ -133,7 +132,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
                 return ListView.separated(
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final tx = filtered[i];
                     final isPositive = tx.amount >= 0;
@@ -239,7 +238,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               );
             },
             loading: () => const SizedBox(),
-            error: (_, __) => const SizedBox(),
+            error: (_, _) => const SizedBox(),
           ),
         ],
       ),
@@ -286,7 +285,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         builder: (ctx, setDialogState) => AlertDialog(
           title: Text(s.flagAsIncomeTitle),
           content: DropdownButtonFormField<IncomeType>(
-            value: selectedType,
+            initialValue: selectedType,
             decoration: InputDecoration(labelText: s.incomeTypeLabel),
             items: IncomeType.values
                 .map((t) => DropdownMenuItem(value: t, child: Text(typeLabel(t))))
@@ -545,7 +544,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     Text(s.filterColumnLabel, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String>(
-                      value: filterColumn,
+                      initialValue: filterColumn,
                       isExpanded: true,
                       decoration: const InputDecoration(
                         isDense: true,

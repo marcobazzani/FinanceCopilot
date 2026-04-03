@@ -9,7 +9,6 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
@@ -196,7 +195,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
           children: [
             // Event type
             DropdownButtonFormField<EventType>(
-              value: _eventType,
+              initialValue: _eventType,
               decoration: InputDecoration(
                 labelText: s.eventTypeLabel,
                 border: const OutlineInputBorder(),
@@ -231,7 +230,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _currency,
+                    initialValue: _currency,
                     decoration: InputDecoration(
                       labelText: s.currency,
                       border: const OutlineInputBorder(),

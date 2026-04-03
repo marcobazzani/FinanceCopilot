@@ -58,7 +58,7 @@ class ExchangeRateService {
 
       final companions = <ExchangeRatesCompanion>[];
       for (final currency in targetCurrencies) {
-        final rate = await _investingService!.getLiveFxRate('EUR', currency);
+        final rate = await _investingService.getLiveFxRate('EUR', currency);
         if (rate == null) {
           _log.warning('syncRates: EUR/$currency - no rate from Investing.com');
           continue;
@@ -131,7 +131,7 @@ class ExchangeRateService {
 
       _log.info('backfillHistoricalRates: fetching EUR/$currency from ${formatYmd(since)}');
       try {
-        final rates = await _investingService!.fetchHistoricalFxRates('EUR', currency, since);
+        final rates = await _investingService.fetchHistoricalFxRates('EUR', currency, since);
         if (rates.isEmpty) {
           _log.warning('backfillHistoricalRates: EUR/$currency - no data returned');
           continue;
@@ -228,7 +228,7 @@ class ExchangeRateService {
     if (from == to) return 1.0;
 
     if (_investingService != null) {
-      final rate = await _investingService!.getLiveFxRate(from, to);
+      final rate = await _investingService.getLiveFxRate(from, to);
       if (rate != null) return rate;
     }
 

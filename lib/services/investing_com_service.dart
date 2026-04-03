@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
-import '../database/tables.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'market_price_service.dart';
@@ -340,17 +338,6 @@ class InvestingComService extends MarketPriceService {
   // Investing.com API: Search
   // ──────────────────────────────────────────────
 
-  static Options _searchOptions(String domainId) => Options(
-        responseType: ResponseType.json,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-              'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Origin': 'https://www.investing.com',
-          'Referer': 'https://www.investing.com/',
-          'Domain-Id': domainId,
-        },
-      );
 
   /// Search Investing.com for any query (name, ISIN, ticker, fund ID).
   /// Searches both international (www) and Italian (it) domains, merges results.
@@ -585,8 +572,9 @@ class InvestingComService extends MarketPriceService {
         final closeRaw = row['last_closeRaw'];
         if (closeRaw == null) continue;
         double? price;
-        if (closeRaw is num) price = closeRaw.toDouble();
-        else if (closeRaw is String) price = double.tryParse(closeRaw);
+        if (closeRaw is num) {
+          price = closeRaw.toDouble();
+        } else if (closeRaw is String) price = double.tryParse(closeRaw);
         if (price != null && price > 0) {
           _livePriceCache[assetId] = (price, DateTime.now());
           return price;
@@ -679,8 +667,9 @@ class InvestingComService extends MarketPriceService {
         final closeRaw = row['last_closeRaw'];
         if (closeRaw == null) continue;
         double? price;
-        if (closeRaw is num) price = closeRaw.toDouble();
-        else if (closeRaw is String) price = double.tryParse(closeRaw);
+        if (closeRaw is num) {
+          price = closeRaw.toDouble();
+        } else if (closeRaw is String) price = double.tryParse(closeRaw);
         if (price != null && price > 0) return price;
       }
       return null;
@@ -861,10 +850,10 @@ class InvestingComService extends MarketPriceService {
     });
   }
 
-  @override
   /// Max concurrent HTTP requests to Investing.com to avoid rate-limiting.
   static const _maxConcurrency = 3;
 
+  @override
   Future<void> syncPrices({bool forceToday = false}) async {
     try {
       final assets = await (db.select(db.assets)
@@ -876,7 +865,6 @@ class InvestingComService extends MarketPriceService {
       if (assets.isEmpty) return;
 
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
 
       // Step 0: Backfill missing URLs for assets with cached CIDs
       await _backfillMissingUrls(assets);
@@ -912,7 +900,7 @@ class InvestingComService extends MarketPriceService {
           backfillRanges[asset.id] = firstBuy;
           _log.info('syncPrices: ${_assetLabel(asset)} - needs backfill from '
               '${formatYmd(firstBuy)} to '
-              '${formatYmd(firstPrice!)}');
+              '${formatYmd(firstPrice)}');
         }
 
         candidates.add((asset, searchTerm));

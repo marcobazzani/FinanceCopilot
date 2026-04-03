@@ -9,7 +9,6 @@ class _AssetDailyChangesCard extends ConsumerStatefulWidget {
   final String baseCurrency;
 
   const _AssetDailyChangesCard({
-    super.key,
     required this.locale,
     required this.baseCurrency,
   });

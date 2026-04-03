@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../database/database.dart';
@@ -9,7 +8,6 @@ import '../../database/tables.dart';
 import '../../services/capex_service.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
@@ -233,7 +231,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _currency,
+                    initialValue: _currency,
                     decoration: InputDecoration(labelText: s.currency),
                     items: ExchangeRateService.allCurrencies
                         .map((c) => DropdownMenuItem(value: c, child: Text(c)))
@@ -322,7 +320,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
 
             // Step frequency
             DropdownButtonFormField<StepFrequency>(
-              value: _stepFrequency,
+              initialValue: _stepFrequency,
               decoration: InputDecoration(labelText: s.stepFrequency),
               items: StepFrequency.values
                   .map((f) => DropdownMenuItem(value: f, child: Text(f.name)))

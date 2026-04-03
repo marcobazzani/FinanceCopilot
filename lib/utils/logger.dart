@@ -37,9 +37,9 @@ Future<void> initLogging() async {
   }
 
   // Suppress repeated identical messages
-  String? _lastMsg;
-  int _repeatCount = 0;
-  int _lineCount = 0;
+  String? lastMsg;
+  int repeatCount = 0;
+  int lineCount = 0;
 
   Logger.root.onRecord.listen((record) {
     final level = switch (record.level) {
@@ -54,21 +54,21 @@ Future<void> initLogging() async {
 
     // Suppress repeated messages (e.g. network errors during suspend)
     final dedupKey = '${record.loggerName}:${record.message}';
-    if (dedupKey == _lastMsg) {
-      _repeatCount++;
-      if (_repeatCount == 5) {
+    if (dedupKey == lastMsg) {
+      repeatCount++;
+      if (repeatCount == 5) {
         final suppressed = '$ts WARN  [Logger] Suppressing repeated: ${record.message.length > 60 ? record.message.substring(0, 60) : record.message}...';
         _logSink?.writeln(suppressed);
         stderr.writeln(suppressed);
       }
-      if (_repeatCount >= 5) return; // suppress after 5 repeats
+      if (repeatCount >= 5) return; // suppress after 5 repeats
     } else {
-      if (_repeatCount > 5) {
-        final note = '$ts INFO  [Logger] (suppressed ${_repeatCount - 5} repeats)';
+      if (repeatCount > 5) {
+        final note = '$ts INFO  [Logger] (suppressed ${repeatCount - 5} repeats)';
         _logSink?.writeln(note);
       }
-      _lastMsg = dedupKey;
-      _repeatCount = 0;
+      lastMsg = dedupKey;
+      repeatCount = 0;
     }
 
     final fullMsg = record.error != null ? '$msg\n  Error: ${record.error}' : msg;
@@ -80,8 +80,8 @@ Future<void> initLogging() async {
     stderr.writeln(withStack);
 
     // Periodic rotation check (every 10000 lines)
-    _lineCount++;
-    if (_lineCount % 10000 == 0 && logFilePath != null) {
+    lineCount++;
+    if (lineCount % 10000 == 0 && logFilePath != null) {
       final logFile = File(logFilePath!);
       if (logFile.existsSync() && logFile.lengthSync() > 10 * 1024 * 1024) {
         _logSink?.flush();

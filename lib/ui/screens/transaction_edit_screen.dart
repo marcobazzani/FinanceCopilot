@@ -1,13 +1,11 @@
 import 'package:drift/drift.dart' as drift;
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 
@@ -173,7 +171,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<TransactionStatus>(
-                    value: _status,
+                    initialValue: _status,
                     decoration: InputDecoration(
                       labelText: s.statusLabel,
                       border: const OutlineInputBorder(),

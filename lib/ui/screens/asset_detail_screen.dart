@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide Column;
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/database.dart';
@@ -11,7 +10,6 @@ import '../../services/investing_com_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
@@ -107,7 +105,7 @@ class AssetDetailScreen extends ConsumerWidget {
                 eventsStream.when(
                   data: (events) => Text(s.nEvents(events.length), style: const TextStyle(color: Colors.grey, fontSize: 13)),
                   loading: () => const SizedBox(),
-                  error: (_, __) => const SizedBox(),
+                  error: (_, _) => const SizedBox(),
                 ),
               ],
             ),
@@ -125,7 +123,7 @@ class AssetDetailScreen extends ConsumerWidget {
                 }
                 return ListView.separated(
                   itemCount: events.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final ev = events[i];
                     final typeColor = _colorForEventType(ev.type);
@@ -578,7 +576,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedExchange,
+              initialValue: _selectedExchange,
               decoration: InputDecoration(
                 labelText: s.stockExchange,
                 isDense: true,
@@ -595,7 +593,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<InstrumentType>(
-                    value: _instrumentType,
+                    initialValue: _instrumentType,
                     decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
                     items: InstrumentType.values
                         .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
@@ -608,7 +606,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<AssetClass>(
-                    value: _assetClass,
+                    initialValue: _assetClass,
                     decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
                     items: AssetClass.values
                         .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
@@ -689,7 +687,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _results.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final r = _results[i];
                     return ListTile(

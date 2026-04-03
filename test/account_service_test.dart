@@ -3,7 +3,6 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/account_service.dart';
 
 void main() {

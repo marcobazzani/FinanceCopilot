@@ -1,12 +1,9 @@
-import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'income_adj_edit_screen.dart';
@@ -101,7 +98,7 @@ class _DetailBody extends ConsumerWidget {
                       );
                     },
                     loading: () => const SizedBox(),
-                    error: (_, __) => const SizedBox(),
+                    error: (_, _) => const SizedBox(),
                   ),
                 ],
               ),

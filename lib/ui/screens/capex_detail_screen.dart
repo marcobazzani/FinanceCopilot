@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:io';
 import '../../database/database.dart';
 import '../../services/providers/providers.dart';
-import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'capex_edit_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
