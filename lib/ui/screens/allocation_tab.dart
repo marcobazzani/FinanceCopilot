@@ -464,7 +464,7 @@ class _TopHoldingsInteractive extends ConsumerStatefulWidget {
   final String baseCurrency;
   final String locale;
 
-  static const _displayCount = 7;
+  static const _displayCount = 5;
 
   const _TopHoldingsInteractive({
     required this.allHoldings,
