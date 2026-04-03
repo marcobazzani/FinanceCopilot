@@ -180,9 +180,10 @@ class _FinancialHealthTab extends ConsumerWidget {
                       var totalCost = 0.0, totalValue = 0.0;
                       for (final asset in activeAssets) {
                         final mv = marketValues[asset.id] ?? 0.0;
-                        if (mv > 0 && asset.ter != null && asset.ter! > 0) {
+                        if (mv <= 0) continue;
+                        totalValue += mv;
+                        if (asset.ter != null && asset.ter! > 0) {
                           totalCost += mv * asset.ter! / 100;
-                          totalValue += mv;
                         }
                       }
                       final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
