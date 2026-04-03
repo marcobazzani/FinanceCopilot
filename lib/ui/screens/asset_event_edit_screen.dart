@@ -54,6 +54,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
 
   bool get _isEditing => widget.event != null;
   bool get _usesQtyPrice => _qtyPriceTypes.contains(_eventType);
+  bool get _isRevalue => _eventType == EventType.revalue;
 
   String get _baseCurrency =>
       ref.read(baseCurrencyProvider).value ?? 'EUR';
@@ -193,20 +194,24 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Event type
+            // Event type — show only relevant types
             DropdownButtonFormField<EventType>(
               initialValue: _eventType,
               decoration: InputDecoration(
                 labelText: s.eventTypeLabel,
                 border: const OutlineInputBorder(),
               ),
-              items: EventType.values
-                  .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
-                  .toList(),
+              items: const [
+                EventType.buy,
+                EventType.sell,
+                EventType.dividend,
+                EventType.contribute,
+                EventType.revalue,
+              ].map((t) => DropdownMenuItem(value: t, child: Text(t.name))).toList(),
               onChanged: (v) {
                 setState(() => _eventType = v!);
                 _onFieldChanged();
-                _fetchAssetPrice();
+                if (!_isRevalue) _fetchAssetPrice();
               },
             ),
             const SizedBox(height: 12),
@@ -225,46 +230,48 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
             ),
             const SizedBox(height: 12),
 
-            // Currency + Exchange Rate row
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _currency,
-                    decoration: InputDecoration(
-                      labelText: s.currency,
-                      border: const OutlineInputBorder(),
+            // Currency + Exchange Rate row (hidden for revalue)
+            if (!_isRevalue) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _currency,
+                      decoration: InputDecoration(
+                        labelText: s.currency,
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: ExchangeRateService.allCurrencies
+                          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                          .toList(),
+                      onChanged: (v) {
+                        setState(() => _currency = v!);
+                        _fetchExchangeRate();
+                      },
                     ),
-                    items: ExchangeRateService.allCurrencies
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (v) {
-                      setState(() => _currency = v!);
-                      _fetchExchangeRate();
-                    },
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    controller: _exchangeRateCtrl,
-                    decoration: InputDecoration(
-                      labelText: _needsConversion
-                          ? s.rateLabel2(_baseCurrency, _currency)
-                          : s.exchangeRate,
-                      border: const OutlineInputBorder(),
-                      hintText: _needsConversion ? s.rateHint : s.notApplicable,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _exchangeRateCtrl,
+                      decoration: InputDecoration(
+                        labelText: _needsConversion
+                            ? s.rateLabel2(_baseCurrency, _currency)
+                            : s.exchangeRate,
+                        border: const OutlineInputBorder(),
+                        hintText: _needsConversion ? s.rateHint : s.notApplicable,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.next,
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    textInputAction: TextInputAction.next,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
 
-            // Quantity + Price row (for buy/sell/vest/split)
-            if (_usesQtyPrice) ...[
+            // Quantity + Price row (for buy/sell/vest/split — not for revalue)
+            if (_usesQtyPrice && !_isRevalue) ...[
               Row(
                 children: [
                   Expanded(
@@ -321,11 +328,11 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               ),
               const SizedBox(height: 12),
             ] else ...[
-              // Direct amount entry for dividend, interest, etc.
+              // Direct amount entry for dividend, interest, revalue, etc.
               TextFormField(
                 controller: _amountCtrl,
                 decoration: InputDecoration(
-                  labelText: s.amountLabel(_needsConversion ? ' ($_currency)' : ''),
+                  labelText: _isRevalue ? s.currentValue : s.amountLabel(_needsConversion ? ' ($_currency)' : ''),
                   border: const OutlineInputBorder(),
                   hintText: '1000.00',
                   suffixText: converted != null
@@ -343,17 +350,19 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
               const SizedBox(height: 12),
             ],
 
-            // Commission
-            TextFormField(
-              controller: _commissionCtrl,
-              decoration: InputDecoration(
-                labelText: s.commissionLabel,
-                border: const OutlineInputBorder(),
+            // Commission (hidden for revalue)
+            if (!_isRevalue) ...[
+              TextFormField(
+                controller: _commissionCtrl,
+                decoration: InputDecoration(
+                  labelText: s.commissionLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.next,
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+            ],
 
             // Notes
             TextFormField(
