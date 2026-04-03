@@ -161,6 +161,9 @@ class AllocationTab extends ConsumerWidget {
 
           final holdingEntries = byHolding.entries.toList();
           final topHoldings = holdingEntries.take(10).toList();
+          // Concentration uses actual portfolio positions, not ETF look-through
+          final byPosition = _groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
+          final positionEntries = byPosition.entries.toList();
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -214,7 +217,7 @@ class AllocationTab extends ConsumerWidget {
                   ),
                 ),
                 _ConcentrationCard(
-                  holdings: holdingEntries,
+                  holdings: positionEntries,
                   total: total,
                   baseCurrency: baseCurrency,
                   locale: locale,
