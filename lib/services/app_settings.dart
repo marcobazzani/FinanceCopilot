@@ -2,23 +2,39 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../utils/formatters.dart' show homeDir;
 
 /// Global app settings stored in ~/.config/FinanceCopilot/settings.json
 /// (portable between platforms, accessible before DB is opened).
 class AppSettings {
-  static final _configDir = Directory(
-    p.join(homeDir, '.config', 'FinanceCopilot'),
-  );
-  static File get _file => File(p.join(_configDir.path, 'settings.json'));
+  static Directory? _resolvedConfigDir;
+
+  static Future<Directory> _getConfigDir() async {
+    if (_resolvedConfigDir != null) return _resolvedConfigDir!;
+    if (Platform.isAndroid || Platform.isIOS) {
+      final docs = await getApplicationDocumentsDirectory();
+      _resolvedConfigDir = Directory(p.join(docs.path, 'FinanceCopilot'));
+    } else {
+      _resolvedConfigDir = Directory(
+        p.join(homeDir, '.config', 'FinanceCopilot'),
+      );
+    }
+    return _resolvedConfigDir!;
+  }
+
+  static Future<File> get _file async {
+    final dir = await _getConfigDir();
+    return File(p.join(dir.path, 'settings.json'));
+  }
 
   static Map<String, dynamic>? _cache;
 
   static Future<Map<String, dynamic>> _load() async {
     if (_cache != null) return _cache!;
     try {
-      final file = _file;
+      final file = await _file;
       if (await file.exists()) {
         _cache = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
         return _cache!;
@@ -30,8 +46,10 @@ class AppSettings {
 
   static Future<void> _save() async {
     if (_cache == null) return;
-    if (!await _configDir.exists()) await _configDir.create(recursive: true);
-    await _file.writeAsString(jsonEncode(_cache));
+    final dir = await _getConfigDir();
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final file = await _file;
+    await file.writeAsString(jsonEncode(_cache));
   }
 
   /// Get a setting value.
