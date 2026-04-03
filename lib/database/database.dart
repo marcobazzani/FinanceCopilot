@@ -47,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -236,6 +236,14 @@ class AppDatabase extends _$AppDatabase {
               ") WHERE institution != '' AND institution IS NOT NULL AND intermediary_id IS NULL",
             );
             _log.info('Migration 22: intermediaries table created, accounts linked');
+          }
+          if (from < 23) {
+            // Drop unused event types — only buy/sell/revalue are supported
+            final deleted = await customUpdate(
+              "DELETE FROM asset_events WHERE type NOT IN ('buy', 'sell', 'revalue')",
+              updates: {assetEvents},
+            );
+            _log.info('Migration 23: removed $deleted legacy event type records');
           }
         },
       );

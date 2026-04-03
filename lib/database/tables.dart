@@ -83,14 +83,7 @@ enum ValuationMethod { marketPrice, eventDriven, balance }
 enum EventType {
   buy,
   sell,
-  dividend,
-  split,
-  vest,
-  contribute,
-  interest,
   revalue,
-  transferIn,
-  transferOut,
 }
 
 enum IncomeType { income, refund, salary, donation, coupon, other }
