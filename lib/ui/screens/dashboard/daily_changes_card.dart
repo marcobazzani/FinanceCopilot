@@ -118,17 +118,9 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                const Spacer(),
-                Flexible(
-                  child: Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    alignment: WrapAlignment.end,
-                    children: [
+            LayoutBuilder(builder: (ctx, constraints) {
+              final wide = constraints.maxWidth > 600;
+              final chips = <Widget>[
                 SizedBox(
                   width: 56,
                   child: TextField(
@@ -203,11 +195,26 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                     padding: EdgeInsets.zero,
                   );
                 }),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ];
+              if (wide) {
+                return Row(
+                  children: [
+                    Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    ...chips,
+                  ],
+                );
+              } else {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 4, runSpacing: 4, children: chips),
+                  ],
+                );
+              }
+            }),
             const SizedBox(height: 8),
             changesAsync.when(
               loading: () => const Center(child: Padding(
