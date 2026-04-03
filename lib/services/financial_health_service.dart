@@ -86,6 +86,7 @@ Rating categoryRating(List<HealthKpi> kpis) {
 List<KpiCategory> computeKpis({
   required double cash,
   required double investments,
+  double liquidInvestments = 0,
   required double annualIncome,
   required double annualExpenses,
   required double annualSavings,
@@ -98,6 +99,8 @@ List<KpiCategory> computeKpis({
 
   final grossAssets = cash + investments;
   final netWorth = grossAssets;
+  // Liquid assets = cash + liquid investments (excludes pension, real estate, alternative, liability)
+  final liquidAssets = cash + liquidInvestments;
 
   // -- Liquidity --
   final liquidityRatio = netWorth > 0 ? cash / netWorth * 100 : 0.0;
@@ -138,7 +141,7 @@ List<KpiCategory> computeKpis({
   final investWeight = grossAssets > 0 ? investments / grossAssets * 100 : 0.0;
   final investWeightRating = investWeight >= 60 ? Rating.alto : rateNormal(investWeight, 20, 40, 60);
 
-  final liquidAssetRatio = grossAssets > 0 ? (cash + investments) / grossAssets * 100 : 0.0;
+  final liquidAssetRatio = grossAssets > 0 ? liquidAssets / grossAssets * 100 : 0.0;
   final liquidAssetRating = rateNormal(liquidAssetRatio, 50, 65, 80);
 
   final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
@@ -157,7 +160,7 @@ List<KpiCategory> computeKpis({
       value: liquidAssetRatio,
       rating: liquidAssetRating,
       description: s.kpiLiquidAssetDesc(liquidAssetRating == Rating.ottimo || liquidAssetRating == Rating.buono ? 'ottimo' : 'altro'),
-      formula: '(Cash + Investments) / Gross Assets x 100\n(${n(cash)} + ${n(investments)}) / ${n(grossAssets)} x 100',
+      formula: '(Cash + Liquid Investments) / Gross Assets x 100\n(${n(cash)} + ${n(liquidInvestments)}) / ${n(grossAssets)} x 100',
     ),
     HealthKpi(
       name: s.kpiIncomeToWealth,

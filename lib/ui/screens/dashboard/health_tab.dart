@@ -43,13 +43,21 @@ class _FinancialHealthTab extends ConsumerWidget {
         final accountStats = accountStatsAsync.value ?? {};
         final ieData = ieAsync.value;
 
-        // Compute totals
+        // Compute totals — split liquid vs illiquid investments
         final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
         final activeAssets = assets.where((a) => a.isActive).toList();
-        double investments = 0;
+        const illiquidTypes = {InstrumentType.pension, InstrumentType.realEstate, InstrumentType.alternative, InstrumentType.liability};
+        double liquidInvestments = 0;
+        double illiquidInvestments = 0;
         for (final asset in activeAssets) {
-          investments += marketValues[asset.id] ?? 0.0;
+          final mv = marketValues[asset.id] ?? 0.0;
+          if (illiquidTypes.contains(asset.instrumentType)) {
+            illiquidInvestments += mv;
+          } else {
+            liquidInvestments += mv;
+          }
         }
+        final investments = liquidInvestments + illiquidInvestments;
 
         // All KPIs use current year data
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
@@ -63,6 +71,7 @@ class _FinancialHealthTab extends ConsumerWidget {
 
         final categories = computeKpis(
           cash: cash, investments: investments,
+          liquidInvestments: liquidInvestments,
           annualIncome: annualIncome, annualExpenses: annualExpenses,
           annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
           s: s, locale: locale,
