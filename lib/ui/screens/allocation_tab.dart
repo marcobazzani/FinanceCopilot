@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -163,71 +164,42 @@ class AllocationTab extends ConsumerWidget {
           final byPosition = _groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
           final positionEntries = byPosition.entries.toList();
 
+          final cards = <Widget>[
+            _ChartCard(title: s.allocGeographic, child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill)),
+            _ChartCard(title: s.allocSector, child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill)),
+            _ChartCard(title: s.allocAssetClass, child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill)),
+            _ChartCard(title: s.allocInstrument, child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill)),
+            _ChartCard(title: s.allocCurrency, child: _DonutChart(data: byCurrency, total: total)),
+            _ChartCard(title: s.allocTopHoldings, child: _TopHoldingsInteractive(allHoldings: holdingEntries, total: total, baseCurrency: baseCurrency, locale: locale)),
+            _ConcentrationCard(holdings: positionEntries, total: total, baseCurrency: baseCurrency, locale: locale),
+            _InvestmentCostsCard(assets: assets.where((a) => a.isActive).toList(), marketValues: marketValues, baseCurrency: baseCurrency, locale: locale),
+          ];
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                _ChartCard(
-                  title: s.allocGeographic,
-                  child: _DrillableDonut(
-                    data: byCountry,
-                    total: total,
-                    drillDown: countryDrill,
+            child: LayoutBuilder(builder: (ctx, constraints) {
+              const cardMin = 400.0;
+              const gap = 16.0;
+              final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
+
+              final rows = <Widget>[];
+              for (var i = 0; i < cards.length; i += cols) {
+                final rowCards = cards.sublist(i, min(i + cols, cards.length));
+                rows.add(IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var j = 0; j < cols; j++) ...[
+                        if (j > 0) const SizedBox(width: gap),
+                        Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
+                      ],
+                    ],
                   ),
-                ),
-                _ChartCard(
-                  title: s.allocSector,
-                  child: _DrillableDonut(
-                    data: bySector,
-                    total: total,
-                    drillDown: sectorDrill,
-                  ),
-                ),
-                _ChartCard(
-                  title: s.allocAssetClass,
-                  child: _DrillableDonut(
-                    data: byType,
-                    total: total,
-                    drillDown: typeDrill,
-                  ),
-                ),
-                _ChartCard(
-                  title: s.allocInstrument,
-                  child: _DrillableDonut(
-                    data: byInstrument,
-                    total: total,
-                    drillDown: instrumentDrill,
-                  ),
-                ),
-                _ChartCard(
-                  title: s.allocCurrency,
-                  child: _DonutChart(data: byCurrency, total: total),
-                ),
-                _ChartCard(
-                  title: s.allocTopHoldings,
-                  child: _TopHoldingsInteractive(
-                    allHoldings: holdingEntries,
-                    total: total,
-                    baseCurrency: baseCurrency,
-                    locale: locale,
-                  ),
-                ),
-                _ConcentrationCard(
-                  holdings: positionEntries,
-                  total: total,
-                  baseCurrency: baseCurrency,
-                  locale: locale,
-                ),
-                _InvestmentCostsCard(
-                  assets: assets.where((a) => a.isActive).toList(),
-                  marketValues: marketValues,
-                  baseCurrency: baseCurrency,
-                  locale: locale,
-                ),
-              ],
-            ),
+                ));
+                if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
+              }
+              return Column(children: rows);
+            }),
           );
         },
       ),
@@ -247,9 +219,7 @@ class _ChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480),
-      child: Card(
+    return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -262,8 +232,7 @@ class _ChartCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -624,9 +593,7 @@ class _ConcentrationCard extends ConsumerWidget {
     final count = holdings.length;
     final conc = alloc.computeConcentration(holdings, total);
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480),
-      child: Card(
+    return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -653,7 +620,6 @@ class _ConcentrationCard extends ConsumerWidget {
             ],
           ),
         ),
-      ),
     );
   }
 
