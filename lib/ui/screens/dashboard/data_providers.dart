@@ -247,6 +247,47 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     ));
   }
 
+  // ── Revalue fallback: assets with buy events but no market prices ──
+  final marketSeriesIds = assetMarketSeries.map((s) => s.key).toSet();
+  for (final asset in activeAssets) {
+    if (!perAssetDeltas.containsKey(asset.id)) continue;
+    if (marketSeriesIds.contains('asset_market:${asset.id}')) continue;
+
+    // No market series was created — try revalue events
+    final revalueRows = await db.customSelect(
+      "SELECT date, amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' ORDER BY date ASC",
+      variables: [Variable.withInt(asset.id)],
+    ).get();
+    if (revalueRows.isEmpty) continue;
+
+    final spots = <FlSpot>[];
+    for (final row in revalueRows) {
+      final dayKey = row.read<int>('date');
+      final amount = row.read<double>('amount');
+      final fxRate = await rates.getRate(asset.currency, dayKey);
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = dt.difference(firstDate).inDays.toDouble();
+      if (x >= 0) spots.add(FlSpot(x, amount * fxRate));
+      allDayKeys.add(dayKey);
+    }
+    // Carry forward to today
+    final todayX = DateTime.now().difference(firstDate).inDays.toDouble();
+    if (spots.isNotEmpty && spots.last.x < todayX) {
+      spots.add(FlSpot(todayX, spots.last.y));
+    }
+    if (spots.isEmpty) continue;
+
+    final investedIdx = assetInvestedSeries.indexWhere((s) => s.key == 'asset_invested:${asset.id}');
+    final color = investedIdx >= 0 ? assetInvestedSeries[investedIdx].color : _chartColors[colorIdx++ % _chartColors.length];
+
+    assetMarketSeries.add(_Series(
+      key: 'asset_market:${asset.id}',
+      name: asset.ticker ?? asset.name,
+      color: color,
+      spots: spots,
+    ));
+  }
+
   // ════════════════════════════════════════════════
   // 3. CAPEX — re-add at expense date, remove during spread steps
   // ════════════════════════════════════════════════
