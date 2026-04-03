@@ -96,7 +96,12 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     }
     double fxRate = 1.0;
     if (asset.currency != baseCurrency) {
-      fxRate = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
+      final rate = await rateService.getLiveRate(asset.currency, baseCurrency);
+      if (rate != null) {
+        fxRate = rate;
+      } else {
+        _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+      }
     }
     final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
     final value = stat.totalQuantity * price / bondDiv * fxRate;
@@ -180,7 +185,12 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double todayFx = 1.0;
     double prevFx = 1.0;
     if (asset.currency != baseCurrency) {
-      todayFx = await rateService.getLiveRate(asset.currency, baseCurrency) ?? 1.0;
+      final liveFx = await rateService.getLiveRate(asset.currency, baseCurrency);
+      if (liveFx != null) {
+        todayFx = liveFx;
+      } else {
+        _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no live ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+      }
       prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
     }
 
