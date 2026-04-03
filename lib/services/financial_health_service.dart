@@ -88,6 +88,7 @@ List<KpiCategory> computeKpis({
   required double investments,
   double liquidInvestments = 0,
   required double annualIncome,
+  double? rollingIncome,
   required double annualExpenses,
   required double annualSavings,
   required double monthlyExpenses,
@@ -144,7 +145,8 @@ List<KpiCategory> computeKpis({
   final liquidAssetRatio = grossAssets > 0 ? liquidAssets / grossAssets * 100 : 0.0;
   final liquidAssetRating = rateNormal(liquidAssetRatio, 50, 65, 80);
 
-  final incomeToWealth = netWorth > 0 ? annualIncome / netWorth * 100 : 0.0;
+  final incomeForWealth = rollingIncome ?? annualIncome;
+  final incomeToWealth = netWorth > 0 ? incomeForWealth / netWorth * 100 : 0.0;
   final incomeToWealthRating = rateNormal(incomeToWealth, 5, 10, 20);
 
   final wealthKpis = [
@@ -167,7 +169,7 @@ List<KpiCategory> computeKpis({
       value: incomeToWealth,
       rating: incomeToWealthRating,
       description: s.kpiIncomeWealthDesc(incomeToWealthRating == Rating.ottimo || incomeToWealthRating == Rating.buono ? 'ottimo' : 'altro'),
-      formula: 'Income / Net Worth x 100\n${n(annualIncome)} / ${n(netWorth)} x 100',
+      formula: 'Income (12m) / Net Worth x 100\n${n(incomeForWealth)} / ${n(netWorth)} x 100',
     ),
   ];
 
