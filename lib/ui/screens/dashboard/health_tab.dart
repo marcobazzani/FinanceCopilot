@@ -157,35 +157,28 @@ class _FinancialHealthTab extends ConsumerWidget {
                         formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
                       pctFmt: pctFmt, s: s, isPrivate: isPrivate,
                     )),
-                  ],
-                );
-              }),
-
-              // ── Weighted Avg TER KPI ──
-              const SizedBox(height: 16),
-              Builder(builder: (_) {
-                var totalCost = 0.0, totalValue = 0.0;
-                for (final asset in activeAssets) {
-                  final mv = marketValues[asset.id] ?? 0.0;
-                  if (mv > 0 && asset.ter != null && asset.ter! > 0) {
-                    totalCost += mv * asset.ter! / 100;
-                    totalValue += mv;
-                  }
-                }
-                final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
-                return Wrap(
-                  spacing: 12, runSpacing: 12,
-                  children: [
-                    SizedBox(width: 320, child: _KpiCard(
-                      kpi: HealthKpi(
-                        name: s.healthTer,
-                        value: weightedTer,
-                        unit: '%',
-                        rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
-                        formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%',
-                      ),
-                      pctFmt: pctFmt, s: s, isPrivate: isPrivate,
-                    )),
+                    // Weighted Avg TER
+                    Builder(builder: (_) {
+                      var totalCost = 0.0, totalValue = 0.0;
+                      for (final asset in activeAssets) {
+                        final mv = marketValues[asset.id] ?? 0.0;
+                        if (mv > 0 && asset.ter != null && asset.ter! > 0) {
+                          totalCost += mv * asset.ter! / 100;
+                          totalValue += mv;
+                        }
+                      }
+                      final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
+                      return SizedBox(width: 320, child: _KpiCard(
+                        kpi: HealthKpi(
+                          name: s.healthTer,
+                          value: weightedTer,
+                          unit: '%',
+                          rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
+                          formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%',
+                        ),
+                        pctFmt: pctFmt, s: s, isPrivate: isPrivate,
+                      ));
+                    }),
                   ],
                 );
               }),
