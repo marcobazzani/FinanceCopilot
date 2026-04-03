@@ -212,25 +212,34 @@ abstract class MarketPriceService {
     return _revaluePrice(assetId, epochSec);
   }
 
-  /// Derive a per-unit price from a revalue event.
-  /// Returns revalue_amount / total_quantity, or revalue_amount if qty <= 0.
+  /// Derive a per-unit price from a revalue event or last buy price.
+  /// Fallback chain: revalue_amount / quantity, then last buy price.
   Future<double?> _revaluePrice(int assetId, int epochSec) async {
+    // Try revalue first
     final revalue = await db.customSelect(
       "SELECT amount FROM asset_events "
       "WHERE asset_id = ? AND type = 'revalue' AND date <= ? ORDER BY date DESC LIMIT 1",
       variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
     ).getSingleOrNull();
-    if (revalue == null) return null;
-    final amount = revalue.read<double>('amount');
-    // Get total quantity to convert total value -> per-unit price
-    final qtyRow = await db.customSelect(
-      "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-      "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
-      "FROM asset_events WHERE asset_id = ?",
-      variables: [Variable.withInt(assetId)],
+    if (revalue != null) {
+      final amount = revalue.read<double>('amount');
+      final qtyRow = await db.customSelect(
+        "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
+        "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
+        "FROM asset_events WHERE asset_id = ?",
+        variables: [Variable.withInt(assetId)],
+      ).getSingleOrNull();
+      final qty = qtyRow?.readNullable<double>('qty') ?? 0;
+      return qty > 0 ? amount / qty : amount;
+    }
+    // Fallback: last buy price
+    final buyRow = await db.customSelect(
+      "SELECT price FROM asset_events "
+      "WHERE asset_id = ? AND type = 'buy' AND price IS NOT NULL AND date <= ? "
+      "ORDER BY date DESC LIMIT 1",
+      variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
     ).getSingleOrNull();
-    final qty = qtyRow?.readNullable<double>('qty') ?? 0;
-    return qty > 0 ? amount / qty : amount;
+    return buyRow?.readNullable<double>('price');
   }
 
   /// Get the two most recent prices for an asset (latest and previous).
