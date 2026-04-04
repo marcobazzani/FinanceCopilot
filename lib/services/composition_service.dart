@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -212,9 +214,7 @@ class CompositionService {
 
       final fundHtml = await _fetchHtml('https://www.investing.com$fundPath');
       if (fundHtml == null) return;
-      final expMatch = RegExp(r'Expenses.*?(\d+[.,]\d+)\s*%', dotAll: true).firstMatch(fundHtml);
-      if (expMatch == null) return;
-      final ter = double.tryParse(expMatch.group(1)!.replaceAll(',', '.'));
+      final ter = parseTerFromInvestingCom(fundHtml);
       if (ter != null) {
         await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
             .write(AssetsCompanion(ter: Value(ter)));
@@ -428,14 +428,11 @@ class CompositionService {
     // Fetch main fund page for expenses/TER
     final mainHtml = await _fetchHtml(baseFundUrl);
     if (mainHtml != null) {
-      final expMatch = RegExp(r'Expenses.*?(\d+[.,]\d+)\s*%', dotAll: true).firstMatch(mainHtml);
-      if (expMatch != null) {
-        final ter = double.tryParse(expMatch.group(1)!.replaceAll(',', '.'));
-        if (ter != null && ter != asset.ter) {
-          await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
-              .write(AssetsCompanion(ter: Value(ter)));
-          _log.info('fetchFund: ${asset.name} - updated TER to $ter% from investing.com');
-        }
+      final ter = parseTerFromInvestingCom(mainHtml);
+      if (ter != null && ter != asset.ter) {
+        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
+            .write(AssetsCompanion(ter: Value(ter)));
+        _log.info('fetchFund: ${asset.name} - updated TER to $ter% from investing.com');
       }
     }
 
@@ -536,6 +533,43 @@ class CompositionService {
     }
 
     return entries;
+  }
+
+  // ── TER parsing from Investing.com HTML ─────────────────
+
+  /// Extract TER/expense ratio from an Investing.com page HTML.
+  ///
+  /// Two known DOM patterns carry real TER data:
+  ///  1. Fund pages: <span class="float_lang_base_1">Expenses</span>
+  ///                 <span class="float_lang_base_2 bold">0.84%</span>
+  ///  2. ETF/fund pages: JSON `"expenseRatio":0.2` in embedded data
+  ///
+  /// Returns null when neither pattern is found (bonds, stocks, etc.).
+  @visibleForTesting
+  double? parseTerFromInvestingCom(String html) {
+    // 1. DOM: <span class="float_lang_base_1">Expenses</span>
+    //         <span class="float_lang_base_2 ...">X.XX%</span>
+    final doc = parse(html);
+    for (final span in doc.querySelectorAll('span.float_lang_base_1')) {
+      if (span.text.trim() != 'Expenses') continue;
+      final next = span.nextElementSibling;
+      if (next == null) continue;
+      final text = next.text.trim();
+      final m = RegExp(r'([\d,.]+)\s*%').firstMatch(text);
+      if (m != null) {
+        final ter = double.tryParse(m.group(1)!.replaceAll(',', '.'));
+        if (ter != null && ter > 0 && ter < 10) return ter;
+      }
+    }
+
+    // 2. JSON: "expenseRatio":0.2  (embedded in <script> or inline data)
+    final jsonMatch = RegExp(r'"expenseRatio"\s*:\s*([\d.]+)').firstMatch(html);
+    if (jsonMatch != null) {
+      final ter = double.tryParse(jsonMatch.group(1)!);
+      if (ter != null && ter > 0 && ter < 10) return ter;
+    }
+
+    return null;
   }
 
   // ── Shared helpers ────────────────────────────────────────
