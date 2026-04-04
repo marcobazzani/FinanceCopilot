@@ -214,7 +214,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
 
     // Look up cached Investing.com URL for the link (same key logic as _searchCid)
     String? investingUrl;
-    final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
+    final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
     if (searchTerm != null && searchTerm.isNotEmpty) {
       final urlKey = 'INVESTING_URL_${searchTerm}_${asset.exchange ?? 'MIL'}';
       final urlRow = await priceService.db.customSelect(

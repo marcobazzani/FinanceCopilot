@@ -347,6 +347,8 @@ class ImportService {
     Set<String>? sellValues,
     /// ISIN → selected exchange option (from UI picker). If null, uses first result.
     Map<String, IsinExchangeOption>? selectedExchanges,
+    /// ISINs to skip during import (unchecked by user in exchange picker).
+    Set<String>? excludedIsins,
     /// If provided, fills missing exchange rates from historical data after import.
     ExchangeRateService? rateService,
     required String baseCurrency,
@@ -392,6 +394,9 @@ class ImportService {
       if (isin.isEmpty) {
         errorCount++;
         errors.add('Skipped line ${i + 1}: empty ISIN');
+        continue;
+      }
+      if (excludedIsins != null && excludedIsins.contains(isin)) {
         continue;
       }
       isinToRows.putIfAbsent(isin, () => []).add(i);
