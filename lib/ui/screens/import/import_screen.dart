@@ -92,6 +92,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // Cached saved import config (loaded once, applied after every re-parse)
   ImportConfig? _savedConfig;
 
+  // Cached full ISIN summary (from all rows, not capped preview)
+  Map<String, int>? _fullIsinSummary;
+
+  // ISINs excluded from import by user (unchecked in exchange picker)
+  final Set<String> _excludedIsins = {};
+
   ImportResult? _result;
   bool _importing = false;
   bool _parsing = false;
@@ -254,6 +260,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _log.info('_pickFile: parsed OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
+        _fullIsinSummary = null;
         _parsing = false;
         for (final f in _requiredFields) {
           _mappings[f] = null;
@@ -339,6 +346,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _log.info('_reparseFile: OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
+        _fullIsinSummary = null;
         _error = null;
         _mappings.clear();
         _amountFormula.clear();
@@ -375,6 +383,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
       setState(() {
         _preview = preview;
+        _fullIsinSummary = null;
         _parsing = false;
         _mappings.clear();
         _amountFormula.clear();
@@ -636,6 +645,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _importedSoFar = 0;
     _importTotal = 0;
 
+    _fullIsinSummary = null;
+    _excludedIsins.clear();
     _multiMappings.clear();
     _multiDelimiters.clear();
     _noHeader = false;

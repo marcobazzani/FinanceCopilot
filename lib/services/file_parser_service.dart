@@ -63,6 +63,30 @@ FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
   return FilePreview(columns: columns, rows: dataRows, totalRows: dataRows.length);
 }
 
+/// Convert an XLSX cell value to string, preserving numeric precision.
+/// XLSX numeric cells always use '.' as decimal separator. Values with
+/// exactly 3 decimal places (e.g. 260.437) would be misinterpreted by
+/// parseAmount as European thousands (260,437). Adding a trailing zero
+/// (260.4370) prevents this without changing the numeric value.
+String _xlsCellToString(dynamic value) {
+  // Excel package wraps values in CellValue types (DoubleCellValue, IntCellValue, etc.)
+  double? numericValue;
+  if (value is xl.DoubleCellValue) {
+    numericValue = value.value;
+  } else if (value is double) {
+    numericValue = value;
+  }
+  if (numericValue != null) {
+    final s = numericValue.toString();
+    final dotIdx = s.indexOf('.');
+    if (dotIdx >= 0 && s.length - dotIdx - 1 == 3) {
+      return numericValue.toStringAsFixed(4);
+    }
+    return s;
+  }
+  return value?.toString().trim() ?? '';
+}
+
 FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
   final bytes = args['bytes'] as List<int>;
   final sheetName = args['sheetName'] as String?;
@@ -91,7 +115,7 @@ FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
     dataRows = effectiveRows.map((row) {
       final map = <String, String>{};
       for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = row[i]?.value?.toString().trim() ?? '';
+        map[columns[i]] = _xlsCellToString(row[i]?.value);
       }
       return map;
     }).toList();
@@ -101,7 +125,7 @@ FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
     dataRows = effectiveRows.skip(1).map((row) {
       final map = <String, String>{};
       for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = row[i]?.value?.toString().trim() ?? '';
+        map[columns[i]] = _xlsCellToString(row[i]?.value);
       }
       return map;
     }).toList();

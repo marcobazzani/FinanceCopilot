@@ -467,11 +467,13 @@ class InvestingComService extends MarketPriceService {
     );
   }
 
-  /// Search for a ticker on Investing.com, filtered by exchange.
+  /// Search for a ticker/ISIN on Investing.com, filtered by exchange.
   /// Returns the Investing.com cid (instrument ID) or null.
-  Future<int?> _searchCid(String ticker, String exchange) async {
+  /// When [searchTerm] is an ISIN (12 chars, starts with 2 letters),
+  /// matches by exchange only (ISIN results have exchange-specific symbols).
+  Future<int?> _searchCid(String searchTerm, String exchange) async {
     // Check cached cid first
-    final cidKey = 'INVESTING_CID_${ticker}_$exchange';
+    final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
     final cidRow = await db.customSelect(
       'SELECT value FROM app_configs WHERE key = ?',
       variables: [Variable.withString(cidKey)],
@@ -482,31 +484,51 @@ class InvestingComService extends MarketPriceService {
     }
 
     final exchangeNameList = _exchangeNames[exchange] ?? [exchange];
+    final isIsin = searchTerm.length == 12 && RegExp(r'^[A-Z]{2}\w{10}$').hasMatch(searchTerm);
 
-    _log.info('searchCid: $ticker on ${exchangeNameList.first}');
+    _log.info('searchCid: $searchTerm on ${exchangeNameList.first} (isIsin=$isIsin)');
 
-    final results = await search(ticker);
+    final results = await search(searchTerm);
 
-    for (final r in results) {
-      if (r.symbol.toUpperCase() == ticker.toUpperCase() &&
-          exchangeNameList.any((name) => name.toLowerCase() == r.exchange.toLowerCase())) {
-        // Cache the cid and URL
+    // Cache helper
+    Future<int> cacheAndReturn(InvestingSearchResult r) async {
+      await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+        key: cidKey, value: r.cid.toString(), description: Value('Investing.com cid for $searchTerm on ${exchangeNameList.first}'),
+      ));
+      if (r.url != null && r.url!.isNotEmpty) {
+        final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
         await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-          key: cidKey, value: r.cid.toString(), description: Value('Investing.com cid for $ticker on ${exchangeNameList.first}'),
+          key: urlKey, value: r.url!, description: Value('Investing.com URL for $searchTerm'),
         ));
-        if (r.url != null && r.url!.isNotEmpty) {
-          final urlKey = 'INVESTING_URL_${ticker}_$exchange';
-          await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-            key: urlKey, value: r.url!, description: Value('Investing.com URL for $ticker'),
-          ));
-        }
+      }
+      _log.info('searchCid: found $searchTerm -> cid=${r.cid} symbol=${r.symbol} (${r.exchange})');
+      return r.cid;
+    }
 
-        _log.info('searchCid: found $ticker -> cid=${r.cid} (${r.exchange})');
-        return r.cid;
+    if (isIsin) {
+      // ISIN search: match by exchange only (symbols differ per exchange)
+      for (final r in results) {
+        if (exchangeNameList.any((name) => name.toLowerCase() == r.exchange.toLowerCase())) {
+          return cacheAndReturn(r);
+        }
+      }
+      // No exchange match -- take first result as fallback
+      if (results.isNotEmpty) {
+        _log.warning('searchCid: ISIN $searchTerm - no exchange match for ${exchangeNameList.first}, '
+            'using first result: ${results.first.symbol}@${results.first.exchange}');
+        return cacheAndReturn(results.first);
+      }
+    } else {
+      // Ticker search: match by symbol AND exchange
+      for (final r in results) {
+        if (r.symbol.toUpperCase() == searchTerm.toUpperCase() &&
+            exchangeNameList.any((name) => name.toLowerCase() == r.exchange.toLowerCase())) {
+          return cacheAndReturn(r);
+        }
       }
     }
 
-    _log.warning('searchCid: $ticker not found on ${exchangeNameList.first} '
+    _log.warning('searchCid: $searchTerm not found on ${exchangeNameList.first} '
         '(candidates: ${results.map((r) => '${r.symbol}@${r.exchange}').join(', ')})');
     return null;
   }
@@ -809,7 +831,7 @@ class InvestingComService extends MarketPriceService {
   Future<void> _backfillMissingUrls(List<Asset> assets) async {
     final missing = <(String, String, int)>[]; // (searchTerm, exchange, cachedCid)
     for (final asset in assets) {
-      final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
+      final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
       if (searchTerm == null || searchTerm.isEmpty) continue;
       final exchange = asset.exchange ?? 'MIL';
       final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
@@ -877,7 +899,7 @@ class InvestingComService extends MarketPriceService {
       final candidates = <(Asset, String)>[]; // (asset, searchTerm)
       final backfillRanges = <int, DateTime>{}; // assetId → backfill-from date
       for (final asset in assets) {
-        final searchTerm = (asset.ticker?.isNotEmpty == true) ? asset.ticker! : asset.isin;
+        final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
         if (searchTerm == null || searchTerm.isEmpty) continue;
 
         final lastDate = await getLastSyncDate(asset.id);

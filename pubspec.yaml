@@ -21,6 +21,8 @@ dependencies:
   # Database (drift + SQLite)
   drift: ^2.31.0
   drift_flutter: ^0.2.8
+  sqlite3: any
+  sqlite3_flutter_libs: any
   path_provider: ^2.1.5
   path: ^1.9.1
 

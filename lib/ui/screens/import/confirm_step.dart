@@ -19,7 +19,26 @@ extension _ConfirmStep on _ImportScreenState {
   }
 
   Future<void> _lookupIsins() async {
-    final isins = _getIsinSummary().keys.toList();
+    if (_preview == null || _mappings['isin'] == null) return;
+
+    // Use full rows (not capped preview) to find ALL unique ISINs.
+    // The preview is capped to first 5 + last 5 rows for display;
+    // ISINs in middle rows would be invisible without this.
+    var source = _preview!;
+    if (source.rows.length < source.totalRows) {
+      final importer = ref.read(importServiceProvider);
+      source = await importer.getFullRows(source);
+    }
+
+    final isinCol = _mappings['isin']!;
+    final counts = <String, int>{};
+    for (final row in source.rows) {
+      final isin = (row[isinCol] ?? '').trim().toUpperCase();
+      if (isin.isNotEmpty) counts[isin] = (counts[isin] ?? 0) + 1;
+    }
+    _fullIsinSummary = counts;
+
+    final isins = counts.keys.toList();
     if (isins.isEmpty) return;
     _setState(() => _lookingUpIsins = true);
     try {
@@ -45,16 +64,7 @@ extension _ConfirmStep on _ImportScreenState {
   }
 
   Map<String, int> _getIsinSummary() {
-    if (_preview == null || _mappings['isin'] == null) return {};
-    final isinCol = _mappings['isin']!;
-    final counts = <String, int>{};
-    for (final row in _preview!.rows) {
-      final isin = (row[isinCol] ?? '').trim().toUpperCase();
-      if (isin.isNotEmpty) {
-        counts[isin] = (counts[isin] ?? 0) + 1;
-      }
-    }
-    return counts;
+    return _fullIsinSummary ?? const {};
   }
 
   Widget _buildConfirm() {
@@ -134,17 +144,34 @@ extension _ConfirmStep on _ImportScreenState {
                       ),
                       const SizedBox(height: 4),
                     ],
-                    // Per-ISIN exchange picker
+                    // Per-ISIN exchange picker with exclude checkbox
                     ..._getIsinSummary().entries.map((e) {
                       final isin = e.key;
                       final count = e.value;
                       final options = _isinLookupResults?[isin]?.options ?? [];
                       final selected = _selectedExchanges[isin];
+                      final excluded = _excludedIsins.contains(isin);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Row(
                           children: [
-                            SizedBox(width: 130, child: Text(isin, style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
+                            SizedBox(
+                              width: 24, height: 24,
+                              child: Checkbox(
+                                value: !excluded,
+                                onChanged: (v) => _setState(() {
+                                  if (v == true) {
+                                    _excludedIsins.remove(isin);
+                                  } else {
+                                    _excludedIsins.add(isin);
+                                  }
+                                }),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(width: 130, child: Text(isin, style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: excluded ? Colors.grey : null))),
                             const SizedBox(width: 4),
                             Text(s.nEventsCount(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                             const SizedBox(width: 8),
@@ -158,13 +185,13 @@ extension _ConfirmStep on _ImportScreenState {
                                     value: o.cid,
                                     child: Text('${o.ticker} — ${o.exchange}', style: const TextStyle(fontSize: 12)),
                                   )).toList(),
-                                  onChanged: (cid) => _setState(() {
+                                  onChanged: excluded ? null : (cid) => _setState(() {
                                     _selectedExchanges[isin] = options.firstWhere((o) => o.cid == cid);
                                   }),
                                 ),
                               )
                             else if (options.length == 1)
-                              Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: const TextStyle(fontSize: 12)))
+                              Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: TextStyle(fontSize: 12, color: excluded ? Colors.grey : null)))
                             else
                               Expanded(child: Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey))),
                           ],
@@ -281,7 +308,7 @@ extension _ConfirmStep on _ImportScreenState {
           onChanged: (v) => _setState(() => _selectedIntermediaryId = v),
           child: Column(
             children: [
-              ...intermediaries.map((i) => RadioListTile<int>(
+              ...intermediaries.map((i) => RadioListTile<int?>(
                 title: Text(i.name),
                 value: i.id,
               )),
@@ -415,6 +442,7 @@ extension _ConfirmStep on _ImportScreenState {
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
+          excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
           baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
           intermediaryId: _selectedIntermediaryId,

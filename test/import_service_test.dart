@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 
 void main() {
   late AppDatabase db;
@@ -239,6 +240,103 @@ Date,Amount
       );
       final tx = (await db.select(db.transactions).get()).first;
       expect(tx.amount, 1234.56);
+    });
+  });
+
+  group('Preview row capping', () {
+    test('preview caps rows to first 5 + last 5 for files > 10 rows', () async {
+      final rows = List.generate(15, (i) => '2024-01-${(i + 1).toString().padLeft(2, '0')},${100 + i},Row $i');
+      final file = writeCsv('large.csv', 'Date,Amount,Description\n${rows.join('\n')}\n');
+      final preview = await importer.parseFile(file.path);
+
+      expect(preview.totalRows, 15);
+      expect(preview.rows.length, 10); // first 5 + last 5
+      // First row is row 0, last row is row 14
+      expect(preview.rows.first['Description'], 'Row 0');
+      expect(preview.rows.last['Description'], 'Row 14');
+      // Middle rows (5-9) are missing from preview
+    });
+
+    test('getFullRows returns all rows even when preview is capped', () async {
+      final rows = List.generate(15, (i) => '2024-01-${(i + 1).toString().padLeft(2, '0')},${100 + i},Row $i');
+      final file = writeCsv('large.csv', 'Date,Amount,Description\n${rows.join('\n')}\n');
+      final preview = await importer.parseFile(file.path);
+
+      expect(preview.rows.length, 10); // capped
+      final full = await importer.getFullRows(preview);
+      expect(full.rows.length, 15); // all rows
+      expect(full.rows[7]['Description'], 'Row 7'); // middle row present
+    });
+
+    test('files with <= 10 rows are not capped', () async {
+      final rows = List.generate(10, (i) => '2024-01-${(i + 1).toString().padLeft(2, '0')},${100 + i},Row $i');
+      final file = writeCsv('small.csv', 'Date,Amount,Description\n${rows.join('\n')}\n');
+      final preview = await importer.parseFile(file.path);
+
+      expect(preview.totalRows, 10);
+      expect(preview.rows.length, 10); // no capping
+    });
+
+    test('11 rows caps to 10 and middle row is lost', () async {
+      // Simulates the Directa bug: 11 rows, position 6 is in the gap
+      final isins = [
+        'LU2009202107', 'IT0003128367', 'IE00BHZRQZ17', 'IE00BP3QZB59', 'IE00B3CNHJ55',
+        'DK0062498333', // position 6 -- the gap!
+        'LU0322253906', 'IT0005661498', 'XS3213330791', 'US0919471013',
+        '', // empty trailing row
+      ];
+      final rows = isins.map((isin) => '$isin,100,Test').toList();
+      final file = writeCsv('directa.csv', 'ISIN,Amount,Name\n${rows.join('\n')}\n');
+      final preview = await importer.parseFile(file.path);
+
+      expect(preview.totalRows, 11);
+      expect(preview.rows.length, 10); // capped
+
+      // Extract ISINs from capped preview -- DK0062498333 is MISSING
+      final cappedIsins = preview.rows
+          .map((r) => r['ISIN']?.trim() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      expect(cappedIsins, isNot(contains('DK0062498333')));
+
+      // getFullRows recovers it
+      final full = await importer.getFullRows(preview);
+      final fullIsins = full.rows
+          .map((r) => r['ISIN']?.trim() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      expect(fullIsins, contains('DK0062498333'));
+      expect(fullIsins.length, 10); // 10 unique ISINs
+    });
+  });
+
+  group('Amount parser', () {
+    test('standard decimal values', () {
+      expect(amt.parseAmount('260.44'), 260.44);
+      expect(amt.parseAmount('1.5'), 1.5);
+      expect(amt.parseAmount('12.34'), 12.34);
+    });
+
+    test('3 decimal places from XLSX (was bug: treated as thousands)', () {
+      // After XLSX fix, these arrive as "260.4370" (4 digits) and are parsed correctly.
+      // But even without XLSX fix, parseAmount should handle them:
+      expect(amt.parseAmount('260.4370'), closeTo(260.437, 0.0001));
+      expect(amt.parseAmount('238.7110'), closeTo(238.711, 0.0001));
+    });
+
+    test('European thousands with dot', () {
+      expect(amt.parseAmount('1.234'), 1234.0);
+      expect(amt.parseAmount('1.234.567'), 1234567.0);
+    });
+
+    test('European decimal with comma', () {
+      expect(amt.parseAmount('260,44'), 260.44);
+      expect(amt.parseAmount('1,5'), 1.5);
+    });
+
+    test('European thousands + decimal', () {
+      expect(amt.parseAmount('1.234,56'), 1234.56);
+      expect(amt.parseAmount('1,234.56'), 1234.56);
     });
   });
 }
