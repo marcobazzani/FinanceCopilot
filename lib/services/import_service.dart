@@ -459,7 +459,7 @@ class ImportService {
           assetType: AssetType.stockEtf,
           instrumentType: Value(instrumentType),
           assetClass: Value(assetClassValue),
-          valuationMethod: ValuationMethod.eventDriven,
+          valuationMethod: ValuationMethod.marketPrice,
           ticker: Value(ticker),
           isin: Value(isin),
           currency: Value(currency),
