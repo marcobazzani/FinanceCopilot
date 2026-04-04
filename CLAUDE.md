@@ -6,6 +6,19 @@
   dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
 
+## Android Emulator
+
+- Available emulators: `Medium_Phone_API_35`, `Pixel_8_Pro_API_35`
+- Steps (in order):
+  1. Launch emulator: `flutter emulators --launch <emulator_id>`
+  2. Wait for it to appear: `flutter devices` (look for `emulator-XXXX`)
+  3. Build APK: `flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S)`
+  4. Install: `flutter install -d emulator-XXXX`
+  5. Launch app: `adb -s emulator-XXXX shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1`
+- Package name is `net.bazzani.financecopilot` (NOT `com.example.finance_copilot`).
+- To run a second emulator alongside an existing one, just launch it — don't kill the first. They get sequential ports (5554, 5556, ...).
+- If `am start` or `monkey` fails with "Activity does not exist" on a freshly launched emulator, the emulator image is likely corrupted (e.g. EdXposed or other framework mods). Fix: kill it (`adb -s emulator-XXXX emu kill`), relaunch with `flutter emulators --launch`, and reinstall.
+
 ## Windows VM (Parallels)
 
 - A Parallels "Windows 11" VM runs on this Mac. Use `prlctl exec "Windows 11"` to run commands.
