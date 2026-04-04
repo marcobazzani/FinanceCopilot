@@ -558,16 +558,17 @@ class InvestingComService extends MarketPriceService {
       return cached.$1;
     }
 
-    // Resolve CID for this asset
+    // Resolve CID for this asset (ISIN-first, same logic as syncPrices/_searchCid)
     final assetRow = await db.customSelect(
-      'SELECT ticker, exchange FROM assets WHERE id = ?',
+      'SELECT ticker, isin, exchange FROM assets WHERE id = ?',
       variables: [Variable.withInt(assetId)],
     ).getSingleOrNull();
     if (assetRow == null) return getPrice(assetId, DateTime.now());
 
+    final isin = assetRow.readNullable<String>('isin');
     final ticker = assetRow.readNullable<String>('ticker');
     final exchange = assetRow.readNullable<String>('exchange') ?? 'MIL';
-    final searchTerm = ticker ?? '';
+    final searchTerm = (isin?.isNotEmpty == true) ? isin! : (ticker ?? '');
     if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
 
     final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
