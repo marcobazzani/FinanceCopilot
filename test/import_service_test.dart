@@ -1,10 +1,13 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/services/isin_lookup_service.dart';
 import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 
 void main() {
@@ -337,6 +340,102 @@ Date,Amount
     test('European thousands + decimal', () {
       expect(amt.parseAmount('1.234,56'), 1234.56);
       expect(amt.parseAmount('1,234.56'), 1234.56);
+    });
+  });
+
+  group('Asset event import', () {
+    FilePreview makeAssetPreview(List<List<String>> rows) {
+      return FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: rows.map((r) => {
+          'date': r[0], 'isin': r[1], 'quantity': r[2],
+          'price': r[3], 'currency': r[4], 'amount': r[5],
+        }).toList(),
+        totalRows: rows.length,
+      );
+    }
+
+    const mappings = [
+      ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+      ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+      ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+      ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+      ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+    ];
+
+    test('imported assets use marketPrice valuation method', () async {
+      final preview = makeAssetPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
+      ]);
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+      );
+      expect(result.result.importedRows, 1);
+
+      final assetId = result.assetsByIsin['IE00B4L5Y983']!;
+      final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
+      expect(asset.valuationMethod, ValuationMethod.marketPrice);
+    });
+
+    test('imported assets store exchange code not Investing.com name', () async {
+      final preview = makeAssetPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
+      ]);
+      // Provide a selected exchange with Investing.com name
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        selectedExchanges: {
+          'IE00B4L5Y983': const IsinExchangeOption(
+            cid: 46925, ticker: 'SWDA', name: 'iShares MSCI World',
+            exchange: 'London', // Investing.com name, not code
+          ),
+        },
+      );
+      final assetId = result.assetsByIsin['IE00B4L5Y983']!;
+      final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
+      expect(asset.exchange, 'LON'); // Should be converted to code
+    });
+
+    test('excludedIsins skips assets during import', () async {
+      final preview = makeAssetPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
+        ['2024-01-15', 'LU0908500753', '5', '260.44', 'EUR', '1302.20'],
+      ]);
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        excludedIsins: {'LU0908500753'},
+      );
+      expect(result.result.importedRows, 1);
+      expect(result.assetsByIsin.containsKey('IE00B4L5Y983'), isTrue);
+      expect(result.assetsByIsin.containsKey('LU0908500753'), isFalse);
+    });
+
+    test('existing asset is reused by ISIN, not recreated', () async {
+      // Pre-create an asset with ISIN and TER
+      final existingId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'SWDA ETF',
+        assetType: AssetType.stockEtf,
+        instrumentType: const Value(InstrumentType.etf),
+        assetClass: const Value(AssetClass.equity),
+        valuationMethod: ValuationMethod.marketPrice,
+        isin: const Value('IE00B4L5Y983'),
+        exchange: const Value('MIL'),
+        ter: const Value(0.20),
+      ));
+
+      final preview = makeAssetPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
+      ]);
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+      );
+
+      // Should reuse existing asset, preserving TER
+      expect(result.assetsByIsin['IE00B4L5Y983'], existingId);
+      final asset = await (db.select(db.assets)..where((a) => a.id.equals(existingId))).getSingle();
+      expect(asset.ter, 0.20); // TER preserved
+      expect(asset.exchange, 'MIL'); // Exchange preserved
     });
   });
 }
