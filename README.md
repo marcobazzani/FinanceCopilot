@@ -6,28 +6,38 @@ Runs on **macOS**, **Windows**, and **Android**. All data stays local in SQLite.
 
 ## Screenshots
 
-### Financial Health Dashboard
-KPI scoring across Liquidity, Wealth, and Diversification categories with overall health gauge. Each indicator has an info button showing the formula with actual values. Performance tracking with price changes across multiple periods.
+### Financial Health
+KPI scoring across Liquidity, Wealth, and Diversification categories with overall health gauge. Each indicator has an info button showing the formula with actual values.
 
 ![Health](docs/screenshots/health.png)
 
+### History & Price Changes
+Price changes table with period selector (1D/1W/1M/3M/6M/1Y/YTD/All), combined Totals chart, and drill-down per asset/account.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Cash Flow
+Saving vs moving average with diff overlay, expenses tracking, and YoY comparison charts.
+
+![Cash Flow](docs/screenshots/cashflow.png)
+
 ### Portfolio Allocation
-Geographic, sector, asset class, instrument type, currency exposure, top holdings, and concentration risk (HHI). All aggregated from composition data fetched automatically from justETF and stockanalysis.com. Click any slice to drill down. Investment costs table with weighted TER tracking.
+Geographic, sector, asset class, and instrument type donut charts. All aggregated from composition data fetched automatically from justETF and stockanalysis.com.
 
 ![Allocation](docs/screenshots/allocation.png)
 
 ### Assets
-All your holdings in one view — grouped by intermediary, with live prices, event counts, and performance indicators.
+All your holdings grouped by intermediary, with live prices, event counts, and performance indicators.
 
 ![Assets](docs/screenshots/assets.png)
 
 ### Asset Detail
-Per-asset view with ticker, ISIN, exchange, and full event history (buy, sell, revalue). Composition breakdown by geography, sector, and top holdings with source attribution.
+Per-asset view with ticker, ISIN, exchange, and full event history (buy, sell, revalue). Composition breakdown by geography, sector, and top holdings.
 
 ![Asset Detail](docs/screenshots/asset_detail.png)
 
 ### Import
-Flexible column mapping for any bank or broker CSV/Excel export. Map columns once, save the config per account — every future import just works. ISIN-based exchange picker with per-asset exclude checkbox. Supports balance-diff mode, multi-column amounts, and status filtering.
+Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exchange picker with per-asset exclude checkbox.
 
 ![Import](docs/screenshots/import.png)
 
