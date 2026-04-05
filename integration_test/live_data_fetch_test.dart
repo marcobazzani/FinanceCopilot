@@ -38,12 +38,12 @@ void main() {
       await seedBuyEvent(db, assetId: a3, date: DateTime(2024, 2, 1),
         amount: 9800.0, quantity: 100, price: 98.0);
 
-      // 4. EU Bond — European Investment Bank 2029
+      // 4. EU Bond — European Union 3.375% 2042 (Milan)
       final a4 = await _seedBond(db,
-        name: 'EIB 1.5% 2029', isin: 'XS1956026498',
+        name: 'EU 3.375% 2042', isin: 'EU000A3K4DV0',
         exchange: 'MIL', currency: 'EUR');
       await seedBuyEvent(db, assetId: a4, date: DateTime(2024, 4, 1),
-        amount: 10200.0, quantity: 100, price: 102.0);
+        amount: 9500.0, quantity: 100, price: 95.0);
 
       // 5. US Treasury Bond — iShares $ Treasury 1-3yr (Milan)
       final a5 = await seedAsset(db,
