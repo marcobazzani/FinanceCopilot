@@ -83,7 +83,9 @@ jobs:
         run: |
           flutter build ${{ matrix.platform }} --release \
             --dart-define=COMMIT_SHA=${{ github.sha }} \
-            --dart-define=CHANNEL=${{ steps.channel.outputs.channel }}
+            --dart-define=CHANNEL=${{ steps.channel.outputs.channel }} \
+            --dart-define=GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
+            --dart-define=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
 
       - name: Ad-hoc sign macOS build
         if: matrix.platform == 'macos'
