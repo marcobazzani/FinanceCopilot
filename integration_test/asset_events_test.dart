@@ -14,11 +14,11 @@ void main() {
 
     // Navigate to Assets
     await tester.tap(find.text('Assets'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Tap asset
     await tester.tap(find.text('S&P 500 ETF'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // AssetDetailScreen shows — has edit and delete icons
     expect(find.byIcon(Icons.edit), findsOneWidget);
@@ -27,6 +27,5 @@ void main() {
     // Info card shows currency chip
     expect(find.text('EUR'), findsWidgets);
 
-    await db.close();
   });
 }

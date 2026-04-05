@@ -11,7 +11,7 @@ void main() {
 
     // Navigate to Adjustments
     await tester.tap(find.text('Adjustments'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Two tabs
     expect(find.text('Saving Spent'), findsOneWidget);
@@ -22,16 +22,15 @@ void main() {
 
     // Tap second tab
     await tester.tap(find.text('Donation Spent'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.textContaining('No income adjustments yet'), findsOneWidget);
 
     // Tap back to first tab
     await tester.tap(find.text('Saving Spent'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.textContaining('No spread adjustments yet'), findsOneWidget);
 
-    await db.close();
   });
 }

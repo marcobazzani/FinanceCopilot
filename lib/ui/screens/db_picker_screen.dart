@@ -11,6 +11,7 @@ import '../../database/providers.dart';
 import '../../services/app_settings.dart';
 import '../../services/demo_db_service.dart';
 import '../../services/providers/providers.dart';
+import '../../services/update_service.dart';
 import '../../utils/bug_reporter.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -98,13 +99,121 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
   double _demoProgress = 0;
   final _repaintKey = GlobalKey();
   String _demoLabel = '';
+  String _channel = 'nightly';
+
   @override
   void initState() {
     super.initState();
     _copySandboxDbIfNeeded().then((_) => _loadRecent());
+    AppSettings.getUpdateChannel().then((ch) {
+      if (mounted) setState(() => _channel = ch);
+    });
     AppSettings.getLanguage().then((lang) {
       ref.read(portableLanguageProvider.notifier).state = lang;
     });
+    // Check for updates on startup (no DB needed)
+    Future.microtask(() => _checkForUpdates());
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (Platform.isAndroid || Platform.isIOS) return; // updates handled by app stores
+    if (isLocalBuild) {
+      _log.info('Skipping update check (local build)');
+      return;
+    }
+    try {
+      final channel = await AppSettings.getUpdateChannel();
+      _log.info('Checking for updates (channel=$channel, commit=$appCommit)...');
+      final updater = UpdateService();
+      final info = await updater.checkForUpdate(channel);
+      if (!info.available || !mounted) return;
+
+      final changelog = await updater.getChangelog(info.latestCommit);
+      if (!mounted) return;
+
+      _showUpdateDialog(info, changelog);
+    } catch (e) {
+      _log.warning('Update check failed: $e');
+    }
+  }
+
+  void _showUpdateDialog(UpdateInfo info, List<String> changelog) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        var downloading = false;
+        var progress = 0.0;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            icon: const Icon(Icons.system_update, size: 36, color: Colors.blue),
+            title: Text(ref.read(appStringsProvider).updateAvailable(info.latestVersion ?? '')),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (changelog.isNotEmpty) ...[
+                    Text(ref.read(appStringsProvider).changesLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: changelog.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 1),
+                          child: Text('• ${changelog[i]}',
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ] else
+                    Text(info.releaseNotes ?? ref.read(appStringsProvider).newVersionAvailable),
+                  if (downloading) ...[
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(value: progress > 0 ? progress : null),
+                    const SizedBox(height: 4),
+                    Text(ref.read(appStringsProvider).downloadingProgress((progress * 100).round()),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ],
+              ),
+            ),
+            actions: downloading
+                ? []
+                : [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(ref.read(appStringsProvider).later),
+                    ),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.download, size: 18),
+                      label: Text(ref.read(appStringsProvider).updateAndRestart),
+                      onPressed: info.downloadUrl == null
+                          ? null
+                          : () async {
+                              setDialogState(() => downloading = true);
+                              try {
+                                await UpdateService().applyUpdate(
+                                  info,
+                                  onProgress: (p) => setDialogState(() => progress = p),
+                                );
+                              } catch (e) {
+                                if (ctx.mounted) {
+                                  setDialogState(() => downloading = false);
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text(ref.read(appStringsProvider).updateFailed(e))),
+                                  );
+                                }
+                              }
+                            },
+                    ),
+                  ],
+          ),
+        );
+      },
+    );
   }
 
   /// On first run (macOS only), copy sandbox DB to ~/Documents/ and add to recents.
@@ -350,6 +459,22 @@ class _DbPickerScreenState extends ConsumerState<DbPickerScreen> {
                           await AppSettings.setLanguage(lang);
                           ref.read(portableLanguageProvider.notifier).state = lang;
                         },
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: () async {
+                          final next = _channel == 'nightly' ? 'stable' : 'nightly';
+                          await AppSettings.setUpdateChannel(next);
+                          if (mounted) setState(() => _channel = next);
+                        },
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Text(
+                            _channel,
+                            style: TextStyle(fontSize: 10, color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline),
+                          ),
+                        ),
                       ),
                     ],
                   ),
