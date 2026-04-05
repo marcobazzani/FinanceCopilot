@@ -12,7 +12,7 @@ void main() {
 
     // Open ImportScreen via AppBar import icon
     await tester.tap(find.byIcon(Icons.file_upload));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // "Open File" and "Paste from Clipboard" buttons
     expect(find.text('Open File'), findsOneWidget);
@@ -23,6 +23,5 @@ void main() {
     expect(find.text('Asset Event'), findsOneWidget);
     expect(find.text('Income'), findsOneWidget);
 
-    await db.close();
   });
 }

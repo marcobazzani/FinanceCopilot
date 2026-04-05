@@ -744,6 +744,13 @@ class AppStrings {
       : 'Failed to generate demo DB: $e';
   String get dbPickerRecent       => _it ? 'Recenti'                 : 'Recent';
   String get dbPickerRemoveRecent => _it ? 'Rimuovi dai recenti'     : 'Remove from recent';
+  String updateAvailable(String v) => _it ? 'Aggiornamento disponibile - $v' : 'Update Available - $v';
+  String get changesLabel        => _it ? 'Modifiche:'               : 'Changes:';
+  String get newVersionAvailable => _it ? 'È disponibile una nuova versione.' : 'A new version is available.';
+  String downloadingProgress(int pct) => _it ? 'Download... $pct%'   : 'Downloading... $pct%';
+  String get later               => _it ? 'Più tardi'                : 'Later';
+  String get updateAndRestart    => _it ? 'Aggiorna e riavvia'       : 'Update & Restart';
+  String updateFailed(Object e)  => _it ? 'Aggiornamento fallito: $e': 'Update failed: $e';
   String get openDatabase        => _it ? 'Apri database'            : 'Open Database';
   String get createNewProject    => _it ? 'Crea nuovo progetto'      : 'Create new project';
   String get chooseDemoFolder    => _it ? 'Scegli cartella per database demo' : 'Choose folder for demo database';

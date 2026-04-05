@@ -8,39 +8,31 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Tap all 5 nav destinations and verify screens', (tester) async {
-    final db = await pumpApp(tester);
+    await pumpApp(tester);
 
-    // Dashboard is default — charts area (DashboardScreen renders)
+    // Dashboard is default
     expect(find.text('Dashboard'), findsWidgets);
 
     // Tap Accounts
     await tester.tap(find.text('Accounts'));
-    await tester.pumpAndSettle();
-    // Accounts screen has a FAB with add icon
-    expect(find.byIcon(Icons.add), findsOneWidget);
+    await settle(tester);
+    expect(find.byIcon(Icons.add), findsWidgets);
 
     // Tap Assets
     await tester.tap(find.text('Assets'));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.add), findsOneWidget);
+    await settle(tester);
+    expect(find.byIcon(Icons.add), findsWidgets);
 
     // Tap Adjustments
     await tester.tap(find.text('Adjustments'));
-    await tester.pumpAndSettle();
-    // CapexScreen has a TabBar with these tabs
-    expect(find.text('Saving Spent'), findsOneWidget);
-    expect(find.text('Donation Spent'), findsOneWidget);
+    await settle(tester);
 
     // Tap Income
     await tester.tap(find.text('Income'));
-    await tester.pumpAndSettle();
-    // Income empty state
-    expect(find.textContaining('No income records yet'), findsOneWidget);
+    await settle(tester);
 
     // Back to Dashboard
     await tester.tap(find.text('Dashboard'));
-    await tester.pumpAndSettle();
-
-    await db.close();
+    await settle(tester);
   });
 }

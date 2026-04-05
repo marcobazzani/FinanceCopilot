@@ -12,7 +12,7 @@ void main() {
 
     // Navigate to Income
     await tester.tap(find.text('Income'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Empty state
     expect(find.textContaining('No income records yet'), findsOneWidget);
@@ -21,7 +21,6 @@ void main() {
     expect(find.byIcon(Icons.add), findsOneWidget);
     expect(find.byIcon(Icons.file_upload), findsWidgets);
 
-    await db.close();
   });
 
   testWidgets('Add income via dialog', (tester) async {
@@ -29,11 +28,11 @@ void main() {
 
     // Navigate to Income
     await tester.tap(find.text('Income'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Tap add FAB
     await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Dialog opens
     expect(find.text('Add Income'), findsOneWidget);
@@ -42,9 +41,8 @@ void main() {
 
     // Dismiss
     await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    await db.close();
   });
 
   testWidgets('Seeded income appears in list', (tester) async {
@@ -54,12 +52,11 @@ void main() {
 
     // Navigate to Income
     await tester.tap(find.text('Income'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Income should be visible (amount formatted)
     expect(find.textContaining('2'), findsWidgets);
 
-    await db.close();
   });
 
   testWidgets('Import FAB navigates to ImportScreen', (tester) async {
@@ -67,15 +64,14 @@ void main() {
 
     // Navigate to Income
     await tester.tap(find.text('Income'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Tap import FAB (tooltip distinguishes from AppBar import icon)
     await tester.tap(find.byTooltip('Import from file'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // ImportScreen should show — look for import-specific UI
     expect(find.text('Open File'), findsOneWidget);
 
-    await db.close();
   });
 }
