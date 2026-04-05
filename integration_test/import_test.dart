@@ -8,7 +8,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Import screen shows toolbar and target selector', (tester) async {
-    final db = await pumpApp(tester);
+    await pumpApp(tester);
 
     // Open ImportScreen via AppBar import icon
     await tester.tap(find.byIcon(Icons.file_upload));

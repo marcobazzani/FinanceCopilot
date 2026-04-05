@@ -6,6 +6,7 @@
 /// Each test file has exactly one testWidgets with its own pumpApp/DB.
 /// They run sequentially in one process — no DB reinit crash because
 /// each testWidgets gets a fresh WidgetTester with a new widget tree.
+library;
 import 'package:integration_test/integration_test.dart';
 
 import 'app_test.dart' as app;

@@ -1,6 +1,6 @@
 # Build & Deploy
 
-- Always run `dart fix --apply` then `dart analyze lib/` before building. Fix all issues — zero warnings/infos allowed.
+- Always run `dart fix --apply` then `dart analyze lib/ test/ integration_test/` before building. Fix all issues — zero warnings/infos allowed.
 - When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
   dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
@@ -38,6 +38,8 @@
 - After every commit bump the version number at the first code change
 - NEVER add `Co-Authored-By:` lines to commits. Not under any circumstances, not for any reason. No exceptions.
 - **Use `develop` branch for testing/exchanging code** (e.g. syncing with Windows VM). Never push to `main` unless the user explicitly confirms. Push to `develop` freely for testing.
+- Always run `dart fix --apply` then `dart analyze lib/ test/ integration_test/` before commit. Fix all issues — zero warnings/infos allowed.
+
 
 # Code Quality
 

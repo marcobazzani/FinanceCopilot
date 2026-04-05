@@ -8,7 +8,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('App launches and shows AppShell with navigation', (tester) async {
-    final db = await pumpApp(tester);
+    await pumpApp(tester);
 
     // App launches successfully — navigation is visible
 

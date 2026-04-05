@@ -8,7 +8,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Navigate to account detail and tap add transaction', (tester) async {
-    final db = await pumpApp(tester, seed: (db) async {
+    await pumpApp(tester, seed: (db) async {
       await seedAccount(db, name: 'Savings');
     });
 
