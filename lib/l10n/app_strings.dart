@@ -68,6 +68,35 @@ class AppStrings {
   String get settingsClearCacheSubtitle => _it ? 'Prezzi, tassi di cambio, composizione' : 'Prices, exchange rates, composition';
   String get settingsClearButton        => _it ? 'Cancella'                   : 'Clear';
   String get settingsCacheCleared       => _it ? 'Dati in cache cancellati'   : 'Cached data cleared';
+  String get settingsData              => _it ? 'Gestione Dati'             : 'Data Management';
+  String get settingsExportDb          => _it ? 'Esporta DB'                : 'Export DB';
+  String get settingsImportDb          => _it ? 'Importa DB'                : 'Import DB';
+  String get settingsExportSuccess     => _it ? 'Database esportato'        : 'Database exported';
+  String get settingsImportSuccess     => _it ? 'Database importato'        : 'Database imported';
+  String get settingsImportWarningTitle => _it ? 'Sostituire il database?'  : 'Replace database?';
+  String get settingsImportWarningBody => _it ? 'Tutti i dati attuali verranno sostituiti. Vuoi esportare prima?' : 'All current data will be replaced. Export first?';
+  String get settingsExportFirst       => _it ? 'Esporta prima'             : 'Export First';
+  String get settingsReplaceAnyway     => _it ? 'Sostituisci'               : 'Replace';
+
+  // ── Import/Export DB ──────────────────────────────────────
+  String get tooltipImportExportDb    => _it ? 'Importa/Esporta Database'   : 'Import/Export Database';
+  String get importExportTitle        => _it ? 'Importa / Esporta Database' : 'Import / Export Database';
+  String get importExportExportHint   => _it ? 'Salva una copia del database' : 'Save a copy of your database';
+  String get importExportImportHint   => _it ? 'Sostituisci con un file esterno' : 'Replace with an external file';
+
+  // ── Landing page ──────────────────────────────────────────
+  String get landingTitle             => _it ? 'Benvenuto in FinanceCopilot' : 'Welcome to FinanceCopilot';
+  String get landingSubtitle          => _it ? 'Il tuo database e vuoto. Come vuoi iniziare?' : 'Your database is empty. How would you like to start?';
+  String get landingCreateDemo        => _it ? 'Genera Dati Demo'           : 'Generate Demo Data';
+  String get landingImportDb          => _it ? 'Importa Database Esistente' : 'Import Existing Database';
+  String get landingStartFresh        => _it ? 'Inizia da zero'             : 'Start Fresh';
+  String get landingImportHint        => _it ? 'Se hai un database precedente, lo trovi in ~/Documents/FinanceCopilot/' : 'If you have a previous database, find it at ~/Documents/FinanceCopilot/';
+
+  // ── Google Drive Sync ──────────────────────────────────
+  String get settingsGoogleDrive      => _it ? 'Google Drive Sync'           : 'Google Drive Sync';
+  String get settingsSyncSignIn       => _it ? 'Accedi con Google'           : 'Sign in with Google';
+  String get settingsSyncSignOut      => _it ? 'Esci'                        : 'Sign out';
+  String settingsSyncSignedIn(String email) => _it ? 'Sincronizzato con $email' : 'Synced with $email';
 
   // ── Dashboard ───────────────────────────────────────────
   String get dashTabHistory      => _it ? 'Storico'           : 'History';
