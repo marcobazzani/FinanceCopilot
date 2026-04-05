@@ -4,8 +4,11 @@ import 'dart:io';
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:googleapis_auth/auth_io.dart' as auth;
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../utils/logger.dart';
 import 'app_settings.dart';
@@ -14,6 +17,11 @@ final _log = getLogger('GoogleDriveSync');
 
 const _driveScope = 'https://www.googleapis.com/auth/drive.appdata';
 const _dbFileName = 'finance_copilot.db';
+
+// OAuth credentials injected via --dart-define at build time
+const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
+const _googleClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
+final _clientId = auth.ClientId(_googleClientId, _googleClientSecret);
 
 /// Metadata about the remote DB file on Google Drive.
 class DriveFileInfo {
@@ -38,20 +46,24 @@ class DriveFileInfo {
 /// - On every DB change: push after 10s debounce (background)
 /// - All-or-nothing: entire DB file, never partial
 class GoogleDriveSyncService {
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: [_driveScope],
-    // Desktop (macOS/Windows) requires explicit clientId; Android uses Info.plist/google-services.json
-    clientId: Platform.isMacOS || Platform.isWindows || Platform.isLinux
-        ? '975988851156-vgpd3o05ifs51nar6chu3vv42876d01m.apps.googleusercontent.com'
-        : null,
-  );
+  static final bool _isDesktop = Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+
+  // Mobile auth via Google Sign-In (uses Google Play Services)
+  GoogleSignIn? _googleSignIn;
+  GoogleSignIn get _mobileSignIn => _googleSignIn ??= GoogleSignIn(scopes: [_driveScope]);
+
+  // Desktop auth via googleapis_auth (uses loopback redirect + client secret)
+  auth.AuthClient? _desktopAuthClient;
+
+  // Shared
+  http.Client? _httpClient;
   drive.DriveApi? _driveApi;
   Timer? _debounceTimer;
   bool _uploading = false;
   bool _syncing = false;
   StreamSubscription? _tableUpdateSub;
+  String? _userEmail;
 
-  // Device identification for conflict detection
   late final String _deviceId;
 
   GoogleDriveSyncService() {
@@ -59,7 +71,6 @@ class GoogleDriveSyncService {
   }
 
   String _computeDeviceId() {
-    // Use platform + hostname as a stable device identifier
     final host = Platform.localHostname;
     final os = Platform.operatingSystem;
     return '$os-$host';
@@ -67,28 +78,32 @@ class GoogleDriveSyncService {
 
   // ── Auth ──────────────────────────────────────────
 
-  bool get isSignedIn => _googleSignIn.currentUser != null && _driveApi != null;
+  bool get isSignedIn => _driveApi != null;
 
-  String? get userEmail => _googleSignIn.currentUser?.email;
+  String? get userEmail => _userEmail;
 
-  /// Try to restore a previous sign-in session silently.
+  /// Try to restore a previous sign-in session.
   Future<bool> trySilentSignIn() async {
     try {
-      final account = await _googleSignIn.signInSilently();
-      if (account == null) return false;
-      return await _initDriveApi();
+      if (_isDesktop) {
+        return await _desktopSilentSignIn();
+      } else {
+        return await _mobileSilentSignIn();
+      }
     } catch (e) {
       _log.warning('trySilentSignIn failed: $e');
       return false;
     }
   }
 
-  /// Interactive sign-in (opens browser/system UI).
+  /// Interactive sign-in.
   Future<bool> signIn() async {
     try {
-      final account = await _googleSignIn.signIn();
-      if (account == null) return false; // user cancelled
-      return await _initDriveApi();
+      if (_isDesktop) {
+        return await _desktopSignIn();
+      } else {
+        return await _mobileInteractiveSignIn();
+      }
     } catch (e) {
       _log.severe('signIn failed: $e');
       return false;
@@ -97,27 +112,90 @@ class GoogleDriveSyncService {
 
   Future<void> signOut() async {
     stopAutoSync();
-    await _googleSignIn.signOut();
+    if (_isDesktop) {
+      _desktopAuthClient?.close();
+      _desktopAuthClient = null;
+      await AppSettings.set('googleRefreshToken', '');
+    } else {
+      await _mobileSignIn.signOut();
+    }
+    _httpClient = null;
     _driveApi = null;
+    _userEmail = null;
     _log.info('Signed out');
   }
 
-  Future<bool> _initDriveApi() async {
-    try {
-      final httpClient = await _googleSignIn.authenticatedClient();
-      if (httpClient == null) return false;
-      _driveApi = drive.DriveApi(httpClient);
-      _log.info('Drive API initialized for ${_googleSignIn.currentUser?.email}');
-      return true;
-    } catch (e) {
-      _log.severe('Failed to init Drive API: $e');
-      return false;
+  // ── Desktop auth (loopback OAuth) ─────────────────
+
+  Future<bool> _desktopSilentSignIn() async {
+    final refreshToken = await AppSettings.get('googleRefreshToken');
+    if (refreshToken == null || refreshToken.isEmpty) return false;
+
+    final credentials = auth.AccessCredentials(
+      auth.AccessToken('Bearer', '', DateTime.now().subtract(const Duration(hours: 1)).toUtc()),
+      refreshToken,
+      [_driveScope],
+    );
+
+    _desktopAuthClient = auth.autoRefreshingClient(_clientId, credentials, http.Client());
+    _httpClient = _desktopAuthClient;
+    _driveApi = drive.DriveApi(_desktopAuthClient!);
+
+    final about = await _driveApi!.about.get($fields: 'user');
+    _userEmail = about.user?.emailAddress;
+    _log.info('Desktop silent sign-in successful: $_userEmail');
+    return true;
+  }
+
+  Future<bool> _desktopSignIn() async {
+    _desktopAuthClient = await auth.clientViaUserConsent(
+      _clientId,
+      [_driveScope],
+      (url) {
+        _log.info('Opening OAuth URL in browser');
+        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      },
+    );
+
+    _httpClient = _desktopAuthClient;
+    _driveApi = drive.DriveApi(_desktopAuthClient!);
+
+    final credentials = _desktopAuthClient!.credentials;
+    if (credentials.refreshToken != null) {
+      await AppSettings.set('googleRefreshToken', credentials.refreshToken!);
     }
+
+    final about = await _driveApi!.about.get($fields: 'user');
+    _userEmail = about.user?.emailAddress;
+    _log.info('Desktop sign-in successful: $_userEmail');
+    return true;
+  }
+
+  // ── Mobile auth (Google Play Services) ────────────
+
+  Future<bool> _mobileSilentSignIn() async {
+    final account = await _mobileSignIn.signInSilently();
+    if (account == null) return false;
+    return await _initMobileDriveApi();
+  }
+
+  Future<bool> _mobileInteractiveSignIn() async {
+    final account = await _mobileSignIn.signIn();
+    if (account == null) return false;
+    return await _initMobileDriveApi();
+  }
+
+  Future<bool> _initMobileDriveApi() async {
+    _httpClient = await _mobileSignIn.authenticatedClient();
+    if (_httpClient == null) return false;
+    _driveApi = drive.DriveApi(_httpClient!);
+    _userEmail = _mobileSignIn.currentUser?.email;
+    _log.info('Mobile sign-in successful: $_userEmail');
+    return true;
   }
 
   // ── Sync ──────────────────────────────────────────
 
-  /// Get the internal DB file path.
   Future<String> get _localDbPath async {
     final dir = await getApplicationSupportDirectory();
     return p.join(dir.path, _dbFileName);
@@ -151,7 +229,6 @@ class GoogleDriveSyncService {
   }
 
   /// Pull remote DB if it's newer than local. Returns true if DB was replaced.
-  /// Call this on startup BEFORE showing UI.
   Future<bool> pullIfNewerOnStartup() async {
     if (_driveApi == null) return false;
     _syncing = true;
@@ -163,7 +240,6 @@ class GoogleDriveSyncService {
       final remote = await getRemoteInfo();
       if (remote == null) {
         _log.info('pullIfNewer: no remote DB found');
-        // If local has dirty flag, push now
         final dirty = await AppSettings.get('syncDirty');
         if (dirty == 'true' && localFile.existsSync()) {
           await _upload(localPath);
@@ -173,10 +249,8 @@ class GoogleDriveSyncService {
 
       _log.info('pullIfNewer: local=${localMtime.toIso8601String()} remote=${remote.modifiedTime.toIso8601String()} remoteDevice=${remote.deviceId}');
 
-      // Check for conflict: remote was modified by different device AND we have local unsaved changes
       final dirty = await AppSettings.get('syncDirty');
       if (dirty == 'true' && remote.deviceId != _deviceId && remote.modifiedTime.isAfter(localMtime)) {
-        // Conflict — caller should show dialog. For now, prefer remote (last-write-wins).
         _log.warning('pullIfNewer: CONFLICT detected - remote from ${remote.deviceName}, local dirty. Using remote.');
       }
 
@@ -187,7 +261,6 @@ class GoogleDriveSyncService {
         return true;
       } else {
         _log.info('pullIfNewer: local is current');
-        // If local is dirty, push to Drive
         if (dirty == 'true') {
           await _upload(localPath);
         }
@@ -218,6 +291,7 @@ class GoogleDriveSyncService {
   }
 
   void _markDirty() {
+    _hasUserData = true;
     AppSettings.set('syncDirty', 'true');
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 10), () {
@@ -229,8 +303,16 @@ class GoogleDriveSyncService {
 
   // ── Upload / Download ─────────────────────────────
 
+  /// Check if the local DB has actual user data.
+  bool _hasUserData = false;
+  void setHasUserData(bool value) => _hasUserData = value;
+
   Future<void> _upload(String localPath) async {
     if (_driveApi == null || _uploading) return;
+    if (!_hasUserData) {
+      _log.info('upload: skipping - local DB has no user data');
+      return;
+    }
     _uploading = true;
     try {
       final file = File(localPath);
@@ -247,7 +329,6 @@ class GoogleDriveSyncService {
           'deviceName': Platform.localHostname,
         };
 
-      // Check if file already exists on Drive
       final existing = await getRemoteInfo();
       if (existing != null) {
         await _driveApi!.files.update(metadata, existing.fileId, uploadMedia: media);
@@ -262,7 +343,6 @@ class GoogleDriveSyncService {
       await AppSettings.set('lastSyncTime', DateTime.now().toIso8601String());
     } catch (e) {
       _log.warning('upload failed: $e');
-      // Keep dirty flag so we retry later
     } finally {
       _uploading = false;
     }
@@ -275,13 +355,11 @@ class GoogleDriveSyncService {
         downloadOptions: drive.DownloadOptions.fullMedia,
       ) as drive.Media;
 
-      // Write to temp file first (atomic)
       final tmpPath = '$localPath.tmp';
       final tmpFile = File(tmpPath);
       final sink = tmpFile.openWrite();
       await response.stream.pipe(sink);
 
-      // Verify temp file is valid
       final tmpSize = await tmpFile.length();
       if (tmpSize == 0) {
         _log.warning('download: empty file received, aborting');
@@ -289,7 +367,6 @@ class GoogleDriveSyncService {
         return;
       }
 
-      // Atomic replace: rename tmp over local
       final localFile = File(localPath);
       if (localFile.existsSync()) await localFile.delete();
       await tmpFile.rename(localPath);
@@ -297,7 +374,6 @@ class GoogleDriveSyncService {
       await AppSettings.set('lastSyncTime', DateTime.now().toIso8601String());
       _log.info('download: replaced local DB ($tmpSize bytes)');
     } catch (e) {
-      // Clean up temp file on failure
       final tmpFile = File('$localPath.tmp');
       if (tmpFile.existsSync()) await tmpFile.delete();
       _log.severe('download failed: $e');
@@ -305,7 +381,6 @@ class GoogleDriveSyncService {
     }
   }
 
-  /// Get the last sync timestamp (for display in settings).
   Future<DateTime?> get lastSyncTime async {
     final s = await AppSettings.get('lastSyncTime');
     return s != null ? DateTime.tryParse(s) : null;
