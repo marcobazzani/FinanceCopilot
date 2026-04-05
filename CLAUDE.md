@@ -91,6 +91,7 @@
 - All data fetching (prices, ETF composition, etc.) must happen inside the Dart app itself.
 - The released artifact must be fully self-contained.
 - For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
+- **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, or any user-facing text. Refer to them generically (e.g. "market data provider", "composition data").
 
 # Key Project Files
 
