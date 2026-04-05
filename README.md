@@ -22,7 +22,7 @@ Saving vs moving average with diff overlay, expenses tracking, and YoY compariso
 ![Cash Flow](docs/screenshots/cashflow.png)
 
 ### Portfolio Allocation
-Geographic, sector, asset class, and instrument type donut charts. All aggregated from composition data fetched automatically from justETF and stockanalysis.com.
+Geographic, sector, asset class, and instrument type donut charts. Composition data fetched and aggregated automatically.
 
 ![Allocation](docs/screenshots/allocation.png)
 
@@ -56,16 +56,16 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 - Drill-down on any slice to see which assets contribute
 - **Concentration risk**: Top 1/3/5 percentages and Herfindahl-Hirschman Index (HHI)
 - **Investment costs**: Weighted average TER with per-asset cost breakdown
-- Composition data auto-fetched from justETF (ETFs) and stockanalysis.com (stocks)
+- Composition data auto-fetched for ETFs and stocks
 
 ### Asset Tracking
 - Stocks, ETFs, ETCs, bonds, pension funds — all in one model
 - Buy, sell, and revalue events with full audit trail
-- Market prices sync automatically from Investing.com (Cloudflare-aware)
+- Market prices sync automatically
 - **ISIN-first search** — resolves any ISIN to the correct exchange listing
 - Bond pricing handles per-nominal quoting (/100)
-- Auto-classification from Investing.com API (instrument type + asset class)
-- TER and composition auto-fetched from justETF
+- Auto-classification by instrument type and asset class
+- TER and composition auto-fetched for ETFs
 
 ### Account Management
 - Unlimited bank accounts, brokers, wallets
@@ -79,7 +79,7 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 ### CSV & Excel Import
 - Import from any bank or broker (CSV, XLSX, clipboard)
 - Flexible column mapping with saved configs per account
-- ISIN-based exchange picker with auto-lookup via Investing.com
+- ISIN-based exchange picker with auto-lookup
 - **Exclude checkbox** per ISIN to skip unwanted assets
 - Supports: Fineco, Directa, N26, Revolut, Interactive Brokers, and any custom format
 - Multi-column amounts, balance-diff mode, formula builder, status filtering
@@ -88,7 +88,7 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 
 ### Multi-Currency
 - 13 currencies: EUR, USD, GBP, CHF, JPY, SEK, NOK, DKK, PLN, CZK, HUF, CAD, AUD
-- FX rates synced from Investing.com with historical backfill
+- FX rates synced automatically with historical backfill
 - Everything converts to your chosen base currency automatically
 - Per-event exchange rate tracking for accurate cost basis
 
@@ -111,8 +111,6 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 | State management | Riverpod (reactive streams) |
 | Database | Drift (SQLite) |
 | Charts | fl_chart |
-| Market data | Investing.com (WebView + Dio) |
-| Composition | justETF, stockanalysis.com |
 | Import | csv, excel, file_picker |
 
 ## Install
@@ -159,7 +157,7 @@ flutter test
 # Integration tests (14 tests, ~50s, requires macOS)
 flutter test integration_test/all_tests.dart -d macos
 
-# Live data test (12 assets, real HTTP to Investing.com, ~50s)
+# Live data test (12 assets, real market data, ~50s)
 flutter test integration_test/live_data_fetch_test.dart -d macos
 ```
 
@@ -168,7 +166,6 @@ flutter test integration_test/live_data_fetch_test.dart -d macos
 - **Offline-first** — All data lives locally in SQLite. Market data and composition are cached after sync.
 - **Reactive** — Riverpod stream providers watch the database and rebuild the UI automatically on any change.
 - **Self-contained** — The app bundle has no runtime dependencies. No Python, no external processes.
-- **Cloudflare-aware** — Uses a headless WebView to solve CF challenges, with automatic Dio/JS fetch routing based on a single startup probe.
 - **ISIN-first** — All asset resolution prefers ISIN over ticker for reliable multi-exchange matching.
 
 ## License

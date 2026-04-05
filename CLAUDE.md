@@ -101,8 +101,8 @@
 - `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
 - `lib/services/file_parser_service.dart` — CSV/Excel file parsing (isolate-based)
 - `lib/services/market_price_service.dart` — Abstract market price service
-- `lib/services/investing_com_service.dart` — Investing.com price/search/composition (WebView + Dio)
-- `lib/services/composition_service.dart` — ETF/stock composition from justETF, stockanalysis.com
+- `lib/services/investing_com_service.dart` — Market price/search/composition provider (WebView + Dio)
+- `lib/services/composition_service.dart` — ETF/stock composition fetcher
 - `lib/services/asset_service.dart` — Asset CRUD
 - `lib/services/asset_event_service.dart` — Asset events (buy/sell/dividend)
 - `lib/services/exchange_rate_service.dart` — FX rates
