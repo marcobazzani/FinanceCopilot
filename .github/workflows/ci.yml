@@ -60,6 +60,10 @@ jobs:
       - name: Run integration tests
         run: flutter test integration_test/all_tests.dart -d macos
 
+      - name: Run live data fetch test
+        continue-on-error: true
+        run: flutter test integration_test/live_data_fetch_test.dart -d macos
+
   build:
     needs: [test, integration-test]
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
