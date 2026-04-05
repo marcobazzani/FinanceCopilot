@@ -90,7 +90,16 @@ class AppStrings {
   String get landingCreateDemo        => _it ? 'Genera Dati Demo'           : 'Generate Demo Data';
   String get landingImportDb          => _it ? 'Importa Database Esistente' : 'Import Existing Database';
   String get landingStartFresh        => _it ? 'Inizia da zero'             : 'Start Fresh';
-  String get landingImportHint        => _it ? 'Se hai un database precedente, lo trovi in ~/Documents/FinanceCopilot/' : 'If you have a previous database, find it at ~/Documents/FinanceCopilot/';
+  String get landingSyncDrive         => _it ? 'Sincronizza con Google Drive' : 'Sync with Google Drive';
+
+  // ── Wipe DB ──────────────────────────────────────────
+  String get settingsWipeDb           => _it ? 'Cancella database'          : 'Wipe Database';
+  String get settingsWipeDbSubtitle   => _it ? 'Esporta e cancella tutti i dati. Irreversibile.' : 'Export and delete all data. This cannot be undone.';
+  String get settingsWipeButton       => _it ? 'Esporta e cancella'         : 'Export & Wipe';
+  String get settingsWipeCancelled    => _it ? 'Esporta prima annullato -- database non cancellato' : 'Export cancelled -- database not wiped';
+  String get settingsWipeConfirmTitle => _it ? 'Sei sicuro?'                : 'Are you sure?';
+  String get settingsWipeConfirmBody  => _it ? 'Il database e stato esportato. Tutti i dati verranno eliminati definitivamente.' : 'Your database has been exported. All data will be permanently deleted.';
+  String get settingsWipeConfirm      => _it ? 'Cancella definitivamente'   : 'Delete Permanently';
 
   // ── Google Drive Sync ──────────────────────────────────
   String get settingsGoogleDrive      => _it ? 'Google Drive Sync'           : 'Google Drive Sync';

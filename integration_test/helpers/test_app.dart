@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -65,6 +66,13 @@ Future<AppDatabase> pumpApp(
       }),
     );
   }
+
+  // Suppress Flutter keyboard state errors (KeyUpEvent leak between tests)
+  final origHandler = FlutterError.onError;
+  FlutterError.onError = (details) {
+    if (details.toString().contains('KeyUpEvent')) return;
+    origHandler?.call(details);
+  };
 
   await tester.pumpWidget(
     ProviderScope(
