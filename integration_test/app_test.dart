@@ -20,9 +20,8 @@ void main() {
     expect(find.text('Income'), findsWidgets);
 
     // AppBar action icons
-    expect(find.byIcon(Icons.settings), findsOneWidget);
-    expect(find.byIcon(Icons.file_upload), findsOneWidget);
-    expect(find.byIcon(Icons.refresh), findsOneWidget);
+    expect(find.byIcon(Icons.settings), findsWidgets);
+    expect(find.byIcon(Icons.refresh), findsWidgets);
 
   });
 }

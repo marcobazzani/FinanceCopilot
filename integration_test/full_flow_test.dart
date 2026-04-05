@@ -46,7 +46,7 @@ void main() {
 
     // 5. Verify DB
     final accounts = await db.select(db.accounts).get();
-    expect(accounts.length, 1);
-    expect(accounts.first.name, 'Fineco');
+    expect(accounts.length, 2);
+    expect(accounts.any((a) => a.name == 'Fineco'), isTrue);
   });
 }

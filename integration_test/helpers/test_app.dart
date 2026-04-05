@@ -8,6 +8,7 @@ import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/main.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
+import 'package:finance_copilot/services/google_drive_sync_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
@@ -37,18 +38,24 @@ Future<AppDatabase> pumpApp(
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
 
+  // Seed a dummy account so the landing page doesn't show (empty DB check)
+  await db.into(db.accounts).insert(AccountsCompanion.insert(
+    name: '_test_seed', sortOrder: const Value(999),
+  ));
+
   if (seed != null) {
     await seed(db);
   }
 
   final overrides = [
-    // Point to in-memory DB, skip DbPickerScreen
-    dbPathProvider.overrideWith((ref) => ':memory:'),
+    // Override DB with in-memory instance
     databaseProvider.overrideWith((ref) => db),
     // Stub exchange rate service -- uses DB but won't sync
     exchangeRateServiceProvider.overrideWith((ref) {
       return ExchangeRateService(db);
     }),
+    // Stub Google Drive sync -- no network in tests
+    googleDriveSyncProvider.overrideWith((ref) => GoogleDriveSyncService()),
   ];
 
   if (!useRealServices) {
