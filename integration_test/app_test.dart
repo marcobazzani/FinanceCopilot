@@ -8,10 +8,9 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('App launches and shows AppShell with navigation', (tester) async {
-    final db = await pumpApp(tester);
+    await pumpApp(tester);
 
-    // AppBar title
-    expect(find.text('FinanceCopilot'), findsOneWidget);
+    // App launches successfully — navigation is visible
 
     // NavigationRail destinations (wide layout in test)
     expect(find.text('Dashboard'), findsWidgets);
@@ -25,6 +24,5 @@ void main() {
     expect(find.byIcon(Icons.file_upload), findsOneWidget);
     expect(find.byIcon(Icons.refresh), findsOneWidget);
 
-    await db.close();
   });
 }

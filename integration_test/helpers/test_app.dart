@@ -8,12 +8,13 @@ import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/main.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
+import 'package:finance_copilot/services/import_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 
 /// No-op market price service that never makes HTTP calls.
-class _NoOpMarketPriceService extends MarketPriceService {
-  _NoOpMarketPriceService(super.db);
+class NoOpMarketPriceService extends MarketPriceService {
+  NoOpMarketPriceService(super.db);
 
   @override
   Future<Map<DateTime, double>> fetchHistoricalPrices(
@@ -32,6 +33,7 @@ class _NoOpMarketPriceService extends MarketPriceService {
 Future<AppDatabase> pumpApp(
   WidgetTester tester, {
   Future<void> Function(AppDatabase db)? seed,
+  bool useRealServices = false,
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
 
@@ -39,27 +41,56 @@ Future<AppDatabase> pumpApp(
     await seed(db);
   }
 
+  final overrides = [
+    // Point to in-memory DB, skip DbPickerScreen
+    dbPathProvider.overrideWith((ref) => ':memory:'),
+    databaseProvider.overrideWith((ref) => db),
+    // Stub exchange rate service -- uses DB but won't sync
+    exchangeRateServiceProvider.overrideWith((ref) {
+      return ExchangeRateService(db);
+    }),
+  ];
+
+  if (!useRealServices) {
+    overrides.add(
+      marketPriceServiceProvider.overrideWith((ref) {
+        return NoOpMarketPriceService(db);
+      }),
+    );
+  }
+
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [
-        // Point to in-memory DB, skip DbPickerScreen
-        dbPathProvider.overrideWith((ref) => ':memory:'),
-        databaseProvider.overrideWith((ref) => db),
-        // Stub exchange rate service — uses DB but won't sync
-        exchangeRateServiceProvider.overrideWith((ref) {
-          return ExchangeRateService(db);
-        }),
-        // Stub market price service — no HTTP
-        marketPriceServiceProvider.overrideWith((ref) {
-          return _NoOpMarketPriceService(db);
-        }),
-      ],
+      overrides: overrides,
       child: const FinanceCopilotApp(),
     ),
   );
-  await tester.pumpAndSettle();
+  // Pump frames to build the initial UI.
+  // Don't use pumpAndSettle — stream providers never settle.
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
   return db;
 }
+
+/// Pump multiple frames to let the widget tree rebuild after navigation/tap.
+/// Use instead of pumpAndSettle() which hangs on stream providers.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+/// Wait for real async work (HTTP calls) to complete, then pump to render results.
+/// Use after triggering price sync, import, or any network operation.
+Future<void> waitForNetwork(WidgetTester tester, {int seconds = 10}) async {
+  await tester.runAsync(() => Future.delayed(Duration(seconds: seconds)));
+  for (var i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+// ── Seed helpers ──────────────────────────────────────
 
 /// Inserts a sample account and returns its id.
 Future<int> seedAccount(AppDatabase db, {String name = 'Test Account'}) async {
@@ -75,6 +106,8 @@ Future<int> seedAsset(
   String name = 'Test Asset',
   String? isin,
   String? ticker,
+  String? exchange,
+  String? currency,
 }) async {
   return db.into(db.assets).insert(AssetsCompanion.insert(
         name: name,
@@ -84,7 +117,46 @@ Future<int> seedAsset(
         valuationMethod: ValuationMethod.marketPrice,
         isin: Value(isin),
         ticker: Value(ticker),
+        exchange: Value(exchange),
+        currency: Value(currency ?? 'EUR'),
         sortOrder: const Value(1),
+      ));
+}
+
+/// Inserts a buy event for an asset.
+Future<int> seedBuyEvent(
+  AppDatabase db, {
+  required int assetId,
+  required DateTime date,
+  required double amount,
+  double? quantity,
+  double? price,
+  String currency = 'EUR',
+}) async {
+  return db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: date,
+        type: EventType.buy,
+        amount: amount,
+        quantity: Value(quantity),
+        price: Value(price),
+        currency: Value(currency),
+      ));
+}
+
+/// Inserts a market price for an asset.
+Future<void> seedPrice(
+  AppDatabase db, {
+  required int assetId,
+  required DateTime date,
+  required double price,
+  String currency = 'EUR',
+}) async {
+  await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
+        assetId: assetId,
+        date: date,
+        closePrice: price,
+        currency: currency,
       ));
 }
 
@@ -94,4 +166,23 @@ Future<int> seedIncome(AppDatabase db, {double amount = 1000.0}) async {
         date: DateTime(2025, 1, 15),
         amount: amount,
       ));
+}
+
+/// Creates a FilePreview from raw CSV content (for import tests).
+FilePreview makePreview(String csv) {
+  final lines = csv.trim().split('\n');
+  final columns = lines.first.split(',');
+  final rows = lines.skip(1).map((line) {
+    final values = line.split(',');
+    final map = <String, String>{};
+    for (var i = 0; i < columns.length && i < values.length; i++) {
+      map[columns[i]] = values[i];
+    }
+    return map;
+  }).toList();
+  return FilePreview(
+    columns: columns,
+    rows: rows,
+    totalRows: rows.length,
+  );
 }

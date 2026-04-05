@@ -81,10 +81,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   _log.info('assetMarketValues: ${assets.length} assets, ${stats.length} stats, base=$baseCurrency');
   for (final asset in assets) {
     final stat = stats[asset.id];
-    if (stat == null || stat.totalQuantity == 0) {
-      _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - no stat or qty=0');
-      continue;
-    }
+    if (stat == null || stat.totalQuantity == 0) continue;
     // Use live price for current market values
     double? price;
     if (priceService is InvestingComService) {
@@ -106,7 +103,6 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     }
     final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
     final value = stat.totalQuantity * price / bondDiv * fxRate;
-    _log.fine('assetMarketValues: ${asset.ticker ?? asset.name} - price=$price fx=$fxRate bondDiv=$bondDiv');
     result[asset.id] = value;
   }
   _log.info('assetMarketValues: ${result.length} assets with values');
@@ -156,8 +152,6 @@ class AssetDailyChange {
 /// trading day's price is used automatically (via getPrice).
 final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, DateTime>((ref, referenceDate) async {
   ref.watch(priceRefreshCounter); // rebuild after price sync
-  ref.watch(assetsProvider);     // explicit reactive dependency (Riverpod 3.x)
-  ref.watch(assetStatsProvider); // explicit reactive dependency (Riverpod 3.x)
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
@@ -177,7 +171,6 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double? latestPrice;
     if (priceService is InvestingComService) {
       latestPrice = await priceService.getLivePrice(asset.id);
-      _log.fine('dailyChanges: ${asset.ticker ?? asset.name} - livePrice=$latestPrice');
     }
     latestPrice ??= await priceService.getPrice(asset.id, today);
     if (latestPrice == null) {
