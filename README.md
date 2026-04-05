@@ -2,7 +2,7 @@
 
 A personal wealth management app built with Flutter. Track your entire financial picture — bank accounts, investments, ETFs, bonds, commodities, pension funds — in one place with automatic price sync and no cloud dependency.
 
-Runs on **macOS**, **Windows**, and **Android**. All data stays local in SQLite.
+Runs on **macOS** and **Windows**. All data stays local in SQLite.
 
 ## Screenshots
 
@@ -107,7 +107,7 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 | Layer | Technology |
 |-------|-----------|
 | Framework | Flutter / Dart |
-| Platforms | macOS, Windows, Android |
+| Platforms | macOS, Windows |
 | State management | Riverpod (reactive streams) |
 | Database | Drift (SQLite) |
 | Charts | fl_chart |
@@ -148,9 +148,6 @@ open build/macos/Build/Products/Release/FinanceCopilot.app
 
 # Windows
 flutter build windows --release
-
-# Android
-flutter build apk --release
 ```
 
 ### Run Tests
