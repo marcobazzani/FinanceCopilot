@@ -170,7 +170,9 @@ class _AppShellState extends ConsumerState<AppShell> {
       final db = ref.read(databaseProvider);
       final assetCount = (await db.customSelect('SELECT COUNT(*) AS c FROM assets').getSingle()).read<int>('c');
       final accountCount = (await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle()).read<int>('c');
-      if (assetCount + accountCount == 0 && mounted) {
+      final hasData = assetCount + accountCount > 0;
+      ref.read(googleDriveSyncProvider).setHasUserData(hasData);
+      if (!hasData && mounted) {
         setState(() => _showLanding = true);
       }
     } catch (_) {}
@@ -719,7 +721,11 @@ class _AppShellState extends ConsumerState<AppShell> {
                       onPressed: () async {
                         final ok = await sync.signIn();
                         if (ok) {
-                          // Start auto-sync after sign-in
+                          // Pull remote DB if newer, then start auto-sync
+                          final pulled = await sync.pullIfNewerOnStartup();
+                          if (pulled) {
+                            ref.read(dbReloadTrigger.notifier).state++;
+                          }
                           final db = ref.read(databaseProvider);
                           sync.startAutoSync(db.tableUpdates().map((_) {}));
                           setDialogState(() {});

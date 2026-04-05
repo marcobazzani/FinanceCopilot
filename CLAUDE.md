@@ -3,8 +3,9 @@
 - Always run `dart fix --apply` then `dart analyze lib/` before building. Fix all issues — zero warnings/infos allowed.
 - When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
-  dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
+  source .env && dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
+- OAuth credentials are in `.env` (gitignored). Never commit secrets to git.
 
 ## Android Emulator
 
@@ -12,7 +13,7 @@
 - Steps (in order):
   1. Launch emulator: `flutter emulators --launch <emulator_id>`
   2. Wait for it to appear: `flutter devices` (look for `emulator-XXXX`)
-  3. Build APK: `flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S)`
+  3. Build APK: `source .env && flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET`
   4. Install: `flutter install -d emulator-XXXX`
   5. Launch app: `adb -s emulator-XXXX shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1`
 - Package name is `net.bazzani.financecopilot` (NOT `com.example.finance_copilot`).

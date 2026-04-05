@@ -51,8 +51,10 @@ dependencies:
 
   # Google Drive sync
   google_sign_in: ^6.2.0
-  googleapis: ^13.0.0
   extension_google_sign_in_as_googleapis_auth: ^2.0.0
+  googleapis: ^13.0.0
+  googleapis_auth: ^2.0.0
+  http: ^1.2.0
 
   # Hashing (import dedup)
   crypto: ^3.0.6
