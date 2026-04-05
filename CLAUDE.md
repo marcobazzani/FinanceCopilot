@@ -1,7 +1,6 @@
 # Build & Deploy
 
-- Always run `dart fix --apply` then `dart analyze lib/ test/ integration_test/` before building. Fix all issues — zero warnings/infos allowed.
-- When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
+- When needed, always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
   dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
@@ -35,11 +34,25 @@
 
 - Commit into git when detecting the user is starting a new task (not iterating on a previous task).
 - Use concise, meaningful commit messages.
-- After every commit bump the version number at the first code change
 - NEVER add `Co-Authored-By:` lines to commits. Not under any circumstances, not for any reason. No exceptions.
 - **Use `develop` branch for testing/exchanging code** (e.g. syncing with Windows VM). Never push to `main` unless the user explicitly confirms. Push to `develop` freely for testing.
-- Always run `dart fix --apply` then `dart analyze lib/ test/ integration_test/` before commit. Fix all issues — zero warnings/infos allowed.
-- Always run `flutter test && flutter test integration_test/all_tests.dart -d macos` before commit. All tests must pass.
+- Only bump `appVersion` in `lib/version.dart` when releasing on `main`, not on develop/feature branches.
+- Before every commit:
+  1. `dart fix --apply && dart analyze lib/ test/ integration_test/` -- zero warnings/infos allowed
+  2. `flutter test` -- all unit tests must pass
+  3. `flutter test integration_test/all_tests.dart -d macos` -- all integration tests must pass
+  4. NEVER commit with known failing tests
+
+## Releasing a new version
+
+1. Merge `develop` into `main`: `git checkout main && git merge develop --no-edit`
+2. Bump version in `lib/version.dart` (only on main)
+3. Commit: `git commit -am "Release vX.Y.Z"`
+4. Tag and push: `git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z`
+5. Summarize changes: run `git log --oneline vPREVIOUS..vX.Y.Z` and write a user-facing summary (features + bug fixes, no implementation details)
+6. Create GitHub Release: use `gh release create vX.Y.Z --title "vX.Y.Z -- short description" --notes "..."` with the summary
+7. Wait for CI/CD to complete: `gh run list --branch main --limit 1` -- CI builds macOS DMG + Windows ZIP, attaches to release, updates Homebrew tap
+8. Sync develop: `git checkout develop && git merge main --no-edit && git push origin develop`
 
 
 # Code Quality
@@ -66,8 +79,10 @@
 
 # Database
 
-- To find the DB path, check the app's stdout/stderr logs (it prints the path on startup). Do NOT search the filesystem with `find`.
-- The DB filename may vary (not always `asset_manager.db`) — look for any `.db` file at the logged path.
+- The DB is `finance_copilot.db` — the app prints its path to stdout on startup (`DB: <path>`).
+- On macOS (develop): `~/Documents/FinanceCopilot/finance_copilot.db`
+- On macOS (sandboxed/experimental): `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
+- Logs: same directory as DB, `app.log` (previous session: `previous_session.log`)
 - Never use `assets.db` in the repo root (stale copy, gitignored).
 
 # Architecture
