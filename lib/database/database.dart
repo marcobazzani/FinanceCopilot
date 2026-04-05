@@ -358,13 +358,12 @@ Future<void> _ensureSqliteConfigured() async {
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     await _ensureSqliteConfigured();
-    final dir = await getApplicationDocumentsDirectory();
-    final dbFolder = Directory(p.join(dir.path, 'FinanceCopilot'));
-    if (!await dbFolder.exists()) {
-      _log.info('Creating database directory: ${dbFolder.path}');
-      await dbFolder.create(recursive: true);
+    final dir = await getApplicationSupportDirectory();
+    if (!await dir.exists()) {
+      _log.info('Creating database directory: ${dir.path}');
+      await dir.create(recursive: true);
     }
-    final file = File(p.join(dbFolder.path, 'finance_copilot.db'));
+    final file = File(p.join(dir.path, 'finance_copilot.db'));
     // ignore: avoid_print
     print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');

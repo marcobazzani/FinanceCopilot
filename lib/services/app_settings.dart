@@ -4,23 +4,14 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../utils/formatters.dart' show homeDir;
-
-/// Global app settings stored in ~/.config/FinanceCopilot/settings.json
+/// Global app settings stored in Application Support directory
 /// (portable between platforms, accessible before DB is opened).
 class AppSettings {
   static Directory? _resolvedConfigDir;
 
   static Future<Directory> _getConfigDir() async {
     if (_resolvedConfigDir != null) return _resolvedConfigDir!;
-    if (Platform.isAndroid || Platform.isIOS) {
-      final docs = await getApplicationDocumentsDirectory();
-      _resolvedConfigDir = Directory(p.join(docs.path, 'FinanceCopilot'));
-    } else {
-      _resolvedConfigDir = Directory(
-        p.join(homeDir, '.config', 'FinanceCopilot'),
-      );
-    }
+    _resolvedConfigDir = await getApplicationSupportDirectory();
     return _resolvedConfigDir!;
   }
 

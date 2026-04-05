@@ -61,10 +61,17 @@
 
 - NEVER use `--break-system-packages` with pip. Use `python3 -m venv` for virtual environments instead.
 
-# Database
+# Database & Sandbox
 
-- To find the DB path, check the app's stdout/stderr logs (it prints the path on startup). Do NOT search the filesystem with `find`.
-- The DB filename may vary (not always `asset_manager.db`) — look for any `.db` file at the logged path.
+The app runs sandboxed on macOS. All internal data lives inside the container.
+
+- **macOS DB**: `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
+- **macOS logs**: `tail -f ~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application\ Support/net.bazzani.financecopilot/app.log`
+- **macOS OS log**: `log stream --predicate 'subsystem == "net.bazzani.financecopilot"' --level debug`
+- **Windows DB**: `C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\finance_copilot.db`
+- **Windows logs**: `Get-Content C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\app.log -Wait`
+- **Android logs**: `adb logcat -s flutter`
+- **Previous session log**: `previous_session.log` (same dir as app.log, for bug reports)
 - Never use `assets.db` in the repo root (stale copy, gitignored).
 
 # Architecture
