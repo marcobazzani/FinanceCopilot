@@ -57,12 +57,17 @@ jobs:
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Pre-build debug binary
+        run: flutter build macos --debug
+
       - name: Run integration tests
         run: |
           for f in integration_test/*_test.dart; do
-            [ "$(basename "$f")" = "live_data_fetch_test.dart" ] && continue
-            [ "$(basename "$f")" = "e2e_test.dart" ] && continue
-            echo "=== $(basename "$f") ==="
+            name=$(basename "$f")
+            [ "$name" = "live_data_fetch_test.dart" ] && continue
+            [ "$name" = "e2e_test.dart" ] && continue
+            [ "$name" = "all_tests.dart" ] && continue
+            echo "=== $name ==="
             flutter test "$f" -d macos || exit 1
           done
 
