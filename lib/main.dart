@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +25,9 @@ import 'utils/logger.dart';
 import 'version.dart';
 
 final _log = getLogger('Main');
+
+/// Feature flag: enable demo DB generation (disabled by default, enable at compile time).
+const _enableDemo = bool.fromEnvironment('ENABLE_DEMO', defaultValue: false);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -226,7 +231,6 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Widget _body() {
-    if (_showLanding) return _buildLandingPage();
     return switch (_selectedIndex) {
       0 => const DashboardScreen(),
       1 => const AccountsScreen(),
@@ -239,65 +243,89 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   Widget _buildLandingPage() {
     final s = ref.watch(appStringsProvider);
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.account_balance, size: 64, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(height: 16),
-                Text(s.landingTitle, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                Text(s.landingSubtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-                const SizedBox(height: 32),
-                if (_generatingDemo)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: CircularProgressIndicator(),
-                  )
-                else ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.play_circle_outline),
-                      label: Text(s.landingCreateDemo),
-                      onPressed: _createDemo,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.file_upload),
-                      label: Text(s.landingImportDb),
-                      onPressed: () async {
-                        final path = await DbTransferService.importDb();
-                        if (path != null && mounted) {
-                          ref.read(dbReloadTrigger.notifier).state++;
-                          setState(() => _showLanding = false);
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () {
-                      setState(() => _showLanding = false);
-                      _startBackgroundSync();
-                    },
-                    child: Text(s.landingStartFresh),
-                  ),
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    final sync = ref.read(googleDriveSyncProvider);
+
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.account_balance, size: 64, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(height: 16),
-                  Text(s.landingImportHint,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text(s.landingTitle, style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text(s.landingSubtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+                  const SizedBox(height: 32),
+                  if (_generatingDemo)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(),
+                    )
+                  else ...[
+                    // Google Drive sync — available on all platforms
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.cloud_sync),
+                        label: Text(s.landingSyncDrive),
+                        onPressed: () async {
+                          final ok = await sync.signIn();
+                          if (ok) {
+                            final pulled = await sync.pullIfNewerOnStartup();
+                            if (pulled) ref.read(dbReloadTrigger.notifier).state++;
+                            final db = ref.read(databaseProvider);
+                            sync.startAutoSync(db.tableUpdates().map((_) {}));
+                            if (mounted) {
+                              setState(() => _showLanding = false);
+                              _startBackgroundSync();
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    // Import DB — desktop only
+                    if (!isMobile) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.file_upload),
+                          label: Text(s.landingImportDb),
+                          onPressed: () async {
+                            final path = await DbTransferService.importDb();
+                            if (path != null && mounted) {
+                              ref.read(dbReloadTrigger.notifier).state++;
+                              setState(() => _showLanding = false);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _showLanding = false);
+                        _startBackgroundSync();
+                      },
+                      child: Text(s.landingStartFresh),
+                    ),
+                    // Demo — behind feature flag
+                    if (_enableDemo) ...[
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: _createDemo,
+                        child: Text(s.landingCreateDemo),
+                      ),
+                    ],
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -326,6 +354,9 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Show landing page without any toolbar/navigation
+    if (_showLanding) return _buildLandingPage();
+
     final isWide = MediaQuery.sizeOf(context).width >= 600;
     final s = ref.watch(appStringsProvider);
 
@@ -602,6 +633,61 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
+  Future<void> _wipeDb(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+
+    // Force export first
+    final exported = await DbTransferService.exportDb();
+    if (exported == null) {
+      // User cancelled the export — abort wipe
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.settingsWipeCancelled)),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    // Confirm wipe
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.warning, color: Theme.of(ctx).colorScheme.error),
+          const SizedBox(width: 8),
+          Text(s.settingsWipeConfirmTitle),
+        ]),
+        content: Text(s.settingsWipeConfirmBody),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.settingsWipeConfirm),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    // Delete the DB file and reload
+    try {
+      final path = await DbTransferService.dbPath;
+      final file = File(path);
+      if (file.existsSync()) file.deleteSync();
+      ref.read(dbReloadTrigger.notifier).state++;
+      if (context.mounted) {
+        Navigator.pop(context); // close settings
+        setState(() => _showLanding = true);
+      }
+    } catch (e) {
+      _log.severe('Wipe DB failed: $e');
+    }
+  }
+
   Future<void> _showSettingsDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
     final db = ref.read(databaseProvider);
@@ -734,6 +820,35 @@ class _AppShellState extends ConsumerState<AppShell> {
                     );
                   }
                 }),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(s.settingsWipeDb,
+                              style: Theme.of(ctx).textTheme.bodyMedium),
+                          Text(s.settingsWipeDbSubtitle,
+                            style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(ctx).colorScheme.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(ctx).colorScheme.error,
+                        side: BorderSide(color: Theme.of(ctx).colorScheme.error),
+                      ),
+                      onPressed: () => _wipeDb(ctx),
+                      child: Text(s.settingsWipeButton),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
