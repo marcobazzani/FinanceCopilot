@@ -8,7 +8,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Navigate to asset detail screen', (tester) async {
-    final db = await pumpApp(tester, seed: (db) async {
+    await pumpApp(tester, seed: (db) async {
       await seedAsset(db, name: 'S&P 500 ETF', ticker: 'SPY');
     });
 
