@@ -1,7 +1,6 @@
 # Build & Deploy
 
-- Always run `dart fix --apply` then `dart analyze lib/` before building. Fix all issues — zero warnings/infos allowed.
-- When needed, Always build first, then kill the running app, then start the new build. Never kill before the build completes.
+- When needed, always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
   source .env && dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
@@ -34,11 +33,28 @@
 
 # Git Workflow
 
-- Commit into git when detecting the user is starting a new task (not iterating on a previous task).
+- Do NOT commit automatically after every change. Build first, let the user test, and only commit when the user asks or when starting a completely different task.
 - Use concise, meaningful commit messages.
-- After every commit bump the version number at the first code change
 - NEVER add `Co-Authored-By:` lines to commits. Not under any circumstances, not for any reason. No exceptions.
 - **Use `develop` branch for testing/exchanging code** (e.g. syncing with Windows VM). Never push to `main` unless the user explicitly confirms. Push to `develop` freely for testing.
+- Only bump `appVersion` in `lib/version.dart` when releasing on `main`, not on develop/feature branches.
+- Before every commit:
+  1. `dart fix --apply && dart analyze lib/ test/ integration_test/` -- zero warnings/infos allowed
+  2. `flutter test` -- all unit tests must pass
+  3. `flutter test integration_test/all_tests.dart -d macos` -- all integration tests must pass
+  4. NEVER commit with known failing tests
+
+## Releasing a new version
+
+1. Merge `develop` into `main`: `git checkout main && git merge develop --no-edit`
+2. Bump version in `lib/version.dart` (only on main)
+3. Commit: `git commit -am "Release vX.Y.Z"`
+4. Tag and push: `git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z`
+5. Summarize changes: run `git log --oneline vPREVIOUS..vX.Y.Z` and write a user-facing summary (features + bug fixes, no implementation details)
+6. Create GitHub Release: use `gh release create vX.Y.Z --title "vX.Y.Z -- short description" --notes "..."` with the summary
+7. Wait for CI/CD to complete: `gh run list --branch main --limit 1` -- CI builds macOS DMG + Windows ZIP, attaches to release, updates Homebrew tap
+8. Sync develop: `git checkout develop && git merge main --no-edit && git push origin develop`
+
 
 # Code Quality
 
@@ -81,6 +97,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - All data fetching (prices, ETF composition, etc.) must happen inside the Dart app itself.
 - The released artifact must be fully self-contained.
 - For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
+- **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, or any user-facing text. Refer to them generically (e.g. "market data provider", "composition data").
 
 # Key Project Files
 
@@ -91,8 +108,8 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
 - `lib/services/file_parser_service.dart` — CSV/Excel file parsing (isolate-based)
 - `lib/services/market_price_service.dart` — Abstract market price service
-- `lib/services/investing_com_service.dart` — Investing.com price/search/composition (WebView + Dio)
-- `lib/services/composition_service.dart` — ETF/stock composition from justETF, stockanalysis.com
+- `lib/services/investing_com_service.dart` — Market price/search/composition provider (WebView + Dio)
+- `lib/services/composition_service.dart` — ETF/stock composition fetcher
 - `lib/services/asset_service.dart` — Asset CRUD
 - `lib/services/asset_event_service.dart` — Asset events (buy/sell/dividend)
 - `lib/services/exchange_rate_service.dart` — FX rates

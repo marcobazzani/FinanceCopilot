@@ -7,31 +7,43 @@ import 'helpers/test_app.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Settings dialog opens and shows currency/locale dropdowns', (tester) async {
+  testWidgets('Settings: open, verify controls, save currency, clear cache', (tester) async {
     final db = await pumpApp(tester);
 
-    // Tap settings icon
+    // Open settings
     await tester.tap(find.byIcon(Icons.settings));
-    await tester.pumpAndSettle();
-
-    // Dialog opens
+    await settle(tester);
     expect(find.text('Settings'), findsOneWidget);
 
-    // Currency and locale dropdowns
+    // Verify controls present
     expect(find.text('Default Currency'), findsOneWidget);
     expect(find.text('Number/Date Format'), findsOneWidget);
-
-    // Save and Cancel buttons
+    expect(find.text('Interface Language'), findsOneWidget);
+    expect(find.text('Clear cached data'), findsOneWidget);
     expect(find.text('Save'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
 
-    // Tap Save → dialog closes
+    // Save with defaults
     await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    // Dialog is gone
+    // Dialog closed
     expect(find.text('Settings'), findsNothing);
 
-    await db.close();
+    // Verify currency in DB
+    final row = await db.customSelect(
+      "SELECT value FROM app_configs WHERE key = 'BASE_CURRENCY'",
+    ).getSingle();
+    expect(row.read<String>('value'), 'EUR');
+
+    // Reopen settings and clear cache
+    await tester.tap(find.byIcon(Icons.settings));
+    await settle(tester);
+
+    await tester.tap(find.text('Clear'));
+    await settle(tester);
+
+    // Snackbar appears
+    expect(find.text('Cached data cleared'), findsOneWidget);
   });
 }

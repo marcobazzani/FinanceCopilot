@@ -26,7 +26,9 @@ final _log = getLogger('ImportScreen');
 class ImportScreen extends ConsumerStatefulWidget {
   final int? preselectedAccountId;
   final ImportTarget? preselectedTarget;
-  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget});
+  /// For integration tests: inject a pre-parsed file preview (bypasses file picker).
+  final FilePreview? testPreview;
+  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget, this.testPreview});
 
   @override
   ConsumerState<ImportScreen> createState() => _ImportScreenState();
@@ -168,6 +170,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
     if (widget.preselectedTarget != null) {
       _target = widget.preselectedTarget!;
+    }
+    // Integration test injection: auto-load a pre-parsed preview
+    if (widget.testPreview != null) {
+      _preview = widget.testPreview;
+      _autoMap(widget.testPreview!.columns);
     }
   }
 

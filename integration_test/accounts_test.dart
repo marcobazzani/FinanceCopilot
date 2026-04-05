@@ -7,59 +7,39 @@ import 'helpers/test_app.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Create account via FAB dialog', (tester) async {
-    final db = await pumpApp(tester);
+  testWidgets('Accounts: create, verify, navigate to detail', (tester) async {
+    await pumpApp(tester);
 
     // Navigate to Accounts
     await tester.tap(find.text('Accounts'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Empty state
     expect(find.textContaining('No accounts yet'), findsOneWidget);
 
-    // Tap FAB
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
+    // Tap the main FAB to create account
+    await tester.tap(find.byType(FloatingActionButton).last);
+    await settle(tester);
 
-    // Dialog opens
-    expect(find.text('New Account'), findsOneWidget);
-
-    // Enter name
-    await tester.enterText(find.byType(TextField), 'Test Bank');
-    await tester.pumpAndSettle();
-
-    // Tap Create
+    // Enter name and create
+    await tester.enterText(find.byType(TextField), 'Fineco');
+    await settle(tester);
     await tester.tap(find.text('Create'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     // Account appears in list
-    expect(find.text('Test Bank'), findsOneWidget);
+    expect(find.text('Fineco'), findsOneWidget);
 
-    await db.close();
-  });
-
-  testWidgets('Tap account navigates to detail screen', (tester) async {
-    final db = await pumpApp(tester, seed: (db) async {
-      await seedAccount(db, name: 'Fineco');
-    });
-
-    // Navigate to Accounts
-    await tester.tap(find.text('Accounts'));
-    await tester.pumpAndSettle();
-
-    // Tap the account
+    // Tap into detail screen
     await tester.tap(find.text('Fineco'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    // AccountDetailScreen shows account name in AppBar
+    // Detail screen shows account name
     expect(find.text('Fineco'), findsWidgets);
-    // Has Add Transaction button
     expect(find.byIcon(Icons.add), findsOneWidget);
 
     // Go back
     await tester.tap(find.byType(BackButton));
-    await tester.pumpAndSettle();
-
-    await db.close();
+    await settle(tester);
   });
 }

@@ -175,32 +175,30 @@ class AllocationTab extends ConsumerWidget {
             _InvestmentCostsCard(assets: assets.where((a) => a.isActive).toList(), marketValues: marketValues, baseCurrency: baseCurrency, locale: locale),
           ];
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: LayoutBuilder(builder: (ctx, constraints) {
-              const cardMin = 400.0;
-              const gap = 16.0;
-              final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
+          return LayoutBuilder(builder: (ctx, constraints) {
+            const cardMin = 400.0;
+            const gap = 16.0;
+            final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
 
-              final rows = <Widget>[];
-              for (var i = 0; i < cards.length; i += cols) {
-                final rowCards = cards.sublist(i, min(i + cols, cards.length));
-                rows.add(IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var j = 0; j < cols; j++) ...[
-                        if (j > 0) const SizedBox(width: gap),
-                        Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
-                      ],
-                    ],
-                  ),
-                ));
-                if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
-              }
-              return Column(children: rows);
-            }),
-          );
+            final rows = <Widget>[];
+            for (var i = 0; i < cards.length; i += cols) {
+              final rowCards = cards.sublist(i, min(i + cols, cards.length));
+              rows.add(Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var j = 0; j < cols; j++) ...[
+                    if (j > 0) const SizedBox(width: gap),
+                    Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
+                  ],
+                ],
+              ));
+              if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
+            }
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(children: rows),
+            );
+          });
         },
       ),
     );

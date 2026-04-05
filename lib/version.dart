@@ -1,4 +1,4 @@
-const appVersion = '0.3.2';
+const appVersion = '0.3.5';
 const _commitSha = String.fromEnvironment('COMMIT_SHA');
 const appCommit = _commitSha.length > 0 ? _commitSha : _buildTimestamp;
 const appChannel = String.fromEnvironment('CHANNEL', defaultValue: 'nightly');
