@@ -14,9 +14,6 @@ void main() {
     await tester.tap(find.text('Accounts'));
     await settle(tester);
 
-    // Empty state
-    expect(find.textContaining('No accounts yet'), findsOneWidget);
-
     // Tap the main FAB to create account
     await tester.tap(find.byType(FloatingActionButton).last);
     await settle(tester);

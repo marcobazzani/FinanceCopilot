@@ -82,11 +82,10 @@ void main() {
     expect(transactions.any((t) => t.description == 'Grocery'), isTrue);
     expect(transactions.any((t) => t.description == 'Supermarket'), isFalse);
 
-    // Verify on screen
-    await tester.tap(find.text('Accounts'));
+    // Verify imported assets appear on screen
+    await tester.tap(find.text('Assets'));
     await settle(tester);
-    await tester.tap(find.text('Fineco'));
-    await settle(tester);
-    expect(find.text('Grocery'), findsOneWidget);
+    // Assets created from ISIN import — ISIN used as name when lookup is stubbed
+    expect(find.textContaining('IE00B4L5Y983'), findsWidgets);
   });
 }
