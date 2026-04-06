@@ -12,6 +12,7 @@ import 'services/app_settings.dart';
 import 'services/db_transfer_service.dart';
 import 'services/demo_db_service.dart';
 import 'services/exchange_rate_service.dart';
+import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
@@ -28,6 +29,19 @@ final _log = getLogger('Main');
 
 /// Feature flag: enable demo DB generation (disabled by default, enable at compile time).
 const _enableDemo = bool.fromEnvironment('ENABLE_DEMO', defaultValue: false);
+
+/// Tables that are updated by background sync (prices, rates, compositions).
+/// Changes to these should NOT trigger Google Drive upload.
+const _backgroundTables = {
+  'market_prices', 'exchange_rates', 'app_configs', 'asset_compositions',
+};
+
+/// Stream of user-initiated table updates only (excludes background sync tables).
+Stream<void> _userTableUpdates(AppDatabase db) {
+  return db.tableUpdates().where((updates) {
+    return updates.any((u) => !_backgroundTables.contains(u.table));
+  }).map((_) {});
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -146,7 +160,15 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     Future.microtask(() async {
-      // Try Google Drive sync before checking if DB is empty
+      // Check if DB file exists before touching the provider.
+      // If no DB file, show landing page immediately — let the user choose
+      // "Start Fresh" or "Sync with Google Drive" before creating any DB.
+      final dbFile = await AppDatabase.dbFile();
+      if (!dbFile.existsSync()) {
+        _log.info('No DB file found, showing landing page');
+        if (mounted) setState(() => _showLanding = true);
+        return;
+      }
       await _initDriveSync();
       await _checkEmptyDb();
       if (!_showLanding) _startBackgroundSync();
@@ -158,6 +180,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final signedIn = await sync.trySilentSignIn();
     if (!signedIn) return;
     _log.info('Drive sync: signed in as ${sync.userEmail}');
+    _wireSyncCallbacks(sync);
 
     final pulled = await sync.pullIfNewerOnStartup();
     if (pulled && mounted) {
@@ -167,20 +190,73 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     // Start auto-push on DB changes
     final db = ref.read(databaseProvider);
-    sync.startAutoSync(db.tableUpdates().map((_) {}));
+    sync.startAutoSync(_userTableUpdates(db));
   }
 
   Future<void> _checkEmptyDb() async {
     try {
       final db = ref.read(databaseProvider);
-      final assetCount = (await db.customSelect('SELECT COUNT(*) AS c FROM assets').getSingle()).read<int>('c');
-      final accountCount = (await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle()).read<int>('c');
-      final hasData = assetCount + accountCount > 0;
-      ref.read(googleDriveSyncProvider).setHasUserData(hasData);
+      final sync = ref.read(googleDriveSyncProvider);
+      final hasData = await _dbHasUserData(db);
+      sync.setHasUserData(hasData);
+      _wireSyncCallbacks(sync);
       if (!hasData && mounted) {
         setState(() => _showLanding = true);
       }
     } catch (_) {}
+  }
+
+  Future<bool> _dbHasUserData(AppDatabase db) async {
+    final assetCount = (await db.customSelect('SELECT COUNT(*) AS c FROM assets').getSingle()).read<int>('c');
+    final accountCount = (await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle()).read<int>('c');
+    return assetCount + accountCount > 0;
+  }
+
+  Future<ConflictChoice> _showConflictDialog(ConflictInfo info) async {
+    if (!mounted) return ConflictChoice.keepRemote;
+    final s = ref.read(appStringsProvider);
+    final remoteTime = '${info.remoteModifiedTime.toLocal()}'.split('.').first;
+    final choice = await showDialog<ConflictChoice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Theme.of(ctx).colorScheme.error),
+            const SizedBox(width: 8),
+            Text(s.conflictTitle),
+          ],
+        ),
+        content: Text(s.conflictBody(info.remoteDeviceName, remoteTime)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.cancel),
+            child: Text(s.conflictCancel),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.keepRemote),
+            child: Text(s.conflictKeepRemote),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.keepLocal),
+            child: Text(s.conflictKeepLocal),
+          ),
+        ],
+      ),
+    );
+    return choice ?? ConflictChoice.cancel;
+  }
+
+  /// Wire up sync service callbacks (user data check + conflict dialog + DB reload).
+  void _wireSyncCallbacks(GoogleDriveSyncService sync) {
+    sync.checkHasUserData = () => _dbHasUserData(ref.read(databaseProvider));
+    sync.onConflict = _showConflictDialog;
+    sync.onDbReplaced = () {
+      if (mounted) {
+        _log.info('DB replaced by sync, reloading...');
+        ref.read(dbReloadTrigger.notifier).state++;
+      }
+    };
   }
 
   Future<void> _startBackgroundSync() async {
@@ -277,10 +353,12 @@ class _AppShellState extends ConsumerState<AppShell> {
                         onPressed: () async {
                           final ok = await sync.signIn();
                           if (ok) {
+                            _wireSyncCallbacks(sync);
                             final pulled = await sync.pullIfNewerOnStartup();
                             if (pulled) ref.read(dbReloadTrigger.notifier).state++;
                             final db = ref.read(databaseProvider);
-                            sync.startAutoSync(db.tableUpdates().map((_) {}));
+                            sync.setHasUserData(await _dbHasUserData(db));
+                            sync.startAutoSync(_userTableUpdates(db));
                             if (mounted) {
                               setState(() => _showLanding = false);
                               _startBackgroundSync();
@@ -324,6 +402,13 @@ class _AppShellState extends ConsumerState<AppShell> {
                       ),
                     ],
                   ],
+                  const SizedBox(height: 24),
+                  Text(
+                    'v$appVersion${appCommit.isNotEmpty ? ' ($appCommit)' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -506,15 +591,15 @@ class _AppShellState extends ConsumerState<AppShell> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'v$appVersion',
-                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                        'v$appVersion ($appCommit)',
+                        style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(width: 4),
                       GestureDetector(
                         onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
                         child: MouseRegion(
                           cursor: SystemMouseCursors.click,
-                          child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
+                          child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -809,12 +894,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                         final ok = await sync.signIn();
                         if (ok) {
                           // Pull remote DB if newer, then start auto-sync
+                          _wireSyncCallbacks(sync);
                           final pulled = await sync.pullIfNewerOnStartup();
                           if (pulled) {
                             ref.read(dbReloadTrigger.notifier).state++;
                           }
                           final db = ref.read(databaseProvider);
-                          sync.startAutoSync(db.tableUpdates().map((_) {}));
+                          sync.setHasUserData(await _dbHasUserData(db));
+                          sync.startAutoSync(_userTableUpdates(db));
                           setDialogState(() {});
                         }
                       },

@@ -23,6 +23,26 @@ const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 const _googleClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
 final _clientId = auth.ClientId(_googleClientId, _googleClientSecret);
 
+/// User's choice when a sync conflict is detected.
+enum ConflictChoice { keepLocal, keepRemote, cancel }
+
+/// Information presented to the user during a conflict.
+class ConflictInfo {
+  final String localDeviceName;
+  final DateTime localLastSync;
+  final String remoteDeviceName;
+  final DateTime remoteModifiedTime;
+  final int remoteSize;
+
+  const ConflictInfo({
+    required this.localDeviceName,
+    required this.localLastSync,
+    required this.remoteDeviceName,
+    required this.remoteModifiedTime,
+    required this.remoteSize,
+  });
+}
+
 /// Metadata about the remote DB file on Google Drive.
 class DriveFileInfo {
   final String fileId;
@@ -175,7 +195,10 @@ class GoogleDriveSyncService {
 
   Future<bool> _mobileSilentSignIn() async {
     final account = await _mobileSignIn.signInSilently();
-    if (account == null) return false;
+    if (account == null) {
+      _log.info('mobileSilentSignIn: no previous session');
+      return false;
+    }
     return await _initMobileDriveApi();
   }
 
@@ -235,7 +258,6 @@ class GoogleDriveSyncService {
     try {
       final localPath = await _localDbPath;
       final localFile = File(localPath);
-      final localMtime = localFile.existsSync() ? localFile.lastModifiedSync() : DateTime(2000);
 
       final remote = await getRemoteInfo();
       if (remote == null) {
@@ -247,23 +269,53 @@ class GoogleDriveSyncService {
         return false;
       }
 
-      _log.info('pullIfNewer: local=${localMtime.toIso8601String()} remote=${remote.modifiedTime.toIso8601String()} remoteDevice=${remote.deviceId}');
-
+      // Use stored lastSyncTime instead of file mtime (opening DB updates mtime)
+      final lastSyncStr = await AppSettings.get('lastSyncTime');
+      final lastSync = lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
       final dirty = await AppSettings.get('syncDirty');
-      if (dirty == 'true' && remote.deviceId != _deviceId && remote.modifiedTime.isAfter(localMtime)) {
-        _log.warning('pullIfNewer: CONFLICT detected - remote from ${remote.deviceName}, local dirty. Using remote.');
-      }
 
-      if (remote.modifiedTime.isAfter(localMtime)) {
-        _log.info('pullIfNewer: remote is newer, downloading...');
+      _log.info('pullIfNewer: lastSync=${lastSync?.toIso8601String() ?? 'never'} remote=${remote.modifiedTime.toIso8601String()} remoteDevice=${remote.deviceId} dirty=$dirty');
+
+      // Pull if: never synced on this device, or remote is newer than last sync
+      final shouldPull = lastSync == null || remote.modifiedTime.isAfter(lastSync);
+      final isConflict = dirty == 'true' && shouldPull && remote.deviceId != _deviceId;
+
+      if (isConflict) {
+        _log.warning('pullIfNewer: CONFLICT - local dirty, remote from ${remote.deviceName}');
+        final choice = onConflict != null
+            ? await onConflict!(ConflictInfo(
+                localDeviceName: Platform.localHostname,
+                localLastSync: lastSync ?? DateTime(2000),
+                remoteDeviceName: remote.deviceName ?? remote.deviceId ?? 'unknown',
+                remoteModifiedTime: remote.modifiedTime,
+                remoteSize: remote.size,
+              ))
+            : ConflictChoice.keepRemote;
+
+        if (choice == ConflictChoice.keepLocal) {
+          _log.info('pullIfNewer: user chose KEEP LOCAL, uploading...');
+          await _upload(localPath);
+          return false;
+        } else if (choice == ConflictChoice.keepRemote) {
+          _log.info('pullIfNewer: user chose KEEP REMOTE, downloading...');
+          await _download(localPath, remote.fileId);
+          await AppSettings.set('syncDirty', 'false');
+          return true;
+        } else {
+          _log.info('pullIfNewer: user cancelled conflict resolution');
+          return false;
+        }
+      } else if (shouldPull) {
+        _log.info('pullIfNewer: downloading remote DB...');
         await _download(localPath, remote.fileId);
         await AppSettings.set('syncDirty', 'false');
         return true;
+      } else if (dirty == 'true') {
+        _log.info('pullIfNewer: local has unsaved changes, uploading...');
+        await _upload(localPath);
+        return false;
       } else {
         _log.info('pullIfNewer: local is current');
-        if (dirty == 'true') {
-          await _upload(localPath);
-        }
         return false;
       }
     } catch (e) {
@@ -274,24 +326,90 @@ class GoogleDriveSyncService {
     }
   }
 
+  Timer? _pollTimer;
+
   /// Start listening to DB changes and auto-push after debounce.
+  /// Also starts a periodic poll to detect remote changes from other devices.
   void startAutoSync(Stream<void> tableUpdates) {
     _tableUpdateSub?.cancel();
     _tableUpdateSub = tableUpdates.listen((_) {
       _markDirty();
+    });
+    // Poll for remote changes every 60 seconds
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (!_uploading && !_syncing && _driveApi != null) {
+        _checkForRemoteChanges();
+      }
     });
     _log.info('Auto-sync started (device=$_deviceId)');
   }
 
   void stopAutoSync() {
     _debounceTimer?.cancel();
+    _pollTimer?.cancel();
     _tableUpdateSub?.cancel();
     _tableUpdateSub = null;
     _log.info('Auto-sync stopped');
   }
 
+  /// Check if another device has uploaded since our last sync. If so, pull.
+  Future<void> _checkForRemoteChanges() async {
+    if (_driveApi == null || _syncing || _uploading) return;
+    try {
+      final remote = await getRemoteInfo();
+      if (remote == null) return;
+
+      final lastSyncStr = await AppSettings.get('lastSyncTime');
+      final lastSync = lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
+      if (lastSync == null) return;
+
+      final remoteIsNewer = remote.modifiedTime.isAfter(lastSync);
+      final fromOtherDevice = remote.deviceId != _deviceId;
+
+      if (remoteIsNewer && fromOtherDevice) {
+        final dirty = await AppSettings.get('syncDirty');
+        if (dirty == 'true') {
+          // Local has unsaved changes too — conflict
+          _log.warning('poll: CONFLICT detected - remote from ${remote.deviceName}, local dirty');
+          final choice = onConflict != null
+              ? await onConflict!(ConflictInfo(
+                  localDeviceName: Platform.localHostname,
+                  localLastSync: lastSync,
+                  remoteDeviceName: remote.deviceName ?? remote.deviceId ?? 'unknown',
+                  remoteModifiedTime: remote.modifiedTime,
+                  remoteSize: remote.size,
+                ))
+              : ConflictChoice.keepRemote;
+
+          if (choice == ConflictChoice.keepRemote) {
+            _syncing = true;
+            final localPath = await _localDbPath;
+            await _download(localPath, remote.fileId);
+            await AppSettings.set('syncDirty', 'false');
+            _syncing = false;
+            onDbReplaced?.call();
+          } else if (choice == ConflictChoice.keepLocal) {
+            final localPath = await _localDbPath;
+            await _upload(localPath);
+          }
+        } else {
+          // No local changes — just pull
+          _log.info('poll: remote updated by ${remote.deviceName}, pulling...');
+          _syncing = true;
+          final localPath = await _localDbPath;
+          await _download(localPath, remote.fileId);
+          _syncing = false;
+          onDbReplaced?.call();
+        }
+      }
+    } catch (e) {
+      _syncing = false;
+      _log.warning('poll check failed: $e');
+    }
+  }
+
   void _markDirty() {
-    _hasUserData = true;
     AppSettings.set('syncDirty', 'true');
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 10), () {
@@ -303,12 +421,27 @@ class GoogleDriveSyncService {
 
   // ── Upload / Download ─────────────────────────────
 
-  /// Check if the local DB has actual user data.
+  /// Check if the local DB has actual user data (accounts or assets).
   bool _hasUserData = false;
   void setHasUserData(bool value) => _hasUserData = value;
 
+  /// Callback to re-check user data before upload. Set by the app shell.
+  Future<bool> Function()? checkHasUserData;
+
+  /// Callback to ask the user how to resolve a sync conflict. Set by the app shell.
+  /// If null, conflicts default to keeping the remote version.
+  Future<ConflictChoice> Function(ConflictInfo info)? onConflict;
+
+  /// Called when the local DB was replaced by a remote download (e.g. conflict resolution).
+  /// The app shell should reload the DB and refresh the UI.
+  void Function()? onDbReplaced;
+
   Future<void> _upload(String localPath) async {
     if (_driveApi == null || _uploading) return;
+    // Re-check user data via callback if available (covers new accounts/assets)
+    if (checkHasUserData != null) {
+      _hasUserData = await checkHasUserData!();
+    }
     if (!_hasUserData) {
       _log.info('upload: skipping - local DB has no user data');
       return;
@@ -331,7 +464,41 @@ class GoogleDriveSyncService {
 
       final existing = await getRemoteInfo();
       if (existing != null) {
-        await _driveApi!.files.update(metadata, existing.fileId, uploadMedia: media);
+        // Conflict detection: remote was modified by another device since our last sync
+        final lastSyncStr = await AppSettings.get('lastSyncTime');
+        final lastSync = lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
+        final remoteIsNewer = lastSync != null && existing.modifiedTime.isAfter(lastSync);
+        final fromOtherDevice = existing.deviceId != _deviceId;
+
+        if (remoteIsNewer && fromOtherDevice) {
+          _log.warning('upload: CONFLICT - remote modified by ${existing.deviceName} since our last sync');
+          final choice = onConflict != null
+              ? await onConflict!(ConflictInfo(
+                  localDeviceName: Platform.localHostname,
+                  localLastSync: lastSync,
+                  remoteDeviceName: existing.deviceName ?? existing.deviceId ?? 'unknown',
+                  remoteModifiedTime: existing.modifiedTime,
+                  remoteSize: existing.size,
+                ))
+              : ConflictChoice.keepLocal; // default: keep uploading
+
+          if (choice == ConflictChoice.keepRemote) {
+            _log.info('upload: user chose KEEP REMOTE, downloading instead...');
+            await _download(localPath, existing.fileId);
+            await AppSettings.set('syncDirty', 'false');
+            onDbReplaced?.call();
+            return;
+          } else if (choice == ConflictChoice.cancel) {
+            _log.info('upload: user cancelled conflict resolution');
+            return;
+          }
+          // keepLocal: fall through to upload
+          _log.info('upload: user chose KEEP LOCAL, overwriting remote...');
+        }
+
+        // Re-open file stream (may have been consumed by conflict check)
+        final freshMedia = drive.Media(File(localPath).openRead(), file.lengthSync());
+        await _driveApi!.files.update(metadata, existing.fileId, uploadMedia: freshMedia);
         _log.info('upload: updated remote DB (${file.lengthSync()} bytes)');
       } else {
         metadata.parents = ['appDataFolder'];
