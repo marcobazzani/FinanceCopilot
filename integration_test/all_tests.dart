@@ -9,6 +9,7 @@
 library;
 import 'package:integration_test/integration_test.dart';
 
+import 'allocation_test.dart' as allocation;
 import 'app_test.dart' as app;
 import 'accounts_test.dart' as accounts;
 import 'asset_events_test.dart' as asset_events;
@@ -26,6 +27,7 @@ import 'transactions_test.dart' as transactions;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  allocation.main();
   app.main();
   accounts.main();
   asset_events.main();

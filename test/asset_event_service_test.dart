@@ -278,4 +278,33 @@ void main() {
       expect(result, isNull);
     });
   });
+
+  group('getAverageBuyPrice', () {
+    test('returns weighted average of buy events', () async {
+      final assetId = await createAsset('Bond');
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 9800, quantity: 100, price: 98.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId, date: DateTime(2024, 6, 1),
+        type: EventType.buy, amount: 4900, quantity: 50, price: 98.0,
+        currency: 'EUR',
+      );
+      final result = await service.getAverageBuyPrice(assetId);
+      expect(result, closeTo(98.0, 0.01));
+    });
+
+    test('returns null when no buy events exist', () async {
+      final assetId = await createAsset('Empty');
+      final result = await service.getAverageBuyPrice(assetId);
+      expect(result, isNull);
+    });
+
+    test('returns null for non-existent asset', () async {
+      final result = await service.getAverageBuyPrice(99999);
+      expect(result, isNull);
+    });
+  });
 }
