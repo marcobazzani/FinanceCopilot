@@ -102,16 +102,7 @@ Future<void> openBugReporter(
   String? logsPath;
   String? saveDir;
 
-  final String saveBaseDir;
-  if (Platform.isAndroid || Platform.isIOS) {
-    saveBaseDir = Directory.systemTemp.path;
-  } else if (Platform.isMacOS || Platform.isLinux) {
-    saveBaseDir = p.join(Platform.environment['HOME'] ?? '/tmp', 'Desktop');
-  } else {
-    saveBaseDir = Platform.environment['USERPROFILE'] != null
-        ? p.join(Platform.environment['USERPROFILE']!, 'Desktop')
-        : Directory.systemTemp.path;
-  }
+  final saveBaseDir = Directory.systemTemp.path;
   final timestamp = DateTime.now()
       .toIso8601String()
       .replaceAll(':', '-')
