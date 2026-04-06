@@ -65,16 +65,6 @@ class AppSettings {
     await _save();
   }
 
-  /// Get the update channel ('nightly' or 'stable').
-  static Future<String> getUpdateChannel() async {
-    return await get('updateChannel') ?? 'nightly';
-  }
-
-  /// Set the update channel.
-  static Future<void> setUpdateChannel(String channel) async {
-    await set('updateChannel', channel);
-  }
-
   /// Get the UI language ('en' or 'it').
   static Future<String> getLanguage() async {
     return await get('language') ?? 'en';
