@@ -696,13 +696,18 @@ extension _ColumnMapperStep on _ImportScreenState {
             ...uniqueVals.map((val) {
               final isBuy = _buyValues.contains(val);
               final isSell = _sellValues.contains(val);
+              final isUnmapped = !isBuy && !isSell;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
                   children: [
                     SizedBox(
                       width: 140,
-                      child: Text(val, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                      child: Text(val, style: TextStyle(
+                        fontSize: 13,
+                        color: isUnmapped ? Colors.red.shade300 : null,
+                        fontWeight: isUnmapped ? FontWeight.bold : null,
+                      ), overflow: TextOverflow.ellipsis),
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
@@ -728,6 +733,14 @@ extension _ColumnMapperStep on _ImportScreenState {
                 ),
               );
             }),
+            if (uniqueVals.any((v) => !_buyValues.contains(v) && !_sellValues.contains(v)))
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  s.buySellAllRequired,
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade300),
+                ),
+              ),
           ],
         ] else
           Padding(

@@ -664,6 +664,7 @@ class AppStrings {
       ? 'Quantità o importo negativo = Vendita, positivo = Acquisto'
       : 'Negative quantity or amount = Sell, positive = Buy';
   String get computedLabel         => _it ? 'Calcolato'                : 'Computed';
+  String get buySellAllRequired    => _it ? 'Ogni valore deve essere assegnato a Acquisto o Vendita' : 'Every value must be assigned to Buy or Sell';
 
   // ── Allocation ───────────────────────────────────────────
   String get noMarketValues    => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';
