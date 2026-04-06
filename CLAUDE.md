@@ -38,11 +38,13 @@
 - NEVER add `Co-Authored-By:` lines to commits. Not under any circumstances, not for any reason. No exceptions.
 - **Use `develop` branch for testing/exchanging code** (e.g. syncing with Windows VM). Never push to `main` unless the user explicitly confirms. Push to `develop` freely for testing.
 - Only bump `appVersion` in `lib/version.dart` when releasing on `main`, not on develop/feature branches.
-- Before every commit:
+- **NEVER commit or push until ALL test suites have passed. No exceptions.**
+- Before every commit, run ALL of these and verify green:
   1. `dart fix --apply && dart analyze lib/ test/ integration_test/` -- zero warnings/infos allowed
   2. `flutter test` -- all unit tests must pass
   3. `flutter test integration_test/all_tests.dart -d macos` -- all integration tests must pass
-  4. NEVER commit with known failing tests
+  4. `flutter test integration_test/live_data_fetch_test.dart -d macos` -- live data fetch test must pass
+  5. NEVER commit with known failing tests. NEVER skip any test suite.
 
 ## Releasing a new version
 
