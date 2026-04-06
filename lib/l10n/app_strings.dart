@@ -107,6 +107,15 @@ class AppStrings {
   String get settingsSyncSignOut      => _it ? 'Esci'                        : 'Sign out';
   String settingsSyncSignedIn(String email) => _it ? 'Sincronizzato con $email' : 'Synced with $email';
 
+  // ── Sync Conflict ──────────────────────────────────
+  String get conflictTitle              => _it ? 'Conflitto di sincronizzazione' : 'Sync Conflict';
+  String conflictBody(String remoteDevice, String remoteTime) =>
+      _it ? 'Sia questo dispositivo che "$remoteDevice" hanno modifiche non sincronizzate.\nUltimo aggiornamento remoto: $remoteTime.\n\nQuale versione vuoi mantenere?'
+          : 'Both this device and "$remoteDevice" have unsynchronized changes.\nLast remote update: $remoteTime.\n\nWhich version do you want to keep?';
+  String get conflictKeepLocal          => _it ? 'Tieni locale'                  : 'Keep Local';
+  String get conflictKeepRemote         => _it ? 'Tieni remoto'                  : 'Keep Remote';
+  String get conflictCancel             => _it ? 'Annulla'                       : 'Cancel';
+
   // ── Dashboard ───────────────────────────────────────────
   String get dashTabHistory      => _it ? 'Storico'           : 'History';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';

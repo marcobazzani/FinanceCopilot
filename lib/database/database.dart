@@ -48,6 +48,12 @@ class AppDatabase extends _$AppDatabase {
   /// For testing: inject a custom executor.
   AppDatabase.forTesting(super.e);
 
+  /// Returns the DB file reference without opening or creating it.
+  static Future<File> dbFile() async {
+    final dir = await getApplicationSupportDirectory();
+    return File(p.join(dir.path, 'finance_copilot.db'));
+  }
+
   @override
   int get schemaVersion => 23;
 
