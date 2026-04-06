@@ -76,6 +76,10 @@
 
 - Do NOT run `find` or exploratory commands to locate files — check the code directly.
 
+# Long-Running Commands
+
+- Never sleep longer than 10 seconds in any command. Run long tasks in background and check for progress periodically.
+
 # Python
 
 - NEVER use `--break-system-packages` with pip. Use `python3 -m venv` for virtual environments instead.
