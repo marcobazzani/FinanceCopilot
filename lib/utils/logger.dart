@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -23,21 +24,26 @@ void _debugLog(String msg) {
 Future<void> initLogging() async {
   Logger.root.level = Level.ALL;
 
-  // Open log file inside the app's sandboxed documents directory
+  // Open log file inside the app's Application Support directory
   try {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final logDir = Directory(p.join(docsDir.path, 'FinanceCopilot'));
-    if (!await logDir.exists()) {
-      await logDir.create(recursive: true);
+    final appDir = await getApplicationSupportDirectory();
+    if (!await appDir.exists()) {
+      await appDir.create(recursive: true);
     }
-    final logFile = File(p.join(logDir.path, 'app.log'));
+    final logFile = File(p.join(appDir.path, 'app.log'));
     logFilePath = logFile.path;
 
-    // Rotate: if > 5MB, rename to app.log.1
-    if (await logFile.exists() && await logFile.length() > 5 * 1024 * 1024) {
-      final backup = File(p.join(logDir.path, 'app.log.1'));
-      if (await backup.exists()) await backup.delete();
-      await logFile.rename(backup.path);
+    // Session rotation: save previous session log for bug reports
+    if (await logFile.exists()) {
+      final prevSession = File(p.join(appDir.path, 'previous_session.log'));
+      try {
+        if (await prevSession.exists()) await prevSession.delete();
+        await logFile.copy(prevSession.path);
+      } catch (_) {}
+      // Size-based rotation: if > 5MB, truncate
+      if (await logFile.length() > 5 * 1024 * 1024) {
+        await logFile.delete();
+      }
     }
 
     _logSink = logFile.openWrite(mode: FileMode.append);
@@ -88,6 +94,7 @@ Future<void> initLogging() async {
 
     _logSink?.writeln(withStack);
     _debugLog(withStack);
+    developer.log(record.message, name: record.loggerName, level: record.level.value);
 
     // Periodic rotation check (every 10000 lines)
     lineCount++;

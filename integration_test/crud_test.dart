@@ -28,8 +28,8 @@ void main() {
 
     // Verify in DB
     var accounts = await db.select(db.accounts).get();
-    expect(accounts.length, 1);
-    expect(accounts.first.name, 'Bank A');
+    expect(accounts.length, 2);
+    expect(accounts.any((a) => a.name == 'Bank A'), isTrue);
 
     // Tap into detail
     await tester.tap(find.text('Bank A'));

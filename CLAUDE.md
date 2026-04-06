@@ -2,8 +2,9 @@
 
 - When needed, always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
-  dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
+  source .env && dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
+- OAuth credentials are in `.env` (gitignored). Never commit secrets to git.
 
 ## Android Emulator
 
@@ -11,7 +12,7 @@
 - Steps (in order):
   1. Launch emulator: `flutter emulators --launch <emulator_id>`
   2. Wait for it to appear: `flutter devices` (look for `emulator-XXXX`)
-  3. Build APK: `flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S)`
+  3. Build APK: `source .env && flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET`
   4. Install: `flutter install -d emulator-XXXX`
   5. Launch app: `adb -s emulator-XXXX shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1`
 - Package name is `net.bazzani.financecopilot` (NOT `com.example.finance_copilot`).
@@ -32,7 +33,7 @@
 
 # Git Workflow
 
-- Commit into git when detecting the user is starting a new task (not iterating on a previous task).
+- Do NOT commit automatically after every change. Build first, let the user test, and only commit when the user asks or when starting a completely different task.
 - Use concise, meaningful commit messages.
 - NEVER add `Co-Authored-By:` lines to commits. Not under any circumstances, not for any reason. No exceptions.
 - **Use `develop` branch for testing/exchanging code** (e.g. syncing with Windows VM). Never push to `main` unless the user explicitly confirms. Push to `develop` freely for testing.
@@ -77,12 +78,17 @@
 
 - NEVER use `--break-system-packages` with pip. Use `python3 -m venv` for virtual environments instead.
 
-# Database
+# Database & Sandbox
 
-- The DB is `finance_copilot.db` — the app prints its path to stdout on startup (`DB: <path>`).
-- On macOS (develop): `~/Documents/FinanceCopilot/finance_copilot.db`
-- On macOS (sandboxed/experimental): `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
-- Logs: same directory as DB, `app.log` (previous session: `previous_session.log`)
+The app runs sandboxed on macOS. All internal data lives inside the container.
+
+- **macOS DB**: `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
+- **macOS logs**: `tail -f ~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application\ Support/net.bazzani.financecopilot/app.log`
+- **macOS OS log**: `log stream --predicate 'subsystem == "net.bazzani.financecopilot"' --level debug`
+- **Windows DB**: `C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\finance_copilot.db`
+- **Windows logs**: `Get-Content C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\app.log -Wait`
+- **Android logs**: `adb logcat -s flutter`
+- **Previous session log**: `previous_session.log` (same dir as app.log, for bug reports)
 - Never use `assets.db` in the repo root (stale copy, gitignored).
 
 # Architecture

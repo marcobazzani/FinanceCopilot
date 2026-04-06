@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,14 +9,16 @@ import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
+import 'services/db_transfer_service.dart';
+import 'services/demo_db_service.dart';
 import 'services/exchange_rate_service.dart';
+import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/capex_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
-import 'ui/screens/db_picker_screen.dart';
 import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/income_screen.dart';
 import 'utils/bug_reporter.dart';
@@ -22,6 +26,22 @@ import 'utils/logger.dart';
 import 'version.dart';
 
 final _log = getLogger('Main');
+
+/// Feature flag: enable demo DB generation (disabled by default, enable at compile time).
+const _enableDemo = bool.fromEnvironment('ENABLE_DEMO', defaultValue: false);
+
+/// Tables that are updated by background sync (prices, rates, compositions).
+/// Changes to these should NOT trigger Google Drive upload.
+const _backgroundTables = {
+  'market_prices', 'exchange_rates', 'app_configs', 'asset_compositions',
+};
+
+/// Stream of user-initiated table updates only (excludes background sync tables).
+Stream<void> _userTableUpdates(AppDatabase db) {
+  return db.tableUpdates().where((updates) {
+    return updates.any((u) => !_backgroundTables.contains(u.table));
+  }).map((_) {});
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,11 +59,7 @@ class FinanceCopilotApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dbPath = ref.watch(dbPathProvider);
-    // Only read locale from DB after a database is selected to avoid opening the default DB
-    final localeStr = dbPath != null
-        ? (ref.watch(appLocaleProvider).value ?? 'en_US')
-        : 'en_US';
+    final localeStr = ref.watch(appLocaleProvider).value ?? 'en_US';
     // Parse locale string like "it_IT" into Locale('it', 'IT')
     final parts = localeStr.split(RegExp(r'[_-]'));
     final appLocale = Locale(parts[0], parts.length > 1 ? parts[1] : '');
@@ -76,24 +92,21 @@ class FinanceCopilotApp extends ConsumerWidget {
         brightness: Brightness.dark,
       ),
       themeMode: ThemeMode.system,
-      home: dbPath == null ? const DbPickerScreen() : _SafeAppShell(dbPath: dbPath),
+      home: const _SafeAppShell(),
     );
   }
 }
 
 /// Catches errors when opening the DB / building AppShell.
 class _SafeAppShell extends ConsumerWidget {
-  final String dbPath;
-  const _SafeAppShell({required this.dbPath});
+  const _SafeAppShell();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     try {
-      // Force the database to open now so we catch errors early
       ref.watch(databaseProvider);
-      _log.info('Database provider resolved for: $dbPath');
     } catch (e, stack) {
-      _log.severe('Failed to open database at $dbPath: $e\n$stack');
+      _log.severe('Failed to open database: $e\n$stack');
       return Scaffold(
         appBar: AppBar(title: const Text('FinanceCopilot')),
         body: Center(
@@ -102,13 +115,7 @@ class _SafeAppShell extends ConsumerWidget {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 16),
-              Text(ref.read(appStringsProvider).dbOpenFailed(e),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () => ref.read(dbPathProvider.notifier).state = null,
-                child: Text(ref.read(appStringsProvider).backToPicker),
-              ),
+              Text('Failed to open database: $e', textAlign: TextAlign.center),
             ],
           ),
         ),
@@ -129,6 +136,8 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
   bool _isSyncing = false;
+  bool _showLanding = false;
+  bool _generatingDemo = false;
   final _repaintKey = GlobalKey();
 
   List<NavigationDestination> _destinations(AppStrings s) => [
@@ -150,7 +159,104 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => _startBackgroundSync());
+    Future.microtask(() async {
+      // Check if DB file exists before touching the provider.
+      // If no DB file, show landing page immediately — let the user choose
+      // "Start Fresh" or "Sync with Google Drive" before creating any DB.
+      final dbFile = await AppDatabase.dbFile();
+      if (!dbFile.existsSync()) {
+        _log.info('No DB file found, showing landing page');
+        if (mounted) setState(() => _showLanding = true);
+        return;
+      }
+      await _initDriveSync();
+      await _checkEmptyDb();
+      if (!_showLanding) _startBackgroundSync();
+    });
+  }
+
+  Future<void> _initDriveSync() async {
+    final sync = ref.read(googleDriveSyncProvider);
+    final signedIn = await sync.trySilentSignIn();
+    if (!signedIn) return;
+    _log.info('Drive sync: signed in as ${sync.userEmail}');
+    _wireSyncCallbacks(sync);
+
+    final pulled = await sync.pullIfNewerOnStartup();
+    if (pulled && mounted) {
+      _log.info('Drive sync: pulled newer DB from remote');
+      ref.read(dbReloadTrigger.notifier).state++;
+    }
+
+    // Start auto-push on DB changes
+    final db = ref.read(databaseProvider);
+    sync.startAutoSync(_userTableUpdates(db));
+  }
+
+  Future<void> _checkEmptyDb() async {
+    try {
+      final db = ref.read(databaseProvider);
+      final sync = ref.read(googleDriveSyncProvider);
+      final hasData = await _dbHasUserData(db);
+      sync.setHasUserData(hasData);
+      _wireSyncCallbacks(sync);
+      if (!hasData && mounted) {
+        setState(() => _showLanding = true);
+      }
+    } catch (_) {}
+  }
+
+  Future<bool> _dbHasUserData(AppDatabase db) async {
+    final assetCount = (await db.customSelect('SELECT COUNT(*) AS c FROM assets').getSingle()).read<int>('c');
+    final accountCount = (await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle()).read<int>('c');
+    return assetCount + accountCount > 0;
+  }
+
+  Future<ConflictChoice> _showConflictDialog(ConflictInfo info) async {
+    if (!mounted) return ConflictChoice.keepRemote;
+    final s = ref.read(appStringsProvider);
+    final remoteTime = '${info.remoteModifiedTime.toLocal()}'.split('.').first;
+    final choice = await showDialog<ConflictChoice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Theme.of(ctx).colorScheme.error),
+            const SizedBox(width: 8),
+            Text(s.conflictTitle),
+          ],
+        ),
+        content: Text(s.conflictBody(info.remoteDeviceName, remoteTime)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.cancel),
+            child: Text(s.conflictCancel),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.keepRemote),
+            child: Text(s.conflictKeepRemote),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ConflictChoice.keepLocal),
+            child: Text(s.conflictKeepLocal),
+          ),
+        ],
+      ),
+    );
+    return choice ?? ConflictChoice.cancel;
+  }
+
+  /// Wire up sync service callbacks (user data check + conflict dialog + DB reload).
+  void _wireSyncCallbacks(GoogleDriveSyncService sync) {
+    sync.checkHasUserData = () => _dbHasUserData(ref.read(databaseProvider));
+    sync.onConflict = _showConflictDialog;
+    sync.onDbReplaced = () {
+      if (mounted) {
+        _log.info('DB replaced by sync, reloading...');
+        ref.read(dbReloadTrigger.notifier).state++;
+      }
+    };
   }
 
   Future<void> _startBackgroundSync() async {
@@ -211,8 +317,131 @@ class _AppShellState extends ConsumerState<AppShell> {
     };
   }
 
+  Widget _buildLandingPage() {
+    final s = ref.watch(appStringsProvider);
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    final sync = ref.read(googleDriveSyncProvider);
+
+    return Scaffold(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.account_balance, size: 64, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(height: 16),
+                  Text(s.landingTitle, style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text(s.landingSubtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+                  const SizedBox(height: 32),
+                  if (_generatingDemo)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(),
+                    )
+                  else ...[
+                    // Google Drive sync — available on all platforms
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.cloud_sync),
+                        label: Text(s.landingSyncDrive),
+                        onPressed: () async {
+                          final ok = await sync.signIn();
+                          if (ok) {
+                            _wireSyncCallbacks(sync);
+                            final pulled = await sync.pullIfNewerOnStartup();
+                            if (pulled) ref.read(dbReloadTrigger.notifier).state++;
+                            final db = ref.read(databaseProvider);
+                            sync.setHasUserData(await _dbHasUserData(db));
+                            sync.startAutoSync(_userTableUpdates(db));
+                            if (mounted) {
+                              setState(() => _showLanding = false);
+                              _startBackgroundSync();
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                    // Import DB — desktop only
+                    if (!isMobile) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.file_upload),
+                          label: Text(s.landingImportDb),
+                          onPressed: () async {
+                            final path = await DbTransferService.importDb();
+                            if (path != null && mounted) {
+                              ref.read(dbReloadTrigger.notifier).state++;
+                              setState(() => _showLanding = false);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _showLanding = false);
+                        _startBackgroundSync();
+                      },
+                      child: Text(s.landingStartFresh),
+                    ),
+                    // Demo — behind feature flag
+                    if (_enableDemo) ...[
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: _createDemo,
+                        child: Text(s.landingCreateDemo),
+                      ),
+                    ],
+                  ],
+                  const SizedBox(height: 24),
+                  Text(
+                    'v$appVersion${appCommit.isNotEmpty ? ' ($appCommit)' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createDemo() async {
+    setState(() => _generatingDemo = true);
+    try {
+      final dbPath = await DbTransferService.dbPath;
+      await DemoDbService.generateDemoDb(dbPath);
+      if (mounted) {
+        ref.read(dbReloadTrigger.notifier).state++;
+        setState(() {
+          _showLanding = false;
+          _generatingDemo = false;
+        });
+        _startBackgroundSync();
+      }
+    } catch (e) {
+      _log.severe('Demo generation failed: $e');
+      if (mounted) setState(() => _generatingDemo = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Show landing page without any toolbar/navigation
+    if (_showLanding) return _buildLandingPage();
+
     final isWide = MediaQuery.sizeOf(context).width >= 600;
     final s = ref.watch(appStringsProvider);
 
@@ -263,9 +492,9 @@ class _AppShellState extends ConsumerState<AppShell> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.swap_horiz),
-            tooltip: s.tooltipChangeDatabase,
-            onPressed: () => ref.read(dbPathProvider.notifier).state = null,
+            icon: const Icon(Icons.import_export),
+            tooltip: s.tooltipImportExportDb,
+            onPressed: () => _showImportExportDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.settings),
@@ -362,15 +591,15 @@ class _AppShellState extends ConsumerState<AppShell> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'v$appVersion',
-                        style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                        'v$appVersion ($appCommit)',
+                        style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(width: 4),
                       GestureDetector(
                         onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
                         child: MouseRegion(
                           cursor: SystemMouseCursors.click,
-                          child: Icon(Icons.bug_report, size: 14, color: Colors.grey.shade500),
+                          child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                       ),
                     ],
@@ -399,6 +628,151 @@ class _AppShellState extends ConsumerState<AppShell> {
   ];
 
 
+  Future<void> _showImportExportDialog(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.importExportTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.file_download),
+              title: Text(s.settingsExportDb),
+              subtitle: Text(s.importExportExportHint),
+              onTap: () => Navigator.pop(ctx, 'export'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_upload),
+              title: Text(s.settingsImportDb),
+              subtitle: Text(s.importExportImportHint),
+              onTap: () => Navigator.pop(ctx, 'import'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+        ],
+      ),
+    );
+    if (action == null || !context.mounted) return;
+    if (action == 'export') {
+      final path = await DbTransferService.exportDb();
+      if (path != null && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.settingsExportSuccess)),
+        );
+      }
+    } else if (action == 'import') {
+      await _importDb(context);
+    }
+  }
+
+  Future<void> _importDb(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final db = ref.read(databaseProvider);
+
+    // Check if DB has user data
+    final assetCount = (await db.customSelect('SELECT COUNT(*) AS c FROM assets').getSingle()).read<int>('c');
+    final accountCount = (await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle()).read<int>('c');
+
+    if (assetCount + accountCount > 0) {
+      if (!context.mounted) return;
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(s.settingsImportWarningTitle),
+          content: Text(s.settingsImportWarningBody),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, 'export'),
+              child: Text(s.settingsExportFirst),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, 'replace'),
+              child: Text(s.settingsReplaceAnyway),
+            ),
+          ],
+        ),
+      );
+      if (action == null) return;
+      if (action == 'export') {
+        final exported = await DbTransferService.exportDb();
+        if (exported == null) return; // cancelled
+      }
+    }
+
+    // Close current DB, import, reload
+    if (!context.mounted) return;
+    final path = await DbTransferService.importDb();
+    if (path == null) return;
+
+    ref.read(dbReloadTrigger.notifier).state++;
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.settingsImportSuccess)),
+      );
+    }
+  }
+
+  Future<void> _wipeDb(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+
+    // Force export first
+    final exported = await DbTransferService.exportDb();
+    if (exported == null) {
+      // User cancelled the export — abort wipe
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.settingsWipeCancelled)),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    // Confirm wipe
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.warning, color: Theme.of(ctx).colorScheme.error),
+          const SizedBox(width: 8),
+          Text(s.settingsWipeConfirmTitle),
+        ]),
+        content: Text(s.settingsWipeConfirmBody),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.settingsWipeConfirm),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    // Delete the DB file and reload
+    try {
+      final path = await DbTransferService.dbPath;
+      final file = File(path);
+      if (file.existsSync()) file.deleteSync();
+      ref.read(dbReloadTrigger.notifier).state++;
+      if (context.mounted) {
+        Navigator.pop(context); // close settings
+        setState(() => _showLanding = true);
+      }
+    } catch (e) {
+      _log.severe('Wipe DB failed: $e');
+    }
+  }
+
   Future<void> _showSettingsDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
     final db = ref.read(databaseProvider);
@@ -418,10 +792,11 @@ class _AppShellState extends ConsumerState<AppShell> {
           title: Text(s.settingsTitle),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 DropdownButtonFormField<String>(
                   initialValue: selectedCurrency,
                   decoration: InputDecoration(labelText: s.settingsCurrency),
@@ -486,7 +861,84 @@ class _AppShellState extends ConsumerState<AppShell> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 4),
+                Text(s.settingsGoogleDrive, style: Theme.of(ctx).textTheme.titleSmall),
+                const SizedBox(height: 8),
+                Builder(builder: (_) {
+                  final sync = ref.read(googleDriveSyncProvider);
+                  if (sync.isSignedIn) {
+                    return Row(
+                      children: [
+                        const Icon(Icons.cloud_done, color: Colors.green, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(s.settingsSyncSignedIn(sync.userEmail ?? ''),
+                            style: Theme.of(ctx).textTheme.bodySmall),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            await sync.signOut();
+                            setDialogState(() {});
+                          },
+                          child: Text(s.settingsSyncSignOut),
+                        ),
+                      ],
+                    );
+                  } else {
+                    return OutlinedButton.icon(
+                      icon: const Icon(Icons.cloud_outlined, size: 18),
+                      label: Text(s.settingsSyncSignIn),
+                      onPressed: () async {
+                        final ok = await sync.signIn();
+                        if (ok) {
+                          // Pull remote DB if newer, then start auto-sync
+                          _wireSyncCallbacks(sync);
+                          final pulled = await sync.pullIfNewerOnStartup();
+                          if (pulled) {
+                            ref.read(dbReloadTrigger.notifier).state++;
+                          }
+                          final db = ref.read(databaseProvider);
+                          sync.setHasUserData(await _dbHasUserData(db));
+                          sync.startAutoSync(_userTableUpdates(db));
+                          setDialogState(() {});
+                        }
+                      },
+                    );
+                  }
+                }),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(s.settingsWipeDb,
+                              style: Theme.of(ctx).textTheme.bodyMedium),
+                          Text(s.settingsWipeDbSubtitle,
+                            style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(ctx).colorScheme.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(ctx).colorScheme.error,
+                        side: BorderSide(color: Theme.of(ctx).colorScheme.error),
+                      ),
+                      onPressed: () => _wipeDb(ctx),
+                      child: Text(s.settingsWipeButton),
+                    ),
+                  ],
+                ),
               ],
+            ),
             ),
           ),
           actions: [
