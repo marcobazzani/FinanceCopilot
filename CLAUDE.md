@@ -48,6 +48,7 @@
 
 ## Releasing a new version
 
+0. **Pre-release check**: a working nightly build with `main` merged into `develop` must exist and pass CI before starting the release. Verify with `gh run list --branch develop --limit 1`.
 1. Merge `develop` into `main`: `git checkout main && git merge develop --no-edit`
 2. Bump version in `lib/version.dart` (only on main)
 3. Commit: `git commit -am "Release vX.Y.Z"`
