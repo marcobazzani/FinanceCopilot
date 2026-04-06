@@ -633,6 +633,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
     // Asset events also require ISIN
     if (_target == ImportTarget.assetEvent && _mappings['isin'] == null) return false;
+    // Asset events with "from column" type: every unique value must be mapped to Buy or Sell
+    if (_target == ImportTarget.assetEvent && _typeMode == 'column' && _mappings['type'] != null) {
+      final typeCol = _mappings['type']!;
+      final uniqueVals = _fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol);
+      if (uniqueVals.isNotEmpty) {
+        final allMapped = uniqueVals.every((v) => _buyValues.contains(v) || _sellValues.contains(v));
+        if (!allMapped) return false;
+        // Must have at least one Buy and one Sell value
+        if (_buyValues.isEmpty || _sellValues.isEmpty) return false;
+      }
+    }
     return true;
   }
 

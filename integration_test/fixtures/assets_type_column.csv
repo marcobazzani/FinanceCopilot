@@ -1,0 +1,4 @@
+date,isin,type,quantity,price,currency,amount,commission
+2025-01-10,IE00B4L5Y983,Buy,10,95.50,EUR,960.00,5.00
+2025-02-15,IE00B4L5Y983,Buy,5,98.00,EUR,495.00,5.00
+2025-03-01,IE00B4L5Y983,Sell,3,100.00,EUR,297.00,3.00

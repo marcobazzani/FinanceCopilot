@@ -1,6 +1,8 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,6 +14,8 @@ import 'package:finance_copilot/services/exchange_rate_service.dart';
 import 'package:finance_copilot/services/google_drive_sync_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart';
+import 'package:finance_copilot/ui/screens/import/import_screen.dart';
+import 'package:flutter/material.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 
 /// No-op market price service that never makes HTTP calls.
@@ -89,6 +93,38 @@ Future<AppDatabase> pumpApp(
     await tester.pump(const Duration(milliseconds: 100));
   }
   return db;
+}
+
+/// Load a real fixture file from integration_test/fixtures/ via the asset bundle.
+/// Writes to a temp file so the real CSV/XLSX parser is exercised end-to-end.
+Future<FilePreview> parseFixture(AppDatabase db, String fixtureName, {int skipRows = 0}) async {
+  final importer = ImportService(db);
+  final data = await rootBundle.load('integration_test/fixtures/$fixtureName');
+  final tmpDir = await Directory.systemTemp.createTemp('fc_test_');
+  final tmpFile = File('${tmpDir.path}/$fixtureName');
+  await tmpFile.writeAsBytes(data.buffer.asUint8List());
+  try {
+    return await importer.parseFile(tmpFile.path, skipRows: skipRows);
+  } finally {
+    await tmpDir.delete(recursive: true);
+  }
+}
+
+
+/// Navigate to ImportScreen with a pre-parsed preview and optional target.
+/// This tests both the file parser (via parseFixture) and the full UI import flow.
+Future<void> pushImportScreen(
+  WidgetTester tester, {
+  required FilePreview preview,
+  ImportTarget? target,
+}) async {
+  final context = tester.element(find.byType(Navigator).first);
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ImportScreen(testPreview: preview, preselectedTarget: target),
+    ),
+  );
+  await settle(tester);
 }
 
 /// Pump multiple frames to let the widget tree rebuild after navigation/tap.

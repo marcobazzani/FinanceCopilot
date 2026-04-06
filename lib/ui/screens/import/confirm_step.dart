@@ -433,12 +433,15 @@ extension _ConfirmStep on _ImportScreenState {
         if (_typeMode == 'sign') {
           mappings.removeWhere((m) => m.targetField == 'type');
         }
+        // ISIN lookup may not be available (e.g. stubbed market price service)
+        IsinLookupService? isinLookup;
+        try { isinLookup = ref.read(isinLookupServiceProvider); } catch (_) {}
         final assetResult = await importer.importAssetEventsGrouped(
           preview: fullPreview,
           mappings: mappings,
           onProgress: onProgress,
           computeFee: _feeMode == 'computed',
-          isinLookup: ref.read(isinLookupServiceProvider),
+          isinLookup: isinLookup,
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,

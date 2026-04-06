@@ -84,7 +84,12 @@
       "Bash(done)",
       "Bash(du -sh /Users/marco/Project/FinanceCopilot/.dart_tool/*/)",
       "Bash(flutter clean:*)",
-      "Bash(dart fix:*)"
+      "Bash(dart fix:*)",
+      "Bash(pkill -9 -f \"flutter_tester\\\\|FinanceCopilot\")",
+      "Bash(flutter devices:*)",
+      "Bash(flutter install:*)",
+      "Bash(adb -s emulator-5554 shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1)",
+      "Bash(gh api:*)"
     ]
   }
 }

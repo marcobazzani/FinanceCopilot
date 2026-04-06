@@ -539,7 +539,7 @@ class ImportService {
         double? commission;
         if (computeFee && qty != null && price != null) {
           final effectiveRate = (rate != null && rate != 0) ? rate : 1.0;
-          commission = (amount.abs() - qty * price / effectiveRate).abs();
+          commission = (amount.abs() - qty.abs() * price / effectiveRate).abs();
         } else if (commMapping != null) {
           commission = _tryParseAmount(_resolveMapping(commMapping, row));
         }

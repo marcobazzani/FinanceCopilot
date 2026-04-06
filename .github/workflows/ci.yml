@@ -111,6 +111,7 @@ jobs:
       - name: Build release
         shell: bash
         run: |
+          sed -i'' -e '/integration_test\/fixtures/d' pubspec.yaml
           flutter build ${{ matrix.platform }} --release \
             --dart-define=COMMIT_SHA=${{ github.sha }} \
             --dart-define=CHANNEL=${{ steps.channel.outputs.channel }} \
