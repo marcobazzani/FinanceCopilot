@@ -92,13 +92,8 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     }
     price ??= await priceService.getPrice(asset.id, now);
     if (price == null) {
-      final avgCost = await ref.read(assetEventServiceProvider).getAverageBuyPrice(asset.id);
-      if (avgCost == null) {
-        _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price or cost basis');
-        continue;
-      }
-      price = avgCost;
-      _log.info('assetMarketValues: ${asset.ticker ?? asset.name} - using cost basis $avgCost as fallback');
+      _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
+      continue;
     }
     double fxRate = 1.0;
     if (asset.currency != baseCurrency) {
