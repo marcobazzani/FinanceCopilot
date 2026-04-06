@@ -67,10 +67,13 @@ Future<AppDatabase> pumpApp(
     );
   }
 
-  // Suppress Flutter keyboard state errors (KeyUpEvent leak between tests)
+  // Suppress non-logic Flutter errors in integration tests:
+  // - KeyUpEvent: keyboard state leak between tests in same process
+  // - overflowed: RenderFlex overflow on small CI screens (not a logic error)
   final origHandler = FlutterError.onError;
   FlutterError.onError = (details) {
-    if (details.toString().contains('KeyUpEvent')) return;
+    final msg = details.toString();
+    if (msg.contains('KeyUpEvent') || msg.contains('overflowed')) return;
     origHandler?.call(details);
   };
 

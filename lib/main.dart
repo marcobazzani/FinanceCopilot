@@ -707,10 +707,11 @@ class _AppShellState extends ConsumerState<AppShell> {
           title: Text(s.settingsTitle),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 DropdownButtonFormField<String>(
                   initialValue: selectedCurrency,
                   decoration: InputDecoration(labelText: s.settingsCurrency),
@@ -850,6 +851,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   ],
                 ),
               ],
+            ),
             ),
           ),
           actions: [
