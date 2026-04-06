@@ -597,7 +597,12 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                         .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
                         .toList(),
                     onChanged: (v) {
-                      if (v != null) setState(() => _instrumentType = v);
+                      if (v != null) {
+                        setState(() {
+                        _instrumentType = v;
+                        _assetClass = defaultAssetClassFor(v);
+                      });
+                      }
                     },
                   ),
                 ),

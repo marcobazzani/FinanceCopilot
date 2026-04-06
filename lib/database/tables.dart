@@ -78,6 +78,16 @@ const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
 (InstrumentType, AssetClass) classifyFromInvestingType(String prefix) =>
     _investingTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
 
+/// Default asset class for a given instrument type.
+/// Used when external classification is unavailable.
+AssetClass defaultAssetClassFor(InstrumentType inst) => switch (inst) {
+  InstrumentType.bond  => AssetClass.fixedIncome,
+  InstrumentType.etc   => AssetClass.commodities,
+  InstrumentType.crypto => AssetClass.crypto,
+  InstrumentType.fund  => AssetClass.multiAsset,
+  _                    => AssetClass.equity,
+};
+
 enum ValuationMethod { marketPrice, eventDriven, balance }
 
 enum EventType {
