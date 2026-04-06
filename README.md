@@ -168,6 +168,11 @@ flutter test integration_test/live_data_fetch_test.dart -d macos
 - **Self-contained** — The app bundle has no runtime dependencies. No Python, no external processes.
 - **ISIN-first** — All asset resolution prefers ISIN over ticker for reliable multi-exchange matching.
 
+## Privacy & Terms
+
+- [Privacy Policy](docs/privacy.md)
+- [Terms of Service](docs/terms.md)
+
 ## License
 
 MIT

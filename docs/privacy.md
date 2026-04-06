@@ -1,6 +1,6 @@
 # FinanceCopilot — Privacy Policy
 
-*Last updated: March 28, 2026*
+*Last updated: April 6, 2026*
 
 ## Overview
 
@@ -11,16 +11,16 @@ FinanceCopilot is a personal, offline-first desktop application for wealth manag
 - **All data stays on your device.** FinanceCopilot stores your financial data in a local SQLite database on your computer. No data is sent to any server operated by FinanceCopilot.
 - **Configuration files** (such as API credentials for Open Banking) are stored locally in your user profile directory.
 
-## Open Banking (Enable Banking)
+## Google Drive Sync (Optional)
 
-- If you choose to connect a bank account, FinanceCopilot communicates directly with the [Enable Banking](https://enablebanking.com) API using credentials you create and control.
-- Bank authentication happens via your bank's own secure login page (PSD2). FinanceCopilot never sees or stores your bank login credentials.
-- Transaction and balance data retrieved from your bank is stored only in your local database.
-- Your Enable Banking private key remains on your device and is never transmitted.
+- If you enable Google Drive Sync, your database file is uploaded to your own Google Drive account in a private, app-specific folder.
+- Only you can access this data. FinanceCopilot cannot access any other files in your Google Drive.
+- The scope used is `drive.appdata`, which restricts access to the app's own hidden folder only.
+- You can sign out at any time in Settings to stop syncing.
 
 ## Third-Party Services
 
-- **Market data:** The app may fetch publicly available market prices and exchange rates from third-party websites. No personal data is sent in these requests.
+- **Market data:** The app fetches publicly available market prices, exchange rates, and ETF composition data. No personal data is sent in these requests.
 - **No analytics or tracking:** FinanceCopilot does not include any analytics, telemetry, crash reporting, or advertising SDKs.
 
 ## Data Sharing
