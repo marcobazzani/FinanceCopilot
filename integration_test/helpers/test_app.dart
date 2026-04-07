@@ -43,6 +43,14 @@ Future<AppDatabase> pumpApp(
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
 
+  // Create the DB file on disk so the landing page filesystem check passes.
+  // (initState checks AppDatabase.dbFile().existsSync() before touching providers)
+  final dbFile = await AppDatabase.dbFile();
+  if (!dbFile.existsSync()) {
+    await dbFile.parent.create(recursive: true);
+    await dbFile.writeAsBytes([]);
+  }
+
   // Seed a dummy account so the landing page doesn't show (empty DB check)
   await db.into(db.accounts).insert(AccountsCompanion.insert(
     name: '_test_seed', sortOrder: const Value(999),
