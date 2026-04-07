@@ -132,7 +132,7 @@ brew install --cask financecopilot-nightly
 
 Pre-built binaries for macOS, Windows, and Android are available on the [Releases](https://github.com/marcobazzani/FinanceCopilot/releases) page. The [Nightly Build](https://github.com/marcobazzani/FinanceCopilot/releases/tag/latest) is updated automatically on every push to `develop`.
 
-> **Note:** macOS and Windows binaries are **not code-signed or notarized**. On macOS, you may need to allow the app in **System Settings > Privacy & Security** after the first launch attempt. The app will not work on machines with MDM profiles or endpoint security software (e.g. CrowdStrike, SentinelOne) that block unsigned binaries.
+> **Note:** macOS and Windows binaries are **not code-signed or notarized**. On macOS, you may need to allow the app in **System Settings > Privacy & Security** after the first launch attempt. Homebrew installation will not work on machines with endpoint security software (e.g. CrowdStrike, SentinelOne) that strips unsigned binaries during extraction — use the DMG download directly instead.
 
 ### Build from Source
 
