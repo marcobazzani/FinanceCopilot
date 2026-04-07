@@ -50,3 +50,4 @@ app.*.map.json
 
 # Worktrees
 .worktrees/
+android/app/financecopilot-release.keystore
