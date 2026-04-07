@@ -39,6 +39,7 @@
 - **Use `develop` branch for testing/exchanging code** (e.g. syncing with Windows VM). Never push to `main` unless the user explicitly confirms. Push to `develop` freely for testing.
 - Only bump `appVersion` in `lib/version.dart` when releasing on `main`, not on develop/feature branches.
 - **NEVER commit or push until ALL test suites have passed. No exceptions.**
+- **NEVER run git add/commit/push while tests are still running.** Wait for all test results first.
 - Before every commit, run ALL of these and verify green:
   1. `dart fix --apply && dart analyze lib/ test/ integration_test/` -- zero warnings/infos allowed
   2. `flutter test` -- all unit tests must pass
