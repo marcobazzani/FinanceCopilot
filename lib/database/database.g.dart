@@ -4307,6 +4307,17 @@ class $AssetEventsTable extends AssetEvents
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _valueDateMeta = const VerificationMeta(
+    'valueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> valueDate = GeneratedColumn<DateTime>(
+    'value_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
   @override
   late final GeneratedColumnWithTypeConverter<EventType, String> type =
       GeneratedColumn<String>(
@@ -4451,6 +4462,7 @@ class $AssetEventsTable extends AssetEvents
     id,
     assetId,
     date,
+    valueDate,
     type,
     quantity,
     price,
@@ -4495,6 +4507,14 @@ class $AssetEventsTable extends AssetEvents
       );
     } else if (isInserting) {
       context.missing(_dateMeta);
+    }
+    if (data.containsKey('value_date')) {
+      context.handle(
+        _valueDateMeta,
+        valueDate.isAcceptableOrUnknown(data['value_date']!, _valueDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueDateMeta);
     }
     if (data.containsKey('quantity')) {
       context.handle(
@@ -4600,6 +4620,10 @@ class $AssetEventsTable extends AssetEvents
         DriftSqlType.dateTime,
         data['${effectivePrefix}date'],
       )!,
+      valueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}value_date'],
+      )!,
       type: $AssetEventsTable.$convertertype.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.string,
@@ -4670,6 +4694,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
   final int id;
   final int assetId;
   final DateTime date;
+  final DateTime valueDate;
   final EventType type;
   final double? quantity;
   final double? price;
@@ -4687,6 +4712,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     required this.id,
     required this.assetId,
     required this.date,
+    required this.valueDate,
     required this.type,
     this.quantity,
     this.price,
@@ -4707,6 +4733,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     map['id'] = Variable<int>(id);
     map['asset_id'] = Variable<int>(assetId);
     map['date'] = Variable<DateTime>(date);
+    map['value_date'] = Variable<DateTime>(valueDate);
     {
       map['type'] = Variable<String>(
         $AssetEventsTable.$convertertype.toSql(type),
@@ -4750,6 +4777,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       id: Value(id),
       assetId: Value(assetId),
       date: Value(date),
+      valueDate: Value(valueDate),
       type: Value(type),
       quantity: quantity == null && nullToAbsent
           ? const Value.absent()
@@ -4793,6 +4821,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       id: serializer.fromJson<int>(json['id']),
       assetId: serializer.fromJson<int>(json['assetId']),
       date: serializer.fromJson<DateTime>(json['date']),
+      valueDate: serializer.fromJson<DateTime>(json['valueDate']),
       type: $AssetEventsTable.$convertertype.fromJson(
         serializer.fromJson<String>(json['type']),
       ),
@@ -4817,6 +4846,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       'id': serializer.toJson<int>(id),
       'assetId': serializer.toJson<int>(assetId),
       'date': serializer.toJson<DateTime>(date),
+      'valueDate': serializer.toJson<DateTime>(valueDate),
       'type': serializer.toJson<String>(
         $AssetEventsTable.$convertertype.toJson(type),
       ),
@@ -4839,6 +4869,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     int? id,
     int? assetId,
     DateTime? date,
+    DateTime? valueDate,
     EventType? type,
     Value<double?> quantity = const Value.absent(),
     Value<double?> price = const Value.absent(),
@@ -4856,6 +4887,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     id: id ?? this.id,
     assetId: assetId ?? this.assetId,
     date: date ?? this.date,
+    valueDate: valueDate ?? this.valueDate,
     type: type ?? this.type,
     quantity: quantity.present ? quantity.value : this.quantity,
     price: price.present ? price.value : this.price,
@@ -4875,6 +4907,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       id: data.id.present ? data.id.value : this.id,
       assetId: data.assetId.present ? data.assetId.value : this.assetId,
       date: data.date.present ? data.date.value : this.date,
+      valueDate: data.valueDate.present ? data.valueDate.value : this.valueDate,
       type: data.type.present ? data.type.value : this.type,
       quantity: data.quantity.present ? data.quantity.value : this.quantity,
       price: data.price.present ? data.price.value : this.price,
@@ -4907,6 +4940,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
           ..write('id: $id, ')
           ..write('assetId: $assetId, ')
           ..write('date: $date, ')
+          ..write('valueDate: $valueDate, ')
           ..write('type: $type, ')
           ..write('quantity: $quantity, ')
           ..write('price: $price, ')
@@ -4929,6 +4963,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     id,
     assetId,
     date,
+    valueDate,
     type,
     quantity,
     price,
@@ -4950,6 +4985,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
           other.id == this.id &&
           other.assetId == this.assetId &&
           other.date == this.date &&
+          other.valueDate == this.valueDate &&
           other.type == this.type &&
           other.quantity == this.quantity &&
           other.price == this.price &&
@@ -4969,6 +5005,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
   final Value<int> id;
   final Value<int> assetId;
   final Value<DateTime> date;
+  final Value<DateTime> valueDate;
   final Value<EventType> type;
   final Value<double?> quantity;
   final Value<double?> price;
@@ -4986,6 +5023,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     this.id = const Value.absent(),
     this.assetId = const Value.absent(),
     this.date = const Value.absent(),
+    this.valueDate = const Value.absent(),
     this.type = const Value.absent(),
     this.quantity = const Value.absent(),
     this.price = const Value.absent(),
@@ -5004,6 +5042,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     this.id = const Value.absent(),
     required int assetId,
     required DateTime date,
+    required DateTime valueDate,
     required EventType type,
     this.quantity = const Value.absent(),
     this.price = const Value.absent(),
@@ -5019,12 +5058,14 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     this.createdAt = const Value.absent(),
   }) : assetId = Value(assetId),
        date = Value(date),
+       valueDate = Value(valueDate),
        type = Value(type),
        amount = Value(amount);
   static Insertable<AssetEvent> custom({
     Expression<int>? id,
     Expression<int>? assetId,
     Expression<DateTime>? date,
+    Expression<DateTime>? valueDate,
     Expression<String>? type,
     Expression<double>? quantity,
     Expression<double>? price,
@@ -5043,6 +5084,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
       if (id != null) 'id': id,
       if (assetId != null) 'asset_id': assetId,
       if (date != null) 'date': date,
+      if (valueDate != null) 'value_date': valueDate,
       if (type != null) 'type': type,
       if (quantity != null) 'quantity': quantity,
       if (price != null) 'price': price,
@@ -5063,6 +5105,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     Value<int>? id,
     Value<int>? assetId,
     Value<DateTime>? date,
+    Value<DateTime>? valueDate,
     Value<EventType>? type,
     Value<double?>? quantity,
     Value<double?>? price,
@@ -5081,6 +5124,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
       id: id ?? this.id,
       assetId: assetId ?? this.assetId,
       date: date ?? this.date,
+      valueDate: valueDate ?? this.valueDate,
       type: type ?? this.type,
       quantity: quantity ?? this.quantity,
       price: price ?? this.price,
@@ -5108,6 +5152,9 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     }
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
+    }
+    if (valueDate.present) {
+      map['value_date'] = Variable<DateTime>(valueDate.value);
     }
     if (type.present) {
       map['type'] = Variable<String>(
@@ -5159,6 +5206,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
           ..write('id: $id, ')
           ..write('assetId: $assetId, ')
           ..write('date: $date, ')
+          ..write('valueDate: $valueDate, ')
           ..write('type: $type, ')
           ..write('quantity: $quantity, ')
           ..write('price: $price, ')
@@ -12453,6 +12501,17 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _valueDateMeta = const VerificationMeta(
+    'valueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> valueDate = GeneratedColumn<DateTime>(
+    'value_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
   static const VerificationMeta _amountMeta = const VerificationMeta('amount');
   @override
   late final GeneratedColumn<double> amount = GeneratedColumn<double>(
@@ -12504,6 +12563,7 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
   List<GeneratedColumn> get $columns => [
     id,
     date,
+    valueDate,
     amount,
     type,
     currency,
@@ -12531,6 +12591,14 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
       );
     } else if (isInserting) {
       context.missing(_dateMeta);
+    }
+    if (data.containsKey('value_date')) {
+      context.handle(
+        _valueDateMeta,
+        valueDate.isAcceptableOrUnknown(data['value_date']!, _valueDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueDateMeta);
     }
     if (data.containsKey('amount')) {
       context.handle(
@@ -12569,6 +12637,10 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}date'],
       )!,
+      valueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}value_date'],
+      )!,
       amount: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}amount'],
@@ -12602,6 +12674,7 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
 class Income extends DataClass implements Insertable<Income> {
   final int id;
   final DateTime date;
+  final DateTime valueDate;
   final double amount;
   final IncomeType type;
   final String currency;
@@ -12609,6 +12682,7 @@ class Income extends DataClass implements Insertable<Income> {
   const Income({
     required this.id,
     required this.date,
+    required this.valueDate,
     required this.amount,
     required this.type,
     required this.currency,
@@ -12619,6 +12693,7 @@ class Income extends DataClass implements Insertable<Income> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['date'] = Variable<DateTime>(date);
+    map['value_date'] = Variable<DateTime>(valueDate);
     map['amount'] = Variable<double>(amount);
     {
       map['type'] = Variable<String>($IncomesTable.$convertertype.toSql(type));
@@ -12632,6 +12707,7 @@ class Income extends DataClass implements Insertable<Income> {
     return IncomesCompanion(
       id: Value(id),
       date: Value(date),
+      valueDate: Value(valueDate),
       amount: Value(amount),
       type: Value(type),
       currency: Value(currency),
@@ -12647,6 +12723,7 @@ class Income extends DataClass implements Insertable<Income> {
     return Income(
       id: serializer.fromJson<int>(json['id']),
       date: serializer.fromJson<DateTime>(json['date']),
+      valueDate: serializer.fromJson<DateTime>(json['valueDate']),
       amount: serializer.fromJson<double>(json['amount']),
       type: $IncomesTable.$convertertype.fromJson(
         serializer.fromJson<String>(json['type']),
@@ -12661,6 +12738,7 @@ class Income extends DataClass implements Insertable<Income> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'date': serializer.toJson<DateTime>(date),
+      'valueDate': serializer.toJson<DateTime>(valueDate),
       'amount': serializer.toJson<double>(amount),
       'type': serializer.toJson<String>(
         $IncomesTable.$convertertype.toJson(type),
@@ -12673,6 +12751,7 @@ class Income extends DataClass implements Insertable<Income> {
   Income copyWith({
     int? id,
     DateTime? date,
+    DateTime? valueDate,
     double? amount,
     IncomeType? type,
     String? currency,
@@ -12680,6 +12759,7 @@ class Income extends DataClass implements Insertable<Income> {
   }) => Income(
     id: id ?? this.id,
     date: date ?? this.date,
+    valueDate: valueDate ?? this.valueDate,
     amount: amount ?? this.amount,
     type: type ?? this.type,
     currency: currency ?? this.currency,
@@ -12689,6 +12769,7 @@ class Income extends DataClass implements Insertable<Income> {
     return Income(
       id: data.id.present ? data.id.value : this.id,
       date: data.date.present ? data.date.value : this.date,
+      valueDate: data.valueDate.present ? data.valueDate.value : this.valueDate,
       amount: data.amount.present ? data.amount.value : this.amount,
       type: data.type.present ? data.type.value : this.type,
       currency: data.currency.present ? data.currency.value : this.currency,
@@ -12701,6 +12782,7 @@ class Income extends DataClass implements Insertable<Income> {
     return (StringBuffer('Income(')
           ..write('id: $id, ')
           ..write('date: $date, ')
+          ..write('valueDate: $valueDate, ')
           ..write('amount: $amount, ')
           ..write('type: $type, ')
           ..write('currency: $currency, ')
@@ -12710,13 +12792,15 @@ class Income extends DataClass implements Insertable<Income> {
   }
 
   @override
-  int get hashCode => Object.hash(id, date, amount, type, currency, createdAt);
+  int get hashCode =>
+      Object.hash(id, date, valueDate, amount, type, currency, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Income &&
           other.id == this.id &&
           other.date == this.date &&
+          other.valueDate == this.valueDate &&
           other.amount == this.amount &&
           other.type == this.type &&
           other.currency == this.currency &&
@@ -12726,6 +12810,7 @@ class Income extends DataClass implements Insertable<Income> {
 class IncomesCompanion extends UpdateCompanion<Income> {
   final Value<int> id;
   final Value<DateTime> date;
+  final Value<DateTime> valueDate;
   final Value<double> amount;
   final Value<IncomeType> type;
   final Value<String> currency;
@@ -12733,6 +12818,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   const IncomesCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
+    this.valueDate = const Value.absent(),
     this.amount = const Value.absent(),
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
@@ -12741,15 +12827,18 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   IncomesCompanion.insert({
     this.id = const Value.absent(),
     required DateTime date,
+    required DateTime valueDate,
     required double amount,
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : date = Value(date),
+       valueDate = Value(valueDate),
        amount = Value(amount);
   static Insertable<Income> custom({
     Expression<int>? id,
     Expression<DateTime>? date,
+    Expression<DateTime>? valueDate,
     Expression<double>? amount,
     Expression<String>? type,
     Expression<String>? currency,
@@ -12758,6 +12847,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (date != null) 'date': date,
+      if (valueDate != null) 'value_date': valueDate,
       if (amount != null) 'amount': amount,
       if (type != null) 'type': type,
       if (currency != null) 'currency': currency,
@@ -12768,6 +12858,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   IncomesCompanion copyWith({
     Value<int>? id,
     Value<DateTime>? date,
+    Value<DateTime>? valueDate,
     Value<double>? amount,
     Value<IncomeType>? type,
     Value<String>? currency,
@@ -12776,6 +12867,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     return IncomesCompanion(
       id: id ?? this.id,
       date: date ?? this.date,
+      valueDate: valueDate ?? this.valueDate,
       amount: amount ?? this.amount,
       type: type ?? this.type,
       currency: currency ?? this.currency,
@@ -12791,6 +12883,9 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     }
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
+    }
+    if (valueDate.present) {
+      map['value_date'] = Variable<DateTime>(valueDate.value);
     }
     if (amount.present) {
       map['amount'] = Variable<double>(amount.value);
@@ -12814,6 +12909,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     return (StringBuffer('IncomesCompanion(')
           ..write('id: $id, ')
           ..write('date: $date, ')
+          ..write('valueDate: $valueDate, ')
           ..write('amount: $amount, ')
           ..write('type: $type, ')
           ..write('currency: $currency, ')
@@ -17219,6 +17315,7 @@ typedef $$AssetEventsTableCreateCompanionBuilder =
       Value<int> id,
       required int assetId,
       required DateTime date,
+      required DateTime valueDate,
       required EventType type,
       Value<double?> quantity,
       Value<double?> price,
@@ -17238,6 +17335,7 @@ typedef $$AssetEventsTableUpdateCompanionBuilder =
       Value<int> id,
       Value<int> assetId,
       Value<DateTime> date,
+      Value<DateTime> valueDate,
       Value<EventType> type,
       Value<double?> quantity,
       Value<double?> price,
@@ -17292,6 +17390,11 @@ class $$AssetEventsTableFilterComposer
 
   ColumnFilters<DateTime> get date => $composableBuilder(
     column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get valueDate => $composableBuilder(
+    column: $table.valueDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17404,6 +17507,11 @@ class $$AssetEventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get valueDate => $composableBuilder(
+    column: $table.valueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get type => $composableBuilder(
     column: $table.type,
     builder: (column) => ColumnOrderings(column),
@@ -17507,6 +17615,9 @@ class $$AssetEventsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get date =>
       $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get valueDate =>
+      $composableBuilder(column: $table.valueDate, builder: (column) => column);
 
   GeneratedColumnWithTypeConverter<EventType, String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
@@ -17612,6 +17723,7 @@ class $$AssetEventsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<int> assetId = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
+                Value<DateTime> valueDate = const Value.absent(),
                 Value<EventType> type = const Value.absent(),
                 Value<double?> quantity = const Value.absent(),
                 Value<double?> price = const Value.absent(),
@@ -17629,6 +17741,7 @@ class $$AssetEventsTableTableManager
                 id: id,
                 assetId: assetId,
                 date: date,
+                valueDate: valueDate,
                 type: type,
                 quantity: quantity,
                 price: price,
@@ -17648,6 +17761,7 @@ class $$AssetEventsTableTableManager
                 Value<int> id = const Value.absent(),
                 required int assetId,
                 required DateTime date,
+                required DateTime valueDate,
                 required EventType type,
                 Value<double?> quantity = const Value.absent(),
                 Value<double?> price = const Value.absent(),
@@ -17665,6 +17779,7 @@ class $$AssetEventsTableTableManager
                 id: id,
                 assetId: assetId,
                 date: date,
+                valueDate: valueDate,
                 type: type,
                 quantity: quantity,
                 price: price,
@@ -22982,6 +23097,7 @@ typedef $$IncomesTableCreateCompanionBuilder =
     IncomesCompanion Function({
       Value<int> id,
       required DateTime date,
+      required DateTime valueDate,
       required double amount,
       Value<IncomeType> type,
       Value<String> currency,
@@ -22991,6 +23107,7 @@ typedef $$IncomesTableUpdateCompanionBuilder =
     IncomesCompanion Function({
       Value<int> id,
       Value<DateTime> date,
+      Value<DateTime> valueDate,
       Value<double> amount,
       Value<IncomeType> type,
       Value<String> currency,
@@ -23013,6 +23130,11 @@ class $$IncomesTableFilterComposer
 
   ColumnFilters<DateTime> get date => $composableBuilder(
     column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get valueDate => $composableBuilder(
+    column: $table.valueDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -23057,6 +23179,11 @@ class $$IncomesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get valueDate => $composableBuilder(
+    column: $table.valueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get amount => $composableBuilder(
     column: $table.amount,
     builder: (column) => ColumnOrderings(column),
@@ -23092,6 +23219,9 @@ class $$IncomesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get date =>
       $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get valueDate =>
+      $composableBuilder(column: $table.valueDate, builder: (column) => column);
 
   GeneratedColumn<double> get amount =>
       $composableBuilder(column: $table.amount, builder: (column) => column);
@@ -23136,6 +23266,7 @@ class $$IncomesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
+                Value<DateTime> valueDate = const Value.absent(),
                 Value<double> amount = const Value.absent(),
                 Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
@@ -23143,6 +23274,7 @@ class $$IncomesTableTableManager
               }) => IncomesCompanion(
                 id: id,
                 date: date,
+                valueDate: valueDate,
                 amount: amount,
                 type: type,
                 currency: currency,
@@ -23152,6 +23284,7 @@ class $$IncomesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required DateTime date,
+                required DateTime valueDate,
                 required double amount,
                 Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
@@ -23159,6 +23292,7 @@ class $$IncomesTableTableManager
               }) => IncomesCompanion.insert(
                 id: id,
                 date: date,
+                valueDate: valueDate,
                 amount: amount,
                 type: type,
                 currency: currency,

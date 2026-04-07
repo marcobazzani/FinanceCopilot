@@ -86,6 +86,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   final List<FormulaTerm> _amountFormula = [];
 
   bool _noHeader = false;
+  bool _sameSettlementDate = false; // when true, valueDate = date (operation date)
   String? _balanceDiffColumn; // when set, amount = balance[i] - balance[i-1]
 
   // Debounce timer for skip-rows auto re-parse
@@ -108,7 +109,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String? _error;
 
   List<String> get _requiredFields => switch (_target) {
-    ImportTarget.transaction => ['date', 'amount', 'description'],
+    ImportTarget.transaction => ['date', 'valueDate', 'amount', 'description'],
     ImportTarget.assetEvent => _assetImportMode == 'historic'
         ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
         : ['isin', 'quantity', 'price', 'currency'],
@@ -116,7 +117,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   };
 
   List<String> get _optionalFields => switch (_target) {
-    ImportTarget.transaction => ['currency', 'valueDate', 'status'],
+    ImportTarget.transaction => ['currency', 'status'],
     ImportTarget.assetEvent => _assetImportMode == 'historic'
         ? ['description']
         : ['date', 'exchangeRate', 'description'],
@@ -317,7 +318,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
 
     // Shared
-    tryMap('date', ['date', 'data', 'data_operazione', 'data di inizio', 'operation_date']);
+    tryMap('date', ['data_operazione', 'operation_date', 'date', 'data', 'data di inizio']);
+    tryMap('valueDate', ['data_valuta', 'data valuta', 'value_date', 'value date']);
+    // If no value date column found, default to same as operation date
+    if (_mappings['valueDate'] == null) _sameSettlementDate = true;
     tryMap('description', ['description', 'descrizione', 'causale', 'memo', 'note', 'notes', 'oggetto', 'dettagli']);
 
     if (_target == ImportTarget.transaction) {
@@ -499,6 +503,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
+      // Update sameSettlementDate flag based on restored mappings
+      _sameSettlementDate = _mappings['valueDate'] == null || _mappings['valueDate'] == _mappings['date'];
+
       final savedFormula = (jsonDecode(config.formulaJson) as List<dynamic>);
       _amountFormula.clear();
       for (final term in savedFormula) {
@@ -629,6 +636,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _canProceedToConfirm() {
     // date must be mapped (unless asset events in current mode)
     if (_mappings['date'] == null && !(_target == ImportTarget.assetEvent && _assetImportMode == 'current')) return false;
+    // Value date required for transactions (unless same as operation date)
+    if (_target == ImportTarget.transaction && !_sameSettlementDate && _mappings['valueDate'] == null) return false;
     // amount: either simple mapping, formula, balance-diff, or auto-calc
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
     // Asset events also require ISIN
@@ -663,6 +672,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _importedSoFar = 0;
     _importTotal = 0;
 
+    _sameSettlementDate = false;
     _fullIsinSummary = null;
     _excludedIsins.clear();
     _multiMappings.clear();

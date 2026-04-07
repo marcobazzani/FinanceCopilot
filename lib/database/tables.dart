@@ -210,6 +210,7 @@ class AssetEvents extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get assetId => integer().references(Assets, #id)();
   DateTimeColumn get date => dateTime()();
+  DateTimeColumn get valueDate => dateTime()();
   TextColumn get type => textEnum<EventType>()();
   RealColumn get quantity => real().nullable()();
   RealColumn get price => real().nullable()();
@@ -390,6 +391,7 @@ class IncomeAdjustmentExpenses extends Table {
 class Incomes extends Table {
   IntColumn get id => integer().autoIncrement()();
   DateTimeColumn get date => dateTime()();
+  DateTimeColumn get valueDate => dateTime()();
   RealColumn get amount => real()();
   TextColumn get type => textEnum<IncomeType>().withDefault(Constant(IncomeType.income.name))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();

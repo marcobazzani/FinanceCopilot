@@ -141,6 +141,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _isSyncing = false;
   bool _showLanding = false;
   bool _generatingDemo = false;
+  bool _syncingDrive = false;
   final _repaintKey = GlobalKey();
 
   List<NavigationDestination> _destinations(AppStrings s) => [
@@ -364,10 +365,24 @@ class _AppShellState extends ConsumerState<AppShell> {
                   const SizedBox(height: 8),
                   Text(s.landingSubtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
                   const SizedBox(height: 32),
-                  if (_generatingDemo)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(),
+                  if (_generatingDemo || _syncingDrive)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          const CircularProgressIndicator(),
+                          if (_syncingDrive) ...[
+                            const SizedBox(height: 12),
+                            Text(s.settingsSyncSignedIn(sync.userEmail ?? ''),
+                              style: Theme.of(context).textTheme.bodySmall),
+                            const SizedBox(height: 4),
+                            Text(s.landingSyncProgress,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              )),
+                          ],
+                        ],
+                      ),
                     )
                   else ...[
                     // Google Drive sync — available on all platforms
@@ -378,17 +393,20 @@ class _AppShellState extends ConsumerState<AppShell> {
                         label: Text(s.landingSyncDrive),
                         onPressed: () async {
                           final ok = await sync.signIn();
-                          if (ok) {
-                            _wireSyncCallbacks(sync);
-                            final pulled = await sync.pullIfNewerOnStartup();
-                            if (pulled) ref.read(dbReloadTrigger.notifier).state++;
-                            final db = ref.read(databaseProvider);
-                            sync.setHasUserData(await _dbHasUserData(db));
-                            sync.startAutoSync(_userTableUpdates(db));
-                            if (mounted) {
-                              setState(() => _showLanding = false);
-                              _startBackgroundSync();
-                            }
+                          if (!ok) return;
+                          if (mounted) setState(() => _syncingDrive = true);
+                          _wireSyncCallbacks(sync);
+                          final pulled = await sync.pullIfNewerOnStartup();
+                          if (pulled) ref.read(dbReloadTrigger.notifier).state++;
+                          final db = ref.read(databaseProvider);
+                          sync.setHasUserData(await _dbHasUserData(db));
+                          sync.startAutoSync(_userTableUpdates(db));
+                          if (mounted) {
+                            setState(() {
+                              _syncingDrive = false;
+                              _showLanding = false;
+                            });
+                            _startBackgroundSync();
                           }
                         },
                       ),

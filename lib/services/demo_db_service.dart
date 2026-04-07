@@ -444,6 +444,7 @@ class DemoDbService {
             allEvents.add((date, AssetEventsCompanion.insert(
               assetId: assetId,
               date: date,
+              valueDate: date,
               type: EventType.buy,
               quantity: Value(qty),
               price: Value(price),
@@ -469,6 +470,7 @@ class DemoDbService {
               allEvents.add((buyDate, AssetEventsCompanion.insert(
                 assetId: assetId,
                 date: buyDate,
+                valueDate: buyDate,
                 type: EventType.buy,
                 quantity: Value(qty),
                 price: Value(price),
@@ -620,6 +622,7 @@ class DemoDbService {
         final salary = 3200.0 + (year - 2018) * 120.0 + rng.nextInt(200);
         await db.into(db.incomes).insert(IncomesCompanion.insert(
           date: date,
+          valueDate: date,
           amount: salary.toDouble(),
           type: const Value(IncomeType.income),
           currency: const Value('EUR'),
@@ -630,6 +633,7 @@ class DemoDbService {
           final refund = 50.0 + rng.nextInt(200);
           await db.into(db.incomes).insert(IncomesCompanion.insert(
             date: DateTime(year, month, 15),
+            valueDate: DateTime(year, month, 15),
             amount: refund.toDouble(),
             type: const Value(IncomeType.refund),
             currency: const Value('EUR'),

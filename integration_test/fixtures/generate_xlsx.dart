@@ -23,20 +23,20 @@ void main() {
 void _createTransactionsSimple(String dir) {
   final excel = Excel.createExcel();
   final sheet = excel['Sheet1'];
-  sheet.appendRow([TextCellValue('Date'), TextCellValue('Amount'), TextCellValue('Description')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 1, day: 15), DoubleCellValue(-42.50), TextCellValue('Supermarket')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 1, day: 16), DoubleCellValue(1500.00), TextCellValue('Salary')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 1, day: 17), DoubleCellValue(-120.00), TextCellValue('Electricity')]);
+  sheet.appendRow([TextCellValue('Data_Operazione'), TextCellValue('Data_Valuta'), TextCellValue('Amount'), TextCellValue('Description')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 1, day: 15), DateCellValue(year: 2025, month: 1, day: 15), DoubleCellValue(-42.50), TextCellValue('Supermarket')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 1, day: 16), DateCellValue(year: 2025, month: 1, day: 16), DoubleCellValue(1500.00), TextCellValue('Salary')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 1, day: 17), DateCellValue(year: 2025, month: 1, day: 17), DoubleCellValue(-120.00), TextCellValue('Electricity')]);
   File('$dir/transactions_simple.xlsx').writeAsBytesSync(excel.encode()!);
 }
 
 void _createTransactionsFormula(String dir) {
   final excel = Excel.createExcel();
   final sheet = excel['Sheet1'];
-  sheet.appendRow([TextCellValue('Date'), TextCellValue('Debit'), TextCellValue('Credit'), TextCellValue('Description')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 2, day: 10), DoubleCellValue(0), DoubleCellValue(2000.00), TextCellValue('Salary')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 2, day: 12), DoubleCellValue(150.00), DoubleCellValue(0), TextCellValue('Rent')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 2, day: 15), DoubleCellValue(30.00), DoubleCellValue(0), TextCellValue('Groceries')]);
+  sheet.appendRow([TextCellValue('Data_Operazione'), TextCellValue('Data_Valuta'), TextCellValue('Debit'), TextCellValue('Credit'), TextCellValue('Description')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 2, day: 10), DateCellValue(year: 2025, month: 2, day: 10), DoubleCellValue(0), DoubleCellValue(2000.00), TextCellValue('Salary')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 2, day: 12), DateCellValue(year: 2025, month: 2, day: 12), DoubleCellValue(150.00), DoubleCellValue(0), TextCellValue('Rent')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 2, day: 15), DateCellValue(year: 2025, month: 2, day: 15), DoubleCellValue(30.00), DoubleCellValue(0), TextCellValue('Groceries')]);
   File('$dir/transactions_formula.xlsx').writeAsBytesSync(excel.encode()!);
 }
 
@@ -47,9 +47,9 @@ void _createTransactionsSkipRows(String dir) {
   sheet.appendRow([TextCellValue('Report generated on 2025-03-01')]);
   sheet.appendRow([TextCellValue('Account: Checking 12345')]);
   // Actual data header
-  sheet.appendRow([TextCellValue('Date'), TextCellValue('Amount'), TextCellValue('Description')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 3, day: 1), DoubleCellValue(-80.00), TextCellValue('Insurance')]);
-  sheet.appendRow([DateCellValue(year: 2025, month: 3, day: 5), DoubleCellValue(3000.00), TextCellValue('Salary March')]);
+  sheet.appendRow([TextCellValue('Data_Operazione'), TextCellValue('Data_Valuta'), TextCellValue('Amount'), TextCellValue('Description')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 3, day: 1), DateCellValue(year: 2025, month: 3, day: 1), DoubleCellValue(-80.00), TextCellValue('Insurance')]);
+  sheet.appendRow([DateCellValue(year: 2025, month: 3, day: 5), DateCellValue(year: 2025, month: 3, day: 5), DoubleCellValue(3000.00), TextCellValue('Salary March')]);
   File('$dir/transactions_skip_rows.xlsx').writeAsBytesSync(excel.encode()!);
 }
 

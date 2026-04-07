@@ -264,8 +264,49 @@ extension _ColumnMapperStep on _ImportScreenState {
                 ),
               ] else
                 _buildMappingRow('amount', columns, required: true),
+              // Value date: either mapped or same as operation date (transactions only)
+              if (_target == ImportTarget.transaction) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: _sameSettlementDate
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(children: [
+                                SizedBox(width: 140, child: Text(
+                                  '${s.fieldLabel('valueDate')} *',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                )),
+                                const Icon(Icons.arrow_forward, size: 16),
+                                const SizedBox(width: 8),
+                                Text('= ${s.fieldLabel('date')}', style: TextStyle(
+                                  fontSize: 13, fontStyle: FontStyle.italic,
+                                  color: Colors.grey.shade600,
+                                )),
+                              ]),
+                            )
+                          : _buildMappingRow('valueDate', columns, required: true),
+                    ),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: _sameSettlementDate,
+                          onChanged: (v) => _setState(() {
+                            _sameSettlementDate = v ?? false;
+                            if (_sameSettlementDate) _mappings['valueDate'] = null;
+                          }),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        Text(s.sameAsOperationDate, style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
               ..._requiredFields
-                  .where((f) => f != 'date' && f != 'amount')
+                  .where((f) => f != 'date' && f != 'amount' && f != 'valueDate')
                   .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
               // Type detection + Fee section for asset events
               if (_target == ImportTarget.assetEvent) ...[
@@ -363,7 +404,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               SizedBox(
                 width: 140,
                 child: Text(
-                  '$field${required ? ' *' : ''}',
+                  '${s.fieldLabel(field)}${required ? ' *' : ''}',
                   style: TextStyle(fontWeight: required ? FontWeight.bold : FontWeight.normal),
                 ),
               ),

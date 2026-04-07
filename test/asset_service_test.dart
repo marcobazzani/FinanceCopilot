@@ -104,6 +104,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
             type: EventType.buy,
             amount: 1000.0,
             quantity: const Value(10.0),
@@ -112,6 +113,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 6, 1),
             type: EventType.buy,
             amount: 50.0,
           ));
@@ -164,6 +166,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
             type: EventType.buy,
             amount: 1000.0,
             quantity: const Value(10.0),
@@ -172,6 +175,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 6, 1),
             type: EventType.buy,
             amount: 500.0,
             quantity: const Value(5.0),
@@ -195,6 +199,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
             type: EventType.buy,
             amount: 1000.0,
             quantity: const Value(10.0),
@@ -202,6 +207,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 6, 1),
             type: EventType.sell,
             amount: 300.0,
             quantity: const Value(3.0),
@@ -220,6 +226,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
             type: EventType.buy,
             amount: 1000.0,
             quantity: const Value(10.0),
@@ -227,6 +234,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 6, 1),
             type: EventType.revalue,
             amount: 1200.0,
           ));

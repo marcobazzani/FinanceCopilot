@@ -91,6 +91,7 @@ class AppStrings {
   String get landingImportDb          => _it ? 'Importa Database Esistente' : 'Import Existing Database';
   String get landingStartFresh        => _it ? 'Inizia da zero'             : 'Start Fresh';
   String get landingSyncDrive         => _it ? 'Sincronizza con Google Drive' : 'Sync with Google Drive';
+  String get landingSyncProgress      => _it ? 'Sincronizzazione in corso...'  : 'Syncing your data...';
 
   // ── Wipe DB ──────────────────────────────────────────
   String get settingsWipeDb           => _it ? 'Cancella database'          : 'Wipe Database';
@@ -572,6 +573,26 @@ class AppStrings {
   String get importTypeTransaction => _it ? 'Transazione'           : 'Transaction';
   String get importTypeAssetEvent  => _it ? 'Evento attività'       : 'Asset Event';
   String get importTypeIncome      => _it ? 'Reddito'               : 'Income';
+  /// Map internal field names to user-facing labels.
+  String fieldLabel(String field) => switch (field) {
+    'date' => _it ? 'Data operazione' : 'Operation Date',
+    'valueDate' => _it ? 'Data valuta' : 'Value Date',
+    'amount' => _it ? 'Importo' : 'Amount',
+    'description' => _it ? 'Descrizione' : 'Description',
+    'currency' => _it ? 'Valuta' : 'Currency',
+    'status' => _it ? 'Stato' : 'Status',
+    'isin' => 'ISIN',
+    'type' => _it ? 'Tipo' : 'Type',
+    'quantity' => _it ? 'Quantita' : 'Quantity',
+    'price' => _it ? 'Prezzo' : 'Price',
+    'exchangeRate' => _it ? 'Tasso di cambio' : 'Exchange Rate',
+    'commission' => _it ? 'Commissione' : 'Commission',
+    'balanceAfter' => _it ? 'Saldo dopo' : 'Balance After',
+    _ => field,
+  };
+
+  String get sameAsOperationDate    => _it ? 'Uguale a data operazione' : 'Same as operation date';
+
   String get skipRows              => _it ? 'Salta righe: '         : 'Skip rows: ';
   String get skipRowsHelp          => _it
       ? 'Salta N righe prima della riga di intestazione'
