@@ -154,19 +154,9 @@ jobs:
           echo "$ENTITLEMENTS"
           echo "$ENTITLEMENTS" | grep -q "user-selected" || (echo "ERROR: file access entitlement missing from signed app" && exit 1)
 
-      - name: Flatten framework symlinks and strip quarantine
+      - name: Strip quarantine attributes
         if: matrix.platform == 'macos'
-        run: |
-          # Replace framework symlinks with copies to avoid xattr failures on install
-          APP="build/macos/Build/Products/Release/FinanceCopilot.app"
-          find "$APP" -type l | while read link; do
-            target=$(readlink "$link")
-            if [ -e "$link" ]; then
-              rm "$link"
-              cp -a "$(dirname "$link")/$target" "$link" 2>/dev/null || true
-            fi
-          done
-          xattr -cr "$APP" 2>/dev/null || true
+        run: xattr -crs build/macos/Build/Products/Release/FinanceCopilot.app
 
       - name: Create macOS DMG
         if: matrix.platform == 'macos'
