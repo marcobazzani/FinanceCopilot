@@ -76,6 +76,9 @@ jobs:
           - os: windows-latest
             platform: windows
             artifact: FinanceCopilot-windows
+          - os: ubuntu-latest
+            platform: apk
+            artifact: FinanceCopilot-android
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +111,13 @@ jobs:
             echo "channel=nightly" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Java (Android only)
+        if: matrix.platform == 'apk'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Build release
         shell: bash
         run: |
@@ -116,7 +126,9 @@ jobs:
             --dart-define=COMMIT_SHA=${{ github.sha }} \
             --dart-define=CHANNEL=${{ steps.channel.outputs.channel }} \
             --dart-define=GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }} \
-            --dart-define=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            --dart-define=GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
+            --dart-define=GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}
 
       - name: Ad-hoc sign macOS build
         if: matrix.platform == 'macos'
@@ -162,6 +174,13 @@ jobs:
           name: ${{ matrix.artifact }}
           path: build/windows/x64/runner/Release/
 
+      - name: Upload artifact (Android)
+        if: matrix.platform == 'apk'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -179,6 +198,9 @@ jobs:
           cd artifacts/FinanceCopilot-windows
           zip -r ../FinanceCopilot-windows.zip .
 
+      - name: Rename Android APK
+        run: cp artifacts/FinanceCopilot-android/app-release.apk artifacts/FinanceCopilot-android.apk
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -186,6 +208,7 @@ jobs:
           files: |
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
             artifacts/FinanceCopilot-windows.zip
+            artifacts/FinanceCopilot-android.apk
 
   update-tap:
     needs: release
@@ -231,6 +254,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Rename Android APK
+        run: cp artifacts/FinanceCopilot-android/app-release.apk artifacts/FinanceCopilot-android.apk
+
       - name: Create latest release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -241,7 +267,8 @@ jobs:
             --title "Nightly Build" \
             --notes "Automated nightly build from develop. Commit: ${{ github.sha }}" \
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg \
-            artifacts/FinanceCopilot-windows.zip
+            artifacts/FinanceCopilot-windows.zip \
+            artifacts/FinanceCopilot-android.apk
 
   update-tap-nightly:
     needs: latest
