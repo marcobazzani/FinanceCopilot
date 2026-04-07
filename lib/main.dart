@@ -319,7 +319,6 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   Widget _buildLandingPage() {
     final s = ref.watch(appStringsProvider);
-    final isMobile = Platform.isAndroid || Platform.isIOS;
     final sync = ref.read(googleDriveSyncProvider);
 
     return Scaffold(
@@ -367,24 +366,22 @@ class _AppShellState extends ConsumerState<AppShell> {
                         },
                       ),
                     ),
-                    // Import DB — desktop only
-                    if (!isMobile) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.file_upload),
-                          label: Text(s.landingImportDb),
-                          onPressed: () async {
-                            final path = await DbTransferService.importDb();
-                            if (path != null && mounted) {
-                              ref.read(dbReloadTrigger.notifier).state++;
-                              setState(() => _showLanding = false);
-                            }
-                          },
-                        ),
+                    // Import existing DB file
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.file_upload),
+                        label: Text(s.landingImportDb),
+                        onPressed: () async {
+                          final path = await DbTransferService.importDb();
+                          if (path != null && mounted) {
+                            ref.read(dbReloadTrigger.notifier).state++;
+                            setState(() => _showLanding = false);
+                          }
+                        },
                       ),
-                    ],
+                    ),
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: () {
