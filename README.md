@@ -2,7 +2,7 @@
 
 A personal wealth management app built with Flutter. Track your entire financial picture — bank accounts, investments, ETFs, bonds, commodities, pension funds — in one place with automatic price sync and no cloud dependency.
 
-Runs on **macOS** and **Windows**. All data stays local in SQLite.
+Runs on **macOS**, **Windows**, and **Android**. All data stays local in SQLite.
 
 ## Screenshots
 
@@ -107,7 +107,7 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 | Layer | Technology |
 |-------|-----------|
 | Framework | Flutter / Dart |
-| Platforms | macOS, Windows |
+| Platforms | macOS, Windows, Android |
 | State management | Riverpod (reactive streams) |
 | Database | Drift (SQLite) |
 | Charts | fl_chart |
@@ -130,7 +130,9 @@ brew install --cask financecopilot-nightly
 
 ### Download
 
-Pre-built binaries for macOS and Windows are available on the [Releases](https://github.com/marcobazzani/FinanceCopilot/releases) page. The [Nightly Build](https://github.com/marcobazzani/FinanceCopilot/releases/tag/latest) is updated automatically on every push to `develop`.
+Pre-built binaries for macOS, Windows, and Android are available on the [Releases](https://github.com/marcobazzani/FinanceCopilot/releases) page. The [Nightly Build](https://github.com/marcobazzani/FinanceCopilot/releases/tag/latest) is updated automatically on every push to `develop`.
+
+> **Note:** macOS and Windows binaries are **not code-signed or notarized**. On macOS, you may need to allow the app in **System Settings > Privacy & Security** after the first launch attempt. The app will not work on machines with MDM profiles or endpoint security software (e.g. CrowdStrike, SentinelOne) that block unsigned binaries.
 
 ### Build from Source
 
@@ -151,10 +153,10 @@ flutter build windows --release
 ### Run Tests
 
 ```bash
-# Unit tests (353 tests, ~10s)
+# Unit tests (356 tests, ~10s)
 flutter test
 
-# Integration tests (14 tests, ~50s, requires macOS)
+# Integration tests (29 tests, ~2m, requires macOS)
 flutter test integration_test/all_tests.dart -d macos
 
 # Live data test (12 assets, real market data, ~50s)
