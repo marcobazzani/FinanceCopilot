@@ -5,6 +5,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
 import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
@@ -165,9 +168,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       // "Start Fresh" or "Sync with Google Drive" before creating any DB.
       final dbFile = await AppDatabase.dbFile();
       if (!dbFile.existsSync()) {
-        _log.info('No DB file found, showing landing page');
-        if (mounted) setState(() => _showLanding = true);
-        return;
+        // Check for legacy DB at old Documents path and migrate if found
+        final migrated = await _migrateLegacyDb(dbFile);
+        if (!migrated) {
+          _log.info('No DB file found, showing landing page');
+          if (mounted) setState(() => _showLanding = true);
+          return;
+        }
       }
       await _initDriveSync();
       await _checkEmptyDb();
@@ -204,6 +211,26 @@ class _AppShellState extends ConsumerState<AppShell> {
         setState(() => _showLanding = true);
       }
     } catch (_) {}
+  }
+
+  /// Check for a DB file at the legacy Documents path and copy it to the new location.
+  /// Returns true if migration happened.
+  Future<bool> _migrateLegacyDb(File newDbFile) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      // Legacy path: ~/Documents/FinanceCopilot/finance_copilot.db
+      final legacyFile = File(p.join(docsDir.path, 'FinanceCopilot', 'finance_copilot.db'));
+      if (legacyFile.existsSync()) {
+        _log.info('Found legacy DB at ${legacyFile.path}, migrating...');
+        await newDbFile.parent.create(recursive: true);
+        await legacyFile.copy(newDbFile.path);
+        _log.info('Legacy DB migrated to ${newDbFile.path}');
+        return true;
+      }
+    } catch (e) {
+      _log.warning('Legacy DB migration failed: $e');
+    }
+    return false;
   }
 
   Future<bool> _dbHasUserData(AppDatabase db) async {
