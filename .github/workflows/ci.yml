@@ -173,20 +173,12 @@ jobs:
             build/macos/Build/Products/Release/FinanceCopilot.app
           xattr -d com.apple.quarantine build/FinanceCopilot-macos.dmg 2>/dev/null || true
 
-      - name: Create macOS ZIP
-        if: matrix.platform == 'macos'
-        run: |
-          cd build/macos/Build/Products/Release
-          ditto -c -k --sequesterRsrc --keepParent FinanceCopilot.app ../../../../../build/FinanceCopilot-macos.zip
-
       - name: Upload artifact (macOS)
         if: matrix.platform == 'macos'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            build/FinanceCopilot-macos.dmg
-            build/FinanceCopilot-macos.zip
+          path: build/FinanceCopilot-macos.dmg
 
       - name: Upload artifact (Windows)
         if: matrix.platform == 'windows'
@@ -228,7 +220,6 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg
-            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.zip
             artifacts/FinanceCopilot-windows.zip
             artifacts/FinanceCopilot-android.apk
 
