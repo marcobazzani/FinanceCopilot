@@ -55,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -252,6 +252,22 @@ class AppDatabase extends _$AppDatabase {
               updates: {assetEvents},
             );
             _log.info('Migration 23: removed $deleted legacy event type records');
+          }
+          if (from < 24) {
+            // Add value_date to asset_events and incomes (default = date)
+            if (!await _hasColumn('asset_events', 'value_date')) {
+              await customStatement(
+                'ALTER TABLE asset_events ADD COLUMN value_date INTEGER NOT NULL DEFAULT 0',
+              );
+              await customStatement('UPDATE asset_events SET value_date = date');
+            }
+            if (!await _hasColumn('incomes', 'value_date')) {
+              await customStatement(
+                'ALTER TABLE incomes ADD COLUMN value_date INTEGER NOT NULL DEFAULT 0',
+              );
+              await customStatement('UPDATE incomes SET value_date = date');
+            }
+            _log.info('Migration 24: added value_date to asset_events and incomes');
           }
         },
       );

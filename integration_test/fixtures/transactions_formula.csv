@@ -1,4 +1,4 @@
-Date,Debit,Credit,Description
-10/02/2025,0,2000.00,Salary
-12/02/2025,150.00,0,Rent
-15/02/2025,30.00,0,Groceries
+Data_Operazione,Data_Valuta,Debit,Credit,Description
+10/02/2025,10/02/2025,0,2000.00,Salary
+12/02/2025,12/02/2025,150.00,0,Rent
+15/02/2025,15/02/2025,30.00,0,Groceries

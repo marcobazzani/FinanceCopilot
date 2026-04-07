@@ -438,4 +438,106 @@ Date,Amount
       expect(asset.exchange, 'MIL'); // Exchange preserved
     });
   });
+
+  group('Date fallback', () {
+    test('operation date falls back to value date when unparsable', () async {
+      final account = await db.into(db.accounts).insert(AccountsCompanion.insert(
+        name: 'Test', sortOrder: const Value(0),
+      ));
+      // Row with invalid operation date '-' but valid value date
+      final preview = FilePreview(
+        columns: ['Data_Operazione', 'Data_Valuta', 'Amount', 'Description'],
+        rows: [
+          {'Data_Operazione': '-', 'Data_Valuta': '2026-04-07', 'Amount': '-500', 'Description': 'VISA DEBIT'},
+          {'Data_Operazione': '2026-04-06', 'Data_Valuta': '2026-04-03', 'Amount': '-100', 'Description': 'Normal tx'},
+        ],
+        totalRows: 2,
+      );
+
+      final result = await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Data_Operazione', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Data_Valuta', targetField: 'valueDate'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'Description', targetField: 'description'),
+        ],
+        accountId: account,
+      );
+
+      expect(result.importedRows, 2);
+      expect(result.errorRows, 0);
+
+      final txs = await db.select(db.transactions).get();
+      expect(txs.length, 2);
+      // First tx: operation date fell back to value date (Apr 7)
+      final visa = txs.firstWhere((t) => t.description == 'VISA DEBIT');
+      expect(visa.operationDate.day, 7);
+      expect(visa.valueDate.day, 7);
+      // Second tx: both dates parsed independently
+      final normal = txs.firstWhere((t) => t.description == 'Normal tx');
+      expect(normal.operationDate.day, 6);
+      expect(normal.valueDate.day, 3);
+    });
+
+    test('value date falls back to operation date when unmapped', () async {
+      final account = await db.into(db.accounts).insert(AccountsCompanion.insert(
+        name: 'Test2', sortOrder: const Value(0),
+      ));
+      final preview = FilePreview(
+        columns: ['Date', 'Amount', 'Description'],
+        rows: [
+          {'Date': '2026-01-15', 'Amount': '100', 'Description': 'Income'},
+        ],
+        totalRows: 1,
+      );
+
+      final result = await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'Description', targetField: 'description'),
+        ],
+        accountId: account,
+      );
+
+      expect(result.importedRows, 1);
+      final txs = await db.select(db.transactions).get();
+      // valueDate should equal date when not mapped
+      expect(txs.first.operationDate.day, 15);
+      expect(txs.first.valueDate.day, 15);
+    });
+
+    test('row skipped when both dates are unparsable', () async {
+      final account = await db.into(db.accounts).insert(AccountsCompanion.insert(
+        name: 'Test3', sortOrder: const Value(0),
+      ));
+      final preview = FilePreview(
+        columns: ['Data_Operazione', 'Data_Valuta', 'Amount', 'Description'],
+        rows: [
+          {'Data_Operazione': '-', 'Data_Valuta': '-', 'Amount': '-500', 'Description': 'Bad row'},
+          {'Data_Operazione': '2026-01-10', 'Data_Valuta': '2026-01-10', 'Amount': '100', 'Description': 'Good row'},
+        ],
+        totalRows: 2,
+      );
+
+      final result = await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Data_Operazione', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Data_Valuta', targetField: 'valueDate'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'Description', targetField: 'description'),
+        ],
+        accountId: account,
+      );
+
+      expect(result.importedRows, 1);
+      expect(result.errorRows, 1);
+      final txs = await db.select(db.transactions).get();
+      expect(txs.length, 1);
+      expect(txs.first.description, 'Good row');
+    });
+  });
 }

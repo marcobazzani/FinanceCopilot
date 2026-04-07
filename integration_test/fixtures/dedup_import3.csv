@@ -1,4 +1,4 @@
-Date,Amount,Description
-10/02/2025,-200.00,Insurance
-15/02/2025,3100.00,Salary Feb
-25/02/2025,-75.00,Phone Bill
+Data_Operazione,Data_Valuta,Amount,Description
+10/02/2025,10/02/2025,-200.00,Insurance
+15/02/2025,15/02/2025,3100.00,Salary Feb
+25/02/2025,25/02/2025,-75.00,Phone Bill

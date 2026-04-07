@@ -95,15 +95,18 @@ void main() {
       final entries = <IncomesCompanion>[
         IncomesCompanion.insert(
           date: DateTime(2024, 1, 15),
+        valueDate: DateTime(2024, 1, 15),
           amount: 3000,
         ),
         IncomesCompanion.insert(
           date: DateTime(2024, 2, 15),
+        valueDate: DateTime(2024, 2, 15),
           amount: 3000,
           type: const Value(IncomeType.refund),
         ),
         IncomesCompanion.insert(
           date: DateTime(2024, 3, 15),
+        valueDate: DateTime(2024, 3, 15),
           amount: 3200,
           currency: const Value('USD'),
         ),

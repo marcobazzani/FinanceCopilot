@@ -198,6 +198,7 @@ Future<int> seedBuyEvent(
   return db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
         assetId: assetId,
         date: date,
+        valueDate: date,
         type: EventType.buy,
         amount: amount,
         quantity: Value(quantity),
@@ -226,8 +227,28 @@ Future<void> seedPrice(
 Future<int> seedIncome(AppDatabase db, {double amount = 1000.0}) async {
   return db.into(db.incomes).insert(IncomesCompanion.insert(
         date: DateTime(2025, 1, 15),
+        valueDate: DateTime(2025, 1, 15),
         amount: amount,
       ));
+}
+
+/// Tap Buy/Sell ChoiceChips for asset type-from-column mapping.
+/// First row's value → Buy, second row's value → Sell.
+Future<void> tapBuySellChips(WidgetTester tester) async {
+  final buyChips = find.widgetWithText(ChoiceChip, 'Buy');
+  final sellChips = find.widgetWithText(ChoiceChip, 'Sell');
+  if (buyChips.evaluate().isNotEmpty) {
+    await tester.ensureVisible(buyChips.first);
+    await settle(tester);
+    await tester.tap(buyChips.first);
+    await settle(tester);
+  }
+  if (sellChips.evaluate().length >= 2) {
+    await tester.ensureVisible(sellChips.last);
+    await settle(tester);
+    await tester.tap(sellChips.last);
+    await settle(tester);
+  }
 }
 
 /// Creates a FilePreview from raw CSV content (for import tests).

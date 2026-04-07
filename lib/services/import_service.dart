@@ -242,19 +242,32 @@ class ImportService {
           final amountStr = _resolveMapping(amountMapping, row) ?? '';
           amount = _parseAmount(amountStr);
         }
-        final date = _parseDate(dateStr);
 
-        final rawMetadata = <String, String>{};
-        for (final col in preview.columns) {
-          rawMetadata[col] = row[col] ?? '';
-        }
-
+        // Parse value date
         DateTime? valueDate;
         if (valueDateMapping != null) {
           final vdStr = _resolveMapping(valueDateMapping, row);
           if (vdStr != null && vdStr.isNotEmpty) {
             try { valueDate = _parseDate(vdStr); } catch (_) {}
           }
+        }
+
+        // Parse operation date with fallback to value date (and vice versa)
+        DateTime date;
+        try {
+          date = _parseDate(dateStr);
+        } catch (_) {
+          if (valueDate != null) {
+            date = valueDate;
+          } else {
+            rethrow;
+          }
+        }
+        valueDate ??= date;
+
+        final rawMetadata = <String, String>{};
+        for (final col in preview.columns) {
+          rawMetadata[col] = row[col] ?? '';
         }
 
         TransactionStatus? txStatus;
@@ -495,14 +508,34 @@ class ImportService {
       }
 
       try {
-        final DateTime date;
+        // Parse value date
+        final vdMapping = mappingByField['valueDate'];
+        DateTime? valueDate;
+        if (vdMapping != null) {
+          final vdStr = _resolveMapping(vdMapping, row);
+          if (vdStr != null && vdStr.isNotEmpty) {
+            try { valueDate = _parseDate(vdStr); } catch (_) {}
+          }
+        }
+
+        // Parse operation date with fallback to value date (and vice versa)
+        late final DateTime date;
         if (dateMapping != null) {
           final dateStr = _resolveMapping(dateMapping, row) ?? '';
-          date = _parseDate(dateStr);
+          try {
+            date = _parseDate(dateStr);
+          } catch (_) {
+            if (valueDate != null) {
+              date = valueDate;
+            } else {
+              rethrow;
+            }
+          }
         } else {
           final now = DateTime.now();
           date = DateTime(now.year, now.month, now.day);
         }
+        valueDate ??= date;
 
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
@@ -547,6 +580,7 @@ class ImportService {
         companions.add(AssetEventsCompanion.insert(
           assetId: assetId,
           date: date,
+          valueDate: valueDate,
           type: eventType,
           amount: amount,
           quantity: Value(qty),
@@ -674,10 +708,32 @@ class ImportService {
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
       try {
-        final dateStr = _resolveMapping(dateMapping, row) ?? '';
         final amountStr = _resolveMapping(amountMapping, row) ?? '';
-        final date = _parseDate(dateStr);
         final amount = _parseAmount(amountStr);
+
+        // Parse value date
+        final vdMapping = mappingByField['valueDate'];
+        DateTime? valueDate;
+        if (vdMapping != null) {
+          final vdStr = _resolveMapping(vdMapping, row);
+          if (vdStr != null && vdStr.isNotEmpty) {
+            try { valueDate = _parseDate(vdStr); } catch (_) {}
+          }
+        }
+
+        // Parse operation date with fallback to value date (and vice versa)
+        final dateStr = _resolveMapping(dateMapping, row) ?? '';
+        DateTime date;
+        try {
+          date = _parseDate(dateStr);
+        } catch (_) {
+          if (valueDate != null) {
+            date = valueDate;
+          } else {
+            rethrow;
+          }
+        }
+        valueDate ??= date;
         final typeStr = typeMapping != null ? (_resolveMapping(typeMapping, row) ?? '') : '';
         final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? defaultCurrency) : defaultCurrency;
         final type = typeStr.toLowerCase().contains('rimborso') || typeStr.toLowerCase().contains('refund')
@@ -686,6 +742,7 @@ class ImportService {
 
         companions.add(IncomesCompanion.insert(
           date: date,
+          valueDate: valueDate,
           amount: amount,
           type: Value(type),
           currency: Value(currency.isNotEmpty ? currency : defaultCurrency),

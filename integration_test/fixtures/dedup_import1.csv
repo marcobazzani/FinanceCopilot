@@ -1,4 +1,4 @@
-Date,Amount,Description
-05/01/2025,-50.00,Groceries
-15/01/2025,3000.00,Salary Jan
-20/01/2025,-100.00,Utilities
+Data_Operazione,Data_Valuta,Amount,Description
+05/01/2025,05/01/2025,-50.00,Groceries
+15/01/2025,15/01/2025,3000.00,Salary Jan
+20/01/2025,20/01/2025,-100.00,Utilities

@@ -45,6 +45,7 @@ class IncomeService {
     return _db.into(_db.incomes).insert(
       IncomesCompanion.insert(
         date: date,
+        valueDate: date,
         amount: amount,
         type: Value(type),
         currency: Value(currency),

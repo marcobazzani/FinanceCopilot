@@ -41,6 +41,7 @@ class AssetEventService {
     return _db.into(_db.assetEvents).insert(AssetEventsCompanion.insert(
       assetId: assetId,
       date: date,
+      valueDate: date,
       type: type,
       amount: amount,
       quantity: Value(quantity),

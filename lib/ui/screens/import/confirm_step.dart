@@ -374,6 +374,11 @@ extension _ConfirmStep on _ImportScreenState {
         if (e.key == 'amount' && (_amountFormula.isNotEmpty || _balanceDiffColumn != null)) continue;
         mappings.add(ColumnMapping(sourceColumn: e.value!, targetField: e.key));
       }
+      // If settlement date = operation date, copy the date mapping
+      if (_sameSettlementDate && _mappings['date'] != null) {
+        mappings.removeWhere((m) => m.targetField == 'valueDate');
+        mappings.add(ColumnMapping(sourceColumn: _mappings['date']!, targetField: 'valueDate'));
+      }
       // Multi-column mappings (override single mappings for same field)
       for (final e in _multiMappings.entries) {
         if (e.value.length < 2) continue;

@@ -125,6 +125,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
       entries.add(IncomesCompanion.insert(
         date: date,
+        valueDate: date,
         amount: amount,
         type: Value(type),
         currency: Value(currency),

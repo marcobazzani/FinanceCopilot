@@ -98,6 +98,7 @@ void main() {
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
         assetId: assetId,
         date: DateTime(2024, 3, 1),
+        valueDate: DateTime(2024, 3, 1),
         type: EventType.buy,
         amount: 5000.0,
       ));
