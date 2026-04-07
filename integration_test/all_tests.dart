@@ -19,6 +19,7 @@ import 'crud_test.dart' as crud;
 import 'dashboard_test.dart' as dashboard;
 import 'full_flow_test.dart' as full_flow;
 import 'import_csv_test.dart' as import_csv;
+import 'legacy_migration_test.dart' as legacy_migration;
 import 'import_flow_test.dart' as import_flow;
 import 'import_test.dart' as import_screen;
 import 'income_test.dart' as income;
@@ -39,6 +40,7 @@ void main() {
   full_flow.main();
   import_csv.main();
   import_flow.main();
+  legacy_migration.main();
   import_screen.main();
   income.main();
   navigation.main();
