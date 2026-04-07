@@ -13,10 +13,14 @@ Future<void> tapBuySellChips(WidgetTester tester) async {
   final buyChips = find.widgetWithText(ChoiceChip, 'Buy');
   final sellChips = find.widgetWithText(ChoiceChip, 'Sell');
   if (buyChips.evaluate().isNotEmpty) {
+    await tester.ensureVisible(buyChips.first);
+    await settle(tester);
     await tester.tap(buyChips.first);
     await settle(tester);
   }
   if (sellChips.evaluate().length >= 2) {
+    await tester.ensureVisible(sellChips.last);
+    await settle(tester);
     await tester.tap(sellChips.last);
     await settle(tester);
   }
