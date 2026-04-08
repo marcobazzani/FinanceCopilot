@@ -17,6 +17,7 @@ void main() {
   _createIncome(dir);
   _createAssetsLive(dir);
 
+  // ignore: avoid_print
   print('All XLSX fixtures generated in $dir');
 }
 

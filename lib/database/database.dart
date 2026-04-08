@@ -55,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -268,6 +268,17 @@ class AppDatabase extends _$AppDatabase {
               await customStatement('UPDATE incomes SET value_date = date');
             }
             _log.info('Migration 24: added value_date to asset_events and incomes');
+          }
+          if (from < 25) {
+            // Flag that balances need recalculation in value_date order.
+            // The actual recalculation happens at app startup via
+            // TransactionService.recalculateBalances, which handles
+            // all balance modes (cumulative, filtered, column).
+            await customStatement(
+              "INSERT OR REPLACE INTO app_configs (key, value) "
+              "VALUES ('PENDING_BALANCE_RECALC', '1')",
+            );
+            _log.info('Migration 25: flagged balance recalculation needed');
           }
         },
       );

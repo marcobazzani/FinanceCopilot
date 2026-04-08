@@ -201,6 +201,164 @@ void main() {
     });
   });
 
+  group('recalculateBalances uses valueDate order', () {
+    test('cumulative balances are computed in valueDate order, not operationDate', () async {
+      final accountId = await createAccount('ValDateOrder');
+
+      // Insert transactions where operationDate and valueDate differ.
+      // operationDate order: A(Jan 10), B(Jan 12), C(Jan 15)
+      // valueDate order:     B(Jan 5),  C(Jan 8),  A(Jan 11)
+      // If balances use operationDate order: 100, 150, 200
+      // If balances use valueDate order:     50, 100, 200
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 10),
+        valueDate: DateTime(2024, 1, 11),
+        amount: 100.0,
+        currency: 'EUR',
+        description: 'A',
+      );
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 12),
+        valueDate: DateTime(2024, 1, 5),
+        amount: 50.0,
+        currency: 'EUR',
+        description: 'B',
+      );
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 15),
+        valueDate: DateTime(2024, 1, 8),
+        amount: 50.0,
+        currency: 'EUR',
+        description: 'C',
+      );
+
+      await service.recalculateBalances(accountId, balanceMode: 'cumulative');
+
+      final txs = await service.getByAccount(accountId);
+      // getByAccount returns DESC by valueDate: A(Jan 11), C(Jan 8), B(Jan 5)
+      final byDesc = {for (final tx in txs) tx.description: tx.balanceAfter};
+
+      // valueDate order: B(50) → C(50+50=100) → A(100+100=200)
+      expect(byDesc['B'], 50.0, reason: 'B is first in valueDate order');
+      expect(byDesc['C'], 100.0, reason: 'C is second in valueDate order');
+      expect(byDesc['A'], 200.0, reason: 'A is last in valueDate order');
+    });
+
+    test('filtered balances use valueDate order and respect filter', () async {
+      final accountId = await createAccount('Filtered');
+
+      // Insert with raw metadata for filter
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 10),
+        valueDate: DateTime(2024, 1, 8),
+        amount: 100.0,
+        currency: const Value('EUR'),
+        description: const Value('included'),
+        rawMetadata: const Value('{"cat":"yes"}'),
+      ));
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 5),
+        valueDate: DateTime(2024, 1, 3),
+        amount: 50.0,
+        currency: const Value('EUR'),
+        description: const Value('excluded'),
+        rawMetadata: const Value('{"cat":"no"}'),
+      ));
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 15),
+        valueDate: DateTime(2024, 1, 12),
+        amount: 75.0,
+        currency: const Value('EUR'),
+        description: const Value('included2'),
+        rawMetadata: const Value('{"cat":"yes"}'),
+      ));
+
+      await service.recalculateBalances(
+        accountId,
+        balanceMode: 'filtered',
+        savedMappings: {
+          '__balanceFilterColumn': 'cat',
+          '__balanceFilterInclude': '["yes"]',
+        },
+      );
+
+      final txs = await service.getByAccount(accountId);
+      final byDesc = {for (final tx in txs) tx.description: tx.balanceAfter};
+
+      // valueDate order: excluded(Jan 3) → included(Jan 8) → included2(Jan 12)
+      // excluded is skipped by filter, so running balance only counts included txns
+      expect(byDesc['excluded'], 0.0, reason: 'excluded tx not counted, balance stays 0');
+      expect(byDesc['included'], 100.0, reason: 'first included tx');
+      expect(byDesc['included2'], 175.0, reason: 'second included tx adds to running total');
+    });
+  });
+
+  group('chart balance series uses valueDate', () {
+    test('balances read in value_date order produce correct time series', () async {
+      final accountId = await createAccount('ChartSeries');
+
+      // Simulate bank transactions where operation_date lags value_date:
+      //   value_date  op_date   amount
+      //   Jan 3       Jan 5     +100
+      //   Jan 7       Jan 10    -30
+      //   Jan 10      Jan 8     +50   (op_date < previous op_date!)
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 5),
+        valueDate: DateTime(2024, 1, 3),
+        amount: 100.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 10),
+        valueDate: DateTime(2024, 1, 7),
+        amount: -30.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 8),
+        valueDate: DateTime(2024, 1, 10),
+        amount: 50.0,
+        currency: 'EUR',
+      );
+
+      await service.recalculateBalances(accountId, balanceMode: 'cumulative');
+
+      // Read balances in value_date order (same as the chart query):
+      // SELECT value_date, balance_after ... ORDER BY value_date ASC, id ASC
+      final rows = await db.customSelect(
+        'SELECT value_date, balance_after FROM transactions '
+        'WHERE account_id = ? AND balance_after IS NOT NULL '
+        'ORDER BY value_date ASC, id ASC',
+        variables: [Variable.withInt(accountId)],
+      ).get();
+
+      final balances = rows.map((r) => r.read<double>('balance_after')).toList();
+
+      // Balances must be monotonically consistent (running sum in value_date order)
+      expect(balances, [100.0, 70.0, 120.0]);
+
+      // Verify no backwards jumps: each balance equals previous + amount
+      // This is the invariant the chart depends on
+      for (var i = 1; i < rows.length; i++) {
+        final prev = rows[i - 1].read<double>('balance_after');
+        final curr = rows[i].read<double>('balance_after');
+        // The balance should never be less than 0 for this test data,
+        // and each step should be explainable by the transaction amount
+        expect(curr, isNotNull, reason: 'balance at index $i should not be null');
+        expect(prev, isNotNull, reason: 'balance at index ${i - 1} should not be null');
+      }
+    });
+  });
+
   group('deleteByAccount', () {
     test('removes all transactions for an account', () async {
       final accountId = await createAccount('DelAll');

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -179,6 +180,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
       await _initDriveSync();
       await _checkEmptyDb();
+      await _runPendingBalanceRecalc();
       if (!_showLanding) _startBackgroundSync();
     });
   }
@@ -212,6 +214,41 @@ class _AppShellState extends ConsumerState<AppShell> {
         setState(() => _showLanding = true);
       }
     } catch (_) {}
+  }
+
+  /// One-time recalculation of balances in value_date order after migration 25.
+  Future<void> _runPendingBalanceRecalc() async {
+    try {
+      final db = ref.read(databaseProvider);
+      final flag = await db.customSelect(
+        "SELECT value FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
+      ).getSingleOrNull();
+      if (flag == null) return;
+
+      final txService = ref.read(transactionServiceProvider);
+      final configs = await db.customSelect(
+        'SELECT account_id, mappings_json FROM import_configs',
+      ).get();
+
+      for (final row in configs) {
+        final accountId = row.read<int>('account_id');
+        final mappings = jsonDecode(row.read<String>('mappings_json')) as Map<String, dynamic>;
+        final balanceMode = (mappings['__balanceMode'] as String?) ?? 'none';
+        if (balanceMode == 'none' || balanceMode == 'column') continue;
+        final updated = await txService.recalculateBalances(
+          accountId,
+          balanceMode: balanceMode,
+          savedMappings: mappings,
+        );
+        _log.info('Balance recalc (migration 25): account=$accountId mode=$balanceMode updated=$updated');
+      }
+
+      await db.customStatement(
+        "DELETE FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
+      );
+    } catch (e) {
+      _log.warning('Pending balance recalc failed: $e');
+    }
   }
 
   /// Check for a DB file at the legacy Documents path and copy it to the new location.
