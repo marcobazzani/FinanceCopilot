@@ -237,12 +237,9 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       }
     }
 
-    // Check if market traded today (latest stored price date == today)
-    final lastSync = await priceService.getLastSyncDate(asset.id);
-    final isMarketOpen = lastSync != null &&
-        lastSync.year == today.year &&
-        lastSync.month == today.month &&
-        lastSync.day == today.day;
+    // Market is open if live price was fetched within the last 15 minutes
+    final isMarketOpen = priceService is InvestingComService &&
+        priceService.isMarketOpen(asset.id);
 
     result.add(AssetDailyChange(
       name: asset.name,

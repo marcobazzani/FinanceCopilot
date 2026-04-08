@@ -548,6 +548,16 @@ class InvestingComService extends MarketPriceService {
   /// These are NOT stored to the DB — used only for display.
   final _livePriceCache = <int, (double, DateTime)>{};
 
+  /// Whether the live price for [assetId] was fetched within the last 15 minutes.
+  /// If true, the market is considered open; otherwise closed.
+  static const _marketOpenThreshold = Duration(minutes: 15);
+
+  bool isMarketOpen(int assetId) {
+    final cached = _livePriceCache[assetId];
+    if (cached == null) return false;
+    return DateTime.now().difference(cached.$2) < _marketOpenThreshold;
+  }
+
   /// Get today's live price for an asset without storing it to the DB.
   /// Returns the cached value if fresh (< 10 min), otherwise fetches from API.
   /// Falls back to the latest stored price in the DB.
