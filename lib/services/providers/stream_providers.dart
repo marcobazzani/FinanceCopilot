@@ -18,6 +18,10 @@ final assetsProvider = StreamProvider<List<Asset>>((ref) {
   return ref.watch(assetServiceProvider).watchAll();
 });
 
+final activeAssetsProvider = StreamProvider<List<Asset>>((ref) {
+  return ref.watch(assetServiceProvider).watchActive();
+});
+
 /// Asset composition breakdowns (country/sector/holding weights from justETF).
 final assetCompositionsProvider = StreamProvider<Map<int, List<AssetComposition>>>((ref) {
   final db = ref.watch(databaseProvider);

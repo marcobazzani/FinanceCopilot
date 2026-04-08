@@ -66,6 +66,7 @@
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
 - **Financial accuracy**: NEVER silently fallback to wrong values when data is missing. No `?? 1.0` for FX rates, no returning original amounts when conversion fails. Missing data must be surfaced (log warning, show indicator, skip the calculation) — never hidden behind a default that produces silently incorrect financial figures.
 - **Tests are mandatory**: Every new feature, bug fix, or service method MUST include tests. Coverage must increase, never decrease. If an existing test needs to change, the change must be proven necessary (the old behavior was wrong), not blindly modified to make it pass.
+- **Before any refactor or optimization**: Write a specific test that pins the current behavior of the code you're about to change. Run it and confirm it passes. Only then refactor. After refactoring, the same test must still pass with identical results. This is non-negotiable — no behavioral change without a test proving equivalence.
 
 # Localization
 

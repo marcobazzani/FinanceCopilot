@@ -283,8 +283,8 @@ class _IncomeAdjTile extends ConsumerWidget {
     final amtFormat = fmt.amountFormat(locale);
     final shortDate = fmt.shortDateFormat(locale);
     final sym = currencySymbol(adjustment.currency);
-    final expensesAsync = ref.watch(incomeAdjustmentExpensesProvider(adjustment.id));
-    final totalSpent = expensesAsync.value?.fold(0.0, (sum, e) => sum + e.amount) ?? 0.0;
+    final totalSpentAsync = ref.watch(totalSpentProvider(adjustment.id));
+    final totalSpent = totalSpentAsync.value ?? 0.0;
     final remaining = adjustment.totalAmount - totalSpent;
 
     return InkWell(

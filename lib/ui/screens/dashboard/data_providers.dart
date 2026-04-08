@@ -186,13 +186,15 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   }
 
   // ── Build asset market value series ──
+  // Batch-fetch all price histories (with revalue fallback for missing assets)
+  final allPriceHistories = await marketPriceService.getPriceHistoryBatch(assetIds.toList());
+
   final assetMarketSeries = <_Series>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
 
-    // Load market prices (DB = confirmed closes only)
-    final prices = await marketPriceService.getPriceHistory(asset.id);
+    final prices = allPriceHistories[asset.id] ?? [];
     final priceMap = <int, double>{};
     for (final p in prices) {
       priceMap[toDayKey(p.key)] = p.value;
@@ -254,13 +256,35 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
         ..where((s) => s.isActive.equals(true)))
       .get();
 
+  // Batch-fetch all entries for active schedules
+  final allScheduleEntries = <int, List<DepreciationEntry>>{};
+  if (activeSchedules.isNotEmpty) {
+    final allEntries = await (db.select(db.depreciationEntries)
+          ..where((e) => e.scheduleId.isIn(activeSchedules.map((s) => s.id).toList()))
+          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+        .get();
+    for (final entry in allEntries) {
+      allScheduleEntries.putIfAbsent(entry.scheduleId, () => []).add(entry);
+    }
+  }
+
+  // Batch-fetch all reimbursement transactions
+  final allReimbursements = <int, List<BufferTransaction>>{};
+  final bufferIds = activeSchedules.where((s) => s.bufferId != null).map((s) => s.bufferId!).toList();
+  if (bufferIds.isNotEmpty) {
+    final reimbRows = await (db.select(db.bufferTransactions)
+          ..where((t) => t.bufferId.isIn(bufferIds))
+          ..where((t) => t.isReimbursement.equals(true)))
+        .get();
+    for (final txn in reimbRows) {
+      allReimbursements.putIfAbsent(txn.bufferId, () => []).add(txn);
+    }
+  }
+
   final adjustmentSeries = <_Series>[];
 
   for (final schedule in activeSchedules) {
-    final entries = await (db.select(db.depreciationEntries)
-          ..where((e) => e.scheduleId.equals(schedule.id))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
+    final entries = allScheduleEntries[schedule.id] ?? [];
 
     final deltaMap = <int, double>{};
 
@@ -275,10 +299,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     }
 
     if (schedule.bufferId != null) {
-      final reimbursements = await (db.select(db.bufferTransactions)
-            ..where((t) => t.bufferId.equals(schedule.bufferId!))
-            ..where((t) => t.isReimbursement.equals(true)))
-          .get();
+      final reimbursements = allReimbursements[schedule.bufferId!] ?? [];
       for (final r in reimbursements) {
         final dayKey = toDayKey(r.valueDate);
         deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
@@ -322,13 +343,22 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
         ..where((a) => a.isActive.equals(true)))
       .get();
 
+  // Batch-fetch all income adjustment expenses
+  final allAdjExpenses = <int, List<IncomeAdjustmentExpense>>{};
+  if (activeIncomeAdj.isNotEmpty) {
+    final allExpenses = await (db.select(db.incomeAdjustmentExpenses)
+          ..where((e) => e.adjustmentId.isIn(activeIncomeAdj.map((a) => a.id).toList()))
+          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
+        .get();
+    for (final exp in allExpenses) {
+      allAdjExpenses.putIfAbsent(exp.adjustmentId, () => []).add(exp);
+    }
+  }
+
   final incomeAdjSeries = <_Series>[];
 
   for (final adj in activeIncomeAdj) {
-    final expenses = await (db.select(db.incomeAdjustmentExpenses)
-          ..where((e) => e.adjustmentId.equals(adj.id))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
+    final expenses = allAdjExpenses[adj.id] ?? [];
 
     final deltaMap = <int, double>{};
 

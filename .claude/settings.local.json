@@ -89,7 +89,9 @@
       "Bash(flutter devices:*)",
       "Bash(flutter install:*)",
       "Bash(adb -s emulator-5554 shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1)",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "Bash(ls:*)",
+      "Read(//Users/marco/Documents/**)"
     ]
   }
 }
