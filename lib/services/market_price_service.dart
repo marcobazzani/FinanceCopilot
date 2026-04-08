@@ -301,6 +301,38 @@ abstract class MarketPriceService {
     }).toList();
   }
 
+  /// Get all prices for multiple assets in a single query, sorted by date ascending.
+  /// Falls back to [getPriceHistory] (revalue events) for assets with no market prices.
+  Future<Map<int, List<MapEntry<DateTime, double>>>> getPriceHistoryBatch(
+      List<int> assetIds) async {
+    if (assetIds.isEmpty) return {};
+    final placeholders = assetIds.map((_) => '?').join(',');
+    final rows = await db.customSelect(
+      'SELECT asset_id, date, close_price FROM market_prices '
+      'WHERE asset_id IN ($placeholders) ORDER BY asset_id, date ASC',
+      variables: assetIds.map((id) => Variable.withInt(id)).toList(),
+    ).get();
+
+    final result = <int, List<MapEntry<DateTime, double>>>{};
+    for (final r in rows) {
+      final assetId = r.read<int>('asset_id');
+      result.putIfAbsent(assetId, () => []).add(MapEntry(
+        DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+        r.read<double>('close_price'),
+      ));
+    }
+
+    // Fallback: for assets with no market prices, use getPriceHistory
+    // which includes the revalue event fallback
+    final missing = assetIds.where((id) => !result.containsKey(id)).toList();
+    for (final id in missing) {
+      final fallback = await getPriceHistory(id);
+      if (fallback.isNotEmpty) result[id] = fallback;
+    }
+
+    return result;
+  }
+
   /// Clear all cached data (market prices, exchange rates, compositions).
   Future<void> clearCache() async {
     await db.delete(db.marketPrices).go();

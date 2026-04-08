@@ -121,7 +121,12 @@ class IncomeAdjustmentService {
 
   /// Total spent across all expenses for an adjustment.
   Future<double> totalSpent(int adjustmentId) async {
-    final expenses = await getExpenses(adjustmentId);
-    return expenses.fold<double>(0.0, (sum, e) => sum + e.amount);
+    final result = await _db.customSelect(
+      'SELECT COALESCE(SUM(amount), 0.0) AS total '
+      'FROM income_adjustment_expenses WHERE adjustment_id = ?',
+      variables: [Variable.withInt(adjustmentId)],
+      readsFrom: {_db.incomeAdjustmentExpenses},
+    ).getSingle();
+    return result.read<double>('total');
   }
 }

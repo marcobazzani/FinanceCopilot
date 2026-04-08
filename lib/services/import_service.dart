@@ -420,12 +420,13 @@ class ImportService {
 
     // Find or create asset for each ISIN
     final assetsByIsin = <String, int>{};
-    final existingAssets = await _db.select(_db.assets).get();
     final existingByIsin = <String, int>{};
-    for (final a in existingAssets) {
-      if (a.isin != null && a.isin!.isNotEmpty) {
-        existingByIsin[a.isin!.toUpperCase()] = a.id;
-      }
+    final existingRows = await _db.customSelect(
+      "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != ''",
+      readsFrom: {_db.assets},
+    ).get();
+    for (final row in existingRows) {
+      existingByIsin[row.read<String>('isin').toUpperCase()] = row.read<int>('id');
     }
 
     // Resolve new ISINs — use selected exchanges from UI if provided
@@ -486,12 +487,13 @@ class ImportService {
     }
 
     // Build set of bond ISINs for price divisor
-    final allAssets = await _db.select(_db.assets).get();
+    final bondIsinRows = await _db.customSelect(
+      "SELECT isin FROM assets WHERE instrument_type = 'bond' AND isin IS NOT NULL",
+      readsFrom: {_db.assets},
+    ).get();
     final bondIsins = <String>{};
-    for (final a in allAssets) {
-      if (a.instrumentType == InstrumentType.bond && a.isin != null) {
-        bondIsins.add(a.isin!.toUpperCase());
-      }
+    for (final row in bondIsinRows) {
+      bondIsins.add(row.read<String>('isin').toUpperCase());
     }
 
     // Second pass: build event companions

@@ -34,6 +34,12 @@ class AssetService {
   Stream<List<Asset>> watchAll() =>
       (_db.select(_db.assets)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).watch();
 
+  Stream<List<Asset>> watchActive() =>
+      (_db.select(_db.assets)
+            ..where((a) => a.isActive.equals(true))
+            ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+          .watch();
+
   Future<Asset> getById(int id) =>
       (_db.select(_db.assets)..where((a) => a.id.equals(id))).getSingle();
 

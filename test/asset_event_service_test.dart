@@ -279,6 +279,72 @@ void main() {
     });
   });
 
+  group('getByAssets', () {
+    test('returns events grouped by asset ID', () async {
+      final asset1 = await createAsset('Asset1');
+      final asset2 = await createAsset('Asset2');
+
+      // 3 events for asset1
+      await service.create(
+        assetId: asset1, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 100, currency: 'EUR',
+      );
+      await service.create(
+        assetId: asset1, date: DateTime(2024, 2, 1),
+        type: EventType.buy, amount: 200, currency: 'EUR',
+      );
+      await service.create(
+        assetId: asset1, date: DateTime(2024, 3, 1),
+        type: EventType.sell, amount: 50, currency: 'EUR',
+      );
+
+      // 2 events for asset2
+      await service.create(
+        assetId: asset2, date: DateTime(2024, 1, 15),
+        type: EventType.buy, amount: 500, currency: 'USD',
+      );
+      await service.create(
+        assetId: asset2, date: DateTime(2024, 4, 1),
+        type: EventType.buy, amount: 300, currency: 'USD',
+      );
+
+      final result = await service.getByAssets([asset1, asset2]);
+      expect(result.length, 2);
+      expect(result[asset1]!.length, 3);
+      expect(result[asset2]!.length, 2);
+    });
+
+    test('returns empty map for empty input', () async {
+      final result = await service.getByAssets([]);
+      expect(result, isEmpty);
+    });
+
+    test('excludes assets not in the list', () async {
+      final asset1 = await createAsset('A1');
+      final asset2 = await createAsset('A2');
+      final asset3 = await createAsset('A3');
+
+      await service.create(
+        assetId: asset1, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 100, currency: 'EUR',
+      );
+      await service.create(
+        assetId: asset2, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 200, currency: 'EUR',
+      );
+      await service.create(
+        assetId: asset3, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 300, currency: 'EUR',
+      );
+
+      final result = await service.getByAssets([asset1, asset3]);
+      expect(result.length, 2);
+      expect(result.containsKey(asset1), isTrue);
+      expect(result.containsKey(asset2), isFalse);
+      expect(result.containsKey(asset3), isTrue);
+    });
+  });
+
   group('getAverageBuyPrice', () {
     test('returns weighted average of buy events', () async {
       final assetId = await createAsset('Bond');
