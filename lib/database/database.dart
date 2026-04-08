@@ -55,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -269,6 +269,10 @@ class AppDatabase extends _$AppDatabase {
             }
             _log.info('Migration 24: added value_date to asset_events and incomes');
           }
+          if (from < 25) {
+            await _createIndexes();
+            _log.info('Migration 25: added missing database indexes');
+          }
         },
       );
 
@@ -289,6 +293,26 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_transactions_account_date_id '
       'ON transactions(account_id, operation_date DESC, id DESC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_depreciation_entries_schedule_date '
+      'ON depreciation_entries(schedule_id, date ASC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_asset_events_asset_date '
+      'ON asset_events(asset_id, date ASC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_asset_compositions_asset_id '
+      'ON asset_compositions(asset_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_market_prices_asset_date '
+      'ON market_prices(asset_id, date DESC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_buffer_transactions_buffer_id '
+      'ON buffer_transactions(buffer_id)',
     );
   }
 

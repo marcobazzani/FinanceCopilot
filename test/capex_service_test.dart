@@ -237,6 +237,186 @@ void main() {
     });
   });
 
+  group('_totalReimbursed', () {
+    test('sums abs of reimbursement transactions only', () async {
+      // Create a buffer
+      final bufferId = await db.into(db.buffers).insert(
+        BuffersCompanion.insert(name: 'Test Buffer'),
+      );
+
+      // Create a schedule linked to that buffer
+      final scheduleId = await service.create(
+        name: 'Reimbursed Item',
+        totalAmount: 1000,
+        currency: 'EUR',
+        startDate: DateTime(2024, 1, 1),
+        endDate: DateTime(2024, 6, 1),
+      );
+      await (db.update(db.depreciationSchedules)
+            ..where((s) => s.id.equals(scheduleId)))
+          .write(DepreciationSchedulesCompanion(bufferId: Value(bufferId)));
+
+      // Insert 2 reimbursement transactions and 1 non-reimbursement
+      final now = DateTime(2024, 3, 1);
+      await db.into(db.bufferTransactions).insert(
+        BufferTransactionsCompanion.insert(
+          bufferId: bufferId,
+          operationDate: now,
+          valueDate: now,
+          amount: -50.0,
+          balanceAfter: -50.0,
+          isReimbursement: const Value(true),
+        ),
+      );
+      await db.into(db.bufferTransactions).insert(
+        BufferTransactionsCompanion.insert(
+          bufferId: bufferId,
+          operationDate: now,
+          valueDate: now,
+          amount: -30.0,
+          balanceAfter: -80.0,
+          isReimbursement: const Value(true),
+        ),
+      );
+      await db.into(db.bufferTransactions).insert(
+        BufferTransactionsCompanion.insert(
+          bufferId: bufferId,
+          operationDate: now,
+          valueDate: now,
+          amount: -100.0,
+          balanceAfter: -180.0,
+          isReimbursement: const Value(false),
+        ),
+      );
+
+      final stats = await service.watchStatsForAll().first;
+      expect(stats[scheduleId]!.totalReimbursed, 80.0);
+    });
+
+    test('returns 0 when no reimbursements', () async {
+      final bufferId = await db.into(db.buffers).insert(
+        BuffersCompanion.insert(name: 'No Reimb Buffer'),
+      );
+
+      final scheduleId = await service.create(
+        name: 'No Reimb Item',
+        totalAmount: 500,
+        currency: 'EUR',
+        startDate: DateTime(2024, 1, 1),
+        endDate: DateTime(2024, 3, 1),
+      );
+      await (db.update(db.depreciationSchedules)
+            ..where((s) => s.id.equals(scheduleId)))
+          .write(DepreciationSchedulesCompanion(bufferId: Value(bufferId)));
+
+      // Only non-reimbursement transactions
+      final now = DateTime(2024, 2, 1);
+      await db.into(db.bufferTransactions).insert(
+        BufferTransactionsCompanion.insert(
+          bufferId: bufferId,
+          operationDate: now,
+          valueDate: now,
+          amount: -100.0,
+          balanceAfter: -100.0,
+          isReimbursement: const Value(false),
+        ),
+      );
+
+      final stats = await service.watchStatsForAll().first;
+      expect(stats[scheduleId]!.totalReimbursed, 0.0);
+    });
+
+    test('returns 0 when schedule has no buffer', () async {
+      final scheduleId = await service.create(
+        name: 'No Buffer Item',
+        totalAmount: 300,
+        currency: 'EUR',
+        startDate: DateTime(2024, 1, 1),
+        endDate: DateTime(2024, 3, 1),
+      );
+
+      final stats = await service.watchStatsForAll().first;
+      expect(stats[scheduleId]!.totalReimbursed, 0.0);
+    });
+  });
+
+  group('watchStatsForAll', () {
+    test('returns correct stats for multiple schedules', () async {
+      // Schedule 1: 3 months, 600 total
+      final id1 = await service.create(
+        name: 'Schedule A',
+        totalAmount: 600,
+        currency: 'EUR',
+        startDate: DateTime(2024, 1, 1),
+        endDate: DateTime(2024, 3, 1),
+      );
+
+      // Schedule 2: 4 months, 1200 total, with reimbursement
+      final id2 = await service.create(
+        name: 'Schedule B',
+        totalAmount: 1200,
+        currency: 'EUR',
+        startDate: DateTime(2024, 4, 1),
+        endDate: DateTime(2024, 7, 1),
+      );
+
+      // Link a buffer to schedule 2 with a reimbursement
+      final bufferId = await db.into(db.buffers).insert(
+        BuffersCompanion.insert(name: 'Buffer B'),
+      );
+      await (db.update(db.depreciationSchedules)
+            ..where((s) => s.id.equals(id2)))
+          .write(DepreciationSchedulesCompanion(bufferId: Value(bufferId)));
+      await db.into(db.bufferTransactions).insert(
+        BufferTransactionsCompanion.insert(
+          bufferId: bufferId,
+          operationDate: DateTime(2024, 5, 1),
+          valueDate: DateTime(2024, 5, 1),
+          amount: -200.0,
+          balanceAfter: -200.0,
+          isReimbursement: const Value(true),
+        ),
+      );
+      // Regenerate entries for schedule 2 now that buffer exists
+      await service.generateEntries(id2);
+
+      // Create an inactive schedule (should not appear)
+      final id3 = await service.create(
+        name: 'Inactive',
+        totalAmount: 100,
+        currency: 'EUR',
+        startDate: DateTime(2024, 1, 1),
+        endDate: DateTime(2024, 2, 1),
+      );
+      await (db.update(db.depreciationSchedules)
+            ..where((s) => s.id.equals(id3)))
+          .write(const DepreciationSchedulesCompanion(isActive: Value(false)));
+
+      final stats = await service.watchStatsForAll().first;
+
+      // Inactive schedule should NOT be in results
+      expect(stats.containsKey(id3), isFalse);
+
+      // Schedule A: 3 entries, 600/3=200 each, remaining=0
+      final s1 = stats[id1]!;
+      expect(s1.entryCount, 3);
+      expect(s1.totalSpread, closeTo(600, 0.01));
+      expect(s1.firstDate, DateTime(2024, 1, 1));
+      expect(s1.lastDate, DateTime(2024, 3, 1));
+      expect(s1.remaining, closeTo(0, 0.01));
+      expect(s1.totalReimbursed, 0.0);
+
+      // Schedule B: 4 entries, (1200-200)/4=250 each, remaining=0
+      final s2 = stats[id2]!;
+      expect(s2.entryCount, 4);
+      expect(s2.totalSpread, closeTo(1000, 0.01));
+      expect(s2.firstDate, DateTime(2024, 4, 1));
+      expect(s2.lastDate, DateTime(2024, 7, 1));
+      expect(s2.remaining, closeTo(0, 0.01));
+      expect(s2.totalReimbursed, 200.0);
+    });
+  });
+
   group('schedule with quarterly frequency', () {
     test('create with quarterly frequency generates correct entries', () async {
       final id = await service.create(

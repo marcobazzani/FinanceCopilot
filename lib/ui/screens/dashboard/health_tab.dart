@@ -15,7 +15,7 @@ class _FinancialHealthTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
-    final assetsAsync = ref.watch(assetsProvider);
+    final assetsAsync = ref.watch(activeAssetsProvider);
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
@@ -47,7 +47,7 @@ class _FinancialHealthTab extends ConsumerWidget {
 
         // Compute totals — split liquid vs illiquid investments
         final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
-        final activeAssets = assets.where((a) => a.isActive).toList();
+        final activeAssets = assets;
         const illiquidTypes = {InstrumentType.pension, InstrumentType.realEstate, InstrumentType.alternative, InstrumentType.liability};
         double liquidInvestments = 0;
         double illiquidInvestments = 0;
