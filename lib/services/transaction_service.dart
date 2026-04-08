@@ -18,7 +18,7 @@ class TransactionService {
     return (_db.select(_db.transactions)
           ..where((t) => t.accountId.equals(accountId))
           ..orderBy([
-            (t) => OrderingTerm.desc(t.operationDate),
+            (t) => OrderingTerm.desc(t.valueDate),
             (t) => OrderingTerm.desc(t.id),
           ]))
         .watch();
@@ -28,7 +28,7 @@ class TransactionService {
     return (_db.select(_db.transactions)
           ..where((t) => t.accountId.equals(accountId))
           ..orderBy([
-            (t) => OrderingTerm.desc(t.operationDate),
+            (t) => OrderingTerm.desc(t.valueDate),
             (t) => OrderingTerm.desc(t.id),
           ]))
         .get();
@@ -105,7 +105,7 @@ class TransactionService {
 
     // Sort chronologically (date ASC, id ASC)
     final sorted = List.of(txs)..sort((a, b) {
-      final cmp = a.operationDate.compareTo(b.operationDate);
+      final cmp = a.valueDate.compareTo(b.valueDate);
       if (cmp != 0) return cmp;
       return a.id.compareTo(b.id);
     });

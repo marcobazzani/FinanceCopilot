@@ -146,7 +146,7 @@ class _CapexEditScreenState extends ConsumerState<CapexEditScreen> {
       if (t.isReimbursement) {
         _reimbursements.add(_Reimbursement(
           id: t.id,
-          date: t.operationDate,
+          date: t.valueDate,
           amount: t.amount.abs(),
           description: t.description,
         ));

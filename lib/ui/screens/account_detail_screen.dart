@@ -155,7 +155,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 14),
                       ),
-                      subtitle: Text(dateFmt.format(tx.operationDate), style: const TextStyle(fontSize: 12)),
+                      subtitle: Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -208,7 +208,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               // Use the last transaction in chronological order (latest date, then highest id)
               // to match balance computation order.
               final lastTx = transactions.reduce((a, b) {
-                final cmp = a.operationDate.compareTo(b.operationDate);
+                final cmp = a.valueDate.compareTo(b.valueDate);
                 if (cmp != 0) return cmp > 0 ? a : b;
                 return a.id > b.id ? a : b;
               });
@@ -303,7 +303,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     if (confirmed != true) return;
 
     await ref.read(incomeServiceProvider).create(
-      date: tx.operationDate,
+      date: tx.valueDate,
       amount: tx.amount,
       type: selectedType,
       currency: tx.currency,
