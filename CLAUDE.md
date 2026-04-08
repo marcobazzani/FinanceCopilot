@@ -4,6 +4,10 @@
   ```
   source .env && dart fix --apply && flutter build macos --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
+- Android APK build:
+  ```
+  source .env && flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID
+  ```
 - OAuth credentials are in `.env` (gitignored). Never commit secrets to git.
 
 ## Android Emulator
@@ -12,7 +16,7 @@
 - Steps (in order):
   1. Launch emulator: `flutter emulators --launch <emulator_id>`
   2. Wait for it to appear: `flutter devices` (look for `emulator-XXXX`)
-  3. Build APK: `source .env && flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET`
+  3. Build APK: `source .env && flutter build apk --release --dart-define=BUILD_TS=$(date +%Y%m%d_%H%M%S) --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID`
   4. Install: `flutter install -d emulator-XXXX`
   5. Launch app: `adb -s emulator-XXXX shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1`
 - Package name is `net.bazzani.financecopilot` (NOT `com.example.finance_copilot`).
@@ -91,6 +95,11 @@
 
 The app runs sandboxed on macOS. All internal data lives inside the container.
 
+- **Protect user data**: Before running integration tests or any operation that launches the app (which may modify the DB), back up the container. Restore it before committing.
+  - Backup: `cp -a ~/Library/Containers/net.bazzani.financecopilot ~/Library/Containers/net.bazzani.financecopilot.bak`
+  - Restore: `rm -rf ~/Library/Containers/net.bazzani.financecopilot && mv ~/Library/Containers/net.bazzani.financecopilot.bak ~/Library/Containers/net.bazzani.financecopilot`
+  - Always verify the backup exists before running tests. Always restore before committing.
+
 - **macOS DB**: `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
 - **macOS logs**: `tail -f ~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application\ Support/net.bazzani.financecopilot/app.log`
 - **macOS OS log**: `log stream --predicate 'subsystem == "net.bazzani.financecopilot"' --level debug`
@@ -107,6 +116,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - The released artifact must be fully self-contained.
 - For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
 - **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, or any user-facing text. Refer to them generically (e.g. "market data provider", "composition data").
+- **Date convention**: `operationDate` = when the bank processed it (used for import wipe-and-replace dedup). `valueDate` = when the money actually moved (used for display, ordering, charts, balance computation). All UI and queries must use `valueDate` for display/ordering. `operationDate` is only for the import dedup cutoff.
 
 # Key Project Files
 
@@ -120,13 +130,15 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/investing_com_service.dart` — Market price/search/composition provider (WebView + Dio)
 - `lib/services/composition_service.dart` — ETF/stock composition fetcher
 - `lib/services/asset_service.dart` — Asset CRUD
-- `lib/services/asset_event_service.dart` — Asset events (buy/sell/dividend)
+- `lib/services/asset_event_service.dart` — Asset events (buy/sell/revalue)
 - `lib/services/exchange_rate_service.dart` — FX rates
 - `lib/services/intermediary_service.dart` — Broker/institution grouping
 - `lib/services/income_service.dart` — Income tracking
 - `lib/services/income_adjustment_service.dart` — Income adjustments
 - `lib/services/capex_service.dart` — Depreciation/adjustment schedules
 - `lib/services/buffer_service.dart` — Buffer management
+- `lib/services/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
+- `lib/services/db_transfer_service.dart` — Import/export DB file
 - `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 15 part files)
 - `lib/ui/screens/dashboard/health_tab.dart` — Financial Health KPIs
 - `lib/ui/screens/dashboard/totals_table.dart` — Totals with drill-down
