@@ -38,17 +38,17 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   if (activeIds.isNotEmpty) {
     final placeholders = activeIds.map((_) => '?').join(',');
     final rows = await db.customSelect(
-      'SELECT account_id, operation_date, balance_after '
+      'SELECT account_id, value_date, balance_after '
       'FROM transactions '
       'WHERE account_id IN ($placeholders) '
       'AND balance_after IS NOT NULL '
-      'ORDER BY operation_date ASC, id ASC',
+      'ORDER BY value_date ASC, id ASC',
       variables: activeIds.map((id) => Variable.withInt(id)).toList(),
     ).get();
 
     for (final row in rows) {
       final accountId = row.read<int>('account_id');
-      final epochSec = row.read<int>('operation_date');
+      final epochSec = row.read<int>('value_date');
       final balance = row.read<double>('balance_after');
       final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
       final dayKey = toDayKey(dt);
@@ -280,7 +280,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
             ..where((t) => t.isReimbursement.equals(true)))
           .get();
       for (final r in reimbursements) {
-        final dayKey = toDayKey(r.valueDate);
+        final dayKey = toDayKey(r.operationDate);
         deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
       }
     }

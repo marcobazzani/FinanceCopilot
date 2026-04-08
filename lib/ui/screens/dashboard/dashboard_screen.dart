@@ -55,7 +55,9 @@ class _ChartZoom {
   double? minX, maxX, minY, maxY;
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
   final _hiddenPerChart = <int, Set<String>>{}; // chartId → hidden series keys
   final _chartHeights = <int, double>{}; // chartId → user-set height
   final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
@@ -64,6 +66,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   static const _defaultChartHeight = 420.0;
   static const _minChartHeight = 200.0;
   static const _maxChartHeight = 900.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Set<String> _hiddenFor(int chartId) =>
       _hiddenPerChart.putIfAbsent(chartId, () => {});
@@ -85,11 +99,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final language = langCode.startsWith('it') ? 'it_IT' : 'en_US';
     final s = ref.watch(appStringsProvider);
 
-    return DefaultTabController(
-      length: 4,
-      child: Column(
+    return Column(
         children: [
           TabBar(
+            controller: _tabController,
             tabs: [
               Tab(text: s.dashTabHealth),
               Tab(text: s.dashTabHistory),
@@ -99,6 +112,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
           Expanded(
             child: TabBarView(
+              controller: _tabController,
               children: [
                 const _FinancialHealthTab(),
                 _buildChartsTab(allDataAsync, locale, language, context, s),
@@ -108,7 +122,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             ),
           ),
         ],
-      ),
     );
   }
 

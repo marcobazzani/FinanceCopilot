@@ -17,7 +17,7 @@ class _AssetDailyChangesCard extends ConsumerStatefulWidget {
   ConsumerState<_AssetDailyChangesCard> createState() => _AssetDailyChangesCardState();
 }
 
-enum _SortCol { name, priceDiff, pct, valueDiff, marketValue }
+enum _SortCol { name, pct, valueDiff, marketValue }
 enum _SortDir { asc, desc, none }
 
 class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
@@ -71,10 +71,14 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     switch (_sortCol) {
       case _SortCol.name:
         comparator = (a, b) => (a.ticker ?? a.name).compareTo(b.ticker ?? b.name);
-      case _SortCol.priceDiff:
-        comparator = (a, b) => (a.priceDiff * a.todayFxRate).compareTo(b.priceDiff * b.todayFxRate);
       case _SortCol.pct:
-        comparator = (a, b) => a.pricePct.compareTo(b.pricePct);
+        comparator = (a, b) {
+          double basePct(AssetDailyChange c) {
+            final prev = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
+            return prev != 0 ? (c.valueDiff / prev) * 100 : 0;
+          }
+          return basePct(a).compareTo(basePct(b));
+        };
       case _SortCol.valueDiff:
         comparator = (a, b) => a.valueDiff.compareTo(b.valueDiff);
       case _SortCol.marketValue:
@@ -233,7 +237,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                 final sorted = _applySorting(changes);
 
                 final totalDiff = sorted.fold(0.0, (sum, c) => sum + c.valueDiff);
-                final totalPreviousValue = sorted.fold(0.0, (sum, c) => sum + c.previousPrice * c.quantity * c.previousFxRate);
+                final totalPreviousValue = sorted.fold(0.0, (sum, c) => sum + c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate);
                 final totalPct = totalPreviousValue != 0 ? (totalDiff / totalPreviousValue) * 100 : 0.0;
 
                 Widget headerCell(String label, _SortCol col, {int flex = 2, TextAlign align = TextAlign.right}) {
@@ -269,31 +273,37 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                             children: [
                               headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
                               headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
-                              headerCell('Price \u0394 ($symbol)', _SortCol.priceDiff),
                               headerCell('%', _SortCol.pct),
                               headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
                             ],
                           ),
                         ),
-                        ...sorted.map((c) => _buildRow(
-                          theme: theme,
-                          name: c.ticker ?? c.name,
-                          marketValue: c.todayPrice * c.todayFxRate,
-                          priceDiff: c.priceDiff * c.todayFxRate,
-                          pricePct: c.pricePct,
-                          valueDiff: c.valueDiff,
-                          amtFmt: amtFmt,
-                          url: c.investingUrl,
-                          isPrivate: isPrivate,
-                          marketOpen: c.marketOpen,
-                          s: s,
-                        )),
+                        ...sorted.map((c) {
+                          final hasFx = c.currency != c.baseCurrency;
+                          final prevValueBase = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
+                          final basePct = prevValueBase != 0 ? (c.valueDiff / prevValueBase) * 100 : 0.0;
+                          return _buildRow(
+                            theme: theme,
+                            name: c.ticker ?? c.name,
+                            marketValue: c.todayPrice * c.todayFxRate,
+                            pricePct: basePct,
+                            valueDiff: c.valueDiff,
+                            amtFmt: amtFmt,
+                            url: c.investingUrl,
+                            isPrivate: isPrivate,
+                            assetPrice: hasFx ? c.todayPrice : null,
+                            assetCurrency: hasFx ? c.currency : null,
+                            marketOpen: c.marketOpen,
+                            s: s,
+                            assetPricePct: hasFx ? c.pricePct : null,
+                            assetValueDiff: hasFx ? c.priceDiff * c.quantity / c.priceDivisor : null,
+                          );
+                        }),
                         const Divider(height: 16),
                         _buildRow(
                           theme: theme,
                           name: s.legendTotal,
                           marketValue: null,
-                          priceDiff: null,
                           pricePct: totalPct,
                           valueDiff: totalDiff,
                           amtFmt: amtFmt,
@@ -320,11 +330,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     );
   }
 
+  static Color _bracketColor(double v) =>
+      v == 0 ? Colors.grey.shade500 : (v > 0 ? Colors.green.shade300 : Colors.red.shade300);
+
   Widget _buildRow({
     required ThemeData theme,
     required String name,
     required double? marketValue,
-    required double? priceDiff,
     required double pricePct,
     required double valueDiff,
     required NumberFormat amtFmt,
@@ -333,6 +345,10 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required bool isPrivate,
     bool? marketOpen,
     AppStrings? s,
+    double? assetPrice,
+    String? assetCurrency,
+    double? assetPricePct,
+    double? assetValueDiff,
   }) {
     final isPositive = valueDiff >= 0;
     final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
@@ -393,35 +409,47 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
           Expanded(
             flex: 2,
-            child: Text(
-              marketValue != null ? amtFmt.format(marketValue) : '',
-              style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
-              textAlign: TextAlign.right,
-            ),
+            child: marketValue != null
+                ? Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: amtFmt.format(marketValue)),
+                      if (assetPrice != null && assetCurrency != null)
+                        TextSpan(
+                          text: ' (${amtFmt.format(assetPrice)} $assetCurrency)',
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 9),
+                        ),
+                    ]),
+                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
+                    textAlign: TextAlign.right,
+                  )
+                : Text('', style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11), textAlign: TextAlign.right),
           ),
-          if (priceDiff != null)
-            Expanded(
-              flex: 2,
-              child: Text(
-                '${priceDiff >= 0 ? '+' : ''}${amtFmt.format(priceDiff)}',
-                style: theme.textTheme.bodySmall?.copyWith(color: color, fontSize: 11),
-                textAlign: TextAlign.right,
-              ),
-            )
-          else
-            const Expanded(flex: 2, child: SizedBox()),
           Expanded(
             flex: 2,
-            child: Text(
-              '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%',
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%'),
+                if (assetPricePct != null && assetPricePct != pricePct)
+                  TextSpan(
+                    text: ' (${assetPricePct >= 0 ? '+' : ''}${assetPricePct.toStringAsFixed(2)}%)',
+                    style: TextStyle(color: _bracketColor(assetPricePct), fontSize: 9),
+                  ),
+              ]),
               style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight, fontSize: 11),
               textAlign: TextAlign.right,
             ),
           ),
           Expanded(
             flex: 3,
-            child: maybeBlur(Text(
-              '$arrow${amtFmt.format(valueDiff.abs())}',
+            child: maybeBlur(Text.rich(
+              TextSpan(children: [
+                TextSpan(text: '$arrow${amtFmt.format(valueDiff.abs())}'),
+                if (assetValueDiff != null && assetValueDiff != 0)
+                  TextSpan(
+                    text: ' (${assetValueDiff >= 0 ? '+' : ''}${amtFmt.format(assetValueDiff)})',
+                    style: TextStyle(color: _bracketColor(assetValueDiff), fontSize: 9),
+                  ),
+              ]),
               style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
               textAlign: TextAlign.right,
             )),

@@ -37,6 +37,7 @@ class TransactionService {
   Future<int> create({
     required int accountId,
     required DateTime operationDate,
+    DateTime? valueDate,
     required double amount,
     String description = '',
     String? descriptionFull,
@@ -48,7 +49,7 @@ class TransactionService {
     return _db.into(_db.transactions).insert(TransactionsCompanion.insert(
       accountId: accountId,
       operationDate: operationDate,
-      valueDate: operationDate,
+      valueDate: valueDate ?? operationDate,
       amount: amount,
       description: Value(description),
       descriptionFull: Value(descriptionFull),
