@@ -274,6 +274,17 @@ class GoogleDriveSyncService {
       final lastSync = lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
       final dirty = await AppSettings.get('syncDirty');
 
+      // If local DB is empty but remote has data, always pull regardless of timestamps.
+      // This handles the case where the app container was reset (e.g. Homebrew upgrade)
+      // but settings.json with lastSyncTime survived.
+      final localEmpty = checkHasUserData != null && !(await checkHasUserData!());
+      if (localEmpty && remote.size > 0) {
+        _log.info('pullIfNewer: local DB is empty but remote has ${remote.size} bytes -- forcing pull');
+        await _download(localPath, remote.fileId);
+        await AppSettings.set('syncDirty', 'false');
+        return true;
+      }
+
       _log.info('pullIfNewer: lastSync=${lastSync?.toIso8601String() ?? 'never'} remote=${remote.modifiedTime.toIso8601String()} remoteDevice=${remote.deviceId} dirty=$dirty');
 
       // Pull if: never synced on this device, or remote is newer than last sync
