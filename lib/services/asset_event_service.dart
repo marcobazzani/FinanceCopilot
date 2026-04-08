@@ -25,6 +25,20 @@ class AssetEventService {
         .get();
   }
 
+  /// Fetch events for multiple assets in a single query, grouped by asset ID.
+  Future<Map<int, List<AssetEvent>>> getByAssets(List<int> assetIds) async {
+    if (assetIds.isEmpty) return {};
+    final events = await (_db.select(_db.assetEvents)
+          ..where((e) => e.assetId.isIn(assetIds))
+          ..orderBy([(e) => OrderingTerm.desc(e.date)]))
+        .get();
+    final result = <int, List<AssetEvent>>{};
+    for (final event in events) {
+      result.putIfAbsent(event.assetId, () => []).add(event);
+    }
+    return result;
+  }
+
   Future<int> create({
     required int assetId,
     required DateTime date,

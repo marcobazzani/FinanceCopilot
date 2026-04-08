@@ -120,6 +120,27 @@ void main() {
     });
   });
 
+  group('Database indexes', () {
+    test('expected idx_* indexes exist', () async {
+      // Trigger onCreate
+      await db.select(db.accounts).get();
+
+      final rows = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name",
+      ).get();
+      final indexNames = rows.map((r) => r.read<String>('name')).toList();
+
+      expect(indexNames, unorderedEquals([
+        'idx_transactions_account_date_id',
+        'idx_depreciation_entries_schedule_date',
+        'idx_asset_events_asset_date',
+        'idx_asset_compositions_asset_id',
+        'idx_market_prices_asset_date',
+        'idx_buffer_transactions_buffer_id',
+      ]));
+    });
+  });
+
   group('Import deduplication', () {
     test('import_hash prevents duplicate transactions', () async {
       final accountId = await db.into(db.accounts).insert(

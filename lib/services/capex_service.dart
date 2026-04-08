@@ -145,15 +145,14 @@ class CapexService {
 
   Future<double> _totalReimbursed(DepreciationSchedule schedule) async {
     if (schedule.bufferId == null) return 0;
-    final txns = await (_db.select(_db.bufferTransactions)
-          ..where((t) => t.bufferId.equals(schedule.bufferId!))
-          ..where((t) => t.isReimbursement.equals(true)))
-        .get();
-    var total = 0.0;
-    for (final t in txns) {
-      total += t.amount.abs();
-    }
-    return total;
+    final result = await _db.customSelect(
+      'SELECT COALESCE(SUM(ABS(amount)), 0.0) AS total '
+      'FROM buffer_transactions '
+      'WHERE buffer_id = ? AND is_reimbursement = 1',
+      variables: [Variable.withInt(schedule.bufferId!)],
+      readsFrom: {_db.bufferTransactions},
+    ).getSingle();
+    return result.read<double>('total');
   }
 
   // ── Entries read ──
@@ -180,17 +179,87 @@ class CapexService {
         .watch();
 
     return scheduleStream.asyncMap((schedules) async {
+      if (schedules.isEmpty) return <int, CapexStats>{};
+
+      final ids = schedules.map((s) => s.id).toList();
+      final placeholders = ids.map((_) => '?').join(', ');
+
+      // Batch query 1: entry stats per schedule
+      final entryStats = await _db.customSelect(
+        'SELECT schedule_id, COUNT(*) AS cnt, '
+        'COALESCE(SUM(amount), 0.0) AS total_spread, '
+        'MIN(date) AS first_date, MAX(date) AS last_date '
+        'FROM depreciation_entries '
+        'WHERE schedule_id IN ($placeholders) '
+        'GROUP BY schedule_id',
+        variables: [for (final id in ids) Variable.withInt(id)],
+        readsFrom: {_db.depreciationEntries},
+      ).get();
+
+      final entryStatsMap = <int, QueryRow>{};
+      for (final row in entryStats) {
+        entryStatsMap[row.read<int>('schedule_id')] = row;
+      }
+
+      // Batch query 2: remaining value (last entry by date per schedule)
+      final lastEntries = await _db.customSelect(
+        'SELECT e.schedule_id, e.remaining '
+        'FROM depreciation_entries e '
+        'INNER JOIN ('
+        '  SELECT schedule_id, MAX(date) AS max_date '
+        '  FROM depreciation_entries '
+        '  WHERE schedule_id IN ($placeholders) '
+        '  GROUP BY schedule_id'
+        ') sub ON e.schedule_id = sub.schedule_id AND e.date = sub.max_date',
+        variables: [for (final id in ids) Variable.withInt(id)],
+        readsFrom: {_db.depreciationEntries},
+      ).get();
+
+      final remainingMap = <int, double>{};
+      for (final row in lastEntries) {
+        remainingMap[row.read<int>('schedule_id')] = row.read<double>('remaining');
+      }
+
+      // Batch query 3: reimbursement totals per buffer
+      final bufferIds = schedules
+          .where((s) => s.bufferId != null)
+          .map((s) => s.bufferId!)
+          .toList();
+
+      final reimbursedMap = <int, double>{};
+      if (bufferIds.isNotEmpty) {
+        final bufPlaceholders = bufferIds.map((_) => '?').join(', ');
+        final reimbRows = await _db.customSelect(
+          'SELECT buffer_id, COALESCE(SUM(ABS(amount)), 0.0) AS total '
+          'FROM buffer_transactions '
+          'WHERE buffer_id IN ($bufPlaceholders) AND is_reimbursement = 1 '
+          'GROUP BY buffer_id',
+          variables: [for (final id in bufferIds) Variable.withInt(id)],
+          readsFrom: {_db.bufferTransactions},
+        ).get();
+        for (final row in reimbRows) {
+          reimbursedMap[row.read<int>('buffer_id')] = row.read<double>('total');
+        }
+      }
+
+      // Assemble results
       final result = <int, CapexStats>{};
       for (final s in schedules) {
-        final entries = await getEntries(s.id);
-        final reimbursed = await _totalReimbursed(s);
+        final eRow = entryStatsMap[s.id];
+        final cnt = eRow?.read<int>('cnt') ?? 0;
+        final totalSpread = eRow?.read<double>('total_spread') ?? 0.0;
+        final firstDate = cnt > 0 ? DateTime.fromMillisecondsSinceEpoch(eRow!.read<int>('first_date') * 1000) : null;
+        final lastDate = cnt > 0 ? DateTime.fromMillisecondsSinceEpoch(eRow!.read<int>('last_date') * 1000) : null;
+        final remaining = remainingMap[s.id] ?? s.totalAmount;
+        final reimbursed = s.bufferId != null ? (reimbursedMap[s.bufferId!] ?? 0.0) : 0.0;
+
         result[s.id] = CapexStats(
-          entryCount: entries.length,
-          firstDate: entries.isNotEmpty ? entries.first.date : null,
-          lastDate: entries.isNotEmpty ? entries.last.date : null,
+          entryCount: cnt,
+          firstDate: firstDate,
+          lastDate: lastDate,
           totalAmount: s.totalAmount,
-          totalSpread: entries.fold(0.0, (sum, e) => sum + e.amount),
-          remaining: entries.isNotEmpty ? entries.last.remaining : s.totalAmount,
+          totalSpread: totalSpread,
+          remaining: remaining,
           totalReimbursed: reimbursed,
         );
       }

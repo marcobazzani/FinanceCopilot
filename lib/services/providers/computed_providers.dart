@@ -35,36 +35,53 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
   final db = ref.watch(databaseProvider);
 
   final result = <int, double?>{};
+
+  // Same-currency assets: use pre-aggregated stats directly
+  final foreignAssetIds = <int>[];
   for (final asset in assets) {
     final stat = stats[asset.id];
     if (stat == null || stat.totalInvested == 0) continue;
     if (asset.currency == baseCurrency) {
       result[asset.id] = stat.totalInvested;
-      continue;
+    } else {
+      foreignAssetIds.add(asset.id);
     }
-    // Sum each event's base-currency equivalent using its own stored rate
-    final events = await eventService.getByAsset(asset.id);
-    var total = 0.0;
-    for (final ev in events) {
-      if (ev.currency == baseCurrency) {
-        total += ev.amount;
-      } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
-        total += ev.amount / ev.exchangeRate!;
-      } else {
-        final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
-        if (rate != null && rate > 0) {
-          total += ev.amount / rate;
-          // Persist so we don't re-fetch next time
-          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
-              .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+  }
+
+  // Foreign-currency assets: batch-fetch events, then convert per-event
+  if (foreignAssetIds.isNotEmpty) {
+    final allEvents = await eventService.getByAssets(foreignAssetIds);
+    for (final asset in assets) {
+      final events = allEvents[asset.id];
+      if (events == null || events.isEmpty) continue;
+      var total = 0.0;
+      for (final ev in events) {
+        if (ev.currency == baseCurrency) {
+          total += ev.amount;
+        } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
+          total += ev.amount / ev.exchangeRate!;
         } else {
-          total += await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+          final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+          if (rate != null && rate > 0) {
+            total += ev.amount / rate;
+            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
+                .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          } else {
+            total += await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+          }
         }
       }
+      result[asset.id] = total;
     }
-    result[asset.id] = total;
   }
   return result;
+});
+
+/// Total spent for an income adjustment, using SQL SUM.
+final totalSpentProvider = FutureProvider.family<double, int>((ref, adjustmentId) async {
+  final service = ref.watch(incomeAdjustmentServiceProvider);
+  ref.watch(incomeAdjustmentExpensesProvider(adjustmentId));
+  return service.totalSpent(adjustmentId);
 });
 
 /// Market value per asset: qty * lastPrice * fxRate -> base currency.

@@ -437,6 +437,46 @@ Date,Amount
       expect(asset.ter, 0.20); // TER preserved
       expect(asset.exchange, 'MIL'); // Exchange preserved
     });
+
+    test('bond ISINs apply price /100 divisor when amount is auto-calculated', () async {
+      // Pre-create a bond asset
+      final bondId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'Italian BTP',
+        assetType: AssetType.stockEtf,
+        instrumentType: const Value(InstrumentType.bond),
+        assetClass: const Value(AssetClass.fixedIncome),
+        valuationMethod: ValuationMethod.marketPrice,
+        isin: const Value('XS1234567890'),
+      ));
+
+      // Use mappings WITHOUT amount so the auto-calc path (qty * price / 100) fires
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency'],
+        rows: [
+          {'date': '2024-06-15', 'isin': 'XS1234567890', 'quantity': '10', 'price': '98.50', 'currency': 'EUR'},
+        ],
+        totalRows: 1,
+      );
+      const bondMappings = [
+        ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+        ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+        ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+        ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ];
+
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview, mappings: bondMappings, baseCurrency: 'EUR',
+      );
+
+      expect(result.result.importedRows, 1);
+      expect(result.assetsByIsin['XS1234567890'], bondId);
+
+      final events = await db.select(db.assetEvents).get();
+      expect(events.length, 1);
+      // Bond: amount = qty * price / 100 = 10 * 98.50 / 100 = 9.85
+      expect(events.first.amount, closeTo(9.85, 0.001));
+    });
   });
 
   group('Date fallback', () {
