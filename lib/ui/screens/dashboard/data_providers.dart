@@ -280,7 +280,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
             ..where((t) => t.isReimbursement.equals(true)))
           .get();
       for (final r in reimbursements) {
-        final dayKey = toDayKey(r.operationDate);
+        final dayKey = toDayKey(r.valueDate);
         deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
       }
     }

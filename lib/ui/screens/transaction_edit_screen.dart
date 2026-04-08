@@ -47,7 +47,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
 
-    _selectedDate = tx?.operationDate ?? DateTime.now();
+    _selectedDate = tx?.valueDate ?? DateTime.now();
     _dateCtrl = TextEditingController(text: dateFmt.format(_selectedDate));
     _amountCtrl = TextEditingController(text: tx?.amount.toString() ?? '');
     _descCtrl = TextEditingController(text: tx?.description ?? '');

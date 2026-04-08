@@ -280,7 +280,6 @@ jobs:
             --title "Nightly Build" \
             --notes "Automated nightly build from develop. Commit: ${{ github.sha }}" \
             artifacts/FinanceCopilot-macos/FinanceCopilot-macos.dmg \
-            artifacts/FinanceCopilot-macos/FinanceCopilot-macos.zip \
             artifacts/FinanceCopilot-windows.zip \
             artifacts/FinanceCopilot-android.apk
 

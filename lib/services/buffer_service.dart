@@ -50,14 +50,14 @@ class BufferService {
   Stream<List<BufferTransaction>> watchByBuffer(int bufferId) {
     return (_db.select(_db.bufferTransactions)
           ..where((t) => t.bufferId.equals(bufferId))
-          ..orderBy([(t) => OrderingTerm.desc(t.operationDate)]))
+          ..orderBy([(t) => OrderingTerm.desc(t.valueDate)]))
         .watch();
   }
 
   Future<List<BufferTransaction>> getByBuffer(int bufferId) {
     return (_db.select(_db.bufferTransactions)
           ..where((t) => t.bufferId.equals(bufferId))
-          ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
+          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
         .get();
   }
 

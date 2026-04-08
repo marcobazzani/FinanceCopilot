@@ -175,7 +175,7 @@ class _DetailBody extends ConsumerWidget {
       items.add((date: e.date, isReimbursement: false, entry: e, txn: null));
     }
     for (final t in reimbursements) {
-      items.add((date: t.operationDate, isReimbursement: true, entry: null, txn: t));
+      items.add((date: t.valueDate, isReimbursement: true, entry: null, txn: t));
     }
     items.sort((a, b) => a.date.compareTo(b.date));
 
@@ -198,7 +198,7 @@ class _DetailBody extends ConsumerWidget {
               dense: true,
               leading: const Icon(Icons.arrow_back, color: Colors.green, size: 20),
               title: Text(
-                '${dateFmt.format(item.txn!.operationDate)} — ${item.txn!.description.isNotEmpty ? item.txn!.description : ref.read(appStringsProvider).reimbursement}',
+                '${dateFmt.format(item.txn!.valueDate)} — ${item.txn!.description.isNotEmpty ? item.txn!.description : ref.read(appStringsProvider).reimbursement}',
                 style: const TextStyle(fontSize: 13),
               ),
               trailing: Text(
