@@ -249,6 +249,34 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     ));
   }
 
+  // ── Build asset gain series (market - invested) ──
+  final assetGainSeries = <_Series>[];
+  for (final asset in activeAssets) {
+    final invMatch = assetInvestedSeries.where((s) => s.key == 'asset_invested:${asset.id}');
+    final mktMatch = assetMarketSeries.where((s) => s.key == 'asset_market:${asset.id}');
+    if (invMatch.isEmpty || mktMatch.isEmpty) continue;
+    final invSpots = invMatch.first.spots;
+    final mktSpots = mktMatch.first.spots;
+    // Build lookup for invested values
+    final invLookup = <double, double>{};
+    for (final s in invSpots) {
+      invLookup[s.x] = s.y;
+    }
+    // Compute gain at each market data point
+    final gainSpots = <FlSpot>[];
+    double lastInv = 0;
+    for (final mkt in mktSpots) {
+      if (invLookup.containsKey(mkt.x)) lastInv = invLookup[mkt.x]!;
+      gainSpots.add(FlSpot(mkt.x, mkt.y - lastInv));
+    }
+    assetGainSeries.add(_Series(
+      key: 'asset_gain:${asset.id}',
+      name: asset.ticker ?? asset.name,
+      color: mktMatch.first.color,
+      spots: gainSpots,
+    ));
+  }
+
   // ════════════════════════════════════════════════
   // 3. CAPEX — re-add at expense date, remove during spread steps
   // ════════════════════════════════════════════════
@@ -409,6 +437,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     accounts: accountSeries,
     assetInvested: assetInvestedSeries,
     assetMarket: assetMarketSeries,
+    assetGain: assetGainSeries,
     adjustments: adjustmentSeries,
     incomeAdjustments: incomeAdjSeries,
     baseCurrency: baseCurrency,
