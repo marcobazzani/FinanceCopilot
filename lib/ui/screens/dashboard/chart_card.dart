@@ -1,42 +1,6 @@
 part of 'dashboard_screen.dart';
 
 // ════════════════════════════════════════════════════
-// Collapsed chart row (auto-collapsed source chart)
-// ════════════════════════════════════════════════════
-
-class _CollapsedChartRow extends StatelessWidget {
-  final DashboardChart chart;
-  final VoidCallback onExpand;
-
-  const _CollapsedChartRow({required this.chart, required this.onExpand});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onExpand,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(80),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(chart.title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              )),
-            ),
-            Icon(Icons.expand_more, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════
 // Unified chart card widget
 // ════════════════════════════════════════════════════
 
@@ -58,7 +22,6 @@ class _ChartCard extends ConsumerWidget {
   final VoidCallback onToggleHideComponents;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
   final ValueChanged<double> onHeightChanged;
-  final VoidCallback? onCollapse;
   final Widget? headerExtra; // optional trailing widget in title bar (e.g. MA window input)
 
   const _ChartCard({
@@ -79,7 +42,6 @@ class _ChartCard extends ConsumerWidget {
     required this.onToggleHideComponents,
     required this.onZoom,
     required this.onHeightChanged,
-    this.onCollapse,
     this.headerExtra,
   });
 
@@ -130,6 +92,7 @@ class _ChartCard extends ConsumerWidget {
     final marketSeries = series.where((s) => s.key.startsWith('asset_market:')).toList();
     final adjustmentSeries = series.where((s) => s.key.startsWith('adjustment:')).toList();
     final incomeAdjSeries = series.where((s) => s.key.startsWith('income_adj:')).toList();
+    final gainSeries = series.where((s) => s.key.startsWith('asset_gain:')).toList();
     final cfSeries = series.where((s) => s.key.startsWith('cf:')).toList();
     final combinedSeries = series.where((s) => s.key.startsWith('combined_src:')).toList();
 
@@ -140,10 +103,8 @@ class _ChartCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title bar — entire row clickable to collapse
-          InkWell(
-            onTap: onCollapse,
-            child: Row(
+          // Title bar
+          Row(
             children: [
               Expanded(
                 child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
@@ -172,10 +133,8 @@ class _ChartCard extends ConsumerWidget {
                   tooltip: s.resetZoom,
                 ),
               ?headerExtra,
-              if (onCollapse != null)
-                Icon(Icons.expand_less, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ],
-          )),
+          ),
           const SizedBox(height: 4),
 
           // Legend
@@ -186,7 +145,7 @@ class _ChartCard extends ConsumerWidget {
               marketSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? marketSeries : [],
               adjustmentSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? adjustmentSeries : [],
               incomeAdjSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? incomeAdjSeries : [],
-              otherSeries: combinedSeries.isNotEmpty ? combinedSeries : cfSeries,
+              otherSeries: combinedSeries.isNotEmpty ? combinedSeries : (cfSeries.isNotEmpty ? cfSeries : gainSeries),
               showTotalItem: chart.sourceChartIds == null && cfSeries.isEmpty,
               hidden: hidden,
               onToggle: onToggle,

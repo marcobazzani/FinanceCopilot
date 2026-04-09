@@ -62,7 +62,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   final _chartHeights = <int, double>{}; // chartId → user-set height
   final _chartZooms = <int, _ChartZoom>{}; // chartId → independent zoom
   final _hideComponents = <int, bool>{}; // chartId → hide individual lines
-  final _expandedCollapsed = <int>{}; // chart IDs temporarily un-collapsed
   static const _defaultChartHeight = 420.0;
   static const _minChartHeight = 200.0;
   static const _maxChartHeight = 900.0;
@@ -155,6 +154,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             } catch (_) {}
           }
         }
+        // Performance chart is self-collapsible (not part of Totals)
+        collapsedChartIds.add(-8);
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 40, 16),
@@ -180,19 +181,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
             // Chart widgets
             final isCombined = chart.sourceChartIds != null;
-            final isCollapsed = collapsedChartIds.contains(chart.id) && !_expandedCollapsed.contains(chart.id);
-
-            // Source charts auto-collapse under the combined chart
-            if (isCollapsed) {
-              return Padding(
-                key: ValueKey(chart.id),
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _CollapsedChartRow(
-                  chart: chart,
-                  onExpand: () => setState(() => _expandedCollapsed.add(chart.id)),
-                ),
-              );
-            }
 
             List<_Series> filteredSeries;
             if (isCombined) {
@@ -206,44 +194,55 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             final zoom = _zoomFor(chart.id);
             final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
 
+            final chartCard = _ChartCard(
+              chart: chart,
+              series: filteredSeries,
+              allData: allData,
+              hidden: hidden,
+              hideComponents: hideComp,
+              locale: locale,
+              language: language,
+              chartHeight: _heightFor(chart.id),
+              zoomMinX: zoom.minX,
+              zoomMaxX: zoom.maxX,
+              zoomMinY: zoom.minY,
+              zoomMaxY: zoom.maxY,
+              onToggle: (key) => setState(() {
+                hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+              }),
+              onToggleGroup: (keys) => setState(() {
+                keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
+              }),
+              onToggleHideComponents: () => setState(() {
+                _hideComponents[chart.id] = !hideComp;
+              }),
+              onZoom: (minX, maxX, minY, maxY) => setState(() {
+                zoom.minX = minX;
+                zoom.maxX = maxX;
+                zoom.minY = minY;
+                zoom.maxY = maxY;
+              }),
+              onHeightChanged: (h) => setState(() {
+                _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
+              }),
+            );
+
+            // Source charts: collapsible (same as Cash Flow tab)
+            if (collapsedChartIds.contains(chart.id)) {
+              return Padding(
+                key: ValueKey(chart.id),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ExpansionTile(
+                  title: Text(chart.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  children: [chartCard],
+                ),
+              );
+            }
+
             return Padding(
               key: ValueKey(chart.id),
               padding: const EdgeInsets.only(bottom: 24),
-              child: _ChartCard(
-                chart: chart,
-                series: filteredSeries,
-                allData: allData,
-                hidden: hidden,
-                hideComponents: hideComp,
-                locale: locale,
-                language: language,
-                chartHeight: _heightFor(chart.id),
-                zoomMinX: zoom.minX,
-                zoomMaxX: zoom.maxX,
-                zoomMinY: zoom.minY,
-                zoomMaxY: zoom.maxY,
-                onToggle: (key) => setState(() {
-                  hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
-                }),
-                onToggleGroup: (keys) => setState(() {
-                  keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
-                }),
-                onToggleHideComponents: () => setState(() {
-                  _hideComponents[chart.id] = !hideComp;
-                }),
-                onZoom: (minX, maxX, minY, maxY) => setState(() {
-                  zoom.minX = minX;
-                  zoom.maxX = maxX;
-                  zoom.minY = minY;
-                  zoom.maxY = maxY;
-                }),
-                onHeightChanged: (h) => setState(() {
-                  _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
-                }),
-                onCollapse: (collapsedChartIds.contains(chart.id) && _expandedCollapsed.contains(chart.id))
-                    ? () => setState(() => _expandedCollapsed.remove(chart.id))
-                    : null,
-              ),
+              child: chartCard,
             );
           },
         );
@@ -311,6 +310,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     // Portfolio: all market-value assets
     final portfolioJson = jsonEncode(toConfigs(allData.assetMarket));
 
+    // Performance: gain per asset (market - invested)
+    final performanceJson = jsonEncode(toConfigs(allData.assetGain));
+
     // Stable negative IDs avoid clashing with any real DB rows
     const idPriceChanges = -1;
     const idTotals = -2;
@@ -319,6 +321,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     const idSaving = -5;
     const idInvested = -6;
     const idPortfolio = -7;
+    const idPerformance = -8;
 
     return [
       DashboardChart(id: idPriceChanges, title: s.dashPriceChanges, widgetType: 'price_changes',
@@ -337,6 +340,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           sortOrder: 5, seriesJson: investedJson, createdAt: now),
       DashboardChart(id: idPortfolio, title: s.dashPortfolio, widgetType: 'chart',
           sortOrder: 6, seriesJson: portfolioJson, createdAt: now),
+      DashboardChart(id: idPerformance, title: s.dashPerformance, widgetType: 'chart',
+          sortOrder: 7, seriesJson: performanceJson, createdAt: now),
     ];
   }
 

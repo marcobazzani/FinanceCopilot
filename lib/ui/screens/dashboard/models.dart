@@ -28,6 +28,7 @@ class _AllSeriesData {
   final List<_Series> accounts;      // key: "account:<id>"
   final List<_Series> assetInvested; // key: "asset_invested:<id>"
   final List<_Series> assetMarket;   // key: "asset_market:<id>"
+  final List<_Series> assetGain;     // key: "asset_gain:<id>"  (market - invested)
   final List<_Series> adjustments;      // key: "adjustment:<id>"
   final List<_Series> incomeAdjustments; // key: "income_adj:<id>"
   final String baseCurrency;
@@ -37,12 +38,13 @@ class _AllSeriesData {
     required this.accounts,
     required this.assetInvested,
     required this.assetMarket,
+    required this.assetGain,
     required this.adjustments,
     required this.incomeAdjustments,
     required this.baseCurrency,
   });
 
-  List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...adjustments, ...incomeAdjustments];
+  List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...assetGain, ...adjustments, ...incomeAdjustments];
 }
 
 // ════════════════════════════════════════════════════

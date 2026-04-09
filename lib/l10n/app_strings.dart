@@ -218,6 +218,7 @@ class AppStrings {
   String get dashSaving          => _it ? 'Risparmi'           : 'Saving';
   String get dashInvested        => _it ? 'Investito'          : 'Invested';
   String get dashPortfolio       => _it ? 'Portafoglio'        : 'Portfolio';
+  String get dashPerformance     => _it ? 'Performance'        : 'Performance';
   String get cfVelocity          => _it ? 'Velocità'           : 'Velocity';
   String get colTotal            => _it ? 'Totale'             : 'Total';
   String get colAvg              => _it ? 'Media'              : 'Avg';
