@@ -17,6 +17,7 @@ import 'assets_test.dart' as assets;
 import 'capex_test.dart' as capex;
 import 'crud_test.dart' as crud;
 import 'dashboard_test.dart' as dashboard;
+import 'delete_flows_test.dart' as delete_flows;
 import 'full_flow_test.dart' as full_flow;
 import 'import_asset_test.dart' as import_asset;
 import 'import_csv_test.dart' as import_csv;
@@ -40,6 +41,7 @@ void main() {
   capex.main();
   crud.main();
   dashboard.main();
+  delete_flows.main();
   full_flow.main();
   import_asset.main();
   import_csv.main();

@@ -149,11 +149,22 @@ class _DetailBody extends ConsumerWidget {
                         '${dateFmt.format(expenses[i].date)}${expenses[i].description.isNotEmpty ? ' — ${expenses[i].description}' : ''}',
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                       ),
-                      trailing: Text(
-                        amtFmt.format(expenses[i].amount),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            amtFmt.format(expenses[i].amount),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                            padding: const EdgeInsets.only(left: 4),
+                            constraints: const BoxConstraints(),
+                            tooltip: ref.read(appStringsProvider).delete,
+                            onPressed: () => _confirmDeleteExpense(context, ref, expenses[i].id),
+                          ),
+                        ],
                       ),
-                      onLongPress: () => _confirmDeleteExpense(context, ref, expenses[i].id),
                     ),
                 ],
               );

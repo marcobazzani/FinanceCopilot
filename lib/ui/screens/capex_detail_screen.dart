@@ -201,11 +201,22 @@ class _DetailBody extends ConsumerWidget {
                 '${dateFmt.format(item.txn!.valueDate)} — ${item.txn!.description.isNotEmpty ? item.txn!.description : ref.read(appStringsProvider).reimbursement}',
                 style: const TextStyle(fontSize: 13),
               ),
-              trailing: Text(
-                '+${amtFmt.format(item.txn!.amount.abs())}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '+${amtFmt.format(item.txn!.amount.abs())}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                    padding: const EdgeInsets.only(left: 4),
+                    constraints: const BoxConstraints(),
+                    tooltip: ref.read(appStringsProvider).delete,
+                    onPressed: () => _confirmDeleteReimbursement(context, ref, item.txn!.id),
+                  ),
+                ],
               ),
-              onLongPress: () => _confirmDeleteReimbursement(context, ref, item.txn!.id),
             )
           else
             Builder(builder: (_) {
