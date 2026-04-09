@@ -550,12 +550,14 @@ class InvestingComService extends MarketPriceService {
 
   /// Whether the live price for [assetId] was fetched within the last 15 minutes.
   /// If true, the market is considered open; otherwise closed.
-  static const _marketOpenThreshold = Duration(minutes: 15);
-
   bool isMarketOpen(int assetId) {
     final cached = _livePriceCache[assetId];
     if (cached == null) return false;
-    return DateTime.now().difference(cached.$2) < _marketOpenThreshold;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final priceDate = cached.$2;
+    final priceDay = DateTime(priceDate.year, priceDate.month, priceDate.day);
+    return !priceDay.isBefore(today);
   }
 
   /// Get today's live price for an asset without storing it to the DB.
@@ -611,7 +613,9 @@ class InvestingComService extends MarketPriceService {
           price = double.tryParse(closeRaw);
         }
         if (price != null && price > 0) {
-          _livePriceCache[assetId] = (price, DateTime.now());
+          final dateStr = row['rowDateTimestamp'] as String?;
+          final priceDate = dateStr != null ? DateTime.tryParse(dateStr) : null;
+          _livePriceCache[assetId] = (price, priceDate ?? now);
           return price;
         }
       }
