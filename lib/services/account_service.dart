@@ -21,11 +21,11 @@ class AccountStats {
 const _latestBalanceSql =
     'SELECT t.account_id, t.balance_after FROM transactions t '
     'INNER JOIN ('
-    '  SELECT account_id, MAX(operation_date) AS max_date FROM transactions GROUP BY account_id'
-    ') md ON t.account_id = md.account_id AND t.operation_date = md.max_date '
+    '  SELECT account_id, MAX(value_date) AS max_date FROM transactions GROUP BY account_id'
+    ') md ON t.account_id = md.account_id AND t.value_date = md.max_date '
     'WHERE t.id = ('
     '  SELECT MAX(id) FROM transactions t2 '
-    '  WHERE t2.account_id = t.account_id AND t2.operation_date = md.max_date'
+    '  WHERE t2.account_id = t.account_id AND t2.value_date = md.max_date'
     ')';
 
 class AccountService {
@@ -100,7 +100,7 @@ class AccountService {
 
   static const _statsQuery =
       'SELECT account_id, COUNT(*) AS cnt, '
-      'MIN(operation_date) AS first_date, MAX(operation_date) AS last_date '
+      'MIN(value_date) AS first_date, MAX(value_date) AS last_date '
       'FROM transactions GROUP BY account_id';
 
   /// Get transaction stats for all accounts.

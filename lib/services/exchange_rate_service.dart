@@ -33,7 +33,8 @@ class ExchangeRateService {
 
   /// Sync exchange rates via Investing.com.
   /// Stores the latest rate for each target currency as yesterday's date.
-  Future<void> syncRates() async {
+  /// When [force] is true, re-fetches even if already up to date.
+  Future<void> syncRates({bool force = false}) async {
     if (_investingService == null) {
       _log.warning('syncRates: no InvestingComService configured');
       return;
@@ -49,7 +50,7 @@ class ExchangeRateService {
       final today = DateTime.now();
       final yesterday = DateTime(today.year, today.month, today.day - 1);
 
-      if (lastDate != null && !lastDate.isBefore(yesterday)) {
+      if (!force && lastDate != null && !lastDate.isBefore(yesterday)) {
         _log.info('syncRates: already up to date (last=${formatYmd(lastDate)})');
         return;
       }
@@ -69,6 +70,12 @@ class ExchangeRateService {
           toCurrency: Value(currency),
           date: Value(yesterday),
           rate: Value(rate),
+        ));
+        companions.add(ExchangeRatesCompanion(
+          fromCurrency: Value(currency),
+          toCurrency: const Value('EUR'),
+          date: Value(yesterday),
+          rate: Value(1.0 / rate),
         ));
       }
 
@@ -182,10 +189,10 @@ class ExchangeRateService {
   /// Tries direct pair, then inverse, then EUR cross-rate as fallback.
   Future<double?> getRate(String from, String to, DateTime date) async {
     if (from == to) return 1.0;
-    // 1. Direct lookup: from→to
+    // 1. Direct lookup: from->to
     final direct = await _lookupDirectRate(from, to, date);
     if (direct != null) return direct;
-    // 2. Inverse lookup: to→from
+    // 2. Inverse lookup: to->from
     final inverse = await _lookupDirectRate(to, from, date);
     if (inverse != null) return 1.0 / inverse;
     // 3. EUR cross-rate fallback (legacy data)
@@ -197,7 +204,7 @@ class ExchangeRateService {
     return null;
   }
 
-  /// Look up rate for any [from]→[to] pair on or before [date].
+  /// Look up rate for any [from]->[to] pair on or before [date].
   Future<double?> _lookupDirectRate(String from, String to, DateTime date) async {
     final epochSec = date.millisecondsSinceEpoch ~/ 1000;
     final row = await _db.customSelect(
