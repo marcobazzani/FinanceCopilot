@@ -216,7 +216,6 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                   ),
                   trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                   onTap: () => _showEditDialog(context, income),
-                  onLongPress: () => _confirmDelete(context, income),
                 );
               },
             );
