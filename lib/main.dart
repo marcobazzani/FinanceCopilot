@@ -363,7 +363,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       _log.info('Starting market price sync (forceToday=$forceToday)...');
       await Future.wait([
         ref.read(marketPriceServiceProvider).syncPrices(forceToday: forceToday),
-        ref.read(exchangeRateServiceProvider).syncRates(),
+        ref.read(exchangeRateServiceProvider).syncRates(force: forceToday),
       ]);
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
