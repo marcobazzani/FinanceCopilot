@@ -433,17 +433,30 @@ class _AppShellState extends ConsumerState<AppShell> {
     sync.checkHasUserData = () => _dbHasUserData(ref.read(databaseProvider));
     sync.onConflict = _showConflictDialog;
     sync.beforeDbReplace = () async {
-      // Only Windows requires closing the DB before the file swap because its
-      // file system refuses to delete files held by any process. macOS and
-      // Linux tolerate it via inode semantics — AND closing drift there can
-      // hang on active streams, silently breaking the entire sync pipeline.
-      if (!Platform.isWindows) return;
-      _log.info('Closing DB before sync replace (Windows)...');
+      // Close + dispose the current drift instance so its SQLite file handle
+      // is released. On Windows this is required — the OS refuses to delete
+      // the db file while any process holds an open handle. On POSIX it's a
+      // belt-and-braces measure: rename tolerates open files, but closing
+      // avoids any surprise from drift trying to flush mid-swap.
+      //
+      // We use a direct `close()` call (not `ref.invalidate`) so we can await
+      // the actual Future returned by drift — invalidate's disposal is
+      // fire-and-forget and doesn't guarantee the file handle is released
+      // before we return.
+      _log.info('beforeDbReplace: closing drift instance...');
+      final t0 = DateTime.now();
       try {
-        await ref.read(databaseProvider).close();
+        final db = ref.read(databaseProvider);
+        await db.close().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            _log.warning('beforeDbReplace: db.close() timed out after 5s, continuing');
+          },
+        );
       } catch (e) {
         _log.warning('beforeDbReplace: close failed: $e');
       }
+      _log.info('beforeDbReplace: done in ${DateTime.now().difference(t0).inMilliseconds}ms');
     };
     sync.onDbReplaced = () {
       if (mounted) {
