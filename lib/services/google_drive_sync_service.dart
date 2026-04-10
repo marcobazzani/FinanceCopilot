@@ -443,6 +443,13 @@ class GoogleDriveSyncService {
   /// If null, conflicts default to keeping the remote version.
   Future<ConflictChoice> Function(ConflictInfo info)? onConflict;
 
+  /// Called BEFORE the local DB file is replaced by a remote download, so the
+  /// app shell can close the current drift instance and release the file handle.
+  /// Required on Windows where SQLite holds an exclusive lock and deleting an
+  /// open file fails with errno=32. macOS/Linux tolerate renaming open files,
+  /// but we call it unconditionally for consistency.
+  Future<void> Function()? beforeDbReplace;
+
   /// Called when the local DB was replaced by a remote download (e.g. conflict resolution).
   /// The app shell should reload the DB and refresh the UI.
   void Function()? onDbReplaced;
@@ -543,6 +550,12 @@ class GoogleDriveSyncService {
         _log.warning('download: empty file received, aborting');
         await tmpFile.delete();
         return;
+      }
+
+      // Release the drift handle on the local DB so we can delete/rename it.
+      // On Windows the file is exclusive-locked; on macOS/Linux this is a no-op.
+      if (beforeDbReplace != null) {
+        await beforeDbReplace!();
       }
 
       final localFile = File(localPath);
