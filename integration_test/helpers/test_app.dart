@@ -121,15 +121,34 @@ Future<FilePreview> parseFixture(AppDatabase db, String fixtureName, {int skipRo
 
 /// Navigate to ImportScreen with a pre-parsed preview and optional target.
 /// This tests both the file parser (via parseFixture) and the full UI import flow.
+///
+/// [accountName] resolves to the matching account row's id and is passed as
+/// preselectedAccountId. This is required for transaction imports because the
+/// account selector lives in step 1 (above the file picker) — tests that pre-load
+/// a preview can't easily interact with that selector after the fact.
 Future<void> pushImportScreen(
   WidgetTester tester, {
   required FilePreview preview,
   ImportTarget? target,
+  String? accountName,
+  AppDatabase? db,
 }) async {
+  int? accountId;
+  if (accountName != null) {
+    final database = db ?? AppDatabase.forTesting(NativeDatabase.memory());
+    final acc = await (database.select(database.accounts)
+          ..where((a) => a.name.equals(accountName)))
+        .getSingleOrNull();
+    accountId = acc?.id;
+  }
   final context = tester.element(find.byType(Navigator).first);
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => ImportScreen(testPreview: preview, preselectedTarget: target),
+      builder: (_) => ImportScreen(
+        testPreview: preview,
+        preselectedTarget: target,
+        preselectedAccountId: accountId,
+      ),
     ),
   );
   await settle(tester);

@@ -74,12 +74,6 @@ extension _ConfirmStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!isAssetImport && !isIncomeImport && widget.preselectedAccountId == null) ...[
-          Text(s.selectAccount, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          _buildAccountSelector(),
-          const SizedBox(height: 24),
-        ],
         if (isAssetImport) ...[
           Text(s.selectIntermediary, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
@@ -249,49 +243,6 @@ extension _ConfirmStep on _ImportScreenState {
             ],
           ),
       ],
-    );
-  }
-
-  Widget _buildAccountSelector() {
-    final s = ref.watch(appStringsProvider);
-    final accountsAsync = ref.watch(accountsProvider);
-    return accountsAsync.when(
-      data: (accounts) {
-        if (accounts.isEmpty) {
-          return Column(
-            children: [
-              Text(s.noAccountsCreate),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: () => _showCreateAccountDialog(),
-                child: Text(s.createAccount),
-              ),
-            ],
-          );
-        }
-        return RadioGroup<int>(
-          groupValue: _targetId,
-          onChanged: (v) => _setState(() => _targetId = v),
-          child: Column(
-            children: [
-              ...accounts.map((a) {
-                final account = a;
-                return RadioListTile<int>(
-                  title: Text(account.name),
-                  subtitle: Text('${account.type.name} · ${account.currency}'),
-                  value: account.id,
-                );
-              }),
-              OutlinedButton(
-                onPressed: () => _showCreateAccountDialog(),
-                child: Text(s.newAccount),
-              ),
-            ],
-          ),
-        );
-      },
-      loading: () => const CircularProgressIndicator(),
-      error: (e, _) => Text(ref.watch(appStringsProvider).error(e)),
     );
   }
 
