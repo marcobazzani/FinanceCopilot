@@ -1,7 +1,8 @@
 // Generates and places the build identifier for the current build.
 //
-// The identifier is either the git short SHA (clean working tree) or a local
-// timestamp (`yyyymmdd_hhmmss`) fallback. Hard-capped at 16 characters.
+// The identifier is a local timestamp (`yyyymmdd_hhmmss`). Hard-capped at 16
+// characters. Kept consistent across platforms so build labels correlate with
+// logs the same way regardless of OS.
 //
 // Destination depends on the target platform:
 //   - android : writes android/app/src/main/assets/build_info.txt (PRE-build,
@@ -47,35 +48,10 @@ Future<void> main(List<String> args) async {
 }
 
 Future<String> _computeId() async {
-  if (await _isWorkingTreeClean()) {
-    final sha = await _shortSha();
-    if (sha.isNotEmpty) return sha;
-  }
-  return _timestamp();
-}
-
-String _timestamp() {
   final now = DateTime.now();
   String p(int n, [int w = 2]) => n.toString().padLeft(w, '0');
   return '${p(now.year, 4)}${p(now.month)}${p(now.day)}_'
       '${p(now.hour)}${p(now.minute)}${p(now.second)}';
-}
-
-Future<String> _shortSha() async {
-  try {
-    final r = await Process.run('git', ['rev-parse', '--short=12', 'HEAD']);
-    if (r.exitCode == 0) return (r.stdout as String).trim();
-  } catch (_) {}
-  return '';
-}
-
-Future<bool> _isWorkingTreeClean() async {
-  try {
-    final r = await Process.run('git', ['diff', '--quiet', 'HEAD']);
-    return r.exitCode == 0;
-  } catch (_) {
-    return false;
-  }
 }
 
 String? _destinationFor(String target) {

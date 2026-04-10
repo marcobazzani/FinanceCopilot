@@ -33,7 +33,10 @@
 - A Parallels "Windows 11" VM runs on this Mac. Use `prlctl exec "Windows 11"` to run commands.
 - Flutter path: `C:\Users\marco\dev\flutter\bin\flutter.bat`
 - Project path: `C:\Users\marco\dev\FinanceCopilot`
-- Build: `prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release 2>&1"`
+- Build: the Windows project has its own `.env` copy at `C:\Users\marco\dev\FinanceCopilot\.env` — load it into the cmd session via a `for /f` loop before running flutter so Google OAuth dart-defines are populated.
+  ```
+  prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && for /f \"usebackq tokens=1,* delims==\" %a in (\".env\") do set %a=%b && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% --dart-define=GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% 2>&1 && C:\Users\marco\dev\flutter\bin\cache\dart-sdk\bin\dart.exe run scripts/write_build_info.dart windows 2>&1"
+  ```
 - Kill before rebuild: `prlctl exec "Windows 11" cmd /c "taskkill /F /IM FinanceCopilot.exe 2>&1"`
 - **Launch GUI app** — `prlctl exec` runs in a non-interactive service session (Session 0), so use a scheduled task to launch in the user's interactive session:
   ```
