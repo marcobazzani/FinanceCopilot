@@ -549,14 +549,23 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Widget _body() {
-    return switch (_selectedIndex) {
-      0 => const DashboardScreen(),
-      1 => const AccountsScreen(),
-      2 => const AssetsScreen(),
-      3 => const CapexScreen(),
-      4 => const IncomeScreen(),
-      _ => const SizedBox(),
-    };
+    // Bind the key to dbReloadTrigger so that after a Google Drive sync swaps
+    // the db file (which increments the trigger), Flutter rebuilds the entire
+    // tab content from scratch. Without this, drift stream subscriptions
+    // created against the OLD AppDatabase instance keep emitting stale data
+    // (or error out) until the user navigates away and back.
+    final reloadCount = ref.watch(dbReloadTrigger);
+    return KeyedSubtree(
+      key: ValueKey('body-$_selectedIndex-$reloadCount'),
+      child: switch (_selectedIndex) {
+        0 => const DashboardScreen(),
+        1 => const AccountsScreen(),
+        2 => const AssetsScreen(),
+        3 => const CapexScreen(),
+        4 => const IncomeScreen(),
+        _ => const SizedBox(),
+      },
+    );
   }
 
   Widget _buildLandingPage() {
