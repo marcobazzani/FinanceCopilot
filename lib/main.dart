@@ -433,7 +433,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     sync.checkHasUserData = () => _dbHasUserData(ref.read(databaseProvider));
     sync.onConflict = _showConflictDialog;
     sync.beforeDbReplace = () async {
-      _log.info('Closing DB before sync replace...');
+      // Only Windows requires closing the DB before the file swap because its
+      // file system refuses to delete files held by any process. macOS and
+      // Linux tolerate it via inode semantics — AND closing drift there can
+      // hang on active streams, silently breaking the entire sync pipeline.
+      if (!Platform.isWindows) return;
+      _log.info('Closing DB before sync replace (Windows)...');
       try {
         await ref.read(databaseProvider).close();
       } catch (e) {
@@ -468,6 +473,41 @@ class _AppShellState extends ConsumerState<AppShell> {
         _log.warning('Background sync error: $e');
       }
     });
+  }
+
+  /// Full manual refresh: pull from Google Drive, then refresh market data.
+  /// Keeps the `_isSyncing` spinner active for the entire duration so the UI
+  /// reflects that work is in progress even during the Drive pull phase.
+  Future<void> _manualRefresh() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    try {
+      final sync = ref.read(googleDriveSyncProvider);
+      if (sync.isSignedIn) {
+        final pulled = await sync.pullIfNewerOnStartup();
+        if (pulled && mounted) {
+          ref.read(dbReloadTrigger.notifier).state++;
+        }
+      }
+      // _syncPrices manages its own _isSyncing flag via the early-return guard,
+      // but since we already set it, it will short-circuit. Inline the work instead.
+      final monitor = ref.read(networkMonitorProvider);
+      final online = await monitor.check();
+      ref.read(networkOnlineProvider.notifier).state = online;
+      if (online) {
+        _log.info('Manual refresh: syncing market data...');
+        await Future.wait([
+          ref.read(marketPriceServiceProvider).syncPrices(forceToday: true),
+          ref.read(exchangeRateServiceProvider).syncRates(force: true),
+        ]);
+        ref.read(priceRefreshCounter.notifier).state++;
+        await ref.read(compositionServiceProvider).syncCompositions();
+      }
+    } catch (e) {
+      _log.warning('Manual refresh error: $e');
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
   }
 
   Future<void> _syncPrices({bool forceToday = false}) async {
@@ -689,18 +729,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   )
                 : const Icon(Icons.refresh),
             tooltip: s.tooltipRefreshPrices,
-            onPressed: _isSyncing ? null : () async {
-              // Pull from Google Drive first so we apply remote changes before any local refetch.
-              final sync = ref.read(googleDriveSyncProvider);
-              if (sync.isSignedIn) {
-                final pulled = await sync.pullIfNewerOnStartup();
-                if (pulled && mounted) {
-                  ref.read(dbReloadTrigger.notifier).state++;
-                }
-              }
-              await _syncPrices(forceToday: true);
-              await ref.read(compositionServiceProvider).syncCompositions();
-            },
+            onPressed: _isSyncing ? null : _manualRefresh,
           ),
           IconButton(
             icon: const Icon(Icons.import_export),
