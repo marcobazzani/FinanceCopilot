@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,11 +9,14 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
+import 'services/build_info_service.dart';
+import 'services/import_service.dart';
 import 'services/db_transfer_service.dart';
 import 'services/demo_db_service.dart';
 import 'services/exchange_rate_service.dart';
@@ -49,6 +53,7 @@ Stream<void> _userTableUpdates(AppDatabase db) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await BuildInfoService.load();
   await initLogging();
   await initializeDateFormatting();
   // Print key paths to stdout for easy access
@@ -96,6 +101,14 @@ class FinanceCopilotApp extends ConsumerWidget {
         brightness: Brightness.dark,
       ),
       themeMode: ThemeMode.system,
+      // Apply bottom safe area globally so Android gesture/nav bar never
+      // covers content (Next buttons, bottom sheets, etc.). SafeArea consumes
+      // the MediaQuery padding so descendant NavigationBars won't double-pad.
+      builder: (context, child) => SafeArea(
+        top: false,
+        bottom: true,
+        child: child ?? const SizedBox(),
+      ),
       home: const _SafeAppShell(),
     );
   }
@@ -144,6 +157,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _generatingDemo = false;
   bool _syncingDrive = false;
   final _repaintKey = GlobalKey();
+  StreamSubscription? _shareIntentSub;
 
   List<NavigationDestination> _destinations(AppStrings s) => [
     NavigationDestination(icon: const Icon(Icons.dashboard), label: s.navDashboard),
@@ -164,6 +178,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
+    if (Platform.isAndroid) _initShareIntent();
     Future.microtask(() async {
       // Check if DB file exists before touching the provider.
       // If no DB file, show landing page immediately — let the user choose
@@ -183,6 +198,107 @@ class _AppShellState extends ConsumerState<AppShell> {
       await _runPendingBalanceRecalc();
       if (!_showLanding) _startBackgroundSync();
     });
+  }
+
+  void _initShareIntent() {
+    // Handle file shared while app was closed
+    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+      _handleSharedFiles(files);
+    });
+    // Handle file shared while app is running
+    _shareIntentSub = ReceiveSharingIntent.instance.getMediaStream().listen(_handleSharedFiles);
+  }
+
+  void _handleSharedFiles(List<SharedMediaFile> files) {
+    if (files.isEmpty) return;
+    final path = files.first.path;
+    final ext = path.toLowerCase().split('.').last;
+    if (!{'csv', 'xlsx', 'xls', 'tsv'}.contains(ext)) {
+      _log.warning('Shared file ignored (unsupported type): $path');
+      return;
+    }
+    _log.info('Received shared file: $path');
+    if (mounted) _showShareImportDialog(path);
+  }
+
+  Future<void> _showShareImportDialog(String filePath) async {
+    final s = ref.read(appStringsProvider);
+    final accounts = ref.read(accountsProvider).value ?? [];
+    var target = ImportTarget.transaction;
+    int? accountId = accounts.isNotEmpty ? accounts.first.id : null;
+
+    final result = await showModalBottomSheet<(ImportTarget, int?)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.importTitle, style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(filePath.split('/').last, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              const SizedBox(height: 20),
+              Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              SegmentedButton<ImportTarget>(
+                segments: [
+                  ButtonSegment(value: ImportTarget.transaction, icon: const Icon(Icons.receipt_long, size: 18), label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12))),
+                  ButtonSegment(value: ImportTarget.assetEvent, icon: const Icon(Icons.trending_up, size: 18), label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12))),
+                  ButtonSegment(value: ImportTarget.income, icon: const Icon(Icons.payments, size: 18), label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12))),
+                ],
+                selected: {target},
+                onSelectionChanged: (v) => setSheetState(() => target = v.first),
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                showSelectedIcon: false,
+              ),
+              if (target == ImportTarget.transaction && accounts.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(s.selectAccount, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int>(
+                  initialValue: accountId,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  items: accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
+                  onChanged: (v) => setSheetState(() => accountId = v),
+                ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx, (target, target == ImportTarget.transaction ? accountId : null)),
+                  child: Text(s.next),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    final (selectedTarget, selectedAccountId) = result;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ImportScreen(
+        initialFilePath: filePath,
+        preselectedTarget: selectedTarget,
+        preselectedAccountId: selectedAccountId,
+      )),
+    );
+  }
+
+  @override
+  void dispose() {
+    _shareIntentSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _initDriveSync() async {
@@ -566,6 +682,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                 : const Icon(Icons.refresh),
             tooltip: s.tooltipRefreshPrices,
             onPressed: _isSyncing ? null : () async {
+              // Pull from Google Drive first so we apply remote changes before any local refetch.
+              final sync = ref.read(googleDriveSyncProvider);
+              if (sync.isSignedIn) {
+                final pulled = await sync.pullIfNewerOnStartup();
+                if (pulled && mounted) {
+                  ref.read(dbReloadTrigger.notifier).state++;
+                }
+              }
               await _syncPrices(forceToday: true);
               await ref.read(compositionServiceProvider).syncCompositions();
             },

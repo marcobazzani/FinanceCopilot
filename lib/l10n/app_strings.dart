@@ -647,6 +647,12 @@ class AppStrings {
       ? 'Importazione $done / $total righe...'
       : 'Importing $done / $total rows...';
   String get importButton          => _it ? 'Importa'                  : 'Import';
+  String get savedConfigDetected   => _it ? 'Configurazione salvata trovata per questo conto' : 'Saved configuration detected for this account';
+  String get headerPreviewTitle    => _it ? 'Anteprima file'             : 'File preview';
+  String get headerPreviewHelp     => _it
+      ? 'Verifica che le intestazioni siano allineate. Se le righe non corrispondono, usa "Modifica" per regolare "Salta righe".'
+      : 'Check that the headers line up. If rows look off, tap "Let me edit" to adjust skip rows.';
+  String get letMeEdit             => _it ? 'Modifica'                  : 'Let me edit';
   String get noAccountsCreate      => _it ? 'Nessun conto. Creane uno prima.' : 'No accounts yet. Create one first.';
   String get createAccount         => _it ? 'Crea conto'               : 'Create Account';
   String get newAccount            => _it ? '+ Nuovo conto'            : '+ New Account';

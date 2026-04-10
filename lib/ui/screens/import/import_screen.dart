@@ -18,6 +18,7 @@ import '../../../utils/logger.dart';
 
 part 'column_mapper_step.dart';
 part 'confirm_step.dart';
+part 'quick_confirm_step.dart';
 part 'result_step.dart';
 
 final _log = getLogger('ImportScreen');
@@ -28,7 +29,9 @@ class ImportScreen extends ConsumerStatefulWidget {
   final ImportTarget? preselectedTarget;
   /// For integration tests: inject a pre-parsed file preview (bypasses file picker).
   final FilePreview? testPreview;
-  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget, this.testPreview});
+  /// When shared from another app (Android share target), auto-load this file.
+  final String? initialFilePath;
+  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget, this.testPreview, this.initialFilePath});
 
   @override
   ConsumerState<ImportScreen> createState() => _ImportScreenState();
@@ -67,6 +70,9 @@ Future<void> _saveLastDirectory(String dir) async {
 
 class _ImportScreenState extends ConsumerState<ImportScreen> {
   int _step = 1; // 1=preview+map, 2=confirm, 3=result
+  /// When true, render the quick-confirm view (header preview + read-only mappings + Import / Let me edit)
+  /// instead of the full column mapper. Auto-enabled when a saved config is applied successfully.
+  bool _isQuickMode = false;
   FilePreview? _preview;
   String? _filePath;
   String? _selectedSheet;
@@ -177,6 +183,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _preview = widget.testPreview;
       _autoMap(widget.testPreview!.columns);
     }
+    // Shared file from another app (Android share target)
+    if (widget.initialFilePath != null) {
+      Future.microtask(() => _loadFile(widget.initialFilePath!));
+    }
   }
 
   @override
@@ -233,7 +243,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     final path = result.files.single.path!;
     await _saveLastDirectory(p.dirname(path));
-    _log.info('_pickFile: selected $path');
+    await _loadFile(path);
+  }
+
+  /// Parse and load a file by path (used by both file picker and share intent).
+  Future<void> _loadFile(String path) async {
+    _log.info('_loadFile: loading $path');
     setState(() {
       _error = null;
       _filePath = path;
@@ -248,24 +263,24 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       if (ext == 'xlsx' || ext == 'xls') {
         final sheets = await importer.listSheets(path);
         if (sheets.length > 1) {
-          _log.info('_pickFile: multi-sheet Excel, showing sheet picker');
+          _log.info('_loadFile: multi-sheet Excel, showing sheet picker');
           await _showSheetPicker(sheets);
           if (_selectedSheet == null) {
-            _log.info('_pickFile: sheet selection cancelled');
+            _log.info('_loadFile: sheet selection cancelled');
             return;
           }
-          _log.info('_pickFile: selected sheet=$_selectedSheet');
+          _log.info('_loadFile: selected sheet=$_selectedSheet');
         }
       }
 
       final preview = await importer.parseFile(path, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader);
       if (preview.rows.isEmpty) {
-        _log.warning('_pickFile: file is empty after parsing');
+        _log.warning('_loadFile: file is empty after parsing');
         setState(() => _error = ref.read(appStringsProvider).fileEmpty);
         return;
       }
 
-      _log.info('_pickFile: parsed OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
+      _log.info('_loadFile: parsed OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
         _fullIsinSummary = null;
@@ -278,7 +293,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // Load saved config if we have a preselected account
       await _loadSavedConfig(preview.columns);
     } catch (e, stack) {
-      _log.severe('_pickFile: error reading file', e, stack);
+      _log.severe('_loadFile: error reading file', e, stack);
       setState(() {
         _error = 'Error reading file: $e';
         _parsing = false;
@@ -433,6 +448,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       await _reparseFile();
     } else {
       _applySavedConfig();
+    }
+
+    // Auto-enable quick mode if the saved config covers all required fields.
+    // The user can still tap "Let me edit" to drop into the full mapper.
+    if (_canProceedToConfirm()) {
+      setState(() => _isQuickMode = true);
     }
   }
 
@@ -634,6 +655,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   bool _canProceedToConfirm() {
+    // Account required for transactions (selected in step 1 inline selector)
+    if (_target == ImportTarget.transaction && (widget.preselectedAccountId ?? _targetId) == null) return false;
     // date must be mapped (unless asset events in current mode)
     if (_mappings['date'] == null && !(_target == ImportTarget.assetEvent && _assetImportMode == 'current')) return false;
     // Value date required for transactions (unless same as operation date)
@@ -665,6 +688,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _amountFormula.clear();
     _target = ImportTarget.transaction;
     _targetId = null;
+    _isQuickMode = false;
     _mappings.clear();
     _result = null;
     _error = null;

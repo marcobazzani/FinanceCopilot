@@ -19,13 +19,11 @@ void main() {
       preview = await parseFixture(db, 'transactions_simple.csv');
     });
 
-    await pushImportScreen(tester, preview: preview);
+    await pushImportScreen(tester, preview: preview, accountName: 'Main Account', db: db);
     expect(find.text('Data_Operazione'), findsWidgets);
     expect(find.text('Amount'), findsWidgets);
 
     await tester.tap(find.text('Next'));
-    await settle(tester);
-    await tester.tap(find.text('Main Account'));
     await settle(tester);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
@@ -51,10 +49,8 @@ void main() {
       preview = await parseFixture(db, 'transactions_simple.xlsx');
     });
 
-    await pushImportScreen(tester, preview: preview);
+    await pushImportScreen(tester, preview: preview, accountName: 'Bank XLSX', db: db);
     await tester.tap(find.text('Next'));
-    await settle(tester);
-    await tester.tap(find.text('Bank XLSX'));
     await settle(tester);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
@@ -79,10 +75,8 @@ void main() {
       preview = await parseFixture(db, 'transactions_simple_eu.csv');
     });
 
-    await pushImportScreen(tester, preview: preview);
+    await pushImportScreen(tester, preview: preview, accountName: 'EU Bank', db: db);
     await tester.tap(find.text('Next'));
-    await settle(tester);
-    await tester.tap(find.text('EU Bank'));
     await settle(tester);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
@@ -142,10 +136,8 @@ void main() {
       preview = await parseFixture(db, 'transactions_skip_rows.xlsx', skipRows: 2);
     });
 
-    await pushImportScreen(tester, preview: preview);
+    await pushImportScreen(tester, preview: preview, accountName: 'Checking', db: db);
     await tester.tap(find.text('Next'));
-    await settle(tester);
-    await tester.tap(find.text('Checking'));
     await settle(tester);
 
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));

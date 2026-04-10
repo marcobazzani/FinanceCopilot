@@ -1,10 +1,11 @@
+import 'services/build_info_service.dart';
+
 const appVersion = '0.4.3';
-const _commitSha = String.fromEnvironment('COMMIT_SHA');
-const appCommit = _commitSha.length > 0 ? _commitSha : _buildTimestamp;
 const appChannel = String.fromEnvironment('CHANNEL', defaultValue: 'nightly');
 
-/// Filled at build time via --dart-define; falls back to empty string for CI builds.
-const _buildTimestamp = String.fromEnvironment('BUILD_TS');
-
-/// Whether this is a local (non-CI) build.
-bool get isLocalBuild => _commitSha.isEmpty;
+/// Build identifier loaded at startup by [BuildInfoService.load].
+/// Either a git short SHA (clean checkout) or a timestamp (dirty / no git).
+/// Hard-capped at 16 characters by the service.
+///
+/// Empty string until `BuildInfoService.load()` has been awaited in `main()`.
+String get appCommit => BuildInfoService.value;

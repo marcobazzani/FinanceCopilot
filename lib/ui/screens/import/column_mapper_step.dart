@@ -12,52 +12,27 @@ extension _ColumnMapperStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Data source toolbar
-        Row(
-          children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: Text(s.openFile),
-              onPressed: _parsing ? null : _pickFile,
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.content_paste),
-              label: Text(s.pasteFromClipboard),
-              onPressed: _parsing ? null : _pasteFromClipboard,
-            ),
-            if (_filePath != null) ...[
-              const SizedBox(width: 16),
-              Chip(label: Text(_filePath!.split('/').last)),
-            ],
-            if (_filePath == null && _preview != null) ...[
-              const SizedBox(width: 16),
-              Chip(label: Text(s.clipboardData)),
-            ],
-            const Spacer(),
-            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-          ],
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Text(_error!, style: const TextStyle(color: Colors.red)),
-        ],
-        const SizedBox(height: 12),
-
         // Target selector (hidden when preselected from account view)
         if (widget.preselectedAccountId == null && widget.preselectedTarget == null) ...[
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
               SegmentedButton<ImportTarget>(
                 segments: [
-                  ButtonSegment(value: ImportTarget.transaction, label: Text(s.importTypeTransaction)),
-                  ButtonSegment(value: ImportTarget.assetEvent, label: Text(s.importTypeAssetEvent)),
-                  ButtonSegment(value: ImportTarget.income, label: Text(s.importTypeIncome)),
+                  ButtonSegment(value: ImportTarget.transaction, icon: const Icon(Icons.receipt_long, size: 18), label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12))),
+                  ButtonSegment(value: ImportTarget.assetEvent, icon: const Icon(Icons.trending_up, size: 18), label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12))),
+                  ButtonSegment(value: ImportTarget.income, icon: const Icon(Icons.payments, size: 18), label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12))),
                 ],
                 selected: {_target},
+                showSelectedIcon: false,
                 onSelectionChanged: (v) => _setState(() {
                   _target = v.first;
+                  _targetId = null;
+                  _isQuickMode = false;
+                  _savedConfig = null;
                   _mappings.clear();
                   _amountFormula.clear();
                   for (final f in _requiredFields) {
@@ -68,20 +43,114 @@ extension _ColumnMapperStep on _ImportScreenState {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
         ],
 
-        // Disable mapping UI when no data loaded
+        // Account selector (transactions only, when no preselected account)
+        if (_target == ImportTarget.transaction && widget.preselectedAccountId == null) ...[
+          _buildInlineAccountSelector(),
+          const SizedBox(height: 12),
+        ],
+
+        // Data source toolbar
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.folder_open),
+              label: Text(s.openFile),
+              onPressed: _parsing ? null : _pickFile,
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.content_paste),
+              label: Text(s.pasteFromClipboard),
+              onPressed: _parsing ? null : _pasteFromClipboard,
+            ),
+            if (_filePath != null)
+              Chip(label: Text(_filePath!.split('/').last)),
+            if (_filePath == null && _preview != null)
+              Chip(label: Text(s.clipboardData)),
+            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(color: Colors.red)),
+        ],
+        const SizedBox(height: 12),
+
+        // Body: quick-confirm view OR full mapping UI
         Expanded(
           child: IgnorePointer(
             ignoring: preview == null,
             child: Opacity(
               opacity: preview == null ? 0.4 : 1.0,
-              child: _buildMappingContent(preview),
+              child: _isQuickMode && preview != null
+                  ? _buildQuickConfirm(preview)
+                  : _buildMappingContent(preview),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  /// Compact account selector (DropdownButtonFormField) shown above the file picker
+  /// when the user is importing transactions without a preselected account.
+  Widget _buildInlineAccountSelector() {
+    final s = ref.watch(appStringsProvider);
+    final accountsAsync = ref.watch(accountsProvider);
+    return accountsAsync.when(
+      data: (accounts) {
+        if (accounts.isEmpty) {
+          return Row(children: [
+            Expanded(child: Text(s.noAccountsCreate, style: const TextStyle(fontSize: 13))),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: () => _showCreateAccountDialog(),
+              child: Text(s.createAccount),
+            ),
+          ]);
+        }
+        return Row(
+          children: [
+            Text(s.selectAccount, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                initialValue: _targetId,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                items: accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
+                onChanged: (v) async {
+                  _setState(() {
+                    _targetId = v;
+                    _isQuickMode = false;
+                    _savedConfig = null;
+                  });
+                  // Reload saved config for the newly chosen account if a file is already loaded.
+                  if (v != null && _preview != null) {
+                    await _loadSavedConfig(_preview!.columns);
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: s.newAccount,
+              onPressed: () => _showCreateAccountDialog(),
+            ),
+          ],
+        );
+      },
+      loading: () => const SizedBox(height: 24, child: LinearProgressIndicator()),
+      error: (e, _) => Text(s.error(e)),
     );
   }
 
@@ -94,7 +163,10 @@ extension _ColumnMapperStep on _ImportScreenState {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Skip rows (auto re-parse after 1s or Enter)
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(s.skipRows, style: const TextStyle(fontWeight: FontWeight.bold)),
             SizedBox(
@@ -145,7 +217,6 @@ extension _ColumnMapperStep on _ImportScreenState {
                 },
               ),
             ),
-            const SizedBox(width: 12),
             Text(s.skipRowsHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ],
         ),
@@ -184,10 +255,12 @@ extension _ColumnMapperStep on _ImportScreenState {
             children: [
               // Asset event mode toggle (Historic vs Current)
               if (_target == ImportTarget.assetEvent) ...[
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(s.modeLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                    const SizedBox(width: 8),
                     SegmentedButton<String>(
                       segments: [
                         ButtonSegment(value: 'historic', label: Text(s.modeHistoric)),
@@ -208,7 +281,6 @@ extension _ColumnMapperStep on _ImportScreenState {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
-                    const SizedBox(width: 12),
                     Text(
                       _assetImportMode == 'historic'
                           ? s.dateExchangeRequired
@@ -226,26 +298,27 @@ extension _ColumnMapperStep on _ImportScreenState {
                 _buildAmountFormulaRow(columns, s)
               else if (_target == ImportTarget.assetEvent) ...[
                 // Amount: either from column or auto-calculated
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: _autoCalcAmount
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(children: [
-                              SizedBox(width: 100, child: Text(s.amount, style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 13,
-                                color: Theme.of(context).colorScheme.primary,
-                              ))),
-                              const Icon(Icons.arrow_forward, size: 16),
-                              const SizedBox(width: 8),
-                              Text(s.qtyTimesPrice, style: TextStyle(
-                                fontSize: 13, fontStyle: FontStyle.italic,
-                                color: Colors.grey.shade600,
-                              )),
-                            ]),
-                          )
-                        : _buildMappingRow('amount', columns)),
-                    const SizedBox(width: 8),
+                    if (_autoCalcAmount)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(children: [
+                          SizedBox(width: 100, child: Text(s.amount, style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13,
+                            color: Theme.of(context).colorScheme.primary,
+                          ))),
+                          const Icon(Icons.arrow_forward, size: 16),
+                          const SizedBox(width: 8),
+                          Flexible(child: Text(s.qtyTimesPrice, style: TextStyle(
+                            fontSize: 13, fontStyle: FontStyle.italic,
+                            color: Colors.grey.shade600,
+                          ))),
+                        ]),
+                      )
+                    else
+                      _buildMappingRow('amount', columns),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -266,28 +339,30 @@ extension _ColumnMapperStep on _ImportScreenState {
                 _buildMappingRow('amount', columns, required: true),
               // Value date: either mapped or same as operation date (transactions only)
               if (_target == ImportTarget.transaction) ...[
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _sameSettlementDate
-                          ? Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Row(children: [
-                                SizedBox(width: 140, child: Text(
-                                  '${s.fieldLabel('valueDate')} *',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                )),
-                                const Icon(Icons.arrow_forward, size: 16),
-                                const SizedBox(width: 8),
-                                Text('= ${s.fieldLabel('date')}', style: TextStyle(
-                                  fontSize: 13, fontStyle: FontStyle.italic,
-                                  color: Colors.grey.shade600,
-                                )),
-                              ]),
-                            )
-                          : _buildMappingRow('valueDate', columns, required: true),
-                    ),
-                    const SizedBox(width: 8),
+                    if (_sameSettlementDate)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(children: [
+                          ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
+                            child: Text(
+                              '${s.fieldLabel('valueDate')} *',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward, size: 16),
+                          const SizedBox(width: 8),
+                          Text('= ${s.fieldLabel('date')}', style: TextStyle(
+                            fontSize: 13, fontStyle: FontStyle.italic,
+                            color: Colors.grey.shade600,
+                          )),
+                        ]),
+                      )
+                    else
+                      _buildMappingRow('valueDate', columns, required: true),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -393,6 +468,8 @@ extension _ColumnMapperStep on _ImportScreenState {
     final multiCols = _multiMappings[field] ?? [];
     final isMulti = multiColumn && multiCols.length > 1;
     final showAddBtn = multiColumn && !isMulti && _mappings[field] != null;
+    final narrow = MediaQuery.sizeOf(context).width < 500;
+    final multiIndent = narrow ? 0.0 : 164.0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -401,15 +478,15 @@ extension _ColumnMapperStep on _ImportScreenState {
         children: [
           Row(
             children: [
-              SizedBox(
-                width: 140,
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
                 child: Text(
                   '${s.fieldLabel(field)}${required ? ' *' : ''}',
-                  style: TextStyle(fontWeight: required ? FontWeight.bold : FontWeight.normal),
+                  style: TextStyle(fontWeight: required ? FontWeight.bold : FontWeight.normal, fontSize: MediaQuery.sizeOf(context).width < 400 ? 12 : 14),
                 ),
               ),
               const Icon(Icons.arrow_forward, size: 16),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
               if (!isMulti)
                 Expanded(
                   child: DropdownButtonFormField<String>(
@@ -471,7 +548,7 @@ extension _ColumnMapperStep on _ImportScreenState {
           if (isMulti)
             for (var i = 0; i < multiCols.length; i++)
               Padding(
-                padding: const EdgeInsets.only(left: 164, top: 4),
+                padding: EdgeInsets.only(left: multiIndent, top: 4),
                 child: Row(
                   children: [
                     if (i > 0)
@@ -508,7 +585,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               ),
           if (isMulti)
             Padding(
-              padding: const EdgeInsets.only(left: 164, top: 4),
+              padding: EdgeInsets.only(left: multiIndent, top: 4),
               child: Row(
                 children: [
                   OutlinedButton.icon(
@@ -911,23 +988,26 @@ extension _ColumnMapperStep on _ImportScreenState {
 
     // -- Balance-diff mode --
     if (mode == 'balance') {
+      final narrow = MediaQuery.sizeOf(context).width < 500;
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                SizedBox(
-                  width: 140,
-                  child: Text(s.amountRequired, style: const TextStyle(fontWeight: FontWeight.bold)),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
+                  child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
                 ),
-                const SizedBox(width: 24),
                 _buildAmountModeButtons(columns, currentMode: mode),
               ],
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 164, top: 6),
+              padding: EdgeInsets.only(left: narrow ? 0 : 164, top: 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -967,32 +1047,54 @@ extension _ColumnMapperStep on _ImportScreenState {
 
     // -- Simple mode --
     if (mode == 'simple') {
+      final narrow = MediaQuery.sizeOf(context).width < 500;
+      final dropdownRow = Row(
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
+            child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+          ),
+          const Icon(Icons.arrow_forward, size: 16),
+          const SizedBox(width: 4),
+          Expanded(
+            child: DropdownButtonFormField<String>(
+              initialValue: _mappings['amount'],
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border: const OutlineInputBorder(),
+                hintText: ref.watch(appStringsProvider).selectColumn,
+              ),
+              items: [
+                DropdownMenuItem(value: null, child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey))),
+                ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+              ],
+              onChanged: (v) => _setState(() => _mappings['amount'] = v),
+            ),
+          ),
+        ],
+      );
+      if (narrow) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              dropdownRow,
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(left: 106),
+                child: _buildAmountModeButtons(columns, currentMode: mode),
+              ),
+            ],
+          ),
+        );
+      }
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
-            SizedBox(
-              width: 140,
-              child: Text(s.amountRequired, style: const TextStyle(fontWeight: FontWeight.bold)),
-            ),
-            const Icon(Icons.arrow_forward, size: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: _mappings['amount'],
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  border: const OutlineInputBorder(),
-                  hintText: ref.watch(appStringsProvider).selectColumn,
-                ),
-                items: [
-                  DropdownMenuItem(value: null, child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey))),
-                  ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
-                ],
-                onChanged: (v) => _setState(() => _mappings['amount'] = v),
-              ),
-            ),
+            Expanded(child: dropdownRow),
             const SizedBox(width: 8),
             _buildAmountModeButtons(columns, currentMode: mode),
           ],
@@ -1001,25 +1103,28 @@ extension _ColumnMapperStep on _ImportScreenState {
     }
 
     // -- Formula mode --
+    final narrow = MediaQuery.sizeOf(context).width < 500;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SizedBox(
-                width: 140,
-                child: Text(s.amountRequired, style: const TextStyle(fontWeight: FontWeight.bold)),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
+                child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
               ),
-              const SizedBox(width: 24),
               _buildAmountModeButtons(columns, currentMode: mode),
             ],
           ),
           // Formula terms
           for (var i = 0; i < _amountFormula.length; i++)
             Padding(
-              padding: const EdgeInsets.only(left: 164, top: 4),
+              padding: EdgeInsets.only(left: narrow ? 0 : 164, top: 4),
               child: Row(
                 children: [
                   // +/- toggle button
@@ -1080,7 +1185,7 @@ extension _ColumnMapperStep on _ImportScreenState {
             ),
           // Add term + preview row
           Padding(
-            padding: const EdgeInsets.only(left: 164, top: 6),
+            padding: EdgeInsets.only(left: narrow ? 0 : 164, top: 6),
             child: Row(
               children: [
                 OutlinedButton.icon(
