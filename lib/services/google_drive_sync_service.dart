@@ -254,6 +254,12 @@ class GoogleDriveSyncService {
   /// Pull remote DB if it's newer than local. Returns true if DB was replaced.
   Future<bool> pullIfNewerOnStartup() async {
     if (_driveApi == null) return false;
+    // Prevent concurrent pulls — a race between a background poll and a manual
+    // refresh could otherwise run two file swaps simultaneously and lose the DB.
+    if (_syncing || _uploading) {
+      _log.info('pullIfNewer: already syncing/uploading, skipping');
+      return false;
+    }
     _syncing = true;
     try {
       final localPath = await _localDbPath;
@@ -533,41 +539,92 @@ class GoogleDriveSyncService {
     }
   }
 
+  /// Download the remote DB and atomically replace the local file.
+  ///
+  /// Crash-safe swap:
+  ///   1. stream remote into `<localPath>.tmp`
+  ///   2. notify the app to release its drift handle (`beforeDbReplace`)
+  ///   3. rename current DB to `<localPath>.bak` (the backup is kept until
+  ///      the rename of .tmp succeeds, so a failure halfway through never
+  ///      leaves the user without a DB — we can restore from .bak)
+  ///   4. rename `.tmp` → `localPath`
+  ///   5. on success, delete `.bak`
+  ///   6. on any failure, restore `.bak` → `localPath`
+  ///
+  /// Phase timing is logged so a hang can be pinpointed to exactly one step.
   Future<void> _download(String localPath, String fileId) async {
+    final tmpPath = '$localPath.tmp';
+    final backupPath = '$localPath.bak';
+    final tmpFile = File(tmpPath);
+    final backupFile = File(backupPath);
+    final localFile = File(localPath);
+
     try {
+      final t0 = DateTime.now();
+      _log.info('download: phase 1 - fetching remote...');
       final response = await _driveApi!.files.get(
         fileId,
         downloadOptions: drive.DownloadOptions.fullMedia,
       ) as drive.Media;
-
-      final tmpPath = '$localPath.tmp';
-      final tmpFile = File(tmpPath);
       final sink = tmpFile.openWrite();
       await response.stream.pipe(sink);
-
       final tmpSize = await tmpFile.length();
+      _log.info('download: phase 1 done - fetched $tmpSize bytes in ${DateTime.now().difference(t0).inMilliseconds}ms');
+
       if (tmpSize == 0) {
         _log.warning('download: empty file received, aborting');
         await tmpFile.delete();
         return;
       }
 
-      // Release the drift handle on the local DB so we can delete/rename it.
-      // On Windows the file is exclusive-locked; on macOS/Linux this is a no-op.
       if (beforeDbReplace != null) {
+        final tCb = DateTime.now();
+        _log.info('download: phase 2 - invoking beforeDbReplace');
         await beforeDbReplace!();
+        _log.info('download: phase 2 done in ${DateTime.now().difference(tCb).inMilliseconds}ms');
       }
 
-      final localFile = File(localPath);
-      if (localFile.existsSync()) await localFile.delete();
+      // Phase 3: move current DB out of the way (backup kept until success)
+      if (localFile.existsSync()) {
+        final tBak = DateTime.now();
+        _log.info('download: phase 3 - backing up current DB');
+        if (backupFile.existsSync()) await backupFile.delete();
+        await localFile.rename(backupPath);
+        _log.info('download: phase 3 done in ${DateTime.now().difference(tBak).inMilliseconds}ms');
+      }
+
+      // Phase 4: put the downloaded file in place
+      final tRen = DateTime.now();
+      _log.info('download: phase 4 - renaming tmp to localPath');
       await tmpFile.rename(localPath);
+      _log.info('download: phase 4 done in ${DateTime.now().difference(tRen).inMilliseconds}ms');
+
+      // Phase 5: success, drop the backup
+      if (backupFile.existsSync()) {
+        try {
+          await backupFile.delete();
+        } catch (e) {
+          _log.warning('download: failed to delete backup (harmless): $e');
+        }
+      }
 
       await AppSettings.set('lastSyncTime', DateTime.now().toIso8601String());
-      _log.info('download: replaced local DB ($tmpSize bytes)');
-    } catch (e) {
-      final tmpFile = File('$localPath.tmp');
-      if (tmpFile.existsSync()) await tmpFile.delete();
-      _log.severe('download failed: $e');
+      _log.info('download: replaced local DB ($tmpSize bytes) total ${DateTime.now().difference(t0).inMilliseconds}ms');
+    } catch (e, stack) {
+      _log.severe('download failed: $e\n$stack');
+      // Cleanup tmp if it still exists
+      if (tmpFile.existsSync()) {
+        try { await tmpFile.delete(); } catch (_) {}
+      }
+      // Restore backup if we lost the local file during the swap
+      if (!localFile.existsSync() && backupFile.existsSync()) {
+        _log.warning('download: restoring backup after failure');
+        try {
+          await backupFile.rename(localPath);
+        } catch (e2) {
+          _log.severe('download: backup restore also failed: $e2');
+        }
+      }
       rethrow;
     }
   }
