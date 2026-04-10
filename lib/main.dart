@@ -432,6 +432,14 @@ class _AppShellState extends ConsumerState<AppShell> {
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
     sync.checkHasUserData = () => _dbHasUserData(ref.read(databaseProvider));
     sync.onConflict = _showConflictDialog;
+    sync.beforeDbReplace = () async {
+      _log.info('Closing DB before sync replace...');
+      try {
+        await ref.read(databaseProvider).close();
+      } catch (e) {
+        _log.warning('beforeDbReplace: close failed: $e');
+      }
+    };
     sync.onDbReplaced = () {
       if (mounted) {
         _log.info('DB replaced by sync, reloading...');
