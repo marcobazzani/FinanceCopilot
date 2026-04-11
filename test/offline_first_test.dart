@@ -6,7 +6,6 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
 import 'package:finance_copilot/services/investing_com_service.dart';
-import 'package:finance_copilot/services/market_price_service.dart';
 
 void main() {
   late AppDatabase db;
