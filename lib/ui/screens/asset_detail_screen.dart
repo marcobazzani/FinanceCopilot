@@ -14,16 +14,34 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_event_edit_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 final _log = getLogger('AssetDetailScreen');
 
 /// Shows events for a single asset, with summary card + event list + edit.
-class AssetDetailScreen extends ConsumerWidget {
+class AssetDetailScreen extends ConsumerStatefulWidget {
   final Asset asset;
   const AssetDetailScreen({super.key, required this.asset});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AssetDetailScreen> createState() => _AssetDetailScreenState();
+}
+
+class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
+  final _selection = SelectionController<int>();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
+  Asset get asset => widget.asset;
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final eventsStream = ref.watch(assetEventsProvider(asset.id));
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
@@ -36,7 +54,12 @@ class AssetDetailScreen extends ConsumerWidget {
         ? ref.watch(convertedEventAmountsProvider(asset.id)).value ?? {}
         : <int, double>{};
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (lbCtx, _) {
+        final events = eventsStream.value ?? const <AssetEvent>[];
+        _selection.setOrderedIds(events.map((e) => e.id).toList());
+        return Scaffold(
       appBar: AppBar(
         title: Text(asset.name),
         actions: [
@@ -127,7 +150,10 @@ class AssetDetailScreen extends ConsumerWidget {
                   itemBuilder: (ctx, i) {
                     final ev = events[i];
                     final typeColor = _colorForEventType(ev.type);
-                    return ListTile(
+                    return SelectableItem<int>(
+                      controller: _selection,
+                      id: ev.id,
+                      child: ListTile(
                       dense: true,
                       leading: CircleAvatar(
                         radius: 16,
@@ -176,6 +202,7 @@ class AssetDetailScreen extends ConsumerWidget {
                           builder: (_) => AssetEventEditScreen(event: ev, asset: asset),
                         ),
                       ),
+                      ),
                     );
                   },
                 );
@@ -186,13 +213,24 @@ class AssetDetailScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => AssetEventEditScreen(asset: asset)),
-        ),
-        child: const Icon(Icons.add),
-      ),
+          bottomNavigationBar: _selection.active
+              ? SelectionActionBar<int>(
+                  controller: _selection,
+                  visibleIds: events.map((e) => e.id).toList(),
+                  onDelete: (ids) => ref.read(assetEventServiceProvider).deleteMany(ids.toList()),
+                )
+              : null,
+          floatingActionButton: _selection.active
+              ? null
+              : FloatingActionButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AssetEventEditScreen(asset: asset)),
+                  ),
+                  child: const Icon(Icons.add),
+                ),
+        );
+      },
     );
   }
 

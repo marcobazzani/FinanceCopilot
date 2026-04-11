@@ -198,6 +198,40 @@ void main() {
       final events = await service.getByAsset(assetId);
       expect(events, isEmpty);
     });
+
+    test('deleteMany empty list is a no-op', () async {
+      final assetId = await createAsset('Keep');
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100.0,
+        currency: 'EUR',
+      );
+      expect(await service.deleteMany([]), 0);
+      expect((await service.getByAsset(assetId)).length, 1);
+    });
+
+    test('deleteMany removes only the given event ids', () async {
+      final assetId = await createAsset('Multi');
+      final a = await service.create(
+        assetId: assetId, date: DateTime(2024, 1, 1),
+        type: EventType.buy, amount: 100.0, currency: 'EUR',
+      );
+      final b = await service.create(
+        assetId: assetId, date: DateTime(2024, 2, 1),
+        type: EventType.buy, amount: 200.0, currency: 'EUR',
+      );
+      final c = await service.create(
+        assetId: assetId, date: DateTime(2024, 3, 1),
+        type: EventType.buy, amount: 300.0, currency: 'EUR',
+      );
+
+      expect(await service.deleteMany([a, c]), 2);
+
+      final remaining = await service.getByAsset(assetId);
+      expect(remaining.map((e) => e.id), [b]);
+    });
   });
 
   group('event types', () {

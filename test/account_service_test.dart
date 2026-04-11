@@ -138,6 +138,39 @@ void main() {
     });
   });
 
+  group('deleteMany', () {
+    test('empty list is a no-op', () async {
+      await service.create(name: 'Keep', currency: 'EUR');
+      final n = await service.deleteMany([]);
+      expect(n, 0);
+      expect((await service.getAll()).length, 1);
+    });
+
+    test('removes multiple accounts and cascades their transactions', () async {
+      final a = await service.create(name: 'A', currency: 'EUR');
+      final b = await service.create(name: 'B', currency: 'EUR');
+      final keep = await service.create(name: 'Keep', currency: 'EUR');
+
+      for (final id in [a, b, keep]) {
+        await db.into(db.transactions).insert(TransactionsCompanion.insert(
+              accountId: id,
+              operationDate: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 1, 1),
+              amount: 100.0,
+            ));
+      }
+
+      final n = await service.deleteMany([a, b]);
+      expect(n, 2);
+
+      final remainingAccounts = await service.getAll();
+      expect(remainingAccounts.map((x) => x.id), [keep]);
+
+      final remainingTx = await db.select(db.transactions).get();
+      expect(remainingTx.map((t) => t.accountId).toSet(), {keep});
+    });
+  });
+
   group('reorder', () {
     test('reorder updates sortOrder for all accounts', () async {
       final id1 = await service.create(name: 'A', currency: 'EUR');

@@ -135,6 +135,67 @@ void main() {
     });
   });
 
+  group('deleteMany', () {
+    test('empty list is a no-op', () async {
+      await service.create(name: 'Keep', currency: 'EUR');
+      final n = await service.deleteMany([]);
+      expect(n, 0);
+      expect((await service.getAll()).length, 1);
+    });
+
+    test('removes multiple assets in one call', () async {
+      final a = await service.create(name: 'A', currency: 'EUR');
+      final b = await service.create(name: 'B', currency: 'EUR');
+      final c = await service.create(name: 'C', currency: 'EUR');
+
+      final n = await service.deleteMany([a, c]);
+      expect(n, 2);
+
+      final remaining = await service.getAll();
+      expect(remaining.map((x) => x.id), [b]);
+    });
+
+    test('cascades events, snapshots and prices for all deleted assets', () async {
+      final a = await service.create(name: 'A', currency: 'EUR');
+      final b = await service.create(name: 'B', currency: 'EUR');
+      final keep = await service.create(name: 'Keep', currency: 'EUR');
+
+      for (final id in [a, b, keep]) {
+        await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 1, 1),
+              type: EventType.buy,
+              amount: 100.0,
+            ));
+        await db.into(db.assetSnapshots).insert(AssetSnapshotsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 1),
+              value: 100.0,
+              invested: 90.0,
+              growth: 10.0,
+              growthPercent: 0.11,
+              afterTaxValue: 97.0,
+            ));
+        await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 1),
+              closePrice: 10.0,
+              currency: 'EUR',
+            ));
+      }
+
+      await service.deleteMany([a, b]);
+
+      final remainingEvents = await db.select(db.assetEvents).get();
+      expect(remainingEvents.map((e) => e.assetId).toSet(), {keep});
+      final remainingSnapshots = await db.select(db.assetSnapshots).get();
+      expect(remainingSnapshots.map((s) => s.assetId).toSet(), {keep});
+      final remainingPrices = await db.select(db.marketPrices).get();
+      expect(remainingPrices.map((p) => p.assetId).toSet(), {keep});
+    });
+  });
+
   group('reorder', () {
     test('reorder updates sortOrder', () async {
       final id1 = await service.create(name: 'A', currency: 'EUR');

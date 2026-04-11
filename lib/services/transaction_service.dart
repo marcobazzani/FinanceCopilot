@@ -71,6 +71,12 @@ class TransactionService {
     return (_db.delete(_db.transactions)..where((t) => t.id.equals(id))).go();
   }
 
+  Future<int> deleteMany(List<int> ids) {
+    if (ids.isEmpty) return Future.value(0);
+    _log.warning('deleteMany: ${ids.length} transactions');
+    return (_db.delete(_db.transactions)..where((t) => t.id.isIn(ids))).go();
+  }
+
   /// Batch-update balanceAfter for multiple transactions in a single DB transaction.
   Future<void> batchUpdateBalances(Map<int, double?> updates) async {
     await _db.batch((batch) {
