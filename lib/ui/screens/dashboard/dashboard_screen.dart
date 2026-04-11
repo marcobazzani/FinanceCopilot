@@ -18,7 +18,6 @@ import '../../../database/tables.dart';
 import '../../../database/providers.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/exchange_rate_service.dart';
-import '../../../services/investing_com_service.dart';
 import '../../../services/financial_health_service.dart';
 import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';

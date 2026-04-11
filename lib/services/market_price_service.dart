@@ -164,7 +164,17 @@ abstract class MarketPriceService {
     });
 
     _log.info('syncPrices: inserted ${prices.length} prices for $ticker');
+
+    // Notify subclass about today's price so it can populate in-memory caches
+    final todayKey = DateTime(today.year, today.month, today.day);
+    final todayPrice = prices[todayKey];
+    if (todayPrice != null) {
+      onTodayPriceSynced(asset.id, todayPrice, todayKey);
+    }
   }
+
+  /// Hook for subclasses to cache today's price in memory after sync.
+  void onTodayPriceSynced(int assetId, double price, DateTime date) {}
 
   // ──────────────────────────────────────────────
   // DB reads

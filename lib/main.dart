@@ -501,8 +501,24 @@ class _AppShellState extends ConsumerState<AppShell> {
         await db.customStatement('PRAGMA defer_foreign_keys = ON');
         for (final table in tables) {
           try {
+            // Use column intersection so schema differences (extra columns in
+            // either the source or target) don't cause INSERT failures.
+            final srcCols = (await db.customSelect('PRAGMA src.table_info("$table")').get())
+                .map((r) => r.read<String>('name'))
+                .toSet();
+            final dstCols = (await db.customSelect('PRAGMA main.table_info("$table")').get())
+                .map((r) => r.read<String>('name'))
+                .toSet();
+            final common = srcCols.intersection(dstCols);
+            if (common.isEmpty) {
+              _log.warning('_mergeRemoteDb: no common columns for $table, skipping');
+              continue;
+            }
+            final cols = common.map((c) => '"$c"').join(', ');
             await db.customStatement('DELETE FROM main."$table"');
-            await db.customStatement('INSERT INTO main."$table" SELECT * FROM src."$table"');
+            await db.customStatement(
+              'INSERT INTO main."$table" ($cols) SELECT $cols FROM src."$table"',
+            );
           } catch (e) {
             _log.warning('_mergeRemoteDb: failed to copy table $table: $e');
             rethrow;
@@ -522,30 +538,44 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// Full manual refresh: pull from Google Drive, then refresh market data.
   /// Keeps the `_isSyncing` spinner active for the entire duration so the UI
   /// reflects that work is in progress even during the Drive pull phase.
+  /// Each step is best-effort -- failures don't block subsequent steps.
   Future<void> _manualRefresh() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
     try {
+      // Update network status indicator
+      final online = await ref.read(networkMonitorProvider).check();
+      ref.read(networkOnlineProvider.notifier).state = online;
+
+      // Drive pull is best-effort
       final sync = ref.read(googleDriveSyncProvider);
       if (sync.isSignedIn) {
-        final pulled = await sync.pullIfNewerOnStartup();
-        if (pulled && mounted) {
-          ref.read(dbReloadTrigger.notifier).state++;
+        try {
+          final pulled = await sync.pullIfNewerOnStartup();
+          if (pulled && mounted) {
+            ref.read(dbReloadTrigger.notifier).state++;
+          }
+        } catch (e) {
+          _log.warning('Manual refresh: Drive pull failed, continuing: $e');
         }
       }
-      // _syncPrices manages its own _isSyncing flag via the early-return guard,
-      // but since we already set it, it will short-circuit. Inline the work instead.
-      final monitor = ref.read(networkMonitorProvider);
-      final online = await monitor.check();
-      ref.read(networkOnlineProvider.notifier).state = online;
-      if (online) {
-        _log.info('Manual refresh: syncing market data...');
+
+      // Market data sync is best-effort
+      _log.info('Manual refresh: syncing market data...');
+      try {
         await Future.wait([
           ref.read(marketPriceServiceProvider).syncPrices(forceToday: true),
           ref.read(exchangeRateServiceProvider).syncRates(force: true),
         ]);
         ref.read(priceRefreshCounter.notifier).state++;
+      } catch (e) {
+        _log.warning('Manual refresh: market sync failed: $e');
+      }
+
+      try {
         await ref.read(compositionServiceProvider).syncCompositions();
+      } catch (e) {
+        _log.warning('Manual refresh: composition sync failed: $e');
       }
     } catch (e) {
       _log.warning('Manual refresh error: $e');

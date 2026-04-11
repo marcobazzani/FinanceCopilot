@@ -99,12 +99,8 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   for (final asset in assets) {
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
-    // Use live price for current market values
-    double? price;
-    if (priceService is InvestingComService) {
-      price = await priceService.getLivePrice(asset.id);
-    }
-    price ??= await priceService.getPrice(asset.id, now);
+    // Use stored DB price (background sync keeps it fresh)
+    final price = await priceService.getPrice(asset.id, now);
     if (price == null) {
       _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
       continue;
@@ -184,12 +180,8 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
 
-    // Use live price (not stored in DB) for today's value
-    double? latestPrice;
-    if (priceService is InvestingComService) {
-      latestPrice = await priceService.getLivePrice(asset.id);
-    }
-    latestPrice ??= await priceService.getPrice(asset.id, today);
+    // Use stored DB price (background sync keeps it fresh)
+    final latestPrice = await priceService.getPrice(asset.id, today);
     if (latestPrice == null) {
       _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no price at all');
       continue;
@@ -202,7 +194,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       if (liveFx != null) {
         todayFx = liveFx;
       } else {
-        _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no live ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+        _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
       }
       prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
     }

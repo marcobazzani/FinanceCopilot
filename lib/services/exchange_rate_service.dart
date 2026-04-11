@@ -32,7 +32,7 @@ class ExchangeRateService {
   // ──────────────────────────────────────────────
 
   /// Sync exchange rates via Investing.com.
-  /// Stores the latest rate for each target currency as yesterday's date.
+  /// Stores the latest rate for each target currency as today's date.
   /// When [force] is true, re-fetches even if already up to date.
   Future<void> syncRates({bool force = false}) async {
     if (_investingService == null) {
@@ -47,10 +47,10 @@ class ExchangeRateService {
     }
     try {
       final lastDate = await getLastSyncDate();
-      final today = DateTime.now();
-      final yesterday = DateTime(today.year, today.month, today.day - 1);
+      final now = DateTime.now();
+      final storeDate = DateTime(now.year, now.month, now.day);
 
-      if (!force && lastDate != null && !lastDate.isBefore(yesterday)) {
+      if (!force && lastDate != null && !lastDate.isBefore(storeDate)) {
         _log.info('syncRates: already up to date (last=${formatYmd(lastDate)})');
         return;
       }
@@ -68,13 +68,13 @@ class ExchangeRateService {
         companions.add(ExchangeRatesCompanion(
           fromCurrency: const Value('EUR'),
           toCurrency: Value(currency),
-          date: Value(yesterday),
+          date: Value(storeDate),
           rate: Value(rate),
         ));
         companions.add(ExchangeRatesCompanion(
           fromCurrency: Value(currency),
           toCurrency: const Value('EUR'),
-          date: Value(yesterday),
+          date: Value(storeDate),
           rate: Value(1.0 / rate),
         ));
       }
@@ -85,7 +85,7 @@ class ExchangeRateService {
             batch.insert(_db.exchangeRates, c, onConflict: DoUpdate((_) => c));
           }
         });
-        _log.info('syncRates: stored ${companions.length} rates for ${formatYmd(yesterday)}');
+        _log.info('syncRates: stored ${companions.length} rates for ${formatYmd(storeDate)}');
       }
     } catch (e, stack) {
       _log.warning('syncRates: failed', e, stack);
