@@ -15,7 +15,6 @@ import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
-import 'services/build_info_service.dart';
 import 'services/import_service.dart';
 import 'services/db_transfer_service.dart';
 import 'services/demo_db_service.dart';
@@ -53,13 +52,12 @@ Stream<void> _userTableUpdates(AppDatabase db) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await BuildInfoService.load();
   await initLogging();
   await initializeDateFormatting();
   // Print key paths to stdout for easy access
   // ignore: avoid_print
   print('LOG: $logFilePath');
-  _log.info('FinanceCopilot v$appVersion ($appCommit) starting up');
+  _log.info('FinanceCopilot v$appVersionDisplay starting up');
   runApp(const ProviderScope(child: FinanceCopilotApp()));
 }
 
@@ -721,7 +719,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   ],
                   const SizedBox(height: 24),
                   Text(
-                    'v$appVersion${appCommit.isNotEmpty ? ' ($appCommit)' : ''}',
+                    'v$appVersionDisplay',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                     ),
@@ -874,7 +872,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'v$appVersion ($appCommit)',
+                              'v$appVersionDisplay',
                               style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(width: 4),
@@ -905,7 +903,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'v$appVersion ($appCommit)',
+                        'v$appVersionDisplay',
                         style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                       const SizedBox(width: 4),
