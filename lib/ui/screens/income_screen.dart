@@ -13,6 +13,9 @@ import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'import/import_screen.dart';
 import '../widgets/privacy_text.dart';
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 class IncomeScreen extends ConsumerStatefulWidget {
   const IncomeScreen({super.key});
@@ -24,10 +27,12 @@ class IncomeScreen extends ConsumerStatefulWidget {
 class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   String get _locale => ref.read(appLocaleProvider).value ?? Platform.localeName;
   final _focusNode = FocusNode();
+  final _selection = SelectionController<int>();
 
   @override
   void dispose() {
     _focusNode.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
@@ -171,78 +176,98 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
           _handlePaste();
         }
       },
-      child: Scaffold(
-        body: incomesAsync.when(
-          data: (incomes) {
-            if (incomes.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.payments, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    const SizedBox(height: 16),
-                    Text(s.noIncomeYet, textAlign: TextAlign.center),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: () => _showAddDialog(context, baseCurrency),
-                      icon: const Icon(Icons.add),
-                      label: Text(s.addIncomeTitle),
+      child: ListenableBuilder(
+        listenable: _selection,
+        builder: (ctx, _) {
+          final incomes = incomesAsync.value ?? const <Income>[];
+          _selection.setOrderedIds(incomes.map((i) => i.id).toList());
+          return Scaffold(
+            body: incomesAsync.when(
+              data: (incomes) {
+                if (incomes.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.payments, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        const SizedBox(height: 16),
+                        Text(s.noIncomeYet, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: () => _showAddDialog(context, baseCurrency),
+                          icon: const Icon(Icons.add),
+                          label: Text(s.addIncomeTitle),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }
+                  );
+                }
 
-            return ListView.separated(
-              itemCount: incomes.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (ctx, i) {
-                final income = incomes[i];
-                final sym = currencySymbol(income.currency);
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: _typeColor(context, income.type),
-                    child: Icon(
-                      _typeIcon(income.type),
-                      color: _typeIconColor(context, income.type),
-                    ),
-                  ),
-                  title: PrivacyText(
-                    '${amtFormat.format(income.amount)} $sym',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    '${dateFmt.format(income.date)} · ${_typeLabel(s, income.type)}',
-                  ),
-                  trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-                  onTap: () => _showEditDialog(context, income),
+                return ListView.separated(
+                  itemCount: incomes.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (ctx, i) {
+                    final income = incomes[i];
+                    final sym = currencySymbol(income.currency);
+                    return SelectableItem<int>(
+                      controller: _selection,
+                      id: income.id,
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: _typeColor(context, income.type),
+                          child: Icon(
+                            _typeIcon(income.type),
+                            color: _typeIconColor(context, income.type),
+                          ),
+                        ),
+                        title: PrivacyText(
+                          '${amtFormat.format(income.amount)} $sym',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          '${dateFmt.format(income.date)} · ${_typeLabel(s, income.type)}',
+                        ),
+                        trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                        onTap: () => _showEditDialog(context, income),
+                      ),
+                    );
+                  },
                 );
               },
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(s.error(e))),
-        ),
-        floatingActionButton: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FloatingActionButton.small(
-              heroTag: 'import',
-              tooltip: s.importFromFileTooltip,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ImportScreen(preselectedTarget: ImportTarget.income)),
-              ),
-              child: const Icon(Icons.file_upload),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text(s.error(e))),
             ),
-            const SizedBox(height: 8),
-            FloatingActionButton(
-              heroTag: 'add',
-              onPressed: () => _showAddDialog(context, baseCurrency),
-              child: const Icon(Icons.add),
-            ),
-          ],
-        ),
+            bottomNavigationBar: _selection.active
+                ? SelectionActionBar<int>(
+                    controller: _selection,
+                    visibleIds: incomes.map((i) => i.id).toList(),
+                    onDelete: (ids) => ref.read(incomeServiceProvider).deleteMany(ids.toList()),
+                  )
+                : null,
+            floatingActionButton: _selection.active
+                ? null
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FloatingActionButton.small(
+                        heroTag: 'import',
+                        tooltip: s.importFromFileTooltip,
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const ImportScreen(preselectedTarget: ImportTarget.income)),
+                        ),
+                        child: const Icon(Icons.file_upload),
+                      ),
+                      const SizedBox(height: 8),
+                      FloatingActionButton(
+                        heroTag: 'add',
+                        onPressed: () => _showAddDialog(context, baseCurrency),
+                        child: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+          );
+        },
       ),
     );
   }

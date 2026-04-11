@@ -99,6 +99,39 @@ void main() {
       expect(schedules, isEmpty);
     });
 
+    test('deleteMany empty list is a no-op', () async {
+      await service.create(
+        name: 'Keep', totalAmount: 100, currency: 'EUR',
+        startDate: DateTime(2024, 1, 1), endDate: DateTime(2024, 3, 1),
+      );
+      expect(await service.deleteMany([]), 0);
+      expect((await service.getAll()).length, 1);
+    });
+
+    test('deleteMany removes multiple schedules and their entries', () async {
+      final a = await service.create(
+        name: 'A', totalAmount: 300, currency: 'EUR',
+        startDate: DateTime(2024, 1, 1), endDate: DateTime(2024, 3, 1),
+      );
+      final b = await service.create(
+        name: 'B', totalAmount: 300, currency: 'EUR',
+        startDate: DateTime(2024, 1, 1), endDate: DateTime(2024, 3, 1),
+      );
+      final keep = await service.create(
+        name: 'Keep', totalAmount: 300, currency: 'EUR',
+        startDate: DateTime(2024, 1, 1), endDate: DateTime(2024, 3, 1),
+      );
+
+      expect(await service.deleteMany([a, b]), 2);
+
+      final remaining = await service.getAll();
+      expect(remaining.map((s) => s.id), [keep]);
+
+      // Entries for the deleted schedules are also gone.
+      final allEntries = await db.select(db.depreciationEntries).get();
+      expect(allEntries.every((e) => e.scheduleId == keep), isTrue);
+    });
+
     test('entries ordered asc by date', () async {
       final id = await service.create(
         name: 'Keyboard',

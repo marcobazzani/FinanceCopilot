@@ -809,6 +809,15 @@ class AppStrings {
   String get selectIntermediary    => _it ? 'Seleziona intermediario'   : 'Select Intermediary';
   String get close                 => _it ? 'Chiudi'                    : 'Close';
 
+  // ── Multi-select ─────────────────────────────────────────
+  String nSelected(int n)          => _it ? '$n selezionati'            : '$n selected';
+  String get selectAll             => _it ? 'Seleziona tutto'           : 'Select all';
+  String get deselectAll           => _it ? 'Deseleziona tutto'         : 'Deselect all';
+  String get bulkDeleteTitle       => _it ? 'Eliminare gli elementi?'   : 'Delete items?';
+  String bulkDeleteBody(int n)     => _it
+      ? 'Verranno eliminati $n elementi. Operazione irreversibile.'
+      : '$n items will be permanently deleted. This cannot be undone.';
+
   // ── DB Picker ────────────────────────────────────────────
   String get dbPickerTitle        => _it ? 'Apri un database'        : 'Open a Database';
   String get dbPickerOpenFile     => _it ? 'Apri file...'            : 'Open File...';

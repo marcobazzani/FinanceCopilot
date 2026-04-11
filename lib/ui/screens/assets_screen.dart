@@ -17,6 +17,9 @@ import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 class AssetsScreen extends ConsumerStatefulWidget {
   const AssetsScreen({super.key});
@@ -26,6 +29,14 @@ class AssetsScreen extends ConsumerStatefulWidget {
 }
 
 class _AssetsScreenState extends ConsumerState<AssetsScreen> {
+  final _selection = SelectionController<int>();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
@@ -37,7 +48,24 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     final convertedStats = ref.watch(convertedAssetStatsProvider).value ?? {};
     final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (lbCtx, _) {
+        // Build the id list in rendered order: grouped by intermediary, then
+        // unassigned last. This matches what _buildGroup actually displays
+        // and is what range-select on long-press needs.
+        final assets = assetsAsync.value ?? const <Asset>[];
+        final intermediariesNow = intermediariesAsync.value ?? const <Intermediary>[];
+        final grouping = <int?, List<int>>{};
+        for (final a in assets) {
+          (grouping[a.intermediaryId] ??= []).add(a.id);
+        }
+        final allAssetIds = <int>[
+          for (final i in intermediariesNow) ...?grouping[i.id],
+          ...?grouping[null],
+        ];
+        _selection.setOrderedIds(allAssetIds);
+        return Scaffold(
       body: assetsAsync.when(
         data: (assets) {
           if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
@@ -93,25 +121,36 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'add_intermediary_assets',
-            onPressed: () => _showManageIntermediariesDialog(context),
-            child: const Icon(Icons.business),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'add_asset',
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => _CreateAssetDialog(ref: ref),
+      bottomNavigationBar: _selection.active
+          ? SelectionActionBar<int>(
+              controller: _selection,
+              visibleIds: allAssetIds,
+              onDelete: (ids) => ref.read(assetServiceProvider).deleteMany(ids.toList()),
+            )
+          : null,
+      floatingActionButton: _selection.active
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'add_intermediary_assets',
+                  onPressed: () => _showManageIntermediariesDialog(context),
+                  child: const Icon(Icons.business),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton(
+                  heroTag: 'add_asset',
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (ctx) => _CreateAssetDialog(ref: ref),
+                  ),
+                  child: const Icon(Icons.add),
+                ),
+              ],
             ),
-            child: const Icon(Icons.add),
-          ),
-        ],
-      ),
+    );
+      },
     );
   }
 
@@ -157,24 +196,28 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         ),
         ...assets.map((asset) {
           final stat = stats[asset.id];
-          return _AssetTile(
+          return SelectableItem<int>(
             key: ValueKey(asset.id),
-            asset: asset,
-            stats: stat,
-            convertedInvested: convertedStats[asset.id],
-            marketValue: marketValues[asset.id],
-            baseCurrency: baseCurrency,
-            locale: locale,
-            strings: s,
-            intermediaries: intermediaries,
-            onMove: (newId) {
-              if (newId != asset.intermediaryId) {
-                ref.read(intermediaryServiceProvider).moveAsset(asset.id, newId);
-              }
-            },
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
+            controller: _selection,
+            id: asset.id,
+            child: _AssetTile(
+              asset: asset,
+              stats: stat,
+              convertedInvested: convertedStats[asset.id],
+              marketValue: marketValues[asset.id],
+              baseCurrency: baseCurrency,
+              locale: locale,
+              strings: s,
+              intermediaries: intermediaries,
+              onMove: (newId) {
+                if (newId != asset.intermediaryId) {
+                  ref.read(intermediaryServiceProvider).moveAsset(asset.id, newId);
+                }
+              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
+              ),
             ),
           );
         }),
@@ -339,7 +382,6 @@ class _AssetTile extends StatelessWidget {
   final void Function(int? newIntermediaryId) onMove;
 
   const _AssetTile({
-    super.key,
     required this.asset,
     required this.stats,
     this.convertedInvested,

@@ -85,6 +85,15 @@ class AssetService {
     return (_db.delete(_db.assets)..where((a) => a.id.equals(id))).go();
   }
 
+  Future<int> deleteMany(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    _log.warning('deleteMany: ${ids.length} assets (cascade: events, snapshots, prices)');
+    await (_db.delete(_db.assetEvents)..where((e) => e.assetId.isIn(ids))).go();
+    await (_db.delete(_db.assetSnapshots)..where((s) => s.assetId.isIn(ids))).go();
+    await (_db.delete(_db.marketPrices)..where((p) => p.assetId.isIn(ids))).go();
+    return (_db.delete(_db.assets)..where((a) => a.id.isIn(ids))).go();
+  }
+
   Future<void> reorder(List<int> orderedIds) async {
     _log.info('reorder: ${orderedIds.length} assets');
     await _db.batch((batch) {
