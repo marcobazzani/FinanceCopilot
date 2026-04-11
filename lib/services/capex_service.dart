@@ -109,6 +109,20 @@ class CapexService {
     return (_db.delete(_db.depreciationSchedules)..where((s) => s.id.equals(id))).go();
   }
 
+  /// Delete multiple schedules in one transaction. Delegates to [delete] per id
+  /// so the buffer/entry cascade logic lives in exactly one place.
+  Future<int> deleteMany(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    _log.warning('deleteMany: ${ids.length} schedules');
+    return _db.transaction(() async {
+      var total = 0;
+      for (final id in ids) {
+        total += await delete(id);
+      }
+      return total;
+    });
+  }
+
   // ── Entry generation ──
   // Entries reflect (totalAmount - reimbursements) spread across steps.
 

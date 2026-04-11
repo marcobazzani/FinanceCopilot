@@ -12,6 +12,9 @@ import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
@@ -21,7 +24,13 @@ class AccountsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
-  bool _isDragging = false;
+  final _selection = SelectionController<int>();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +42,24 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final convertedStats = ref.watch(convertedAccountStatsProvider).value ?? {};
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (lbCtx, _) {
+        // Build the id list in rendered order: grouped by intermediary, then
+        // unassigned last. This matches what _buildGroup actually displays
+        // and is what range-select on long-press needs.
+        final accounts = accountsAsync.value ?? const <Account>[];
+        final intermediaries = intermediariesAsync.value ?? const <Intermediary>[];
+        final grouping = <int?, List<int>>{};
+        for (final a in accounts) {
+          (grouping[a.intermediaryId] ??= []).add(a.id);
+        }
+        final allAccountIds = <int>[
+          for (final i in intermediaries) ...?grouping[i.id],
+          ...?grouping[null],
+        ];
+        _selection.setOrderedIds(allAccountIds);
+        return Scaffold(
       body: accountsAsync.when(
         data: (accounts) {
           if (accounts.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
@@ -74,12 +100,13 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
             padding: const EdgeInsets.only(bottom: 80),
             children: [
               for (final groupId in groupOrder)
-                if (_isDragging || (grouped[groupId]?.isNotEmpty ?? false))
+                if (grouped[groupId]?.isNotEmpty ?? false)
                   _buildGroup(
                     context, s, groupId,
                     groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
                     grouped[groupId] ?? [],
                     stats, convertedStats, baseCurrency, locale,
+                    intermediaries,
                   ),
             ],
           );
@@ -87,22 +114,33 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'add_intermediary',
-            onPressed: () => _showManageIntermediariesDialog(context),
-            child: const Icon(Icons.business),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'add_account',
-            onPressed: () => _showCreateDialog(context),
-            child: const Icon(Icons.add),
-          ),
-        ],
-      ),
+      bottomNavigationBar: _selection.active
+          ? SelectionActionBar<int>(
+              controller: _selection,
+              visibleIds: allAccountIds,
+              onDelete: (ids) => ref.read(accountServiceProvider).deleteMany(ids.toList()),
+            )
+          : null,
+      floatingActionButton: _selection.active
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'add_intermediary',
+                  onPressed: () => _showManageIntermediariesDialog(context),
+                  child: const Icon(Icons.business),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton(
+                  heroTag: 'add_account',
+                  onPressed: () => _showCreateDialog(context),
+                  child: const Icon(Icons.add),
+                ),
+              ],
+            ),
+    );
+      },
     );
   }
 
@@ -116,106 +154,63 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     Map<int, double?> convertedStats,
     String baseCurrency,
     String locale,
+    List<Intermediary> intermediaries,
   ) {
     final title = intermediary?.name ?? s.unassigned;
 
-    return DragTarget<_DraggedAccount>(
-      onWillAcceptWithDetails: (details) => details.data.currentIntermediaryId != groupId,
-      onAcceptWithDetails: (details) {
-        ref.read(intermediaryServiceProvider).moveAccount(details.data.accountId, groupId);
-      },
-      builder: (context, candidateData, rejectedData) {
-        final isHovering = candidateData.isNotEmpty;
-        return Container(
-          color: isHovering ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      intermediary != null ? Icons.business : Icons.folder_open,
-                      size: 18,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '$title (${accounts.length})',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    if (intermediary != null)
-                      PopupMenuButton<String>(
-                        iconSize: 22,
-                        itemBuilder: (_) => [
-                          PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
-                          PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
-                        ],
-                        onSelected: (v) {
-                          if (v == 'edit') _showIntermediaryDialog(context, intermediary: intermediary);
-                          if (v == 'delete') _confirmDeleteIntermediary(context, intermediary);
-                        },
-                      ),
-                  ],
+              Icon(
+                intermediary != null ? Icons.business : Icons.folder_open,
+                size: 18,
+                color: Colors.grey,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$title (${accounts.length})',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-              ...accounts.map((account) {
-                  return LongPressDraggable<_DraggedAccount>(
-                    delay: const Duration(milliseconds: 150),
-                    data: _DraggedAccount(account.id, account.intermediaryId),
-                    onDragStarted: () => setState(() => _isDragging = true),
-                    onDragEnd: (_) => setState(() => _isDragging = false),
-                    onDraggableCanceled: (_, _) => setState(() => _isDragging = false),
-                    feedback: Material(
-                      elevation: 4,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(account.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.3,
-                      child: _AccountTile(
-                        account: account,
-                        stats: stats[account.id],
-                        convertedBalance: convertedStats[account.id],
-                        baseCurrency: baseCurrency,
-                        locale: locale,
-                        onTap: () {},
-                      ),
-                    ),
-                    child: _AccountTile(
-                      key: ValueKey(account.id),
-                      account: account,
-                      stats: stats[account.id],
-                      convertedBalance: convertedStats[account.id],
-                      baseCurrency: baseCurrency,
-                      locale: locale,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AccountDetailScreen(account: account),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              const Divider(height: 1),
             ],
           ),
-        );
-      },
+        ),
+        ...accounts.map((account) {
+          return SelectableItem<int>(
+            key: ValueKey(account.id),
+            controller: _selection,
+            id: account.id,
+            child: _AccountTile(
+              account: account,
+              stats: stats[account.id],
+              convertedBalance: convertedStats[account.id],
+              baseCurrency: baseCurrency,
+              locale: locale,
+              intermediaries: intermediaries,
+              onMove: (newId) {
+                if (newId != account.intermediaryId) {
+                  ref.read(intermediaryServiceProvider).moveAccount(account.id, newId);
+                }
+              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AccountDetailScreen(account: account),
+                ),
+              ),
+            ),
+          );
+        }),
+        const Divider(height: 1),
+      ],
     );
   }
 
@@ -423,12 +418,6 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
   }
 }
 
-class _DraggedAccount {
-  final int accountId;
-  final int? currentIntermediaryId;
-  const _DraggedAccount(this.accountId, this.currentIntermediaryId);
-}
-
 class _AccountTile extends ConsumerWidget {
   final Account account;
   final AccountStats? stats;
@@ -436,15 +425,18 @@ class _AccountTile extends ConsumerWidget {
   final String baseCurrency;
   final String locale;
   final VoidCallback onTap;
+  final List<Intermediary> intermediaries;
+  final void Function(int? newIntermediaryId) onMove;
 
   const _AccountTile({
-    super.key,
     required this.account,
     required this.stats,
     this.convertedBalance,
     required this.baseCurrency,
     required this.locale,
     required this.onTap,
+    required this.intermediaries,
+    required this.onMove,
   });
 
   @override
@@ -540,7 +532,46 @@ class _AccountTile extends ConsumerWidget {
               ],
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+            PopupMenuButton<int?>(
+              icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
+              tooltip: s.selectIntermediary,
+              itemBuilder: (_) => <PopupMenuEntry<int?>>[
+                PopupMenuItem<int?>(
+                  enabled: false,
+                  child: Text(
+                    s.selectIntermediary,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                for (final i in intermediaries)
+                  PopupMenuItem<int?>(
+                    value: i.id,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.business, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(i.name)),
+                        if (account.intermediaryId == i.id)
+                          const Icon(Icons.check, size: 18),
+                      ],
+                    ),
+                  ),
+                PopupMenuItem<int?>(
+                  value: null,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.folder_open, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(s.unassigned)),
+                      if (account.intermediaryId == null)
+                        const Icon(Icons.check, size: 18),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: onMove,
+            ),
           ],
         ),
       ),

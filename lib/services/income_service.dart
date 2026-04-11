@@ -68,6 +68,12 @@ class IncomeService {
         .go();
   }
 
+  Future<int> deleteMany(List<int> ids) {
+    if (ids.isEmpty) return Future.value(0);
+    _log.warning('deleteMany: ${ids.length} incomes');
+    return (_db.delete(_db.incomes)..where((i) => i.id.isIn(ids))).go();
+  }
+
   Future<void> bulkCreate(List<IncomesCompanion> entries) async {
     _log.info('bulkCreate: ${entries.length} entries');
     await _db.batch((batch) {

@@ -73,6 +73,17 @@ class IncomeAdjustmentService {
         .go();
   }
 
+  Future<int> deleteMany(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    _log.warning('deleteMany: ${ids.length} income adjustments (cascade: expenses)');
+    await (_db.delete(_db.incomeAdjustmentExpenses)
+          ..where((e) => e.adjustmentId.isIn(ids)))
+        .go();
+    return (_db.delete(_db.incomeAdjustments)
+          ..where((a) => a.id.isIn(ids)))
+        .go();
+  }
+
   // ── Expenses CRUD ──
 
   Stream<List<IncomeAdjustmentExpense>> watchExpenses(int adjustmentId) {

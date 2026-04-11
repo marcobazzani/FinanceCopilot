@@ -114,6 +114,45 @@ void main() {
       final allExpenses = await db.select(db.incomeAdjustmentExpenses).get();
       expect(allExpenses, isEmpty);
     });
+
+    test('deleteMany empty list is a no-op', () async {
+      await service.create(
+        name: 'Keep', totalAmount: 1000, currency: 'EUR',
+        incomeDate: DateTime(2024, 1, 1),
+      );
+      expect(await service.deleteMany([]), 0);
+      expect((await service.getAll()).length, 1);
+    });
+
+    test('deleteMany removes multiple adjustments and cascades expenses', () async {
+      final a = await service.create(
+        name: 'A', totalAmount: 1000, currency: 'EUR',
+        incomeDate: DateTime(2024, 1, 1),
+      );
+      final b = await service.create(
+        name: 'B', totalAmount: 1000, currency: 'EUR',
+        incomeDate: DateTime(2024, 1, 1),
+      );
+      final keep = await service.create(
+        name: 'Keep', totalAmount: 1000, currency: 'EUR',
+        incomeDate: DateTime(2024, 1, 1),
+      );
+
+      for (final id in [a, b, keep]) {
+        await service.addExpense(
+          adjustmentId: id,
+          date: DateTime(2024, 2, 1),
+          amount: 100,
+          description: 'x',
+        );
+      }
+
+      expect(await service.deleteMany([a, b]), 2);
+      expect((await service.getAll()).map((x) => x.id), [keep]);
+
+      final remainingExpenses = await db.select(db.incomeAdjustmentExpenses).get();
+      expect(remainingExpenses.every((e) => e.adjustmentId == keep), isTrue);
+    });
   });
 
   group('Expenses CRUD', () {
