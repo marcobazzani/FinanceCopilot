@@ -121,6 +121,18 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     }
   }
 
+  // Add market price dates so sortedDays is dense for FX-adjusted ATH
+  if (assetIds.isNotEmpty) {
+    final pricePlaceholders = assetIds.map((_) => '?').join(',');
+    final priceDateRows = await db.customSelect(
+      'SELECT DISTINCT date FROM market_prices WHERE asset_id IN ($pricePlaceholders)',
+      variables: assetIds.map((id) => Variable.withInt(id)).toList(),
+    ).get();
+    for (final row in priceDateRows) {
+      allDayKeys.add(row.read<int>('date'));
+    }
+  }
+
   // Need actual data beyond just today's placeholder
   if (allDayKeys.length <= 1 && perAccount.isEmpty && perAssetDeltas.isEmpty) return null;
 
@@ -189,6 +201,72 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   // Batch-fetch all price histories (with revalue fallback for missing assets)
   final allPriceHistories = await marketPriceService.getPriceHistoryBatch(assetIds.toList());
 
+  // Batch-fetch FX rates via SQL for all asset currencies (direct + inverse)
+  final assetCurrencies = activeAssets
+      .where((a) => a.currency != baseCurrency && perAssetDeltas.containsKey(a.id))
+      .map((a) => a.currency)
+      .toSet();
+  final fxBatch = <String, List<(int, double)>>{}; // currency -> sorted [(dayKey, rate)]
+  if (assetCurrencies.isNotEmpty) {
+    final currList = assetCurrencies.toList();
+    final currPlaceholders = currList.map((_) => '?').join(',');
+    final fxRows = await db.customSelect(
+      'SELECT from_currency, to_currency, date, rate FROM exchange_rates '
+      'WHERE (from_currency IN ($currPlaceholders) AND to_currency = ?) '
+      'OR (from_currency = ? AND to_currency IN ($currPlaceholders)) '
+      'ORDER BY date',
+      variables: [
+        ...currList.map((c) => Variable.withString(c)),
+        Variable.withString(baseCurrency),
+        Variable.withString(baseCurrency),
+        ...currList.map((c) => Variable.withString(c)),
+      ],
+    ).get();
+    // Merge direct + inverse per currency, preferring direct on same date
+    final directByDate = <String, Map<int, double>>{};
+    final inverseByDate = <String, Map<int, double>>{};
+    for (final row in fxRows) {
+      final from = row.read<String>('from_currency');
+      final to = row.read<String>('to_currency');
+      final date = row.read<int>('date');
+      final rate = row.read<double>('rate');
+      if (to == baseCurrency && assetCurrencies.contains(from)) {
+        directByDate.putIfAbsent(from, () => {})[date] = rate;
+      } else if (from == baseCurrency && assetCurrencies.contains(to) && rate > 0) {
+        inverseByDate.putIfAbsent(to, () => {})[date] = 1.0 / rate;
+      }
+    }
+    for (final curr in assetCurrencies) {
+      // Merge: start with inverse, overlay direct (direct wins on same date)
+      final merged = <int, double>{
+        ...?inverseByDate[curr],
+        ...?directByDate[curr],
+      };
+      if (merged.isNotEmpty) {
+        final sorted = merged.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+        fxBatch[curr] = sorted.map((e) => (e.key, e.value)).toList();
+      }
+    }
+  }
+
+  // Sync FX rate lookup: binary search for latest rate <= dayKey.
+  // Returns null if no data found (caller must fall back to async resolver).
+  double? lookupFx(String currency, int dayKey) {
+    if (currency == baseCurrency) return 1.0;
+    final list = fxBatch[currency];
+    if (list == null || list.isEmpty || list.first.$1 > dayKey) return null;
+    var lo = 0, hi = list.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) ~/ 2;
+      if (list[mid].$1 <= dayKey) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return list[lo].$2;
+  }
+
   final assetMarketSeries = <_Series>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
@@ -208,18 +286,17 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       }
     }
 
+    // Iterate all global dates (like accounts do) so FX rates are applied
+    // daily, not just on price-data days. This fixes stale FX in ATH.
     final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
-    final assetDays = <int>{
-      ...perAssetDeltas[asset.id]!.keys,
-      ...priceMap.keys.where((dk) => dk >= firstEventKey),
-    }.toList()..sort();
-
     final spots = <FlSpot>[];
     var cumQuantity = 0.0;
     double? lastPrice;
     var started = false;
 
-    for (final dayKey in assetDays) {
+    for (final dayKey in sortedDays) {
+      // Skip dates before this asset's first event for performance
+      if (!started && dayKey < firstEventKey) continue;
       if (qtyDeltaMap.containsKey(dayKey)) {
         cumQuantity += qtyDeltaMap[dayKey]!;
         started = true;
@@ -229,7 +306,9 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       }
       if (!started) continue;
       if (lastPrice != null && cumQuantity > 0) {
-        final fxRate = await rates.getRate(asset.currency, dayKey);
+        // Batch lookup; fall back to async resolver for EUR cross-rates
+        final fxRate = lookupFx(asset.currency, dayKey) ??
+            await rates.getRate(asset.currency, dayKey);
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
         final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
