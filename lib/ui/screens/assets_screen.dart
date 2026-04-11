@@ -25,15 +25,7 @@ class AssetsScreen extends ConsumerStatefulWidget {
   ConsumerState<AssetsScreen> createState() => _AssetsScreenState();
 }
 
-class _DraggedAsset {
-  final int assetId;
-  final int? currentIntermediaryId;
-  const _DraggedAsset(this.assetId, this.currentIntermediaryId);
-}
-
 class _AssetsScreenState extends ConsumerState<AssetsScreen> {
-  bool _isDragging = false;
-
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
@@ -87,12 +79,13 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             padding: const EdgeInsets.only(bottom: 80),
             children: [
               for (final groupId in groupOrder)
-                if (_isDragging || (grouped[groupId]?.isNotEmpty ?? false))
+                if (grouped[groupId]?.isNotEmpty ?? false)
                   _buildGroup(
                     context, s, groupId,
                     groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
                     grouped[groupId] ?? [],
                     stats, convertedStats, marketValues, baseCurrency, locale,
+                    intermediaries,
                   ),
             ],
           );
@@ -133,103 +126,60 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     Map<int, double> marketValues,
     String baseCurrency,
     String locale,
+    List<Intermediary> intermediaries,
   ) {
     final title = intermediary?.name ?? s.unassigned;
 
-    return DragTarget<_DraggedAsset>(
-      onWillAcceptWithDetails: (details) => details.data.currentIntermediaryId != groupId,
-      onAcceptWithDetails: (details) {
-        ref.read(intermediaryServiceProvider).moveAsset(details.data.assetId, groupId);
-      },
-      builder: (context, candidateData, rejectedData) {
-        final isHovering = candidateData.isNotEmpty;
-        return Container(
-          color: isHovering ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      intermediary != null ? Icons.business : Icons.folder_open,
-                      size: 18,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '$title (${assets.length})',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    if (intermediary != null)
-                      PopupMenuButton<String>(
-                        iconSize: 22,
-                        itemBuilder: (_) => [
-                          PopupMenuItem(value: 'edit', child: Text(s.editIntermediary)),
-                          PopupMenuItem(value: 'delete', child: Text(s.deleteIntermediary)),
-                        ],
-                        onSelected: (v) {
-                          if (v == 'edit') _showIntermediaryDialog(context, intermediary: intermediary);
-                          if (v == 'delete') _confirmDeleteIntermediary(context, intermediary);
-                        },
-                      ),
-                  ],
+              Icon(
+                intermediary != null ? Icons.business : Icons.folder_open,
+                size: 18,
+                color: Colors.grey,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$title (${assets.length})',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-              ...assets.map((asset) {
-                  final stat = stats[asset.id];
-                  return LongPressDraggable<_DraggedAsset>(
-                    delay: const Duration(milliseconds: 150),
-                    data: _DraggedAsset(asset.id, asset.intermediaryId),
-                    onDragStarted: () => setState(() => _isDragging = true),
-                    onDragEnd: (_) => setState(() => _isDragging = false),
-                    onDraggableCanceled: (_, _) => setState(() => _isDragging = false),
-                    feedback: Material(
-                      elevation: 4,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(asset.ticker ?? asset.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.3,
-                      child: _AssetTile(
-                        asset: asset, stats: stat,
-                        convertedInvested: convertedStats[asset.id],
-                        marketValue: marketValues[asset.id],
-                        baseCurrency: baseCurrency, locale: locale, strings: s,
-                        onTap: () {},
-                      ),
-                    ),
-                    child: _AssetTile(
-                      key: ValueKey(asset.id),
-                      asset: asset, stats: stat,
-                      convertedInvested: convertedStats[asset.id],
-                      marketValue: marketValues[asset.id],
-                      baseCurrency: baseCurrency, locale: locale, strings: s,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
-                      ),
-                    ),
-                  );
-                }),
-              const Divider(height: 1),
             ],
           ),
-        );
-      },
+        ),
+        ...assets.map((asset) {
+          final stat = stats[asset.id];
+          return _AssetTile(
+            key: ValueKey(asset.id),
+            asset: asset,
+            stats: stat,
+            convertedInvested: convertedStats[asset.id],
+            marketValue: marketValues[asset.id],
+            baseCurrency: baseCurrency,
+            locale: locale,
+            strings: s,
+            intermediaries: intermediaries,
+            onMove: (newId) {
+              if (newId != asset.intermediaryId) {
+                ref.read(intermediaryServiceProvider).moveAsset(asset.id, newId);
+              }
+            },
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
+            ),
+          );
+        }),
+        const Divider(height: 1),
+      ],
     );
   }
 
@@ -385,6 +335,8 @@ class _AssetTile extends StatelessWidget {
   final String locale;
   final VoidCallback onTap;
   final AppStrings strings;
+  final List<Intermediary> intermediaries;
+  final void Function(int? newIntermediaryId) onMove;
 
   const _AssetTile({
     super.key,
@@ -396,6 +348,8 @@ class _AssetTile extends StatelessWidget {
     required this.locale,
     required this.onTap,
     required this.strings,
+    required this.intermediaries,
+    required this.onMove,
   });
 
   @override
@@ -544,7 +498,46 @@ class _AssetTile extends StatelessWidget {
               ],
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+            PopupMenuButton<int?>(
+              icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
+              tooltip: strings.selectIntermediary,
+              itemBuilder: (_) => <PopupMenuEntry<int?>>[
+                PopupMenuItem<int?>(
+                  enabled: false,
+                  child: Text(
+                    strings.selectIntermediary,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                for (final i in intermediaries)
+                  PopupMenuItem<int?>(
+                    value: i.id,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.business, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(i.name)),
+                        if (asset.intermediaryId == i.id)
+                          const Icon(Icons.check, size: 18),
+                      ],
+                    ),
+                  ),
+                PopupMenuItem<int?>(
+                  value: null,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.folder_open, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(strings.unassigned)),
+                      if (asset.intermediaryId == null)
+                        const Icon(Icons.check, size: 18),
+                    ],
+                  ),
+                ),
+              ],
+              onSelected: onMove,
+            ),
           ],
         ),
       ),
