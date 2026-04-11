@@ -158,6 +158,39 @@ void main() {
       final txs = await service.getByAccount(accountId);
       expect(txs, isEmpty);
     });
+
+    test('deleteMany empty list is a no-op', () async {
+      final accountId = await createAccount('Keep');
+      await service.create(
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 1),
+        amount: 100.0,
+        currency: 'EUR',
+      );
+      expect(await service.deleteMany([]), 0);
+      expect((await service.getByAccount(accountId)).length, 1);
+    });
+
+    test('deleteMany removes only the given transaction ids', () async {
+      final accountId = await createAccount('Multi');
+      final a = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 1),
+        amount: 100.0, currency: 'EUR',
+      );
+      final b = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 2),
+        amount: 200.0, currency: 'EUR',
+      );
+      final c = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 3),
+        amount: 300.0, currency: 'EUR',
+      );
+
+      expect(await service.deleteMany([a, c]), 2);
+
+      final remaining = await service.getByAccount(accountId);
+      expect(remaining.map((t) => t.id), [b]);
+    });
   });
 
   group('batchUpdateBalances', () {

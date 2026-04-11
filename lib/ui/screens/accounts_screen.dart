@@ -12,6 +12,9 @@ import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
@@ -21,6 +24,14 @@ class AccountsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountsScreenState extends ConsumerState<AccountsScreen> {
+  final _selection = SelectionController<int>();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
@@ -31,7 +42,24 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final convertedStats = ref.watch(convertedAccountStatsProvider).value ?? {};
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (lbCtx, _) {
+        // Build the id list in rendered order: grouped by intermediary, then
+        // unassigned last. This matches what _buildGroup actually displays
+        // and is what range-select on long-press needs.
+        final accounts = accountsAsync.value ?? const <Account>[];
+        final intermediaries = intermediariesAsync.value ?? const <Intermediary>[];
+        final grouping = <int?, List<int>>{};
+        for (final a in accounts) {
+          (grouping[a.intermediaryId] ??= []).add(a.id);
+        }
+        final allAccountIds = <int>[
+          for (final i in intermediaries) ...?grouping[i.id],
+          ...?grouping[null],
+        ];
+        _selection.setOrderedIds(allAccountIds);
+        return Scaffold(
       body: accountsAsync.when(
         data: (accounts) {
           if (accounts.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
@@ -86,22 +114,33 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'add_intermediary',
-            onPressed: () => _showManageIntermediariesDialog(context),
-            child: const Icon(Icons.business),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: 'add_account',
-            onPressed: () => _showCreateDialog(context),
-            child: const Icon(Icons.add),
-          ),
-        ],
-      ),
+      bottomNavigationBar: _selection.active
+          ? SelectionActionBar<int>(
+              controller: _selection,
+              visibleIds: allAccountIds,
+              onDelete: (ids) => ref.read(accountServiceProvider).deleteMany(ids.toList()),
+            )
+          : null,
+      floatingActionButton: _selection.active
+          ? null
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'add_intermediary',
+                  onPressed: () => _showManageIntermediariesDialog(context),
+                  child: const Icon(Icons.business),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton(
+                  heroTag: 'add_account',
+                  onPressed: () => _showCreateDialog(context),
+                  child: const Icon(Icons.add),
+                ),
+              ],
+            ),
+    );
+      },
     );
   }
 
@@ -145,23 +184,27 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
           ),
         ),
         ...accounts.map((account) {
-          return _AccountTile(
+          return SelectableItem<int>(
             key: ValueKey(account.id),
-            account: account,
-            stats: stats[account.id],
-            convertedBalance: convertedStats[account.id],
-            baseCurrency: baseCurrency,
-            locale: locale,
-            intermediaries: intermediaries,
-            onMove: (newId) {
-              if (newId != account.intermediaryId) {
-                ref.read(intermediaryServiceProvider).moveAccount(account.id, newId);
-              }
-            },
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AccountDetailScreen(account: account),
+            controller: _selection,
+            id: account.id,
+            child: _AccountTile(
+              account: account,
+              stats: stats[account.id],
+              convertedBalance: convertedStats[account.id],
+              baseCurrency: baseCurrency,
+              locale: locale,
+              intermediaries: intermediaries,
+              onMove: (newId) {
+                if (newId != account.intermediaryId) {
+                  ref.read(intermediaryServiceProvider).moveAccount(account.id, newId);
+                }
+              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AccountDetailScreen(account: account),
+                ),
               ),
             ),
           );
@@ -386,7 +429,6 @@ class _AccountTile extends ConsumerWidget {
   final void Function(int? newIntermediaryId) onMove;
 
   const _AccountTile({
-    super.key,
     required this.account,
     required this.stats,
     this.convertedBalance,

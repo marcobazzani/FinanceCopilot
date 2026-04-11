@@ -88,6 +88,23 @@ void main() {
       final all = await service.getAll();
       expect(all, isEmpty);
     });
+
+    test('deleteMany empty list is a no-op', () async {
+      await service.create(date: DateTime(2024, 1, 1), amount: 1000, currency: 'EUR');
+      expect(await service.deleteMany([]), 0);
+      expect((await service.getAll()).length, 1);
+    });
+
+    test('deleteMany removes only the given income ids', () async {
+      final a = await service.create(date: DateTime(2024, 1, 1), amount: 100, currency: 'EUR');
+      final b = await service.create(date: DateTime(2024, 1, 2), amount: 200, currency: 'EUR');
+      final c = await service.create(date: DateTime(2024, 1, 3), amount: 300, currency: 'EUR');
+
+      expect(await service.deleteMany([a, c]), 2);
+
+      final remaining = await service.getAll();
+      expect(remaining.map((i) => i.id), [b]);
+    });
   });
 
   group('Bulk create', () {

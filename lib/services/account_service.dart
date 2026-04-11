@@ -84,6 +84,14 @@ class AccountService {
     return (_db.delete(_db.accounts)..where((a) => a.id.equals(id))).go();
   }
 
+  Future<int> deleteMany(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    _log.warning('deleteMany: ${ids.length} accounts (cascade: transactions, import configs)');
+    await (_db.delete(_db.transactions)..where((t) => t.accountId.isIn(ids))).go();
+    await (_db.delete(_db.importConfigs)..where((c) => c.accountId.isIn(ids))).go();
+    return (_db.delete(_db.accounts)..where((a) => a.id.isIn(ids))).go();
+  }
+
   /// Reorder accounts by updating sortOrder for each account.
   Future<void> reorder(List<int> orderedIds) async {
     _log.info('reorder: ${orderedIds.length} accounts');

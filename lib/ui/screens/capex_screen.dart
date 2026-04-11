@@ -13,6 +13,9 @@ import 'income_adj_detail_screen.dart';
 import 'income_adj_edit_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/privacy_text.dart';
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 class CapexScreen extends ConsumerWidget {
   const CapexScreen({super.key});
@@ -50,62 +53,95 @@ class CapexScreen extends ConsumerWidget {
 // Spread tab (existing CAPEX adjustments)
 // ════════════════════════════════════════════════════
 
-class _SpreadTab extends ConsumerWidget {
+class _SpreadTab extends ConsumerStatefulWidget {
   const _SpreadTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SpreadTab> createState() => _SpreadTabState();
+}
+
+class _SpreadTabState extends ConsumerState<_SpreadTab> {
+  final _selection = SelectionController<int>();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final schedulesAsync = ref.watch(capexSchedulesProvider);
     final statsAsync = ref.watch(capexStatsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
 
-    return Scaffold(
-      body: schedulesAsync.when(
-        data: (schedules) {
-          if (schedules.isEmpty) {
-            return Center(
-              child: Text(s.noSpreadAdjustments,
-                  textAlign: TextAlign.center),
-            );
-          }
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (ctx, _) {
+        final schedules = schedulesAsync.value ?? const <DepreciationSchedule>[];
+        _selection.setOrderedIds(schedules.map((s) => s.id).toList());
+        return Scaffold(
+          body: schedulesAsync.when(
+            data: (schedules) {
+              if (schedules.isEmpty) {
+                return Center(
+                  child: Text(s.noSpreadAdjustments,
+                      textAlign: TextAlign.center),
+                );
+              }
 
-          final stats = statsAsync.value ?? {};
+              final stats = statsAsync.value ?? {};
 
-          return ListView.separated(
-            itemCount: schedules.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (ctx, i) {
-              final schedule = schedules[i];
-              final stat = stats[schedule.id];
+              return ListView.separated(
+                itemCount: schedules.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final schedule = schedules[i];
+                  final stat = stats[schedule.id];
 
-              return _CapexTile(
-                schedule: schedule,
-                stats: stat,
-                baseCurrency: baseCurrency,
-                locale: locale,
-                strings: s,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CapexDetailScreen(scheduleId: schedule.id),
-                  ),
-                ),
+                  return SelectableItem<int>(
+                    controller: _selection,
+                    id: schedule.id,
+                    child: _CapexTile(
+                      schedule: schedule,
+                      stats: stat,
+                      baseCurrency: baseCurrency,
+                      locale: locale,
+                      strings: s,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CapexDetailScreen(scheduleId: schedule.id),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               );
             },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(s.error(e))),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const CapexEditScreen()),
-        ),
-        child: const Icon(Icons.add),
-      ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text(s.error(e))),
+          ),
+          bottomNavigationBar: _selection.active
+              ? SelectionActionBar<int>(
+                  controller: _selection,
+                  visibleIds: schedules.map((s) => s.id).toList(),
+                  onDelete: (ids) => ref.read(capexServiceProvider).deleteMany(ids.toList()),
+                )
+              : null,
+          floatingActionButton: _selection.active
+              ? null
+              : FloatingActionButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CapexEditScreen()),
+                  ),
+                  child: const Icon(Icons.add),
+                ),
+        );
+      },
     );
   }
 }
@@ -114,51 +150,84 @@ class _SpreadTab extends ConsumerWidget {
 // Income tab (income/donation adjustments)
 // ════════════════════════════════════════════════════
 
-class _IncomeTab extends ConsumerWidget {
+class _IncomeTab extends ConsumerStatefulWidget {
   const _IncomeTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_IncomeTab> createState() => _IncomeTabState();
+}
+
+class _IncomeTabState extends ConsumerState<_IncomeTab> {
+  final _selection = SelectionController<int>();
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final adjAsync = ref.watch(incomeAdjustmentsProvider);
 
-    return Scaffold(
-      body: adjAsync.when(
-        data: (adjustments) {
-          if (adjustments.isEmpty) {
-            return Center(
-              child: Text(s.noIncomeAdjustments,
-                  textAlign: TextAlign.center),
-            );
-          }
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (ctx, _) {
+        final adjustments = adjAsync.value ?? const <IncomeAdjustment>[];
+        _selection.setOrderedIds(adjustments.map((a) => a.id).toList());
+        return Scaffold(
+          body: adjAsync.when(
+            data: (adjustments) {
+              if (adjustments.isEmpty) {
+                return Center(
+                  child: Text(s.noIncomeAdjustments,
+                      textAlign: TextAlign.center),
+                );
+              }
 
-          return ListView.separated(
-            itemCount: adjustments.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (ctx, i) {
-              final adj = adjustments[i];
-              return _IncomeAdjTile(
-                adjustment: adj,
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => IncomeAdjDetailScreen(adjustmentId: adj.id),
-                  ),
-                ),
+              return ListView.separated(
+                itemCount: adjustments.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (ctx, i) {
+                  final adj = adjustments[i];
+                  return SelectableItem<int>(
+                    controller: _selection,
+                    id: adj.id,
+                    child: _IncomeAdjTile(
+                      adjustment: adj,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => IncomeAdjDetailScreen(adjustmentId: adj.id),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               );
             },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(s.error(e))),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const IncomeAdjEditScreen()),
-        ),
-        child: const Icon(Icons.add),
-      ),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text(s.error(e))),
+          ),
+          bottomNavigationBar: _selection.active
+              ? SelectionActionBar<int>(
+                  controller: _selection,
+                  visibleIds: adjustments.map((a) => a.id).toList(),
+                  onDelete: (ids) => ref.read(incomeAdjustmentServiceProvider).deleteMany(ids.toList()),
+                )
+              : null,
+          floatingActionButton: _selection.active
+              ? null
+              : FloatingActionButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const IncomeAdjEditScreen()),
+                  ),
+                  child: const Icon(Icons.add),
+                ),
+        );
+      },
     );
   }
 }

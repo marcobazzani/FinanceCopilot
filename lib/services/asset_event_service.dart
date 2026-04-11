@@ -79,6 +79,12 @@ class AssetEventService {
     return (_db.delete(_db.assetEvents)..where((e) => e.id.equals(id))).go();
   }
 
+  Future<int> deleteMany(List<int> ids) {
+    if (ids.isEmpty) return Future.value(0);
+    _log.warning('deleteMany: ${ids.length} events');
+    return (_db.delete(_db.assetEvents)..where((e) => e.id.isIn(ids))).go();
+  }
+
   Future<int> deleteByAsset(int assetId) {
     _log.warning('deleteByAsset: assetId=$assetId');
     return (_db.delete(_db.assetEvents)..where((e) => e.assetId.equals(assetId))).go();

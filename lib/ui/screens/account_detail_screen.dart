@@ -11,6 +11,9 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
+import '../widgets/selection/selectable_item.dart';
+import '../widgets/selection/selection_action_bar.dart';
+import '../widgets/selection/selection_controller.dart';
 
 final _log = getLogger('AccountDetailScreen');
 
@@ -26,10 +29,12 @@ class AccountDetailScreen extends ConsumerStatefulWidget {
 class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  final _selection = SelectionController<int>();
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _selection.dispose();
     super.dispose();
   }
 
@@ -41,7 +46,24 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, widget.account.currency);
 
-    return Scaffold(
+    return ListenableBuilder(
+      listenable: _selection,
+      builder: (lbCtx, _) {
+        // Filtered ids snapshot for the action bar's "select all".
+        List<int> visibleIds = const [];
+        txStream.whenData((transactions) {
+          final filtered = _searchQuery.isEmpty
+              ? transactions
+              : transactions.where((t) {
+                  return t.description.toLowerCase().contains(_searchQuery) ||
+                      (t.descriptionFull?.toLowerCase().contains(_searchQuery) ?? false) ||
+                      t.amount.toString().contains(_searchQuery);
+                }).toList();
+          visibleIds = filtered.map((t) => t.id).toList();
+        });
+        _selection.setOrderedIds(visibleIds);
+
+        return Scaffold(
       appBar: AppBar(
         title: Text(widget.account.name),
         actions: [
@@ -136,7 +158,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   itemBuilder: (ctx, i) {
                     final tx = filtered[i];
                     final isPositive = tx.amount >= 0;
-                    return ListTile(
+                    return SelectableItem<int>(
+                      controller: _selection,
+                      id: tx.id,
+                      child: ListTile(
                       dense: true,
                       leading: CircleAvatar(
                         radius: 16,
@@ -193,6 +218,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         ],
                       ),
                       onTap: () => _openTransaction(tx),
+                      ),
                     );
                   },
                 );
@@ -242,6 +268,15 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           ),
         ],
       ),
+          bottomNavigationBar: _selection.active
+              ? SelectionActionBar<int>(
+                  controller: _selection,
+                  visibleIds: visibleIds,
+                  onDelete: (ids) => ref.read(transactionServiceProvider).deleteMany(ids.toList()),
+                )
+              : null,
+        );
+      },
     );
   }
 
