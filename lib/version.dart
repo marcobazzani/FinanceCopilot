@@ -1,6 +1,6 @@
 import 'services/build_info_service.dart';
 
-const appVersion = '0.4.3';
+const appVersion = '0.4.4';
 const appChannel = String.fromEnvironment('CHANNEL', defaultValue: 'nightly');
 
 /// Build identifier loaded at startup by [BuildInfoService.load].
