@@ -449,12 +449,14 @@ class GoogleDriveSyncService {
   /// If null, conflicts default to keeping the remote version.
   Future<ConflictChoice> Function(ConflictInfo info)? onConflict;
 
-  /// Called BEFORE the local DB file is replaced by a remote download, so the
-  /// app shell can close the current drift instance and release the file handle.
-  /// Required on Windows where SQLite holds an exclusive lock and deleting an
-  /// open file fails with errno=32. macOS/Linux tolerate renaming open files,
-  /// but we call it unconditionally for consistency.
-  Future<void> Function()? beforeDbReplace;
+  /// Copy the contents of the downloaded tmp database into the currently open
+  /// drift instance via `ATTACH DATABASE`. The app shell wires this up with
+  /// access to the drift connection. Cross-platform, no file swap, no close —
+  /// side-steps all the Windows file-lock and drift-close race issues.
+  ///
+  /// Must run the copy in a transaction. If anything throws, drift rolls back
+  /// and the local data is untouched.
+  Future<void> Function(String tmpPath)? copyFromAttached;
 
   /// Called when the local DB was replaced by a remote download (e.g. conflict resolution).
   /// The app shell should reload the DB and refresh the UI.
@@ -539,25 +541,29 @@ class GoogleDriveSyncService {
     }
   }
 
-  /// Download the remote DB and atomically replace the local file.
+  /// Download the remote DB and merge its contents into the currently open
+  /// drift instance via `ATTACH DATABASE`. No file swap, no drift close.
   ///
-  /// Crash-safe swap:
-  ///   1. stream remote into `<localPath>.tmp`
-  ///   2. notify the app to release its drift handle (`beforeDbReplace`)
-  ///   3. rename current DB to `<localPath>.bak` (the backup is kept until
-  ///      the rename of .tmp succeeds, so a failure halfway through never
-  ///      leaves the user without a DB — we can restore from .bak)
-  ///   4. rename `.tmp` → `localPath`
-  ///   5. on success, delete `.bak`
-  ///   6. on any failure, restore `.bak` → `localPath`
+  /// Why ATTACH:
+  ///   - Windows refuses to delete/rename any file held by an open handle.
+  ///     Drift's close() takes seconds (or hangs) when active stream
+  ///     subscribers are listening — and even if close does complete, the
+  ///     Riverpod-cached reference is stale and subsequent queries break.
+  ///   - ATTACH lets SQLite copy rows between two databases while the primary
+  ///     one stays open. One transaction wraps the copy → atomic, rolled back
+  ///     on any error → local data is never lost.
+  ///   - All drift stream subscribers re-query automatically after the
+  ///     transaction commits, so the UI refreshes without any special
+  ///     plumbing.
   ///
-  /// Phase timing is logged so a hang can be pinpointed to exactly one step.
+  /// Phases:
+  ///   1. stream remote file to `<localPath>.tmp`
+  ///   2. delegate to `copyFromAttached` (wired by the app shell) which runs
+  ///      ATTACH + per-table INSERT FROM SELECT inside a drift transaction
+  ///   3. delete the tmp file
   Future<void> _download(String localPath, String fileId) async {
     final tmpPath = '$localPath.tmp';
-    final backupPath = '$localPath.bak';
     final tmpFile = File(tmpPath);
-    final backupFile = File(backupPath);
-    final localFile = File(localPath);
 
     try {
       final t0 = DateTime.now();
@@ -566,6 +572,7 @@ class GoogleDriveSyncService {
         fileId,
         downloadOptions: drive.DownloadOptions.fullMedia,
       ) as drive.Media;
+      if (tmpFile.existsSync()) await tmpFile.delete();
       final sink = tmpFile.openWrite();
       await response.stream.pipe(sink);
       final tmpSize = await tmpFile.length();
@@ -577,53 +584,28 @@ class GoogleDriveSyncService {
         return;
       }
 
-      if (beforeDbReplace != null) {
-        final tCb = DateTime.now();
-        _log.info('download: phase 2 - invoking beforeDbReplace');
-        await beforeDbReplace!();
-        _log.info('download: phase 2 done in ${DateTime.now().difference(tCb).inMilliseconds}ms');
+      if (copyFromAttached == null) {
+        throw StateError('copyFromAttached callback is not wired — cannot merge remote DB');
       }
 
-      // Phase 3: move current DB out of the way (backup kept until success)
-      if (localFile.existsSync()) {
-        final tBak = DateTime.now();
-        _log.info('download: phase 3 - backing up current DB');
-        if (backupFile.existsSync()) await backupFile.delete();
-        await localFile.rename(backupPath);
-        _log.info('download: phase 3 done in ${DateTime.now().difference(tBak).inMilliseconds}ms');
-      }
+      final tCopy = DateTime.now();
+      _log.info('download: phase 2 - ATTACH + copy tables from tmp');
+      await copyFromAttached!(tmpPath);
+      _log.info('download: phase 2 done in ${DateTime.now().difference(tCopy).inMilliseconds}ms');
 
-      // Phase 4: put the downloaded file in place
-      final tRen = DateTime.now();
-      _log.info('download: phase 4 - renaming tmp to localPath');
-      await tmpFile.rename(localPath);
-      _log.info('download: phase 4 done in ${DateTime.now().difference(tRen).inMilliseconds}ms');
-
-      // Phase 5: success, drop the backup
-      if (backupFile.existsSync()) {
-        try {
-          await backupFile.delete();
-        } catch (e) {
-          _log.warning('download: failed to delete backup (harmless): $e');
-        }
+      // Phase 3: cleanup tmp file
+      try {
+        await tmpFile.delete();
+      } catch (e) {
+        _log.warning('download: failed to delete tmp (harmless): $e');
       }
 
       await AppSettings.set('lastSyncTime', DateTime.now().toIso8601String());
-      _log.info('download: replaced local DB ($tmpSize bytes) total ${DateTime.now().difference(t0).inMilliseconds}ms');
+      _log.info('download: merged remote DB ($tmpSize bytes) total ${DateTime.now().difference(t0).inMilliseconds}ms');
     } catch (e, stack) {
       _log.severe('download failed: $e\n$stack');
-      // Cleanup tmp if it still exists
       if (tmpFile.existsSync()) {
         try { await tmpFile.delete(); } catch (_) {}
-      }
-      // Restore backup if we lost the local file during the swap
-      if (!localFile.existsSync() && backupFile.existsSync()) {
-        _log.warning('download: restoring backup after failure');
-        try {
-          await backupFile.rename(localPath);
-        } catch (e2) {
-          _log.severe('download: backup restore also failed: $e2');
-        }
       }
       rethrow;
     }
