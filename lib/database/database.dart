@@ -55,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -276,6 +276,18 @@ class AppDatabase extends _$AppDatabase {
               "VALUES ('PENDING_BALANCE_RECALC', '1')",
             );
             _log.info('Migration 25: added indexes, flagged balance recalculation');
+          }
+          if (from < 26) {
+            // Drop ghost columns left over from removed bank-import feature.
+            // These columns no longer exist in the schema (tables.dart) but
+            // persist in databases created before they were removed.
+            if (await _hasColumn('accounts', 'bank_account_id')) {
+              await customStatement('ALTER TABLE accounts DROP COLUMN bank_account_id');
+            }
+            if (await _hasColumn('accounts', 'bank_session_id')) {
+              await customStatement('ALTER TABLE accounts DROP COLUMN bank_session_id');
+            }
+            _log.info('Migration 26: dropped ghost columns from accounts');
           }
         },
       );

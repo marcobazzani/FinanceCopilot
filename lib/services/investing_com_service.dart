@@ -544,9 +544,13 @@ class InvestingComService extends MarketPriceService {
   final _fxRateCache = <String, (double, DateTime)>{};
   static const _fxRateTtl = Duration(minutes: 10);
 
-  /// In-memory cache of live asset prices (assetId → (price, fetchedAt)).
-  /// These are NOT stored to the DB — used only for display.
+  /// In-memory cache of live asset prices (assetId -> (price, fetchedAt)).
   final _livePriceCache = <int, (double, DateTime)>{};
+
+  @override
+  void onTodayPriceSynced(int assetId, double price, DateTime date) {
+    _livePriceCache[assetId] = (price, date);
+  }
 
   /// Whether the live price for [assetId] was fetched within the last 15 minutes.
   /// If true, the market is considered open; otherwise closed.
@@ -560,7 +564,7 @@ class InvestingComService extends MarketPriceService {
     return !priceDay.isBefore(today);
   }
 
-  /// Get today's live price for an asset without storing it to the DB.
+  /// Get today's live price for an asset, persisting it to the DB.
   /// Returns the cached value if fresh (< 10 min), otherwise fetches from API.
   /// Falls back to the latest stored price in the DB.
   Future<double?> getLivePrice(int assetId) async {
@@ -572,7 +576,7 @@ class InvestingComService extends MarketPriceService {
 
     // Resolve CID for this asset (ISIN-first, same logic as syncPrices/_searchCid)
     final assetRow = await db.customSelect(
-      'SELECT ticker, isin, exchange FROM assets WHERE id = ?',
+      'SELECT ticker, isin, exchange, currency FROM assets WHERE id = ?',
       variables: [Variable.withInt(assetId)],
     ).getSingleOrNull();
     if (assetRow == null) return getPrice(assetId, DateTime.now());
@@ -580,6 +584,7 @@ class InvestingComService extends MarketPriceService {
     final isin = assetRow.readNullable<String>('isin');
     final ticker = assetRow.readNullable<String>('ticker');
     final exchange = assetRow.readNullable<String>('exchange') ?? 'MIL';
+    final currency = assetRow.read<String>('currency');
     final searchTerm = (isin?.isNotEmpty == true) ? isin! : (ticker ?? '');
     if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
 
@@ -616,6 +621,18 @@ class InvestingComService extends MarketPriceService {
           final dateStr = row['rowDateTimestamp'] as String?;
           final priceDate = dateStr != null ? DateTime.tryParse(dateStr) : null;
           _livePriceCache[assetId] = (price, priceDate ?? now);
+          // Persist to DB for offline access
+          final day = DateTime(now.year, now.month, now.day);
+          final c = MarketPricesCompanion(
+            assetId: Value(assetId),
+            date: Value(day),
+            closePrice: Value(price),
+            currency: Value(currency),
+          );
+          unawaited(db.into(db.marketPrices).insertOnConflictUpdate(c).then(
+            (_) {},
+            onError: (e) => _log.warning('Failed to persist live price for asset $assetId: $e'),
+          ));
           return price;
         }
       }
@@ -642,6 +659,7 @@ class InvestingComService extends MarketPriceService {
     var rate = await _fetchFxRate(pairKey);
     if (rate != null) {
       _fxRateCache[pairKey] = (rate, DateTime.now());
+      _persistFxRate(from, to, rate);
       return rate;
     }
 
@@ -649,10 +667,33 @@ class InvestingComService extends MarketPriceService {
     if (rate != null) {
       final invRate = 1.0 / rate;
       _fxRateCache[pairKey] = (invRate, DateTime.now());
+      _persistFxRate(from, to, invRate);
       return invRate;
     }
 
     return null;
+  }
+
+  /// Persist an FX rate (both directions) to the DB for offline access.
+  void _persistFxRate(String from, String to, double rate) {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    db.into(db.exchangeRates).insertOnConflictUpdate(
+      ExchangeRatesCompanion(
+        fromCurrency: Value(from),
+        toCurrency: Value(to),
+        date: Value(day),
+        rate: Value(rate),
+      ),
+    ).then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $from/$to: $e'));
+    db.into(db.exchangeRates).insertOnConflictUpdate(
+      ExchangeRatesCompanion(
+        fromCurrency: Value(to),
+        toCurrency: Value(from),
+        date: Value(day),
+        rate: Value(1.0 / rate),
+      ),
+    ).then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $to/$from: $e'));
   }
 
   Future<double?> _fetchFxRate(String pairKey) async {
@@ -790,11 +831,6 @@ class InvestingComService extends MarketPriceService {
       final dt = DateTime.tryParse(dateStr);
       if (dt == null) continue;
       final day = DateTime(dt.year, dt.month, dt.day);
-
-      // Never store today's price — market may still be open.
-      // Today's price is fetched live via getLivePrice() for display only.
-      final nowDt = DateTime.now();
-      if (!day.isBefore(DateTime(nowDt.year, nowDt.month, nowDt.day))) continue;
 
       double? price;
       if (closeRaw is num) {

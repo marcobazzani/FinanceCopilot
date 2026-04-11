@@ -199,14 +199,8 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     for (final p in prices) {
       priceMap[toDayKey(p.key)] = p.value;
     }
-    // Add today's live price (not in DB) so the chart extends to today
-    if (marketPriceService is InvestingComService) {
-      final livePrice = await marketPriceService.getLivePrice(asset.id);
-      if (livePrice != null) {
-        final todayKey = toDayKey(DateTime.now());
-        priceMap[todayKey] = livePrice;
-      }
-    }
+    // Today's price is now stored in the DB by background sync,
+    // so getPriceHistoryBatch already includes it.
 
     final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
     final assetDays = <int>{
