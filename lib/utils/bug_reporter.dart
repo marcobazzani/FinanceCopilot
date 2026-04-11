@@ -160,7 +160,7 @@ Future<void> openBugReporter(
       : '1. ...';
 
   final bodyParts = StringBuffer()
-    ..writeln('**Version:** v$appVersion ($appCommit) [$appChannel]')
+    ..writeln('**Version:** v$appVersionDisplay')
     ..writeln(
         '**OS:** ${Platform.operatingSystem} ${Platform.operatingSystemVersion}')
     ..writeln()
