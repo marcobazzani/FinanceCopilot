@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -253,6 +254,77 @@ void main() {
       // GBP -> USD cross-rate via EUR: rUSD / rGBP = 1.08 / 0.86
       final rate = await resolver.getRate('GBP', dayKey);
       expect(rate, closeTo(1.08 / 0.86, 1e-10));
+    });
+  });
+
+  group('syncRates vs _persistFxRate race', () {
+    // Regression: two code paths wrote conflicting FX values to the same row.
+    // syncRates uses DoUpdate (always wins), _persistFxRate uses DoNothing
+    // (yields to existing). The data provider returns slightly different numbers
+    // for EUR/USD (1.17200) vs 1/USDEUR (1.17192) due to bid/ask spread.
+    // Regardless of execution order, syncRates' value must prevail.
+
+    final day = DateTime(2024, 6, 15);
+    const syncRatesValue = 1.17200005054474; // EUR/USD from syncRates
+    const persistValue = 1.17192081194759; // 1/USDEUR from _persistFxRate
+
+    Future<double?> readEurUsd() async {
+      final row = await db.customSelect(
+        'SELECT rate FROM exchange_rates '
+        "WHERE from_currency = 'EUR' AND to_currency = 'USD' AND date = ?",
+        variables: [Variable.withInt(day.millisecondsSinceEpoch ~/ 1000)],
+      ).getSingleOrNull();
+      return row?.readNullable<double>('rate');
+    }
+
+    /// Simulates syncRates: inserts with DoUpdate (upsert, always overwrites).
+    Future<void> writeSyncRates(double rate) async {
+      final c = ExchangeRatesCompanion(
+        fromCurrency: const Value('EUR'),
+        toCurrency: const Value('USD'),
+        date: Value(day),
+        rate: Value(rate),
+      );
+      await db.into(db.exchangeRates).insert(c, onConflict: DoUpdate((_) => c));
+    }
+
+    /// Simulates _persistFxRate: inserts with DoNothing (insert-if-absent).
+    Future<void> writePersistFxRate(double rate) async {
+      await db.into(db.exchangeRates).insert(
+        ExchangeRatesCompanion(
+          fromCurrency: const Value('EUR'),
+          toCurrency: const Value('USD'),
+          date: Value(day),
+          rate: Value(rate),
+        ),
+        onConflict: DoNothing(),
+      );
+    }
+
+    test('syncRates first, then _persistFxRate: syncRates value preserved', () async {
+      await writeSyncRates(syncRatesValue);
+      await writePersistFxRate(persistValue);
+
+      final stored = await readEurUsd();
+      expect(stored, syncRatesValue,
+          reason: '_persistFxRate (DoNothing) must not overwrite syncRates');
+    });
+
+    test('_persistFxRate first, then syncRates: syncRates value wins', () async {
+      await writePersistFxRate(persistValue);
+      await writeSyncRates(syncRatesValue);
+
+      final stored = await readEurUsd();
+      expect(stored, syncRatesValue,
+          reason: 'syncRates (DoUpdate) must overwrite _persistFxRate');
+    });
+
+    test('_persistFxRate alone fills gap when syncRates has not run', () async {
+      await writePersistFxRate(persistValue);
+
+      final stored = await readEurUsd();
+      expect(stored, persistValue,
+          reason: '_persistFxRate should fill an empty slot');
     });
   });
 

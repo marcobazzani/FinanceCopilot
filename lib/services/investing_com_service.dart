@@ -675,24 +675,28 @@ class InvestingComService extends MarketPriceService {
   }
 
   /// Persist an FX rate (both directions) to the DB for offline access.
+  /// Uses DoNothing on conflict so syncRates (which uses DoUpdate) always wins,
+  /// ensuring a single consistent quoting convention (EUR/X) across devices.
   void _persistFxRate(String from, String to, double rate) {
     final now = DateTime.now();
     final day = DateTime(now.year, now.month, now.day);
-    db.into(db.exchangeRates).insertOnConflictUpdate(
+    db.into(db.exchangeRates).insert(
       ExchangeRatesCompanion(
         fromCurrency: Value(from),
         toCurrency: Value(to),
         date: Value(day),
         rate: Value(rate),
       ),
+      onConflict: DoNothing(),
     ).then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $from/$to: $e'));
-    db.into(db.exchangeRates).insertOnConflictUpdate(
+    db.into(db.exchangeRates).insert(
       ExchangeRatesCompanion(
         fromCurrency: Value(to),
         toCurrency: Value(from),
         date: Value(day),
         rate: Value(1.0 / rate),
       ),
+      onConflict: DoNothing(),
     ).then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $to/$from: $e'));
   }
 
