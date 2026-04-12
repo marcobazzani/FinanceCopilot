@@ -33,6 +33,8 @@ class DbTransferService {
     if (result == null) return null;
 
     try {
+      final target = File(result);
+      if (await target.exists()) await target.delete();
       await file.copy(result);
       _log.info('exportDb: exported to $result');
       return result;
@@ -61,6 +63,8 @@ class DbTransferService {
 
     try {
       // Overwrite internal DB with the selected file
+      final target = File(targetPath);
+      if (await target.exists()) await target.delete();
       await File(sourcePath).copy(targetPath);
       _log.info('importDb: imported from $sourcePath');
       return sourcePath;
