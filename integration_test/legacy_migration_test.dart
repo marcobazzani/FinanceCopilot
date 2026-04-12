@@ -16,10 +16,11 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Legacy DB at Documents path auto-migrates on startup', (tester) async {
-    // This test uses getApplicationDocumentsDirectory() which requires the
-    // path_provider platform channel — only available on macOS in integration tests.
-    if (!Platform.isMacOS) {
-      markTestSkipped('Legacy migration test only runs on macOS');
+    // On Windows the integration test runner doesn't provide the
+    // path_provider platform channel, so getApplicationDocumentsDirectory()
+    // throws MissingPlatformDirectoryException.
+    if (Platform.isWindows) {
+      markTestSkipped('Legacy migration test skipped on Windows (no path_provider in test runner)');
       return;
     }
 
