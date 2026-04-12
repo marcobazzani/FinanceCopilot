@@ -107,6 +107,7 @@ class AppStrings {
   String get settingsSyncSignIn       => _it ? 'Accedi con Google'           : 'Sign in with Google';
   String get settingsSyncSignOut      => _it ? 'Esci'                        : 'Sign out';
   String settingsSyncSignedIn(String email) => _it ? 'Sincronizzato con $email' : 'Synced with $email';
+  String get syncReauthNeeded          => _it ? 'Accedi di nuovo a Google Drive per continuare la sincronizzazione' : 'Please sign in to Google Drive again to continue syncing';
 
   // ── Sync Conflict ──────────────────────────────────
   String get conflictTitle              => _it ? 'Conflitto di sincronizzazione' : 'Sync Conflict';
