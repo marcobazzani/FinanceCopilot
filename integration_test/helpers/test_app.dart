@@ -156,8 +156,10 @@ Future<void> pushImportScreen(
 
 /// Pump multiple frames to let the widget tree rebuild after navigation/tap.
 /// Use instead of pumpAndSettle() which hangs on stream providers.
+/// Pumps 10 frames at 100ms each (1s total) to handle slower platforms
+/// like Windows VMs and Android emulators.
 Future<void> settle(WidgetTester tester) async {
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
