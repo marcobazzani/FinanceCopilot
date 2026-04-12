@@ -37,7 +37,7 @@ void main() {
     }
 
     // 3. Launch the app — should auto-migrate and NOT show landing page
-    await pumpApp(tester);
+    await pumpApp(tester, createDbFile: false);
 
     // 4. Verify: the app shows the main navigation (not landing page)
     expect(find.text('Dashboard'), findsWidgets);
