@@ -338,7 +338,8 @@ extension _ConfirmStep on _ImportScreenState {
 
     if (_target == ImportTarget.assetEvent && _assetPreview != null) {
       final p = _assetPreview!;
-      final entries = p.assetSummary.values.toList()..sort((a, b) => a.isin.compareTo(b.isin));
+      final totalBuys = p.assetSummary.values.fold(0, (sum, e) => sum + e.buyCount);
+      final totalSells = p.assetSummary.values.fold(0, (sum, e) => sum + e.sellCount);
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -349,40 +350,9 @@ extension _ConfirmStep on _ImportScreenState {
               const SizedBox(height: 8),
               _previewRow(s.parsedRowsLabel, '${p.parsedRows}'),
               if (p.errorRows > 0) _previewRow(s.skippedLabel, '${p.errorRows}', color: Colors.red),
-              const SizedBox(height: 8),
-              // Per-asset summary table
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowHeight: 32,
-                  dataRowMinHeight: 28,
-                  dataRowMaxHeight: 32,
-                  columnSpacing: 16,
-                  columns: [
-                    DataColumn(label: Text(s.assetLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
-                    DataColumn(label: Text(s.buysLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)), numeric: true),
-                    DataColumn(label: Text(s.sellsLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)), numeric: true),
-                    DataColumn(label: Text(s.netQuantity, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)), numeric: true),
-                  ],
-                  rows: entries.map((e) => DataRow(cells: [
-                    DataCell(Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(e.name ?? e.isin, style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis),
-                        if (e.name != null) Text(e.isin, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                      ],
-                    )),
-                    DataCell(Text('${e.buyCount}', style: const TextStyle(fontSize: 11))),
-                    DataCell(Text('${e.sellCount}', style: const TextStyle(fontSize: 11))),
-                    DataCell(Text(
-                      fmt.qtyFormat(locale).format(e.netQuantity),
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
-                          color: e.netQuantity >= 0 ? Colors.green : Colors.red),
-                    )),
-                  ])).toList(),
-                ),
-              ),
+              _previewRow(s.assetLabel, '${p.assetSummary.length}'),
+              _previewRow(s.buysLabel, '$totalBuys', color: Colors.green),
+              if (totalSells > 0) _previewRow(s.sellsLabel, '$totalSells', color: Colors.red),
               if (p.errors.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 ...p.errors.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 11, color: Colors.red))),
