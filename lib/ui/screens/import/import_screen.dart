@@ -14,6 +14,7 @@ import '../../../services/import_service.dart';
 import '../../../services/isin_lookup_service.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
+import '../../../utils/formatters.dart' as fmt;
 import '../../../utils/logger.dart';
 
 part 'column_mapper_step.dart';
@@ -113,6 +114,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   int _importedSoFar = 0;
   int _importTotal = 0;
   String? _error;
+
+  // Preview (dry-run) state
+  TransactionImportPreview? _txPreview;
+  AssetEventImportPreview? _assetPreview;
+  bool _previewing = false;
 
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'valueDate', 'amount', 'description'],
@@ -715,5 +721,86 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _isinLookupResults = null;
     _selectedExchanges.clear();
     _defaultExchange = null;
+    _txPreview = null;
+    _assetPreview = null;
+    _previewing = false;
+  }
+
+  /// Build column mappings from current UI state. Shared by preview and import.
+  List<ColumnMapping> _buildColumnMappings() {
+    final mappings = <ColumnMapping>[];
+    for (final e in _mappings.entries) {
+      if (e.value == null) continue;
+      if (e.key == 'amount' && (_amountFormula.isNotEmpty || _balanceDiffColumn != null)) continue;
+      mappings.add(ColumnMapping(sourceColumn: e.value!, targetField: e.key));
+    }
+    if (_sameSettlementDate && _mappings['date'] != null) {
+      mappings.removeWhere((m) => m.targetField == 'valueDate');
+      mappings.add(ColumnMapping(sourceColumn: _mappings['date']!, targetField: 'valueDate'));
+    }
+    for (final e in _multiMappings.entries) {
+      if (e.value.length < 2) continue;
+      mappings.removeWhere((m) => m.targetField == e.key);
+      mappings.add(ColumnMapping(targetField: e.key, multiColumns: List.of(e.value), multiDelimiter: _multiDelimiters[e.key] ?? ' '));
+    }
+    if (_balanceDiffColumn != null) {
+      mappings.add(ColumnMapping(targetField: 'amount', balanceDiffColumn: _balanceDiffColumn));
+    } else if (_amountFormula.isNotEmpty) {
+      mappings.add(ColumnMapping(targetField: 'amount', formulaTerms: List.of(_amountFormula)));
+    } else if (_mappings['amount'] != null) {
+      mappings.add(ColumnMapping(sourceColumn: _mappings['amount']!, targetField: 'amount'));
+    }
+    return mappings;
+  }
+
+  /// Compute a dry-run preview of the import (no DB writes).
+  Future<void> _computePreview() async {
+    if (_preview == null) return;
+    _setState(() {
+      _previewing = true;
+      _txPreview = null;
+      _assetPreview = null;
+    });
+
+    try {
+      final importer = ref.read(importServiceProvider);
+      final mappings = _buildColumnMappings();
+
+      // Get full rows if preview was capped
+      var fullPreview = _preview!;
+      if (fullPreview.rows.length < fullPreview.totalRows) {
+        fullPreview = await importer.getFullRows(fullPreview);
+      }
+
+      if (_target == ImportTarget.transaction && _targetId != null) {
+        final result = await importer.previewTransactionImport(
+          preview: fullPreview,
+          mappings: mappings,
+          accountId: _targetId!,
+          balanceMode: _balanceMode,
+          balanceFilterColumn: _balanceFilterColumn,
+          balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
+        );
+        if (mounted) _setState(() => _txPreview = result);
+      } else if (_target == ImportTarget.assetEvent) {
+        // Remove type mapping if using sign-based detection
+        if (_typeMode == 'sign') {
+          mappings.removeWhere((m) => m.targetField == 'type');
+        }
+        final result = await importer.previewAssetEventImport(
+          preview: fullPreview,
+          mappings: mappings,
+          buyValues: _buyValues.isNotEmpty ? _buyValues : null,
+          sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
+          selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
+        );
+        if (mounted) _setState(() => _assetPreview = result);
+      }
+    } catch (e) {
+      _log.warning('_computePreview: $e');
+    } finally {
+      if (mounted) _setState(() => _previewing = false);
+    }
   }
 }

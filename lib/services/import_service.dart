@@ -97,6 +97,59 @@ class AssetImportResult {
   const AssetImportResult({required this.result, required this.assetsByIsin});
 }
 
+/// Preview of a transaction import (dry run, no DB writes).
+class TransactionImportPreview {
+  final int parsedRows;
+  final int errorRows;
+  final List<String> errors;
+  final double importSum;
+  final double? predictedBalance;
+  final int rowsToReplace;
+
+  const TransactionImportPreview({
+    required this.parsedRows,
+    required this.errorRows,
+    this.errors = const [],
+    required this.importSum,
+    this.predictedBalance,
+    required this.rowsToReplace,
+  });
+}
+
+/// Summary of a single asset in an asset event import preview.
+class AssetPreviewSummary {
+  final String isin;
+  final String? name;
+  final int buyCount;
+  final int sellCount;
+  final double netQuantity;
+  final String? currency;
+
+  const AssetPreviewSummary({
+    required this.isin,
+    this.name,
+    required this.buyCount,
+    required this.sellCount,
+    required this.netQuantity,
+    this.currency,
+  });
+}
+
+/// Preview of an asset event import (dry run, no DB writes).
+class AssetEventImportPreview {
+  final int parsedRows;
+  final int errorRows;
+  final List<String> errors;
+  final Map<String, AssetPreviewSummary> assetSummary;
+
+  const AssetEventImportPreview({
+    required this.parsedRows,
+    required this.errorRows,
+    this.errors = const [],
+    required this.assetSummary,
+  });
+}
+
 /// Generic file importer: applies user column mapping, hashes rows for dedup,
 /// and inserts. File parsing is delegated to [FileParserService].
 class ImportService {
@@ -775,9 +828,262 @@ class ImportService {
   }
 
   // ──────────────────────────────────────────────
-  // Helpers
+  // Preview (dry-run) methods
   // ──────────────────────────────────────────────
 
+  /// Dry-run a transaction import: parse all rows, compute predicted balance,
+  /// and count rows that would be replaced — without touching the DB.
+  Future<TransactionImportPreview> previewTransactionImport({
+    required FilePreview preview,
+    required List<ColumnMapping> mappings,
+    required int accountId,
+    String balanceMode = 'cumulative',
+    String? balanceFilterColumn,
+    Set<String>? balanceFilterInclude,
+  }) async {
+    _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows');
+    final mappingByField = {for (final m in mappings) m.targetField: m};
+    final dateMapping = mappingByField['date'];
+    final amountMapping = mappingByField['amount'];
+
+    if (dateMapping == null || amountMapping == null) {
+      return const TransactionImportPreview(
+        parsedRows: 0, errorRows: 0, importSum: 0, rowsToReplace: 0,
+        errors: ['date and amount columns are required'],
+      );
+    }
+
+    // Pre-compute balance-diff amounts if needed
+    List<double>? balanceDiffAmounts;
+    if (amountMapping.isBalanceDiff) {
+      final balCol = amountMapping.balanceDiffColumn!;
+      balanceDiffAmounts = [];
+      double? prevBalance;
+      for (final row in preview.rows) {
+        final raw = row[balCol] ?? '';
+        final balance = _tryParseAmount(raw);
+        if (balance != null && prevBalance != null) {
+          balanceDiffAmounts.add(balance - prevBalance);
+        } else {
+          balanceDiffAmounts.add(balance ?? 0);
+        }
+        prevBalance = balance;
+      }
+    }
+
+    final statusMapping = mappingByField['status'];
+    final valueDateMapping = mappingByField['valueDate'];
+
+    var parsed = 0;
+    var errorCount = 0;
+    final errors = <String>[];
+    double importSum = 0;
+    DateTime? oldestDate;
+
+    for (var i = 0; i < preview.rows.length; i++) {
+      final row = preview.rows[i];
+      try {
+        final dateStr = _resolveMapping(dateMapping, row) ?? '';
+        final double amount;
+        if (balanceDiffAmounts != null) {
+          amount = balanceDiffAmounts[i];
+        } else {
+          final amountStr = _resolveMapping(amountMapping, row) ?? '';
+          amount = _parseAmount(amountStr);
+        }
+
+        // Parse value date (for fallback only)
+        DateTime? valueDate;
+        if (valueDateMapping != null) {
+          final vdStr = _resolveMapping(valueDateMapping, row);
+          if (vdStr != null && vdStr.isNotEmpty) {
+            try { valueDate = _parseDate(vdStr); } catch (_) {}
+          }
+        }
+
+        DateTime date;
+        try {
+          date = _parseDate(dateStr);
+        } catch (_) {
+          if (valueDate != null) {
+            date = valueDate;
+          } else {
+            rethrow;
+          }
+        }
+
+        // Check filtered mode
+        if (balanceMode == 'filtered' && balanceFilterColumn != null) {
+          final filterVal = (row[balanceFilterColumn] ?? '').trim();
+          final included = balanceFilterInclude == null ||
+              balanceFilterInclude.isEmpty ||
+              balanceFilterInclude.contains(filterVal);
+          if (included) importSum += amount;
+        } else {
+          importSum += amount;
+        }
+
+        if (oldestDate == null || date.isBefore(oldestDate)) oldestDate = date;
+        parsed++;
+      } catch (e) {
+        errorCount++;
+        if (errors.length < 5) errors.add('Line ${i + 1}: $e');
+      }
+    }
+
+    // Count rows that would be deleted (replaced)
+    var rowsToReplace = 0;
+    double? predictedBalance;
+    if (oldestDate != null) {
+      final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day)
+          .millisecondsSinceEpoch ~/ 1000;
+
+      final countResult = await _db.customSelect(
+        'SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ? AND operation_date >= ?',
+        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+      ).getSingle();
+      rowsToReplace = countResult.read<int>('cnt');
+
+      // Predicted balance = balance before cutoff + sum of CSV amounts
+      if (balanceMode == 'column') {
+        // In column mode, the balance comes from the CSV — just show the import sum
+        predictedBalance = null;
+      } else {
+        final balBeforeResult = await _db.customSelect(
+          'SELECT balance_after FROM transactions '
+          'WHERE account_id = ? AND operation_date < ? '
+          'ORDER BY value_date DESC, id DESC LIMIT 1',
+          variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+        ).getSingleOrNull();
+        final balanceBefore = balBeforeResult?.readNullable<double>('balance_after') ?? 0.0;
+        predictedBalance = balanceBefore + importSum;
+      }
+    }
+
+    _log.info('previewTransactionImport: parsed=$parsed, errors=$errorCount, sum=$importSum, '
+        'predicted=$predictedBalance, toReplace=$rowsToReplace');
+    return TransactionImportPreview(
+      parsedRows: parsed,
+      errorRows: errorCount,
+      errors: errors,
+      importSum: importSum,
+      predictedBalance: predictedBalance,
+      rowsToReplace: rowsToReplace,
+    );
+  }
+
+  /// Dry-run an asset event import: parse all rows, compute per-ISIN summaries
+  /// — without touching the DB.
+  Future<AssetEventImportPreview> previewAssetEventImport({
+    required FilePreview preview,
+    required List<ColumnMapping> mappings,
+    Set<String>? buyValues,
+    Set<String>? sellValues,
+    Set<String>? excludedIsins,
+    Map<String, IsinExchangeOption>? selectedExchanges,
+  }) async {
+    _log.info('previewAssetEventImport: ${preview.totalRows} rows');
+    final mappingByField = {for (final m in mappings) m.targetField: m};
+    final isinMapping = mappingByField['isin'];
+
+    if (isinMapping == null) {
+      return const AssetEventImportPreview(
+        parsedRows: 0, errorRows: 0, assetSummary: {},
+        errors: ['ISIN column is required'],
+      );
+    }
+
+    final typeMapping = mappingByField['type'];
+    final qtyMapping = mappingByField['quantity'];
+    final amountMapping = mappingByField['amount'];
+    final currencyMapping = mappingByField['currency'];
+
+    var parsed = 0;
+    var errorCount = 0;
+    final errors = <String>[];
+
+    // Accumulate per-ISIN: buyCount, sellCount, netQty
+    final buyCountByIsin = <String, int>{};
+    final sellCountByIsin = <String, int>{};
+    final netQtyByIsin = <String, double>{};
+    final currencyByIsin = <String, String>{};
+
+    for (var i = 0; i < preview.rows.length; i++) {
+      final row = preview.rows[i];
+      try {
+        final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
+        if (isin.isEmpty) {
+          errorCount++;
+          if (errors.length < 5) errors.add('Line ${i + 1}: empty ISIN');
+          continue;
+        }
+        if (excludedIsins != null && excludedIsins.contains(isin)) continue;
+
+        final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
+        final amount = amountMapping != null ? _tryParseAmount(_resolveMapping(amountMapping, row)) : null;
+
+        // Determine event type
+        final EventType eventType;
+        if (typeMapping != null) {
+          final typeStr = _resolveMapping(typeMapping, row) ?? 'BUY';
+          eventType = _parseEventType(typeStr, buyValues: buyValues, sellValues: sellValues);
+        } else {
+          final isNeg = (qty != null && qty < 0) || (amount != null && amount < 0);
+          eventType = isNeg ? EventType.sell : EventType.buy;
+        }
+
+        final absQty = qty?.abs() ?? 0;
+        buyCountByIsin[isin] = (buyCountByIsin[isin] ?? 0) + (eventType == EventType.buy ? 1 : 0);
+        sellCountByIsin[isin] = (sellCountByIsin[isin] ?? 0) + (eventType == EventType.sell ? 1 : 0);
+        netQtyByIsin[isin] = (netQtyByIsin[isin] ?? 0) +
+            (eventType == EventType.sell ? -absQty : absQty);
+
+        if (currencyMapping != null && !currencyByIsin.containsKey(isin)) {
+          currencyByIsin[isin] = (_resolveMapping(currencyMapping, row) ?? '').trim();
+        }
+
+        parsed++;
+      } catch (e) {
+        errorCount++;
+        if (errors.length < 5) errors.add('Line ${i + 1}: $e');
+      }
+    }
+
+    // Look up existing asset names for known ISINs
+    final existingNames = <String, String>{};
+    final existingRows = await _db.customSelect(
+      "SELECT isin, name FROM assets WHERE isin IS NOT NULL AND isin != ''",
+      readsFrom: {_db.assets},
+    ).get();
+    for (final row in existingRows) {
+      existingNames[row.read<String>('isin').toUpperCase()] = row.read<String>('name');
+    }
+
+    final summary = <String, AssetPreviewSummary>{};
+    for (final isin in netQtyByIsin.keys) {
+      final name = existingNames[isin] ?? selectedExchanges?[isin]?.name;
+      summary[isin] = AssetPreviewSummary(
+        isin: isin,
+        name: name,
+        buyCount: buyCountByIsin[isin] ?? 0,
+        sellCount: sellCountByIsin[isin] ?? 0,
+        netQuantity: netQtyByIsin[isin] ?? 0,
+        currency: currencyByIsin[isin],
+      );
+    }
+
+    _log.info('previewAssetEventImport: parsed=$parsed, errors=$errorCount, assets=${summary.length}');
+    return AssetEventImportPreview(
+      parsedRows: parsed,
+      errorRows: errorCount,
+      errors: errors,
+      assetSummary: summary,
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // Helpers
+  // ──────────────────────────────────────────────
 
   /// Parse a date string. Delegates to shared [date_parse.parseDate].
   DateTime _parseDate(String s) => date_parse.parseDate(s);
