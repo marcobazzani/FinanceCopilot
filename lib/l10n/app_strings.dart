@@ -674,6 +674,19 @@ class AppStrings {
   String get importAnother         => _it ? 'Importa un altro'         : 'Import Another';
   String get done                  => _it ? 'Fatto'                    : 'Done';
 
+  // ── Import Preview ──────────────────────────────────────
+  String get importPreviewTitle    => _it ? 'Anteprima importazione'   : 'Import Preview';
+  String get predictedBalance      => _it ? 'Saldo previsto'           : 'Predicted balance';
+  String get importAmountSum       => _it ? 'Somma importi'            : 'Import amount sum';
+  String get rowsToReplace         => _it ? 'Righe da sostituire'      : 'Rows to replace';
+  String get parsedRowsLabel       => _it ? 'Righe analizzate'         : 'Parsed rows';
+  String get computingPreview      => _it ? 'Calcolo anteprima...'     : 'Computing preview...';
+  String get netQuantity           => _it ? 'Qtà netta'                : 'Net qty';
+  String get buysLabel             => _it ? 'Acquisti'                 : 'Buys';
+  String get sellsLabel            => _it ? 'Vendite'                  : 'Sells';
+  String get assetLabel            => _it ? 'Attività'                 : 'Asset';
+  String get previewError          => _it ? 'Errore anteprima'         : 'Preview error';
+
   // ── Column Mapper ───────────────────────────────────────
   String get modeLabel             => _it ? 'Modalità: '               : 'Mode: ';
   String get modeHistoric          => _it ? 'Storico'                  : 'Historic';

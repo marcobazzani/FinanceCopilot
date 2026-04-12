@@ -11,6 +11,13 @@ extension _QuickConfirmStep on _ImportScreenState {
 
   Widget _buildQuickConfirm(FilePreview preview) {
     final s = ref.watch(appStringsProvider);
+
+    // Trigger preview computation once when entering quick confirm
+    if (_txPreview == null && _assetPreview == null && !_previewing &&
+        _target != ImportTarget.income) {
+      Future.microtask(() => _computePreview());
+    }
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,6 +51,11 @@ extension _QuickConfirmStep on _ImportScreenState {
           const SizedBox(height: 16),
 
           Text(s.rowCount(preview.totalRows), style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const SizedBox(height: 16),
+
+          // Import preview (balance / asset quantities)
+          if (_target != ImportTarget.income)
+            _buildImportPreview(),
           const SizedBox(height: 16),
 
           // Action buttons

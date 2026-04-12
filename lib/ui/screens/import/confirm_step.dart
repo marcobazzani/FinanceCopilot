@@ -72,134 +72,149 @@ extension _ConfirmStep on _ImportScreenState {
     final isAssetImport = _target == ImportTarget.assetEvent;
     final isIncomeImport = _target == ImportTarget.income;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (isAssetImport) ...[
-          Text(s.selectIntermediary, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          _buildIntermediarySelector(),
-          const SizedBox(height: 24),
-        ],
-
-        // Summary
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+        // Scrollable content area
+        Expanded(
+          child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.importSummary, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
-                Text(s.rowCount(_preview?.totalRows ?? 0)),
-                Text('Target: ${isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions}'),
-                const SizedBox(height: 8),
-                Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
-                ..._mappings.entries
-                    .where((e) => e.value != null && !(e.key == 'amount' && _amountFormula.isNotEmpty))
-                    .map((e) => Text('  ${e.key} ← ${e.value}')),
-                if (_amountFormula.isNotEmpty)
-                  Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
                 if (isAssetImport) ...[
-                  const SizedBox(height: 12),
-                  Text(s.assetsAndExchange, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  if (_lookingUpIsins)
-                    Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Row(children: [
-                        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                        const SizedBox(width: 8),
-                        Text(s.lookingUpExchanges, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                      ]),
-                    )
-                  else ...[
-                    // Default exchange selector
-                    if (_isinLookupResults != null) ...[
-                      Row(
-                        children: [
-                          Text(s.defaultExchange, style: const TextStyle(fontSize: 12)),
-                          const SizedBox(width: 4),
-                          DropdownButton<String>(
-                            value: _defaultExchange,
-                            hint: Text(s.auto, style: const TextStyle(fontSize: 12)),
-                            isDense: true,
-                            items: _allExchanges().map((ex) => DropdownMenuItem(value: ex, child: Text(ex, style: const TextStyle(fontSize: 12)))).toList(),
-                            onChanged: (v) => _setState(() {
-                              _defaultExchange = v;
-                              // Re-apply default to all ISINs
-                              for (final entry in _isinLookupResults!.entries) {
-                                final best = entry.value.bestFor(v);
-                                if (best != null) _selectedExchanges[entry.key] = best;
-                              }
-                            }),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    // Per-ISIN exchange picker with exclude checkbox
-                    ..._getIsinSummary().entries.map((e) {
-                      final isin = e.key;
-                      final count = e.value;
-                      final options = _isinLookupResults?[isin]?.options ?? [];
-                      final selected = _selectedExchanges[isin];
-                      final excluded = _excludedIsins.contains(isin);
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 24, height: 24,
-                              child: Checkbox(
-                                value: !excluded,
-                                onChanged: (v) => _setState(() {
-                                  if (v == true) {
-                                    _excludedIsins.remove(isin);
-                                  } else {
-                                    _excludedIsins.add(isin);
-                                  }
-                                }),
-                                visualDensity: VisualDensity.compact,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  Text(s.selectIntermediary, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  _buildIntermediarySelector(),
+                  const SizedBox(height: 24),
+                ],
+
+                // Summary
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(s.importSummary, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
+                        Text(s.rowCount(_preview?.totalRows ?? 0)),
+                        Text('Target: ${isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions}'),
+                        const SizedBox(height: 8),
+                        Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ..._mappings.entries
+                            .where((e) => e.value != null && !(e.key == 'amount' && _amountFormula.isNotEmpty))
+                            .map((e) => Text('  ${e.key} ← ${e.value}')),
+                        if (_amountFormula.isNotEmpty)
+                          Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
+                        if (isAssetImport) ...[
+                          const SizedBox(height: 12),
+                          Text(s.assetsAndExchange, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          if (_lookingUpIsins)
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Row(children: [
+                                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                const SizedBox(width: 8),
+                                Text(s.lookingUpExchanges, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                              ]),
+                            )
+                          else ...[
+                            // Default exchange selector
+                            if (_isinLookupResults != null) ...[
+                              Row(
+                                children: [
+                                  Text(s.defaultExchange, style: const TextStyle(fontSize: 12)),
+                                  const SizedBox(width: 4),
+                                  DropdownButton<String>(
+                                    value: _defaultExchange,
+                                    hint: Text(s.auto, style: const TextStyle(fontSize: 12)),
+                                    isDense: true,
+                                    items: _allExchanges().map((ex) => DropdownMenuItem(value: ex, child: Text(ex, style: const TextStyle(fontSize: 12)))).toList(),
+                                    onChanged: (v) => _setState(() {
+                                      _defaultExchange = v;
+                                      // Re-apply default to all ISINs
+                                      for (final entry in _isinLookupResults!.entries) {
+                                        final best = entry.value.bestFor(v);
+                                        if (best != null) _selectedExchanges[entry.key] = best;
+                                      }
+                                    }),
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 4),
-                            SizedBox(width: 130, child: Text(isin, style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: excluded ? Colors.grey : null))),
-                            const SizedBox(width: 4),
-                            Text(s.nEventsCount(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                            const SizedBox(width: 8),
-                            if (options.length > 1)
-                              Expanded(
-                                child: DropdownButton<int>(
-                                  value: selected?.cid,
-                                  isDense: true,
-                                  isExpanded: true,
-                                  items: options.map((o) => DropdownMenuItem(
-                                    value: o.cid,
-                                    child: Text('${o.ticker} — ${o.exchange}', style: const TextStyle(fontSize: 12)),
-                                  )).toList(),
-                                  onChanged: excluded ? null : (cid) => _setState(() {
-                                    _selectedExchanges[isin] = options.firstWhere((o) => o.cid == cid);
-                                  }),
+                              const SizedBox(height: 4),
+                            ],
+                            // Per-ISIN exchange picker with exclude checkbox
+                            ..._getIsinSummary().entries.map((e) {
+                              final isin = e.key;
+                              final count = e.value;
+                              final options = _isinLookupResults?[isin]?.options ?? [];
+                              final selected = _selectedExchanges[isin];
+                              final excluded = _excludedIsins.contains(isin);
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 24, height: 24,
+                                      child: Checkbox(
+                                        value: !excluded,
+                                        onChanged: (v) => _setState(() {
+                                          if (v == true) {
+                                            _excludedIsins.remove(isin);
+                                          } else {
+                                            _excludedIsins.add(isin);
+                                          }
+                                        }),
+                                        visualDensity: VisualDensity.compact,
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    SizedBox(width: 130, child: Text(isin, style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: excluded ? Colors.grey : null))),
+                                    const SizedBox(width: 4),
+                                    Text(s.nEventsCount(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                    const SizedBox(width: 8),
+                                    if (options.length > 1)
+                                      Expanded(
+                                        child: DropdownButton<int>(
+                                          value: selected?.cid,
+                                          isDense: true,
+                                          isExpanded: true,
+                                          items: options.map((o) => DropdownMenuItem(
+                                            value: o.cid,
+                                            child: Text('${o.ticker} — ${o.exchange}', style: const TextStyle(fontSize: 12)),
+                                          )).toList(),
+                                          onChanged: excluded ? null : (cid) => _setState(() {
+                                            _selectedExchanges[isin] = options.firstWhere((o) => o.cid == cid);
+                                          }),
+                                        ),
+                                      )
+                                    else if (options.length == 1)
+                                      Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: TextStyle(fontSize: 12, color: excluded ? Colors.grey : null)))
+                                    else
+                                      Expanded(child: Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey))),
+                                  ],
                                 ),
-                              )
-                            else if (options.length == 1)
-                              Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: TextStyle(fontSize: 12, color: excluded ? Colors.grey : null)))
-                            else
-                              Expanded(child: Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey))),
+                              );
+                            }),
                           ],
-                        ),
-                      );
-                    }),
-                  ],
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ── Import Preview ──────────────────────────────
+                if (!isIncomeImport) ...[
+                  const SizedBox(height: 16),
+                  _buildImportPreview(),
                 ],
               ],
             ),
           ),
         ),
 
-        const Spacer(),
+        // Pinned bottom: error / progress / import button
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -276,6 +291,93 @@ extension _ConfirmStep on _ImportScreenState {
     );
   }
 
+  Widget _buildImportPreview() {
+    final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
+    final amtFmt = fmt.amountFormat(locale);
+
+    if (_previewing) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 12),
+            Text(s.computingPreview, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          ]),
+        ),
+      );
+    }
+
+    if (_target == ImportTarget.transaction && _txPreview != null) {
+      final p = _txPreview!;
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.importPreviewTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _previewRow(s.parsedRowsLabel, '${p.parsedRows}'),
+              if (p.errorRows > 0) _previewRow(s.skippedLabel, '${p.errorRows}', color: Colors.red),
+              if (p.rowsToReplace > 0) _previewRow(s.rowsToReplace, '${p.rowsToReplace}', color: Colors.orange),
+              _previewRow(s.importAmountSum, amtFmt.format(p.importSum)),
+              if (p.predictedBalance != null)
+                _previewRow(s.predictedBalance, amtFmt.format(p.predictedBalance!),
+                    color: Theme.of(context).colorScheme.primary, bold: true),
+              if (p.errors.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                ...p.errors.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 11, color: Colors.red))),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_target == ImportTarget.assetEvent && _assetPreview != null) {
+      final p = _assetPreview!;
+      final totalBuys = p.assetSummary.values.fold(0, (sum, e) => sum + e.buyCount);
+      final totalSells = p.assetSummary.values.fold(0, (sum, e) => sum + e.sellCount);
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.importPreviewTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              _previewRow(s.parsedRowsLabel, '${p.parsedRows}'),
+              if (p.errorRows > 0) _previewRow(s.skippedLabel, '${p.errorRows}', color: Colors.red),
+              _previewRow(s.assetLabel, '${p.assetSummary.length}'),
+              _previewRow(s.buysLabel, '$totalBuys', color: Colors.green),
+              if (totalSells > 0) _previewRow(s.sellsLabel, '$totalSells', color: Colors.red),
+              if (p.errors.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                ...p.errors.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 11, color: Colors.red))),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  Widget _previewRow(String label, String value, {Color? color, bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(width: 180, child: Text(label, style: const TextStyle(fontSize: 12))),
+          Text(value, style: TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.bold : null, color: color)),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showCreateAccountDialog() async {
     final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController();
@@ -319,34 +421,7 @@ extension _ConfirmStep on _ImportScreenState {
 
     try {
       final importer = ref.read(importServiceProvider);
-      final mappings = <ColumnMapping>[];
-      for (final e in _mappings.entries) {
-        if (e.value == null) continue;
-        if (e.key == 'amount' && (_amountFormula.isNotEmpty || _balanceDiffColumn != null)) continue;
-        mappings.add(ColumnMapping(sourceColumn: e.value!, targetField: e.key));
-      }
-      // If settlement date = operation date, copy the date mapping
-      if (_sameSettlementDate && _mappings['date'] != null) {
-        mappings.removeWhere((m) => m.targetField == 'valueDate');
-        mappings.add(ColumnMapping(sourceColumn: _mappings['date']!, targetField: 'valueDate'));
-      }
-      // Multi-column mappings (override single mappings for same field)
-      for (final e in _multiMappings.entries) {
-        if (e.value.length < 2) continue;
-        mappings.removeWhere((m) => m.targetField == e.key);
-        mappings.add(ColumnMapping(targetField: e.key, multiColumns: List.of(e.value), multiDelimiter: _multiDelimiters[e.key] ?? ' '));
-      }
-      // Amount: balance-diff, formula, or simple mapping
-      if (_balanceDiffColumn != null) {
-        _log.info('_executeImport: amount from balance-diff column=$_balanceDiffColumn');
-        mappings.add(ColumnMapping(targetField: 'amount', balanceDiffColumn: _balanceDiffColumn));
-      } else if (_amountFormula.isNotEmpty) {
-        final formulaDesc = _amountFormula.map((t) => '${t.operator}${t.sourceColumn}').join(' ');
-        _log.info('_executeImport: amount formula=$formulaDesc');
-        mappings.add(ColumnMapping(targetField: 'amount', formulaTerms: List.of(_amountFormula)));
-      } else if (_mappings['amount'] != null) {
-        mappings.add(ColumnMapping(sourceColumn: _mappings['amount']!, targetField: 'amount'));
-      }
+      final mappings = _buildColumnMappings();
 
       _log.info('_executeImport: ${mappings.length} column mappings built');
 
