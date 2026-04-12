@@ -99,8 +99,12 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   for (final asset in assets) {
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
-    // Use stored DB price (background sync keeps it fresh)
-    final price = await priceService.getPrice(asset.id, now);
+    // Use live price for current market values, fall back to DB
+    double? price;
+    if (priceService is InvestingComService) {
+      price = await priceService.getLivePrice(asset.id);
+    }
+    price ??= await priceService.getPrice(asset.id, now);
     if (price == null) {
       _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
       continue;
@@ -180,8 +184,12 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
 
-    // Use stored DB price (background sync keeps it fresh)
-    final latestPrice = await priceService.getPrice(asset.id, today);
+    // Use live price for today's value, fall back to DB
+    double? latestPrice;
+    if (priceService is InvestingComService) {
+      latestPrice = await priceService.getLivePrice(asset.id);
+    }
+    latestPrice ??= await priceService.getPrice(asset.id, today);
     if (latestPrice == null) {
       _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no price at all');
       continue;
