@@ -230,7 +230,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   Future<void> _pickFile() async {
     _log.info('_pickFile: opening file picker');
     await _loadLastDirectory();
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['csv', 'xlsx', 'xls', 'tsv'],
       initialDirectory: _lastDirectory,
