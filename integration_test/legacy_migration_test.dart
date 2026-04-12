@@ -16,6 +16,13 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('Legacy DB at Documents path auto-migrates on startup', (tester) async {
+    // This test uses getApplicationDocumentsDirectory() which requires the
+    // path_provider platform channel — only available on macOS in integration tests.
+    if (!Platform.isMacOS) {
+      markTestSkipped('Legacy migration test only runs on macOS');
+      return;
+    }
+
     // 1. Create a legacy DB at the old Documents path with real data
     final docsDir = await getApplicationDocumentsDirectory();
     final legacyDir = Directory(p.join(docsDir.path, 'FinanceCopilot'));
