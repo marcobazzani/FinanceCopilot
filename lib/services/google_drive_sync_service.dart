@@ -122,10 +122,10 @@ class GoogleDriveSyncService {
       _log.warning('trySilentSignIn failed: $e');
       result = false;
     }
-    // If silent sign-in failed but the user was previously signed in
-    // (e.g. after a library upgrade that changed the auth flow), flag
-    // that a re-auth prompt is needed.
-    if (!result) {
+    // On mobile only: if silent sign-in failed but the user was previously
+    // signed in, flag that a re-auth prompt is needed (v6->v7 migration
+    // breaks the session). Desktop auth is unchanged and doesn't need this.
+    if (!result && !_isDesktop) {
       final lastSync = await AppSettings.get('lastSyncTime');
       if (lastSync != null && lastSync.isNotEmpty) {
         _needsReauth = true;
