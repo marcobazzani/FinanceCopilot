@@ -25,20 +25,29 @@ void main() {
 
     // Tap FAB to add event
     await tester.tap(find.byType(FloatingActionButton));
-    await settle(tester);
+    await longSettle(tester);
+
+    // Verify the event creation form opened
+    expect(find.widgetWithText(TextFormField, 'Quantity *'), findsOneWidget,
+      reason: 'Event creation form should be visible after FAB tap');
 
     // Fill quantity
-    final quantityField = find.widgetWithText(TextFormField, 'Quantity *');
-    await tester.enterText(quantityField, '10');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Quantity *'), '10');
     await settle(tester);
 
     // Fill price
-    final priceField = find.widgetWithText(TextFormField, 'Price *');
-    await tester.enterText(priceField, '95.50');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Price *'), '95.50');
     await settle(tester);
 
-    // Tap Create Event
-    await tester.tap(find.text('Create Event'));
+    // Dismiss soft keyboard so the Create Event button is visible
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await settle(tester);
+
+    // Scroll to Create Event button (may be off-screen on small CI emulator)
+    final createBtn = find.text('Create Event');
+    await tester.ensureVisible(createBtn);
+    await settle(tester);
+    await tester.tap(createBtn);
     await settle(tester);
 
     // Verify event in DB
