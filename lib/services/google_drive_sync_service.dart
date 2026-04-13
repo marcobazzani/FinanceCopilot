@@ -21,6 +21,7 @@ const _dbFileName = 'finance_copilot.db';
 // OAuth credentials injected via --dart-define at build time
 const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
 const _googleClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
+const _googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 final _clientId = auth.ClientId(_googleClientId, _googleClientSecret);
 
 /// User's choice when a sync conflict is detected.
@@ -69,8 +70,8 @@ class GoogleDriveSyncService {
   static final bool _isDesktop = Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
   // Mobile auth via Google Sign-In (uses Google Play Services)
-  GoogleSignIn? _googleSignIn;
-  GoogleSignIn get _mobileSignIn => _googleSignIn ??= GoogleSignIn(scopes: [_driveScope]);
+  bool _mobileInitialized = false;
+  GoogleSignInAccount? _mobileAccount;
 
   // Desktop auth via googleapis_auth (uses loopback redirect + client secret)
   auth.AuthClient? _desktopAuthClient;
@@ -102,28 +103,49 @@ class GoogleDriveSyncService {
 
   String? get userEmail => _userEmail;
 
+  /// True when the user was previously signed in but the session could not be
+  /// restored (e.g. after a library upgrade that changed the auth flow).
+  /// The UI should prompt the user to re-authenticate.
+  bool get needsReauth => _needsReauth;
+  bool _needsReauth = false;
+
   /// Try to restore a previous sign-in session.
   Future<bool> trySilentSignIn() async {
+    bool result;
     try {
       if (_isDesktop) {
-        return await _desktopSilentSignIn();
+        result = await _desktopSilentSignIn();
       } else {
-        return await _mobileSilentSignIn();
+        result = await _mobileSilentSignIn();
       }
     } catch (e) {
       _log.warning('trySilentSignIn failed: $e');
-      return false;
+      result = false;
     }
+    // On mobile only: if silent sign-in failed but the user was previously
+    // signed in, flag that a re-auth prompt is needed (v6->v7 migration
+    // breaks the session). Desktop auth is unchanged and doesn't need this.
+    if (!result && !_isDesktop) {
+      final lastSync = await AppSettings.get('lastSyncTime');
+      if (lastSync != null && lastSync.isNotEmpty) {
+        _needsReauth = true;
+        _log.info('trySilentSignIn: user was previously signed in, needs re-auth');
+      }
+    }
+    return result;
   }
 
   /// Interactive sign-in.
   Future<bool> signIn() async {
     try {
+      bool result;
       if (_isDesktop) {
-        return await _desktopSignIn();
+        result = await _desktopSignIn();
       } else {
-        return await _mobileInteractiveSignIn();
+        result = await _mobileInteractiveSignIn();
       }
+      if (result) _needsReauth = false;
+      return result;
     } catch (e) {
       _log.severe('signIn failed: $e');
       return false;
@@ -137,7 +159,8 @@ class GoogleDriveSyncService {
       _desktopAuthClient = null;
       await AppSettings.set('googleRefreshToken', '');
     } else {
-      await _mobileSignIn.signOut();
+      await GoogleSignIn.instance.signOut();
+      _mobileAccount = null;
     }
     _httpClient = null;
     _driveApi = null;
@@ -193,26 +216,44 @@ class GoogleDriveSyncService {
 
   // ── Mobile auth (Google Play Services) ────────────
 
+  Future<void> _ensureMobileInitialized() async {
+    if (!_mobileInitialized) {
+      await GoogleSignIn.instance.initialize(
+        serverClientId: _googleWebClientId.isNotEmpty ? _googleWebClientId : null,
+      );
+      _mobileInitialized = true;
+    }
+  }
+
   Future<bool> _mobileSilentSignIn() async {
-    final account = await _mobileSignIn.signInSilently();
+    await _ensureMobileInitialized();
+    final account = await GoogleSignIn.instance.attemptLightweightAuthentication();
     if (account == null) {
       _log.info('mobileSilentSignIn: no previous session');
       return false;
     }
+    _mobileAccount = account;
     return await _initMobileDriveApi();
   }
 
   Future<bool> _mobileInteractiveSignIn() async {
-    final account = await _mobileSignIn.signIn();
-    if (account == null) return false;
+    await _ensureMobileInitialized();
+    try {
+      _mobileAccount = await GoogleSignIn.instance.authenticate(scopeHint: [_driveScope]);
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return false;
+      rethrow;
+    }
     return await _initMobileDriveApi();
   }
 
   Future<bool> _initMobileDriveApi() async {
-    _httpClient = await _mobileSignIn.authenticatedClient();
-    if (_httpClient == null) return false;
+    final account = _mobileAccount;
+    if (account == null) return false;
+    final authz = await account.authorizationClient.authorizeScopes([_driveScope]);
+    _httpClient = authz.authClient(scopes: [_driveScope]);
     _driveApi = drive.DriveApi(_httpClient!);
-    _userEmail = _mobileSignIn.currentUser?.email;
+    _userEmail = account.email;
     _log.info('Mobile sign-in successful: $_userEmail');
     return true;
   }

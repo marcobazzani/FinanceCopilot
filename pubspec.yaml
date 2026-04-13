@@ -35,7 +35,7 @@ dependencies:
     git:
       url: https://github.com/justkawal/excel.git
       ref: main
-  file_picker: ^10.3.10
+  file_picker: ^11.0.2
 
   # HTTP (market data)
   dio: ^5.8.0
@@ -50,9 +50,9 @@ dependencies:
   flutter_inappwebview: ^6.1.5
 
   # Google Drive sync
-  google_sign_in: ^6.2.0
-  extension_google_sign_in_as_googleapis_auth: ^2.0.0
-  googleapis: ^13.0.0
+  google_sign_in: ^7.2.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  googleapis: ^16.0.0
   googleapis_auth: ^2.0.0
   http: ^1.2.0
 
