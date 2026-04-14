@@ -40,15 +40,19 @@ Future<AppDatabase> pumpApp(
   WidgetTester tester, {
   Future<void> Function(AppDatabase db)? seed,
   bool useRealServices = false,
+  bool createDbFile = true,
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
 
   // Create the DB file on disk so the landing page filesystem check passes.
   // (initState checks AppDatabase.dbFile().existsSync() before touching providers)
-  final dbFile = await AppDatabase.dbFile();
-  if (!dbFile.existsSync()) {
-    await dbFile.parent.create(recursive: true);
-    await dbFile.writeAsBytes([]);
+  // Set createDbFile=false for tests that need to simulate a missing DB (e.g. legacy migration).
+  if (createDbFile) {
+    final dbFile = await AppDatabase.dbFile();
+    if (!dbFile.existsSync()) {
+      await dbFile.parent.create(recursive: true);
+      await dbFile.writeAsBytes([]);
+    }
   }
 
   // Seed a dummy account so the landing page doesn't show (empty DB check)

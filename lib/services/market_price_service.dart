@@ -283,13 +283,13 @@ abstract class MarketPriceService {
       'WHERE asset_id = ? ORDER BY date ASC',
       variables: [Variable.withInt(assetId)],
     ).get();
-    if (rows.isNotEmpty) {
-      return rows.map((r) => MapEntry(
-        DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
-        r.read<double>('close_price'),
-      )).toList();
-    }
-    // Fallback: revalue events as per-unit price history
+
+    final marketPrices = rows.map((r) => MapEntry(
+      DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+      r.read<double>('close_price'),
+    )).toList();
+
+    // Also gather revalue-derived prices (total value / quantity = per-unit)
     final qtyRow = await db.customSelect(
       "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
       "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
@@ -302,13 +302,29 @@ abstract class MarketPriceService {
       "WHERE asset_id = ? AND type = 'revalue' ORDER BY date ASC",
       variables: [Variable.withInt(assetId)],
     ).get();
-    return revalueRows.map((r) {
+    final revaluePrices = revalueRows.map((r) {
       final amount = r.read<double>('amount');
       return MapEntry(
         DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
         qty > 0 ? amount / qty : amount,
       );
     }).toList();
+
+    if (marketPrices.isEmpty) return revaluePrices;
+    if (revaluePrices.isEmpty) return marketPrices;
+
+    // Merge: market prices take precedence, revalue fills gaps
+    final marketDates = marketPrices.map((e) =>
+        DateTime(e.key.year, e.key.month, e.key.day)).toSet();
+    final merged = [...marketPrices];
+    for (final rv in revaluePrices) {
+      final day = DateTime(rv.key.year, rv.key.month, rv.key.day);
+      if (!marketDates.contains(day)) {
+        merged.add(rv);
+      }
+    }
+    merged.sort((a, b) => a.key.compareTo(b.key));
+    return merged;
   }
 
   /// Get all prices for multiple assets in a single query, sorted by date ascending.

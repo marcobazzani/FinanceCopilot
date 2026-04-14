@@ -107,6 +107,7 @@ class AppStrings {
   String get settingsSyncSignIn       => _it ? 'Accedi con Google'           : 'Sign in with Google';
   String get settingsSyncSignOut      => _it ? 'Esci'                        : 'Sign out';
   String settingsSyncSignedIn(String email) => _it ? 'Sincronizzato con $email' : 'Synced with $email';
+  String get syncReauthNeeded          => _it ? 'Accedi di nuovo a Google Drive per continuare la sincronizzazione' : 'Please sign in to Google Drive again to continue syncing';
 
   // ── Sync Conflict ──────────────────────────────────
   String get conflictTitle              => _it ? 'Conflitto di sincronizzazione' : 'Sync Conflict';
@@ -672,6 +673,19 @@ class AppStrings {
   String andMore(int n)            => _it ? '... e altri $n'           : '... and $n more';
   String get importAnother         => _it ? 'Importa un altro'         : 'Import Another';
   String get done                  => _it ? 'Fatto'                    : 'Done';
+
+  // ── Import Preview ──────────────────────────────────────
+  String get importPreviewTitle    => _it ? 'Anteprima importazione'   : 'Import Preview';
+  String get predictedBalance      => _it ? 'Saldo previsto'           : 'Predicted balance';
+  String get importAmountSum       => _it ? 'Somma importi'            : 'Import amount sum';
+  String get rowsToReplace         => _it ? 'Righe da sostituire'      : 'Rows to replace';
+  String get parsedRowsLabel       => _it ? 'Righe analizzate'         : 'Parsed rows';
+  String get computingPreview      => _it ? 'Calcolo anteprima...'     : 'Computing preview...';
+  String get netQuantity           => _it ? 'Qtà netta'                : 'Net qty';
+  String get buysLabel             => _it ? 'Acquisti'                 : 'Buys';
+  String get sellsLabel            => _it ? 'Vendite'                  : 'Sells';
+  String get assetLabel            => _it ? 'Attività'                 : 'Asset';
+  String get previewError          => _it ? 'Errore anteprima'         : 'Preview error';
 
   // ── Column Mapper ───────────────────────────────────────
   String get modeLabel             => _it ? 'Modalità: '               : 'Mode: ';

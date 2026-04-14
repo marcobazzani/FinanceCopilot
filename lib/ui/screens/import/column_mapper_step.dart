@@ -454,6 +454,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               onPressed: _canProceedToConfirm() ? () {
                 _setState(() => _step = 2);
                 if (_target == ImportTarget.assetEvent) _lookupIsins();
+                _computePreview();
               } : null,
               child: Text(s.next),
             ),
