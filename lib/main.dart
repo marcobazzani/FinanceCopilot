@@ -302,7 +302,32 @@ class _AppShellState extends ConsumerState<AppShell> {
   Future<void> _initDriveSync() async {
     final sync = ref.read(googleDriveSyncProvider);
     final signedIn = await sync.trySilentSignIn();
-    if (!signedIn) return;
+    if (!signedIn) {
+      if (sync.needsReauth && mounted) {
+        _log.info('Drive sync: showing re-auth SnackBar');
+        final s = ref.read(appStringsProvider);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(s.syncReauthNeeded),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: s.settingsSyncSignIn,
+            onPressed: () async {
+              final ok = await sync.signIn();
+              if (!ok) return;
+              _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
+              _wireSyncCallbacks(sync);
+              final pulled = await sync.pullIfNewerOnStartup();
+              if (pulled && mounted) {
+                ref.read(dbReloadTrigger.notifier).state++;
+              }
+              final db = ref.read(databaseProvider);
+              sync.startAutoSync(_userTableUpdates(db));
+            },
+          ),
+        ));
+      }
+      return;
+    }
     _log.info('Drive sync: signed in as ${sync.userEmail}');
     _wireSyncCallbacks(sync);
 

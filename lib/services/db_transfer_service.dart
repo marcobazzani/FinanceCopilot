@@ -25,7 +25,7 @@ class DbTransferService {
       return null;
     }
 
-    final result = await FilePicker.platform.saveFile(
+    final result = await FilePicker.saveFile(
       dialogTitle: 'Export Database',
       fileName: 'FinanceCopilot.db',
       type: FileType.any,
@@ -49,7 +49,7 @@ class DbTransferService {
   /// The caller must close the current DB before calling this,
   /// and reload the DB provider after.
   static Future<String?> importDb() async {
-    final picked = await FilePicker.platform.pickFiles(
+    final picked = await FilePicker.pickFiles(
       dialogTitle: 'Import Database',
       type: FileType.custom,
       allowedExtensions: ['db'],
