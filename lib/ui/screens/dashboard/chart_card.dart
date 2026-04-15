@@ -6,8 +6,8 @@ part of 'dashboard_screen.dart';
 
 class _ChartCard extends ConsumerWidget {
   final DashboardChart chart;
-  final List<_Series> series;
-  final _AllSeriesData allData;
+  final List<ChartSeries> series;
+  final AllSeriesData allData;
   final Set<String> hidden;
   final bool hideComponents;
   final String locale;
@@ -47,7 +47,7 @@ class _ChartCard extends ConsumerWidget {
 
   /// Build total spots with smart asset handling:
   /// If both invested and market are visible for the same asset, only sum market.
-  List<FlSpot> _buildSmartTotalSpots(List<_Series> visible) {
+  List<FlSpot> _buildSmartTotalSpots(List<ChartSeries> visible) {
     // Find asset IDs that have both invested AND market visible
     final visibleInvestedIds = <int>{};
     final visibleMarketIds = <int>{};
@@ -84,7 +84,7 @@ class _ChartCard extends ConsumerWidget {
     final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
     // Series to actually draw (empty if hideComponents, but total is unaffected)
-    final drawnSeries = hideComponents ? <_Series>[] : visible;
+    final drawnSeries = hideComponents ? <ChartSeries>[] : visible;
 
     // Group series by type for legend
     final accountSeries = series.where((s) => s.key.startsWith('account:')).toList();
@@ -176,7 +176,7 @@ class _ChartCard extends ConsumerWidget {
                     final effectiveMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
                     final effectiveMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
 
-                    return _DragZoomWrapper(
+                    return DragZoomWrapper(
                       xMin: zoomMinX ?? 0,
                       xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
                       yMin: effectiveMinY,
@@ -185,7 +185,7 @@ class _ChartCard extends ConsumerWidget {
                       baseCurrency: allData.baseCurrency,
                       locale: locale,
                       onZoom: onZoom,
-                      child: _UnifiedChart(
+                      child: UnifiedChart(
                         firstDate: allData.firstDate,
                         visible: drawnSeries,
                         totalSpots: totalSpots,
@@ -235,12 +235,12 @@ class _ChartCard extends ConsumerWidget {
 // ════════════════════════════════════════════════════
 
 class _ChartLegend extends StatelessWidget {
-  final List<_Series> accountSeries;
-  final List<_Series> investedSeries;
-  final List<_Series> marketSeries;
-  final List<_Series> adjustmentSeries;
-  final List<_Series> incomeAdjSeries;
-  final List<_Series> otherSeries; // e.g. cash-flow series with cf: prefix
+  final List<ChartSeries> accountSeries;
+  final List<ChartSeries> investedSeries;
+  final List<ChartSeries> marketSeries;
+  final List<ChartSeries> adjustmentSeries;
+  final List<ChartSeries> incomeAdjSeries;
+  final List<ChartSeries> otherSeries; // e.g. cash-flow series with cf: prefix
   final bool showTotalItem;
   final Set<String> hidden;
   final ValueChanged<String> onToggle;
@@ -303,7 +303,7 @@ class _ChartLegend extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildGroup(BuildContext context, String label, List<_Series> series) {
+  List<Widget> _buildGroup(BuildContext context, String label, List<ChartSeries> series) {
     final keys = series.map((s) => s.key).toSet();
     final allHidden = keys.every(hidden.contains);
 
@@ -441,7 +441,7 @@ class _ToggleLegendItem extends StatelessWidget {
               SizedBox(
                 width: 12,
                 height: 3,
-                child: CustomPaint(painter: _DashedLinePainter(effectiveColor)),
+                child: CustomPaint(painter: DashedLinePainter(effectiveColor)),
               )
             else
               Container(width: 12, height: 3, color: effectiveColor),
