@@ -24,10 +24,8 @@ import 'services/providers/providers.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
-import 'ui/screens/capex_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/import/import_screen.dart';
-import 'ui/screens/income_screen.dart';
 import 'utils/bug_reporter.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -161,16 +159,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     NavigationDestination(icon: const Icon(Icons.dashboard), label: s.navDashboard),
     NavigationDestination(icon: const Icon(Icons.account_balance), label: s.navAccounts),
     NavigationDestination(icon: const Icon(Icons.pie_chart), label: s.navAssets),
-    NavigationDestination(icon: const Icon(Icons.account_balance_wallet), label: s.navAdjustments),
-    NavigationDestination(icon: const Icon(Icons.payments), label: s.navIncome),
   ];
 
   List<(IconData, String)> _sidebarItems(AppStrings s) => [
     (Icons.dashboard, s.navDashboard),
     (Icons.account_balance, s.navAccounts),
     (Icons.pie_chart, s.navAssets),
-    (Icons.account_balance_wallet, s.navAdjustments),
-    (Icons.payments, s.navIncome),
   ];
 
   @override
@@ -637,8 +631,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       0 => const DashboardScreen(),
       1 => const AccountsScreen(),
       2 => const AssetsScreen(),
-      3 => const CapexScreen(),
-      4 => const IncomeScreen(),
       _ => const SizedBox(),
     };
   }
