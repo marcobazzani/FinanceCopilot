@@ -10,7 +10,9 @@ import '../../l10n/app_strings.dart';
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
+import 'capex_screen.dart' show AdjustmentsView;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
+import 'income_screen.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -23,7 +25,58 @@ class AccountsScreen extends ConsumerStatefulWidget {
   ConsumerState<AccountsScreen> createState() => _AccountsScreenState();
 }
 
-class _AccountsScreenState extends ConsumerState<AccountsScreen> {
+class _AccountsScreenState extends ConsumerState<AccountsScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: s.navAccounts),
+            Tab(text: s.navIncome),
+            Tab(text: s.navAdjustments),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: const [
+              _AccountsListTab(),
+              IncomeScreen(),
+              AdjustmentsView(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountsListTab extends ConsumerStatefulWidget {
+  const _AccountsListTab();
+
+  @override
+  ConsumerState<_AccountsListTab> createState() => _AccountsListTabState();
+}
+
+class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
   final _selection = SelectionController<int>();
 
   @override
