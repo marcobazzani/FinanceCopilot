@@ -120,8 +120,14 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           emulator-boot-timeout: 300
           script: |
-            flutter test integration_test/all_tests.dart
-            touch /tmp/android_tests_passed
+            set +e
+            flutter test integration_test/all_tests.dart 2>&1 | tee /tmp/android_test_output.txt
+            TEST_EXIT=${PIPESTATUS[0]}
+            set -e
+            if grep -q 'All tests passed' /tmp/android_test_output.txt; then
+              touch /tmp/android_tests_passed
+            fi
+            exit $TEST_EXIT
 
       - name: Fail if tests did not pass
         run: |
