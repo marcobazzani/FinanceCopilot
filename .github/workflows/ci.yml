@@ -119,7 +119,7 @@ jobs:
           profile: pixel_6
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           emulator-boot-timeout: 300
-          script: flutter test integration_test/all_tests.dart 2>&1 | tee /tmp/android_test_output.txt; grep -q 'All tests passed' /tmp/android_test_output.txt && touch /tmp/android_tests_passed; true
+          script: flutter test integration_test/all_tests.dart 2>&1 | tee /tmp/android_test_output.txt; grep -qE '(All tests passed|tests passed\.)' /tmp/android_test_output.txt && touch /tmp/android_tests_passed; true
 
       - name: Fail if tests did not pass
         run: |
