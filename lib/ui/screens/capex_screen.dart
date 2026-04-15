@@ -18,17 +18,6 @@ import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
 
 // ════════════════════════════════════════════════════
-// CapexScreen — backward-compatible wrapper
-// ════════════════════════════════════════════════════
-
-class CapexScreen extends StatelessWidget {
-  const CapexScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => const AdjustmentsView();
-}
-
-// ════════════════════════════════════════════════════
 // AdjustmentsView — merged filterable list
 // ════════════════════════════════════════════════════
 
