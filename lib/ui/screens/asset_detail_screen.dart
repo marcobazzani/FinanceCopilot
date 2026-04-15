@@ -329,7 +329,9 @@ class _AssetChartSection extends ConsumerWidget {
     final chartDataAsync = ref.watch(singleAssetChartDataProvider(assetId));
     return chartDataAsync.when(
       data: (data) {
-        if (data == null) return const SizedBox.shrink();
+        if (data == null || data.marketSeries.spots.length < 2) {
+          return const SizedBox.shrink();
+        }
         final s = ref.watch(appStringsProvider);
         final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
         final baseSymbol = currencySymbol(data.baseCurrency);
@@ -345,13 +347,14 @@ class _AssetChartSection extends ConsumerWidget {
               firstDate: data.firstDate,
               currency: data.baseCurrency,
             ),
-            _AssetChartCard(
-              title: s.colPrice,
-              titleValue: assetFmt.format(data.priceSeries.spots.last.y),
-              series: [data.priceSeries],
-              firstDate: data.firstDate,
-              currency: data.assetCurrency,
-            ),
+            if (data.priceSeries.spots.length >= 2)
+              _AssetChartCard(
+                title: s.colPrice,
+                titleValue: assetFmt.format(data.priceSeries.spots.last.y),
+                series: [data.priceSeries],
+                firstDate: data.firstDate,
+                currency: data.assetCurrency,
+              ),
           ],
         );
       },
