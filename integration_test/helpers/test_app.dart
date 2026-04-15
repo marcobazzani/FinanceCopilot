@@ -101,9 +101,7 @@ Future<AppDatabase> pumpApp(
   );
   // Pump frames to build the initial UI.
   // Don't use pumpAndSettle — stream providers never settle.
-  for (var i = 0; i < 10; i++) {
-    await tester.pump(const Duration(milliseconds: 100));
-  }
+  await settle(tester);
   return db;
 }
 
@@ -158,10 +156,21 @@ Future<void> pushImportScreen(
   await settle(tester);
 }
 
-/// Pump multiple frames to let the widget tree rebuild after navigation/tap.
+/// Pump frames to let the widget tree rebuild after navigation/tap.
 /// Use instead of pumpAndSettle() which hangs on stream providers.
+///
+/// Pumps 15 frames (1.5s) — enough for route animations and slow CI
+/// emulators, but short enough that SnackBars don't auto-dismiss.
 Future<void> settle(WidgetTester tester) async {
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 15; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+/// Extra-long settle for heavy UI transitions (scroll + dropdown rebuild).
+/// Use after scrolling ListViews or opening complex dialogs on slow CI emulators.
+Future<void> longSettle(WidgetTester tester) async {
+  for (var i = 0; i < 30; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
