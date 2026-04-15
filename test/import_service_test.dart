@@ -650,6 +650,72 @@ Date,Amount
       expect(quantities, [8.0, 10.0]); // Jan=10 preserved, Feb=8 replaced
     });
 
+    test('transaction re-import with intermediary wipes all intermediary assets from cutoff', () async {
+      final intermediaryId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+
+      // First import: two ISINs under same intermediary
+      final preview1 = makeDatedPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+        ['2024-02-15', 'LU0908500753', '5', '260', 'EUR', '1300'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview1, mappings: datedMappings, baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+      );
+      var events = await db.select(db.assetEvents).get();
+      expect(events.length, 2);
+
+      // Re-import: only the second ISIN with updated quantity
+      // Cutoff = Feb 15, so Jan event should survive
+      final preview2 = makeDatedPreview([
+        ['2024-02-15', 'LU0908500753', '8', '270', 'EUR', '2160'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview2, mappings: datedMappings, baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+      );
+
+      events = await db.select(db.assetEvents).get();
+      expect(events.length, 2); // Jan SWDA + Feb replaced
+      final quantities = events.map((e) => e.quantity).toList()..sort();
+      expect(quantities, [8.0, 10.0]); // Jan=10 preserved, Feb=8 replaced
+    });
+
+    test('transaction re-import does not wipe events from other intermediary', () async {
+      final brokerA = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+      final brokerB = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker B'),
+      );
+
+      // Import under Broker B
+      final previewB = makeDatedPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '20', '100', 'EUR', '2000'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: previewB, mappings: datedMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerB,
+      );
+
+      // Import under Broker A with overlapping date
+      final previewA = makeDatedPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: previewA, mappings: datedMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerA,
+      );
+
+      // Broker B's event must survive
+      final allEvents = await db.select(db.assetEvents).get();
+      expect(allEvents.length, 2);
+      final quantities = allEvents.map((e) => e.quantity).toSet();
+      expect(quantities, {10.0, 20.0});
+    });
+
     // Reproduces GitHub issue #51: re-importing a spot portfolio file doubles
     // quantities because old events from a previous day are never deleted.
     test('issue #51: spot re-import does not double quantities', () async {
