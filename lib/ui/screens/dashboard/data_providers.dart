@@ -4,7 +4,7 @@ part of 'dashboard_screen.dart';
 // Unified data provider — computes ALL series at once
 // ════════════════════════════════════════════════════
 
-final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
+final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
@@ -140,7 +140,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
 
   // ── Build account series ──
-  final accountSeries = <_Series>[];
+  final accountSeries = <ChartSeries>[];
   for (final account in activeAccounts) {
     if (!perAccount.containsKey(account.id)) continue;
     final dayMap = perAccount[account.id]!;
@@ -157,7 +157,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       }
     }
 
-    accountSeries.add(_Series(
+    accountSeries.add(ChartSeries(
       key: 'account:${account.id}',
       name: account.name,
       color: _chartColors[colorIdx % _chartColors.length],
@@ -167,7 +167,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   }
 
   // ── Build asset invested series (cumulative) ──
-  final assetInvestedSeries = <_Series>[];
+  final assetInvestedSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final deltaMap = perAssetDeltas[asset.id]!;
@@ -187,7 +187,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       }
     }
 
-    assetInvestedSeries.add(_Series(
+    assetInvestedSeries.add(ChartSeries(
       key: 'asset_invested:${asset.id}',
       name: '${asset.ticker ?? asset.name} inv.',
       color: _chartColors[colorIdx % _chartColors.length],
@@ -267,7 +267,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     return list[lo].$2;
   }
 
-  final assetMarketSeries = <_Series>[];
+  final assetMarketSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
@@ -314,7 +314,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     final investedIdx = assetInvestedSeries.indexWhere((s) => s.key == 'asset_invested:${asset.id}');
     final color = investedIdx >= 0 ? assetInvestedSeries[investedIdx].color : _chartColors[colorIdx++ % _chartColors.length];
 
-    assetMarketSeries.add(_Series(
+    assetMarketSeries.add(ChartSeries(
       key: 'asset_market:${asset.id}',
       name: asset.ticker ?? asset.name,
       color: color,
@@ -323,7 +323,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   }
 
   // ── Build asset gain series (market - invested) ──
-  final assetGainSeries = <_Series>[];
+  final assetGainSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     final invMatch = assetInvestedSeries.where((s) => s.key == 'asset_invested:${asset.id}');
     final mktMatch = assetMarketSeries.where((s) => s.key == 'asset_market:${asset.id}');
@@ -342,7 +342,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       if (invLookup.containsKey(mkt.x)) lastInv = invLookup[mkt.x]!;
       gainSpots.add(FlSpot(mkt.x, mkt.y - lastInv));
     }
-    assetGainSeries.add(_Series(
+    assetGainSeries.add(ChartSeries(
       key: 'asset_gain:${asset.id}',
       name: asset.ticker ?? asset.name,
       color: mktMatch.first.color,
@@ -382,7 +382,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     }
   }
 
-  final adjustmentSeries = <_Series>[];
+  final adjustmentSeries = <ChartSeries>[];
 
   for (final schedule in activeSchedules) {
     final entries = allScheduleEntries[schedule.id] ?? [];
@@ -427,7 +427,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       prevY = y;
     }
 
-    adjustmentSeries.add(_Series(
+    adjustmentSeries.add(ChartSeries(
       key: 'adjustment:${schedule.id}',
       name: schedule.assetName,
       color: _chartColors[colorIdx % _chartColors.length],
@@ -456,7 +456,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     }
   }
 
-  final incomeAdjSeries = <_Series>[];
+  final incomeAdjSeries = <ChartSeries>[];
 
   for (final adj in activeIncomeAdj) {
     final expenses = allAdjExpenses[adj.id] ?? [];
@@ -495,7 +495,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       prevY = y;
     }
 
-    incomeAdjSeries.add(_Series(
+    incomeAdjSeries.add(ChartSeries(
       key: 'income_adj:${adj.id}',
       name: adj.name,
       color: _chartColors[colorIdx % _chartColors.length],
@@ -505,7 +505,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     colorIdx++;
   }
 
-  return _AllSeriesData(
+  return AllSeriesData(
     firstDate: firstDate,
     accounts: accountSeries,
     assetInvested: assetInvestedSeries,
@@ -522,7 +522,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
 // ════════════════════════════════════════════════════
 
 final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) async {
-  final allSeriesData = await ref.watch(_allSeriesDataProvider.future);
+  final allSeriesData = await ref.watch(allSeriesDataProvider.future);
   if (allSeriesData == null) return null;
 
   final db = ref.watch(databaseProvider);

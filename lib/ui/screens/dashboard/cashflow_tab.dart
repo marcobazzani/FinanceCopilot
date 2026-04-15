@@ -5,7 +5,7 @@ part of 'dashboard_screen.dart';
 // ════════════════════════════════════════════════════
 
 class _CashFlowTab extends ConsumerStatefulWidget {
-  final _AllSeriesData allData;
+  final AllSeriesData allData;
   final String locale;
   final String language;
   const _CashFlowTab({required this.allData, required this.locale, required this.language});
@@ -153,10 +153,10 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
       (
         id: _idSaving,
         chart: _fakeChart(_idSaving, '${s.dashSaving} vs MA'),
-        series: <_Series>[
-          _Series(key: 'cf:saving',    name: s.dashSaving, color: Colors.blue,          spots: savingSpots),
-          _Series(key: 'cf:saving_ma', name: 'MA',         color: Colors.blue.shade200,  spots: savingMA,   isDashed: true),
-          _Series(key: 'cf:diff',      name: 'Diff',       color: Colors.orange,         spots: savingDiff, rightAxis: true),
+        series: <ChartSeries>[
+          ChartSeries(key: 'cf:saving',    name: s.dashSaving, color: Colors.blue,          spots: savingSpots),
+          ChartSeries(key: 'cf:saving_ma', name: 'MA',         color: Colors.blue.shade200,  spots: savingMA,   isDashed: true),
+          ChartSeries(key: 'cf:diff',      name: 'Diff',       color: Colors.orange,         spots: savingDiff, rightAxis: true),
         ],
         ctl: _savingWinCtl,
         onWin: (int w) => setState(() => _savingWindow = w),
@@ -164,10 +164,10 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
       (
         id: _idSpending,
         chart: _fakeChart(_idSpending, '${s.legendExpenses} vs MA & ${s.dashCash}'),
-        series: <_Series>[
-          _Series(key: 'cf:spending',    name: s.legendExpenses, color: Colors.red,           spots: spendingSpots),
-          _Series(key: 'cf:spending_ma', name: 'MA',             color: Colors.red.shade200,   spots: spendingMA,  isDashed: true),
-          _Series(key: 'cf:cash',        name: s.dashCash,       color: Colors.green,          spots: cashSpots,   rightAxis: true),
+        series: <ChartSeries>[
+          ChartSeries(key: 'cf:spending',    name: s.legendExpenses, color: Colors.red,           spots: spendingSpots),
+          ChartSeries(key: 'cf:spending_ma', name: 'MA',             color: Colors.red.shade200,   spots: spendingMA,  isDashed: true),
+          ChartSeries(key: 'cf:cash',        name: s.dashCash,       color: Colors.green,          spots: cashSpots,   rightAxis: true),
         ],
         ctl: _spendingWinCtl,
         onWin: (int w) => setState(() => _spendingWindow = w),
@@ -175,9 +175,9 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
       (
         id: _idVelocity,
         chart: _fakeChart(_idVelocity, '${s.cfVelocity} (MA)'),
-        series: <_Series>[
-          _Series(key: 'cf:saving_vel',   name: '${s.dashSaving} vel.',     color: Colors.blue, spots: savingVel),
-          _Series(key: 'cf:spending_vel', name: '${s.legendExpenses} vel.', color: Colors.red,  spots: spendingVel),
+        series: <ChartSeries>[
+          ChartSeries(key: 'cf:saving_vel',   name: '${s.dashSaving} vel.',     color: Colors.blue, spots: savingVel),
+          ChartSeries(key: 'cf:spending_vel', name: '${s.legendExpenses} vel.', color: Colors.red,  spots: spendingVel),
         ],
         ctl: _velocityWinCtl,
         onWin: (int w) => setState(() => _velocityWindow = w),
