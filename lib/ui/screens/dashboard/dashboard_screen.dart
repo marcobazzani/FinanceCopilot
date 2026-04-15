@@ -91,7 +91,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final allDataAsync = ref.watch(_allSeriesDataProvider);
+    final allDataAsync = ref.watch(allSeriesDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final langCode = ref.watch(portableLanguageProvider);
     final language = langCode.startsWith('it') ? 'it_IT' : 'en_US';
@@ -124,7 +124,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _buildChartsTab(
-    AsyncValue<_AllSeriesData?> allDataAsync,
+    AsyncValue<AllSeriesData?> allDataAsync,
     String locale,
     String language,
     BuildContext context,
@@ -181,7 +181,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             // Chart widgets
             final isCombined = chart.sourceChartIds != null;
 
-            List<_Series> filteredSeries;
+            List<ChartSeries> filteredSeries;
             if (isCombined) {
               filteredSeries = _buildCombinedSeries(charts, chart, allData);
             } else {
@@ -250,7 +250,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   Widget _buildCashFlowTab(
-    AsyncValue<_AllSeriesData?> allDataAsync,
+    AsyncValue<AllSeriesData?> allDataAsync,
     String locale,
     String language,
     BuildContext context,
@@ -274,10 +274,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   /// Build the fixed set of dashboard widgets from live series data.
   /// Widget definitions are static; series are resolved dynamically from all
   /// active accounts, assets, and adjustments — no IDs are hardcoded.
-  List<DashboardChart> _buildStaticCharts(_AllSeriesData allData, AppStrings s) {
+  List<DashboardChart> _buildStaticCharts(AllSeriesData allData, AppStrings s) {
     final now = DateTime.now();
 
-    List<Map<String, dynamic>> toConfigs(List<_Series> series) => series.map((s) {
+    List<Map<String, dynamic>> toConfigs(List<ChartSeries> series) => series.map((s) {
           final parts = s.key.split(':');
           return {'type': parts[0], 'id': int.parse(parts[1])};
         }).toList();
@@ -345,7 +345,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   /// Build series for a combined chart: each source chart's total becomes a line.
-  List<_Series> _buildCombinedSeries(List<DashboardChart> allCharts, DashboardChart combined, _AllSeriesData allData) {
+  List<ChartSeries> _buildCombinedSeries(List<DashboardChart> allCharts, DashboardChart combined, AllSeriesData allData) {
     List<int> sourceIds;
     try {
       sourceIds = (jsonDecode(combined.sourceChartIds!) as List).cast<int>();
@@ -353,7 +353,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       return [];
     }
 
-    final result = <_Series>[];
+    final result = <ChartSeries>[];
     var colorIdx = 0;
 
     for (final srcId in sourceIds) {
@@ -368,7 +368,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       final totalSpots = _buildSmartTotalSpotsStatic(srcSeries);
       if (totalSpots.isEmpty) continue;
 
-      result.add(_Series(
+      result.add(ChartSeries(
         key: 'combined_src:$srcId',
         name: srcChart.title,
         color: _chartColors[colorIdx % _chartColors.length],
@@ -381,7 +381,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   /// Static version of smart total spots for use outside _ChartCard.
-  static List<FlSpot> _buildSmartTotalSpotsStatic(List<_Series> visible) {
+  static List<FlSpot> _buildSmartTotalSpotsStatic(List<ChartSeries> visible) {
     final visibleInvestedIds = <int>{};
     final visibleMarketIds = <int>{};
     for (final s in visible) {
@@ -414,8 +414,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     }
   }
 
-  List<_Series> _filterSeries(_AllSeriesData allData, List<Map<String, dynamic>> configs) {
-    final result = <_Series>[];
+  List<ChartSeries> _filterSeries(AllSeriesData allData, List<Map<String, dynamic>> configs) {
+    final result = <ChartSeries>[];
     for (final config in configs) {
       final type = config['type'] as String?;
       final id = config['id'] as int?;
