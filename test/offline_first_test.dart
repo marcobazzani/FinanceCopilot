@@ -280,4 +280,117 @@ void main() {
       expect(valueDiff, closeTo(10 * 200.0 * (0.930 - 0.925), 1e-6));
     });
   });
+
+  group('Revalue fallback in price history', () {
+    Future<int> createBond(String name, {String currency = 'EUR'}) async {
+      return db.into(db.assets).insert(AssetsCompanion.insert(
+        name: name,
+        assetType: AssetType.stockEtf,
+        instrumentType: const Value(InstrumentType.bond),
+        assetClass: const Value(AssetClass.fixedIncome),
+        valuationMethod: ValuationMethod.marketPrice,
+        currency: Value(currency),
+      ));
+    }
+
+    Future<void> insertEvent(int assetId, DateTime date, EventType type,
+        {double? quantity, double? price, double amount = 0}) async {
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        type: type,
+        date: date,
+        valueDate: date,
+        quantity: Value(quantity),
+        price: Value(price),
+        amount: amount,
+      ));
+    }
+
+    test('getPriceHistory returns revalue-derived prices when no market prices', () async {
+      final bondId = await createBond('BTP 2028');
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
+          quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
+          amount: 9900.0);
+
+      final history = await priceService.getPriceHistory(bondId);
+      expect(history, isNotEmpty, reason: 'Should have revalue-derived price');
+      expect(history.length, 1);
+      // 9900 / 100 qty = 99.0 per unit
+      expect(history.first.value, 99.0);
+    });
+
+    test('getPriceHistoryBatch includes revalue-only assets', () async {
+      final etfId = await createAsset('SWDA', ticker: 'SWDA');
+      final bondId = await createBond('BTP 2028');
+
+      // ETF has market prices
+      await insertPrice(etfId, DateTime(2024, 6, 1), 110.0);
+      await insertPrice(etfId, DateTime(2024, 6, 2), 111.0);
+
+      // Bond has only buy + revalue (no market prices)
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
+          quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
+          amount: 9900.0);
+
+      final batch = await priceService.getPriceHistoryBatch([etfId, bondId]);
+      expect(batch.containsKey(etfId), isTrue);
+      expect(batch.containsKey(bondId), isTrue,
+          reason: 'Bond with revalue should be in batch results');
+      expect(batch[bondId]!.length, 1);
+      expect(batch[bondId]!.first.value, 99.0);
+    });
+
+    test('getPriceHistory includes both market and revalue on different dates', () async {
+      final bondId = await createBond('BTP 2028');
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
+          quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
+          amount: 9900.0);
+      // Market price on a different date
+      await insertPrice(bondId, DateTime(2024, 6, 2), 99.5);
+
+      final history = await priceService.getPriceHistory(bondId);
+      // Both: revalue on June 1 + market on June 2
+      expect(history.length, 2);
+      expect(history[0].value, 99.0); // 9900 / 100 qty
+      expect(history[1].value, 99.5); // market price
+    });
+
+    test('getPriceHistory market price wins over revalue on same date', () async {
+      final bondId = await createBond('BTP 2028');
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
+          quantity: 100, price: 98.0, amount: 9800.0);
+      // Revalue and market price on the same date
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
+          amount: 9900.0);
+      await insertPrice(bondId, DateTime(2024, 6, 1), 99.5);
+
+      final history = await priceService.getPriceHistory(bondId);
+      // Market price takes precedence on same day
+      expect(history.length, 1);
+      expect(history.first.value, 99.5);
+    });
+
+    test('getPriceHistory merges market prices and revalue for gaps', () async {
+      final bondId = await createBond('BTP 2028');
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
+          quantity: 100, price: 98.0, amount: 9800.0);
+      // Revalue in March (before any market price)
+      await insertEvent(bondId, DateTime(2024, 3, 1), EventType.revalue,
+          amount: 9850.0);
+      // Market price starts in June
+      await insertPrice(bondId, DateTime(2024, 6, 1), 99.0);
+      await insertPrice(bondId, DateTime(2024, 6, 2), 99.5);
+
+      final history = await priceService.getPriceHistory(bondId);
+      // Should include the revalue point (March) + 2 market prices (June)
+      expect(history.length, 3);
+      // Sorted by date: revalue first, then market prices
+      expect(history[0].value, 98.5); // 9850 / 100 qty
+      expect(history[1].value, 99.0);
+      expect(history[2].value, 99.5);
+    });
+  });
 }
