@@ -24,13 +24,14 @@ void main() {
     await tapBuySellChips(tester);
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await settle(tester);
+    await longSettle(tester);
     await tester.tap(find.text('Next'));
     await settle(tester);
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -58,13 +59,14 @@ void main() {
     await tapBuySellChips(tester);
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await settle(tester);
+    await longSettle(tester);
     await tester.tap(find.text('Next'));
     await settle(tester);
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -88,20 +90,22 @@ void main() {
     await pushImportScreen(tester, preview: preview, target: ImportTarget.assetEvent);
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -200));
-    await settle(tester);
+    await longSettle(tester);
+    await tester.ensureVisible(find.text('From sign (+/-)'));
     await tester.tap(find.text('From sign (+/-)'));
     await settle(tester);
     await tester.tap(find.text('Computed'));
     await settle(tester);
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await settle(tester);
+    await longSettle(tester);
     await tester.tap(find.text('Next'));
     await settle(tester);
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -140,6 +144,7 @@ void main() {
     final listView = find.byType(ListView).first;
     await tester.drag(listView, const Offset(0, -300));
     await settle(tester);
+    await tester.ensureVisible(find.text('From sign (+/-)'));
     await tester.tap(find.text('From sign (+/-)'));
     await settle(tester);
     await tester.drag(listView, const Offset(0, -500));
@@ -159,6 +164,7 @@ void main() {
       await settle(tester);
     }
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -188,11 +194,12 @@ void main() {
     await pushImportScreen(tester, preview: preview, target: ImportTarget.assetEvent);
 
     await tester.drag(find.byType(ListView).first, const Offset(0, -200));
-    await settle(tester);
+    await longSettle(tester);
+    await tester.ensureVisible(find.text('From sign (+/-)'));
     await tester.tap(find.text('From sign (+/-)'));
     await settle(tester);
     await tester.drag(find.byType(ListView).first, const Offset(0, -300));
-    await settle(tester);
+    await longSettle(tester);
     await tester.tap(find.text('Next'));
     await settle(tester);
     for (var i = 0; i < 10; i++) {
@@ -208,6 +215,7 @@ void main() {
       await settle(tester);
     }
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(milliseconds: 100));
