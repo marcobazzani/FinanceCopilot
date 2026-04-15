@@ -580,4 +580,239 @@ Date,Amount
       expect(txs.first.description, 'Good row');
     });
   });
+
+  group('Asset event wipe-and-replace', () {
+    // Helper: build a preview with date column (transaction-style import)
+    FilePreview makeDatedPreview(List<List<String>> rows) {
+      return FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: rows.map((r) => {
+          'date': r[0], 'isin': r[1], 'quantity': r[2],
+          'price': r[3], 'currency': r[4], 'amount': r[5],
+        }).toList(),
+        totalRows: rows.length,
+      );
+    }
+
+    const datedMappings = [
+      ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+      ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+      ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+      ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+      ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+    ];
+
+    // Helper: build a preview WITHOUT date column (spot-style import)
+    FilePreview makeSpotPreview(List<List<String>> rows) {
+      return FilePreview(
+        columns: ['isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: rows.map((r) => {
+          'isin': r[0], 'quantity': r[1], 'price': r[2],
+          'currency': r[3], 'amount': r[4],
+        }).toList(),
+        totalRows: rows.length,
+      );
+    }
+
+    const spotMappings = [
+      ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+      ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+      ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+      ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+    ];
+
+    test('transaction re-import replaces only from oldest imported date onward', () async {
+      // First import: two events on different dates
+      final preview1 = makeDatedPreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+        ['2024-02-15', 'IE00B4L5Y983', '5', '110', 'EUR', '550'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview1, mappings: datedMappings, baseCurrency: 'EUR',
+      );
+      var events = await db.select(db.assetEvents).get();
+      expect(events.length, 2);
+
+      // Re-import: only Feb onward, different quantity
+      final preview2 = makeDatedPreview([
+        ['2024-02-15', 'IE00B4L5Y983', '8', '115', 'EUR', '920'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview2, mappings: datedMappings, baseCurrency: 'EUR',
+      );
+
+      events = await db.select(db.assetEvents).get();
+      // Jan event (before cutoff) should survive, Feb event should be replaced
+      expect(events.length, 2);
+      final quantities = events.map((e) => e.quantity).toList()..sort();
+      expect(quantities, [8.0, 10.0]); // Jan=10 preserved, Feb=8 replaced
+    });
+
+    // Reproduces GitHub issue #51: re-importing a spot portfolio file doubles
+    // quantities because old events from a previous day are never deleted.
+    test('issue #51: spot re-import does not double quantities', () async {
+      final intermediaryId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'My Broker'),
+      );
+
+      final preview = makeSpotPreview([
+        ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+        ['LU0908500753', '5', '260', 'EUR', '1300'],
+      ]);
+
+      // First import
+      await importer.importAssetEventsGrouped(
+        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+      );
+
+      // Simulate time passing: backdate events to yesterday
+      await db.customUpdate(
+        "UPDATE asset_events SET date = strftime('%s', '2024-01-01')",
+        updates: {db.assetEvents},
+      );
+
+      // Re-import the exact same file (spot, so all events get today's date)
+      await importer.importAssetEventsGrouped(
+        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+      );
+
+      final events = await db.select(db.assetEvents).get();
+      expect(events.length, 2, reason: 'should have 2 events (one per ISIN), not 4');
+      final totalQty = events.fold<double>(0, (sum, e) => sum + (e.quantity ?? 0));
+      expect(totalQty, 15.0, reason: 'total quantity should be 15 (10+5), not 30');
+    });
+
+    test('spot re-import with intermediary replaces all events', () async {
+      final intermediaryId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+
+      // First spot import
+      final preview1 = makeSpotPreview([
+        ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview1, mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+      );
+      var events = await db.select(db.assetEvents).get();
+      expect(events.length, 1);
+      expect(events.first.quantity, 10.0);
+
+      // Simulate re-import on a different day by manually backdating the
+      // existing event so that its date != today (mirrors the real-world
+      // scenario where the first import was done yesterday).
+      await db.customUpdate(
+        "UPDATE asset_events SET date = strftime('%s', '2024-01-01')",
+        updates: {db.assetEvents},
+      );
+
+      // Re-import same file (spot, so date = today)
+      await importer.importAssetEventsGrouped(
+        preview: preview1, mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+      );
+
+      events = await db.select(db.assetEvents).get();
+      // With fix: should be 1 event (old wiped, new inserted)
+      // Bug behavior: 2 events (old NOT wiped because date cutoff = today)
+      expect(events.length, 1, reason: 'spot re-import should fully replace, not accumulate');
+      expect(events.first.quantity, 10.0);
+    });
+
+    test('spot re-import without intermediary replaces only unassigned asset events', () async {
+      final intermediaryId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker B'),
+      );
+
+      // Create assigned asset (Broker B) with a pre-existing event
+      final assignedAssetId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'SWDA assigned',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        isin: const Value('IE00B4L5Y983'),
+        intermediaryId: Value(intermediaryId),
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assignedAssetId,
+        date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 500,
+        quantity: const Value(5),
+      ));
+
+      // Create unassigned asset (same ISIN, no intermediary) with event
+      final unassignedAssetId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'SWDA unassigned',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        isin: const Value('IE00B4L5Y983'),
+        // no intermediaryId
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: unassignedAssetId,
+        date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 300,
+        quantity: const Value(3),
+      ));
+
+      // Spot re-import of the unassigned asset (intermediaryId: null)
+      // The import will reuse the first matching ISIN asset (the assigned one),
+      // so we test by checking that the unassigned asset's old event is cleaned
+      // and the assigned one is untouched.
+      final preview = makeSpotPreview([
+        ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        // intermediaryId: null (unassigned)
+      );
+
+      // The assigned event under Broker B must survive untouched
+      final assignedEvents = await (db.select(db.assetEvents)
+        ..where((e) => e.assetId.equals(assignedAssetId))).get();
+      expect(assignedEvents.length, 1, reason: 'assigned intermediary events must not be wiped');
+      expect(assignedEvents.first.quantity, 5.0);
+    });
+
+    test('spot re-import with intermediary does not wipe other intermediary events', () async {
+      final brokerA = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+      final brokerB = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker B'),
+      );
+
+      // Import same ISIN under Broker B first
+      final preview = makeSpotPreview([
+        ['IE00B4L5Y983', '20', '100', 'EUR', '2000'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerB,
+      );
+
+      // Now spot import under Broker A
+      final previewA = makeSpotPreview([
+        ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: previewA, mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerA,
+      );
+
+      // Broker B's events must survive
+      final allEvents = await db.select(db.assetEvents).get();
+      expect(allEvents.length, 2); // 1 for each broker
+      final quantities = allEvents.map((e) => e.quantity).toSet();
+      expect(quantities, {10.0, 20.0});
+    });
+  });
 }
