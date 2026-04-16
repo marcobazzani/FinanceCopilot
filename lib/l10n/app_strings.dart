@@ -466,6 +466,38 @@ class AppStrings {
       : 'Cumulative: $cum · Remaining: $rem';
   String datePrefix(String d)    => _it ? 'Data: $d'           : 'Date: $d';
 
+  // ── Extraordinary Events (unified Adjustments redesign) ──
+  String get eventKindSection            => _it ? 'Tipo di evento'          : 'Event kind';
+  String get eventDirectionLabel         => _it ? 'Direzione'               : 'Direction';
+  String get eventDirectionInflow        => _it ? 'Entrata'                 : 'Inflow';
+  String get eventDirectionOutflow       => _it ? 'Uscita'                  : 'Outflow';
+  String get eventTreatmentLabel         => _it ? 'Trattamento'             : 'Treatment';
+  String get eventTreatmentInstant       => _it ? 'Istantaneo'              : 'Instant';
+  String get eventTreatmentSpread        => _it ? 'Dilazionato'             : 'Spread';
+  String get eventBasicsSection          => _it ? 'Dettagli'                : 'Basics';
+  String get eventDateLabel              => _it ? "Data dell'evento"        : 'Event date';
+  String get eventSpreadSection          => _it ? 'Dilazione'               : 'Spread';
+  String get eventNotesSection           => _it ? 'Note'                    : 'Notes';
+  String get notesOptional               => _it ? 'Note (opzionale)'        : 'Notes (optional)';
+  String get stepFrequencyLabel          => _it ? 'Frequenza'               : 'Frequency';
+  String get stepCountLabel              => _it ? 'Numero passi'            : 'Step count';
+  String get spreadStartLabel            => _it ? 'Inizio dilazione'        : 'Spread start';
+  String get spreadEndLabel              => _it ? 'Fine dilazione'          : 'Spread end';
+  String get spreadModeBackward          => _it ? 'Risparmia prima'         : 'Save before';
+  String get spreadModeForward           => _it ? 'Paga dopo'               : 'Pay after';
+  String get spreadModeStartSteps        => _it ? 'Da data + passi'         : 'From date + steps';
+  String spreadPreview(int n, String amt) => _it ? '$n passi × $amt'        : '$n steps × $amt';
+  String get freqWeekly                  => _it ? 'Settimanale'             : 'Weekly';
+  String get freqMonthly                 => _it ? 'Mensile'                 : 'Monthly';
+  String get freqQuarterly               => _it ? 'Trimestrale'             : 'Quarterly';
+  String get freqYearly                  => _it ? 'Annuale'                 : 'Yearly';
+  String get extraordinaryEvents         => _it ? 'Eventi straordinari'     : 'Extraordinary Events';
+  String get addEventEntryTitle          => _it ? 'Aggiungi voce'           : 'Add entry';
+  String get regenerateEntries           => _it ? 'Rigenera voci'           : 'Regenerate entries';
+  String get noEntriesYet                => _it ? 'Nessuna voce'            : 'No entries yet';
+  String get descriptionOptional         => _it ? 'Descrizione (opz.)'      : 'Description (optional)';
+  String get dateLabel                   => _it ? 'Data'                    : 'Date';
+
   // ── Capex Edit ───────────────────────────────────────────
   String get editAdjustmentTitle  => _it ? 'Modifica aggiustamento'   : 'Edit Adjustment';
   String get newAdjustmentTitle   => _it ? 'Nuovo aggiustamento'       : 'New Adjustment';
