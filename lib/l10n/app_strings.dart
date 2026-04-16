@@ -492,6 +492,16 @@ class AppStrings {
   String get freqQuarterly               => _it ? 'Trimestrale'             : 'Quarterly';
   String get freqYearly                  => _it ? 'Annuale'                 : 'Yearly';
   String get extraordinaryEvents         => _it ? 'Eventi straordinari'     : 'Extraordinary Events';
+  String get adjustmentsInfoTitle        => _it ? 'Cosa sono gli aggiustamenti' : 'What these events are';
+  String get adjustmentsInfoBody         => _it
+      ? 'Entrate e uscite straordinarie che non riflettono la tua capacità di risparmio '
+        'quotidiana: eredità, donazioni, acquisti eccezionali, grandi ristrutturazioni. '
+        'Vengono esclusi dal segnale di risparmio regolare. Le spese possono essere '
+        'dilazionate nel tempo (es. auto su più anni) o tenute come evento istantaneo.'
+      : 'Extraordinary inflows and outflows that don\'t reflect your day-to-day saving '
+        'capacity: inheritances, donations, exceptional purchases, major renovations. '
+        'They\'re excluded from the regular saving signal. Expenses can be spread over '
+        'time (e.g. a car over several years) or kept as a one-shot event.';
   String get addEventEntryTitle          => _it ? 'Aggiungi voce'           : 'Add entry';
   String get regenerateEntries           => _it ? 'Rigenera voci'           : 'Regenerate entries';
   String get noEntriesYet                => _it ? 'Nessuna voce'            : 'No entries yet';

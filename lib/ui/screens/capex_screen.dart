@@ -21,8 +21,6 @@ import 'event_edit_screen.dart';
 // Replaces the legacy dual CAPEX + IncomeAdjustment lists.
 // ════════════════════════════════════════════════════
 
-enum _EventFilter { all, inflow, outflow }
-
 class AdjustmentsView extends ConsumerStatefulWidget {
   const AdjustmentsView({super.key});
 
@@ -31,21 +29,12 @@ class AdjustmentsView extends ConsumerStatefulWidget {
 }
 
 class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
-  _EventFilter _filter = _EventFilter.all;
   final _selection = SelectionController<int>();
 
   @override
   void dispose() {
     _selection.dispose();
     super.dispose();
-  }
-
-  List<ExtraordinaryEvent> _applyFilter(List<ExtraordinaryEvent> events) {
-    return switch (_filter) {
-      _EventFilter.all => events,
-      _EventFilter.inflow => events.where((e) => e.direction == EventDirection.inflow).toList(),
-      _EventFilter.outflow => events.where((e) => e.direction == EventDirection.outflow).toList(),
-    };
   }
 
   @override
@@ -60,65 +49,50 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
       listenable: _selection,
       builder: (ctx, _) {
         final events = eventsAsync.value ?? const <ExtraordinaryEvent>[];
-        final filtered = _applyFilter(events);
-        _selection.setOrderedIds(filtered.map((e) => e.id).toList());
+        _selection.setOrderedIds(events.map((e) => e.id).toList());
 
         final stats = statsAsync.value ?? {};
 
         return Scaffold(
           body: eventsAsync.when(
-            data: (_) => Column(
+            data: (_) => ListView(
+              padding: const EdgeInsets.only(bottom: 80),
               children: [
-                // Filter chips row
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      _buildChip(s.all, _EventFilter.all),
-                      const SizedBox(width: 8),
-                      _buildChip(s.eventDirectionInflow, _EventFilter.inflow),
-                      const SizedBox(width: 8),
-                      _buildChip(s.eventDirectionOutflow, _EventFilter.outflow),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.event_note, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              const SizedBox(height: 16),
-                              Text(s.noEventsYet, textAlign: TextAlign.center),
-                            ],
+                const _InfoBox(),
+                if (events.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.event_note, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(height: 16),
+                          Text(s.noEventsYet, textAlign: TextAlign.center),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  for (var i = 0; i < events.length; i++) ...[
+                    SelectableItem<int>(
+                      controller: _selection,
+                      id: events[i].id,
+                      child: _EventTile(
+                        event: events[i],
+                        stats: stats[events[i].id],
+                        baseCurrency: baseCurrency,
+                        locale: locale,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => EventDetailScreen(eventId: events[i].id),
                           ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.only(bottom: 80),
-                          itemCount: filtered.length,
-                          separatorBuilder: (_, _) => const Divider(height: 1),
-                          itemBuilder: (ctx, i) {
-                            final event = filtered[i];
-                            return SelectableItem<int>(
-                              controller: _selection,
-                              id: event.id,
-                              child: _EventTile(
-                                event: event,
-                                stats: stats[event.id],
-                                baseCurrency: baseCurrency,
-                                locale: locale,
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => EventDetailScreen(eventId: event.id),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
                         ),
-                ),
+                      ),
+                    ),
+                    if (i < events.length - 1) const Divider(height: 1),
+                  ],
               ],
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -127,7 +101,7 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
           bottomNavigationBar: _selection.active
               ? SelectionActionBar<int>(
                   controller: _selection,
-                  visibleIds: filtered.map((e) => e.id).toList(),
+                  visibleIds: events.map((e) => e.id).toList(),
                   onDelete: (ids) =>
                       ref.read(extraordinaryEventServiceProvider).deleteMany(ids.toList()),
                 )
@@ -145,12 +119,51 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
       },
     );
   }
+}
 
-  Widget _buildChip(String label, _EventFilter filter) {
-    return FilterChip(
-      label: Text(label),
-      selected: _filter == filter,
-      onSelected: (_) => setState(() => _filter = filter),
+// ════════════════════════════════════════════════════
+// Info box explaining what the Adjustments section represents.
+// ════════════════════════════════════════════════════
+
+class _InfoBox extends ConsumerWidget {
+  const _InfoBox();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      color: theme.colorScheme.surfaceContainerHighest,
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.adjustmentsInfoTitle,
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    s.adjustmentsInfoBody,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
