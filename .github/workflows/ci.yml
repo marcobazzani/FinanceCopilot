@@ -168,15 +168,25 @@ jobs:
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Determine channel
+      - name: Determine channel and stamp version
         id: channel
         shell: bash
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
             echo "channel=stable" >> "$GITHUB_OUTPUT"
           else
+            VERSION="0.0.0-${GITHUB_SHA::7}"
             echo "channel=nightly" >> "$GITHUB_OUTPUT"
           fi
+          # Rewrite the appVersion constant in-place (not committed)
+          python3 -c "
+          import re, pathlib
+          p = pathlib.Path('lib/version.dart')
+          s = p.read_text()
+          s = re.sub(r\"const appVersion = '[^']*';\", f\"const appVersion = '${VERSION}';\", s)
+          p.write_text(s)
+          "
 
       - name: Set up Java (Android only)
         if: matrix.platform == 'apk'
