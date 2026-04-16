@@ -59,7 +59,9 @@ void main() {
     await tester.tap(find.byType(BackButton));
     await settle(tester);
 
-    // -- Income verification --
+    // -- Income verification (tab inside Accounts) --
+    await tester.tap(find.text('Accounts'));
+    await settle(tester);
     await tester.tap(find.text('Income'));
     await settle(tester);
     expect(find.textContaining('2'), findsWidgets);

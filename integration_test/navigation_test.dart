@@ -7,29 +7,28 @@ import 'helpers/test_app.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Tap all 5 nav destinations and verify screens', (tester) async {
+  testWidgets('Tap all top-level nav destinations and the Accounts inner tabs', (tester) async {
     await pumpApp(tester);
 
     // Dashboard is default
     expect(find.text('Dashboard'), findsWidgets);
 
-    // Tap Accounts
+    // Tap Accounts — this is now the only place Income and Adjustments live.
     await tester.tap(find.text('Accounts'));
     await settle(tester);
     expect(find.byIcon(Icons.add), findsWidgets);
 
-    // Tap Assets
-    await tester.tap(find.text('Assets'));
+    // Inside Accounts: inner TabBar has Accounts / Income / Adjustments tabs.
+    await tester.tap(find.text('Income'));
     await settle(tester);
-    expect(find.byIcon(Icons.add), findsWidgets);
 
-    // Tap Adjustments
     await tester.tap(find.text('Adjustments'));
     await settle(tester);
 
-    // Tap Income
-    await tester.tap(find.text('Income'));
+    // Switch to Assets.
+    await tester.tap(find.text('Assets'));
     await settle(tester);
+    expect(find.byIcon(Icons.add), findsWidgets);
 
     // Back to Dashboard
     await tester.tap(find.text('Dashboard'));
