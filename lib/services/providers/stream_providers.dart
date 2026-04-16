@@ -52,40 +52,10 @@ final dashboardChartsProvider = StreamProvider<List<DashboardChart>>((ref) {
   return ref.watch(dashboardChartServiceProvider).watchAll();
 });
 
-// ── CAPEX / Buffer stream providers ──
-
-final capexSchedulesProvider = StreamProvider<List<DepreciationSchedule>>((ref) {
-  return ref.watch(capexServiceProvider).watchAll();
-});
-
-final capexStatsProvider = StreamProvider<Map<int, CapexStats>>((ref) {
-  return ref.watch(capexServiceProvider).watchStatsForAll();
-});
-
-final capexScheduleProvider = StreamProvider.family<DepreciationSchedule, int>((ref, scheduleId) {
-  return ref.watch(capexServiceProvider).watchById(scheduleId);
-});
-
-final capexEntriesProvider = StreamProvider.family<List<DepreciationEntry>, int>((ref, scheduleId) {
-  return ref.watch(capexServiceProvider).watchEntries(scheduleId);
-});
+// ── Buffer transactions (reimbursements; shared across events) ──
 
 final bufferTransactionsProvider = StreamProvider.family<List<BufferTransaction>, int>((ref, bufferId) {
   return ref.watch(bufferServiceProvider).watchByBuffer(bufferId);
-});
-
-// ── Income adjustment stream providers ──
-
-final incomeAdjustmentsProvider = StreamProvider<List<IncomeAdjustment>>((ref) {
-  return ref.watch(incomeAdjustmentServiceProvider).watchAll();
-});
-
-final incomeAdjustmentProvider = StreamProvider.family<IncomeAdjustment, int>((ref, id) {
-  return ref.watch(incomeAdjustmentServiceProvider).watchById(id);
-});
-
-final incomeAdjustmentExpensesProvider = StreamProvider.family<List<IncomeAdjustmentExpense>, int>((ref, adjustmentId) {
-  return ref.watch(incomeAdjustmentServiceProvider).watchExpenses(adjustmentId);
 });
 
 // ── Extraordinary events stream providers ──
