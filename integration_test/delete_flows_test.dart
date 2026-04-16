@@ -73,7 +73,9 @@ void main() {
       await seedIncome(db, amount: 7777.0);
     });
 
-    // Navigate to Income
+    // Navigate to Income tab (now inside Accounts).
+    await tester.tap(find.text('Accounts'));
+    await settle(tester);
     await tester.tap(find.text('Income'));
     await settle(tester);
     expect(find.textContaining('7'), findsWidgets);
@@ -105,7 +107,9 @@ void main() {
       await seedIncome(db, amount: 3333.0);
     });
 
-    // Navigate to Income
+    // Navigate to Income tab (now inside Accounts).
+    await tester.tap(find.text('Accounts'));
+    await settle(tester);
     await tester.tap(find.text('Income'));
     await settle(tester);
 

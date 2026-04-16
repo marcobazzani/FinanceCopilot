@@ -12,12 +12,11 @@ void main() {
 
     // App launches successfully — navigation is visible
 
-    // NavigationRail destinations (wide layout in test)
+    // NavigationRail destinations (wide layout in test) — consolidated to 3.
+    // Income and Adjustments are now tabs inside the Accounts screen.
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.text('Accounts'), findsWidgets);
     expect(find.text('Assets'), findsWidgets);
-    expect(find.text('Adjustments'), findsWidgets);
-    expect(find.text('Income'), findsWidgets);
 
     // AppBar action icons
     expect(find.byIcon(Icons.settings), findsWidgets);
