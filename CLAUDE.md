@@ -57,15 +57,15 @@
 
 ## Releasing a new version
 
+Version is derived from the git tag. Never hand-edit `lib/version.dart`.
+
 0. **Pre-release check**: a working nightly build with `main` merged into `develop` must exist and pass CI before starting the release. Verify with `gh run list --branch develop --limit 1`.
-1. Merge `develop` into `main`: `git checkout main && git merge develop --no-edit`
-2. Bump version in `lib/version.dart` (only on main)
-3. Commit: `git commit -am "Release vX.Y.Z"`
-4. Tag and push: `git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z`
-5. Summarize changes: run `git log --oneline vPREVIOUS..vX.Y.Z` and write a user-facing summary (features + bug fixes, no implementation details)
-6. Create GitHub Release: use `gh release create vX.Y.Z --title "vX.Y.Z -- short description" --notes "..."` with the summary
-7. Wait for CI/CD to complete: `gh run list --branch main --limit 1` -- CI builds macOS DMG + Windows ZIP, attaches to release, updates Homebrew tap
-8. Sync develop: `git checkout develop && git merge main --no-edit && git push origin develop`
+1. Merge `develop` into `main` (via PR if protected, else direct merge).
+2. Summarize changes: run `git log --oneline vPREVIOUS..HEAD` and write a user-facing summary.
+3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`
+4. Create GitHub Release: `gh release create vX.Y.Z --title "vX.Y.Z -- short description" --notes "..."`
+5. Wait for CI to complete: `gh run list --branch vX.Y.Z --limit 1` -- CI builds artifacts, attaches to release, updates Homebrew tap.
+6. Sync develop from main if anything changed on main.
 
 
 # Code Quality
