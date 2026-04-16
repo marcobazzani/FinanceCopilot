@@ -88,6 +88,24 @@ final incomeAdjustmentExpensesProvider = StreamProvider.family<List<IncomeAdjust
   return ref.watch(incomeAdjustmentServiceProvider).watchExpenses(adjustmentId);
 });
 
+// ── Extraordinary events stream providers ──
+
+final extraordinaryEventsProvider = StreamProvider<List<ExtraordinaryEvent>>((ref) {
+  return ref.watch(extraordinaryEventServiceProvider).watchAll();
+});
+
+final extraordinaryEventProvider = StreamProvider.family<ExtraordinaryEvent, int>((ref, id) {
+  return ref.watch(extraordinaryEventServiceProvider).watchById(id);
+});
+
+final extraordinaryEventEntriesProvider = StreamProvider.family<List<ExtraordinaryEventEntry>, int>((ref, eventId) {
+  return ref.watch(extraordinaryEventServiceProvider).watchEntries(eventId);
+});
+
+final extraordinaryEventStatsProvider = StreamProvider<Map<int, ExtraordinaryEventStats>>((ref) {
+  return ref.watch(extraordinaryEventServiceProvider).watchStatsForAll();
+});
+
 // ── Income stream providers ──
 
 final incomesProvider = StreamProvider<List<Income>>((ref) {

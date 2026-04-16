@@ -13,6 +13,7 @@ import '../asset_event_service.dart';
 import '../asset_service.dart';
 import '../buffer_service.dart';
 import '../capex_service.dart';
+import '../extraordinary_event_service.dart';
 import '../dashboard_chart_service.dart';
 import '../income_adjustment_service.dart';
 import '../income_service.dart';

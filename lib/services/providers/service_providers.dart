@@ -76,6 +76,12 @@ final incomeAdjustmentServiceProvider = Provider<IncomeAdjustmentService>((ref) 
   return IncomeAdjustmentService(ref.watch(databaseProvider));
 });
 
+// ── Extraordinary events (unified replacement for CAPEX + IncomeAdj) ──
+
+final extraordinaryEventServiceProvider = Provider<ExtraordinaryEventService>((ref) {
+  return ExtraordinaryEventService(ref.watch(databaseProvider));
+});
+
 // ── Income providers ──
 
 final incomeServiceProvider = Provider<IncomeService>((ref) {
