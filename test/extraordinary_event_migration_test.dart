@@ -11,8 +11,8 @@ import 'package:finance_copilot/database/tables.dart';
 ///   - Donazione (IncomeAdjustment, €250,000)
 ///     → inflow/instant event, no entries
 ///   - Fido (IncomeAdjustment, total=0, one €6,540 expense)
-///     → outflow/instant event (reclassified by the special-case),
-///       one manual entry
+///     → inflow/instant event (preserves legacy bucket placement; keeping
+///       it inflow keeps its chart series out of the Cash-line composition)
 ///
 /// Drift's onCreate runs `m.createAll()` for the *current* version, so on a
 /// fresh in-memory DB the legacy tables (depreciation_schedules,
@@ -155,12 +155,6 @@ void main() {
         [entry.value, 'manual', entry.key],
       );
     }
-
-    await db.customStatement('''
-      UPDATE extraordinary_events
-      SET direction = 'outflow', treatment = 'instant'
-      WHERE direction = 'inflow' AND total_amount = 0
-    ''');
   }
 
   test('T-Roc maps to outflow/spread with sign-flipped scheduled entries', () async {
@@ -209,15 +203,16 @@ void main() {
     expect(entries, isEmpty);
   });
 
-  test('Fido reclassifies to outflow/instant with one manual entry', () async {
+  test('Fido stays inflow/instant with one positive manual entry', () async {
     await insertLegacyFixtures();
     await runV27Backfill();
 
     final fido = await (db.select(db.extraordinaryEvents)
           ..where((e) => e.name.equals('Fido')))
         .getSingle();
-    // Reclassified by the zero-amount special case.
-    expect(fido.direction, EventDirection.outflow);
+    // Zero-amount IncomeAdjustments are NOT reclassified — reclassifying
+    // would shift the series into the Cash-line composition.
+    expect(fido.direction, EventDirection.inflow);
     expect(fido.treatment, EventTreatment.instant);
     expect(fido.totalAmount, 0);
 
@@ -226,6 +221,8 @@ void main() {
         .get();
     expect(entries, hasLength(1));
     expect(entries[0].entryKind, EventEntryKind.manual);
+    // Entry amount is preserved positive from the legacy expenses table —
+    // matches the inflow/manual sign convention (+amount restores saving).
     expect(entries[0].amount, closeTo(6540.01, 0.001));
     expect(entries[0].date, DateTime(2026, 3, 2));
   });

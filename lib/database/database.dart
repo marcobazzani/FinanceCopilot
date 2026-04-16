@@ -363,12 +363,11 @@ class AppDatabase extends _$AppDatabase {
               );
             }
 
-            // Fido special-case: reclassify zero-amount windfalls as outflow buckets.
-            await customStatement('''
-              UPDATE extraordinary_events
-              SET direction = 'outflow', treatment = 'instant'
-              WHERE direction = 'inflow' AND total_amount = 0
-            ''');
+            // NB: zero-amount inflow events (e.g. "Fido" credit-line buckets)
+            // are left as inflow/instant. Reclassifying them to outflow would
+            // shift their chart contribution from the incomeAdj series
+            // (excluded from the Cash line) into the adjustment series
+            // (included in Cash), producing a spurious Cash-line jump.
 
             _log.info('Migration 27: created ExtraordinaryEvents, backfilled ${idMap.length + 1} events');
           }
