@@ -32,6 +32,16 @@ import 'version.dart';
 
 final _log = getLogger('Main');
 
+/// Runtime escape hatch to disable Google Drive sync for a single launch.
+/// Set the `NO_GOOGLE_DRIVE` env var before starting the app:
+///
+///   NO_GOOGLE_DRIVE=1 /path/to/FinanceCopilot.app/Contents/MacOS/FinanceCopilot
+///
+/// Intended for migration-sensitive builds and local testing where a stale
+/// remote DB could overwrite the freshly-migrated local one. A normal
+/// double-click launch has the var unset, so Drive sync runs as usual.
+bool get _noGoogleDrive => Platform.environment['NO_GOOGLE_DRIVE'] == '1';
+
 /// Feature flag: enable demo DB generation (disabled by default, enable at compile time).
 const _enableDemo = bool.fromEnvironment('ENABLE_DEMO', defaultValue: false);
 
@@ -294,6 +304,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _initDriveSync() async {
+    if (_noGoogleDrive) {
+      _log.info('Drive sync: disabled by NO_GOOGLE_DRIVE=1 env var');
+      return;
+    }
     final sync = ref.read(googleDriveSyncProvider);
     final signedIn = await sync.trySilentSignIn();
     if (!signedIn) {
