@@ -60,23 +60,13 @@ final dashboardChartServiceProvider = Provider<DashboardChartService>((ref) {
   return DashboardChartService(ref.watch(databaseProvider));
 });
 
-// ── CAPEX / Buffer providers ──
-
-final capexServiceProvider = Provider<CapexService>((ref) {
-  return CapexService(ref.watch(databaseProvider));
-});
+// ── Buffer provider (shared with ExtraordinaryEvents for reimbursements) ──
 
 final bufferServiceProvider = Provider<BufferService>((ref) {
   return BufferService(ref.watch(databaseProvider));
 });
 
-// ── Income adjustment providers ──
-
-final incomeAdjustmentServiceProvider = Provider<IncomeAdjustmentService>((ref) {
-  return IncomeAdjustmentService(ref.watch(databaseProvider));
-});
-
-// ── Extraordinary events (unified replacement for CAPEX + IncomeAdj) ──
+// ── Extraordinary events (unified CAPEX + IncomeAdj replacement) ──
 
 final extraordinaryEventServiceProvider = Provider<ExtraordinaryEventService>((ref) {
   return ExtraordinaryEventService(ref.watch(databaseProvider));
