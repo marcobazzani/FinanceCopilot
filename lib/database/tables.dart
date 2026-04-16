@@ -113,6 +113,14 @@ enum RegisteredEventType {
   rimborso,
 }
 
+// Extraordinary Events — unified replacement for CAPEX + Income Adjustments.
+// Two-axis model: direction (inflow/outflow) × treatment (instant/spread).
+enum EventDirection { inflow, outflow }
+
+enum EventTreatment { instant, spread }
+
+enum EventEntryKind { scheduled, manual, reimbursement }
+
 // ──────────────────────────────────────────────
 // Tables
 // ──────────────────────────────────────────────
@@ -417,4 +425,50 @@ class AssetCompositions extends Table {
   TextColumn get name => text()();   // e.g. 'United States', 'Technology'
   RealColumn get weight => real()(); // percentage, e.g. 67.33
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Extraordinary Events — unified bucket for things excluded from the pure
+/// savings-capacity signal. Replaces DepreciationSchedules + IncomeAdjustments.
+///
+/// Two orthogonal axes:
+///   direction: inflow (non-earned money) | outflow (non-lifestyle spending)
+///   treatment: instant (one-shot on eventDate) | spread (amortize via entries)
+class ExtraordinaryEvents extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().withLength(min: 1, max: 200)();
+  TextColumn get direction => textEnum<EventDirection>()();
+  TextColumn get treatment => textEnum<EventTreatment>()();
+  RealColumn get totalAmount => real()();
+  TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  DateTimeColumn get eventDate => dateTime()(); // purchase date / income date
+  IntColumn get transactionId => integer().nullable().references(Transactions, #id)();
+
+  // Spread-only fields (null when treatment == instant)
+  TextColumn get stepFrequency => textEnum<StepFrequency>().nullable()();
+  DateTimeColumn get spreadStart => dateTime().nullable()();
+  DateTimeColumn get spreadEnd => dateTime().nullable()();
+  IntColumn get bufferId => integer().nullable().references(Buffers, #id)();
+
+  TextColumn get notes => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Counter-delta entries tied to an ExtraordinaryEvent.
+/// `amount` is stored SIGNED — the sign reflects the direction semantics,
+/// not the sign the user typed. Chart delta-map sums `amount` as-is.
+///   scheduled outflow entry: amount < 0 (reduces saving across spread)
+///   manual    inflow  entry: amount > 0 (restores saving as lump is spent)
+///   reimbursement entry:    amount < 0 (always reduces saving further)
+class ExtraordinaryEventEntries extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get eventId => integer().references(ExtraordinaryEvents, #id)();
+  DateTimeColumn get date => dateTime()();
+  RealColumn get amount => real()();
+  TextColumn get entryKind => textEnum<EventEntryKind>()();
+  TextColumn get description => text().withDefault(const Constant(''))();
+  RealColumn get cumulative => real().nullable()(); // cached for scheduled entries
+  RealColumn get remaining => real().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
