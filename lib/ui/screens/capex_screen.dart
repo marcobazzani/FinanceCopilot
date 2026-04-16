@@ -17,55 +17,28 @@ import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
 
-class CapexScreen extends ConsumerWidget {
-  const CapexScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(appStringsProvider);
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(kToolbarHeight),
-          child: Material(
-            color: Theme.of(context).colorScheme.surface,
-            child: TabBar(
-              tabs: [
-                Tab(text: s.capexTabSavingSpent),
-                Tab(text: s.capexTabDonationSpent),
-              ],
-            ),
-          ),
-        ),
-        body: const TabBarView(
-          children: [
-            _SpreadTab(),
-            _IncomeTab(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ════════════════════════════════════════════════════
-// Spread tab (existing CAPEX adjustments)
+// AdjustmentsView — merged filterable list
 // ════════════════════════════════════════════════════
 
-class _SpreadTab extends ConsumerStatefulWidget {
-  const _SpreadTab();
+enum _AdjFilter { all, spread, donation }
+
+class AdjustmentsView extends ConsumerStatefulWidget {
+  const AdjustmentsView({super.key});
 
   @override
-  ConsumerState<_SpreadTab> createState() => _SpreadTabState();
+  ConsumerState<AdjustmentsView> createState() => _AdjustmentsViewState();
 }
 
-class _SpreadTabState extends ConsumerState<_SpreadTab> {
-  final _selection = SelectionController<int>();
+class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
+  _AdjFilter _filter = _AdjFilter.all;
+  final _spreadSelection = SelectionController<int>();
+  final _donationSelection = SelectionController<int>();
 
   @override
   void dispose() {
-    _selection.dispose();
+    _spreadSelection.dispose();
+    _donationSelection.dispose();
     super.dispose();
   }
 
@@ -74,162 +47,196 @@ class _SpreadTabState extends ConsumerState<_SpreadTab> {
     final s = ref.watch(appStringsProvider);
     final schedulesAsync = ref.watch(capexSchedulesProvider);
     final statsAsync = ref.watch(capexStatsProvider);
+    final adjAsync = ref.watch(incomeAdjustmentsProvider);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
 
     return ListenableBuilder(
-      listenable: _selection,
+      listenable: Listenable.merge([_spreadSelection, _donationSelection]),
       builder: (ctx, _) {
         final schedules = schedulesAsync.value ?? const <DepreciationSchedule>[];
-        _selection.setOrderedIds(schedules.map((s) => s.id).toList());
-        return Scaffold(
-          body: schedulesAsync.when(
-            data: (schedules) {
-              if (schedules.isEmpty) {
-                return Center(
-                  child: Text(s.noSpreadAdjustments,
-                      textAlign: TextAlign.center),
-                );
-              }
-
-              final stats = statsAsync.value ?? {};
-
-              return ListView.separated(
-                itemCount: schedules.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (ctx, i) {
-                  final schedule = schedules[i];
-                  final stat = stats[schedule.id];
-
-                  return SelectableItem<int>(
-                    controller: _selection,
-                    id: schedule.id,
-                    child: _CapexTile(
-                      schedule: schedule,
-                      stats: stat,
-                      baseCurrency: baseCurrency,
-                      locale: locale,
-                      strings: s,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CapexDetailScreen(scheduleId: schedule.id),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(s.error(e))),
-          ),
-          bottomNavigationBar: _selection.active
-              ? SelectionActionBar<int>(
-                  controller: _selection,
-                  visibleIds: schedules.map((s) => s.id).toList(),
-                  onDelete: (ids) => ref.read(capexServiceProvider).deleteMany(ids.toList()),
-                )
-              : null,
-          floatingActionButton: _selection.active
-              ? null
-              : FloatingActionButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const CapexEditScreen()),
-                  ),
-                  child: const Icon(Icons.add),
-                ),
-        );
-      },
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════
-// Income tab (income/donation adjustments)
-// ════════════════════════════════════════════════════
-
-class _IncomeTab extends ConsumerStatefulWidget {
-  const _IncomeTab();
-
-  @override
-  ConsumerState<_IncomeTab> createState() => _IncomeTabState();
-}
-
-class _IncomeTabState extends ConsumerState<_IncomeTab> {
-  final _selection = SelectionController<int>();
-
-  @override
-  void dispose() {
-    _selection.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = ref.watch(appStringsProvider);
-    final adjAsync = ref.watch(incomeAdjustmentsProvider);
-
-    return ListenableBuilder(
-      listenable: _selection,
-      builder: (ctx, _) {
         final adjustments = adjAsync.value ?? const <IncomeAdjustment>[];
-        _selection.setOrderedIds(adjustments.map((a) => a.id).toList());
-        return Scaffold(
-          body: adjAsync.when(
-            data: (adjustments) {
-              if (adjustments.isEmpty) {
-                return Center(
-                  child: Text(s.noIncomeAdjustments,
-                      textAlign: TextAlign.center),
-                );
-              }
+        _spreadSelection.setOrderedIds(schedules.map((s) => s.id).toList());
+        _donationSelection.setOrderedIds(adjustments.map((a) => a.id).toList());
 
-              return ListView.separated(
-                itemCount: adjustments.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (ctx, i) {
-                  final adj = adjustments[i];
-                  return SelectableItem<int>(
-                    controller: _selection,
-                    id: adj.id,
-                    child: _IncomeAdjTile(
-                      adjustment: adj,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => IncomeAdjDetailScreen(adjustmentId: adj.id),
+        final anySelectionActive = _spreadSelection.active || _donationSelection.active;
+
+        // Build merged item list based on filter
+        final items = <_AdjItem>[];
+        if (_filter != _AdjFilter.donation) {
+          for (final s in schedules) {
+            items.add(_AdjItem.spread(s));
+          }
+        }
+        if (_filter != _AdjFilter.spread) {
+          for (final a in adjustments) {
+            items.add(_AdjItem.donation(a));
+          }
+        }
+
+        final stats = statsAsync.value ?? {};
+
+        final isLoading = schedulesAsync.isLoading || adjAsync.isLoading;
+        final error = schedulesAsync.error ?? adjAsync.error;
+
+        return Scaffold(
+          body: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : error != null
+                  ? Center(child: Text(s.error(error)))
+                  : Column(
+                      children: [
+                        // Filter chips row
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            children: [
+                              _buildChip(s.all, _AdjFilter.all),
+                              const SizedBox(width: 8),
+                              _buildChip(s.capexTabSavingSpent, _AdjFilter.spread),
+                              const SizedBox(width: 8),
+                              _buildChip(s.capexTabDonationSpent, _AdjFilter.donation),
+                            ],
+                          ),
                         ),
-                      ),
+                        Expanded(
+                          child: items.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    _filter == _AdjFilter.spread
+                                        ? s.noSpreadAdjustments
+                                        : _filter == _AdjFilter.donation
+                                            ? s.noIncomeAdjustments
+                                            : s.noSpreadAdjustments,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.only(bottom: 80),
+                                  itemCount: items.length,
+                                  separatorBuilder: (_, _) => const Divider(height: 1),
+                                  itemBuilder: (ctx, i) {
+                                    final item = items[i];
+                                    if (item.isSpread) {
+                                      return SelectableItem<int>(
+                                        controller: _spreadSelection,
+                                        id: item.spread!.id,
+                                        child: _CapexTile(
+                                          schedule: item.spread!,
+                                          stats: stats[item.spread!.id],
+                                          baseCurrency: baseCurrency,
+                                          locale: locale,
+                                          strings: s,
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => CapexDetailScreen(scheduleId: item.spread!.id),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      return SelectableItem<int>(
+                                        controller: _donationSelection,
+                                        id: item.donation!.id,
+                                        child: _IncomeAdjTile(
+                                          adjustment: item.donation!,
+                                          onTap: () => Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => IncomeAdjDetailScreen(adjustmentId: item.donation!.id),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(s.error(e))),
-          ),
-          bottomNavigationBar: _selection.active
-              ? SelectionActionBar<int>(
-                  controller: _selection,
-                  visibleIds: adjustments.map((a) => a.id).toList(),
-                  onDelete: (ids) => ref.read(incomeAdjustmentServiceProvider).deleteMany(ids.toList()),
-                )
+          bottomNavigationBar: anySelectionActive
+              ? _spreadSelection.active
+                  ? SelectionActionBar<int>(
+                      controller: _spreadSelection,
+                      visibleIds: schedules.map((s) => s.id).toList(),
+                      onDelete: (ids) => ref.read(capexServiceProvider).deleteMany(ids.toList()),
+                    )
+                  : SelectionActionBar<int>(
+                      controller: _donationSelection,
+                      visibleIds: adjustments.map((a) => a.id).toList(),
+                      onDelete: (ids) => ref.read(incomeAdjustmentServiceProvider).deleteMany(ids.toList()),
+                    )
               : null,
-          floatingActionButton: _selection.active
+          floatingActionButton: anySelectionActive
               ? null
               : FloatingActionButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const IncomeAdjEditScreen()),
-                  ),
+                  onPressed: () {
+                    if (_filter == _AdjFilter.donation) {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const IncomeAdjEditScreen()));
+                    } else if (_filter == _AdjFilter.spread) {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const CapexEditScreen()));
+                    } else {
+                      _showAddChoiceDialog(context);
+                    }
+                  },
                   child: const Icon(Icons.add),
                 ),
         );
       },
     );
   }
+
+  Widget _buildChip(String label, _AdjFilter filter) {
+    return FilterChip(
+      label: Text(label),
+      selected: _filter == filter,
+      onSelected: (_) => setState(() => _filter = filter),
+    );
+  }
+
+  Future<void> _showAddChoiceDialog(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final result = await showDialog<_AdjFilter>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(s.navAdjustments),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, _AdjFilter.spread),
+            child: ListTile(
+              leading: const Icon(Icons.account_balance_wallet),
+              title: Text(s.capexTabSavingSpent),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, _AdjFilter.donation),
+            child: ListTile(
+              leading: const Icon(Icons.card_giftcard),
+              title: Text(s.capexTabDonationSpent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (result == null || !context.mounted) return;
+    if (result == _AdjFilter.spread) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const CapexEditScreen()));
+    } else {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const IncomeAdjEditScreen()));
+    }
+  }
+}
+
+// Helper class for merged list items
+class _AdjItem {
+  final DepreciationSchedule? spread;
+  final IncomeAdjustment? donation;
+
+  _AdjItem.spread(this.spread) : donation = null;
+  _AdjItem.donation(this.donation) : spread = null;
+
+  bool get isSpread => spread != null;
 }
 
 // ════════════════════════════════════════════════════
