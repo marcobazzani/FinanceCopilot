@@ -98,10 +98,6 @@ enum EventType {
 
 enum IncomeType { income, refund, salary, donation, coupon, other }
 
-enum DepreciationMethod { linear, decliningBalance, custom }
-
-enum DepreciationDirection { forward, backward }
-
 enum StepFrequency { weekly, monthly, quarterly, yearly }
 
 enum RegisteredEventType {
@@ -172,7 +168,6 @@ class Transactions extends Table {
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get tags => text().withDefault(const Constant('[]'))(); // JSON array of strings
   TextColumn get expenseType => textEnum<ExpenseType>().nullable()();
-  IntColumn get depreciationId => integer().nullable()();
   TextColumn get rawMetadata => text().nullable()(); // JSON
   TextColumn get importHash => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -252,45 +247,13 @@ class AssetSnapshots extends Table {
       ];
 }
 
-class DepreciationSchedules extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get transactionId => integer().nullable().references(Transactions, #id)();
-  TextColumn get assetName => text()();
-  TextColumn get assetCategory => text()();
-  RealColumn get totalAmount => real()();
-  TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
-  TextColumn get method => textEnum<DepreciationMethod>()();
-  DateTimeColumn get startDate => dateTime()();
-  DateTimeColumn get endDate => dateTime()();
-  DateTimeColumn get expenseDate => dateTime().nullable()();
-  IntColumn get usefulLifeMonths => integer()();
-  TextColumn get direction => textEnum<DepreciationDirection>()();
-  TextColumn get stepFrequency => textEnum<StepFrequency>().withDefault(Constant(StepFrequency.monthly.name))();
-  IntColumn get bufferId => integer().nullable()();
-  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-}
-
-class DepreciationEntries extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get scheduleId => integer().references(DepreciationSchedules, #id)();
-  DateTimeColumn get date => dateTime()();
-  RealColumn get amount => real()();
-  RealColumn get cumulative => real()();
-  RealColumn get remaining => real()();
-
-  @override
-  List<Set<Column>> get uniqueKeys => [
-        {scheduleId, date},
-      ];
-}
-
 class Buffers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 100)();
   RealColumn get targetAmount => real().nullable()();
-  IntColumn get linkedDepreciationId => integer().nullable().references(DepreciationSchedules, #id)();
+  // Points to ExtraordinaryEvents.id for reimbursement buckets on spread events.
+  // (Legacy name was linked_depreciation_id — renamed in schema v28.)
+  IntColumn get linkedEventId => integer().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -374,25 +337,6 @@ class DashboardCharts extends Table {
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   TextColumn get seriesJson => text()(); // JSON array of series configs
   TextColumn get sourceChartIds => text().nullable()(); // JSON array of chart IDs, e.g. "[1,3]"
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-}
-
-class IncomeAdjustments extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get name => text().withLength(min: 1, max: 200)();
-  RealColumn get totalAmount => real()();
-  TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
-  DateTimeColumn get incomeDate => dateTime()();
-  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-}
-
-class IncomeAdjustmentExpenses extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get adjustmentId => integer().references(IncomeAdjustments, #id)();
-  DateTimeColumn get date => dateTime()();
-  RealColumn get amount => real()();
-  TextColumn get description => text().withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

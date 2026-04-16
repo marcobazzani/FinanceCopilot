@@ -356,9 +356,7 @@ class ExtraordinaryEventService {
     final bufferId = await _db.into(_db.buffers).insert(
       BuffersCompanion.insert(
         name: event.name,
-        // NB: linkedDepreciationId kept on Buffers for backward compat during
-        // Phase 1. In Phase 3 the column is renamed to linked_event_id.
-        linkedDepreciationId: Value(eventId),
+        linkedEventId: Value(eventId),
       ),
     );
     await (_db.update(_db.extraordinaryEvents)..where((e) => e.id.equals(eventId)))

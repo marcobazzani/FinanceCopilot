@@ -1713,17 +1713,6 @@ class $TransactionsTable extends Transactions
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   ).withConverter<ExpenseType?>($TransactionsTable.$converterexpenseTypen);
-  static const VerificationMeta _depreciationIdMeta = const VerificationMeta(
-    'depreciationId',
-  );
-  @override
-  late final GeneratedColumn<int> depreciationId = GeneratedColumn<int>(
-    'depreciation_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _rawMetadataMeta = const VerificationMeta(
     'rawMetadata',
   );
@@ -1773,7 +1762,6 @@ class $TransactionsTable extends Transactions
     currency,
     tags,
     expenseType,
-    depreciationId,
     rawMetadata,
     importHash,
     createdAt,
@@ -1873,15 +1861,6 @@ class $TransactionsTable extends Transactions
         tags.isAcceptableOrUnknown(data['tags']!, _tagsMeta),
       );
     }
-    if (data.containsKey('depreciation_id')) {
-      context.handle(
-        _depreciationIdMeta,
-        depreciationId.isAcceptableOrUnknown(
-          data['depreciation_id']!,
-          _depreciationIdMeta,
-        ),
-      );
-    }
     if (data.containsKey('raw_metadata')) {
       context.handle(
         _rawMetadataMeta,
@@ -1968,10 +1947,6 @@ class $TransactionsTable extends Transactions
           data['${effectivePrefix}expense_type'],
         ),
       ),
-      depreciationId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}depreciation_id'],
-      ),
       rawMetadata: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}raw_metadata'],
@@ -2016,7 +1991,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final String currency;
   final String tags;
   final ExpenseType? expenseType;
-  final int? depreciationId;
   final String? rawMetadata;
   final String? importHash;
   final DateTime createdAt;
@@ -2034,7 +2008,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     required this.currency,
     required this.tags,
     this.expenseType,
-    this.depreciationId,
     this.rawMetadata,
     this.importHash,
     required this.createdAt,
@@ -2069,9 +2042,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
         $TransactionsTable.$converterexpenseTypen.toSql(expenseType),
       );
     }
-    if (!nullToAbsent || depreciationId != null) {
-      map['depreciation_id'] = Variable<int>(depreciationId);
-    }
     if (!nullToAbsent || rawMetadata != null) {
       map['raw_metadata'] = Variable<String>(rawMetadata);
     }
@@ -2105,9 +2075,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       expenseType: expenseType == null && nullToAbsent
           ? const Value.absent()
           : Value(expenseType),
-      depreciationId: depreciationId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(depreciationId),
       rawMetadata: rawMetadata == null && nullToAbsent
           ? const Value.absent()
           : Value(rawMetadata),
@@ -2141,7 +2108,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       expenseType: $TransactionsTable.$converterexpenseTypen.fromJson(
         serializer.fromJson<String?>(json['expenseType']),
       ),
-      depreciationId: serializer.fromJson<int?>(json['depreciationId']),
       rawMetadata: serializer.fromJson<String?>(json['rawMetadata']),
       importHash: serializer.fromJson<String?>(json['importHash']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -2168,7 +2134,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'expenseType': serializer.toJson<String?>(
         $TransactionsTable.$converterexpenseTypen.toJson(expenseType),
       ),
-      'depreciationId': serializer.toJson<int?>(depreciationId),
       'rawMetadata': serializer.toJson<String?>(rawMetadata),
       'importHash': serializer.toJson<String?>(importHash),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -2189,7 +2154,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     String? currency,
     String? tags,
     Value<ExpenseType?> expenseType = const Value.absent(),
-    Value<int?> depreciationId = const Value.absent(),
     Value<String?> rawMetadata = const Value.absent(),
     Value<String?> importHash = const Value.absent(),
     DateTime? createdAt,
@@ -2209,9 +2173,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     currency: currency ?? this.currency,
     tags: tags ?? this.tags,
     expenseType: expenseType.present ? expenseType.value : this.expenseType,
-    depreciationId: depreciationId.present
-        ? depreciationId.value
-        : this.depreciationId,
     rawMetadata: rawMetadata.present ? rawMetadata.value : this.rawMetadata,
     importHash: importHash.present ? importHash.value : this.importHash,
     createdAt: createdAt ?? this.createdAt,
@@ -2243,9 +2204,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       expenseType: data.expenseType.present
           ? data.expenseType.value
           : this.expenseType,
-      depreciationId: data.depreciationId.present
-          ? data.depreciationId.value
-          : this.depreciationId,
       rawMetadata: data.rawMetadata.present
           ? data.rawMetadata.value
           : this.rawMetadata,
@@ -2272,7 +2230,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('currency: $currency, ')
           ..write('tags: $tags, ')
           ..write('expenseType: $expenseType, ')
-          ..write('depreciationId: $depreciationId, ')
           ..write('rawMetadata: $rawMetadata, ')
           ..write('importHash: $importHash, ')
           ..write('createdAt: $createdAt')
@@ -2295,7 +2252,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     currency,
     tags,
     expenseType,
-    depreciationId,
     rawMetadata,
     importHash,
     createdAt,
@@ -2317,7 +2273,6 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.currency == this.currency &&
           other.tags == this.tags &&
           other.expenseType == this.expenseType &&
-          other.depreciationId == this.depreciationId &&
           other.rawMetadata == this.rawMetadata &&
           other.importHash == this.importHash &&
           other.createdAt == this.createdAt);
@@ -2337,7 +2292,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<String> currency;
   final Value<String> tags;
   final Value<ExpenseType?> expenseType;
-  final Value<int?> depreciationId;
   final Value<String?> rawMetadata;
   final Value<String?> importHash;
   final Value<DateTime> createdAt;
@@ -2355,7 +2309,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.currency = const Value.absent(),
     this.tags = const Value.absent(),
     this.expenseType = const Value.absent(),
-    this.depreciationId = const Value.absent(),
     this.rawMetadata = const Value.absent(),
     this.importHash = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2374,7 +2327,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.currency = const Value.absent(),
     this.tags = const Value.absent(),
     this.expenseType = const Value.absent(),
-    this.depreciationId = const Value.absent(),
     this.rawMetadata = const Value.absent(),
     this.importHash = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2396,7 +2348,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<String>? currency,
     Expression<String>? tags,
     Expression<String>? expenseType,
-    Expression<int>? depreciationId,
     Expression<String>? rawMetadata,
     Expression<String>? importHash,
     Expression<DateTime>? createdAt,
@@ -2415,7 +2366,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (currency != null) 'currency': currency,
       if (tags != null) 'tags': tags,
       if (expenseType != null) 'expense_type': expenseType,
-      if (depreciationId != null) 'depreciation_id': depreciationId,
       if (rawMetadata != null) 'raw_metadata': rawMetadata,
       if (importHash != null) 'import_hash': importHash,
       if (createdAt != null) 'created_at': createdAt,
@@ -2436,7 +2386,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<String>? currency,
     Value<String>? tags,
     Value<ExpenseType?>? expenseType,
-    Value<int?>? depreciationId,
     Value<String?>? rawMetadata,
     Value<String?>? importHash,
     Value<DateTime>? createdAt,
@@ -2455,7 +2404,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       currency: currency ?? this.currency,
       tags: tags ?? this.tags,
       expenseType: expenseType ?? this.expenseType,
-      depreciationId: depreciationId ?? this.depreciationId,
       rawMetadata: rawMetadata ?? this.rawMetadata,
       importHash: importHash ?? this.importHash,
       createdAt: createdAt ?? this.createdAt,
@@ -2508,9 +2456,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
         $TransactionsTable.$converterexpenseTypen.toSql(expenseType.value),
       );
     }
-    if (depreciationId.present) {
-      map['depreciation_id'] = Variable<int>(depreciationId.value);
-    }
     if (rawMetadata.present) {
       map['raw_metadata'] = Variable<String>(rawMetadata.value);
     }
@@ -2539,7 +2484,6 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('currency: $currency, ')
           ..write('tags: $tags, ')
           ..write('expenseType: $expenseType, ')
-          ..write('depreciationId: $depreciationId, ')
           ..write('rawMetadata: $rawMetadata, ')
           ..write('importHash: $importHash, ')
           ..write('createdAt: $createdAt')
@@ -5834,1418 +5778,6 @@ class AssetSnapshotsCompanion extends UpdateCompanion<AssetSnapshot> {
   }
 }
 
-class $DepreciationSchedulesTable extends DepreciationSchedules
-    with TableInfo<$DepreciationSchedulesTable, DepreciationSchedule> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $DepreciationSchedulesTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
-    'transactionId',
-  );
-  @override
-  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
-    'transaction_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES transactions (id)',
-    ),
-  );
-  static const VerificationMeta _assetNameMeta = const VerificationMeta(
-    'assetName',
-  );
-  @override
-  late final GeneratedColumn<String> assetName = GeneratedColumn<String>(
-    'asset_name',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _assetCategoryMeta = const VerificationMeta(
-    'assetCategory',
-  );
-  @override
-  late final GeneratedColumn<String> assetCategory = GeneratedColumn<String>(
-    'asset_category',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _totalAmountMeta = const VerificationMeta(
-    'totalAmount',
-  );
-  @override
-  late final GeneratedColumn<double> totalAmount = GeneratedColumn<double>(
-    'total_amount',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _currencyMeta = const VerificationMeta(
-    'currency',
-  );
-  @override
-  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
-    'currency',
-    aliasedName,
-    false,
-    additionalChecks: GeneratedColumn.checkTextLength(
-      minTextLength: 3,
-      maxTextLength: 3,
-    ),
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant('EUR'),
-  );
-  @override
-  late final GeneratedColumnWithTypeConverter<DepreciationMethod, String>
-  method =
-      GeneratedColumn<String>(
-        'method',
-        aliasedName,
-        false,
-        type: DriftSqlType.string,
-        requiredDuringInsert: true,
-      ).withConverter<DepreciationMethod>(
-        $DepreciationSchedulesTable.$convertermethod,
-      );
-  static const VerificationMeta _startDateMeta = const VerificationMeta(
-    'startDate',
-  );
-  @override
-  late final GeneratedColumn<DateTime> startDate = GeneratedColumn<DateTime>(
-    'start_date',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _endDateMeta = const VerificationMeta(
-    'endDate',
-  );
-  @override
-  late final GeneratedColumn<DateTime> endDate = GeneratedColumn<DateTime>(
-    'end_date',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _expenseDateMeta = const VerificationMeta(
-    'expenseDate',
-  );
-  @override
-  late final GeneratedColumn<DateTime> expenseDate = GeneratedColumn<DateTime>(
-    'expense_date',
-    aliasedName,
-    true,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _usefulLifeMonthsMeta = const VerificationMeta(
-    'usefulLifeMonths',
-  );
-  @override
-  late final GeneratedColumn<int> usefulLifeMonths = GeneratedColumn<int>(
-    'useful_life_months',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-  );
-  @override
-  late final GeneratedColumnWithTypeConverter<DepreciationDirection, String>
-  direction =
-      GeneratedColumn<String>(
-        'direction',
-        aliasedName,
-        false,
-        type: DriftSqlType.string,
-        requiredDuringInsert: true,
-      ).withConverter<DepreciationDirection>(
-        $DepreciationSchedulesTable.$converterdirection,
-      );
-  @override
-  late final GeneratedColumnWithTypeConverter<StepFrequency, String>
-  stepFrequency =
-      GeneratedColumn<String>(
-        'step_frequency',
-        aliasedName,
-        false,
-        type: DriftSqlType.string,
-        requiredDuringInsert: false,
-        defaultValue: Constant(StepFrequency.monthly.name),
-      ).withConverter<StepFrequency>(
-        $DepreciationSchedulesTable.$converterstepFrequency,
-      );
-  static const VerificationMeta _bufferIdMeta = const VerificationMeta(
-    'bufferId',
-  );
-  @override
-  late final GeneratedColumn<int> bufferId = GeneratedColumn<int>(
-    'buffer_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _isActiveMeta = const VerificationMeta(
-    'isActive',
-  );
-  @override
-  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
-    'is_active',
-    aliasedName,
-    false,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_active" IN (0, 1))',
-    ),
-    defaultValue: const Constant(true),
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
-    'updatedAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
-    'updated_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    transactionId,
-    assetName,
-    assetCategory,
-    totalAmount,
-    currency,
-    method,
-    startDate,
-    endDate,
-    expenseDate,
-    usefulLifeMonths,
-    direction,
-    stepFrequency,
-    bufferId,
-    isActive,
-    createdAt,
-    updatedAt,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'depreciation_schedules';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<DepreciationSchedule> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('transaction_id')) {
-      context.handle(
-        _transactionIdMeta,
-        transactionId.isAcceptableOrUnknown(
-          data['transaction_id']!,
-          _transactionIdMeta,
-        ),
-      );
-    }
-    if (data.containsKey('asset_name')) {
-      context.handle(
-        _assetNameMeta,
-        assetName.isAcceptableOrUnknown(data['asset_name']!, _assetNameMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_assetNameMeta);
-    }
-    if (data.containsKey('asset_category')) {
-      context.handle(
-        _assetCategoryMeta,
-        assetCategory.isAcceptableOrUnknown(
-          data['asset_category']!,
-          _assetCategoryMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_assetCategoryMeta);
-    }
-    if (data.containsKey('total_amount')) {
-      context.handle(
-        _totalAmountMeta,
-        totalAmount.isAcceptableOrUnknown(
-          data['total_amount']!,
-          _totalAmountMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_totalAmountMeta);
-    }
-    if (data.containsKey('currency')) {
-      context.handle(
-        _currencyMeta,
-        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
-      );
-    }
-    if (data.containsKey('start_date')) {
-      context.handle(
-        _startDateMeta,
-        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_startDateMeta);
-    }
-    if (data.containsKey('end_date')) {
-      context.handle(
-        _endDateMeta,
-        endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_endDateMeta);
-    }
-    if (data.containsKey('expense_date')) {
-      context.handle(
-        _expenseDateMeta,
-        expenseDate.isAcceptableOrUnknown(
-          data['expense_date']!,
-          _expenseDateMeta,
-        ),
-      );
-    }
-    if (data.containsKey('useful_life_months')) {
-      context.handle(
-        _usefulLifeMonthsMeta,
-        usefulLifeMonths.isAcceptableOrUnknown(
-          data['useful_life_months']!,
-          _usefulLifeMonthsMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_usefulLifeMonthsMeta);
-    }
-    if (data.containsKey('buffer_id')) {
-      context.handle(
-        _bufferIdMeta,
-        bufferId.isAcceptableOrUnknown(data['buffer_id']!, _bufferIdMeta),
-      );
-    }
-    if (data.containsKey('is_active')) {
-      context.handle(
-        _isActiveMeta,
-        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
-      );
-    }
-    if (data.containsKey('created_at')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
-      );
-    }
-    if (data.containsKey('updated_at')) {
-      context.handle(
-        _updatedAtMeta,
-        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  DepreciationSchedule map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return DepreciationSchedule(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      transactionId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}transaction_id'],
-      ),
-      assetName: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}asset_name'],
-      )!,
-      assetCategory: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}asset_category'],
-      )!,
-      totalAmount: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}total_amount'],
-      )!,
-      currency: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}currency'],
-      )!,
-      method: $DepreciationSchedulesTable.$convertermethod.fromSql(
-        attachedDatabase.typeMapping.read(
-          DriftSqlType.string,
-          data['${effectivePrefix}method'],
-        )!,
-      ),
-      startDate: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}start_date'],
-      )!,
-      endDate: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}end_date'],
-      )!,
-      expenseDate: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}expense_date'],
-      ),
-      usefulLifeMonths: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}useful_life_months'],
-      )!,
-      direction: $DepreciationSchedulesTable.$converterdirection.fromSql(
-        attachedDatabase.typeMapping.read(
-          DriftSqlType.string,
-          data['${effectivePrefix}direction'],
-        )!,
-      ),
-      stepFrequency: $DepreciationSchedulesTable.$converterstepFrequency
-          .fromSql(
-            attachedDatabase.typeMapping.read(
-              DriftSqlType.string,
-              data['${effectivePrefix}step_frequency'],
-            )!,
-          ),
-      bufferId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}buffer_id'],
-      ),
-      isActive: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}is_active'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}created_at'],
-      )!,
-      updatedAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}updated_at'],
-      )!,
-    );
-  }
-
-  @override
-  $DepreciationSchedulesTable createAlias(String alias) {
-    return $DepreciationSchedulesTable(attachedDatabase, alias);
-  }
-
-  static JsonTypeConverter2<DepreciationMethod, String, String>
-  $convertermethod = const EnumNameConverter<DepreciationMethod>(
-    DepreciationMethod.values,
-  );
-  static JsonTypeConverter2<DepreciationDirection, String, String>
-  $converterdirection = const EnumNameConverter<DepreciationDirection>(
-    DepreciationDirection.values,
-  );
-  static JsonTypeConverter2<StepFrequency, String, String>
-  $converterstepFrequency = const EnumNameConverter<StepFrequency>(
-    StepFrequency.values,
-  );
-}
-
-class DepreciationSchedule extends DataClass
-    implements Insertable<DepreciationSchedule> {
-  final int id;
-  final int? transactionId;
-  final String assetName;
-  final String assetCategory;
-  final double totalAmount;
-  final String currency;
-  final DepreciationMethod method;
-  final DateTime startDate;
-  final DateTime endDate;
-  final DateTime? expenseDate;
-  final int usefulLifeMonths;
-  final DepreciationDirection direction;
-  final StepFrequency stepFrequency;
-  final int? bufferId;
-  final bool isActive;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  const DepreciationSchedule({
-    required this.id,
-    this.transactionId,
-    required this.assetName,
-    required this.assetCategory,
-    required this.totalAmount,
-    required this.currency,
-    required this.method,
-    required this.startDate,
-    required this.endDate,
-    this.expenseDate,
-    required this.usefulLifeMonths,
-    required this.direction,
-    required this.stepFrequency,
-    this.bufferId,
-    required this.isActive,
-    required this.createdAt,
-    required this.updatedAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    if (!nullToAbsent || transactionId != null) {
-      map['transaction_id'] = Variable<int>(transactionId);
-    }
-    map['asset_name'] = Variable<String>(assetName);
-    map['asset_category'] = Variable<String>(assetCategory);
-    map['total_amount'] = Variable<double>(totalAmount);
-    map['currency'] = Variable<String>(currency);
-    {
-      map['method'] = Variable<String>(
-        $DepreciationSchedulesTable.$convertermethod.toSql(method),
-      );
-    }
-    map['start_date'] = Variable<DateTime>(startDate);
-    map['end_date'] = Variable<DateTime>(endDate);
-    if (!nullToAbsent || expenseDate != null) {
-      map['expense_date'] = Variable<DateTime>(expenseDate);
-    }
-    map['useful_life_months'] = Variable<int>(usefulLifeMonths);
-    {
-      map['direction'] = Variable<String>(
-        $DepreciationSchedulesTable.$converterdirection.toSql(direction),
-      );
-    }
-    {
-      map['step_frequency'] = Variable<String>(
-        $DepreciationSchedulesTable.$converterstepFrequency.toSql(
-          stepFrequency,
-        ),
-      );
-    }
-    if (!nullToAbsent || bufferId != null) {
-      map['buffer_id'] = Variable<int>(bufferId);
-    }
-    map['is_active'] = Variable<bool>(isActive);
-    map['created_at'] = Variable<DateTime>(createdAt);
-    map['updated_at'] = Variable<DateTime>(updatedAt);
-    return map;
-  }
-
-  DepreciationSchedulesCompanion toCompanion(bool nullToAbsent) {
-    return DepreciationSchedulesCompanion(
-      id: Value(id),
-      transactionId: transactionId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(transactionId),
-      assetName: Value(assetName),
-      assetCategory: Value(assetCategory),
-      totalAmount: Value(totalAmount),
-      currency: Value(currency),
-      method: Value(method),
-      startDate: Value(startDate),
-      endDate: Value(endDate),
-      expenseDate: expenseDate == null && nullToAbsent
-          ? const Value.absent()
-          : Value(expenseDate),
-      usefulLifeMonths: Value(usefulLifeMonths),
-      direction: Value(direction),
-      stepFrequency: Value(stepFrequency),
-      bufferId: bufferId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(bufferId),
-      isActive: Value(isActive),
-      createdAt: Value(createdAt),
-      updatedAt: Value(updatedAt),
-    );
-  }
-
-  factory DepreciationSchedule.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return DepreciationSchedule(
-      id: serializer.fromJson<int>(json['id']),
-      transactionId: serializer.fromJson<int?>(json['transactionId']),
-      assetName: serializer.fromJson<String>(json['assetName']),
-      assetCategory: serializer.fromJson<String>(json['assetCategory']),
-      totalAmount: serializer.fromJson<double>(json['totalAmount']),
-      currency: serializer.fromJson<String>(json['currency']),
-      method: $DepreciationSchedulesTable.$convertermethod.fromJson(
-        serializer.fromJson<String>(json['method']),
-      ),
-      startDate: serializer.fromJson<DateTime>(json['startDate']),
-      endDate: serializer.fromJson<DateTime>(json['endDate']),
-      expenseDate: serializer.fromJson<DateTime?>(json['expenseDate']),
-      usefulLifeMonths: serializer.fromJson<int>(json['usefulLifeMonths']),
-      direction: $DepreciationSchedulesTable.$converterdirection.fromJson(
-        serializer.fromJson<String>(json['direction']),
-      ),
-      stepFrequency: $DepreciationSchedulesTable.$converterstepFrequency
-          .fromJson(serializer.fromJson<String>(json['stepFrequency'])),
-      bufferId: serializer.fromJson<int?>(json['bufferId']),
-      isActive: serializer.fromJson<bool>(json['isActive']),
-      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'transactionId': serializer.toJson<int?>(transactionId),
-      'assetName': serializer.toJson<String>(assetName),
-      'assetCategory': serializer.toJson<String>(assetCategory),
-      'totalAmount': serializer.toJson<double>(totalAmount),
-      'currency': serializer.toJson<String>(currency),
-      'method': serializer.toJson<String>(
-        $DepreciationSchedulesTable.$convertermethod.toJson(method),
-      ),
-      'startDate': serializer.toJson<DateTime>(startDate),
-      'endDate': serializer.toJson<DateTime>(endDate),
-      'expenseDate': serializer.toJson<DateTime?>(expenseDate),
-      'usefulLifeMonths': serializer.toJson<int>(usefulLifeMonths),
-      'direction': serializer.toJson<String>(
-        $DepreciationSchedulesTable.$converterdirection.toJson(direction),
-      ),
-      'stepFrequency': serializer.toJson<String>(
-        $DepreciationSchedulesTable.$converterstepFrequency.toJson(
-          stepFrequency,
-        ),
-      ),
-      'bufferId': serializer.toJson<int?>(bufferId),
-      'isActive': serializer.toJson<bool>(isActive),
-      'createdAt': serializer.toJson<DateTime>(createdAt),
-      'updatedAt': serializer.toJson<DateTime>(updatedAt),
-    };
-  }
-
-  DepreciationSchedule copyWith({
-    int? id,
-    Value<int?> transactionId = const Value.absent(),
-    String? assetName,
-    String? assetCategory,
-    double? totalAmount,
-    String? currency,
-    DepreciationMethod? method,
-    DateTime? startDate,
-    DateTime? endDate,
-    Value<DateTime?> expenseDate = const Value.absent(),
-    int? usefulLifeMonths,
-    DepreciationDirection? direction,
-    StepFrequency? stepFrequency,
-    Value<int?> bufferId = const Value.absent(),
-    bool? isActive,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) => DepreciationSchedule(
-    id: id ?? this.id,
-    transactionId: transactionId.present
-        ? transactionId.value
-        : this.transactionId,
-    assetName: assetName ?? this.assetName,
-    assetCategory: assetCategory ?? this.assetCategory,
-    totalAmount: totalAmount ?? this.totalAmount,
-    currency: currency ?? this.currency,
-    method: method ?? this.method,
-    startDate: startDate ?? this.startDate,
-    endDate: endDate ?? this.endDate,
-    expenseDate: expenseDate.present ? expenseDate.value : this.expenseDate,
-    usefulLifeMonths: usefulLifeMonths ?? this.usefulLifeMonths,
-    direction: direction ?? this.direction,
-    stepFrequency: stepFrequency ?? this.stepFrequency,
-    bufferId: bufferId.present ? bufferId.value : this.bufferId,
-    isActive: isActive ?? this.isActive,
-    createdAt: createdAt ?? this.createdAt,
-    updatedAt: updatedAt ?? this.updatedAt,
-  );
-  DepreciationSchedule copyWithCompanion(DepreciationSchedulesCompanion data) {
-    return DepreciationSchedule(
-      id: data.id.present ? data.id.value : this.id,
-      transactionId: data.transactionId.present
-          ? data.transactionId.value
-          : this.transactionId,
-      assetName: data.assetName.present ? data.assetName.value : this.assetName,
-      assetCategory: data.assetCategory.present
-          ? data.assetCategory.value
-          : this.assetCategory,
-      totalAmount: data.totalAmount.present
-          ? data.totalAmount.value
-          : this.totalAmount,
-      currency: data.currency.present ? data.currency.value : this.currency,
-      method: data.method.present ? data.method.value : this.method,
-      startDate: data.startDate.present ? data.startDate.value : this.startDate,
-      endDate: data.endDate.present ? data.endDate.value : this.endDate,
-      expenseDate: data.expenseDate.present
-          ? data.expenseDate.value
-          : this.expenseDate,
-      usefulLifeMonths: data.usefulLifeMonths.present
-          ? data.usefulLifeMonths.value
-          : this.usefulLifeMonths,
-      direction: data.direction.present ? data.direction.value : this.direction,
-      stepFrequency: data.stepFrequency.present
-          ? data.stepFrequency.value
-          : this.stepFrequency,
-      bufferId: data.bufferId.present ? data.bufferId.value : this.bufferId,
-      isActive: data.isActive.present ? data.isActive.value : this.isActive,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DepreciationSchedule(')
-          ..write('id: $id, ')
-          ..write('transactionId: $transactionId, ')
-          ..write('assetName: $assetName, ')
-          ..write('assetCategory: $assetCategory, ')
-          ..write('totalAmount: $totalAmount, ')
-          ..write('currency: $currency, ')
-          ..write('method: $method, ')
-          ..write('startDate: $startDate, ')
-          ..write('endDate: $endDate, ')
-          ..write('expenseDate: $expenseDate, ')
-          ..write('usefulLifeMonths: $usefulLifeMonths, ')
-          ..write('direction: $direction, ')
-          ..write('stepFrequency: $stepFrequency, ')
-          ..write('bufferId: $bufferId, ')
-          ..write('isActive: $isActive, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    transactionId,
-    assetName,
-    assetCategory,
-    totalAmount,
-    currency,
-    method,
-    startDate,
-    endDate,
-    expenseDate,
-    usefulLifeMonths,
-    direction,
-    stepFrequency,
-    bufferId,
-    isActive,
-    createdAt,
-    updatedAt,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is DepreciationSchedule &&
-          other.id == this.id &&
-          other.transactionId == this.transactionId &&
-          other.assetName == this.assetName &&
-          other.assetCategory == this.assetCategory &&
-          other.totalAmount == this.totalAmount &&
-          other.currency == this.currency &&
-          other.method == this.method &&
-          other.startDate == this.startDate &&
-          other.endDate == this.endDate &&
-          other.expenseDate == this.expenseDate &&
-          other.usefulLifeMonths == this.usefulLifeMonths &&
-          other.direction == this.direction &&
-          other.stepFrequency == this.stepFrequency &&
-          other.bufferId == this.bufferId &&
-          other.isActive == this.isActive &&
-          other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
-}
-
-class DepreciationSchedulesCompanion
-    extends UpdateCompanion<DepreciationSchedule> {
-  final Value<int> id;
-  final Value<int?> transactionId;
-  final Value<String> assetName;
-  final Value<String> assetCategory;
-  final Value<double> totalAmount;
-  final Value<String> currency;
-  final Value<DepreciationMethod> method;
-  final Value<DateTime> startDate;
-  final Value<DateTime> endDate;
-  final Value<DateTime?> expenseDate;
-  final Value<int> usefulLifeMonths;
-  final Value<DepreciationDirection> direction;
-  final Value<StepFrequency> stepFrequency;
-  final Value<int?> bufferId;
-  final Value<bool> isActive;
-  final Value<DateTime> createdAt;
-  final Value<DateTime> updatedAt;
-  const DepreciationSchedulesCompanion({
-    this.id = const Value.absent(),
-    this.transactionId = const Value.absent(),
-    this.assetName = const Value.absent(),
-    this.assetCategory = const Value.absent(),
-    this.totalAmount = const Value.absent(),
-    this.currency = const Value.absent(),
-    this.method = const Value.absent(),
-    this.startDate = const Value.absent(),
-    this.endDate = const Value.absent(),
-    this.expenseDate = const Value.absent(),
-    this.usefulLifeMonths = const Value.absent(),
-    this.direction = const Value.absent(),
-    this.stepFrequency = const Value.absent(),
-    this.bufferId = const Value.absent(),
-    this.isActive = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-  });
-  DepreciationSchedulesCompanion.insert({
-    this.id = const Value.absent(),
-    this.transactionId = const Value.absent(),
-    required String assetName,
-    required String assetCategory,
-    required double totalAmount,
-    this.currency = const Value.absent(),
-    required DepreciationMethod method,
-    required DateTime startDate,
-    required DateTime endDate,
-    this.expenseDate = const Value.absent(),
-    required int usefulLifeMonths,
-    required DepreciationDirection direction,
-    this.stepFrequency = const Value.absent(),
-    this.bufferId = const Value.absent(),
-    this.isActive = const Value.absent(),
-    this.createdAt = const Value.absent(),
-    this.updatedAt = const Value.absent(),
-  }) : assetName = Value(assetName),
-       assetCategory = Value(assetCategory),
-       totalAmount = Value(totalAmount),
-       method = Value(method),
-       startDate = Value(startDate),
-       endDate = Value(endDate),
-       usefulLifeMonths = Value(usefulLifeMonths),
-       direction = Value(direction);
-  static Insertable<DepreciationSchedule> custom({
-    Expression<int>? id,
-    Expression<int>? transactionId,
-    Expression<String>? assetName,
-    Expression<String>? assetCategory,
-    Expression<double>? totalAmount,
-    Expression<String>? currency,
-    Expression<String>? method,
-    Expression<DateTime>? startDate,
-    Expression<DateTime>? endDate,
-    Expression<DateTime>? expenseDate,
-    Expression<int>? usefulLifeMonths,
-    Expression<String>? direction,
-    Expression<String>? stepFrequency,
-    Expression<int>? bufferId,
-    Expression<bool>? isActive,
-    Expression<DateTime>? createdAt,
-    Expression<DateTime>? updatedAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (transactionId != null) 'transaction_id': transactionId,
-      if (assetName != null) 'asset_name': assetName,
-      if (assetCategory != null) 'asset_category': assetCategory,
-      if (totalAmount != null) 'total_amount': totalAmount,
-      if (currency != null) 'currency': currency,
-      if (method != null) 'method': method,
-      if (startDate != null) 'start_date': startDate,
-      if (endDate != null) 'end_date': endDate,
-      if (expenseDate != null) 'expense_date': expenseDate,
-      if (usefulLifeMonths != null) 'useful_life_months': usefulLifeMonths,
-      if (direction != null) 'direction': direction,
-      if (stepFrequency != null) 'step_frequency': stepFrequency,
-      if (bufferId != null) 'buffer_id': bufferId,
-      if (isActive != null) 'is_active': isActive,
-      if (createdAt != null) 'created_at': createdAt,
-      if (updatedAt != null) 'updated_at': updatedAt,
-    });
-  }
-
-  DepreciationSchedulesCompanion copyWith({
-    Value<int>? id,
-    Value<int?>? transactionId,
-    Value<String>? assetName,
-    Value<String>? assetCategory,
-    Value<double>? totalAmount,
-    Value<String>? currency,
-    Value<DepreciationMethod>? method,
-    Value<DateTime>? startDate,
-    Value<DateTime>? endDate,
-    Value<DateTime?>? expenseDate,
-    Value<int>? usefulLifeMonths,
-    Value<DepreciationDirection>? direction,
-    Value<StepFrequency>? stepFrequency,
-    Value<int?>? bufferId,
-    Value<bool>? isActive,
-    Value<DateTime>? createdAt,
-    Value<DateTime>? updatedAt,
-  }) {
-    return DepreciationSchedulesCompanion(
-      id: id ?? this.id,
-      transactionId: transactionId ?? this.transactionId,
-      assetName: assetName ?? this.assetName,
-      assetCategory: assetCategory ?? this.assetCategory,
-      totalAmount: totalAmount ?? this.totalAmount,
-      currency: currency ?? this.currency,
-      method: method ?? this.method,
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
-      expenseDate: expenseDate ?? this.expenseDate,
-      usefulLifeMonths: usefulLifeMonths ?? this.usefulLifeMonths,
-      direction: direction ?? this.direction,
-      stepFrequency: stepFrequency ?? this.stepFrequency,
-      bufferId: bufferId ?? this.bufferId,
-      isActive: isActive ?? this.isActive,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (transactionId.present) {
-      map['transaction_id'] = Variable<int>(transactionId.value);
-    }
-    if (assetName.present) {
-      map['asset_name'] = Variable<String>(assetName.value);
-    }
-    if (assetCategory.present) {
-      map['asset_category'] = Variable<String>(assetCategory.value);
-    }
-    if (totalAmount.present) {
-      map['total_amount'] = Variable<double>(totalAmount.value);
-    }
-    if (currency.present) {
-      map['currency'] = Variable<String>(currency.value);
-    }
-    if (method.present) {
-      map['method'] = Variable<String>(
-        $DepreciationSchedulesTable.$convertermethod.toSql(method.value),
-      );
-    }
-    if (startDate.present) {
-      map['start_date'] = Variable<DateTime>(startDate.value);
-    }
-    if (endDate.present) {
-      map['end_date'] = Variable<DateTime>(endDate.value);
-    }
-    if (expenseDate.present) {
-      map['expense_date'] = Variable<DateTime>(expenseDate.value);
-    }
-    if (usefulLifeMonths.present) {
-      map['useful_life_months'] = Variable<int>(usefulLifeMonths.value);
-    }
-    if (direction.present) {
-      map['direction'] = Variable<String>(
-        $DepreciationSchedulesTable.$converterdirection.toSql(direction.value),
-      );
-    }
-    if (stepFrequency.present) {
-      map['step_frequency'] = Variable<String>(
-        $DepreciationSchedulesTable.$converterstepFrequency.toSql(
-          stepFrequency.value,
-        ),
-      );
-    }
-    if (bufferId.present) {
-      map['buffer_id'] = Variable<int>(bufferId.value);
-    }
-    if (isActive.present) {
-      map['is_active'] = Variable<bool>(isActive.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<DateTime>(createdAt.value);
-    }
-    if (updatedAt.present) {
-      map['updated_at'] = Variable<DateTime>(updatedAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DepreciationSchedulesCompanion(')
-          ..write('id: $id, ')
-          ..write('transactionId: $transactionId, ')
-          ..write('assetName: $assetName, ')
-          ..write('assetCategory: $assetCategory, ')
-          ..write('totalAmount: $totalAmount, ')
-          ..write('currency: $currency, ')
-          ..write('method: $method, ')
-          ..write('startDate: $startDate, ')
-          ..write('endDate: $endDate, ')
-          ..write('expenseDate: $expenseDate, ')
-          ..write('usefulLifeMonths: $usefulLifeMonths, ')
-          ..write('direction: $direction, ')
-          ..write('stepFrequency: $stepFrequency, ')
-          ..write('bufferId: $bufferId, ')
-          ..write('isActive: $isActive, ')
-          ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class $DepreciationEntriesTable extends DepreciationEntries
-    with TableInfo<$DepreciationEntriesTable, DepreciationEntry> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $DepreciationEntriesTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _scheduleIdMeta = const VerificationMeta(
-    'scheduleId',
-  );
-  @override
-  late final GeneratedColumn<int> scheduleId = GeneratedColumn<int>(
-    'schedule_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES depreciation_schedules (id)',
-    ),
-  );
-  static const VerificationMeta _dateMeta = const VerificationMeta('date');
-  @override
-  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
-    'date',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
-  @override
-  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
-    'amount',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _cumulativeMeta = const VerificationMeta(
-    'cumulative',
-  );
-  @override
-  late final GeneratedColumn<double> cumulative = GeneratedColumn<double>(
-    'cumulative',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _remainingMeta = const VerificationMeta(
-    'remaining',
-  );
-  @override
-  late final GeneratedColumn<double> remaining = GeneratedColumn<double>(
-    'remaining',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    scheduleId,
-    date,
-    amount,
-    cumulative,
-    remaining,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'depreciation_entries';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<DepreciationEntry> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('schedule_id')) {
-      context.handle(
-        _scheduleIdMeta,
-        scheduleId.isAcceptableOrUnknown(data['schedule_id']!, _scheduleIdMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_scheduleIdMeta);
-    }
-    if (data.containsKey('date')) {
-      context.handle(
-        _dateMeta,
-        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_dateMeta);
-    }
-    if (data.containsKey('amount')) {
-      context.handle(
-        _amountMeta,
-        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_amountMeta);
-    }
-    if (data.containsKey('cumulative')) {
-      context.handle(
-        _cumulativeMeta,
-        cumulative.isAcceptableOrUnknown(data['cumulative']!, _cumulativeMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_cumulativeMeta);
-    }
-    if (data.containsKey('remaining')) {
-      context.handle(
-        _remainingMeta,
-        remaining.isAcceptableOrUnknown(data['remaining']!, _remainingMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_remainingMeta);
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  List<Set<GeneratedColumn>> get uniqueKeys => [
-    {scheduleId, date},
-  ];
-  @override
-  DepreciationEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return DepreciationEntry(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      scheduleId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}schedule_id'],
-      )!,
-      date: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}date'],
-      )!,
-      amount: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}amount'],
-      )!,
-      cumulative: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}cumulative'],
-      )!,
-      remaining: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}remaining'],
-      )!,
-    );
-  }
-
-  @override
-  $DepreciationEntriesTable createAlias(String alias) {
-    return $DepreciationEntriesTable(attachedDatabase, alias);
-  }
-}
-
-class DepreciationEntry extends DataClass
-    implements Insertable<DepreciationEntry> {
-  final int id;
-  final int scheduleId;
-  final DateTime date;
-  final double amount;
-  final double cumulative;
-  final double remaining;
-  const DepreciationEntry({
-    required this.id,
-    required this.scheduleId,
-    required this.date,
-    required this.amount,
-    required this.cumulative,
-    required this.remaining,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['schedule_id'] = Variable<int>(scheduleId);
-    map['date'] = Variable<DateTime>(date);
-    map['amount'] = Variable<double>(amount);
-    map['cumulative'] = Variable<double>(cumulative);
-    map['remaining'] = Variable<double>(remaining);
-    return map;
-  }
-
-  DepreciationEntriesCompanion toCompanion(bool nullToAbsent) {
-    return DepreciationEntriesCompanion(
-      id: Value(id),
-      scheduleId: Value(scheduleId),
-      date: Value(date),
-      amount: Value(amount),
-      cumulative: Value(cumulative),
-      remaining: Value(remaining),
-    );
-  }
-
-  factory DepreciationEntry.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return DepreciationEntry(
-      id: serializer.fromJson<int>(json['id']),
-      scheduleId: serializer.fromJson<int>(json['scheduleId']),
-      date: serializer.fromJson<DateTime>(json['date']),
-      amount: serializer.fromJson<double>(json['amount']),
-      cumulative: serializer.fromJson<double>(json['cumulative']),
-      remaining: serializer.fromJson<double>(json['remaining']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'scheduleId': serializer.toJson<int>(scheduleId),
-      'date': serializer.toJson<DateTime>(date),
-      'amount': serializer.toJson<double>(amount),
-      'cumulative': serializer.toJson<double>(cumulative),
-      'remaining': serializer.toJson<double>(remaining),
-    };
-  }
-
-  DepreciationEntry copyWith({
-    int? id,
-    int? scheduleId,
-    DateTime? date,
-    double? amount,
-    double? cumulative,
-    double? remaining,
-  }) => DepreciationEntry(
-    id: id ?? this.id,
-    scheduleId: scheduleId ?? this.scheduleId,
-    date: date ?? this.date,
-    amount: amount ?? this.amount,
-    cumulative: cumulative ?? this.cumulative,
-    remaining: remaining ?? this.remaining,
-  );
-  DepreciationEntry copyWithCompanion(DepreciationEntriesCompanion data) {
-    return DepreciationEntry(
-      id: data.id.present ? data.id.value : this.id,
-      scheduleId: data.scheduleId.present
-          ? data.scheduleId.value
-          : this.scheduleId,
-      date: data.date.present ? data.date.value : this.date,
-      amount: data.amount.present ? data.amount.value : this.amount,
-      cumulative: data.cumulative.present
-          ? data.cumulative.value
-          : this.cumulative,
-      remaining: data.remaining.present ? data.remaining.value : this.remaining,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DepreciationEntry(')
-          ..write('id: $id, ')
-          ..write('scheduleId: $scheduleId, ')
-          ..write('date: $date, ')
-          ..write('amount: $amount, ')
-          ..write('cumulative: $cumulative, ')
-          ..write('remaining: $remaining')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(id, scheduleId, date, amount, cumulative, remaining);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is DepreciationEntry &&
-          other.id == this.id &&
-          other.scheduleId == this.scheduleId &&
-          other.date == this.date &&
-          other.amount == this.amount &&
-          other.cumulative == this.cumulative &&
-          other.remaining == this.remaining);
-}
-
-class DepreciationEntriesCompanion extends UpdateCompanion<DepreciationEntry> {
-  final Value<int> id;
-  final Value<int> scheduleId;
-  final Value<DateTime> date;
-  final Value<double> amount;
-  final Value<double> cumulative;
-  final Value<double> remaining;
-  const DepreciationEntriesCompanion({
-    this.id = const Value.absent(),
-    this.scheduleId = const Value.absent(),
-    this.date = const Value.absent(),
-    this.amount = const Value.absent(),
-    this.cumulative = const Value.absent(),
-    this.remaining = const Value.absent(),
-  });
-  DepreciationEntriesCompanion.insert({
-    this.id = const Value.absent(),
-    required int scheduleId,
-    required DateTime date,
-    required double amount,
-    required double cumulative,
-    required double remaining,
-  }) : scheduleId = Value(scheduleId),
-       date = Value(date),
-       amount = Value(amount),
-       cumulative = Value(cumulative),
-       remaining = Value(remaining);
-  static Insertable<DepreciationEntry> custom({
-    Expression<int>? id,
-    Expression<int>? scheduleId,
-    Expression<DateTime>? date,
-    Expression<double>? amount,
-    Expression<double>? cumulative,
-    Expression<double>? remaining,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (scheduleId != null) 'schedule_id': scheduleId,
-      if (date != null) 'date': date,
-      if (amount != null) 'amount': amount,
-      if (cumulative != null) 'cumulative': cumulative,
-      if (remaining != null) 'remaining': remaining,
-    });
-  }
-
-  DepreciationEntriesCompanion copyWith({
-    Value<int>? id,
-    Value<int>? scheduleId,
-    Value<DateTime>? date,
-    Value<double>? amount,
-    Value<double>? cumulative,
-    Value<double>? remaining,
-  }) {
-    return DepreciationEntriesCompanion(
-      id: id ?? this.id,
-      scheduleId: scheduleId ?? this.scheduleId,
-      date: date ?? this.date,
-      amount: amount ?? this.amount,
-      cumulative: cumulative ?? this.cumulative,
-      remaining: remaining ?? this.remaining,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (scheduleId.present) {
-      map['schedule_id'] = Variable<int>(scheduleId.value);
-    }
-    if (date.present) {
-      map['date'] = Variable<DateTime>(date.value);
-    }
-    if (amount.present) {
-      map['amount'] = Variable<double>(amount.value);
-    }
-    if (cumulative.present) {
-      map['cumulative'] = Variable<double>(cumulative.value);
-    }
-    if (remaining.present) {
-      map['remaining'] = Variable<double>(remaining.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DepreciationEntriesCompanion(')
-          ..write('id: $id, ')
-          ..write('scheduleId: $scheduleId, ')
-          ..write('date: $date, ')
-          ..write('amount: $amount, ')
-          ..write('cumulative: $cumulative, ')
-          ..write('remaining: $remaining')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $BuffersTable extends Buffers with TableInfo<$BuffersTable, Buffer> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -7288,18 +5820,16 @@ class $BuffersTable extends Buffers with TableInfo<$BuffersTable, Buffer> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _linkedDepreciationIdMeta =
-      const VerificationMeta('linkedDepreciationId');
+  static const VerificationMeta _linkedEventIdMeta = const VerificationMeta(
+    'linkedEventId',
+  );
   @override
-  late final GeneratedColumn<int> linkedDepreciationId = GeneratedColumn<int>(
-    'linked_depreciation_id',
+  late final GeneratedColumn<int> linkedEventId = GeneratedColumn<int>(
+    'linked_event_id',
     aliasedName,
     true,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES depreciation_schedules (id)',
-    ),
   );
   static const VerificationMeta _isActiveMeta = const VerificationMeta(
     'isActive',
@@ -7345,7 +5875,7 @@ class $BuffersTable extends Buffers with TableInfo<$BuffersTable, Buffer> {
     id,
     name,
     targetAmount,
-    linkedDepreciationId,
+    linkedEventId,
     isActive,
     createdAt,
     updatedAt,
@@ -7382,12 +5912,12 @@ class $BuffersTable extends Buffers with TableInfo<$BuffersTable, Buffer> {
         ),
       );
     }
-    if (data.containsKey('linked_depreciation_id')) {
+    if (data.containsKey('linked_event_id')) {
       context.handle(
-        _linkedDepreciationIdMeta,
-        linkedDepreciationId.isAcceptableOrUnknown(
-          data['linked_depreciation_id']!,
-          _linkedDepreciationIdMeta,
+        _linkedEventIdMeta,
+        linkedEventId.isAcceptableOrUnknown(
+          data['linked_event_id']!,
+          _linkedEventIdMeta,
         ),
       );
     }
@@ -7430,9 +5960,9 @@ class $BuffersTable extends Buffers with TableInfo<$BuffersTable, Buffer> {
         DriftSqlType.double,
         data['${effectivePrefix}target_amount'],
       ),
-      linkedDepreciationId: attachedDatabase.typeMapping.read(
+      linkedEventId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}linked_depreciation_id'],
+        data['${effectivePrefix}linked_event_id'],
       ),
       isActive: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
@@ -7459,7 +5989,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
   final int id;
   final String name;
   final double? targetAmount;
-  final int? linkedDepreciationId;
+  final int? linkedEventId;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -7467,7 +5997,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
     required this.id,
     required this.name,
     this.targetAmount,
-    this.linkedDepreciationId,
+    this.linkedEventId,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
@@ -7480,8 +6010,8 @@ class Buffer extends DataClass implements Insertable<Buffer> {
     if (!nullToAbsent || targetAmount != null) {
       map['target_amount'] = Variable<double>(targetAmount);
     }
-    if (!nullToAbsent || linkedDepreciationId != null) {
-      map['linked_depreciation_id'] = Variable<int>(linkedDepreciationId);
+    if (!nullToAbsent || linkedEventId != null) {
+      map['linked_event_id'] = Variable<int>(linkedEventId);
     }
     map['is_active'] = Variable<bool>(isActive);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -7496,9 +6026,9 @@ class Buffer extends DataClass implements Insertable<Buffer> {
       targetAmount: targetAmount == null && nullToAbsent
           ? const Value.absent()
           : Value(targetAmount),
-      linkedDepreciationId: linkedDepreciationId == null && nullToAbsent
+      linkedEventId: linkedEventId == null && nullToAbsent
           ? const Value.absent()
-          : Value(linkedDepreciationId),
+          : Value(linkedEventId),
       isActive: Value(isActive),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -7514,9 +6044,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       targetAmount: serializer.fromJson<double?>(json['targetAmount']),
-      linkedDepreciationId: serializer.fromJson<int?>(
-        json['linkedDepreciationId'],
-      ),
+      linkedEventId: serializer.fromJson<int?>(json['linkedEventId']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -7529,7 +6057,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
       'targetAmount': serializer.toJson<double?>(targetAmount),
-      'linkedDepreciationId': serializer.toJson<int?>(linkedDepreciationId),
+      'linkedEventId': serializer.toJson<int?>(linkedEventId),
       'isActive': serializer.toJson<bool>(isActive),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -7540,7 +6068,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
     int? id,
     String? name,
     Value<double?> targetAmount = const Value.absent(),
-    Value<int?> linkedDepreciationId = const Value.absent(),
+    Value<int?> linkedEventId = const Value.absent(),
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -7548,9 +6076,9 @@ class Buffer extends DataClass implements Insertable<Buffer> {
     id: id ?? this.id,
     name: name ?? this.name,
     targetAmount: targetAmount.present ? targetAmount.value : this.targetAmount,
-    linkedDepreciationId: linkedDepreciationId.present
-        ? linkedDepreciationId.value
-        : this.linkedDepreciationId,
+    linkedEventId: linkedEventId.present
+        ? linkedEventId.value
+        : this.linkedEventId,
     isActive: isActive ?? this.isActive,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -7562,9 +6090,9 @@ class Buffer extends DataClass implements Insertable<Buffer> {
       targetAmount: data.targetAmount.present
           ? data.targetAmount.value
           : this.targetAmount,
-      linkedDepreciationId: data.linkedDepreciationId.present
-          ? data.linkedDepreciationId.value
-          : this.linkedDepreciationId,
+      linkedEventId: data.linkedEventId.present
+          ? data.linkedEventId.value
+          : this.linkedEventId,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -7577,7 +6105,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('targetAmount: $targetAmount, ')
-          ..write('linkedDepreciationId: $linkedDepreciationId, ')
+          ..write('linkedEventId: $linkedEventId, ')
           ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -7590,7 +6118,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
     id,
     name,
     targetAmount,
-    linkedDepreciationId,
+    linkedEventId,
     isActive,
     createdAt,
     updatedAt,
@@ -7602,7 +6130,7 @@ class Buffer extends DataClass implements Insertable<Buffer> {
           other.id == this.id &&
           other.name == this.name &&
           other.targetAmount == this.targetAmount &&
-          other.linkedDepreciationId == this.linkedDepreciationId &&
+          other.linkedEventId == this.linkedEventId &&
           other.isActive == this.isActive &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -7612,7 +6140,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
   final Value<int> id;
   final Value<String> name;
   final Value<double?> targetAmount;
-  final Value<int?> linkedDepreciationId;
+  final Value<int?> linkedEventId;
   final Value<bool> isActive;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -7620,7 +6148,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.targetAmount = const Value.absent(),
-    this.linkedDepreciationId = const Value.absent(),
+    this.linkedEventId = const Value.absent(),
     this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -7629,7 +6157,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
     this.id = const Value.absent(),
     required String name,
     this.targetAmount = const Value.absent(),
-    this.linkedDepreciationId = const Value.absent(),
+    this.linkedEventId = const Value.absent(),
     this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -7638,7 +6166,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
     Expression<int>? id,
     Expression<String>? name,
     Expression<double>? targetAmount,
-    Expression<int>? linkedDepreciationId,
+    Expression<int>? linkedEventId,
     Expression<bool>? isActive,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -7647,8 +6175,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (targetAmount != null) 'target_amount': targetAmount,
-      if (linkedDepreciationId != null)
-        'linked_depreciation_id': linkedDepreciationId,
+      if (linkedEventId != null) 'linked_event_id': linkedEventId,
       if (isActive != null) 'is_active': isActive,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -7659,7 +6186,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
     Value<int>? id,
     Value<String>? name,
     Value<double?>? targetAmount,
-    Value<int?>? linkedDepreciationId,
+    Value<int?>? linkedEventId,
     Value<bool>? isActive,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -7668,7 +6195,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
       id: id ?? this.id,
       name: name ?? this.name,
       targetAmount: targetAmount ?? this.targetAmount,
-      linkedDepreciationId: linkedDepreciationId ?? this.linkedDepreciationId,
+      linkedEventId: linkedEventId ?? this.linkedEventId,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -7687,8 +6214,8 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
     if (targetAmount.present) {
       map['target_amount'] = Variable<double>(targetAmount.value);
     }
-    if (linkedDepreciationId.present) {
-      map['linked_depreciation_id'] = Variable<int>(linkedDepreciationId.value);
+    if (linkedEventId.present) {
+      map['linked_event_id'] = Variable<int>(linkedEventId.value);
     }
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
@@ -7708,7 +6235,7 @@ class BuffersCompanion extends UpdateCompanion<Buffer> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('targetAmount: $targetAmount, ')
-          ..write('linkedDepreciationId: $linkedDepreciationId, ')
+          ..write('linkedEventId: $linkedEventId, ')
           ..write('isActive: $isActive, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -11597,883 +10124,6 @@ class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
   }
 }
 
-class $IncomeAdjustmentsTable extends IncomeAdjustments
-    with TableInfo<$IncomeAdjustmentsTable, IncomeAdjustment> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $IncomeAdjustmentsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _nameMeta = const VerificationMeta('name');
-  @override
-  late final GeneratedColumn<String> name = GeneratedColumn<String>(
-    'name',
-    aliasedName,
-    false,
-    additionalChecks: GeneratedColumn.checkTextLength(
-      minTextLength: 1,
-      maxTextLength: 200,
-    ),
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _totalAmountMeta = const VerificationMeta(
-    'totalAmount',
-  );
-  @override
-  late final GeneratedColumn<double> totalAmount = GeneratedColumn<double>(
-    'total_amount',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _currencyMeta = const VerificationMeta(
-    'currency',
-  );
-  @override
-  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
-    'currency',
-    aliasedName,
-    false,
-    additionalChecks: GeneratedColumn.checkTextLength(
-      minTextLength: 3,
-      maxTextLength: 3,
-    ),
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant('EUR'),
-  );
-  static const VerificationMeta _incomeDateMeta = const VerificationMeta(
-    'incomeDate',
-  );
-  @override
-  late final GeneratedColumn<DateTime> incomeDate = GeneratedColumn<DateTime>(
-    'income_date',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _isActiveMeta = const VerificationMeta(
-    'isActive',
-  );
-  @override
-  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
-    'is_active',
-    aliasedName,
-    false,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_active" IN (0, 1))',
-    ),
-    defaultValue: const Constant(true),
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    name,
-    totalAmount,
-    currency,
-    incomeDate,
-    isActive,
-    createdAt,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'income_adjustments';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<IncomeAdjustment> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('name')) {
-      context.handle(
-        _nameMeta,
-        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_nameMeta);
-    }
-    if (data.containsKey('total_amount')) {
-      context.handle(
-        _totalAmountMeta,
-        totalAmount.isAcceptableOrUnknown(
-          data['total_amount']!,
-          _totalAmountMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_totalAmountMeta);
-    }
-    if (data.containsKey('currency')) {
-      context.handle(
-        _currencyMeta,
-        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
-      );
-    }
-    if (data.containsKey('income_date')) {
-      context.handle(
-        _incomeDateMeta,
-        incomeDate.isAcceptableOrUnknown(data['income_date']!, _incomeDateMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_incomeDateMeta);
-    }
-    if (data.containsKey('is_active')) {
-      context.handle(
-        _isActiveMeta,
-        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
-      );
-    }
-    if (data.containsKey('created_at')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  IncomeAdjustment map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return IncomeAdjustment(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      name: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}name'],
-      )!,
-      totalAmount: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}total_amount'],
-      )!,
-      currency: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}currency'],
-      )!,
-      incomeDate: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}income_date'],
-      )!,
-      isActive: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}is_active'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}created_at'],
-      )!,
-    );
-  }
-
-  @override
-  $IncomeAdjustmentsTable createAlias(String alias) {
-    return $IncomeAdjustmentsTable(attachedDatabase, alias);
-  }
-}
-
-class IncomeAdjustment extends DataClass
-    implements Insertable<IncomeAdjustment> {
-  final int id;
-  final String name;
-  final double totalAmount;
-  final String currency;
-  final DateTime incomeDate;
-  final bool isActive;
-  final DateTime createdAt;
-  const IncomeAdjustment({
-    required this.id,
-    required this.name,
-    required this.totalAmount,
-    required this.currency,
-    required this.incomeDate,
-    required this.isActive,
-    required this.createdAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['name'] = Variable<String>(name);
-    map['total_amount'] = Variable<double>(totalAmount);
-    map['currency'] = Variable<String>(currency);
-    map['income_date'] = Variable<DateTime>(incomeDate);
-    map['is_active'] = Variable<bool>(isActive);
-    map['created_at'] = Variable<DateTime>(createdAt);
-    return map;
-  }
-
-  IncomeAdjustmentsCompanion toCompanion(bool nullToAbsent) {
-    return IncomeAdjustmentsCompanion(
-      id: Value(id),
-      name: Value(name),
-      totalAmount: Value(totalAmount),
-      currency: Value(currency),
-      incomeDate: Value(incomeDate),
-      isActive: Value(isActive),
-      createdAt: Value(createdAt),
-    );
-  }
-
-  factory IncomeAdjustment.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return IncomeAdjustment(
-      id: serializer.fromJson<int>(json['id']),
-      name: serializer.fromJson<String>(json['name']),
-      totalAmount: serializer.fromJson<double>(json['totalAmount']),
-      currency: serializer.fromJson<String>(json['currency']),
-      incomeDate: serializer.fromJson<DateTime>(json['incomeDate']),
-      isActive: serializer.fromJson<bool>(json['isActive']),
-      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'name': serializer.toJson<String>(name),
-      'totalAmount': serializer.toJson<double>(totalAmount),
-      'currency': serializer.toJson<String>(currency),
-      'incomeDate': serializer.toJson<DateTime>(incomeDate),
-      'isActive': serializer.toJson<bool>(isActive),
-      'createdAt': serializer.toJson<DateTime>(createdAt),
-    };
-  }
-
-  IncomeAdjustment copyWith({
-    int? id,
-    String? name,
-    double? totalAmount,
-    String? currency,
-    DateTime? incomeDate,
-    bool? isActive,
-    DateTime? createdAt,
-  }) => IncomeAdjustment(
-    id: id ?? this.id,
-    name: name ?? this.name,
-    totalAmount: totalAmount ?? this.totalAmount,
-    currency: currency ?? this.currency,
-    incomeDate: incomeDate ?? this.incomeDate,
-    isActive: isActive ?? this.isActive,
-    createdAt: createdAt ?? this.createdAt,
-  );
-  IncomeAdjustment copyWithCompanion(IncomeAdjustmentsCompanion data) {
-    return IncomeAdjustment(
-      id: data.id.present ? data.id.value : this.id,
-      name: data.name.present ? data.name.value : this.name,
-      totalAmount: data.totalAmount.present
-          ? data.totalAmount.value
-          : this.totalAmount,
-      currency: data.currency.present ? data.currency.value : this.currency,
-      incomeDate: data.incomeDate.present
-          ? data.incomeDate.value
-          : this.incomeDate,
-      isActive: data.isActive.present ? data.isActive.value : this.isActive,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('IncomeAdjustment(')
-          ..write('id: $id, ')
-          ..write('name: $name, ')
-          ..write('totalAmount: $totalAmount, ')
-          ..write('currency: $currency, ')
-          ..write('incomeDate: $incomeDate, ')
-          ..write('isActive: $isActive, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    name,
-    totalAmount,
-    currency,
-    incomeDate,
-    isActive,
-    createdAt,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is IncomeAdjustment &&
-          other.id == this.id &&
-          other.name == this.name &&
-          other.totalAmount == this.totalAmount &&
-          other.currency == this.currency &&
-          other.incomeDate == this.incomeDate &&
-          other.isActive == this.isActive &&
-          other.createdAt == this.createdAt);
-}
-
-class IncomeAdjustmentsCompanion extends UpdateCompanion<IncomeAdjustment> {
-  final Value<int> id;
-  final Value<String> name;
-  final Value<double> totalAmount;
-  final Value<String> currency;
-  final Value<DateTime> incomeDate;
-  final Value<bool> isActive;
-  final Value<DateTime> createdAt;
-  const IncomeAdjustmentsCompanion({
-    this.id = const Value.absent(),
-    this.name = const Value.absent(),
-    this.totalAmount = const Value.absent(),
-    this.currency = const Value.absent(),
-    this.incomeDate = const Value.absent(),
-    this.isActive = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  });
-  IncomeAdjustmentsCompanion.insert({
-    this.id = const Value.absent(),
-    required String name,
-    required double totalAmount,
-    this.currency = const Value.absent(),
-    required DateTime incomeDate,
-    this.isActive = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  }) : name = Value(name),
-       totalAmount = Value(totalAmount),
-       incomeDate = Value(incomeDate);
-  static Insertable<IncomeAdjustment> custom({
-    Expression<int>? id,
-    Expression<String>? name,
-    Expression<double>? totalAmount,
-    Expression<String>? currency,
-    Expression<DateTime>? incomeDate,
-    Expression<bool>? isActive,
-    Expression<DateTime>? createdAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (name != null) 'name': name,
-      if (totalAmount != null) 'total_amount': totalAmount,
-      if (currency != null) 'currency': currency,
-      if (incomeDate != null) 'income_date': incomeDate,
-      if (isActive != null) 'is_active': isActive,
-      if (createdAt != null) 'created_at': createdAt,
-    });
-  }
-
-  IncomeAdjustmentsCompanion copyWith({
-    Value<int>? id,
-    Value<String>? name,
-    Value<double>? totalAmount,
-    Value<String>? currency,
-    Value<DateTime>? incomeDate,
-    Value<bool>? isActive,
-    Value<DateTime>? createdAt,
-  }) {
-    return IncomeAdjustmentsCompanion(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      totalAmount: totalAmount ?? this.totalAmount,
-      currency: currency ?? this.currency,
-      incomeDate: incomeDate ?? this.incomeDate,
-      isActive: isActive ?? this.isActive,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (name.present) {
-      map['name'] = Variable<String>(name.value);
-    }
-    if (totalAmount.present) {
-      map['total_amount'] = Variable<double>(totalAmount.value);
-    }
-    if (currency.present) {
-      map['currency'] = Variable<String>(currency.value);
-    }
-    if (incomeDate.present) {
-      map['income_date'] = Variable<DateTime>(incomeDate.value);
-    }
-    if (isActive.present) {
-      map['is_active'] = Variable<bool>(isActive.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<DateTime>(createdAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('IncomeAdjustmentsCompanion(')
-          ..write('id: $id, ')
-          ..write('name: $name, ')
-          ..write('totalAmount: $totalAmount, ')
-          ..write('currency: $currency, ')
-          ..write('incomeDate: $incomeDate, ')
-          ..write('isActive: $isActive, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class $IncomeAdjustmentExpensesTable extends IncomeAdjustmentExpenses
-    with TableInfo<$IncomeAdjustmentExpensesTable, IncomeAdjustmentExpense> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $IncomeAdjustmentExpensesTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _adjustmentIdMeta = const VerificationMeta(
-    'adjustmentId',
-  );
-  @override
-  late final GeneratedColumn<int> adjustmentId = GeneratedColumn<int>(
-    'adjustment_id',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES income_adjustments (id)',
-    ),
-  );
-  static const VerificationMeta _dateMeta = const VerificationMeta('date');
-  @override
-  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
-    'date',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
-  @override
-  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
-    'amount',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _descriptionMeta = const VerificationMeta(
-    'description',
-  );
-  @override
-  late final GeneratedColumn<String> description = GeneratedColumn<String>(
-    'description',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(''),
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    adjustmentId,
-    date,
-    amount,
-    description,
-    createdAt,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'income_adjustment_expenses';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<IncomeAdjustmentExpense> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('adjustment_id')) {
-      context.handle(
-        _adjustmentIdMeta,
-        adjustmentId.isAcceptableOrUnknown(
-          data['adjustment_id']!,
-          _adjustmentIdMeta,
-        ),
-      );
-    } else if (isInserting) {
-      context.missing(_adjustmentIdMeta);
-    }
-    if (data.containsKey('date')) {
-      context.handle(
-        _dateMeta,
-        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_dateMeta);
-    }
-    if (data.containsKey('amount')) {
-      context.handle(
-        _amountMeta,
-        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_amountMeta);
-    }
-    if (data.containsKey('description')) {
-      context.handle(
-        _descriptionMeta,
-        description.isAcceptableOrUnknown(
-          data['description']!,
-          _descriptionMeta,
-        ),
-      );
-    }
-    if (data.containsKey('created_at')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  IncomeAdjustmentExpense map(
-    Map<String, dynamic> data, {
-    String? tablePrefix,
-  }) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return IncomeAdjustmentExpense(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      adjustmentId: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}adjustment_id'],
-      )!,
-      date: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}date'],
-      )!,
-      amount: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}amount'],
-      )!,
-      description: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}description'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}created_at'],
-      )!,
-    );
-  }
-
-  @override
-  $IncomeAdjustmentExpensesTable createAlias(String alias) {
-    return $IncomeAdjustmentExpensesTable(attachedDatabase, alias);
-  }
-}
-
-class IncomeAdjustmentExpense extends DataClass
-    implements Insertable<IncomeAdjustmentExpense> {
-  final int id;
-  final int adjustmentId;
-  final DateTime date;
-  final double amount;
-  final String description;
-  final DateTime createdAt;
-  const IncomeAdjustmentExpense({
-    required this.id,
-    required this.adjustmentId,
-    required this.date,
-    required this.amount,
-    required this.description,
-    required this.createdAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['adjustment_id'] = Variable<int>(adjustmentId);
-    map['date'] = Variable<DateTime>(date);
-    map['amount'] = Variable<double>(amount);
-    map['description'] = Variable<String>(description);
-    map['created_at'] = Variable<DateTime>(createdAt);
-    return map;
-  }
-
-  IncomeAdjustmentExpensesCompanion toCompanion(bool nullToAbsent) {
-    return IncomeAdjustmentExpensesCompanion(
-      id: Value(id),
-      adjustmentId: Value(adjustmentId),
-      date: Value(date),
-      amount: Value(amount),
-      description: Value(description),
-      createdAt: Value(createdAt),
-    );
-  }
-
-  factory IncomeAdjustmentExpense.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return IncomeAdjustmentExpense(
-      id: serializer.fromJson<int>(json['id']),
-      adjustmentId: serializer.fromJson<int>(json['adjustmentId']),
-      date: serializer.fromJson<DateTime>(json['date']),
-      amount: serializer.fromJson<double>(json['amount']),
-      description: serializer.fromJson<String>(json['description']),
-      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'adjustmentId': serializer.toJson<int>(adjustmentId),
-      'date': serializer.toJson<DateTime>(date),
-      'amount': serializer.toJson<double>(amount),
-      'description': serializer.toJson<String>(description),
-      'createdAt': serializer.toJson<DateTime>(createdAt),
-    };
-  }
-
-  IncomeAdjustmentExpense copyWith({
-    int? id,
-    int? adjustmentId,
-    DateTime? date,
-    double? amount,
-    String? description,
-    DateTime? createdAt,
-  }) => IncomeAdjustmentExpense(
-    id: id ?? this.id,
-    adjustmentId: adjustmentId ?? this.adjustmentId,
-    date: date ?? this.date,
-    amount: amount ?? this.amount,
-    description: description ?? this.description,
-    createdAt: createdAt ?? this.createdAt,
-  );
-  IncomeAdjustmentExpense copyWithCompanion(
-    IncomeAdjustmentExpensesCompanion data,
-  ) {
-    return IncomeAdjustmentExpense(
-      id: data.id.present ? data.id.value : this.id,
-      adjustmentId: data.adjustmentId.present
-          ? data.adjustmentId.value
-          : this.adjustmentId,
-      date: data.date.present ? data.date.value : this.date,
-      amount: data.amount.present ? data.amount.value : this.amount,
-      description: data.description.present
-          ? data.description.value
-          : this.description,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('IncomeAdjustmentExpense(')
-          ..write('id: $id, ')
-          ..write('adjustmentId: $adjustmentId, ')
-          ..write('date: $date, ')
-          ..write('amount: $amount, ')
-          ..write('description: $description, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(id, adjustmentId, date, amount, description, createdAt);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is IncomeAdjustmentExpense &&
-          other.id == this.id &&
-          other.adjustmentId == this.adjustmentId &&
-          other.date == this.date &&
-          other.amount == this.amount &&
-          other.description == this.description &&
-          other.createdAt == this.createdAt);
-}
-
-class IncomeAdjustmentExpensesCompanion
-    extends UpdateCompanion<IncomeAdjustmentExpense> {
-  final Value<int> id;
-  final Value<int> adjustmentId;
-  final Value<DateTime> date;
-  final Value<double> amount;
-  final Value<String> description;
-  final Value<DateTime> createdAt;
-  const IncomeAdjustmentExpensesCompanion({
-    this.id = const Value.absent(),
-    this.adjustmentId = const Value.absent(),
-    this.date = const Value.absent(),
-    this.amount = const Value.absent(),
-    this.description = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  });
-  IncomeAdjustmentExpensesCompanion.insert({
-    this.id = const Value.absent(),
-    required int adjustmentId,
-    required DateTime date,
-    required double amount,
-    this.description = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  }) : adjustmentId = Value(adjustmentId),
-       date = Value(date),
-       amount = Value(amount);
-  static Insertable<IncomeAdjustmentExpense> custom({
-    Expression<int>? id,
-    Expression<int>? adjustmentId,
-    Expression<DateTime>? date,
-    Expression<double>? amount,
-    Expression<String>? description,
-    Expression<DateTime>? createdAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (adjustmentId != null) 'adjustment_id': adjustmentId,
-      if (date != null) 'date': date,
-      if (amount != null) 'amount': amount,
-      if (description != null) 'description': description,
-      if (createdAt != null) 'created_at': createdAt,
-    });
-  }
-
-  IncomeAdjustmentExpensesCompanion copyWith({
-    Value<int>? id,
-    Value<int>? adjustmentId,
-    Value<DateTime>? date,
-    Value<double>? amount,
-    Value<String>? description,
-    Value<DateTime>? createdAt,
-  }) {
-    return IncomeAdjustmentExpensesCompanion(
-      id: id ?? this.id,
-      adjustmentId: adjustmentId ?? this.adjustmentId,
-      date: date ?? this.date,
-      amount: amount ?? this.amount,
-      description: description ?? this.description,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (adjustmentId.present) {
-      map['adjustment_id'] = Variable<int>(adjustmentId.value);
-    }
-    if (date.present) {
-      map['date'] = Variable<DateTime>(date.value);
-    }
-    if (amount.present) {
-      map['amount'] = Variable<double>(amount.value);
-    }
-    if (description.present) {
-      map['description'] = Variable<String>(description.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<DateTime>(createdAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('IncomeAdjustmentExpensesCompanion(')
-          ..write('id: $id, ')
-          ..write('adjustmentId: $adjustmentId, ')
-          ..write('date: $date, ')
-          ..write('amount: $amount, ')
-          ..write('description: $description, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -14853,10 +12503,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AssetsTable assets = $AssetsTable(this);
   late final $AssetEventsTable assetEvents = $AssetEventsTable(this);
   late final $AssetSnapshotsTable assetSnapshots = $AssetSnapshotsTable(this);
-  late final $DepreciationSchedulesTable depreciationSchedules =
-      $DepreciationSchedulesTable(this);
-  late final $DepreciationEntriesTable depreciationEntries =
-      $DepreciationEntriesTable(this);
   late final $BuffersTable buffers = $BuffersTable(this);
   late final $BufferTransactionsTable bufferTransactions =
       $BufferTransactionsTable(this);
@@ -14872,10 +12518,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $DashboardChartsTable dashboardCharts = $DashboardChartsTable(
     this,
   );
-  late final $IncomeAdjustmentsTable incomeAdjustments =
-      $IncomeAdjustmentsTable(this);
-  late final $IncomeAdjustmentExpensesTable incomeAdjustmentExpenses =
-      $IncomeAdjustmentExpensesTable(this);
   late final $IncomesTable incomes = $IncomesTable(this);
   late final $AssetCompositionsTable assetCompositions =
       $AssetCompositionsTable(this);
@@ -14896,8 +12538,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     assets,
     assetEvents,
     assetSnapshots,
-    depreciationSchedules,
-    depreciationEntries,
     buffers,
     bufferTransactions,
     marketPrices,
@@ -14907,8 +12547,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     appConfigs,
     importConfigs,
     dashboardCharts,
-    incomeAdjustments,
-    incomeAdjustmentExpenses,
     incomes,
     assetCompositions,
     extraordinaryEvents,
@@ -16550,7 +14188,6 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       Value<String> currency,
       Value<String> tags,
       Value<ExpenseType?> expenseType,
-      Value<int?> depreciationId,
       Value<String?> rawMetadata,
       Value<String?> importHash,
       Value<DateTime> createdAt,
@@ -16570,7 +14207,6 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<String> currency,
       Value<String> tags,
       Value<ExpenseType?> expenseType,
-      Value<int?> depreciationId,
       Value<String?> rawMetadata,
       Value<String?> importHash,
       Value<DateTime> createdAt,
@@ -16615,34 +14251,6 @@ final class $$TransactionsTableReferences
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-
-  static MultiTypedResultKey<
-    $DepreciationSchedulesTable,
-    List<DepreciationSchedule>
-  >
-  _depreciationSchedulesRefsTable(_$AppDatabase db) =>
-      MultiTypedResultKey.fromTable(
-        db.depreciationSchedules,
-        aliasName: $_aliasNameGenerator(
-          db.transactions.id,
-          db.depreciationSchedules.transactionId,
-        ),
-      );
-
-  $$DepreciationSchedulesTableProcessedTableManager
-  get depreciationSchedulesRefs {
-    final manager = $$DepreciationSchedulesTableTableManager(
-      $_db,
-      $_db.depreciationSchedules,
-    ).filter((f) => f.transactionId.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(
-      _depreciationSchedulesRefsTable($_db),
-    );
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
     );
   }
 
@@ -16767,11 +14375,6 @@ class $$TransactionsTableFilterComposer
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
-  ColumnFilters<int> get depreciationId => $composableBuilder(
-    column: $table.depreciationId,
-    builder: (column) => ColumnFilters(column),
-  );
-
   ColumnFilters<String> get rawMetadata => $composableBuilder(
     column: $table.rawMetadata,
     builder: (column) => ColumnFilters(column),
@@ -16831,32 +14434,6 @@ class $$TransactionsTableFilterComposer
           ),
     );
     return composer;
-  }
-
-  Expression<bool> depreciationSchedulesRefs(
-    Expression<bool> Function($$DepreciationSchedulesTableFilterComposer f) f,
-  ) {
-    final $$DepreciationSchedulesTableFilterComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.id,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.transactionId,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableFilterComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return f(composer);
   }
 
   Expression<bool> bufferTransactionsRefs(
@@ -16971,11 +14548,6 @@ class $$TransactionsTableOrderingComposer
 
   ColumnOrderings<String> get expenseType => $composableBuilder(
     column: $table.expenseType,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get depreciationId => $composableBuilder(
-    column: $table.depreciationId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -17094,11 +14666,6 @@ class $$TransactionsTableAnnotationComposer
         builder: (column) => column,
       );
 
-  GeneratedColumn<int> get depreciationId => $composableBuilder(
-    column: $table.depreciationId,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<String> get rawMetadata => $composableBuilder(
     column: $table.rawMetadata,
     builder: (column) => column,
@@ -17156,32 +14723,6 @@ class $$TransactionsTableAnnotationComposer
           ),
     );
     return composer;
-  }
-
-  Expression<T> depreciationSchedulesRefs<T extends Object>(
-    Expression<T> Function($$DepreciationSchedulesTableAnnotationComposer a) f,
-  ) {
-    final $$DepreciationSchedulesTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.id,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.transactionId,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableAnnotationComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return f(composer);
   }
 
   Expression<T> bufferTransactionsRefs<T extends Object>(
@@ -17253,7 +14794,6 @@ class $$TransactionsTableTableManager
           PrefetchHooks Function({
             bool accountId,
             bool categoryId,
-            bool depreciationSchedulesRefs,
             bool bufferTransactionsRefs,
             bool extraordinaryEventsRefs,
           })
@@ -17284,7 +14824,6 @@ class $$TransactionsTableTableManager
                 Value<String> currency = const Value.absent(),
                 Value<String> tags = const Value.absent(),
                 Value<ExpenseType?> expenseType = const Value.absent(),
-                Value<int?> depreciationId = const Value.absent(),
                 Value<String?> rawMetadata = const Value.absent(),
                 Value<String?> importHash = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -17302,7 +14841,6 @@ class $$TransactionsTableTableManager
                 currency: currency,
                 tags: tags,
                 expenseType: expenseType,
-                depreciationId: depreciationId,
                 rawMetadata: rawMetadata,
                 importHash: importHash,
                 createdAt: createdAt,
@@ -17322,7 +14860,6 @@ class $$TransactionsTableTableManager
                 Value<String> currency = const Value.absent(),
                 Value<String> tags = const Value.absent(),
                 Value<ExpenseType?> expenseType = const Value.absent(),
-                Value<int?> depreciationId = const Value.absent(),
                 Value<String?> rawMetadata = const Value.absent(),
                 Value<String?> importHash = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -17340,7 +14877,6 @@ class $$TransactionsTableTableManager
                 currency: currency,
                 tags: tags,
                 expenseType: expenseType,
-                depreciationId: depreciationId,
                 rawMetadata: rawMetadata,
                 importHash: importHash,
                 createdAt: createdAt,
@@ -17357,14 +14893,12 @@ class $$TransactionsTableTableManager
               ({
                 accountId = false,
                 categoryId = false,
-                depreciationSchedulesRefs = false,
                 bufferTransactionsRefs = false,
                 extraordinaryEventsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
-                    if (depreciationSchedulesRefs) db.depreciationSchedules,
                     if (bufferTransactionsRefs) db.bufferTransactions,
                     if (extraordinaryEventsRefs) db.extraordinaryEvents,
                   ],
@@ -17419,27 +14953,6 @@ class $$TransactionsTableTableManager
                       },
                   getPrefetchedDataCallback: (items) async {
                     return [
-                      if (depreciationSchedulesRefs)
-                        await $_getPrefetchedData<
-                          Transaction,
-                          $TransactionsTable,
-                          DepreciationSchedule
-                        >(
-                          currentTable: table,
-                          referencedTable: $$TransactionsTableReferences
-                              ._depreciationSchedulesRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$TransactionsTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).depreciationSchedulesRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.transactionId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
                       if (bufferTransactionsRefs)
                         await $_getPrefetchedData<
                           Transaction,
@@ -17505,7 +15018,6 @@ typedef $$TransactionsTableProcessedTableManager =
       PrefetchHooks Function({
         bool accountId,
         bool categoryId,
-        bool depreciationSchedulesRefs,
         bool bufferTransactionsRefs,
         bool extraordinaryEventsRefs,
       })
@@ -19915,1163 +17427,12 @@ typedef $$AssetSnapshotsTableProcessedTableManager =
       AssetSnapshot,
       PrefetchHooks Function({bool assetId})
     >;
-typedef $$DepreciationSchedulesTableCreateCompanionBuilder =
-    DepreciationSchedulesCompanion Function({
-      Value<int> id,
-      Value<int?> transactionId,
-      required String assetName,
-      required String assetCategory,
-      required double totalAmount,
-      Value<String> currency,
-      required DepreciationMethod method,
-      required DateTime startDate,
-      required DateTime endDate,
-      Value<DateTime?> expenseDate,
-      required int usefulLifeMonths,
-      required DepreciationDirection direction,
-      Value<StepFrequency> stepFrequency,
-      Value<int?> bufferId,
-      Value<bool> isActive,
-      Value<DateTime> createdAt,
-      Value<DateTime> updatedAt,
-    });
-typedef $$DepreciationSchedulesTableUpdateCompanionBuilder =
-    DepreciationSchedulesCompanion Function({
-      Value<int> id,
-      Value<int?> transactionId,
-      Value<String> assetName,
-      Value<String> assetCategory,
-      Value<double> totalAmount,
-      Value<String> currency,
-      Value<DepreciationMethod> method,
-      Value<DateTime> startDate,
-      Value<DateTime> endDate,
-      Value<DateTime?> expenseDate,
-      Value<int> usefulLifeMonths,
-      Value<DepreciationDirection> direction,
-      Value<StepFrequency> stepFrequency,
-      Value<int?> bufferId,
-      Value<bool> isActive,
-      Value<DateTime> createdAt,
-      Value<DateTime> updatedAt,
-    });
-
-final class $$DepreciationSchedulesTableReferences
-    extends
-        BaseReferences<
-          _$AppDatabase,
-          $DepreciationSchedulesTable,
-          DepreciationSchedule
-        > {
-  $$DepreciationSchedulesTableReferences(
-    super.$_db,
-    super.$_table,
-    super.$_typedResult,
-  );
-
-  static $TransactionsTable _transactionIdTable(_$AppDatabase db) =>
-      db.transactions.createAlias(
-        $_aliasNameGenerator(
-          db.depreciationSchedules.transactionId,
-          db.transactions.id,
-        ),
-      );
-
-  $$TransactionsTableProcessedTableManager? get transactionId {
-    final $_column = $_itemColumn<int>('transaction_id');
-    if ($_column == null) return null;
-    final manager = $$TransactionsTableTableManager(
-      $_db,
-      $_db.transactions,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_transactionIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-
-  static MultiTypedResultKey<$DepreciationEntriesTable, List<DepreciationEntry>>
-  _depreciationEntriesRefsTable(_$AppDatabase db) =>
-      MultiTypedResultKey.fromTable(
-        db.depreciationEntries,
-        aliasName: $_aliasNameGenerator(
-          db.depreciationSchedules.id,
-          db.depreciationEntries.scheduleId,
-        ),
-      );
-
-  $$DepreciationEntriesTableProcessedTableManager get depreciationEntriesRefs {
-    final manager = $$DepreciationEntriesTableTableManager(
-      $_db,
-      $_db.depreciationEntries,
-    ).filter((f) => f.scheduleId.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(
-      _depreciationEntriesRefsTable($_db),
-    );
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-
-  static MultiTypedResultKey<$BuffersTable, List<Buffer>> _buffersRefsTable(
-    _$AppDatabase db,
-  ) => MultiTypedResultKey.fromTable(
-    db.buffers,
-    aliasName: $_aliasNameGenerator(
-      db.depreciationSchedules.id,
-      db.buffers.linkedDepreciationId,
-    ),
-  );
-
-  $$BuffersTableProcessedTableManager get buffersRefs {
-    final manager = $$BuffersTableTableManager($_db, $_db.buffers).filter(
-      (f) => f.linkedDepreciationId.id.sqlEquals($_itemColumn<int>('id')!),
-    );
-
-    final cache = $_typedResult.readTableOrNull(_buffersRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-}
-
-class $$DepreciationSchedulesTableFilterComposer
-    extends Composer<_$AppDatabase, $DepreciationSchedulesTable> {
-  $$DepreciationSchedulesTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get assetName => $composableBuilder(
-    column: $table.assetName,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get assetCategory => $composableBuilder(
-    column: $table.assetCategory,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get totalAmount => $composableBuilder(
-    column: $table.totalAmount,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get currency => $composableBuilder(
-    column: $table.currency,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnWithTypeConverterFilters<DepreciationMethod, DepreciationMethod, String>
-  get method => $composableBuilder(
-    column: $table.method,
-    builder: (column) => ColumnWithTypeConverterFilters(column),
-  );
-
-  ColumnFilters<DateTime> get startDate => $composableBuilder(
-    column: $table.startDate,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get endDate => $composableBuilder(
-    column: $table.endDate,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get expenseDate => $composableBuilder(
-    column: $table.expenseDate,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get usefulLifeMonths => $composableBuilder(
-    column: $table.usefulLifeMonths,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnWithTypeConverterFilters<
-    DepreciationDirection,
-    DepreciationDirection,
-    String
-  >
-  get direction => $composableBuilder(
-    column: $table.direction,
-    builder: (column) => ColumnWithTypeConverterFilters(column),
-  );
-
-  ColumnWithTypeConverterFilters<StepFrequency, StepFrequency, String>
-  get stepFrequency => $composableBuilder(
-    column: $table.stepFrequency,
-    builder: (column) => ColumnWithTypeConverterFilters(column),
-  );
-
-  ColumnFilters<int> get bufferId => $composableBuilder(
-    column: $table.bufferId,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<bool> get isActive => $composableBuilder(
-    column: $table.isActive,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
-    column: $table.updatedAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  $$TransactionsTableFilterComposer get transactionId {
-    final $$TransactionsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.transactionId,
-      referencedTable: $db.transactions,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$TransactionsTableFilterComposer(
-            $db: $db,
-            $table: $db.transactions,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  Expression<bool> depreciationEntriesRefs(
-    Expression<bool> Function($$DepreciationEntriesTableFilterComposer f) f,
-  ) {
-    final $$DepreciationEntriesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.depreciationEntries,
-      getReferencedColumn: (t) => t.scheduleId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$DepreciationEntriesTableFilterComposer(
-            $db: $db,
-            $table: $db.depreciationEntries,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
-  Expression<bool> buffersRefs(
-    Expression<bool> Function($$BuffersTableFilterComposer f) f,
-  ) {
-    final $$BuffersTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.buffers,
-      getReferencedColumn: (t) => t.linkedDepreciationId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BuffersTableFilterComposer(
-            $db: $db,
-            $table: $db.buffers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-}
-
-class $$DepreciationSchedulesTableOrderingComposer
-    extends Composer<_$AppDatabase, $DepreciationSchedulesTable> {
-  $$DepreciationSchedulesTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get assetName => $composableBuilder(
-    column: $table.assetName,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get assetCategory => $composableBuilder(
-    column: $table.assetCategory,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get totalAmount => $composableBuilder(
-    column: $table.totalAmount,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get currency => $composableBuilder(
-    column: $table.currency,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get method => $composableBuilder(
-    column: $table.method,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get startDate => $composableBuilder(
-    column: $table.startDate,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get endDate => $composableBuilder(
-    column: $table.endDate,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get expenseDate => $composableBuilder(
-    column: $table.expenseDate,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get usefulLifeMonths => $composableBuilder(
-    column: $table.usefulLifeMonths,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get direction => $composableBuilder(
-    column: $table.direction,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get stepFrequency => $composableBuilder(
-    column: $table.stepFrequency,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get bufferId => $composableBuilder(
-    column: $table.bufferId,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<bool> get isActive => $composableBuilder(
-    column: $table.isActive,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
-    column: $table.updatedAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  $$TransactionsTableOrderingComposer get transactionId {
-    final $$TransactionsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.transactionId,
-      referencedTable: $db.transactions,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$TransactionsTableOrderingComposer(
-            $db: $db,
-            $table: $db.transactions,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$DepreciationSchedulesTableAnnotationComposer
-    extends Composer<_$AppDatabase, $DepreciationSchedulesTable> {
-  $$DepreciationSchedulesTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get assetName =>
-      $composableBuilder(column: $table.assetName, builder: (column) => column);
-
-  GeneratedColumn<String> get assetCategory => $composableBuilder(
-    column: $table.assetCategory,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<double> get totalAmount => $composableBuilder(
-    column: $table.totalAmount,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get currency =>
-      $composableBuilder(column: $table.currency, builder: (column) => column);
-
-  GeneratedColumnWithTypeConverter<DepreciationMethod, String> get method =>
-      $composableBuilder(column: $table.method, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get startDate =>
-      $composableBuilder(column: $table.startDate, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get endDate =>
-      $composableBuilder(column: $table.endDate, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get expenseDate => $composableBuilder(
-    column: $table.expenseDate,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<int> get usefulLifeMonths => $composableBuilder(
-    column: $table.usefulLifeMonths,
-    builder: (column) => column,
-  );
-
-  GeneratedColumnWithTypeConverter<DepreciationDirection, String>
-  get direction =>
-      $composableBuilder(column: $table.direction, builder: (column) => column);
-
-  GeneratedColumnWithTypeConverter<StepFrequency, String> get stepFrequency =>
-      $composableBuilder(
-        column: $table.stepFrequency,
-        builder: (column) => column,
-      );
-
-  GeneratedColumn<int> get bufferId =>
-      $composableBuilder(column: $table.bufferId, builder: (column) => column);
-
-  GeneratedColumn<bool> get isActive =>
-      $composableBuilder(column: $table.isActive, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get updatedAt =>
-      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
-
-  $$TransactionsTableAnnotationComposer get transactionId {
-    final $$TransactionsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.transactionId,
-      referencedTable: $db.transactions,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$TransactionsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.transactions,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-
-  Expression<T> depreciationEntriesRefs<T extends Object>(
-    Expression<T> Function($$DepreciationEntriesTableAnnotationComposer a) f,
-  ) {
-    final $$DepreciationEntriesTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.id,
-          referencedTable: $db.depreciationEntries,
-          getReferencedColumn: (t) => t.scheduleId,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationEntriesTableAnnotationComposer(
-                $db: $db,
-                $table: $db.depreciationEntries,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return f(composer);
-  }
-
-  Expression<T> buffersRefs<T extends Object>(
-    Expression<T> Function($$BuffersTableAnnotationComposer a) f,
-  ) {
-    final $$BuffersTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.buffers,
-      getReferencedColumn: (t) => t.linkedDepreciationId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$BuffersTableAnnotationComposer(
-            $db: $db,
-            $table: $db.buffers,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-}
-
-class $$DepreciationSchedulesTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $DepreciationSchedulesTable,
-          DepreciationSchedule,
-          $$DepreciationSchedulesTableFilterComposer,
-          $$DepreciationSchedulesTableOrderingComposer,
-          $$DepreciationSchedulesTableAnnotationComposer,
-          $$DepreciationSchedulesTableCreateCompanionBuilder,
-          $$DepreciationSchedulesTableUpdateCompanionBuilder,
-          (DepreciationSchedule, $$DepreciationSchedulesTableReferences),
-          DepreciationSchedule,
-          PrefetchHooks Function({
-            bool transactionId,
-            bool depreciationEntriesRefs,
-            bool buffersRefs,
-          })
-        > {
-  $$DepreciationSchedulesTableTableManager(
-    _$AppDatabase db,
-    $DepreciationSchedulesTable table,
-  ) : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$DepreciationSchedulesTableFilterComposer(
-                $db: db,
-                $table: table,
-              ),
-          createOrderingComposer: () =>
-              $$DepreciationSchedulesTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer: () =>
-              $$DepreciationSchedulesTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<int?> transactionId = const Value.absent(),
-                Value<String> assetName = const Value.absent(),
-                Value<String> assetCategory = const Value.absent(),
-                Value<double> totalAmount = const Value.absent(),
-                Value<String> currency = const Value.absent(),
-                Value<DepreciationMethod> method = const Value.absent(),
-                Value<DateTime> startDate = const Value.absent(),
-                Value<DateTime> endDate = const Value.absent(),
-                Value<DateTime?> expenseDate = const Value.absent(),
-                Value<int> usefulLifeMonths = const Value.absent(),
-                Value<DepreciationDirection> direction = const Value.absent(),
-                Value<StepFrequency> stepFrequency = const Value.absent(),
-                Value<int?> bufferId = const Value.absent(),
-                Value<bool> isActive = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-                Value<DateTime> updatedAt = const Value.absent(),
-              }) => DepreciationSchedulesCompanion(
-                id: id,
-                transactionId: transactionId,
-                assetName: assetName,
-                assetCategory: assetCategory,
-                totalAmount: totalAmount,
-                currency: currency,
-                method: method,
-                startDate: startDate,
-                endDate: endDate,
-                expenseDate: expenseDate,
-                usefulLifeMonths: usefulLifeMonths,
-                direction: direction,
-                stepFrequency: stepFrequency,
-                bufferId: bufferId,
-                isActive: isActive,
-                createdAt: createdAt,
-                updatedAt: updatedAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<int?> transactionId = const Value.absent(),
-                required String assetName,
-                required String assetCategory,
-                required double totalAmount,
-                Value<String> currency = const Value.absent(),
-                required DepreciationMethod method,
-                required DateTime startDate,
-                required DateTime endDate,
-                Value<DateTime?> expenseDate = const Value.absent(),
-                required int usefulLifeMonths,
-                required DepreciationDirection direction,
-                Value<StepFrequency> stepFrequency = const Value.absent(),
-                Value<int?> bufferId = const Value.absent(),
-                Value<bool> isActive = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-                Value<DateTime> updatedAt = const Value.absent(),
-              }) => DepreciationSchedulesCompanion.insert(
-                id: id,
-                transactionId: transactionId,
-                assetName: assetName,
-                assetCategory: assetCategory,
-                totalAmount: totalAmount,
-                currency: currency,
-                method: method,
-                startDate: startDate,
-                endDate: endDate,
-                expenseDate: expenseDate,
-                usefulLifeMonths: usefulLifeMonths,
-                direction: direction,
-                stepFrequency: stepFrequency,
-                bufferId: bufferId,
-                isActive: isActive,
-                createdAt: createdAt,
-                updatedAt: updatedAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$DepreciationSchedulesTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback:
-              ({
-                transactionId = false,
-                depreciationEntriesRefs = false,
-                buffersRefs = false,
-              }) {
-                return PrefetchHooks(
-                  db: db,
-                  explicitlyWatchedTables: [
-                    if (depreciationEntriesRefs) db.depreciationEntries,
-                    if (buffersRefs) db.buffers,
-                  ],
-                  addJoins:
-                      <
-                        T extends TableManagerState<
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic
-                        >
-                      >(state) {
-                        if (transactionId) {
-                          state =
-                              state.withJoin(
-                                    currentTable: table,
-                                    currentColumn: table.transactionId,
-                                    referencedTable:
-                                        $$DepreciationSchedulesTableReferences
-                                            ._transactionIdTable(db),
-                                    referencedColumn:
-                                        $$DepreciationSchedulesTableReferences
-                                            ._transactionIdTable(db)
-                                            .id,
-                                  )
-                                  as T;
-                        }
-
-                        return state;
-                      },
-                  getPrefetchedDataCallback: (items) async {
-                    return [
-                      if (depreciationEntriesRefs)
-                        await $_getPrefetchedData<
-                          DepreciationSchedule,
-                          $DepreciationSchedulesTable,
-                          DepreciationEntry
-                        >(
-                          currentTable: table,
-                          referencedTable:
-                              $$DepreciationSchedulesTableReferences
-                                  ._depreciationEntriesRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$DepreciationSchedulesTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).depreciationEntriesRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.scheduleId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
-                      if (buffersRefs)
-                        await $_getPrefetchedData<
-                          DepreciationSchedule,
-                          $DepreciationSchedulesTable,
-                          Buffer
-                        >(
-                          currentTable: table,
-                          referencedTable:
-                              $$DepreciationSchedulesTableReferences
-                                  ._buffersRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$DepreciationSchedulesTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).buffersRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.linkedDepreciationId == item.id,
-                              ),
-                          typedResults: items,
-                        ),
-                    ];
-                  },
-                );
-              },
-        ),
-      );
-}
-
-typedef $$DepreciationSchedulesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $DepreciationSchedulesTable,
-      DepreciationSchedule,
-      $$DepreciationSchedulesTableFilterComposer,
-      $$DepreciationSchedulesTableOrderingComposer,
-      $$DepreciationSchedulesTableAnnotationComposer,
-      $$DepreciationSchedulesTableCreateCompanionBuilder,
-      $$DepreciationSchedulesTableUpdateCompanionBuilder,
-      (DepreciationSchedule, $$DepreciationSchedulesTableReferences),
-      DepreciationSchedule,
-      PrefetchHooks Function({
-        bool transactionId,
-        bool depreciationEntriesRefs,
-        bool buffersRefs,
-      })
-    >;
-typedef $$DepreciationEntriesTableCreateCompanionBuilder =
-    DepreciationEntriesCompanion Function({
-      Value<int> id,
-      required int scheduleId,
-      required DateTime date,
-      required double amount,
-      required double cumulative,
-      required double remaining,
-    });
-typedef $$DepreciationEntriesTableUpdateCompanionBuilder =
-    DepreciationEntriesCompanion Function({
-      Value<int> id,
-      Value<int> scheduleId,
-      Value<DateTime> date,
-      Value<double> amount,
-      Value<double> cumulative,
-      Value<double> remaining,
-    });
-
-final class $$DepreciationEntriesTableReferences
-    extends
-        BaseReferences<
-          _$AppDatabase,
-          $DepreciationEntriesTable,
-          DepreciationEntry
-        > {
-  $$DepreciationEntriesTableReferences(
-    super.$_db,
-    super.$_table,
-    super.$_typedResult,
-  );
-
-  static $DepreciationSchedulesTable _scheduleIdTable(_$AppDatabase db) =>
-      db.depreciationSchedules.createAlias(
-        $_aliasNameGenerator(
-          db.depreciationEntries.scheduleId,
-          db.depreciationSchedules.id,
-        ),
-      );
-
-  $$DepreciationSchedulesTableProcessedTableManager get scheduleId {
-    final $_column = $_itemColumn<int>('schedule_id')!;
-
-    final manager = $$DepreciationSchedulesTableTableManager(
-      $_db,
-      $_db.depreciationSchedules,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_scheduleIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
-class $$DepreciationEntriesTableFilterComposer
-    extends Composer<_$AppDatabase, $DepreciationEntriesTable> {
-  $$DepreciationEntriesTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get date => $composableBuilder(
-    column: $table.date,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get amount => $composableBuilder(
-    column: $table.amount,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get cumulative => $composableBuilder(
-    column: $table.cumulative,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get remaining => $composableBuilder(
-    column: $table.remaining,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  $$DepreciationSchedulesTableFilterComposer get scheduleId {
-    final $$DepreciationSchedulesTableFilterComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.scheduleId,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableFilterComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
-}
-
-class $$DepreciationEntriesTableOrderingComposer
-    extends Composer<_$AppDatabase, $DepreciationEntriesTable> {
-  $$DepreciationEntriesTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get date => $composableBuilder(
-    column: $table.date,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get amount => $composableBuilder(
-    column: $table.amount,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get cumulative => $composableBuilder(
-    column: $table.cumulative,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get remaining => $composableBuilder(
-    column: $table.remaining,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  $$DepreciationSchedulesTableOrderingComposer get scheduleId {
-    final $$DepreciationSchedulesTableOrderingComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.scheduleId,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableOrderingComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
-}
-
-class $$DepreciationEntriesTableAnnotationComposer
-    extends Composer<_$AppDatabase, $DepreciationEntriesTable> {
-  $$DepreciationEntriesTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get date =>
-      $composableBuilder(column: $table.date, builder: (column) => column);
-
-  GeneratedColumn<double> get amount =>
-      $composableBuilder(column: $table.amount, builder: (column) => column);
-
-  GeneratedColumn<double> get cumulative => $composableBuilder(
-    column: $table.cumulative,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<double> get remaining =>
-      $composableBuilder(column: $table.remaining, builder: (column) => column);
-
-  $$DepreciationSchedulesTableAnnotationComposer get scheduleId {
-    final $$DepreciationSchedulesTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.scheduleId,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableAnnotationComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
-}
-
-class $$DepreciationEntriesTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $DepreciationEntriesTable,
-          DepreciationEntry,
-          $$DepreciationEntriesTableFilterComposer,
-          $$DepreciationEntriesTableOrderingComposer,
-          $$DepreciationEntriesTableAnnotationComposer,
-          $$DepreciationEntriesTableCreateCompanionBuilder,
-          $$DepreciationEntriesTableUpdateCompanionBuilder,
-          (DepreciationEntry, $$DepreciationEntriesTableReferences),
-          DepreciationEntry,
-          PrefetchHooks Function({bool scheduleId})
-        > {
-  $$DepreciationEntriesTableTableManager(
-    _$AppDatabase db,
-    $DepreciationEntriesTable table,
-  ) : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$DepreciationEntriesTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$DepreciationEntriesTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer: () =>
-              $$DepreciationEntriesTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<int> scheduleId = const Value.absent(),
-                Value<DateTime> date = const Value.absent(),
-                Value<double> amount = const Value.absent(),
-                Value<double> cumulative = const Value.absent(),
-                Value<double> remaining = const Value.absent(),
-              }) => DepreciationEntriesCompanion(
-                id: id,
-                scheduleId: scheduleId,
-                date: date,
-                amount: amount,
-                cumulative: cumulative,
-                remaining: remaining,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required int scheduleId,
-                required DateTime date,
-                required double amount,
-                required double cumulative,
-                required double remaining,
-              }) => DepreciationEntriesCompanion.insert(
-                id: id,
-                scheduleId: scheduleId,
-                date: date,
-                amount: amount,
-                cumulative: cumulative,
-                remaining: remaining,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$DepreciationEntriesTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({scheduleId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (scheduleId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.scheduleId,
-                                referencedTable:
-                                    $$DepreciationEntriesTableReferences
-                                        ._scheduleIdTable(db),
-                                referencedColumn:
-                                    $$DepreciationEntriesTableReferences
-                                        ._scheduleIdTable(db)
-                                        .id,
-                              )
-                              as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$DepreciationEntriesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $DepreciationEntriesTable,
-      DepreciationEntry,
-      $$DepreciationEntriesTableFilterComposer,
-      $$DepreciationEntriesTableOrderingComposer,
-      $$DepreciationEntriesTableAnnotationComposer,
-      $$DepreciationEntriesTableCreateCompanionBuilder,
-      $$DepreciationEntriesTableUpdateCompanionBuilder,
-      (DepreciationEntry, $$DepreciationEntriesTableReferences),
-      DepreciationEntry,
-      PrefetchHooks Function({bool scheduleId})
-    >;
 typedef $$BuffersTableCreateCompanionBuilder =
     BuffersCompanion Function({
       Value<int> id,
       required String name,
       Value<double?> targetAmount,
-      Value<int?> linkedDepreciationId,
+      Value<int?> linkedEventId,
       Value<bool> isActive,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -21081,7 +17442,7 @@ typedef $$BuffersTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String> name,
       Value<double?> targetAmount,
-      Value<int?> linkedDepreciationId,
+      Value<int?> linkedEventId,
       Value<bool> isActive,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -21090,31 +17451,6 @@ typedef $$BuffersTableUpdateCompanionBuilder =
 final class $$BuffersTableReferences
     extends BaseReferences<_$AppDatabase, $BuffersTable, Buffer> {
   $$BuffersTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $DepreciationSchedulesTable _linkedDepreciationIdTable(
-    _$AppDatabase db,
-  ) => db.depreciationSchedules.createAlias(
-    $_aliasNameGenerator(
-      db.buffers.linkedDepreciationId,
-      db.depreciationSchedules.id,
-    ),
-  );
-
-  $$DepreciationSchedulesTableProcessedTableManager? get linkedDepreciationId {
-    final $_column = $_itemColumn<int>('linked_depreciation_id');
-    if ($_column == null) return null;
-    final manager = $$DepreciationSchedulesTableTableManager(
-      $_db,
-      $_db.depreciationSchedules,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(
-      _linkedDepreciationIdTable($_db),
-    );
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
 
   static MultiTypedResultKey<$BufferTransactionsTable, List<BufferTransaction>>
   _bufferTransactionsRefsTable(_$AppDatabase db) =>
@@ -21192,6 +17528,11 @@ class $$BuffersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get linkedEventId => $composableBuilder(
+    column: $table.linkedEventId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<bool> get isActive => $composableBuilder(
     column: $table.isActive,
     builder: (column) => ColumnFilters(column),
@@ -21206,30 +17547,6 @@ class $$BuffersTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
-
-  $$DepreciationSchedulesTableFilterComposer get linkedDepreciationId {
-    final $$DepreciationSchedulesTableFilterComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.linkedDepreciationId,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableFilterComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
 
   Expression<bool> bufferTransactionsRefs(
     Expression<bool> Function($$BufferTransactionsTableFilterComposer f) f,
@@ -21306,6 +17623,11 @@ class $$BuffersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get linkedEventId => $composableBuilder(
+    column: $table.linkedEventId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isActive => $composableBuilder(
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
@@ -21320,30 +17642,6 @@ class $$BuffersTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
-
-  $$DepreciationSchedulesTableOrderingComposer get linkedDepreciationId {
-    final $$DepreciationSchedulesTableOrderingComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.linkedDepreciationId,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableOrderingComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
 }
 
 class $$BuffersTableAnnotationComposer
@@ -21366,6 +17664,11 @@ class $$BuffersTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get linkedEventId => $composableBuilder(
+    column: $table.linkedEventId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
 
@@ -21374,30 +17677,6 @@ class $$BuffersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
-
-  $$DepreciationSchedulesTableAnnotationComposer get linkedDepreciationId {
-    final $$DepreciationSchedulesTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.linkedDepreciationId,
-          referencedTable: $db.depreciationSchedules,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$DepreciationSchedulesTableAnnotationComposer(
-                $db: $db,
-                $table: $db.depreciationSchedules,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
 
   Expression<T> bufferTransactionsRefs<T extends Object>(
     Expression<T> Function($$BufferTransactionsTableAnnotationComposer a) f,
@@ -21466,7 +17745,6 @@ class $$BuffersTableTableManager
           (Buffer, $$BuffersTableReferences),
           Buffer,
           PrefetchHooks Function({
-            bool linkedDepreciationId,
             bool bufferTransactionsRefs,
             bool extraordinaryEventsRefs,
           })
@@ -21487,7 +17765,7 @@ class $$BuffersTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<double?> targetAmount = const Value.absent(),
-                Value<int?> linkedDepreciationId = const Value.absent(),
+                Value<int?> linkedEventId = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -21495,7 +17773,7 @@ class $$BuffersTableTableManager
                 id: id,
                 name: name,
                 targetAmount: targetAmount,
-                linkedDepreciationId: linkedDepreciationId,
+                linkedEventId: linkedEventId,
                 isActive: isActive,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -21505,7 +17783,7 @@ class $$BuffersTableTableManager
                 Value<int> id = const Value.absent(),
                 required String name,
                 Value<double?> targetAmount = const Value.absent(),
-                Value<int?> linkedDepreciationId = const Value.absent(),
+                Value<int?> linkedEventId = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -21513,7 +17791,7 @@ class $$BuffersTableTableManager
                 id: id,
                 name: name,
                 targetAmount: targetAmount,
-                linkedDepreciationId: linkedDepreciationId,
+                linkedEventId: linkedEventId,
                 isActive: isActive,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -21528,7 +17806,6 @@ class $$BuffersTableTableManager
               .toList(),
           prefetchHooksCallback:
               ({
-                linkedDepreciationId = false,
                 bufferTransactionsRefs = false,
                 extraordinaryEventsRefs = false,
               }) {
@@ -21538,38 +17815,7 @@ class $$BuffersTableTableManager
                     if (bufferTransactionsRefs) db.bufferTransactions,
                     if (extraordinaryEventsRefs) db.extraordinaryEvents,
                   ],
-                  addJoins:
-                      <
-                        T extends TableManagerState<
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic,
-                          dynamic
-                        >
-                      >(state) {
-                        if (linkedDepreciationId) {
-                          state =
-                              state.withJoin(
-                                    currentTable: table,
-                                    currentColumn: table.linkedDepreciationId,
-                                    referencedTable: $$BuffersTableReferences
-                                        ._linkedDepreciationIdTable(db),
-                                    referencedColumn: $$BuffersTableReferences
-                                        ._linkedDepreciationIdTable(db)
-                                        .id,
-                                  )
-                                  as T;
-                        }
-
-                        return state;
-                      },
+                  addJoins: null,
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (bufferTransactionsRefs)
@@ -21635,7 +17881,6 @@ typedef $$BuffersTableProcessedTableManager =
       (Buffer, $$BuffersTableReferences),
       Buffer,
       PrefetchHooks Function({
-        bool linkedDepreciationId,
         bool bufferTransactionsRefs,
         bool extraordinaryEventsRefs,
       })
@@ -24106,735 +20351,6 @@ typedef $$DashboardChartsTableProcessedTableManager =
       DashboardChart,
       PrefetchHooks Function()
     >;
-typedef $$IncomeAdjustmentsTableCreateCompanionBuilder =
-    IncomeAdjustmentsCompanion Function({
-      Value<int> id,
-      required String name,
-      required double totalAmount,
-      Value<String> currency,
-      required DateTime incomeDate,
-      Value<bool> isActive,
-      Value<DateTime> createdAt,
-    });
-typedef $$IncomeAdjustmentsTableUpdateCompanionBuilder =
-    IncomeAdjustmentsCompanion Function({
-      Value<int> id,
-      Value<String> name,
-      Value<double> totalAmount,
-      Value<String> currency,
-      Value<DateTime> incomeDate,
-      Value<bool> isActive,
-      Value<DateTime> createdAt,
-    });
-
-final class $$IncomeAdjustmentsTableReferences
-    extends
-        BaseReferences<
-          _$AppDatabase,
-          $IncomeAdjustmentsTable,
-          IncomeAdjustment
-        > {
-  $$IncomeAdjustmentsTableReferences(
-    super.$_db,
-    super.$_table,
-    super.$_typedResult,
-  );
-
-  static MultiTypedResultKey<
-    $IncomeAdjustmentExpensesTable,
-    List<IncomeAdjustmentExpense>
-  >
-  _incomeAdjustmentExpensesRefsTable(_$AppDatabase db) =>
-      MultiTypedResultKey.fromTable(
-        db.incomeAdjustmentExpenses,
-        aliasName: $_aliasNameGenerator(
-          db.incomeAdjustments.id,
-          db.incomeAdjustmentExpenses.adjustmentId,
-        ),
-      );
-
-  $$IncomeAdjustmentExpensesTableProcessedTableManager
-  get incomeAdjustmentExpensesRefs {
-    final manager = $$IncomeAdjustmentExpensesTableTableManager(
-      $_db,
-      $_db.incomeAdjustmentExpenses,
-    ).filter((f) => f.adjustmentId.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(
-      _incomeAdjustmentExpensesRefsTable($_db),
-    );
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
-}
-
-class $$IncomeAdjustmentsTableFilterComposer
-    extends Composer<_$AppDatabase, $IncomeAdjustmentsTable> {
-  $$IncomeAdjustmentsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get name => $composableBuilder(
-    column: $table.name,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get totalAmount => $composableBuilder(
-    column: $table.totalAmount,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get currency => $composableBuilder(
-    column: $table.currency,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get incomeDate => $composableBuilder(
-    column: $table.incomeDate,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<bool> get isActive => $composableBuilder(
-    column: $table.isActive,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  Expression<bool> incomeAdjustmentExpensesRefs(
-    Expression<bool> Function($$IncomeAdjustmentExpensesTableFilterComposer f)
-    f,
-  ) {
-    final $$IncomeAdjustmentExpensesTableFilterComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.id,
-          referencedTable: $db.incomeAdjustmentExpenses,
-          getReferencedColumn: (t) => t.adjustmentId,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$IncomeAdjustmentExpensesTableFilterComposer(
-                $db: $db,
-                $table: $db.incomeAdjustmentExpenses,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return f(composer);
-  }
-}
-
-class $$IncomeAdjustmentsTableOrderingComposer
-    extends Composer<_$AppDatabase, $IncomeAdjustmentsTable> {
-  $$IncomeAdjustmentsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get name => $composableBuilder(
-    column: $table.name,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get totalAmount => $composableBuilder(
-    column: $table.totalAmount,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get currency => $composableBuilder(
-    column: $table.currency,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get incomeDate => $composableBuilder(
-    column: $table.incomeDate,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<bool> get isActive => $composableBuilder(
-    column: $table.isActive,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-}
-
-class $$IncomeAdjustmentsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $IncomeAdjustmentsTable> {
-  $$IncomeAdjustmentsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get name =>
-      $composableBuilder(column: $table.name, builder: (column) => column);
-
-  GeneratedColumn<double> get totalAmount => $composableBuilder(
-    column: $table.totalAmount,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get currency =>
-      $composableBuilder(column: $table.currency, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get incomeDate => $composableBuilder(
-    column: $table.incomeDate,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<bool> get isActive =>
-      $composableBuilder(column: $table.isActive, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
-
-  Expression<T> incomeAdjustmentExpensesRefs<T extends Object>(
-    Expression<T> Function($$IncomeAdjustmentExpensesTableAnnotationComposer a)
-    f,
-  ) {
-    final $$IncomeAdjustmentExpensesTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.id,
-          referencedTable: $db.incomeAdjustmentExpenses,
-          getReferencedColumn: (t) => t.adjustmentId,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$IncomeAdjustmentExpensesTableAnnotationComposer(
-                $db: $db,
-                $table: $db.incomeAdjustmentExpenses,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return f(composer);
-  }
-}
-
-class $$IncomeAdjustmentsTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $IncomeAdjustmentsTable,
-          IncomeAdjustment,
-          $$IncomeAdjustmentsTableFilterComposer,
-          $$IncomeAdjustmentsTableOrderingComposer,
-          $$IncomeAdjustmentsTableAnnotationComposer,
-          $$IncomeAdjustmentsTableCreateCompanionBuilder,
-          $$IncomeAdjustmentsTableUpdateCompanionBuilder,
-          (IncomeAdjustment, $$IncomeAdjustmentsTableReferences),
-          IncomeAdjustment,
-          PrefetchHooks Function({bool incomeAdjustmentExpensesRefs})
-        > {
-  $$IncomeAdjustmentsTableTableManager(
-    _$AppDatabase db,
-    $IncomeAdjustmentsTable table,
-  ) : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$IncomeAdjustmentsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$IncomeAdjustmentsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$IncomeAdjustmentsTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<String> name = const Value.absent(),
-                Value<double> totalAmount = const Value.absent(),
-                Value<String> currency = const Value.absent(),
-                Value<DateTime> incomeDate = const Value.absent(),
-                Value<bool> isActive = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => IncomeAdjustmentsCompanion(
-                id: id,
-                name: name,
-                totalAmount: totalAmount,
-                currency: currency,
-                incomeDate: incomeDate,
-                isActive: isActive,
-                createdAt: createdAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required String name,
-                required double totalAmount,
-                Value<String> currency = const Value.absent(),
-                required DateTime incomeDate,
-                Value<bool> isActive = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => IncomeAdjustmentsCompanion.insert(
-                id: id,
-                name: name,
-                totalAmount: totalAmount,
-                currency: currency,
-                incomeDate: incomeDate,
-                isActive: isActive,
-                createdAt: createdAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$IncomeAdjustmentsTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({incomeAdjustmentExpensesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (incomeAdjustmentExpensesRefs) db.incomeAdjustmentExpenses,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (incomeAdjustmentExpensesRefs)
-                    await $_getPrefetchedData<
-                      IncomeAdjustment,
-                      $IncomeAdjustmentsTable,
-                      IncomeAdjustmentExpense
-                    >(
-                      currentTable: table,
-                      referencedTable: $$IncomeAdjustmentsTableReferences
-                          ._incomeAdjustmentExpensesRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$IncomeAdjustmentsTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).incomeAdjustmentExpensesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.adjustmentId == item.id,
-                          ),
-                      typedResults: items,
-                    ),
-                ];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$IncomeAdjustmentsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $IncomeAdjustmentsTable,
-      IncomeAdjustment,
-      $$IncomeAdjustmentsTableFilterComposer,
-      $$IncomeAdjustmentsTableOrderingComposer,
-      $$IncomeAdjustmentsTableAnnotationComposer,
-      $$IncomeAdjustmentsTableCreateCompanionBuilder,
-      $$IncomeAdjustmentsTableUpdateCompanionBuilder,
-      (IncomeAdjustment, $$IncomeAdjustmentsTableReferences),
-      IncomeAdjustment,
-      PrefetchHooks Function({bool incomeAdjustmentExpensesRefs})
-    >;
-typedef $$IncomeAdjustmentExpensesTableCreateCompanionBuilder =
-    IncomeAdjustmentExpensesCompanion Function({
-      Value<int> id,
-      required int adjustmentId,
-      required DateTime date,
-      required double amount,
-      Value<String> description,
-      Value<DateTime> createdAt,
-    });
-typedef $$IncomeAdjustmentExpensesTableUpdateCompanionBuilder =
-    IncomeAdjustmentExpensesCompanion Function({
-      Value<int> id,
-      Value<int> adjustmentId,
-      Value<DateTime> date,
-      Value<double> amount,
-      Value<String> description,
-      Value<DateTime> createdAt,
-    });
-
-final class $$IncomeAdjustmentExpensesTableReferences
-    extends
-        BaseReferences<
-          _$AppDatabase,
-          $IncomeAdjustmentExpensesTable,
-          IncomeAdjustmentExpense
-        > {
-  $$IncomeAdjustmentExpensesTableReferences(
-    super.$_db,
-    super.$_table,
-    super.$_typedResult,
-  );
-
-  static $IncomeAdjustmentsTable _adjustmentIdTable(_$AppDatabase db) =>
-      db.incomeAdjustments.createAlias(
-        $_aliasNameGenerator(
-          db.incomeAdjustmentExpenses.adjustmentId,
-          db.incomeAdjustments.id,
-        ),
-      );
-
-  $$IncomeAdjustmentsTableProcessedTableManager get adjustmentId {
-    final $_column = $_itemColumn<int>('adjustment_id')!;
-
-    final manager = $$IncomeAdjustmentsTableTableManager(
-      $_db,
-      $_db.incomeAdjustments,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_adjustmentIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
-class $$IncomeAdjustmentExpensesTableFilterComposer
-    extends Composer<_$AppDatabase, $IncomeAdjustmentExpensesTable> {
-  $$IncomeAdjustmentExpensesTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get date => $composableBuilder(
-    column: $table.date,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get amount => $composableBuilder(
-    column: $table.amount,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  $$IncomeAdjustmentsTableFilterComposer get adjustmentId {
-    final $$IncomeAdjustmentsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.adjustmentId,
-      referencedTable: $db.incomeAdjustments,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$IncomeAdjustmentsTableFilterComposer(
-            $db: $db,
-            $table: $db.incomeAdjustments,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$IncomeAdjustmentExpensesTableOrderingComposer
-    extends Composer<_$AppDatabase, $IncomeAdjustmentExpensesTable> {
-  $$IncomeAdjustmentExpensesTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get date => $composableBuilder(
-    column: $table.date,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get amount => $composableBuilder(
-    column: $table.amount,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  $$IncomeAdjustmentsTableOrderingComposer get adjustmentId {
-    final $$IncomeAdjustmentsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.adjustmentId,
-      referencedTable: $db.incomeAdjustments,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$IncomeAdjustmentsTableOrderingComposer(
-            $db: $db,
-            $table: $db.incomeAdjustments,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
-}
-
-class $$IncomeAdjustmentExpensesTableAnnotationComposer
-    extends Composer<_$AppDatabase, $IncomeAdjustmentExpensesTable> {
-  $$IncomeAdjustmentExpensesTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get date =>
-      $composableBuilder(column: $table.date, builder: (column) => column);
-
-  GeneratedColumn<double> get amount =>
-      $composableBuilder(column: $table.amount, builder: (column) => column);
-
-  GeneratedColumn<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<DateTime> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
-
-  $$IncomeAdjustmentsTableAnnotationComposer get adjustmentId {
-    final $$IncomeAdjustmentsTableAnnotationComposer composer =
-        $composerBuilder(
-          composer: this,
-          getCurrentColumn: (t) => t.adjustmentId,
-          referencedTable: $db.incomeAdjustments,
-          getReferencedColumn: (t) => t.id,
-          builder:
-              (
-                joinBuilder, {
-                $addJoinBuilderToRootComposer,
-                $removeJoinBuilderFromRootComposer,
-              }) => $$IncomeAdjustmentsTableAnnotationComposer(
-                $db: $db,
-                $table: $db.incomeAdjustments,
-                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-                joinBuilder: joinBuilder,
-                $removeJoinBuilderFromRootComposer:
-                    $removeJoinBuilderFromRootComposer,
-              ),
-        );
-    return composer;
-  }
-}
-
-class $$IncomeAdjustmentExpensesTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $IncomeAdjustmentExpensesTable,
-          IncomeAdjustmentExpense,
-          $$IncomeAdjustmentExpensesTableFilterComposer,
-          $$IncomeAdjustmentExpensesTableOrderingComposer,
-          $$IncomeAdjustmentExpensesTableAnnotationComposer,
-          $$IncomeAdjustmentExpensesTableCreateCompanionBuilder,
-          $$IncomeAdjustmentExpensesTableUpdateCompanionBuilder,
-          (IncomeAdjustmentExpense, $$IncomeAdjustmentExpensesTableReferences),
-          IncomeAdjustmentExpense,
-          PrefetchHooks Function({bool adjustmentId})
-        > {
-  $$IncomeAdjustmentExpensesTableTableManager(
-    _$AppDatabase db,
-    $IncomeAdjustmentExpensesTable table,
-  ) : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$IncomeAdjustmentExpensesTableFilterComposer(
-                $db: db,
-                $table: table,
-              ),
-          createOrderingComposer: () =>
-              $$IncomeAdjustmentExpensesTableOrderingComposer(
-                $db: db,
-                $table: table,
-              ),
-          createComputedFieldComposer: () =>
-              $$IncomeAdjustmentExpensesTableAnnotationComposer(
-                $db: db,
-                $table: table,
-              ),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<int> adjustmentId = const Value.absent(),
-                Value<DateTime> date = const Value.absent(),
-                Value<double> amount = const Value.absent(),
-                Value<String> description = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => IncomeAdjustmentExpensesCompanion(
-                id: id,
-                adjustmentId: adjustmentId,
-                date: date,
-                amount: amount,
-                description: description,
-                createdAt: createdAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required int adjustmentId,
-                required DateTime date,
-                required double amount,
-                Value<String> description = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => IncomeAdjustmentExpensesCompanion.insert(
-                id: id,
-                adjustmentId: adjustmentId,
-                date: date,
-                amount: amount,
-                description: description,
-                createdAt: createdAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map(
-                (e) => (
-                  e.readTable(table),
-                  $$IncomeAdjustmentExpensesTableReferences(db, table, e),
-                ),
-              )
-              .toList(),
-          prefetchHooksCallback: ({adjustmentId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (adjustmentId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.adjustmentId,
-                                referencedTable:
-                                    $$IncomeAdjustmentExpensesTableReferences
-                                        ._adjustmentIdTable(db),
-                                referencedColumn:
-                                    $$IncomeAdjustmentExpensesTableReferences
-                                        ._adjustmentIdTable(db)
-                                        .id,
-                              )
-                              as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
-        ),
-      );
-}
-
-typedef $$IncomeAdjustmentExpensesTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $IncomeAdjustmentExpensesTable,
-      IncomeAdjustmentExpense,
-      $$IncomeAdjustmentExpensesTableFilterComposer,
-      $$IncomeAdjustmentExpensesTableOrderingComposer,
-      $$IncomeAdjustmentExpensesTableAnnotationComposer,
-      $$IncomeAdjustmentExpensesTableCreateCompanionBuilder,
-      $$IncomeAdjustmentExpensesTableUpdateCompanionBuilder,
-      (IncomeAdjustmentExpense, $$IncomeAdjustmentExpensesTableReferences),
-      IncomeAdjustmentExpense,
-      PrefetchHooks Function({bool adjustmentId})
-    >;
 typedef $$IncomesTableCreateCompanionBuilder =
     IncomesCompanion Function({
       Value<int> id,
@@ -26617,10 +22133,6 @@ class $AppDatabaseManager {
       $$AssetEventsTableTableManager(_db, _db.assetEvents);
   $$AssetSnapshotsTableTableManager get assetSnapshots =>
       $$AssetSnapshotsTableTableManager(_db, _db.assetSnapshots);
-  $$DepreciationSchedulesTableTableManager get depreciationSchedules =>
-      $$DepreciationSchedulesTableTableManager(_db, _db.depreciationSchedules);
-  $$DepreciationEntriesTableTableManager get depreciationEntries =>
-      $$DepreciationEntriesTableTableManager(_db, _db.depreciationEntries);
   $$BuffersTableTableManager get buffers =>
       $$BuffersTableTableManager(_db, _db.buffers);
   $$BufferTransactionsTableTableManager get bufferTransactions =>
@@ -26639,13 +22151,6 @@ class $AppDatabaseManager {
       $$ImportConfigsTableTableManager(_db, _db.importConfigs);
   $$DashboardChartsTableTableManager get dashboardCharts =>
       $$DashboardChartsTableTableManager(_db, _db.dashboardCharts);
-  $$IncomeAdjustmentsTableTableManager get incomeAdjustments =>
-      $$IncomeAdjustmentsTableTableManager(_db, _db.incomeAdjustments);
-  $$IncomeAdjustmentExpensesTableTableManager get incomeAdjustmentExpenses =>
-      $$IncomeAdjustmentExpensesTableTableManager(
-        _db,
-        _db.incomeAdjustmentExpenses,
-      );
   $$IncomesTableTableManager get incomes =>
       $$IncomesTableTableManager(_db, _db.incomes);
   $$AssetCompositionsTableTableManager get assetCompositions =>

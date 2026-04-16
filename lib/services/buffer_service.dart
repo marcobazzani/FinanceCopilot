@@ -22,13 +22,13 @@ class BufferService {
   Future<int> create({
     required String name,
     double? targetAmount,
-    int? linkedDepreciationId,
+    int? linkedEventId,
   }) {
-    _log.info('create: name=$name, linkedDepId=$linkedDepreciationId');
+    _log.info('create: name=$name, linkedEventId=$linkedEventId');
     return _db.into(_db.buffers).insert(BuffersCompanion.insert(
       name: name,
       targetAmount: Value(targetAmount),
-      linkedDepreciationId: Value(linkedDepreciationId),
+      linkedEventId: Value(linkedEventId),
     ));
   }
 
