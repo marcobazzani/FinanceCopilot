@@ -38,6 +38,8 @@ final _log = getLogger('Database');
   IncomeAdjustmentExpenses,
   Incomes,
   AssetCompositions,
+  ExtraordinaryEvents,
+  ExtraordinaryEventEntries,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -55,7 +57,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -288,6 +290,87 @@ class AppDatabase extends _$AppDatabase {
               await customStatement('ALTER TABLE accounts DROP COLUMN bank_session_id');
             }
             _log.info('Migration 26: dropped ghost columns from accounts');
+          }
+          if (from < 27) {
+            // Unify DepreciationSchedules + IncomeAdjustments into ExtraordinaryEvents.
+            // Phase 1 migration: create new tables + backfill. Old tables kept
+            // read-only until v28 cleanup.
+            await m.createTable(extraordinaryEvents);
+            await m.createTable(extraordinaryEventEntries);
+
+            // Backfill CAPEX schedules → outflow/spread events (preserve IDs).
+            await customStatement('''
+              INSERT INTO extraordinary_events
+                (id, name, direction, treatment, total_amount, currency, event_date,
+                 transaction_id, step_frequency, spread_start, spread_end, buffer_id,
+                 is_active, created_at, updated_at)
+              SELECT
+                id, asset_name, 'outflow', 'spread', total_amount, currency,
+                COALESCE(expense_date, start_date),
+                transaction_id, step_frequency, start_date, end_date, buffer_id,
+                is_active, created_at, updated_at
+              FROM depreciation_schedules
+            ''');
+
+            // Backfill CAPEX entries → scheduled entries (negate amount).
+            await customStatement('''
+              INSERT INTO extraordinary_event_entries
+                (event_id, date, amount, entry_kind, cumulative, remaining)
+              SELECT schedule_id, date, -amount, 'scheduled', cumulative, remaining
+              FROM depreciation_entries
+            ''');
+
+            // Backfill IncomeAdjustments → inflow/instant events (fresh IDs).
+            final oldIas = await customSelect(
+              'SELECT id, name, total_amount, currency, income_date, is_active, created_at '
+              'FROM income_adjustments'
+            ).get();
+            final idMap = <int, int>{};
+            for (final row in oldIas) {
+              final oldId = row.read<int>('id');
+              final insertResult = await customInsert(
+                'INSERT INTO extraordinary_events '
+                '(name, direction, treatment, total_amount, currency, event_date, '
+                ' is_active, created_at, updated_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                variables: [
+                  Variable.withString(row.read<String>('name')),
+                  Variable.withString('inflow'),
+                  Variable.withString('instant'),
+                  Variable.withReal(row.read<double>('total_amount')),
+                  Variable.withString(row.read<String>('currency')),
+                  Variable.withDateTime(row.read<DateTime>('income_date')),
+                  Variable.withBool(row.read<bool>('is_active')),
+                  Variable.withDateTime(row.read<DateTime>('created_at')),
+                  Variable.withDateTime(row.read<DateTime>('created_at')),
+                ],
+              );
+              idMap[oldId] = insertResult;
+            }
+
+            // Backfill IncomeAdjustmentExpenses → manual entries (positive amount).
+            for (final entry in idMap.entries) {
+              await customStatement(
+                'INSERT INTO extraordinary_event_entries '
+                '(event_id, date, amount, entry_kind, description, created_at) '
+                'SELECT ?, date, amount, ?, description, created_at '
+                'FROM income_adjustment_expenses WHERE adjustment_id = ?',
+                [
+                  entry.value,
+                  'manual',
+                  entry.key,
+                ],
+              );
+            }
+
+            // Fido special-case: reclassify zero-amount windfalls as outflow buckets.
+            await customStatement('''
+              UPDATE extraordinary_events
+              SET direction = 'outflow', treatment = 'instant'
+              WHERE direction = 'inflow' AND total_amount = 0
+            ''');
+
+            _log.info('Migration 27: created ExtraordinaryEvents, backfilled ${idMap.length + 1} events');
           }
         },
       );

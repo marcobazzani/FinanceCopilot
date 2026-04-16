@@ -13314,6 +13314,1533 @@ class AssetCompositionsCompanion extends UpdateCompanion<AssetComposition> {
   }
 }
 
+class $ExtraordinaryEventsTable extends ExtraordinaryEvents
+    with TableInfo<$ExtraordinaryEventsTable, ExtraordinaryEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExtraordinaryEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<EventDirection, String>
+  direction =
+      GeneratedColumn<String>(
+        'direction',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<EventDirection>(
+        $ExtraordinaryEventsTable.$converterdirection,
+      );
+  @override
+  late final GeneratedColumnWithTypeConverter<EventTreatment, String>
+  treatment =
+      GeneratedColumn<String>(
+        'treatment',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<EventTreatment>(
+        $ExtraordinaryEventsTable.$convertertreatment,
+      );
+  static const VerificationMeta _totalAmountMeta = const VerificationMeta(
+    'totalAmount',
+  );
+  @override
+  late final GeneratedColumn<double> totalAmount = GeneratedColumn<double>(
+    'total_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 3,
+      maxTextLength: 3,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('EUR'),
+  );
+  static const VerificationMeta _eventDateMeta = const VerificationMeta(
+    'eventDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> eventDate = GeneratedColumn<DateTime>(
+    'event_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _transactionIdMeta = const VerificationMeta(
+    'transactionId',
+  );
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+    'transaction_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES transactions (id)',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<StepFrequency?, String>
+  stepFrequency =
+      GeneratedColumn<String>(
+        'step_frequency',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<StepFrequency?>(
+        $ExtraordinaryEventsTable.$converterstepFrequencyn,
+      );
+  static const VerificationMeta _spreadStartMeta = const VerificationMeta(
+    'spreadStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> spreadStart = GeneratedColumn<DateTime>(
+    'spread_start',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _spreadEndMeta = const VerificationMeta(
+    'spreadEnd',
+  );
+  @override
+  late final GeneratedColumn<DateTime> spreadEnd = GeneratedColumn<DateTime>(
+    'spread_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bufferIdMeta = const VerificationMeta(
+    'bufferId',
+  );
+  @override
+  late final GeneratedColumn<int> bufferId = GeneratedColumn<int>(
+    'buffer_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES buffers (id)',
+    ),
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'is_active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    direction,
+    treatment,
+    totalAmount,
+    currency,
+    eventDate,
+    transactionId,
+    stepFrequency,
+    spreadStart,
+    spreadEnd,
+    bufferId,
+    notes,
+    isActive,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'extraordinary_events';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExtraordinaryEvent> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('total_amount')) {
+      context.handle(
+        _totalAmountMeta,
+        totalAmount.isAcceptableOrUnknown(
+          data['total_amount']!,
+          _totalAmountMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_totalAmountMeta);
+    }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
+    if (data.containsKey('event_date')) {
+      context.handle(
+        _eventDateMeta,
+        eventDate.isAcceptableOrUnknown(data['event_date']!, _eventDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_eventDateMeta);
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+        _transactionIdMeta,
+        transactionId.isAcceptableOrUnknown(
+          data['transaction_id']!,
+          _transactionIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('spread_start')) {
+      context.handle(
+        _spreadStartMeta,
+        spreadStart.isAcceptableOrUnknown(
+          data['spread_start']!,
+          _spreadStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('spread_end')) {
+      context.handle(
+        _spreadEndMeta,
+        spreadEnd.isAcceptableOrUnknown(data['spread_end']!, _spreadEndMeta),
+      );
+    }
+    if (data.containsKey('buffer_id')) {
+      context.handle(
+        _bufferIdMeta,
+        bufferId.isAcceptableOrUnknown(data['buffer_id']!, _bufferIdMeta),
+      );
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExtraordinaryEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExtraordinaryEvent(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      direction: $ExtraordinaryEventsTable.$converterdirection.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}direction'],
+        )!,
+      ),
+      treatment: $ExtraordinaryEventsTable.$convertertreatment.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}treatment'],
+        )!,
+      ),
+      totalAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}total_amount'],
+      )!,
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      )!,
+      eventDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}event_date'],
+      )!,
+      transactionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transaction_id'],
+      ),
+      stepFrequency: $ExtraordinaryEventsTable.$converterstepFrequencyn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}step_frequency'],
+        ),
+      ),
+      spreadStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}spread_start'],
+      ),
+      spreadEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}spread_end'],
+      ),
+      bufferId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}buffer_id'],
+      ),
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_active'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExtraordinaryEventsTable createAlias(String alias) {
+    return $ExtraordinaryEventsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<EventDirection, String, String>
+  $converterdirection = const EnumNameConverter<EventDirection>(
+    EventDirection.values,
+  );
+  static JsonTypeConverter2<EventTreatment, String, String>
+  $convertertreatment = const EnumNameConverter<EventTreatment>(
+    EventTreatment.values,
+  );
+  static JsonTypeConverter2<StepFrequency, String, String>
+  $converterstepFrequency = const EnumNameConverter<StepFrequency>(
+    StepFrequency.values,
+  );
+  static JsonTypeConverter2<StepFrequency?, String?, String?>
+  $converterstepFrequencyn = JsonTypeConverter2.asNullable(
+    $converterstepFrequency,
+  );
+}
+
+class ExtraordinaryEvent extends DataClass
+    implements Insertable<ExtraordinaryEvent> {
+  final int id;
+  final String name;
+  final EventDirection direction;
+  final EventTreatment treatment;
+  final double totalAmount;
+  final String currency;
+  final DateTime eventDate;
+  final int? transactionId;
+  final StepFrequency? stepFrequency;
+  final DateTime? spreadStart;
+  final DateTime? spreadEnd;
+  final int? bufferId;
+  final String? notes;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ExtraordinaryEvent({
+    required this.id,
+    required this.name,
+    required this.direction,
+    required this.treatment,
+    required this.totalAmount,
+    required this.currency,
+    required this.eventDate,
+    this.transactionId,
+    this.stepFrequency,
+    this.spreadStart,
+    this.spreadEnd,
+    this.bufferId,
+    this.notes,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    {
+      map['direction'] = Variable<String>(
+        $ExtraordinaryEventsTable.$converterdirection.toSql(direction),
+      );
+    }
+    {
+      map['treatment'] = Variable<String>(
+        $ExtraordinaryEventsTable.$convertertreatment.toSql(treatment),
+      );
+    }
+    map['total_amount'] = Variable<double>(totalAmount);
+    map['currency'] = Variable<String>(currency);
+    map['event_date'] = Variable<DateTime>(eventDate);
+    if (!nullToAbsent || transactionId != null) {
+      map['transaction_id'] = Variable<int>(transactionId);
+    }
+    if (!nullToAbsent || stepFrequency != null) {
+      map['step_frequency'] = Variable<String>(
+        $ExtraordinaryEventsTable.$converterstepFrequencyn.toSql(stepFrequency),
+      );
+    }
+    if (!nullToAbsent || spreadStart != null) {
+      map['spread_start'] = Variable<DateTime>(spreadStart);
+    }
+    if (!nullToAbsent || spreadEnd != null) {
+      map['spread_end'] = Variable<DateTime>(spreadEnd);
+    }
+    if (!nullToAbsent || bufferId != null) {
+      map['buffer_id'] = Variable<int>(bufferId);
+    }
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    map['is_active'] = Variable<bool>(isActive);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ExtraordinaryEventsCompanion toCompanion(bool nullToAbsent) {
+    return ExtraordinaryEventsCompanion(
+      id: Value(id),
+      name: Value(name),
+      direction: Value(direction),
+      treatment: Value(treatment),
+      totalAmount: Value(totalAmount),
+      currency: Value(currency),
+      eventDate: Value(eventDate),
+      transactionId: transactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transactionId),
+      stepFrequency: stepFrequency == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stepFrequency),
+      spreadStart: spreadStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(spreadStart),
+      spreadEnd: spreadEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(spreadEnd),
+      bufferId: bufferId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bufferId),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      isActive: Value(isActive),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ExtraordinaryEvent.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExtraordinaryEvent(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      direction: $ExtraordinaryEventsTable.$converterdirection.fromJson(
+        serializer.fromJson<String>(json['direction']),
+      ),
+      treatment: $ExtraordinaryEventsTable.$convertertreatment.fromJson(
+        serializer.fromJson<String>(json['treatment']),
+      ),
+      totalAmount: serializer.fromJson<double>(json['totalAmount']),
+      currency: serializer.fromJson<String>(json['currency']),
+      eventDate: serializer.fromJson<DateTime>(json['eventDate']),
+      transactionId: serializer.fromJson<int?>(json['transactionId']),
+      stepFrequency: $ExtraordinaryEventsTable.$converterstepFrequencyn
+          .fromJson(serializer.fromJson<String?>(json['stepFrequency'])),
+      spreadStart: serializer.fromJson<DateTime?>(json['spreadStart']),
+      spreadEnd: serializer.fromJson<DateTime?>(json['spreadEnd']),
+      bufferId: serializer.fromJson<int?>(json['bufferId']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'direction': serializer.toJson<String>(
+        $ExtraordinaryEventsTable.$converterdirection.toJson(direction),
+      ),
+      'treatment': serializer.toJson<String>(
+        $ExtraordinaryEventsTable.$convertertreatment.toJson(treatment),
+      ),
+      'totalAmount': serializer.toJson<double>(totalAmount),
+      'currency': serializer.toJson<String>(currency),
+      'eventDate': serializer.toJson<DateTime>(eventDate),
+      'transactionId': serializer.toJson<int?>(transactionId),
+      'stepFrequency': serializer.toJson<String?>(
+        $ExtraordinaryEventsTable.$converterstepFrequencyn.toJson(
+          stepFrequency,
+        ),
+      ),
+      'spreadStart': serializer.toJson<DateTime?>(spreadStart),
+      'spreadEnd': serializer.toJson<DateTime?>(spreadEnd),
+      'bufferId': serializer.toJson<int?>(bufferId),
+      'notes': serializer.toJson<String?>(notes),
+      'isActive': serializer.toJson<bool>(isActive),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ExtraordinaryEvent copyWith({
+    int? id,
+    String? name,
+    EventDirection? direction,
+    EventTreatment? treatment,
+    double? totalAmount,
+    String? currency,
+    DateTime? eventDate,
+    Value<int?> transactionId = const Value.absent(),
+    Value<StepFrequency?> stepFrequency = const Value.absent(),
+    Value<DateTime?> spreadStart = const Value.absent(),
+    Value<DateTime?> spreadEnd = const Value.absent(),
+    Value<int?> bufferId = const Value.absent(),
+    Value<String?> notes = const Value.absent(),
+    bool? isActive,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ExtraordinaryEvent(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    direction: direction ?? this.direction,
+    treatment: treatment ?? this.treatment,
+    totalAmount: totalAmount ?? this.totalAmount,
+    currency: currency ?? this.currency,
+    eventDate: eventDate ?? this.eventDate,
+    transactionId: transactionId.present
+        ? transactionId.value
+        : this.transactionId,
+    stepFrequency: stepFrequency.present
+        ? stepFrequency.value
+        : this.stepFrequency,
+    spreadStart: spreadStart.present ? spreadStart.value : this.spreadStart,
+    spreadEnd: spreadEnd.present ? spreadEnd.value : this.spreadEnd,
+    bufferId: bufferId.present ? bufferId.value : this.bufferId,
+    notes: notes.present ? notes.value : this.notes,
+    isActive: isActive ?? this.isActive,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ExtraordinaryEvent copyWithCompanion(ExtraordinaryEventsCompanion data) {
+    return ExtraordinaryEvent(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      treatment: data.treatment.present ? data.treatment.value : this.treatment,
+      totalAmount: data.totalAmount.present
+          ? data.totalAmount.value
+          : this.totalAmount,
+      currency: data.currency.present ? data.currency.value : this.currency,
+      eventDate: data.eventDate.present ? data.eventDate.value : this.eventDate,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      stepFrequency: data.stepFrequency.present
+          ? data.stepFrequency.value
+          : this.stepFrequency,
+      spreadStart: data.spreadStart.present
+          ? data.spreadStart.value
+          : this.spreadStart,
+      spreadEnd: data.spreadEnd.present ? data.spreadEnd.value : this.spreadEnd,
+      bufferId: data.bufferId.present ? data.bufferId.value : this.bufferId,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtraordinaryEvent(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('direction: $direction, ')
+          ..write('treatment: $treatment, ')
+          ..write('totalAmount: $totalAmount, ')
+          ..write('currency: $currency, ')
+          ..write('eventDate: $eventDate, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('stepFrequency: $stepFrequency, ')
+          ..write('spreadStart: $spreadStart, ')
+          ..write('spreadEnd: $spreadEnd, ')
+          ..write('bufferId: $bufferId, ')
+          ..write('notes: $notes, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    direction,
+    treatment,
+    totalAmount,
+    currency,
+    eventDate,
+    transactionId,
+    stepFrequency,
+    spreadStart,
+    spreadEnd,
+    bufferId,
+    notes,
+    isActive,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExtraordinaryEvent &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.direction == this.direction &&
+          other.treatment == this.treatment &&
+          other.totalAmount == this.totalAmount &&
+          other.currency == this.currency &&
+          other.eventDate == this.eventDate &&
+          other.transactionId == this.transactionId &&
+          other.stepFrequency == this.stepFrequency &&
+          other.spreadStart == this.spreadStart &&
+          other.spreadEnd == this.spreadEnd &&
+          other.bufferId == this.bufferId &&
+          other.notes == this.notes &&
+          other.isActive == this.isActive &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<EventDirection> direction;
+  final Value<EventTreatment> treatment;
+  final Value<double> totalAmount;
+  final Value<String> currency;
+  final Value<DateTime> eventDate;
+  final Value<int?> transactionId;
+  final Value<StepFrequency?> stepFrequency;
+  final Value<DateTime?> spreadStart;
+  final Value<DateTime?> spreadEnd;
+  final Value<int?> bufferId;
+  final Value<String?> notes;
+  final Value<bool> isActive;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const ExtraordinaryEventsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.treatment = const Value.absent(),
+    this.totalAmount = const Value.absent(),
+    this.currency = const Value.absent(),
+    this.eventDate = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.stepFrequency = const Value.absent(),
+    this.spreadStart = const Value.absent(),
+    this.spreadEnd = const Value.absent(),
+    this.bufferId = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  ExtraordinaryEventsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required EventDirection direction,
+    required EventTreatment treatment,
+    required double totalAmount,
+    this.currency = const Value.absent(),
+    required DateTime eventDate,
+    this.transactionId = const Value.absent(),
+    this.stepFrequency = const Value.absent(),
+    this.spreadStart = const Value.absent(),
+    this.spreadEnd = const Value.absent(),
+    this.bufferId = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  }) : name = Value(name),
+       direction = Value(direction),
+       treatment = Value(treatment),
+       totalAmount = Value(totalAmount),
+       eventDate = Value(eventDate);
+  static Insertable<ExtraordinaryEvent> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? direction,
+    Expression<String>? treatment,
+    Expression<double>? totalAmount,
+    Expression<String>? currency,
+    Expression<DateTime>? eventDate,
+    Expression<int>? transactionId,
+    Expression<String>? stepFrequency,
+    Expression<DateTime>? spreadStart,
+    Expression<DateTime>? spreadEnd,
+    Expression<int>? bufferId,
+    Expression<String>? notes,
+    Expression<bool>? isActive,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (direction != null) 'direction': direction,
+      if (treatment != null) 'treatment': treatment,
+      if (totalAmount != null) 'total_amount': totalAmount,
+      if (currency != null) 'currency': currency,
+      if (eventDate != null) 'event_date': eventDate,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (stepFrequency != null) 'step_frequency': stepFrequency,
+      if (spreadStart != null) 'spread_start': spreadStart,
+      if (spreadEnd != null) 'spread_end': spreadEnd,
+      if (bufferId != null) 'buffer_id': bufferId,
+      if (notes != null) 'notes': notes,
+      if (isActive != null) 'is_active': isActive,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  ExtraordinaryEventsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<EventDirection>? direction,
+    Value<EventTreatment>? treatment,
+    Value<double>? totalAmount,
+    Value<String>? currency,
+    Value<DateTime>? eventDate,
+    Value<int?>? transactionId,
+    Value<StepFrequency?>? stepFrequency,
+    Value<DateTime?>? spreadStart,
+    Value<DateTime?>? spreadEnd,
+    Value<int?>? bufferId,
+    Value<String?>? notes,
+    Value<bool>? isActive,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return ExtraordinaryEventsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      direction: direction ?? this.direction,
+      treatment: treatment ?? this.treatment,
+      totalAmount: totalAmount ?? this.totalAmount,
+      currency: currency ?? this.currency,
+      eventDate: eventDate ?? this.eventDate,
+      transactionId: transactionId ?? this.transactionId,
+      stepFrequency: stepFrequency ?? this.stepFrequency,
+      spreadStart: spreadStart ?? this.spreadStart,
+      spreadEnd: spreadEnd ?? this.spreadEnd,
+      bufferId: bufferId ?? this.bufferId,
+      notes: notes ?? this.notes,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<String>(
+        $ExtraordinaryEventsTable.$converterdirection.toSql(direction.value),
+      );
+    }
+    if (treatment.present) {
+      map['treatment'] = Variable<String>(
+        $ExtraordinaryEventsTable.$convertertreatment.toSql(treatment.value),
+      );
+    }
+    if (totalAmount.present) {
+      map['total_amount'] = Variable<double>(totalAmount.value);
+    }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
+    if (eventDate.present) {
+      map['event_date'] = Variable<DateTime>(eventDate.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    if (stepFrequency.present) {
+      map['step_frequency'] = Variable<String>(
+        $ExtraordinaryEventsTable.$converterstepFrequencyn.toSql(
+          stepFrequency.value,
+        ),
+      );
+    }
+    if (spreadStart.present) {
+      map['spread_start'] = Variable<DateTime>(spreadStart.value);
+    }
+    if (spreadEnd.present) {
+      map['spread_end'] = Variable<DateTime>(spreadEnd.value);
+    }
+    if (bufferId.present) {
+      map['buffer_id'] = Variable<int>(bufferId.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtraordinaryEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('direction: $direction, ')
+          ..write('treatment: $treatment, ')
+          ..write('totalAmount: $totalAmount, ')
+          ..write('currency: $currency, ')
+          ..write('eventDate: $eventDate, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('stepFrequency: $stepFrequency, ')
+          ..write('spreadStart: $spreadStart, ')
+          ..write('spreadEnd: $spreadEnd, ')
+          ..write('bufferId: $bufferId, ')
+          ..write('notes: $notes, ')
+          ..write('isActive: $isActive, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExtraordinaryEventEntriesTable extends ExtraordinaryEventEntries
+    with TableInfo<$ExtraordinaryEventEntriesTable, ExtraordinaryEventEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExtraordinaryEventEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _eventIdMeta = const VerificationMeta(
+    'eventId',
+  );
+  @override
+  late final GeneratedColumn<int> eventId = GeneratedColumn<int>(
+    'event_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES extraordinary_events (id)',
+    ),
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<EventEntryKind, String>
+  entryKind =
+      GeneratedColumn<String>(
+        'entry_kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<EventEntryKind>(
+        $ExtraordinaryEventEntriesTable.$converterentryKind,
+      );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _cumulativeMeta = const VerificationMeta(
+    'cumulative',
+  );
+  @override
+  late final GeneratedColumn<double> cumulative = GeneratedColumn<double>(
+    'cumulative',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _remainingMeta = const VerificationMeta(
+    'remaining',
+  );
+  @override
+  late final GeneratedColumn<double> remaining = GeneratedColumn<double>(
+    'remaining',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    eventId,
+    date,
+    amount,
+    entryKind,
+    description,
+    cumulative,
+    remaining,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'extraordinary_event_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExtraordinaryEventEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('event_id')) {
+      context.handle(
+        _eventIdMeta,
+        eventId.isAcceptableOrUnknown(data['event_id']!, _eventIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_eventIdMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cumulative')) {
+      context.handle(
+        _cumulativeMeta,
+        cumulative.isAcceptableOrUnknown(data['cumulative']!, _cumulativeMeta),
+      );
+    }
+    if (data.containsKey('remaining')) {
+      context.handle(
+        _remainingMeta,
+        remaining.isAcceptableOrUnknown(data['remaining']!, _remainingMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExtraordinaryEventEntry map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExtraordinaryEventEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      eventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}event_id'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      entryKind: $ExtraordinaryEventEntriesTable.$converterentryKind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}entry_kind'],
+        )!,
+      ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      cumulative: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}cumulative'],
+      ),
+      remaining: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}remaining'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExtraordinaryEventEntriesTable createAlias(String alias) {
+    return $ExtraordinaryEventEntriesTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<EventEntryKind, String, String>
+  $converterentryKind = const EnumNameConverter<EventEntryKind>(
+    EventEntryKind.values,
+  );
+}
+
+class ExtraordinaryEventEntry extends DataClass
+    implements Insertable<ExtraordinaryEventEntry> {
+  final int id;
+  final int eventId;
+  final DateTime date;
+  final double amount;
+  final EventEntryKind entryKind;
+  final String description;
+  final double? cumulative;
+  final double? remaining;
+  final DateTime createdAt;
+  const ExtraordinaryEventEntry({
+    required this.id,
+    required this.eventId,
+    required this.date,
+    required this.amount,
+    required this.entryKind,
+    required this.description,
+    this.cumulative,
+    this.remaining,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['event_id'] = Variable<int>(eventId);
+    map['date'] = Variable<DateTime>(date);
+    map['amount'] = Variable<double>(amount);
+    {
+      map['entry_kind'] = Variable<String>(
+        $ExtraordinaryEventEntriesTable.$converterentryKind.toSql(entryKind),
+      );
+    }
+    map['description'] = Variable<String>(description);
+    if (!nullToAbsent || cumulative != null) {
+      map['cumulative'] = Variable<double>(cumulative);
+    }
+    if (!nullToAbsent || remaining != null) {
+      map['remaining'] = Variable<double>(remaining);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ExtraordinaryEventEntriesCompanion toCompanion(bool nullToAbsent) {
+    return ExtraordinaryEventEntriesCompanion(
+      id: Value(id),
+      eventId: Value(eventId),
+      date: Value(date),
+      amount: Value(amount),
+      entryKind: Value(entryKind),
+      description: Value(description),
+      cumulative: cumulative == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cumulative),
+      remaining: remaining == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remaining),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ExtraordinaryEventEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExtraordinaryEventEntry(
+      id: serializer.fromJson<int>(json['id']),
+      eventId: serializer.fromJson<int>(json['eventId']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      amount: serializer.fromJson<double>(json['amount']),
+      entryKind: $ExtraordinaryEventEntriesTable.$converterentryKind.fromJson(
+        serializer.fromJson<String>(json['entryKind']),
+      ),
+      description: serializer.fromJson<String>(json['description']),
+      cumulative: serializer.fromJson<double?>(json['cumulative']),
+      remaining: serializer.fromJson<double?>(json['remaining']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'eventId': serializer.toJson<int>(eventId),
+      'date': serializer.toJson<DateTime>(date),
+      'amount': serializer.toJson<double>(amount),
+      'entryKind': serializer.toJson<String>(
+        $ExtraordinaryEventEntriesTable.$converterentryKind.toJson(entryKind),
+      ),
+      'description': serializer.toJson<String>(description),
+      'cumulative': serializer.toJson<double?>(cumulative),
+      'remaining': serializer.toJson<double?>(remaining),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ExtraordinaryEventEntry copyWith({
+    int? id,
+    int? eventId,
+    DateTime? date,
+    double? amount,
+    EventEntryKind? entryKind,
+    String? description,
+    Value<double?> cumulative = const Value.absent(),
+    Value<double?> remaining = const Value.absent(),
+    DateTime? createdAt,
+  }) => ExtraordinaryEventEntry(
+    id: id ?? this.id,
+    eventId: eventId ?? this.eventId,
+    date: date ?? this.date,
+    amount: amount ?? this.amount,
+    entryKind: entryKind ?? this.entryKind,
+    description: description ?? this.description,
+    cumulative: cumulative.present ? cumulative.value : this.cumulative,
+    remaining: remaining.present ? remaining.value : this.remaining,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ExtraordinaryEventEntry copyWithCompanion(
+    ExtraordinaryEventEntriesCompanion data,
+  ) {
+    return ExtraordinaryEventEntry(
+      id: data.id.present ? data.id.value : this.id,
+      eventId: data.eventId.present ? data.eventId.value : this.eventId,
+      date: data.date.present ? data.date.value : this.date,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      entryKind: data.entryKind.present ? data.entryKind.value : this.entryKind,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      cumulative: data.cumulative.present
+          ? data.cumulative.value
+          : this.cumulative,
+      remaining: data.remaining.present ? data.remaining.value : this.remaining,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtraordinaryEventEntry(')
+          ..write('id: $id, ')
+          ..write('eventId: $eventId, ')
+          ..write('date: $date, ')
+          ..write('amount: $amount, ')
+          ..write('entryKind: $entryKind, ')
+          ..write('description: $description, ')
+          ..write('cumulative: $cumulative, ')
+          ..write('remaining: $remaining, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    eventId,
+    date,
+    amount,
+    entryKind,
+    description,
+    cumulative,
+    remaining,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExtraordinaryEventEntry &&
+          other.id == this.id &&
+          other.eventId == this.eventId &&
+          other.date == this.date &&
+          other.amount == this.amount &&
+          other.entryKind == this.entryKind &&
+          other.description == this.description &&
+          other.cumulative == this.cumulative &&
+          other.remaining == this.remaining &&
+          other.createdAt == this.createdAt);
+}
+
+class ExtraordinaryEventEntriesCompanion
+    extends UpdateCompanion<ExtraordinaryEventEntry> {
+  final Value<int> id;
+  final Value<int> eventId;
+  final Value<DateTime> date;
+  final Value<double> amount;
+  final Value<EventEntryKind> entryKind;
+  final Value<String> description;
+  final Value<double?> cumulative;
+  final Value<double?> remaining;
+  final Value<DateTime> createdAt;
+  const ExtraordinaryEventEntriesCompanion({
+    this.id = const Value.absent(),
+    this.eventId = const Value.absent(),
+    this.date = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.entryKind = const Value.absent(),
+    this.description = const Value.absent(),
+    this.cumulative = const Value.absent(),
+    this.remaining = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ExtraordinaryEventEntriesCompanion.insert({
+    this.id = const Value.absent(),
+    required int eventId,
+    required DateTime date,
+    required double amount,
+    required EventEntryKind entryKind,
+    this.description = const Value.absent(),
+    this.cumulative = const Value.absent(),
+    this.remaining = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : eventId = Value(eventId),
+       date = Value(date),
+       amount = Value(amount),
+       entryKind = Value(entryKind);
+  static Insertable<ExtraordinaryEventEntry> custom({
+    Expression<int>? id,
+    Expression<int>? eventId,
+    Expression<DateTime>? date,
+    Expression<double>? amount,
+    Expression<String>? entryKind,
+    Expression<String>? description,
+    Expression<double>? cumulative,
+    Expression<double>? remaining,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (eventId != null) 'event_id': eventId,
+      if (date != null) 'date': date,
+      if (amount != null) 'amount': amount,
+      if (entryKind != null) 'entry_kind': entryKind,
+      if (description != null) 'description': description,
+      if (cumulative != null) 'cumulative': cumulative,
+      if (remaining != null) 'remaining': remaining,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ExtraordinaryEventEntriesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? eventId,
+    Value<DateTime>? date,
+    Value<double>? amount,
+    Value<EventEntryKind>? entryKind,
+    Value<String>? description,
+    Value<double?>? cumulative,
+    Value<double?>? remaining,
+    Value<DateTime>? createdAt,
+  }) {
+    return ExtraordinaryEventEntriesCompanion(
+      id: id ?? this.id,
+      eventId: eventId ?? this.eventId,
+      date: date ?? this.date,
+      amount: amount ?? this.amount,
+      entryKind: entryKind ?? this.entryKind,
+      description: description ?? this.description,
+      cumulative: cumulative ?? this.cumulative,
+      remaining: remaining ?? this.remaining,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (eventId.present) {
+      map['event_id'] = Variable<int>(eventId.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (entryKind.present) {
+      map['entry_kind'] = Variable<String>(
+        $ExtraordinaryEventEntriesTable.$converterentryKind.toSql(
+          entryKind.value,
+        ),
+      );
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (cumulative.present) {
+      map['cumulative'] = Variable<double>(cumulative.value);
+    }
+    if (remaining.present) {
+      map['remaining'] = Variable<double>(remaining.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtraordinaryEventEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('eventId: $eventId, ')
+          ..write('date: $date, ')
+          ..write('amount: $amount, ')
+          ..write('entryKind: $entryKind, ')
+          ..write('description: $description, ')
+          ..write('cumulative: $cumulative, ')
+          ..write('remaining: $remaining, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -13352,6 +14879,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $IncomesTable incomes = $IncomesTable(this);
   late final $AssetCompositionsTable assetCompositions =
       $AssetCompositionsTable(this);
+  late final $ExtraordinaryEventsTable extraordinaryEvents =
+      $ExtraordinaryEventsTable(this);
+  late final $ExtraordinaryEventEntriesTable extraordinaryEventEntries =
+      $ExtraordinaryEventEntriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -13380,6 +14911,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     incomeAdjustmentExpenses,
     incomes,
     assetCompositions,
+    extraordinaryEvents,
+    extraordinaryEventEntries,
   ];
 }
 
@@ -15139,6 +16672,33 @@ final class $$TransactionsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $ExtraordinaryEventsTable,
+    List<ExtraordinaryEvent>
+  >
+  _extraordinaryEventsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.extraordinaryEvents,
+        aliasName: $_aliasNameGenerator(
+          db.transactions.id,
+          db.extraordinaryEvents.transactionId,
+        ),
+      );
+
+  $$ExtraordinaryEventsTableProcessedTableManager get extraordinaryEventsRefs {
+    final manager = $$ExtraordinaryEventsTableTableManager(
+      $_db,
+      $_db.extraordinaryEvents,
+    ).filter((f) => f.transactionId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _extraordinaryEventsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$TransactionsTableFilterComposer
@@ -15315,6 +16875,31 @@ class $$TransactionsTableFilterComposer
           }) => $$BufferTransactionsTableFilterComposer(
             $db: $db,
             $table: $db.bufferTransactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> extraordinaryEventsRefs(
+    Expression<bool> Function($$ExtraordinaryEventsTableFilterComposer f) f,
+  ) {
+    final $$ExtraordinaryEventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.extraordinaryEvents,
+      getReferencedColumn: (t) => t.transactionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExtraordinaryEventsTableFilterComposer(
+            $db: $db,
+            $table: $db.extraordinaryEvents,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -15624,6 +17209,32 @@ class $$TransactionsTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> extraordinaryEventsRefs<T extends Object>(
+    Expression<T> Function($$ExtraordinaryEventsTableAnnotationComposer a) f,
+  ) {
+    final $$ExtraordinaryEventsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.extraordinaryEvents,
+          getReferencedColumn: (t) => t.transactionId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExtraordinaryEventsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.extraordinaryEvents,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$TransactionsTableTableManager
@@ -15644,6 +17255,7 @@ class $$TransactionsTableTableManager
             bool categoryId,
             bool depreciationSchedulesRefs,
             bool bufferTransactionsRefs,
+            bool extraordinaryEventsRefs,
           })
         > {
   $$TransactionsTableTableManager(_$AppDatabase db, $TransactionsTable table)
@@ -15747,12 +17359,14 @@ class $$TransactionsTableTableManager
                 categoryId = false,
                 depreciationSchedulesRefs = false,
                 bufferTransactionsRefs = false,
+                extraordinaryEventsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (depreciationSchedulesRefs) db.depreciationSchedules,
                     if (bufferTransactionsRefs) db.bufferTransactions,
+                    if (extraordinaryEventsRefs) db.extraordinaryEvents,
                   ],
                   addJoins:
                       <
@@ -15847,6 +17461,27 @@ class $$TransactionsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (extraordinaryEventsRefs)
+                        await $_getPrefetchedData<
+                          Transaction,
+                          $TransactionsTable,
+                          ExtraordinaryEvent
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TransactionsTableReferences
+                              ._extraordinaryEventsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TransactionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).extraordinaryEventsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.transactionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -15872,6 +17507,7 @@ typedef $$TransactionsTableProcessedTableManager =
         bool categoryId,
         bool depreciationSchedulesRefs,
         bool bufferTransactionsRefs,
+        bool extraordinaryEventsRefs,
       })
     >;
 typedef $$AutoCategorizationRulesTableCreateCompanionBuilder =
@@ -19503,6 +21139,33 @@ final class $$BuffersTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $ExtraordinaryEventsTable,
+    List<ExtraordinaryEvent>
+  >
+  _extraordinaryEventsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.extraordinaryEvents,
+        aliasName: $_aliasNameGenerator(
+          db.buffers.id,
+          db.extraordinaryEvents.bufferId,
+        ),
+      );
+
+  $$ExtraordinaryEventsTableProcessedTableManager get extraordinaryEventsRefs {
+    final manager = $$ExtraordinaryEventsTableTableManager(
+      $_db,
+      $_db.extraordinaryEvents,
+    ).filter((f) => f.bufferId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _extraordinaryEventsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$BuffersTableFilterComposer
@@ -19584,6 +21247,31 @@ class $$BuffersTableFilterComposer
           }) => $$BufferTransactionsTableFilterComposer(
             $db: $db,
             $table: $db.bufferTransactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> extraordinaryEventsRefs(
+    Expression<bool> Function($$ExtraordinaryEventsTableFilterComposer f) f,
+  ) {
+    final $$ExtraordinaryEventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.extraordinaryEvents,
+      getReferencedColumn: (t) => t.bufferId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExtraordinaryEventsTableFilterComposer(
+            $db: $db,
+            $table: $db.extraordinaryEvents,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -19736,6 +21424,32 @@ class $$BuffersTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> extraordinaryEventsRefs<T extends Object>(
+    Expression<T> Function($$ExtraordinaryEventsTableAnnotationComposer a) f,
+  ) {
+    final $$ExtraordinaryEventsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.extraordinaryEvents,
+          getReferencedColumn: (t) => t.bufferId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExtraordinaryEventsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.extraordinaryEvents,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$BuffersTableTableManager
@@ -19754,6 +21468,7 @@ class $$BuffersTableTableManager
           PrefetchHooks Function({
             bool linkedDepreciationId,
             bool bufferTransactionsRefs,
+            bool extraordinaryEventsRefs,
           })
         > {
   $$BuffersTableTableManager(_$AppDatabase db, $BuffersTable table)
@@ -19812,11 +21527,16 @@ class $$BuffersTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({linkedDepreciationId = false, bufferTransactionsRefs = false}) {
+              ({
+                linkedDepreciationId = false,
+                bufferTransactionsRefs = false,
+                extraordinaryEventsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (bufferTransactionsRefs) db.bufferTransactions,
+                    if (extraordinaryEventsRefs) db.extraordinaryEvents,
                   ],
                   addJoins:
                       <
@@ -19873,6 +21593,27 @@ class $$BuffersTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (extraordinaryEventsRefs)
+                        await $_getPrefetchedData<
+                          Buffer,
+                          $BuffersTable,
+                          ExtraordinaryEvent
+                        >(
+                          currentTable: table,
+                          referencedTable: $$BuffersTableReferences
+                              ._extraordinaryEventsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$BuffersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).extraordinaryEventsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.bufferId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -19896,6 +21637,7 @@ typedef $$BuffersTableProcessedTableManager =
       PrefetchHooks Function({
         bool linkedDepreciationId,
         bool bufferTransactionsRefs,
+        bool extraordinaryEventsRefs,
       })
     >;
 typedef $$BufferTransactionsTableCreateCompanionBuilder =
@@ -23667,6 +25409,1191 @@ typedef $$AssetCompositionsTableProcessedTableManager =
       AssetComposition,
       PrefetchHooks Function({bool assetId})
     >;
+typedef $$ExtraordinaryEventsTableCreateCompanionBuilder =
+    ExtraordinaryEventsCompanion Function({
+      Value<int> id,
+      required String name,
+      required EventDirection direction,
+      required EventTreatment treatment,
+      required double totalAmount,
+      Value<String> currency,
+      required DateTime eventDate,
+      Value<int?> transactionId,
+      Value<StepFrequency?> stepFrequency,
+      Value<DateTime?> spreadStart,
+      Value<DateTime?> spreadEnd,
+      Value<int?> bufferId,
+      Value<String?> notes,
+      Value<bool> isActive,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+typedef $$ExtraordinaryEventsTableUpdateCompanionBuilder =
+    ExtraordinaryEventsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<EventDirection> direction,
+      Value<EventTreatment> treatment,
+      Value<double> totalAmount,
+      Value<String> currency,
+      Value<DateTime> eventDate,
+      Value<int?> transactionId,
+      Value<StepFrequency?> stepFrequency,
+      Value<DateTime?> spreadStart,
+      Value<DateTime?> spreadEnd,
+      Value<int?> bufferId,
+      Value<String?> notes,
+      Value<bool> isActive,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$ExtraordinaryEventsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ExtraordinaryEventsTable,
+          ExtraordinaryEvent
+        > {
+  $$ExtraordinaryEventsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $TransactionsTable _transactionIdTable(_$AppDatabase db) =>
+      db.transactions.createAlias(
+        $_aliasNameGenerator(
+          db.extraordinaryEvents.transactionId,
+          db.transactions.id,
+        ),
+      );
+
+  $$TransactionsTableProcessedTableManager? get transactionId {
+    final $_column = $_itemColumn<int>('transaction_id');
+    if ($_column == null) return null;
+    final manager = $$TransactionsTableTableManager(
+      $_db,
+      $_db.transactions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_transactionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $BuffersTable _bufferIdTable(_$AppDatabase db) =>
+      db.buffers.createAlias(
+        $_aliasNameGenerator(db.extraordinaryEvents.bufferId, db.buffers.id),
+      );
+
+  $$BuffersTableProcessedTableManager? get bufferId {
+    final $_column = $_itemColumn<int>('buffer_id');
+    if ($_column == null) return null;
+    final manager = $$BuffersTableTableManager(
+      $_db,
+      $_db.buffers,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_bufferIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $ExtraordinaryEventEntriesTable,
+    List<ExtraordinaryEventEntry>
+  >
+  _extraordinaryEventEntriesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.extraordinaryEventEntries,
+        aliasName: $_aliasNameGenerator(
+          db.extraordinaryEvents.id,
+          db.extraordinaryEventEntries.eventId,
+        ),
+      );
+
+  $$ExtraordinaryEventEntriesTableProcessedTableManager
+  get extraordinaryEventEntriesRefs {
+    final manager = $$ExtraordinaryEventEntriesTableTableManager(
+      $_db,
+      $_db.extraordinaryEventEntries,
+    ).filter((f) => f.eventId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _extraordinaryEventEntriesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$ExtraordinaryEventsTableFilterComposer
+    extends Composer<_$AppDatabase, $ExtraordinaryEventsTable> {
+  $$ExtraordinaryEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<EventDirection, EventDirection, String>
+  get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<EventTreatment, EventTreatment, String>
+  get treatment => $composableBuilder(
+    column: $table.treatment,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<double> get totalAmount => $composableBuilder(
+    column: $table.totalAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get eventDate => $composableBuilder(
+    column: $table.eventDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<StepFrequency?, StepFrequency, String>
+  get stepFrequency => $composableBuilder(
+    column: $table.stepFrequency,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get spreadStart => $composableBuilder(
+    column: $table.spreadStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get spreadEnd => $composableBuilder(
+    column: $table.spreadEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TransactionsTableFilterComposer get transactionId {
+    final $$TransactionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.transactionId,
+      referencedTable: $db.transactions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionsTableFilterComposer(
+            $db: $db,
+            $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BuffersTableFilterComposer get bufferId {
+    final $$BuffersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bufferId,
+      referencedTable: $db.buffers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BuffersTableFilterComposer(
+            $db: $db,
+            $table: $db.buffers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> extraordinaryEventEntriesRefs(
+    Expression<bool> Function($$ExtraordinaryEventEntriesTableFilterComposer f)
+    f,
+  ) {
+    final $$ExtraordinaryEventEntriesTableFilterComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.extraordinaryEventEntries,
+          getReferencedColumn: (t) => t.eventId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExtraordinaryEventEntriesTableFilterComposer(
+                $db: $db,
+                $table: $db.extraordinaryEventEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$ExtraordinaryEventsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExtraordinaryEventsTable> {
+  $$ExtraordinaryEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get treatment => $composableBuilder(
+    column: $table.treatment,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get totalAmount => $composableBuilder(
+    column: $table.totalAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get eventDate => $composableBuilder(
+    column: $table.eventDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stepFrequency => $composableBuilder(
+    column: $table.stepFrequency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get spreadStart => $composableBuilder(
+    column: $table.spreadStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get spreadEnd => $composableBuilder(
+    column: $table.spreadEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TransactionsTableOrderingComposer get transactionId {
+    final $$TransactionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.transactionId,
+      referencedTable: $db.transactions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BuffersTableOrderingComposer get bufferId {
+    final $$BuffersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bufferId,
+      referencedTable: $db.buffers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BuffersTableOrderingComposer(
+            $db: $db,
+            $table: $db.buffers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExtraordinaryEventsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExtraordinaryEventsTable> {
+  $$ExtraordinaryEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<EventDirection, String> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<EventTreatment, String> get treatment =>
+      $composableBuilder(column: $table.treatment, builder: (column) => column);
+
+  GeneratedColumn<double> get totalAmount => $composableBuilder(
+    column: $table.totalAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get eventDate =>
+      $composableBuilder(column: $table.eventDate, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<StepFrequency?, String> get stepFrequency =>
+      $composableBuilder(
+        column: $table.stepFrequency,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<DateTime> get spreadStart => $composableBuilder(
+    column: $table.spreadStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get spreadEnd =>
+      $composableBuilder(column: $table.spreadEnd, builder: (column) => column);
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$TransactionsTableAnnotationComposer get transactionId {
+    final $$TransactionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.transactionId,
+      referencedTable: $db.transactions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TransactionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$BuffersTableAnnotationComposer get bufferId {
+    final $$BuffersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bufferId,
+      referencedTable: $db.buffers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BuffersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.buffers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> extraordinaryEventEntriesRefs<T extends Object>(
+    Expression<T> Function($$ExtraordinaryEventEntriesTableAnnotationComposer a)
+    f,
+  ) {
+    final $$ExtraordinaryEventEntriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.extraordinaryEventEntries,
+          getReferencedColumn: (t) => t.eventId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExtraordinaryEventEntriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.extraordinaryEventEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$ExtraordinaryEventsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExtraordinaryEventsTable,
+          ExtraordinaryEvent,
+          $$ExtraordinaryEventsTableFilterComposer,
+          $$ExtraordinaryEventsTableOrderingComposer,
+          $$ExtraordinaryEventsTableAnnotationComposer,
+          $$ExtraordinaryEventsTableCreateCompanionBuilder,
+          $$ExtraordinaryEventsTableUpdateCompanionBuilder,
+          (ExtraordinaryEvent, $$ExtraordinaryEventsTableReferences),
+          ExtraordinaryEvent,
+          PrefetchHooks Function({
+            bool transactionId,
+            bool bufferId,
+            bool extraordinaryEventEntriesRefs,
+          })
+        > {
+  $$ExtraordinaryEventsTableTableManager(
+    _$AppDatabase db,
+    $ExtraordinaryEventsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExtraordinaryEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExtraordinaryEventsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ExtraordinaryEventsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<EventDirection> direction = const Value.absent(),
+                Value<EventTreatment> treatment = const Value.absent(),
+                Value<double> totalAmount = const Value.absent(),
+                Value<String> currency = const Value.absent(),
+                Value<DateTime> eventDate = const Value.absent(),
+                Value<int?> transactionId = const Value.absent(),
+                Value<StepFrequency?> stepFrequency = const Value.absent(),
+                Value<DateTime?> spreadStart = const Value.absent(),
+                Value<DateTime?> spreadEnd = const Value.absent(),
+                Value<int?> bufferId = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => ExtraordinaryEventsCompanion(
+                id: id,
+                name: name,
+                direction: direction,
+                treatment: treatment,
+                totalAmount: totalAmount,
+                currency: currency,
+                eventDate: eventDate,
+                transactionId: transactionId,
+                stepFrequency: stepFrequency,
+                spreadStart: spreadStart,
+                spreadEnd: spreadEnd,
+                bufferId: bufferId,
+                notes: notes,
+                isActive: isActive,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required EventDirection direction,
+                required EventTreatment treatment,
+                required double totalAmount,
+                Value<String> currency = const Value.absent(),
+                required DateTime eventDate,
+                Value<int?> transactionId = const Value.absent(),
+                Value<StepFrequency?> stepFrequency = const Value.absent(),
+                Value<DateTime?> spreadStart = const Value.absent(),
+                Value<DateTime?> spreadEnd = const Value.absent(),
+                Value<int?> bufferId = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => ExtraordinaryEventsCompanion.insert(
+                id: id,
+                name: name,
+                direction: direction,
+                treatment: treatment,
+                totalAmount: totalAmount,
+                currency: currency,
+                eventDate: eventDate,
+                transactionId: transactionId,
+                stepFrequency: stepFrequency,
+                spreadStart: spreadStart,
+                spreadEnd: spreadEnd,
+                bufferId: bufferId,
+                notes: notes,
+                isActive: isActive,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExtraordinaryEventsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                transactionId = false,
+                bufferId = false,
+                extraordinaryEventEntriesRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (extraordinaryEventEntriesRefs)
+                      db.extraordinaryEventEntries,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (transactionId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.transactionId,
+                                    referencedTable:
+                                        $$ExtraordinaryEventsTableReferences
+                                            ._transactionIdTable(db),
+                                    referencedColumn:
+                                        $$ExtraordinaryEventsTableReferences
+                                            ._transactionIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+                        if (bufferId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.bufferId,
+                                    referencedTable:
+                                        $$ExtraordinaryEventsTableReferences
+                                            ._bufferIdTable(db),
+                                    referencedColumn:
+                                        $$ExtraordinaryEventsTableReferences
+                                            ._bufferIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (extraordinaryEventEntriesRefs)
+                        await $_getPrefetchedData<
+                          ExtraordinaryEvent,
+                          $ExtraordinaryEventsTable,
+                          ExtraordinaryEventEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ExtraordinaryEventsTableReferences
+                              ._extraordinaryEventEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ExtraordinaryEventsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).extraordinaryEventEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.eventId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$ExtraordinaryEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExtraordinaryEventsTable,
+      ExtraordinaryEvent,
+      $$ExtraordinaryEventsTableFilterComposer,
+      $$ExtraordinaryEventsTableOrderingComposer,
+      $$ExtraordinaryEventsTableAnnotationComposer,
+      $$ExtraordinaryEventsTableCreateCompanionBuilder,
+      $$ExtraordinaryEventsTableUpdateCompanionBuilder,
+      (ExtraordinaryEvent, $$ExtraordinaryEventsTableReferences),
+      ExtraordinaryEvent,
+      PrefetchHooks Function({
+        bool transactionId,
+        bool bufferId,
+        bool extraordinaryEventEntriesRefs,
+      })
+    >;
+typedef $$ExtraordinaryEventEntriesTableCreateCompanionBuilder =
+    ExtraordinaryEventEntriesCompanion Function({
+      Value<int> id,
+      required int eventId,
+      required DateTime date,
+      required double amount,
+      required EventEntryKind entryKind,
+      Value<String> description,
+      Value<double?> cumulative,
+      Value<double?> remaining,
+      Value<DateTime> createdAt,
+    });
+typedef $$ExtraordinaryEventEntriesTableUpdateCompanionBuilder =
+    ExtraordinaryEventEntriesCompanion Function({
+      Value<int> id,
+      Value<int> eventId,
+      Value<DateTime> date,
+      Value<double> amount,
+      Value<EventEntryKind> entryKind,
+      Value<String> description,
+      Value<double?> cumulative,
+      Value<double?> remaining,
+      Value<DateTime> createdAt,
+    });
+
+final class $$ExtraordinaryEventEntriesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ExtraordinaryEventEntriesTable,
+          ExtraordinaryEventEntry
+        > {
+  $$ExtraordinaryEventEntriesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ExtraordinaryEventsTable _eventIdTable(_$AppDatabase db) =>
+      db.extraordinaryEvents.createAlias(
+        $_aliasNameGenerator(
+          db.extraordinaryEventEntries.eventId,
+          db.extraordinaryEvents.id,
+        ),
+      );
+
+  $$ExtraordinaryEventsTableProcessedTableManager get eventId {
+    final $_column = $_itemColumn<int>('event_id')!;
+
+    final manager = $$ExtraordinaryEventsTableTableManager(
+      $_db,
+      $_db.extraordinaryEvents,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_eventIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ExtraordinaryEventEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $ExtraordinaryEventEntriesTable> {
+  $$ExtraordinaryEventEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<EventEntryKind, EventEntryKind, String>
+  get entryKind => $composableBuilder(
+    column: $table.entryKind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get cumulative => $composableBuilder(
+    column: $table.cumulative,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get remaining => $composableBuilder(
+    column: $table.remaining,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ExtraordinaryEventsTableFilterComposer get eventId {
+    final $$ExtraordinaryEventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.eventId,
+      referencedTable: $db.extraordinaryEvents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExtraordinaryEventsTableFilterComposer(
+            $db: $db,
+            $table: $db.extraordinaryEvents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExtraordinaryEventEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExtraordinaryEventEntriesTable> {
+  $$ExtraordinaryEventEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entryKind => $composableBuilder(
+    column: $table.entryKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get cumulative => $composableBuilder(
+    column: $table.cumulative,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get remaining => $composableBuilder(
+    column: $table.remaining,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ExtraordinaryEventsTableOrderingComposer get eventId {
+    final $$ExtraordinaryEventsTableOrderingComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.eventId,
+          referencedTable: $db.extraordinaryEvents,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExtraordinaryEventsTableOrderingComposer(
+                $db: $db,
+                $table: $db.extraordinaryEvents,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$ExtraordinaryEventEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExtraordinaryEventEntriesTable> {
+  $$ExtraordinaryEventEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<EventEntryKind, String> get entryKind =>
+      $composableBuilder(column: $table.entryKind, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get cumulative => $composableBuilder(
+    column: $table.cumulative,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get remaining =>
+      $composableBuilder(column: $table.remaining, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$ExtraordinaryEventsTableAnnotationComposer get eventId {
+    final $$ExtraordinaryEventsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.eventId,
+          referencedTable: $db.extraordinaryEvents,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ExtraordinaryEventsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.extraordinaryEvents,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$ExtraordinaryEventEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExtraordinaryEventEntriesTable,
+          ExtraordinaryEventEntry,
+          $$ExtraordinaryEventEntriesTableFilterComposer,
+          $$ExtraordinaryEventEntriesTableOrderingComposer,
+          $$ExtraordinaryEventEntriesTableAnnotationComposer,
+          $$ExtraordinaryEventEntriesTableCreateCompanionBuilder,
+          $$ExtraordinaryEventEntriesTableUpdateCompanionBuilder,
+          (ExtraordinaryEventEntry, $$ExtraordinaryEventEntriesTableReferences),
+          ExtraordinaryEventEntry,
+          PrefetchHooks Function({bool eventId})
+        > {
+  $$ExtraordinaryEventEntriesTableTableManager(
+    _$AppDatabase db,
+    $ExtraordinaryEventEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExtraordinaryEventEntriesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$ExtraordinaryEventEntriesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ExtraordinaryEventEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> eventId = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<EventEntryKind> entryKind = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<double?> cumulative = const Value.absent(),
+                Value<double?> remaining = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExtraordinaryEventEntriesCompanion(
+                id: id,
+                eventId: eventId,
+                date: date,
+                amount: amount,
+                entryKind: entryKind,
+                description: description,
+                cumulative: cumulative,
+                remaining: remaining,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int eventId,
+                required DateTime date,
+                required double amount,
+                required EventEntryKind entryKind,
+                Value<String> description = const Value.absent(),
+                Value<double?> cumulative = const Value.absent(),
+                Value<double?> remaining = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExtraordinaryEventEntriesCompanion.insert(
+                id: id,
+                eventId: eventId,
+                date: date,
+                amount: amount,
+                entryKind: entryKind,
+                description: description,
+                cumulative: cumulative,
+                remaining: remaining,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExtraordinaryEventEntriesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({eventId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (eventId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.eventId,
+                                referencedTable:
+                                    $$ExtraordinaryEventEntriesTableReferences
+                                        ._eventIdTable(db),
+                                referencedColumn:
+                                    $$ExtraordinaryEventEntriesTableReferences
+                                        ._eventIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ExtraordinaryEventEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExtraordinaryEventEntriesTable,
+      ExtraordinaryEventEntry,
+      $$ExtraordinaryEventEntriesTableFilterComposer,
+      $$ExtraordinaryEventEntriesTableOrderingComposer,
+      $$ExtraordinaryEventEntriesTableAnnotationComposer,
+      $$ExtraordinaryEventEntriesTableCreateCompanionBuilder,
+      $$ExtraordinaryEventEntriesTableUpdateCompanionBuilder,
+      (ExtraordinaryEventEntry, $$ExtraordinaryEventEntriesTableReferences),
+      ExtraordinaryEventEntry,
+      PrefetchHooks Function({bool eventId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -23723,4 +26650,11 @@ class $AppDatabaseManager {
       $$IncomesTableTableManager(_db, _db.incomes);
   $$AssetCompositionsTableTableManager get assetCompositions =>
       $$AssetCompositionsTableTableManager(_db, _db.assetCompositions);
+  $$ExtraordinaryEventsTableTableManager get extraordinaryEvents =>
+      $$ExtraordinaryEventsTableTableManager(_db, _db.extraordinaryEvents);
+  $$ExtraordinaryEventEntriesTableTableManager get extraordinaryEventEntries =>
+      $$ExtraordinaryEventEntriesTableTableManager(
+        _db,
+        _db.extraordinaryEventEntries,
+      );
 }
