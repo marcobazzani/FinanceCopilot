@@ -23,8 +23,6 @@ final _log = getLogger('Database');
   Assets,
   AssetEvents,
   AssetSnapshots,
-  DepreciationSchedules,
-  DepreciationEntries,
   Buffers,
   BufferTransactions,
   MarketPrices,
@@ -34,10 +32,10 @@ final _log = getLogger('Database');
   AppConfigs,
   ImportConfigs,
   DashboardCharts,
-  IncomeAdjustments,
-  IncomeAdjustmentExpenses,
   Incomes,
   AssetCompositions,
+  ExtraordinaryEvents,
+  ExtraordinaryEventEntries,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -55,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -132,8 +130,10 @@ class AppDatabase extends _$AppDatabase {
             await _seedDefaultCharts();
           }
           if (from < 14) {
-            await m.createTable(incomeAdjustments);
-            await m.createTable(incomeAdjustmentExpenses);
+            // Legacy tables (income_adjustments, income_adjustment_expenses)
+            // were introduced here and dropped in v28. Users upgrading from
+            // pre-v14 straight to >=v28 never had data in them — we skip
+            // creating them since the schema no longer defines the classes.
           }
           if (from < 15) {
             await m.createTable(incomes);
@@ -289,6 +289,116 @@ class AppDatabase extends _$AppDatabase {
             }
             _log.info('Migration 26: dropped ghost columns from accounts');
           }
+          if (from < 27) {
+            // Unify DepreciationSchedules + IncomeAdjustments into ExtraordinaryEvents.
+            // Phase 1 migration: create new tables + backfill. Old tables kept
+            // read-only until v28 cleanup.
+            await m.createTable(extraordinaryEvents);
+            await m.createTable(extraordinaryEventEntries);
+
+            // Backfill CAPEX schedules → outflow/spread events (preserve IDs).
+            await customStatement('''
+              INSERT INTO extraordinary_events
+                (id, name, direction, treatment, total_amount, currency, event_date,
+                 transaction_id, step_frequency, spread_start, spread_end, buffer_id,
+                 is_active, created_at, updated_at)
+              SELECT
+                id, asset_name, 'outflow', 'spread', total_amount, currency,
+                COALESCE(expense_date, start_date),
+                transaction_id, step_frequency, start_date, end_date, buffer_id,
+                is_active, created_at, updated_at
+              FROM depreciation_schedules
+            ''');
+
+            // Backfill CAPEX entries → scheduled entries (negate amount).
+            await customStatement('''
+              INSERT INTO extraordinary_event_entries
+                (event_id, date, amount, entry_kind, cumulative, remaining)
+              SELECT schedule_id, date, -amount, 'scheduled', cumulative, remaining
+              FROM depreciation_entries
+            ''');
+
+            // Backfill IncomeAdjustments → inflow/instant events (fresh IDs).
+            final oldIas = await customSelect(
+              'SELECT id, name, total_amount, currency, income_date, is_active, created_at '
+              'FROM income_adjustments'
+            ).get();
+            final idMap = <int, int>{};
+            for (final row in oldIas) {
+              final oldId = row.read<int>('id');
+              final insertResult = await customInsert(
+                'INSERT INTO extraordinary_events '
+                '(name, direction, treatment, total_amount, currency, event_date, '
+                ' is_active, created_at, updated_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                variables: [
+                  Variable.withString(row.read<String>('name')),
+                  Variable.withString('inflow'),
+                  Variable.withString('instant'),
+                  Variable.withReal(row.read<double>('total_amount')),
+                  Variable.withString(row.read<String>('currency')),
+                  Variable.withDateTime(row.read<DateTime>('income_date')),
+                  Variable.withBool(row.read<bool>('is_active')),
+                  Variable.withDateTime(row.read<DateTime>('created_at')),
+                  Variable.withDateTime(row.read<DateTime>('created_at')),
+                ],
+              );
+              idMap[oldId] = insertResult;
+            }
+
+            // Backfill IncomeAdjustmentExpenses → manual entries (positive amount).
+            for (final entry in idMap.entries) {
+              await customStatement(
+                'INSERT INTO extraordinary_event_entries '
+                '(event_id, date, amount, entry_kind, description, created_at) '
+                'SELECT ?, date, amount, ?, description, created_at '
+                'FROM income_adjustment_expenses WHERE adjustment_id = ?',
+                [
+                  entry.value,
+                  'manual',
+                  entry.key,
+                ],
+              );
+            }
+
+            // NB: zero-amount inflow events (e.g. credit-line buckets)
+            // are left as inflow/instant. Reclassifying them to outflow would
+            // shift their chart contribution from the incomeAdj series
+            // (excluded from the Cash line) into the adjustment series
+            // (included in Cash), producing a spurious Cash-line jump.
+
+            _log.info('Migration 27: created ExtraordinaryEvents, backfilled ${idMap.length + 1} events');
+          }
+          if (from < 28) {
+            // Cleanup: drop the legacy tables whose data was backfilled in v27,
+            // rename buffers.linked_depreciation_id -> linked_event_id (the
+            // stored IDs match since v27 preserved CAPEX schedule IDs), and
+            // drop the long-unused transactions.depreciation_id column.
+            await customStatement('PRAGMA foreign_keys = OFF');
+            try {
+              // Drop child tables before parents (FK order).
+              await customStatement('DROP TABLE IF EXISTS depreciation_entries');
+              await customStatement('DROP TABLE IF EXISTS depreciation_schedules');
+              await customStatement('DROP TABLE IF EXISTS income_adjustment_expenses');
+              await customStatement('DROP TABLE IF EXISTS income_adjustments');
+
+              // Rename Buffers FK column. SQLite ≥3.25 supports RENAME COLUMN.
+              if (await _hasColumn('buffers', 'linked_depreciation_id')) {
+                await customStatement(
+                  'ALTER TABLE buffers RENAME COLUMN linked_depreciation_id TO linked_event_id'
+                );
+              }
+
+              // Drop the unused Transactions.depreciation_id column.
+              if (await _hasColumn('transactions', 'depreciation_id')) {
+                await customStatement('ALTER TABLE transactions DROP COLUMN depreciation_id');
+              }
+            } finally {
+              await customStatement('PRAGMA foreign_keys = ON');
+            }
+            _log.info('Migration 28: dropped legacy CAPEX/IncomeAdj tables, '
+                'renamed buffers FK, dropped transactions.depreciation_id');
+          }
         },
       );
 
@@ -311,8 +421,8 @@ class AppDatabase extends _$AppDatabase {
       'ON transactions(account_id, operation_date DESC, id DESC)',
     );
     await customStatement(
-      'CREATE INDEX IF NOT EXISTS idx_depreciation_entries_schedule_date '
-      'ON depreciation_entries(schedule_id, date ASC)',
+      'CREATE INDEX IF NOT EXISTS idx_event_entries_event_date '
+      'ON extraordinary_event_entries(event_id, date ASC)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_asset_events_asset_date '
@@ -366,16 +476,22 @@ class AppDatabase extends _$AppDatabase {
       seriesJson: '[]',
     ));
 
-    // Gather all active accounts, assets, and adjustment schedules
+    // Gather all active accounts, assets, and extraordinary events
     final accounts = await (select(this.accounts)..where((a) => a.isActive.equals(true))).get();
     final assets = await (select(this.assets)..where((a) => a.isActive.equals(true))).get();
-    final schedules = await (select(depreciationSchedules)..where((s) => s.isActive.equals(true))).get();
+    final events = await (select(extraordinaryEvents)..where((e) => e.isActive.equals(true))).get();
 
-    // Chart 1: Net Worth — all accounts + all assets (invested) + all adjustments
+    // Chart 1: Net Worth — accounts + invested assets + extraordinary events.
+    // Outflow events use the 'adjustment' series key, inflow events use
+    // 'income_adj' — matching the partitioning in the chart data provider.
     final nwSeries = <Map<String, dynamic>>[
       for (final a in accounts) {'type': 'account', 'id': a.id},
       for (final a in assets) {'type': 'asset_invested', 'id': a.id},
-      for (final s in schedules) {'type': 'adjustment', 'id': s.id},
+      for (final e in events)
+        {
+          'type': e.direction == EventDirection.outflow ? 'adjustment' : 'income_adj',
+          'id': e.id,
+        },
     ];
     await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
       title: 'Net Worth',
