@@ -37,9 +37,9 @@ void main() {
       expect(entries, isEmpty);
     });
 
-    test('create outflow/instant event (Fido-style bucket)', () async {
+    test('create outflow/instant event (credit-line bucket)', () async {
       final id = await service.create(
-        name: 'Fido',
+        name: 'Credit Line',
         direction: EventDirection.outflow,
         treatment: EventTreatment.instant,
         totalAmount: 0,
@@ -79,7 +79,7 @@ void main() {
 
     test('addManualEntry on outflow event stores negative amount', () async {
       final id = await service.create(
-        name: 'Fido',
+        name: 'Credit Line',
         direction: EventDirection.outflow,
         treatment: EventTreatment.instant,
         totalAmount: 0,
@@ -124,7 +124,7 @@ void main() {
   group('Spread events', () {
     test('outflow/spread auto-generates scheduled entries with negative amounts', () async {
       final id = await service.create(
-        name: 'T-Roc',
+        name: 'Car',
         direction: EventDirection.outflow,
         treatment: EventTreatment.spread,
         totalAmount: 600,
@@ -307,7 +307,7 @@ void main() {
   group('Buffer linking', () {
     test('createLinkedBuffer works for spread events', () async {
       final id = await service.create(
-        name: 'T-Roc',
+        name: 'Car',
         direction: EventDirection.outflow,
         treatment: EventTreatment.spread,
         totalAmount: 600,
@@ -343,7 +343,7 @@ void main() {
 
     test('reimbursements reduce effective spread amount', () async {
       final id = await service.create(
-        name: 'T-Roc',
+        name: 'Car',
         direction: EventDirection.outflow,
         treatment: EventTreatment.spread,
         totalAmount: 600,

@@ -361,7 +361,7 @@ class AppDatabase extends _$AppDatabase {
               );
             }
 
-            // NB: zero-amount inflow events (e.g. "Fido" credit-line buckets)
+            // NB: zero-amount inflow events (e.g. credit-line buckets)
             // are left as inflow/instant. Reclassifying them to outflow would
             // shift their chart contribution from the incomeAdj series
             // (excluded from the Cash line) into the adjustment series
