@@ -30,6 +30,10 @@ void main() {
     await tester.tap(find.text('Dashboard'));
     await settle(tester);
 
+    // Income and Adjustments are now tabs inside the Accounts screen.
+    await tester.tap(find.text('Accounts'));
+    await settle(tester);
+
     await tester.tap(find.text('Adjustments'));
     await settle(tester);
 

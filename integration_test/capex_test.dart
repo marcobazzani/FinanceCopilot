@@ -6,23 +6,18 @@ import 'helpers/test_app.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Adjustments screen shows tabs and navigates', (tester) async {
+  testWidgets('Adjustments tab inside Accounts opens the ExtraordinaryEvents view',
+      (tester) async {
     await pumpApp(tester);
 
-    // Navigate to Adjustments
+    // Navigate Accounts -> Adjustments tab.
+    await tester.tap(find.text('Accounts'));
+    await settle(tester);
     await tester.tap(find.text('Adjustments'));
     await settle(tester);
 
-    // Two tabs should be visible
-    expect(find.text('Spread Expenses'), findsOneWidget);
-    expect(find.text('Donations / Inheritance'), findsOneWidget);
-
-    // Tap second tab
-    await tester.tap(find.text('Donations / Inheritance'));
-    await settle(tester);
-
-    // Tap back to first tab
-    await tester.tap(find.text('Spread Expenses'));
-    await settle(tester);
+    // The unified view replaces the old Spread Expenses / Donations tabs.
+    // With no events seeded, the empty-state text or info box should be visible.
+    expect(find.textContaining('events'), findsWidgets);
   });
 }

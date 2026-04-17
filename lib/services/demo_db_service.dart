@@ -668,22 +668,24 @@ class DemoDbService {
     }
   }
 
-  // ── Depreciation ──
+  // ── Extraordinary events (sample spread-outflow: car over 36 months) ──
 
   static Future<void> _insertDepreciation(AppDatabase db) async {
     final start = DateTime(2024, 1, 1);
     final end = DateTime(2026, 12, 31);
 
-    await db.into(db.depreciationSchedules).insert(DepreciationSchedulesCompanion.insert(
-      assetName: 'Used Car',
-      assetCategory: 'Vehicle',
-      totalAmount: 18000.0,
-      method: DepreciationMethod.linear,
-      startDate: start,
-      endDate: end,
-      usefulLifeMonths: 36,
-      direction: DepreciationDirection.forward,
-    ));
+    final eventId = await db.into(db.extraordinaryEvents).insert(
+      ExtraordinaryEventsCompanion.insert(
+        name: 'Used Car',
+        direction: EventDirection.outflow,
+        treatment: EventTreatment.spread,
+        totalAmount: 18000.0,
+        eventDate: start,
+        stepFrequency: const Value(StepFrequency.monthly),
+        spreadStart: Value(start),
+        spreadEnd: Value(end),
+      ),
+    );
 
     const monthlyAmount = 18000.0 / 36;
     var cumulative = 0.0;
@@ -694,13 +696,17 @@ class DemoDbService {
       cumulative += monthlyAmount;
       final remaining = 18000.0 - cumulative;
 
-      await db.into(db.depreciationEntries).insert(DepreciationEntriesCompanion.insert(
-        scheduleId: 1,
-        date: date,
-        amount: double.parse(monthlyAmount.toStringAsFixed(2)),
-        cumulative: double.parse(cumulative.toStringAsFixed(2)),
-        remaining: double.parse(remaining.toStringAsFixed(2)),
-      ));
+      await db.into(db.extraordinaryEventEntries).insert(
+        ExtraordinaryEventEntriesCompanion.insert(
+          eventId: eventId,
+          date: date,
+          // Scheduled outflow entries are negative (per the sign convention).
+          amount: -double.parse(monthlyAmount.toStringAsFixed(2)),
+          entryKind: EventEntryKind.scheduled,
+          cumulative: Value(double.parse(cumulative.toStringAsFixed(2))),
+          remaining: Value(double.parse(remaining.toStringAsFixed(2))),
+        ),
+      );
     }
   }
 

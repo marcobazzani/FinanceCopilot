@@ -15,8 +15,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   ref.watch(accountStatsProvider);
   ref.watch(assetsProvider);
   ref.watch(assetStatsProvider);
-  ref.watch(capexSchedulesProvider);
-  ref.watch(incomeAdjustmentsProvider);
+  ref.watch(extraordinaryEventsProvider);
   ref.watch(priceRefreshCounter);
 
   final allDayKeys = <int>{};
@@ -351,27 +350,38 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   }
 
   // ════════════════════════════════════════════════
-  // 3. CAPEX — re-add at expense date, remove during spread steps
+  // 3. EXTRAORDINARY EVENTS — unified CAPEX + IncomeAdj series
+  //
+  // Anchor on eventDate: +totalAmount for outflow, -totalAmount for inflow.
+  // Entries carry pre-signed deltas and are summed as-is.
+  // Reimbursements (spread+buffer) subtract |amount| on their operation date.
+  //
+  // Series are partitioned into adjustments (outflow) and incomeAdjustments
+  // (inflow) so downstream savings/cash composition in cashflow_tab.dart
+  // stays compatible without further changes.
   // ════════════════════════════════════════════════
-  final activeSchedules = await (db.select(db.depreciationSchedules)
-        ..where((s) => s.isActive.equals(true)))
+  final activeEvents = await (db.select(db.extraordinaryEvents)
+        ..where((e) => e.isActive.equals(true)))
       .get();
 
-  // Batch-fetch all entries for active schedules
-  final allScheduleEntries = <int, List<DepreciationEntry>>{};
-  if (activeSchedules.isNotEmpty) {
-    final allEntries = await (db.select(db.depreciationEntries)
-          ..where((e) => e.scheduleId.isIn(activeSchedules.map((s) => s.id).toList()))
+  // Batch-fetch entries for all active events.
+  final allEventEntries = <int, List<ExtraordinaryEventEntry>>{};
+  if (activeEvents.isNotEmpty) {
+    final rows = await (db.select(db.extraordinaryEventEntries)
+          ..where((e) => e.eventId.isIn(activeEvents.map((e) => e.id).toList()))
           ..orderBy([(e) => OrderingTerm.asc(e.date)]))
         .get();
-    for (final entry in allEntries) {
-      allScheduleEntries.putIfAbsent(entry.scheduleId, () => []).add(entry);
+    for (final entry in rows) {
+      allEventEntries.putIfAbsent(entry.eventId, () => []).add(entry);
     }
   }
 
-  // Batch-fetch all reimbursement transactions
+  // Batch-fetch reimbursements from linked buffers (spread treatment only).
   final allReimbursements = <int, List<BufferTransaction>>{};
-  final bufferIds = activeSchedules.where((s) => s.bufferId != null).map((s) => s.bufferId!).toList();
+  final bufferIds = activeEvents
+      .where((e) => e.bufferId != null)
+      .map((e) => e.bufferId!)
+      .toList();
   if (bufferIds.isNotEmpty) {
     final reimbRows = await (db.select(db.bufferTransactions)
           ..where((t) => t.bufferId.isIn(bufferIds))
@@ -383,25 +393,28 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   }
 
   final adjustmentSeries = <ChartSeries>[];
+  final incomeAdjSeries = <ChartSeries>[];
 
-  for (final schedule in activeSchedules) {
-    final entries = allScheduleEntries[schedule.id] ?? [];
-
+  for (final event in activeEvents) {
+    final entries = allEventEntries[event.id] ?? const [];
     final deltaMap = <int, double>{};
 
-    if (schedule.expenseDate != null) {
-      final expDayKey = toDayKey(schedule.expenseDate!);
-      deltaMap[expDayKey] = (deltaMap[expDayKey] ?? 0) + schedule.totalAmount;
-    }
+    // Anchor delta.
+    final anchorSign = event.direction == EventDirection.outflow ? 1.0 : -1.0;
+    final anchorKey = toDayKey(event.eventDate);
+    deltaMap[anchorKey] = (deltaMap[anchorKey] ?? 0) + anchorSign * event.totalAmount;
+    allDayKeys.add(anchorKey);
 
+    // Entries are pre-signed per direction — sum as-is.
     for (final entry in entries) {
       final dayKey = toDayKey(entry.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - entry.amount;
+      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + entry.amount;
+      allDayKeys.add(dayKey);
     }
 
-    if (schedule.bufferId != null) {
-      final reimbursements = allReimbursements[schedule.bufferId!] ?? [];
-      for (final r in reimbursements) {
+    // Reimbursements reduce saving further (only meaningful on spread outflows).
+    if (event.bufferId != null) {
+      for (final r in allReimbursements[event.bufferId!] ?? const []) {
         final dayKey = toDayKey(r.operationDate);
         deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
       }
@@ -409,13 +422,13 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
     if (deltaMap.isEmpty) continue;
 
-    final capexDays = deltaMap.keys.toList()..sort();
+    final days = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
     var cumulative = 0.0;
     double? prevY;
 
-    for (final dayKey in capexDays) {
-      final rate = await rates.getRate(schedule.currency, dayKey);
+    for (final dayKey in days) {
+      final rate = await rates.getRate(event.currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
@@ -427,81 +440,17 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       prevY = y;
     }
 
-    adjustmentSeries.add(ChartSeries(
-      key: 'adjustment:${schedule.id}',
-      name: schedule.assetName,
+    // Partition by direction to preserve legacy series keys and downstream
+    // Saving = accounts + invested + adjustments + incomeAdjustments formula.
+    final isOutflow = event.direction == EventDirection.outflow;
+    final series = ChartSeries(
+      key: isOutflow ? 'adjustment:${event.id}' : 'income_adj:${event.id}',
+      name: event.name,
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
       isDashed: true,
-    ));
-    colorIdx++;
-  }
-
-  // ════════════════════════════════════════════════
-  // 4. INCOME ADJUSTMENTS — subtract at income date, add back at expenses
-  // ════════════════════════════════════════════════
-  final activeIncomeAdj = await (db.select(db.incomeAdjustments)
-        ..where((a) => a.isActive.equals(true)))
-      .get();
-
-  // Batch-fetch all income adjustment expenses
-  final allAdjExpenses = <int, List<IncomeAdjustmentExpense>>{};
-  if (activeIncomeAdj.isNotEmpty) {
-    final allExpenses = await (db.select(db.incomeAdjustmentExpenses)
-          ..where((e) => e.adjustmentId.isIn(activeIncomeAdj.map((a) => a.id).toList()))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
-    for (final exp in allExpenses) {
-      allAdjExpenses.putIfAbsent(exp.adjustmentId, () => []).add(exp);
-    }
-  }
-
-  final incomeAdjSeries = <ChartSeries>[];
-
-  for (final adj in activeIncomeAdj) {
-    final expenses = allAdjExpenses[adj.id] ?? [];
-
-    final deltaMap = <int, double>{};
-
-    // At income date: subtract the full amount
-    final incomeDayKey = toDayKey(adj.incomeDate);
-    deltaMap[incomeDayKey] = (deltaMap[incomeDayKey] ?? 0) - adj.totalAmount;
-    allDayKeys.add(incomeDayKey);
-
-    // At each expense date: add back the expense amount
-    for (final exp in expenses) {
-      final dayKey = toDayKey(exp.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + exp.amount;
-      allDayKeys.add(dayKey);
-    }
-
-    if (deltaMap.isEmpty) continue;
-
-    final adjDays = deltaMap.keys.toList()..sort();
-    final spots = <FlSpot>[];
-    var cumulative = 0.0;
-    double? prevY;
-
-    for (final dayKey in adjDays) {
-      final rate = await rates.getRate(adj.currency, dayKey);
-      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-      final x = dt.difference(firstDate).inDays.toDouble();
-      if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
-        spots.add(FlSpot(x - 0.5, prevY));
-      }
-      cumulative += deltaMap[dayKey]!;
-      final y = cumulative * rate;
-      spots.add(FlSpot(x, y));
-      prevY = y;
-    }
-
-    incomeAdjSeries.add(ChartSeries(
-      key: 'income_adj:${adj.id}',
-      name: adj.name,
-      color: _chartColors[colorIdx % _chartColors.length],
-      spots: spots,
-      isDashed: true,
-    ));
+    );
+    (isOutflow ? adjustmentSeries : incomeAdjSeries).add(series);
     colorIdx++;
   }
 

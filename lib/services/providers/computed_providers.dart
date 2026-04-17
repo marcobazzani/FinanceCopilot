@@ -77,13 +77,6 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
   return result;
 });
 
-/// Total spent for an income adjustment, using SQL SUM.
-final totalSpentProvider = FutureProvider.family<double, int>((ref, adjustmentId) async {
-  final service = ref.watch(incomeAdjustmentServiceProvider);
-  ref.watch(incomeAdjustmentExpensesProvider(adjustmentId));
-  return service.totalSpent(adjustmentId);
-});
-
 /// Market value per asset: qty * lastPrice * fxRate -> base currency.
 final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   final assets = await ref.watch(assetsProvider.future);

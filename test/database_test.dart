@@ -132,7 +132,7 @@ void main() {
 
       expect(indexNames, unorderedEquals([
         'idx_transactions_account_date_id',
-        'idx_depreciation_entries_schedule_date',
+        'idx_event_entries_event_date',
         'idx_asset_events_asset_date',
         'idx_asset_compositions_asset_id',
         'idx_market_prices_asset_date',
