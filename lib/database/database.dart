@@ -8,6 +8,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import '../utils/logger.dart';
+import 'db_file_name.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -49,7 +50,7 @@ class AppDatabase extends _$AppDatabase {
   /// Returns the DB file reference without opening or creating it.
   static Future<File> dbFile() async {
     final dir = await getApplicationSupportDirectory();
-    return File(p.join(dir.path, 'finance_copilot.db'));
+    return File(p.join(dir.path, dbFileName));
   }
 
   @override
@@ -541,7 +542,7 @@ LazyDatabase _openConnection() {
       _log.info('Creating database directory: ${dir.path}');
       await dir.create(recursive: true);
     }
-    final file = File(p.join(dir.path, 'finance_copilot.db'));
+    final file = File(p.join(dir.path, dbFileName));
     // ignore: avoid_print
     print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');
