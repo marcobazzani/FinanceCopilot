@@ -355,12 +355,16 @@ class ImportService {
       return ImportResult(totalRows: preview.totalRows, importedRows: 0, errorRows: errorCount, errors: errors);
     }
 
-    // Compute balanceAfter
-    _computeBalances(parsedRows, balanceMode, balanceFilterInclude);
-
     // Find the oldest date in the parsed rows
     final oldestDate = parsedRows.map((r) => r.date).reduce((a, b) => a.isBefore(b) ? a : b);
     final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day).millisecondsSinceEpoch ~/ 1000;
+
+    // Seed cumulative balance from the true pre-cutoff sum so newly inserted
+    // rows continue from the existing account balance instead of restarting at 0.
+    final preCutoffBalance = await _preCutoffBalance(accountId, cutoffEpoch);
+
+    // Compute balanceAfter
+    _computeBalances(parsedRows, balanceMode, balanceFilterInclude, preCutoffBalance);
 
     // Delete all DB rows for this account from oldest CSV date onward
     final deleted = await _db.customUpdate(
@@ -896,7 +900,6 @@ class ImportService {
       }
     }
 
-    final statusMapping = mappingByField['status'];
     final valueDateMapping = mappingByField['valueDate'];
 
     var parsed = 0;
@@ -969,18 +972,15 @@ class ImportService {
       ).getSingle();
       rowsToReplace = countResult.read<int>('cnt');
 
-      // Predicted balance = balance before cutoff + sum of CSV amounts
+      // Predicted balance = balance before cutoff + sum of CSV amounts.
+      // Pre-cutoff balance is computed as SUM(amount), not from stored
+      // balance_after, because a previous partial-period import may have
+      // seeded balance_after from 0 — leaving it offset from the true total.
       if (balanceMode == 'column') {
         // In column mode, the balance comes from the CSV — just show the import sum
         predictedBalance = null;
       } else {
-        final balBeforeResult = await _db.customSelect(
-          'SELECT balance_after FROM transactions '
-          'WHERE account_id = ? AND operation_date < ? '
-          'ORDER BY value_date DESC, id DESC LIMIT 1',
-          variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-        ).getSingleOrNull();
-        final balanceBefore = balBeforeResult?.readNullable<double>('balance_after') ?? 0.0;
+        final balanceBefore = await _preCutoffBalance(accountId, cutoffEpoch);
         predictedBalance = balanceBefore + importSum;
       }
     }
@@ -1132,11 +1132,26 @@ class ImportService {
     return EventType.buy;
   }
 
+  /// Sum of [transactions.amount] for [accountId] strictly before [cutoffEpoch].
+  /// Represents the true running balance at the cutoff (assuming all balance
+  /// is captured as transactions, which is the schema's invariant).
+  Future<double> _preCutoffBalance(int accountId, int cutoffEpoch) async {
+    final row = await _db.customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS s FROM transactions '
+      'WHERE account_id = ? AND operation_date < ?',
+      variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+    ).getSingle();
+    return row.read<double>('s');
+  }
+
   /// Compute balanceAfter for parsed rows based on the selected mode.
+  /// [startingBalance] seeds cumulative/filtered modes so newly imported rows
+  /// continue from the account's existing balance instead of restarting at 0.
   void _computeBalances(
     List<_ParsedTransactionRow> rows,
     String balanceMode,
     Set<String>? balanceFilterInclude,
+    double startingBalance,
   ) {
     if (rows.isEmpty || balanceMode == 'none') return;
 
@@ -1162,14 +1177,14 @@ class ImportService {
     double fromCents(int c) => c / 100;
 
     if (balanceMode == 'cumulative') {
-      int balanceCents = 0;
+      int balanceCents = toCents(startingBalance);
       for (final i in indexed) {
         balanceCents += toCents(rows[i].amount);
         rows[i].balanceAfter = fromCents(balanceCents);
       }
-      _log.info('_computeBalances: cumulative - done');
+      _log.info('_computeBalances: cumulative - done (seed=$startingBalance)');
     } else if (balanceMode == 'filtered') {
-      int balanceCents = 0;
+      int balanceCents = toCents(startingBalance);
       for (final i in indexed) {
         final filterVal = rows[i].filterColumnValue ?? '';
         final included = balanceFilterInclude == null ||
@@ -1180,7 +1195,7 @@ class ImportService {
         }
         rows[i].balanceAfter = fromCents(balanceCents);
       }
-      _log.info('_computeBalances: filtered - done');
+      _log.info('_computeBalances: filtered - done (seed=$startingBalance)');
     }
   }
 }

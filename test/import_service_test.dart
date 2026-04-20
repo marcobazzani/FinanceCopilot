@@ -881,4 +881,114 @@ Date,Amount
       expect(quantities, {10.0, 20.0});
     });
   });
+
+  group('Cumulative balance seeding from pre-cutoff sum', () {
+    test('previewTransactionImport predicts balance from true pre-cutoff sum, not stale balance_after', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Test'),
+      );
+
+      // Pre-existing row with intentionally stale balance_after (mirrors a previous
+      // partial-period import that started its cumulative from 0).
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 1),
+        valueDate: DateTime(2024, 12, 1),
+        amount: 1000.0,
+        balanceAfter: const Value(500.0), // wrong: true cumulative is 1000
+      ));
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount'],
+        rows: [{'Date': '2025-01-01', 'Amount': '-100'}],
+        totalRows: 1,
+      );
+
+      final result = await importer.previewTransactionImport(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+
+      // True balance before cutoff = SUM(amount) = 1000. Plus import sum (-100) = 900.
+      expect(result.predictedBalance, 900.0);
+    });
+
+    test('importTransactions seeds cumulative balance_after from pre-cutoff sum', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Test'),
+      );
+
+      // Pre-existing row that the import will NOT touch (op_date < cutoff).
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 1),
+        valueDate: DateTime(2024, 12, 1),
+        amount: 1000.0,
+        balanceAfter: const Value(1000.0),
+      ));
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount'],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '-100'},
+          {'Date': '2025-01-02', 'Amount': '-200'},
+        ],
+        totalRows: 2,
+      );
+
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
+          .get();
+      expect(txs.length, 3);
+      // Pre-existing untouched
+      expect(txs[0].balanceAfter, 1000.0);
+      // Newly imported rows continue cumulative from pre-cutoff balance (1000)
+      expect(txs[1].balanceAfter, 900.0);
+      expect(txs[2].balanceAfter, 700.0);
+    });
+
+    test('importTransactions starting balance is 0 when no pre-cutoff rows exist', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'FreshAccount'),
+      );
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount'],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '500'},
+          {'Date': '2025-01-02', 'Amount': '-200'},
+        ],
+        totalRows: 2,
+      );
+
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
+          .get();
+      expect(txs.length, 2);
+      expect(txs[0].balanceAfter, 500.0);
+      expect(txs[1].balanceAfter, 300.0);
+    });
+  });
 }
