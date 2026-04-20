@@ -3,11 +3,11 @@
 - Version display: `v0.4.4` for stable releases, `v0.4.4-dev` for nightly/local builds. Controlled by `--dart-define=CHANNEL=stable|nightly` (defaults to `nightly`).
 - When needed, always build first, then kill the running app, then start the new build. Never kill before the build completes.
   ```
-  source .env && dart fix --apply && flutter build macos --release --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
+  source .env && dart fix --apply && flutter build macos --release --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=DB_FILE_NAME=$DB_FILE_NAME && pkill -f "FinanceCopilot" 2>/dev/null; open build/macos/Build/Products/Release/FinanceCopilot.app
   ```
 - Android APK build:
   ```
-  source .env && flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID
+  source .env && flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID --dart-define=DB_FILE_NAME=$DB_FILE_NAME
   ```
 - OAuth credentials are in `.env` (gitignored). Never commit secrets to git.
 
@@ -17,7 +17,7 @@
 - Steps (in order):
   1. Launch emulator: `flutter emulators --launch <emulator_id>`
   2. Wait for it to appear: `flutter devices` (look for `emulator-XXXX`)
-  3. Build APK: `source .env && flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID`
+  3. Build APK: `source .env && flutter build apk --release --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID --dart-define=GOOGLE_ANDROID_CLIENT_ID=$GOOGLE_ANDROID_CLIENT_ID --dart-define=DB_FILE_NAME=$DB_FILE_NAME`
   4. Install: `flutter install -d emulator-XXXX`
   5. Launch app: `adb -s emulator-XXXX shell monkey -p net.bazzani.financecopilot -c android.intent.category.LAUNCHER 1`
 - Package name is `net.bazzani.financecopilot` (NOT `com.example.finance_copilot`).
@@ -31,7 +31,7 @@
 - Project path: `C:\Users\marco\dev\FinanceCopilot`
 - Build: the Windows project has its own `.env` copy at `C:\Users\marco\dev\FinanceCopilot\.env` — load it into the cmd session via a `for /f` loop before running flutter so Google OAuth dart-defines are populated.
   ```
-  prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && for /f \"usebackq tokens=1,* delims==\" %a in (\".env\") do set %a=%b && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% --dart-define=GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% 2>&1"
+  prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && for /f \"usebackq tokens=1,* delims==\" %a in (\".env\") do set %a=%b && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% --dart-define=GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% --dart-define=DB_FILE_NAME=%DB_FILE_NAME% 2>&1"
   ```
 - Kill before rebuild: `prlctl exec "Windows 11" cmd /c "taskkill /F /IM FinanceCopilot.exe 2>&1"`
 - **Launch GUI app** — `prlctl exec` runs in a non-interactive service session (Session 0), so use a scheduled task to launch in the user's interactive session:

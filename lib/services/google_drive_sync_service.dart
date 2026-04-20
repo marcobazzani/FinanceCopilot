@@ -10,13 +10,13 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../database/db_file_name.dart';
 import '../utils/logger.dart';
 import 'app_settings.dart';
 
 final _log = getLogger('GoogleDriveSync');
 
 const _driveScope = 'https://www.googleapis.com/auth/drive.appdata';
-const _dbFileName = 'finance_copilot.db';
 
 // OAuth credentials injected via --dart-define at build time
 const _googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
@@ -89,6 +89,9 @@ class GoogleDriveSyncService {
 
   GoogleDriveSyncService() {
     _deviceId = _computeDeviceId();
+    // Fail fast if DB_FILE_NAME dart-define is missing, so dev builds can't
+    // silently read or overwrite the prod Drive backup.
+    dbFileName;
   }
 
   String _computeDeviceId() {
@@ -262,7 +265,7 @@ class GoogleDriveSyncService {
 
   Future<String> get _localDbPath async {
     final dir = await getApplicationSupportDirectory();
-    return p.join(dir.path, _dbFileName);
+    return p.join(dir.path, dbFileName);
   }
 
   /// Check what's on Google Drive.
@@ -271,7 +274,7 @@ class GoogleDriveSyncService {
     try {
       final fileList = await _driveApi!.files.list(
         spaces: 'appDataFolder',
-        q: "name = '$_dbFileName'",
+        q: "name = '$dbFileName'",
         $fields: 'files(id, name, modifiedTime, size, appProperties)',
         orderBy: 'modifiedTime desc',
         pageSize: 1,
@@ -523,7 +526,7 @@ class GoogleDriveSyncService {
 
       final media = drive.Media(file.openRead(), file.lengthSync());
       final metadata = drive.File()
-        ..name = _dbFileName
+        ..name = dbFileName
         ..appProperties = {
           'deviceId': _deviceId,
           'deviceName': Platform.localHostname,

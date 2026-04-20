@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -389,6 +391,105 @@ void main() {
         expect(curr, isNotNull, reason: 'balance at index $i should not be null');
         expect(prev, isNotNull, reason: 'balance at index ${i - 1} should not be null');
       }
+    });
+  });
+
+  group('delete triggers balance recalc when import config exists', () {
+    Future<void> saveImportConfig(int accountId, String balanceMode) async {
+      await db.into(db.importConfigs).insert(ImportConfigsCompanion.insert(
+        accountId: accountId,
+        skipRows: const Value(0),
+        mappingsJson: Value(jsonEncode({'__balanceMode': balanceMode})),
+        formulaJson: const Value('[]'),
+        hashColumnsJson: const Value('[]'),
+      ));
+    }
+
+    test('single delete recomputes balanceAfter on remaining transactions', () async {
+      final accountId = await createAccount('FidoLikeAccount');
+      await saveImportConfig(accountId, 'cumulative');
+
+      final a = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 1),
+        amount: 100.0, currency: 'EUR', description: 'A',
+      );
+      final b = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 2),
+        amount: 200.0, currency: 'EUR', description: 'B',
+      );
+      final c = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 3),
+        amount: 300.0, currency: 'EUR', description: 'C',
+      );
+      await service.recalculateBalances(accountId, balanceMode: 'cumulative');
+
+      var txs = await service.getByAccount(accountId);
+      expect(txs.firstWhere((t) => t.id == c).balanceAfter, 600.0,
+          reason: 'sanity: cumulative running balance A+B+C');
+
+      // Delete middle transaction B (amount 200). Last tx C should drop to 400.
+      await service.delete(b);
+
+      txs = await service.getByAccount(accountId);
+      expect(txs.length, 2);
+      expect(txs.firstWhere((t) => t.id == a).balanceAfter, 100.0);
+      expect(txs.firstWhere((t) => t.id == c).balanceAfter, 400.0,
+          reason: 'C balance must be recomputed after B is deleted');
+    });
+
+    test('deleteMany recomputes across each affected account', () async {
+      final acc1 = await createAccount('Acc1');
+      final acc2 = await createAccount('Acc2');
+      await saveImportConfig(acc1, 'cumulative');
+      await saveImportConfig(acc2, 'cumulative');
+
+      final a1 = await service.create(
+        accountId: acc1, operationDate: DateTime(2024, 1, 1),
+        amount: 100.0, currency: 'EUR',
+      );
+      final a2 = await service.create(
+        accountId: acc1, operationDate: DateTime(2024, 1, 2),
+        amount: 200.0, currency: 'EUR',
+      );
+      final b1 = await service.create(
+        accountId: acc2, operationDate: DateTime(2024, 1, 1),
+        amount: 50.0, currency: 'EUR',
+      );
+      final b2 = await service.create(
+        accountId: acc2, operationDate: DateTime(2024, 1, 2),
+        amount: 75.0, currency: 'EUR',
+      );
+      await service.recalculateBalances(acc1, balanceMode: 'cumulative');
+      await service.recalculateBalances(acc2, balanceMode: 'cumulative');
+
+      await service.deleteMany([a1, b1]);
+
+      final acc1Txs = await service.getByAccount(acc1);
+      final acc2Txs = await service.getByAccount(acc2);
+      expect(acc1Txs.firstWhere((t) => t.id == a2).balanceAfter, 200.0,
+          reason: 'acc1 sole remaining tx now equals its own amount');
+      expect(acc2Txs.firstWhere((t) => t.id == b2).balanceAfter, 75.0,
+          reason: 'acc2 sole remaining tx now equals its own amount');
+    });
+
+    test('delete without import config does not error and does not touch balances', () async {
+      final accountId = await createAccount('NoConfig');
+      final a = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 1),
+        amount: 100.0, balanceAfter: 100.0, currency: 'EUR',
+      );
+      final b = await service.create(
+        accountId: accountId, operationDate: DateTime(2024, 1, 2),
+        amount: 200.0, balanceAfter: 300.0, currency: 'EUR',
+      );
+
+      await service.delete(a);
+
+      final txs = await service.getByAccount(accountId);
+      expect(txs.length, 1);
+      expect(txs.first.id, b);
+      expect(txs.first.balanceAfter, 300.0,
+          reason: 'no import config means no recalc; existing balance untouched');
     });
   });
 
