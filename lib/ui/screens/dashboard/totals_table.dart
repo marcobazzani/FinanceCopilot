@@ -5,7 +5,7 @@ part of 'dashboard_screen.dart';
 // ════════════════════════════════════════════════════
 
 class _SummaryTotalsTable extends ConsumerStatefulWidget {
-  final _AllSeriesData allData;
+  final AllSeriesData allData;
   final String locale;
 
   const _SummaryTotalsTable({required this.allData, required this.locale});
@@ -174,7 +174,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     return Icons.circle;
   }
 
-  List<Widget> _buildDrillDown(List<_Series> series, NumberFormat amtFmt, ThemeData theme) {
+  List<Widget> _buildDrillDown(List<ChartSeries> series, NumberFormat amtFmt, ThemeData theme) {
     final items = <({String key, String name, double value})>[];
     for (final s in series) {
       final val = s.spots.isNotEmpty ? s.spots.last.y : 0.0;
@@ -211,6 +211,6 @@ class _TotalRow {
   final String label;
   final double total;
   final double deltaVsMax; // current - historical max (excluding today)
-  final List<_Series> series;
+  final List<ChartSeries> series;
   const _TotalRow(this.label, this.total, this.deltaVsMax, this.series);
 }

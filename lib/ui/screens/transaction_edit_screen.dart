@@ -49,10 +49,14 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
 
     _selectedDate = tx?.valueDate ?? DateTime.now();
     _dateCtrl = TextEditingController(text: dateFmt.format(_selectedDate));
-    _amountCtrl = TextEditingController(text: tx?.amount.toString() ?? '');
+    _amountCtrl = TextEditingController(
+      text: tx != null ? fmt.amountFormat(locale).format(tx.amount) : '',
+    );
     _descCtrl = TextEditingController(text: tx?.description ?? '');
     _descFullCtrl = TextEditingController(text: tx?.descriptionFull ?? '');
-    _balanceCtrl = TextEditingController(text: tx?.balanceAfter?.toString() ?? '');
+    _balanceCtrl = TextEditingController(
+      text: tx?.balanceAfter != null ? fmt.amountFormat(locale).format(tx!.balanceAfter!) : '',
+    );
     _currencyCtrl = TextEditingController(text: tx?.currency ?? widget.account.currency);
     _status = tx?.status ?? TransactionStatus.settled;
   }

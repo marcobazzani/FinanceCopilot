@@ -881,4 +881,169 @@ Date,Amount
       expect(quantities, {10.0, 20.0});
     });
   });
+
+  group('Cumulative balance seeding from pre-cutoff sum', () {
+    test('previewTransactionImport predicts balance from true pre-cutoff sum, not stale balance_after', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Test'),
+      );
+
+      // Pre-existing row with intentionally stale balance_after (mirrors a previous
+      // partial-period import that started its cumulative from 0).
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 1),
+        valueDate: DateTime(2024, 12, 1),
+        amount: 1000.0,
+        balanceAfter: const Value(500.0), // wrong: true cumulative is 1000
+      ));
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount'],
+        rows: [{'Date': '2025-01-01', 'Amount': '-100'}],
+        totalRows: 1,
+      );
+
+      final result = await importer.previewTransactionImport(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+
+      // True balance before cutoff = SUM(amount) = 1000. Plus import sum (-100) = 900.
+      expect(result.predictedBalance, 900.0);
+    });
+
+    test('importTransactions seeds cumulative balance_after from pre-cutoff sum', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Test'),
+      );
+
+      // Pre-existing row that the import will NOT touch (op_date < cutoff).
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 1),
+        valueDate: DateTime(2024, 12, 1),
+        amount: 1000.0,
+        balanceAfter: const Value(1000.0),
+      ));
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount'],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '-100'},
+          {'Date': '2025-01-02', 'Amount': '-200'},
+        ],
+        totalRows: 2,
+      );
+
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
+          .get();
+      expect(txs.length, 3);
+      // Pre-existing untouched
+      expect(txs[0].balanceAfter, 1000.0);
+      // Newly imported rows continue cumulative from pre-cutoff balance (1000)
+      expect(txs[1].balanceAfter, 900.0);
+      expect(txs[2].balanceAfter, 700.0);
+    });
+
+    test('previewTransactionImport in filtered mode uses stored balance_after, not SUM(amount)', () async {
+      // Filtered mode: some CSV rows are excluded from the running balance
+      // (e.g. Revolut internal transfers). The DB stores ALL rows but
+      // balance_after on each row is the FILTERED cumulative. SUM(amount)
+      // would include the excluded rows and produce a wildly wrong answer.
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Revolut'),
+      );
+
+      // Pre-existing rows: amounts sum to 1000, but stored balance_after on
+      // the latest row is 200 (because 800 was excluded by the filter when
+      // the previous import wrote those rows).
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 1),
+        valueDate: DateTime(2024, 12, 1),
+        amount: 800.0,
+        balanceAfter: const Value(0.0), // excluded by filter
+      ));
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 2),
+        valueDate: DateTime(2024, 12, 2),
+        amount: 200.0,
+        balanceAfter: const Value(200.0), // filtered cumulative = 200
+      ));
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount', 'State'],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '50', 'State': 'COMPLETATO'},
+          {'Date': '2025-01-02', 'Amount': '999', 'State': 'EXCLUDED'},
+        ],
+        totalRows: 2,
+      );
+
+      final result = await importer.previewTransactionImport(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+        balanceMode: 'filtered',
+        balanceFilterColumn: 'State',
+        balanceFilterInclude: {'COMPLETATO'},
+      );
+
+      // Filtered import sum = 50 (the 999 row is excluded).
+      // Pre-cutoff balance (filtered cumulative from stored balance_after) = 200.
+      // Predicted = 200 + 50 = 250.
+      expect(result.importSum, 50.0);
+      expect(result.predictedBalance, 250.0);
+    });
+
+    test('importTransactions starting balance is 0 when no pre-cutoff rows exist', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'FreshAccount'),
+      );
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount'],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '500'},
+          {'Date': '2025-01-02', 'Amount': '-200'},
+        ],
+        totalRows: 2,
+      );
+
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
+          .get();
+      expect(txs.length, 2);
+      expect(txs[0].balanceAfter, 500.0);
+      expect(txs[1].balanceAfter, 300.0);
+    });
+  });
 }

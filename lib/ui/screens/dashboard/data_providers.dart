@@ -4,7 +4,7 @@ part of 'dashboard_screen.dart';
 // Unified data provider — computes ALL series at once
 // ════════════════════════════════════════════════════
 
-final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
+final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
@@ -15,8 +15,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   ref.watch(accountStatsProvider);
   ref.watch(assetsProvider);
   ref.watch(assetStatsProvider);
-  ref.watch(capexSchedulesProvider);
-  ref.watch(incomeAdjustmentsProvider);
+  ref.watch(extraordinaryEventsProvider);
   ref.watch(priceRefreshCounter);
 
   final allDayKeys = <int>{};
@@ -140,7 +139,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
 
   // ── Build account series ──
-  final accountSeries = <_Series>[];
+  final accountSeries = <ChartSeries>[];
   for (final account in activeAccounts) {
     if (!perAccount.containsKey(account.id)) continue;
     final dayMap = perAccount[account.id]!;
@@ -157,7 +156,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       }
     }
 
-    accountSeries.add(_Series(
+    accountSeries.add(ChartSeries(
       key: 'account:${account.id}',
       name: account.name,
       color: _chartColors[colorIdx % _chartColors.length],
@@ -167,7 +166,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   }
 
   // ── Build asset invested series (cumulative) ──
-  final assetInvestedSeries = <_Series>[];
+  final assetInvestedSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final deltaMap = perAssetDeltas[asset.id]!;
@@ -187,7 +186,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       }
     }
 
-    assetInvestedSeries.add(_Series(
+    assetInvestedSeries.add(ChartSeries(
       key: 'asset_invested:${asset.id}',
       name: '${asset.ticker ?? asset.name} inv.',
       color: _chartColors[colorIdx % _chartColors.length],
@@ -267,7 +266,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     return list[lo].$2;
   }
 
-  final assetMarketSeries = <_Series>[];
+  final assetMarketSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     if (!perAssetDeltas.containsKey(asset.id)) continue;
     final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
@@ -314,7 +313,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     final investedIdx = assetInvestedSeries.indexWhere((s) => s.key == 'asset_invested:${asset.id}');
     final color = investedIdx >= 0 ? assetInvestedSeries[investedIdx].color : _chartColors[colorIdx++ % _chartColors.length];
 
-    assetMarketSeries.add(_Series(
+    assetMarketSeries.add(ChartSeries(
       key: 'asset_market:${asset.id}',
       name: asset.ticker ?? asset.name,
       color: color,
@@ -323,7 +322,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   }
 
   // ── Build asset gain series (market - invested) ──
-  final assetGainSeries = <_Series>[];
+  final assetGainSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     final invMatch = assetInvestedSeries.where((s) => s.key == 'asset_invested:${asset.id}');
     final mktMatch = assetMarketSeries.where((s) => s.key == 'asset_market:${asset.id}');
@@ -342,7 +341,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       if (invLookup.containsKey(mkt.x)) lastInv = invLookup[mkt.x]!;
       gainSpots.add(FlSpot(mkt.x, mkt.y - lastInv));
     }
-    assetGainSeries.add(_Series(
+    assetGainSeries.add(ChartSeries(
       key: 'asset_gain:${asset.id}',
       name: asset.ticker ?? asset.name,
       color: mktMatch.first.color,
@@ -351,27 +350,38 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
   }
 
   // ════════════════════════════════════════════════
-  // 3. CAPEX — re-add at expense date, remove during spread steps
+  // 3. EXTRAORDINARY EVENTS — unified CAPEX + IncomeAdj series
+  //
+  // Anchor on eventDate: +totalAmount for outflow, -totalAmount for inflow.
+  // Entries carry pre-signed deltas and are summed as-is.
+  // Reimbursements (spread+buffer) subtract |amount| on their operation date.
+  //
+  // Series are partitioned into adjustments (outflow) and incomeAdjustments
+  // (inflow) so downstream savings/cash composition in cashflow_tab.dart
+  // stays compatible without further changes.
   // ════════════════════════════════════════════════
-  final activeSchedules = await (db.select(db.depreciationSchedules)
-        ..where((s) => s.isActive.equals(true)))
+  final activeEvents = await (db.select(db.extraordinaryEvents)
+        ..where((e) => e.isActive.equals(true)))
       .get();
 
-  // Batch-fetch all entries for active schedules
-  final allScheduleEntries = <int, List<DepreciationEntry>>{};
-  if (activeSchedules.isNotEmpty) {
-    final allEntries = await (db.select(db.depreciationEntries)
-          ..where((e) => e.scheduleId.isIn(activeSchedules.map((s) => s.id).toList()))
+  // Batch-fetch entries for all active events.
+  final allEventEntries = <int, List<ExtraordinaryEventEntry>>{};
+  if (activeEvents.isNotEmpty) {
+    final rows = await (db.select(db.extraordinaryEventEntries)
+          ..where((e) => e.eventId.isIn(activeEvents.map((e) => e.id).toList()))
           ..orderBy([(e) => OrderingTerm.asc(e.date)]))
         .get();
-    for (final entry in allEntries) {
-      allScheduleEntries.putIfAbsent(entry.scheduleId, () => []).add(entry);
+    for (final entry in rows) {
+      allEventEntries.putIfAbsent(entry.eventId, () => []).add(entry);
     }
   }
 
-  // Batch-fetch all reimbursement transactions
+  // Batch-fetch reimbursements from linked buffers (spread treatment only).
   final allReimbursements = <int, List<BufferTransaction>>{};
-  final bufferIds = activeSchedules.where((s) => s.bufferId != null).map((s) => s.bufferId!).toList();
+  final bufferIds = activeEvents
+      .where((e) => e.bufferId != null)
+      .map((e) => e.bufferId!)
+      .toList();
   if (bufferIds.isNotEmpty) {
     final reimbRows = await (db.select(db.bufferTransactions)
           ..where((t) => t.bufferId.isIn(bufferIds))
@@ -382,26 +392,29 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
     }
   }
 
-  final adjustmentSeries = <_Series>[];
+  final adjustmentSeries = <ChartSeries>[];
+  final incomeAdjSeries = <ChartSeries>[];
 
-  for (final schedule in activeSchedules) {
-    final entries = allScheduleEntries[schedule.id] ?? [];
-
+  for (final event in activeEvents) {
+    final entries = allEventEntries[event.id] ?? const [];
     final deltaMap = <int, double>{};
 
-    if (schedule.expenseDate != null) {
-      final expDayKey = toDayKey(schedule.expenseDate!);
-      deltaMap[expDayKey] = (deltaMap[expDayKey] ?? 0) + schedule.totalAmount;
-    }
+    // Anchor delta.
+    final anchorSign = event.direction == EventDirection.outflow ? 1.0 : -1.0;
+    final anchorKey = toDayKey(event.eventDate);
+    deltaMap[anchorKey] = (deltaMap[anchorKey] ?? 0) + anchorSign * event.totalAmount;
+    allDayKeys.add(anchorKey);
 
+    // Entries are pre-signed per direction — sum as-is.
     for (final entry in entries) {
       final dayKey = toDayKey(entry.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - entry.amount;
+      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + entry.amount;
+      allDayKeys.add(dayKey);
     }
 
-    if (schedule.bufferId != null) {
-      final reimbursements = allReimbursements[schedule.bufferId!] ?? [];
-      for (final r in reimbursements) {
+    // Reimbursements reduce saving further (only meaningful on spread outflows).
+    if (event.bufferId != null) {
+      for (final r in allReimbursements[event.bufferId!] ?? const []) {
         final dayKey = toDayKey(r.operationDate);
         deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
       }
@@ -409,13 +422,13 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
 
     if (deltaMap.isEmpty) continue;
 
-    final capexDays = deltaMap.keys.toList()..sort();
+    final days = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
     var cumulative = 0.0;
     double? prevY;
 
-    for (final dayKey in capexDays) {
-      final rate = await rates.getRate(schedule.currency, dayKey);
+    for (final dayKey in days) {
+      final rate = await rates.getRate(event.currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
@@ -427,85 +440,21 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
       prevY = y;
     }
 
-    adjustmentSeries.add(_Series(
-      key: 'adjustment:${schedule.id}',
-      name: schedule.assetName,
+    // Partition by direction to preserve legacy series keys and downstream
+    // Saving = accounts + invested + adjustments + incomeAdjustments formula.
+    final isOutflow = event.direction == EventDirection.outflow;
+    final series = ChartSeries(
+      key: isOutflow ? 'adjustment:${event.id}' : 'income_adj:${event.id}',
+      name: event.name,
       color: _chartColors[colorIdx % _chartColors.length],
       spots: spots,
       isDashed: true,
-    ));
+    );
+    (isOutflow ? adjustmentSeries : incomeAdjSeries).add(series);
     colorIdx++;
   }
 
-  // ════════════════════════════════════════════════
-  // 4. INCOME ADJUSTMENTS — subtract at income date, add back at expenses
-  // ════════════════════════════════════════════════
-  final activeIncomeAdj = await (db.select(db.incomeAdjustments)
-        ..where((a) => a.isActive.equals(true)))
-      .get();
-
-  // Batch-fetch all income adjustment expenses
-  final allAdjExpenses = <int, List<IncomeAdjustmentExpense>>{};
-  if (activeIncomeAdj.isNotEmpty) {
-    final allExpenses = await (db.select(db.incomeAdjustmentExpenses)
-          ..where((e) => e.adjustmentId.isIn(activeIncomeAdj.map((a) => a.id).toList()))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
-    for (final exp in allExpenses) {
-      allAdjExpenses.putIfAbsent(exp.adjustmentId, () => []).add(exp);
-    }
-  }
-
-  final incomeAdjSeries = <_Series>[];
-
-  for (final adj in activeIncomeAdj) {
-    final expenses = allAdjExpenses[adj.id] ?? [];
-
-    final deltaMap = <int, double>{};
-
-    // At income date: subtract the full amount
-    final incomeDayKey = toDayKey(adj.incomeDate);
-    deltaMap[incomeDayKey] = (deltaMap[incomeDayKey] ?? 0) - adj.totalAmount;
-    allDayKeys.add(incomeDayKey);
-
-    // At each expense date: add back the expense amount
-    for (final exp in expenses) {
-      final dayKey = toDayKey(exp.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + exp.amount;
-      allDayKeys.add(dayKey);
-    }
-
-    if (deltaMap.isEmpty) continue;
-
-    final adjDays = deltaMap.keys.toList()..sort();
-    final spots = <FlSpot>[];
-    var cumulative = 0.0;
-    double? prevY;
-
-    for (final dayKey in adjDays) {
-      final rate = await rates.getRate(adj.currency, dayKey);
-      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-      final x = dt.difference(firstDate).inDays.toDouble();
-      if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
-        spots.add(FlSpot(x - 0.5, prevY));
-      }
-      cumulative += deltaMap[dayKey]!;
-      final y = cumulative * rate;
-      spots.add(FlSpot(x, y));
-      prevY = y;
-    }
-
-    incomeAdjSeries.add(_Series(
-      key: 'income_adj:${adj.id}',
-      name: adj.name,
-      color: _chartColors[colorIdx % _chartColors.length],
-      spots: spots,
-      isDashed: true,
-    ));
-    colorIdx++;
-  }
-
-  return _AllSeriesData(
+  return AllSeriesData(
     firstDate: firstDate,
     accounts: accountSeries,
     assetInvested: assetInvestedSeries,
@@ -522,7 +471,7 @@ final _allSeriesDataProvider = FutureProvider<_AllSeriesData?>((ref) async {
 // ════════════════════════════════════════════════════
 
 final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) async {
-  final allSeriesData = await ref.watch(_allSeriesDataProvider.future);
+  final allSeriesData = await ref.watch(allSeriesDataProvider.future);
   if (allSeriesData == null) return null;
 
   final db = ref.watch(databaseProvider);

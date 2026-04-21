@@ -83,6 +83,33 @@ class AppStrings {
   String get importExportTitle        => _it ? 'Importa / Esporta Database' : 'Import / Export Database';
   String get importExportExportHint   => _it ? 'Salva una copia del database' : 'Save a copy of your database';
   String get importExportImportHint   => _it ? 'Sostituisci con un file esterno' : 'Replace with an external file';
+  String get importExportBackupDrive       => _it ? 'Backup su Google Drive'      : 'Backup to Google Drive';
+  String get importExportBackupDriveHint   => _it ? 'Carica il database corrente su Drive (sovrascrive il backup precedente)' : 'Upload current database to Drive (overwrites previous backup)';
+  String get importExportRestoreDrive      => _it ? 'Ripristina da Google Drive' : 'Restore from Google Drive';
+  String get importExportRestoreDriveHint  => _it ? 'Sostituisci il database locale con il backup di Drive' : 'Replace local database with the Drive backup';
+  String get importExportNotSignedIn       => _it ? 'Non sei collegato a Google Drive' : 'Not signed in to Google Drive';
+  String get importExportSignInFirst       => _it ? 'Accedi a Google Drive nelle Impostazioni per usare backup/restore' : 'Sign in to Google Drive in Settings to use backup/restore';
+  String get importExportBackupConfirmTitle => _it ? 'Backup su Google Drive?' : 'Backup to Google Drive?';
+  String importExportBackupConfirmBody(String? remoteInfo) {
+    final base = _it ? 'Il backup attuale su Drive verra sostituito.' : 'The current Drive backup will be overwritten.';
+    if (remoteInfo == null) return base + (_it ? '\nNessun backup esistente.' : '\nNo existing backup.');
+    return '$base\n${_it ? 'Backup esistente' : 'Existing backup'}: $remoteInfo';
+  }
+  String get importExportBackupSuccess     => _it ? 'Backup completato'         : 'Backup complete';
+  String get importExportBackupFailed      => _it ? 'Backup fallito'            : 'Backup failed';
+  String get importExportRestoreConfirmTitle => _it ? 'Ripristinare da Google Drive?' : 'Restore from Google Drive?';
+  String importExportRestoreConfirmBody(String? remoteInfo) {
+    final base = _it ? 'Il database locale verra sostituito con il backup di Drive.' : 'Your local database will be replaced by the Drive backup.';
+    if (remoteInfo == null) return base + (_it ? '\nNessun backup trovato su Drive.' : '\nNo backup found on Drive.');
+    return '$base\n${_it ? 'Backup' : 'Backup'}: $remoteInfo';
+  }
+  String get importExportRestoreSuccess    => _it ? 'Database ripristinato da Drive' : 'Database restored from Drive';
+  String get importExportRestoreFailed     => _it ? 'Ripristino fallito'        : 'Restore failed';
+  String get importExportRestoreEmpty      => _it ? 'Nessun backup trovato su Drive' : 'No backup found on Drive';
+  String importExportRemoteInfo(String size, String date, String? device) {
+    final dev = device != null ? ', $device' : '';
+    return '$size, $date$dev';
+  }
 
   // ── Landing page ──────────────────────────────────────────
   String get landingTitle             => _it ? 'Benvenuto in FinanceCopilot' : 'Welcome to FinanceCopilot';
@@ -465,6 +492,48 @@ class AppStrings {
       ? 'Cumulativo: $cum · Rimanente: $rem'
       : 'Cumulative: $cum · Remaining: $rem';
   String datePrefix(String d)    => _it ? 'Data: $d'           : 'Date: $d';
+
+  // ── Extraordinary Events (unified Adjustments redesign) ──
+  String get eventKindSection            => _it ? 'Tipo di evento'          : 'Event kind';
+  String get eventDirectionLabel         => _it ? 'Direzione'               : 'Direction';
+  String get eventDirectionInflow        => _it ? 'Entrata'                 : 'Inflow';
+  String get eventDirectionOutflow       => _it ? 'Uscita'                  : 'Outflow';
+  String get eventTreatmentLabel         => _it ? 'Trattamento'             : 'Treatment';
+  String get eventTreatmentInstant       => _it ? 'Istantaneo'              : 'Instant';
+  String get eventTreatmentSpread        => _it ? 'Dilazionato'             : 'Spread';
+  String get eventBasicsSection          => _it ? 'Dettagli'                : 'Basics';
+  String get eventDateLabel              => _it ? "Data dell'evento"        : 'Event date';
+  String get eventSpreadSection          => _it ? 'Dilazione'               : 'Spread';
+  String get eventNotesSection           => _it ? 'Note'                    : 'Notes';
+  String get notesOptional               => _it ? 'Note (opzionale)'        : 'Notes (optional)';
+  String get stepFrequencyLabel          => _it ? 'Frequenza'               : 'Frequency';
+  String get stepCountLabel              => _it ? 'Numero passi'            : 'Step count';
+  String get spreadStartLabel            => _it ? 'Inizio dilazione'        : 'Spread start';
+  String get spreadEndLabel              => _it ? 'Fine dilazione'          : 'Spread end';
+  String get spreadModeBackward          => _it ? 'Risparmia prima'         : 'Save before';
+  String get spreadModeForward           => _it ? 'Paga dopo'               : 'Pay after';
+  String get spreadModeStartSteps        => _it ? 'Da data + passi'         : 'From date + steps';
+  String spreadPreview(int n, String amt) => _it ? '$n passi × $amt'        : '$n steps × $amt';
+  String get freqWeekly                  => _it ? 'Settimanale'             : 'Weekly';
+  String get freqMonthly                 => _it ? 'Mensile'                 : 'Monthly';
+  String get freqQuarterly               => _it ? 'Trimestrale'             : 'Quarterly';
+  String get freqYearly                  => _it ? 'Annuale'                 : 'Yearly';
+  String get extraordinaryEvents         => _it ? 'Eventi straordinari'     : 'Extraordinary Events';
+  String get adjustmentsInfoTitle        => _it ? 'Cosa sono gli aggiustamenti' : 'What these events are';
+  String get adjustmentsInfoBody         => _it
+      ? 'Entrate e uscite straordinarie che non riflettono la tua capacità di risparmio '
+        'quotidiana: eredità, donazioni, acquisti eccezionali, grandi ristrutturazioni. '
+        'Vengono esclusi dal segnale di risparmio regolare. Le spese possono essere '
+        'dilazionate nel tempo (es. auto su più anni) o tenute come evento istantaneo.'
+      : 'Extraordinary inflows and outflows that don\'t reflect your day-to-day saving '
+        'capacity: inheritances, donations, exceptional purchases, major renovations. '
+        'They\'re excluded from the regular saving signal. Expenses can be spread over '
+        'time (e.g. a car over several years) or kept as a one-shot event.';
+  String get addEventEntryTitle          => _it ? 'Aggiungi voce'           : 'Add entry';
+  String get regenerateEntries           => _it ? 'Rigenera voci'           : 'Regenerate entries';
+  String get noEntriesYet                => _it ? 'Nessuna voce'            : 'No entries yet';
+  String get descriptionOptional         => _it ? 'Descrizione (opz.)'      : 'Description (optional)';
+  String get dateLabel                   => _it ? 'Data'                    : 'Date';
 
   // ── Capex Edit ───────────────────────────────────────────
   String get editAdjustmentTitle  => _it ? 'Modifica aggiustamento'   : 'Edit Adjustment';

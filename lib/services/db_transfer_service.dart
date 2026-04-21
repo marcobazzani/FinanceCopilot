@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../database/db_file_name.dart';
 import '../utils/logger.dart';
 
 final _log = getLogger('DbTransferService');
@@ -12,7 +13,7 @@ class DbTransferService {
   /// Get the internal DB file path.
   static Future<String> get dbPath async {
     final dir = await getApplicationSupportDirectory();
-    return p.join(dir.path, 'finance_copilot.db');
+    return p.join(dir.path, dbFileName);
   }
 
   /// Export the internal DB to a user-chosen location.
