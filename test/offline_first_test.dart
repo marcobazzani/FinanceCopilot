@@ -11,11 +11,13 @@ void main() {
   late AppDatabase db;
   late InvestingComService priceService;
   late ExchangeRateService rateService;
+  late int iid;
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     priceService = InvestingComService(db);
     rateService = ExchangeRateService(db);
+    iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
   });
 
   tearDown(() async => await db.close());
@@ -54,6 +56,7 @@ void main() {
       valuationMethod: ValuationMethod.marketPrice,
       ticker: Value(ticker),
       currency: Value(currency),
+      intermediaryId: iid,
     ));
   }
 
@@ -184,13 +187,13 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 28 after legacy table cleanup', () async {
-      // v27 added ExtraordinaryEvents; v28 dropped the legacy CAPEX and
-      // IncomeAdjustment tables, renamed buffers.linked_depreciation_id,
-      // and dropped transactions.depreciation_id.
+    test('schema version is 29 after assets.intermediary_id NOT NULL migration', () async {
+      // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
+      // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
+      // a "Default" intermediary and enforces the column non-null in Dart.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 28);
+      expect(version, 29);
     });
 
     test('accounts table has no ghost columns', () async {
@@ -291,6 +294,7 @@ void main() {
         assetClass: const Value(AssetClass.fixedIncome),
         valuationMethod: ValuationMethod.marketPrice,
         currency: Value(currency),
+        intermediaryId: iid,
       ));
     }
 

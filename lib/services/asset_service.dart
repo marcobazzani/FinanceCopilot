@@ -45,6 +45,7 @@ class AssetService {
 
   Future<int> create({
     required String name,
+    required int intermediaryId,
     String? ticker,
     String? isin,
     String? exchange,
@@ -55,11 +56,13 @@ class AssetService {
     AssetClass? assetClass,
   }) {
     _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange, '
-        'valuation=${valuationMethod.name}, instrument=${instrumentType?.name}, class=${assetClass?.name}');
+        'intermediary=$intermediaryId, valuation=${valuationMethod.name}, '
+        'instrument=${instrumentType?.name}, class=${assetClass?.name}');
     return _db.into(_db.assets).insert(AssetsCompanion.insert(
       name: name,
       assetType: AssetType.stockEtf,
       valuationMethod: valuationMethod,
+      intermediaryId: intermediaryId,
       ticker: Value(ticker),
       isin: Value(isin),
       exchange: Value(exchange),

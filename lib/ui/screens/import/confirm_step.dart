@@ -253,12 +253,20 @@ extension _ConfirmStep on _ImportScreenState {
               FilledButton.icon(
                 icon: const Icon(Icons.check),
                 label: Text(s.importButton),
-                onPressed: (isAssetImport || isIncomeImport || _targetId != null) ? _executeImport : null,
+                onPressed: _canImport(isAssetImport, isIncomeImport) ? _executeImport : null,
               ),
             ],
           ),
       ],
     );
+  }
+
+  /// Asset imports require an intermediary selection. Income imports don't.
+  /// Transaction imports require a target account.
+  bool _canImport(bool isAssetImport, bool isIncomeImport) {
+    if (isAssetImport) return _selectedIntermediaryId != null;
+    if (isIncomeImport) return true;
+    return _targetId != null;
   }
 
   Widget _buildIntermediarySelector() {
@@ -267,7 +275,20 @@ extension _ConfirmStep on _ImportScreenState {
     return intermediariesAsync.when(
       data: (intermediaries) {
         if (intermediaries.isEmpty) {
-          return Text(s.unassigned, style: const TextStyle(color: Colors.grey));
+          // Empty state: give the user an inline CTA to create one.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.selectIntermediaryEmpty,
+                  style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.add),
+                label: Text(s.addIntermediary),
+                onPressed: _createIntermediaryInline,
+              ),
+            ],
+          );
         }
         return RadioGroup<int?>(
           groupValue: _selectedIntermediaryId,
@@ -278,9 +299,13 @@ extension _ConfirmStep on _ImportScreenState {
                 title: Text(i.name),
                 value: i.id,
               )),
-              RadioListTile<int?>(
-                title: Text(s.unassigned),
-                value: null,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: Text(s.addIntermediary),
+                  onPressed: _createIntermediaryInline,
+                ),
               ),
             ],
           ),
@@ -289,6 +314,38 @@ extension _ConfirmStep on _ImportScreenState {
       loading: () => const CircularProgressIndicator(),
       error: (e, _) => Text(s.error(e)),
     );
+  }
+
+  Future<void> _createIntermediaryInline() async {
+    final s = ref.read(appStringsProvider);
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(s.addIntermediary),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(labelText: s.intermediaryName),
+            autofocus: true,
+            onChanged: (_) => setDialogState(() {}),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: nameCtrl.text.trim().isNotEmpty
+                  ? () => Navigator.pop(ctx, nameCtrl.text.trim())
+                  : null,
+              child: Text(s.create),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final svc = ref.read(intermediaryServiceProvider);
+    final id = await svc.create(name: name);
+    if (mounted) _setState(() => _selectedIntermediaryId = id);
   }
 
   Widget _buildImportPreview() {
@@ -479,7 +536,7 @@ extension _ConfirmStep on _ImportScreenState {
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
           baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-          intermediaryId: _selectedIntermediaryId,
+          intermediaryId: _selectedIntermediaryId!, // gated by _canImport
         );
         result = assetResult.result;
       }

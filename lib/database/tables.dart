@@ -190,7 +190,10 @@ class Assets extends Table {
   TextColumn get assetType => textEnum<AssetType>()();
   TextColumn get instrumentType => textEnum<InstrumentType>().withDefault(Constant(InstrumentType.etf.name))();
   TextColumn get assetClass => textEnum<AssetClass>().withDefault(Constant(AssetClass.equity.name))();
-  IntColumn get intermediaryId => integer().nullable().references(Intermediaries, #id)();
+  // Every asset must belong to an intermediary (broker/custodian). Unassigned
+  // was removed in schema v29 — migration backfills NULL to a "Default"
+  // intermediary created on upgrade.
+  IntColumn get intermediaryId => integer().references(Intermediaries, #id)();
   TextColumn get assetGroup => text().withDefault(const Constant(''))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get exchange => text().nullable()();
