@@ -2983,9 +2983,9 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
   late final GeneratedColumn<int> intermediaryId = GeneratedColumn<int>(
     'intermediary_id',
     aliasedName,
-    true,
+    false,
     type: DriftSqlType.int,
-    requiredDuringInsert: false,
+    requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES intermediaries (id)',
     ),
@@ -3243,6 +3243,8 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
           _intermediaryIdMeta,
         ),
       );
+    } else if (isInserting) {
+      context.missing(_intermediaryIdMeta);
     }
     if (data.containsKey('asset_group')) {
       context.handle(
@@ -3386,7 +3388,7 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
       intermediaryId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}intermediary_id'],
-      ),
+      )!,
       assetGroup: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}asset_group'],
@@ -3483,7 +3485,7 @@ class Asset extends DataClass implements Insertable<Asset> {
   final AssetType assetType;
   final InstrumentType instrumentType;
   final AssetClass assetClass;
-  final int? intermediaryId;
+  final int intermediaryId;
   final String assetGroup;
   final String currency;
   final String? exchange;
@@ -3508,7 +3510,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.assetType,
     required this.instrumentType,
     required this.assetClass,
-    this.intermediaryId,
+    required this.intermediaryId,
     required this.assetGroup,
     required this.currency,
     this.exchange,
@@ -3552,9 +3554,7 @@ class Asset extends DataClass implements Insertable<Asset> {
         $AssetsTable.$converterassetClass.toSql(assetClass),
       );
     }
-    if (!nullToAbsent || intermediaryId != null) {
-      map['intermediary_id'] = Variable<int>(intermediaryId);
-    }
+    map['intermediary_id'] = Variable<int>(intermediaryId);
     map['asset_group'] = Variable<String>(assetGroup);
     map['currency'] = Variable<String>(currency);
     if (!nullToAbsent || exchange != null) {
@@ -3605,9 +3605,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetType: Value(assetType),
       instrumentType: Value(instrumentType),
       assetClass: Value(assetClass),
-      intermediaryId: intermediaryId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(intermediaryId),
+      intermediaryId: Value(intermediaryId),
       assetGroup: Value(assetGroup),
       currency: Value(currency),
       exchange: exchange == null && nullToAbsent
@@ -3660,7 +3658,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetClass: $AssetsTable.$converterassetClass.fromJson(
         serializer.fromJson<String>(json['assetClass']),
       ),
-      intermediaryId: serializer.fromJson<int?>(json['intermediaryId']),
+      intermediaryId: serializer.fromJson<int>(json['intermediaryId']),
       assetGroup: serializer.fromJson<String>(json['assetGroup']),
       currency: serializer.fromJson<String>(json['currency']),
       exchange: serializer.fromJson<String?>(json['exchange']),
@@ -3698,7 +3696,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       'assetClass': serializer.toJson<String>(
         $AssetsTable.$converterassetClass.toJson(assetClass),
       ),
-      'intermediaryId': serializer.toJson<int?>(intermediaryId),
+      'intermediaryId': serializer.toJson<int>(intermediaryId),
       'assetGroup': serializer.toJson<String>(assetGroup),
       'currency': serializer.toJson<String>(currency),
       'exchange': serializer.toJson<String?>(exchange),
@@ -3728,7 +3726,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     AssetType? assetType,
     InstrumentType? instrumentType,
     AssetClass? assetClass,
-    Value<int?> intermediaryId = const Value.absent(),
+    int? intermediaryId,
     String? assetGroup,
     String? currency,
     Value<String?> exchange = const Value.absent(),
@@ -3753,9 +3751,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetType: assetType ?? this.assetType,
     instrumentType: instrumentType ?? this.instrumentType,
     assetClass: assetClass ?? this.assetClass,
-    intermediaryId: intermediaryId.present
-        ? intermediaryId.value
-        : this.intermediaryId,
+    intermediaryId: intermediaryId ?? this.intermediaryId,
     assetGroup: assetGroup ?? this.assetGroup,
     currency: currency ?? this.currency,
     exchange: exchange.present ? exchange.value : this.exchange,
@@ -3912,7 +3908,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<AssetType> assetType;
   final Value<InstrumentType> instrumentType;
   final Value<AssetClass> assetClass;
-  final Value<int?> intermediaryId;
+  final Value<int> intermediaryId;
   final Value<String> assetGroup;
   final Value<String> currency;
   final Value<String?> exchange;
@@ -3963,7 +3959,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     required AssetType assetType,
     this.instrumentType = const Value.absent(),
     this.assetClass = const Value.absent(),
-    this.intermediaryId = const Value.absent(),
+    required int intermediaryId,
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
@@ -3982,6 +3978,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.updatedAt = const Value.absent(),
   }) : name = Value(name),
        assetType = Value(assetType),
+       intermediaryId = Value(intermediaryId),
        valuationMethod = Value(valuationMethod);
   static Insertable<Asset> custom({
     Expression<int>? id,
@@ -4045,7 +4042,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<AssetType>? assetType,
     Value<InstrumentType>? instrumentType,
     Value<AssetClass>? assetClass,
-    Value<int?>? intermediaryId,
+    Value<int>? intermediaryId,
     Value<String>? assetGroup,
     Value<String>? currency,
     Value<String?>? exchange,
@@ -15388,7 +15385,7 @@ typedef $$AssetsTableCreateCompanionBuilder =
       required AssetType assetType,
       Value<InstrumentType> instrumentType,
       Value<AssetClass> assetClass,
-      Value<int?> intermediaryId,
+      required int intermediaryId,
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
@@ -15415,7 +15412,7 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<AssetType> assetType,
       Value<InstrumentType> instrumentType,
       Value<AssetClass> assetClass,
-      Value<int?> intermediaryId,
+      Value<int> intermediaryId,
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
@@ -15443,9 +15440,9 @@ final class $$AssetsTableReferences
         $_aliasNameGenerator(db.assets.intermediaryId, db.intermediaries.id),
       );
 
-  $$IntermediariesTableProcessedTableManager? get intermediaryId {
-    final $_column = $_itemColumn<int>('intermediary_id');
-    if ($_column == null) return null;
+  $$IntermediariesTableProcessedTableManager get intermediaryId {
+    final $_column = $_itemColumn<int>('intermediary_id')!;
+
     final manager = $$IntermediariesTableTableManager(
       $_db,
       $_db.intermediaries,
@@ -16195,7 +16192,7 @@ class $$AssetsTableTableManager
                 Value<AssetType> assetType = const Value.absent(),
                 Value<InstrumentType> instrumentType = const Value.absent(),
                 Value<AssetClass> assetClass = const Value.absent(),
-                Value<int?> intermediaryId = const Value.absent(),
+                Value<int> intermediaryId = const Value.absent(),
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
@@ -16247,7 +16244,7 @@ class $$AssetsTableTableManager
                 required AssetType assetType,
                 Value<InstrumentType> instrumentType = const Value.absent(),
                 Value<AssetClass> assetClass = const Value.absent(),
-                Value<int?> intermediaryId = const Value.absent(),
+                required int intermediaryId,
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),

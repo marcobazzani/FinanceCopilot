@@ -16,6 +16,8 @@ void main() {
     final importer = ImportService(db);
     final accounts = await db.select(db.accounts).get();
     final accountId = accounts.first.id;
+    final intermediaries = await db.select(db.intermediaries).get();
+    final intermediaryId = intermediaries.first.id;
 
     // -- Import transactions --
     final txPreview = makePreview('''Date,Amount,Description
@@ -57,6 +59,7 @@ void main() {
         ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
       ],
       baseCurrency: 'EUR',
+      intermediaryId: intermediaryId,
     );
 
     expect(assetResult.result.importedRows, 3);

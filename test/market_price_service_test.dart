@@ -8,10 +8,12 @@ import 'package:finance_copilot/services/investing_com_service.dart';
 void main() {
   late AppDatabase db;
   late InvestingComService service;
+  late int iid;
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = InvestingComService(db);
+    iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
   });
 
   tearDown(() async => await db.close());
@@ -23,11 +25,13 @@ void main() {
         name: 'Asset A',
         assetType: AssetType.stockEtf,
         valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: iid,
       ));
       final asset2Id = await db.into(db.assets).insert(AssetsCompanion.insert(
         name: 'Asset B',
         assetType: AssetType.stockEtf,
         valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: iid,
       ));
 
       // Insert 3 prices for asset1

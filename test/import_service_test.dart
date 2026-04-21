@@ -14,11 +14,17 @@ void main() {
   late AppDatabase db;
   late ImportService importer;
   late Directory tempDir;
+  // Every asset needs an intermediary (schema v29). Tests that don't care
+  // about intermediary specifics use this default.
+  late int defaultIntermediaryId;
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     importer = ImportService(db);
     tempDir = Directory.systemTemp.createTempSync('import_test_');
+    defaultIntermediaryId = await db.into(db.intermediaries).insert(
+      IntermediariesCompanion.insert(name: 'Default'),
+    );
   });
 
   tearDown(() async {
@@ -370,6 +376,7 @@ Date,Amount
       ]);
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
       );
       expect(result.result.importedRows, 1);
 
@@ -385,6 +392,7 @@ Date,Amount
       // Provide a selected exchange with Investing.com name
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
         selectedExchanges: {
           'IE00B4L5Y983': const IsinExchangeOption(
             cid: 46925, ticker: 'SWDA', name: 'iShares MSCI World',
@@ -404,6 +412,7 @@ Date,Amount
       ]);
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
         excludedIsins: {'LU0908500753'},
       );
       expect(result.result.importedRows, 1);
@@ -422,6 +431,7 @@ Date,Amount
         isin: const Value('IE00B4L5Y983'),
         exchange: const Value('MIL'),
         ter: const Value(0.20),
+        intermediaryId: defaultIntermediaryId,
       ));
 
       final preview = makeAssetPreview([
@@ -429,6 +439,7 @@ Date,Amount
       ]);
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
       );
 
       // Should reuse existing asset, preserving TER
@@ -447,6 +458,7 @@ Date,Amount
         assetClass: const Value(AssetClass.fixedIncome),
         valuationMethod: ValuationMethod.marketPrice,
         isin: const Value('XS1234567890'),
+        intermediaryId: defaultIntermediaryId,
       ));
 
       // Use mappings WITHOUT amount so the auto-calc path (qty * price / 100) fires
@@ -467,6 +479,7 @@ Date,Amount
 
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: bondMappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
       );
 
       expect(result.result.importedRows, 1);
@@ -631,6 +644,7 @@ Date,Amount
       ]);
       await importer.importAssetEventsGrouped(
         preview: preview1, mappings: datedMappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
       );
       var events = await db.select(db.assetEvents).get();
       expect(events.length, 2);
@@ -641,6 +655,7 @@ Date,Amount
       ]);
       await importer.importAssetEventsGrouped(
         preview: preview2, mappings: datedMappings, baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
       );
 
       events = await db.select(db.assetEvents).get();
@@ -790,63 +805,8 @@ Date,Amount
       expect(events.first.quantity, 10.0);
     });
 
-    test('spot re-import without intermediary replaces only unassigned asset events', () async {
-      final intermediaryId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker B'),
-      );
-
-      // Create assigned asset (Broker B) with a pre-existing event
-      final assignedAssetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-        name: 'SWDA assigned',
-        assetType: AssetType.stockEtf,
-        valuationMethod: ValuationMethod.marketPrice,
-        isin: const Value('IE00B4L5Y983'),
-        intermediaryId: Value(intermediaryId),
-      ));
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-        assetId: assignedAssetId,
-        date: DateTime(2024, 1, 1),
-        valueDate: DateTime(2024, 1, 1),
-        type: EventType.buy,
-        amount: 500,
-        quantity: const Value(5),
-      ));
-
-      // Create unassigned asset (same ISIN, no intermediary) with event
-      final unassignedAssetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-        name: 'SWDA unassigned',
-        assetType: AssetType.stockEtf,
-        valuationMethod: ValuationMethod.marketPrice,
-        isin: const Value('IE00B4L5Y983'),
-        // no intermediaryId
-      ));
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-        assetId: unassignedAssetId,
-        date: DateTime(2024, 1, 1),
-        valueDate: DateTime(2024, 1, 1),
-        type: EventType.buy,
-        amount: 300,
-        quantity: const Value(3),
-      ));
-
-      // Spot re-import of the unassigned asset (intermediaryId: null)
-      // The import will reuse the first matching ISIN asset (the assigned one),
-      // so we test by checking that the unassigned asset's old event is cleaned
-      // and the assigned one is untouched.
-      final preview = makeSpotPreview([
-        ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
-      ]);
-      await importer.importAssetEventsGrouped(
-        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
-        // intermediaryId: null (unassigned)
-      );
-
-      // The assigned event under Broker B must survive untouched
-      final assignedEvents = await (db.select(db.assetEvents)
-        ..where((e) => e.assetId.equals(assignedAssetId))).get();
-      expect(assignedEvents.length, 1, reason: 'assigned intermediary events must not be wiped');
-      expect(assignedEvents.first.quantity, 5.0);
-    });
+    // Removed: "spot re-import without intermediary" scenario is no longer
+    // valid since schema v29 — every asset must have an intermediary.
 
     test('spot re-import with intermediary does not wipe other intermediary events', () async {
       final brokerA = await db.into(db.intermediaries).insert(
@@ -874,11 +834,116 @@ Date,Amount
         intermediaryId: brokerA,
       );
 
-      // Broker B's events must survive
+      // Each broker holds its OWN asset row for this ISIN (same-ISIN-at-
+      // different-brokers scoping). Both events survive, on separate assets.
+      final assets = await (db.select(db.assets)..where((a) => a.isin.equals('IE00B4L5Y983'))).get();
+      expect(assets.length, 2, reason: 'one asset row per (ISIN, intermediary)');
       final allEvents = await db.select(db.assetEvents).get();
       expect(allEvents.length, 2); // 1 for each broker
       final quantities = allEvents.map((e) => e.quantity).toSet();
       expect(quantities, {10.0, 20.0});
+    });
+
+    test('issue #61: disjoint-ISIN spot imports under two intermediaries do not accumulate', () async {
+      final brokerA = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+      final brokerB = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker B'),
+      );
+
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['AAAA00000001', '10', '100', 'EUR', '1000'],
+          ['AAAA00000002', '5',  '200', 'EUR', '1000'],
+          ['AAAA00000003', '2',  '300', 'EUR',  '600'],
+        ]),
+        mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerA,
+      );
+      expect((await db.select(db.assetEvents).get()).length, 3);
+
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['BBBB00000001', '7', '50',  'EUR', '350'],
+          ['BBBB00000002', '4', '125', 'EUR', '500'],
+        ]),
+        mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerB,
+      );
+      expect((await db.select(db.assetEvents).get()).length, 5,
+          reason: "A's 3 + B's 2 = 5 (disjoint ISINs, both portfolios preserved)");
+
+      // Re-import Broker A with NEW quantities. Pre-fix this would have left
+      // Broker A's old events behind because the wipe only scoped to the
+      // current batch's asset ids.
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['AAAA00000001', '20', '110', 'EUR', '2200'],
+          ['AAAA00000002', '15', '210', 'EUR', '3150'],
+          ['AAAA00000003', '12', '310', 'EUR', '3720'],
+        ]),
+        mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerA,
+      );
+
+      final joined = await db.customSelect(
+        'SELECT ae.quantity, a.intermediary_id FROM asset_events ae '
+        'JOIN assets a ON a.id = ae.asset_id',
+      ).get();
+      final aQtys = joined.where((r) => r.read<int>('intermediary_id') == brokerA)
+          .map((r) => r.read<double>('quantity')).toList()..sort();
+      final bQtys = joined.where((r) => r.read<int>('intermediary_id') == brokerB)
+          .map((r) => r.read<double>('quantity')).toList()..sort();
+      expect(aQtys, [12.0, 15.0, 20.0], reason: 'Broker A wiped and replaced with NEW quantities');
+      expect(bQtys, [4.0, 7.0],         reason: 'Broker B untouched');
+    });
+
+    test('same ISIN at two intermediaries produces two independent asset rows', () async {
+      final brokerA = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+      final brokerB = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker B'),
+      );
+
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+        ]),
+        mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerA,
+      );
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['IE00B4L5Y983', '5', '100', 'EUR', '500'],
+        ]),
+        mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerB,
+      );
+
+      final assets = await (db.select(db.assets)..where((a) => a.isin.equals('IE00B4L5Y983'))).get();
+      expect(assets.length, 2, reason: 'one asset row per (ISIN, intermediary)');
+      final byBroker = {for (final a in assets) a.intermediaryId: a.id};
+      expect(byBroker.keys.toSet(), {brokerA, brokerB});
+
+      final eventsA = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(byBroker[brokerA]!))).get();
+      final eventsB = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(byBroker[brokerB]!))).get();
+      expect(eventsA.map((e) => e.quantity), [10.0]);
+      expect(eventsB.map((e) => e.quantity), [5.0]);
+
+      // Re-importing Broker A must not touch Broker B.
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['IE00B4L5Y983', '99', '110', 'EUR', '10890'],
+        ]),
+        mappings: spotMappings, baseCurrency: 'EUR',
+        intermediaryId: brokerA,
+      );
+      final eventsAAfter = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(byBroker[brokerA]!))).get();
+      final eventsBAfter = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(byBroker[brokerB]!))).get();
+      expect(eventsAAfter.map((e) => e.quantity), [99.0]);
+      expect(eventsBAfter.map((e) => e.quantity), [5.0]);
     });
   });
 
