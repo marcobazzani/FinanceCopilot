@@ -66,15 +66,42 @@ class TransactionService {
         .then((rows) => rows > 0);
   }
 
-  Future<int> delete(int id) {
-    _log.warning('delete: transaction id=$id');
-    return (_db.delete(_db.transactions)..where((t) => t.id.equals(id))).go();
+  Future<int> delete(int id) async {
+    final existing = await (_db.select(_db.transactions)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (existing == null) return 0;
+    _log.warning('delete: transaction id=$id accountId=${existing.accountId}');
+    final deleted = await (_db.delete(_db.transactions)..where((t) => t.id.equals(id))).go();
+    if (deleted > 0) await _recalcFromImportConfig(existing.accountId);
+    return deleted;
   }
 
-  Future<int> deleteMany(List<int> ids) {
-    if (ids.isEmpty) return Future.value(0);
-    _log.warning('deleteMany: ${ids.length} transactions');
-    return (_db.delete(_db.transactions)..where((t) => t.id.isIn(ids))).go();
+  Future<int> deleteMany(List<int> ids) async {
+    if (ids.isEmpty) return 0;
+    final affected = await (_db.select(_db.transactions)
+          ..where((t) => t.id.isIn(ids)))
+        .get();
+    final accountIds = affected.map((t) => t.accountId).toSet();
+    _log.warning('deleteMany: ${ids.length} transactions across ${accountIds.length} accounts');
+    final deleted = await (_db.delete(_db.transactions)..where((t) => t.id.isIn(ids))).go();
+    for (final accountId in accountIds) {
+      await _recalcFromImportConfig(accountId);
+    }
+    return deleted;
+  }
+
+  /// Re-run balance recalculation for an account using its saved import config.
+  /// No-op when the account has no import config or the config's balance mode is 'none'.
+  Future<void> _recalcFromImportConfig(int accountId) async {
+    final config = await (_db.select(_db.importConfigs)
+          ..where((c) => c.accountId.equals(accountId)))
+        .getSingleOrNull();
+    if (config == null) return;
+    final mappings = jsonDecode(config.mappingsJson) as Map<String, dynamic>;
+    final mode = (mappings['__balanceMode'] as String?) ?? 'none';
+    if (mode == 'none') return;
+    await recalculateBalances(accountId, balanceMode: mode, savedMappings: mappings);
   }
 
   /// Batch-update balanceAfter for multiple transactions in a single DB transaction.

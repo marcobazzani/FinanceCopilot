@@ -184,12 +184,13 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 26 with ghost column migration', () async {
-      // Verify the DB opens at schema version 26
-      // (which includes the migration to drop bank_account_id, bank_session_id)
+    test('schema version is 28 after legacy table cleanup', () async {
+      // v27 added ExtraordinaryEvents; v28 dropped the legacy CAPEX and
+      // IncomeAdjustment tables, renamed buffers.linked_depreciation_id,
+      // and dropped transactions.depreciation_id.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 26);
+      expect(version, 28);
     });
 
     test('accounts table has no ghost columns', () async {

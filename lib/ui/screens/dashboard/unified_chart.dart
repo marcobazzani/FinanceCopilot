@@ -1,8 +1,8 @@
 part of 'dashboard_screen.dart';
 
-class _DashedLinePainter extends CustomPainter {
+class DashedLinePainter extends CustomPainter {
   final Color color;
-  _DashedLinePainter(this.color);
+  DashedLinePainter(this.color);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -30,7 +30,7 @@ class _DashedLinePainter extends CustomPainter {
 // Drag-to-zoom wrapper (CloudWatch style)
 // ════════════════════════════════════════════════════
 
-class _DragZoomWrapper extends StatefulWidget {
+class DragZoomWrapper extends StatefulWidget {
   final Widget child;
   final double xMin;
   final double xMax;
@@ -43,7 +43,7 @@ class _DragZoomWrapper extends StatefulWidget {
   final String locale;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
-  const _DragZoomWrapper({
+  const DragZoomWrapper({super.key, 
     required this.child,
     required this.xMin,
     required this.xMax,
@@ -56,10 +56,10 @@ class _DragZoomWrapper extends StatefulWidget {
   });
 
   @override
-  State<_DragZoomWrapper> createState() => _DragZoomWrapperState();
+  State<DragZoomWrapper> createState() => _DragZoomWrapperState();
 }
 
-class _DragZoomWrapperState extends State<_DragZoomWrapper> {
+class _DragZoomWrapperState extends State<DragZoomWrapper> {
   Offset? _dragStart;
   Offset? _dragCurrent;
   bool _isDragging = false;
@@ -184,9 +184,9 @@ class _DragZoomWrapperState extends State<_DragZoomWrapper> {
 // Unified chart widget
 // ════════════════════════════════════════════════════
 
-class _UnifiedChart extends StatelessWidget {
+class UnifiedChart extends StatelessWidget {
   final DateTime firstDate;
-  final List<_Series> visible;
+  final List<ChartSeries> visible;
   final List<FlSpot> totalSpots;
   final bool showTotal;
   final String baseCurrency;
@@ -198,7 +198,7 @@ class _UnifiedChart extends StatelessWidget {
   final double? zoomMaxY;
   final bool isPrivate;
 
-  const _UnifiedChart({
+  const UnifiedChart({super.key, 
     required this.firstDate,
     required this.visible,
     required this.totalSpots,

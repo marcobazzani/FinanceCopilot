@@ -355,12 +355,16 @@ class ImportService {
       return ImportResult(totalRows: preview.totalRows, importedRows: 0, errorRows: errorCount, errors: errors);
     }
 
-    // Compute balanceAfter
-    _computeBalances(parsedRows, balanceMode, balanceFilterInclude);
-
     // Find the oldest date in the parsed rows
     final oldestDate = parsedRows.map((r) => r.date).reduce((a, b) => a.isBefore(b) ? a : b);
     final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day).millisecondsSinceEpoch ~/ 1000;
+
+    // Seed cumulative balance from the true pre-cutoff sum so newly inserted
+    // rows continue from the existing account balance instead of restarting at 0.
+    final preCutoffBalance = await _preCutoffBalance(accountId, cutoffEpoch, balanceMode: balanceMode);
+
+    // Compute balanceAfter
+    _computeBalances(parsedRows, balanceMode, balanceFilterInclude, preCutoffBalance);
 
     // Delete all DB rows for this account from oldest CSV date onward
     final deleted = await _db.customUpdate(
@@ -896,7 +900,6 @@ class ImportService {
       }
     }
 
-    final statusMapping = mappingByField['status'];
     final valueDateMapping = mappingByField['valueDate'];
 
     var parsed = 0;
@@ -969,18 +972,15 @@ class ImportService {
       ).getSingle();
       rowsToReplace = countResult.read<int>('cnt');
 
-      // Predicted balance = balance before cutoff + sum of CSV amounts
+      // Predicted balance = balance before cutoff + sum of CSV amounts.
+      // The pre-cutoff balance source depends on balanceMode — see
+      // _preCutoffBalance for why cumulative uses SUM and filtered uses
+      // stored balance_after.
       if (balanceMode == 'column') {
         // In column mode, the balance comes from the CSV — just show the import sum
         predictedBalance = null;
       } else {
-        final balBeforeResult = await _db.customSelect(
-          'SELECT balance_after FROM transactions '
-          'WHERE account_id = ? AND operation_date < ? '
-          'ORDER BY value_date DESC, id DESC LIMIT 1',
-          variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-        ).getSingleOrNull();
-        final balanceBefore = balBeforeResult?.readNullable<double>('balance_after') ?? 0.0;
+        final balanceBefore = await _preCutoffBalance(accountId, cutoffEpoch, balanceMode: balanceMode);
         predictedBalance = balanceBefore + importSum;
       }
     }
@@ -1132,11 +1132,46 @@ class ImportService {
     return EventType.buy;
   }
 
+  /// Pre-cutoff balance for the account at [cutoffEpoch].
+  ///
+  /// In `cumulative` mode every transaction contributes to the running
+  /// balance, so SUM(amount) is the source of truth (immune to per-batch
+  /// `balance_after` drift from older partial-period imports).
+  ///
+  /// In `filtered` mode some rows are excluded by a CSV-only filter column
+  /// that doesn't exist in the DB, so SUM(amount) over-counts. We instead
+  /// trust the stored `balance_after` of the latest pre-cutoff row, which
+  /// previous imports wrote as the *filtered* cumulative.
+  Future<double> _preCutoffBalance(
+    int accountId,
+    int cutoffEpoch, {
+    String balanceMode = 'cumulative',
+  }) async {
+    if (balanceMode == 'filtered') {
+      final row = await _db.customSelect(
+        'SELECT balance_after FROM transactions '
+        'WHERE account_id = ? AND operation_date < ? '
+        'ORDER BY operation_date DESC, id DESC LIMIT 1',
+        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+      ).getSingleOrNull();
+      return row?.readNullable<double>('balance_after') ?? 0.0;
+    }
+    final row = await _db.customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS s FROM transactions '
+      'WHERE account_id = ? AND operation_date < ?',
+      variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+    ).getSingle();
+    return row.read<double>('s');
+  }
+
   /// Compute balanceAfter for parsed rows based on the selected mode.
+  /// [startingBalance] seeds cumulative/filtered modes so newly imported rows
+  /// continue from the account's existing balance instead of restarting at 0.
   void _computeBalances(
     List<_ParsedTransactionRow> rows,
     String balanceMode,
     Set<String>? balanceFilterInclude,
+    double startingBalance,
   ) {
     if (rows.isEmpty || balanceMode == 'none') return;
 
@@ -1162,14 +1197,14 @@ class ImportService {
     double fromCents(int c) => c / 100;
 
     if (balanceMode == 'cumulative') {
-      int balanceCents = 0;
+      int balanceCents = toCents(startingBalance);
       for (final i in indexed) {
         balanceCents += toCents(rows[i].amount);
         rows[i].balanceAfter = fromCents(balanceCents);
       }
-      _log.info('_computeBalances: cumulative - done');
+      _log.info('_computeBalances: cumulative - done (seed=$startingBalance)');
     } else if (balanceMode == 'filtered') {
-      int balanceCents = 0;
+      int balanceCents = toCents(startingBalance);
       for (final i in indexed) {
         final filterVal = rows[i].filterColumnValue ?? '';
         final included = balanceFilterInclude == null ||
@@ -1180,7 +1215,7 @@ class ImportService {
         }
         rows[i].balanceAfter = fromCents(balanceCents);
       }
-      _log.info('_computeBalances: filtered - done');
+      _log.info('_computeBalances: filtered - done (seed=$startingBalance)');
     }
   }
 }

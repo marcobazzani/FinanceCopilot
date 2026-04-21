@@ -5,14 +5,14 @@ part of 'dashboard_screen.dart';
 // ════════════════════════════════════════════════════
 
 /// Unified series for accounts, assets, and CAPEX.
-class _Series {
+class ChartSeries {
   final String key; // unique id for toggling: "a:3" (account), "s:7" (asset), "c:1" (capex)
   final String name;
   final Color color;
   final List<FlSpot> spots;
   final bool isDashed;
   final bool rightAxis; // true → scale into left pixel space, show on right Y-axis
-  const _Series({
+  const ChartSeries({
     required this.key,
     required this.name,
     required this.color,
@@ -23,17 +23,17 @@ class _Series {
 }
 
 /// All chart data: account series, asset series, CAPEX series, market value series.
-class _AllSeriesData {
+class AllSeriesData {
   final DateTime firstDate;
-  final List<_Series> accounts;      // key: "account:<id>"
-  final List<_Series> assetInvested; // key: "asset_invested:<id>"
-  final List<_Series> assetMarket;   // key: "asset_market:<id>"
-  final List<_Series> assetGain;     // key: "asset_gain:<id>"  (market - invested)
-  final List<_Series> adjustments;      // key: "adjustment:<id>"
-  final List<_Series> incomeAdjustments; // key: "income_adj:<id>"
+  final List<ChartSeries> accounts;      // key: "account:<id>"
+  final List<ChartSeries> assetInvested; // key: "asset_invested:<id>"
+  final List<ChartSeries> assetMarket;   // key: "asset_market:<id>"
+  final List<ChartSeries> assetGain;     // key: "asset_gain:<id>"  (market - invested)
+  final List<ChartSeries> adjustments;      // key: "adjustment:<id>"
+  final List<ChartSeries> incomeAdjustments; // key: "income_adj:<id>"
   final String baseCurrency;
 
-  const _AllSeriesData({
+  const AllSeriesData({
     required this.firstDate,
     required this.accounts,
     required this.assetInvested,
@@ -44,7 +44,7 @@ class _AllSeriesData {
     required this.baseCurrency,
   });
 
-  List<_Series> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...assetGain, ...adjustments, ...incomeAdjustments];
+  List<ChartSeries> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...assetGain, ...adjustments, ...incomeAdjustments];
 }
 
 // ════════════════════════════════════════════════════
