@@ -361,7 +361,7 @@ class ImportService {
 
     // Seed cumulative balance from the true pre-cutoff sum so newly inserted
     // rows continue from the existing account balance instead of restarting at 0.
-    final preCutoffBalance = await _preCutoffBalance(accountId, cutoffEpoch);
+    final preCutoffBalance = await _preCutoffBalance(accountId, cutoffEpoch, balanceMode: balanceMode);
 
     // Compute balanceAfter
     _computeBalances(parsedRows, balanceMode, balanceFilterInclude, preCutoffBalance);
@@ -973,14 +973,14 @@ class ImportService {
       rowsToReplace = countResult.read<int>('cnt');
 
       // Predicted balance = balance before cutoff + sum of CSV amounts.
-      // Pre-cutoff balance is computed as SUM(amount), not from stored
-      // balance_after, because a previous partial-period import may have
-      // seeded balance_after from 0 — leaving it offset from the true total.
+      // The pre-cutoff balance source depends on balanceMode — see
+      // _preCutoffBalance for why cumulative uses SUM and filtered uses
+      // stored balance_after.
       if (balanceMode == 'column') {
         // In column mode, the balance comes from the CSV — just show the import sum
         predictedBalance = null;
       } else {
-        final balanceBefore = await _preCutoffBalance(accountId, cutoffEpoch);
+        final balanceBefore = await _preCutoffBalance(accountId, cutoffEpoch, balanceMode: balanceMode);
         predictedBalance = balanceBefore + importSum;
       }
     }
@@ -1132,10 +1132,30 @@ class ImportService {
     return EventType.buy;
   }
 
-  /// Sum of [transactions.amount] for [accountId] strictly before [cutoffEpoch].
-  /// Represents the true running balance at the cutoff (assuming all balance
-  /// is captured as transactions, which is the schema's invariant).
-  Future<double> _preCutoffBalance(int accountId, int cutoffEpoch) async {
+  /// Pre-cutoff balance for the account at [cutoffEpoch].
+  ///
+  /// In `cumulative` mode every transaction contributes to the running
+  /// balance, so SUM(amount) is the source of truth (immune to per-batch
+  /// `balance_after` drift from older partial-period imports).
+  ///
+  /// In `filtered` mode some rows are excluded by a CSV-only filter column
+  /// that doesn't exist in the DB, so SUM(amount) over-counts. We instead
+  /// trust the stored `balance_after` of the latest pre-cutoff row, which
+  /// previous imports wrote as the *filtered* cumulative.
+  Future<double> _preCutoffBalance(
+    int accountId,
+    int cutoffEpoch, {
+    String balanceMode = 'cumulative',
+  }) async {
+    if (balanceMode == 'filtered') {
+      final row = await _db.customSelect(
+        'SELECT balance_after FROM transactions '
+        'WHERE account_id = ? AND operation_date < ? '
+        'ORDER BY operation_date DESC, id DESC LIMIT 1',
+        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+      ).getSingleOrNull();
+      return row?.readNullable<double>('balance_after') ?? 0.0;
+    }
     final row = await _db.customSelect(
       'SELECT COALESCE(SUM(amount), 0) AS s FROM transactions '
       'WHERE account_id = ? AND operation_date < ?',
