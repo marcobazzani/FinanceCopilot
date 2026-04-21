@@ -9,17 +9,21 @@ import 'package:finance_copilot/services/asset_service.dart';
 void main() {
   late AppDatabase db;
   late AssetService service;
+  late int iid;
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = AssetService(db);
+    iid = await db.into(db.intermediaries).insert(
+      IntermediariesCompanion.insert(name: 'Default'),
+    );
   });
 
   tearDown(() async => await db.close());
 
   group('create and retrieve', () {
     test('create returns an id and getById retrieves it', () async {
-      final id = await service.create(name: 'VWCE', currency: 'EUR');
+      final id = await service.create(name: 'VWCE', currency: 'EUR', intermediaryId: iid);
       expect(id, greaterThan(0));
 
       final asset = await service.getById(id);
@@ -35,6 +39,7 @@ void main() {
         exchange: 'NASDAQ',
         currency: 'USD',
         taxRate: 0.26,
+        intermediaryId: iid,
       );
 
       final asset = await service.getById(id);
@@ -46,8 +51,8 @@ void main() {
     });
 
     test('getAll returns all assets', () async {
-      await service.create(name: 'A', currency: 'EUR');
-      await service.create(name: 'B', currency: 'EUR');
+      await service.create(name: 'A', currency: 'EUR', intermediaryId: iid);
+      await service.create(name: 'B', currency: 'EUR', intermediaryId: iid);
 
       final all = await service.getAll();
       expect(all.length, 2);
@@ -56,7 +61,7 @@ void main() {
 
   group('update', () {
     test('update ticker', () async {
-      final id = await service.create(name: 'Test', currency: 'EUR');
+      final id = await service.create(name: 'Test', currency: 'EUR', intermediaryId: iid);
       final result = await service.update(
         id,
         const AssetsCompanion(ticker: Value('TST')),
@@ -68,7 +73,7 @@ void main() {
     });
 
     test('update isin', () async {
-      final id = await service.create(name: 'Test', currency: 'EUR');
+      final id = await service.create(name: 'Test', currency: 'EUR', intermediaryId: iid);
       await service.update(
         id,
         const AssetsCompanion(isin: Value('IE00BK5BQT80')),
@@ -89,7 +94,7 @@ void main() {
 
   group('delete', () {
     test('delete removes the asset', () async {
-      final id = await service.create(name: 'ToDelete', currency: 'EUR');
+      final id = await service.create(name: 'ToDelete', currency: 'EUR', intermediaryId: iid);
       final deleted = await service.delete(id);
       expect(deleted, 1);
 
@@ -98,7 +103,7 @@ void main() {
     });
 
     test('delete cascades events', () async {
-      final assetId = await service.create(name: 'WithEvents', currency: 'EUR');
+      final assetId = await service.create(name: 'WithEvents', currency: 'EUR', intermediaryId: iid);
 
       // Insert events directly
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
@@ -137,16 +142,16 @@ void main() {
 
   group('deleteMany', () {
     test('empty list is a no-op', () async {
-      await service.create(name: 'Keep', currency: 'EUR');
+      await service.create(name: 'Keep', currency: 'EUR', intermediaryId: iid);
       final n = await service.deleteMany([]);
       expect(n, 0);
       expect((await service.getAll()).length, 1);
     });
 
     test('removes multiple assets in one call', () async {
-      final a = await service.create(name: 'A', currency: 'EUR');
-      final b = await service.create(name: 'B', currency: 'EUR');
-      final c = await service.create(name: 'C', currency: 'EUR');
+      final a = await service.create(name: 'A', currency: 'EUR', intermediaryId: iid);
+      final b = await service.create(name: 'B', currency: 'EUR', intermediaryId: iid);
+      final c = await service.create(name: 'C', currency: 'EUR', intermediaryId: iid);
 
       final n = await service.deleteMany([a, c]);
       expect(n, 2);
@@ -156,9 +161,9 @@ void main() {
     });
 
     test('cascades events, snapshots and prices for all deleted assets', () async {
-      final a = await service.create(name: 'A', currency: 'EUR');
-      final b = await service.create(name: 'B', currency: 'EUR');
-      final keep = await service.create(name: 'Keep', currency: 'EUR');
+      final a = await service.create(name: 'A', currency: 'EUR', intermediaryId: iid);
+      final b = await service.create(name: 'B', currency: 'EUR', intermediaryId: iid);
+      final keep = await service.create(name: 'Keep', currency: 'EUR', intermediaryId: iid);
 
       for (final id in [a, b, keep]) {
         await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
@@ -198,9 +203,9 @@ void main() {
 
   group('reorder', () {
     test('reorder updates sortOrder', () async {
-      final id1 = await service.create(name: 'A', currency: 'EUR');
-      final id2 = await service.create(name: 'B', currency: 'EUR');
-      final id3 = await service.create(name: 'C', currency: 'EUR');
+      final id1 = await service.create(name: 'A', currency: 'EUR', intermediaryId: iid);
+      final id2 = await service.create(name: 'B', currency: 'EUR', intermediaryId: iid);
+      final id3 = await service.create(name: 'C', currency: 'EUR', intermediaryId: iid);
 
       await service.reorder([id3, id1, id2]);
 
@@ -216,13 +221,13 @@ void main() {
 
   group('getStatsForAll', () {
     test('returns empty map when no events', () async {
-      await service.create(name: 'NoEvents', currency: 'EUR');
+      await service.create(name: 'NoEvents', currency: 'EUR', intermediaryId: iid);
       final stats = await service.getStatsForAll();
       expect(stats, isEmpty);
     });
 
     test('returns correct stats with buy events', () async {
-      final assetId = await service.create(name: 'Stats', currency: 'EUR');
+      final assetId = await service.create(name: 'Stats', currency: 'EUR', intermediaryId: iid);
 
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
@@ -255,7 +260,7 @@ void main() {
     });
 
     test('sell events reduce totalQuantity', () async {
-      final assetId = await service.create(name: 'BuySell', currency: 'EUR');
+      final assetId = await service.create(name: 'BuySell', currency: 'EUR', intermediaryId: iid);
 
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,
@@ -282,7 +287,7 @@ void main() {
     });
 
     test('revalue events do not affect quantity or invested', () async {
-      final assetId = await service.create(name: 'RevalueTest', currency: 'EUR');
+      final assetId = await service.create(name: 'RevalueTest', currency: 'EUR', intermediaryId: iid);
 
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
             assetId: assetId,

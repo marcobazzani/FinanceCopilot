@@ -423,9 +423,10 @@ class ImportService {
     /// If provided, fills missing exchange rates from historical data after import.
     ExchangeRateService? rateService,
     required String baseCurrency,
-    /// If set, new assets are assigned to this intermediary and deletion
-    /// is scoped to ALL assets under this intermediary.
-    int? intermediaryId,
+    /// New assets are assigned to this intermediary; deletion is scoped to
+    /// ALL assets under this intermediary. Required — unassigned was removed
+    /// in schema v29.
+    required int intermediaryId,
   }) async {
     _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
     final mappingByField = {for (final m in mappings) m.targetField: m};
@@ -475,11 +476,15 @@ class ImportService {
 
     _log.info('importAssetEventsGrouped: found ${isinToRows.length} unique ISINs');
 
-    // Find or create asset for each ISIN
+    // Find or create asset for each ISIN. Scope the lookup to this
+    // intermediary so the same ISIN held at two brokers produces two
+    // independent asset rows (one per broker, each with its own events).
     final assetsByIsin = <String, int>{};
     final existingByIsin = <String, int>{};
     final existingRows = await _db.customSelect(
-      "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != ''",
+      "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != '' "
+      "AND intermediary_id = ?",
+      variables: [Variable.withInt(intermediaryId)],
       readsFrom: {_db.assets},
     ).get();
     for (final row in existingRows) {
@@ -536,7 +541,7 @@ class ImportService {
           isin: Value(isin),
           currency: Value(currency),
           exchange: Value(exchange),
-          intermediaryId: Value(intermediaryId),
+          intermediaryId: intermediaryId,
         ));
         assetsByIsin[isin] = assetId;
         _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker, exchange=$exchange');
@@ -672,56 +677,28 @@ class ImportService {
     }
 
     if (isSpot) {
-      // Spot import: wipe ALL events for the target scope (no date filter)
-      if (intermediaryId != null) {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id IN '
-          '(SELECT id FROM assets WHERE intermediary_id = ?)',
-          variables: [Variable.withInt(intermediaryId)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
-      } else {
-        for (final assetId in byAsset.keys) {
-          final deleted = await _db.customUpdate(
-            'DELETE FROM asset_events WHERE asset_id IN '
-            '(SELECT id FROM assets WHERE intermediary_id IS NULL AND id = ?)',
-            variables: [Variable.withInt(assetId)],
-            updates: {_db.assetEvents},
-          );
-          totalDeleted += deleted;
-          _log.fine('importAssetEventsGrouped: spot wipe unassigned asset $assetId - deleted $deleted events');
-        }
-      }
+      // Spot import: every asset belongs to one intermediary, so the wipe
+      // scope is the full set of events under that intermediary.
+      totalDeleted = await _db.customUpdate(
+        'DELETE FROM asset_events WHERE asset_id IN '
+        '(SELECT id FROM assets WHERE intermediary_id = ?)',
+        variables: [Variable.withInt(intermediaryId)],
+        updates: {_db.assetEvents},
+      );
+      _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
     } else {
-      // Transaction import: date-based wipe-and-replace
+      // Transaction import: date-based wipe-and-replace, scoped to the
+      // intermediary's assets.
       final globalOldest = companions.map((c) => c.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
       final globalCutoff = DateTime(globalOldest.year, globalOldest.month, globalOldest.day);
       final cutoffEpoch = globalCutoff.millisecondsSinceEpoch ~/ 1000;
-
-      if (intermediaryId != null) {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id IN '
-          '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
-          variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
-      } else {
-        for (final entry in byAsset.entries) {
-          final assetId = entry.key;
-          final events = entry.value;
-          final oldestDate = events.map((e) => e.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
-          final cutoff = DateTime(oldestDate.year, oldestDate.month, oldestDate.day);
-          final deleted = await _db.customUpdate(
-            'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
-            variables: [Variable.withInt(assetId), Variable.withInt(cutoff.millisecondsSinceEpoch ~/ 1000)],
-            updates: {_db.assetEvents},
-          );
-          totalDeleted += deleted;
-          _log.fine('importAssetEventsGrouped: asset $assetId - deleted $deleted events from ${formatYmd(cutoff)}');
-        }
-      }
+      totalDeleted = await _db.customUpdate(
+        'DELETE FROM asset_events WHERE asset_id IN '
+        '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
+        variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
+        updates: {_db.assetEvents},
+      );
+      _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
     }
 
     _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');

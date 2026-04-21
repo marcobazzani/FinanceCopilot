@@ -117,27 +117,24 @@ void main() {
       expect(account.intermediaryId, isNull);
     });
 
-    test('unlinks assets when intermediary is deleted', () async {
+    test('refuses to delete an intermediary that still has assets', () async {
       final intId = await service.create(name: 'Broker A');
 
-      // Create an asset linked to the intermediary
-      final assetId = await db.into(db.assets).insert(
+      await db.into(db.assets).insert(
         AssetsCompanion.insert(
           name: 'ETF World',
           assetType: AssetType.stockEtf,
           valuationMethod: ValuationMethod.marketPrice,
-          intermediaryId: Value(intId),
+          intermediaryId: intId,
         ),
       );
 
-      // Delete the intermediary
-      await service.delete(intId);
-
-      // Asset should still exist but with null intermediaryId
-      final asset = await (db.select(db.assets)
-            ..where((a) => a.id.equals(assetId)))
-          .getSingle();
-      expect(asset.intermediaryId, isNull);
+      // Assets must always have an intermediary (schema v29), so deletion
+      // refuses until the user moves the assets elsewhere.
+      expect(
+        () => service.delete(intId),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 
@@ -213,12 +210,14 @@ void main() {
 
   group('moveAsset', () {
     test('assigns an asset to an intermediary', () async {
+      final defaultInt = await service.create(name: 'Default');
       final intId = await service.create(name: 'Broker A');
       final assetId = await db.into(db.assets).insert(
         AssetsCompanion.insert(
           name: 'ETF World',
           assetType: AssetType.stockEtf,
           valuationMethod: ValuationMethod.marketPrice,
+          intermediaryId: defaultInt,
         ),
       );
 
@@ -230,25 +229,6 @@ void main() {
       expect(asset.intermediaryId, intId);
     });
 
-    test('unassigns an asset from an intermediary', () async {
-      final intId = await service.create(name: 'Broker A');
-      final assetId = await db.into(db.assets).insert(
-        AssetsCompanion.insert(
-          name: 'ETF World',
-          assetType: AssetType.stockEtf,
-          valuationMethod: ValuationMethod.marketPrice,
-          intermediaryId: Value(intId),
-        ),
-      );
-
-      await service.moveAsset(assetId, null);
-
-      final asset = await (db.select(db.assets)
-            ..where((a) => a.id.equals(assetId)))
-          .getSingle();
-      expect(asset.intermediaryId, isNull);
-    });
-
     test('moves asset from one intermediary to another', () async {
       final intId1 = await service.create(name: 'Broker A');
       final intId2 = await service.create(name: 'Broker B');
@@ -257,7 +237,7 @@ void main() {
           name: 'ETF World',
           assetType: AssetType.stockEtf,
           valuationMethod: ValuationMethod.marketPrice,
-          intermediaryId: Value(intId1),
+          intermediaryId: intId1,
         ),
       );
 

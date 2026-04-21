@@ -21,6 +21,7 @@ Asset _makeAsset({
     assetType: AssetType.stockEtf,
     instrumentType: instrumentType,
     assetClass: assetClass,
+    intermediaryId: 1,
     assetGroup: '',
     currency: currency,
     country: country,

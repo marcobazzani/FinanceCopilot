@@ -192,12 +192,14 @@ Future<int> _seedStock(
   String exchange = 'MIL',
   String currency = 'EUR',
 }) async {
+  final intermediaries = await db.select(db.intermediaries).get();
   return db.into(db.assets).insert(AssetsCompanion.insert(
     name: name,
     assetType: AssetType.stockEtf,
     instrumentType: const Value(InstrumentType.stock),
     assetClass: const Value(AssetClass.equity),
     valuationMethod: ValuationMethod.marketPrice,
+    intermediaryId: intermediaries.first.id,
     isin: Value(isin),
     ticker: Value(ticker),
     exchange: Value(exchange),
@@ -214,12 +216,14 @@ Future<int> _seedBond(
   String exchange = 'MIL',
   String currency = 'EUR',
 }) async {
+  final intermediaries = await db.select(db.intermediaries).get();
   return db.into(db.assets).insert(AssetsCompanion.insert(
     name: name,
     assetType: AssetType.stockEtf,
     instrumentType: const Value(InstrumentType.bond),
     assetClass: const Value(AssetClass.fixedIncome),
     valuationMethod: ValuationMethod.marketPrice,
+    intermediaryId: intermediaries.first.id,
     isin: Value(isin),
     exchange: Value(exchange),
     currency: Value(currency),

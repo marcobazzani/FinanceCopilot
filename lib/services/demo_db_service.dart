@@ -151,6 +151,10 @@ class DemoDbService {
   // ── Assets (fictional, anonymized) ──
 
   static Future<void> _insertAssets(AppDatabase db) async {
+    // Every asset needs an intermediary since schema v29; create a demo one.
+    final intermediaryId = await db.into(db.intermediaries).insert(
+      IntermediariesCompanion.insert(name: 'Demo Broker'),
+    );
     final assets = [
       ('VWCE', 'Vanguard FTSE All-World', AssetType.stockEtf, InstrumentType.etf, AssetClass.equity, 'EUR', 'MIL', 'VWCE.MI', 'IE00BK5BQT80', 'global'),
       ('AGGH', 'iShares Core Global Agg Bond', AssetType.bondEtf, InstrumentType.etf, AssetClass.fixedIncome, 'EUR', 'MIL', 'AGGH.MI', 'IE00BDBRDM35', 'bonds'),
@@ -174,6 +178,7 @@ class DemoDbService {
         yahooTicker: Value(yahoo),
         valuationMethod: ValuationMethod.marketPrice,
         sortOrder: Value(i + 1),
+        intermediaryId: intermediaryId,
       ));
     }
   }
