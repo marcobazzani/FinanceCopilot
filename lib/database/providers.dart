@@ -17,7 +17,5 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 
 /// Google Drive sync service (singleton).
 final googleDriveSyncProvider = Provider<GoogleDriveSyncService>((ref) {
-  final service = GoogleDriveSyncService();
-  ref.onDispose(() => service.stopAutoSync());
-  return service;
+  return GoogleDriveSyncService();
 });

@@ -83,6 +83,33 @@ class AppStrings {
   String get importExportTitle        => _it ? 'Importa / Esporta Database' : 'Import / Export Database';
   String get importExportExportHint   => _it ? 'Salva una copia del database' : 'Save a copy of your database';
   String get importExportImportHint   => _it ? 'Sostituisci con un file esterno' : 'Replace with an external file';
+  String get importExportBackupDrive       => _it ? 'Backup su Google Drive'      : 'Backup to Google Drive';
+  String get importExportBackupDriveHint   => _it ? 'Carica il database corrente su Drive (sovrascrive il backup precedente)' : 'Upload current database to Drive (overwrites previous backup)';
+  String get importExportRestoreDrive      => _it ? 'Ripristina da Google Drive' : 'Restore from Google Drive';
+  String get importExportRestoreDriveHint  => _it ? 'Sostituisci il database locale con il backup di Drive' : 'Replace local database with the Drive backup';
+  String get importExportNotSignedIn       => _it ? 'Non sei collegato a Google Drive' : 'Not signed in to Google Drive';
+  String get importExportSignInFirst       => _it ? 'Accedi a Google Drive nelle Impostazioni per usare backup/restore' : 'Sign in to Google Drive in Settings to use backup/restore';
+  String get importExportBackupConfirmTitle => _it ? 'Backup su Google Drive?' : 'Backup to Google Drive?';
+  String importExportBackupConfirmBody(String? remoteInfo) {
+    final base = _it ? 'Il backup attuale su Drive verra sostituito.' : 'The current Drive backup will be overwritten.';
+    if (remoteInfo == null) return base + (_it ? '\nNessun backup esistente.' : '\nNo existing backup.');
+    return '$base\n${_it ? 'Backup esistente' : 'Existing backup'}: $remoteInfo';
+  }
+  String get importExportBackupSuccess     => _it ? 'Backup completato'         : 'Backup complete';
+  String get importExportBackupFailed      => _it ? 'Backup fallito'            : 'Backup failed';
+  String get importExportRestoreConfirmTitle => _it ? 'Ripristinare da Google Drive?' : 'Restore from Google Drive?';
+  String importExportRestoreConfirmBody(String? remoteInfo) {
+    final base = _it ? 'Il database locale verra sostituito con il backup di Drive.' : 'Your local database will be replaced by the Drive backup.';
+    if (remoteInfo == null) return base + (_it ? '\nNessun backup trovato su Drive.' : '\nNo backup found on Drive.');
+    return '$base\n${_it ? 'Backup' : 'Backup'}: $remoteInfo';
+  }
+  String get importExportRestoreSuccess    => _it ? 'Database ripristinato da Drive' : 'Database restored from Drive';
+  String get importExportRestoreFailed     => _it ? 'Ripristino fallito'        : 'Restore failed';
+  String get importExportRestoreEmpty      => _it ? 'Nessun backup trovato su Drive' : 'No backup found on Drive';
+  String importExportRemoteInfo(String size, String date, String? device) {
+    final dev = device != null ? ', $device' : '';
+    return '$size, $date$dev';
+  }
 
   // ── Landing page ──────────────────────────────────────────
   String get landingTitle             => _it ? 'Benvenuto in FinanceCopilot' : 'Welcome to FinanceCopilot';
