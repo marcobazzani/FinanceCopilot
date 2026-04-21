@@ -960,6 +960,61 @@ Date,Amount
       expect(txs[2].balanceAfter, 700.0);
     });
 
+    test('previewTransactionImport in filtered mode uses stored balance_after, not SUM(amount)', () async {
+      // Filtered mode: some CSV rows are excluded from the running balance
+      // (e.g. Revolut internal transfers). The DB stores ALL rows but
+      // balance_after on each row is the FILTERED cumulative. SUM(amount)
+      // would include the excluded rows and produce a wildly wrong answer.
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Revolut'),
+      );
+
+      // Pre-existing rows: amounts sum to 1000, but stored balance_after on
+      // the latest row is 200 (because 800 was excluded by the filter when
+      // the previous import wrote those rows).
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 1),
+        valueDate: DateTime(2024, 12, 1),
+        amount: 800.0,
+        balanceAfter: const Value(0.0), // excluded by filter
+      ));
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+        accountId: accountId,
+        operationDate: DateTime(2024, 12, 2),
+        valueDate: DateTime(2024, 12, 2),
+        amount: 200.0,
+        balanceAfter: const Value(200.0), // filtered cumulative = 200
+      ));
+
+      final preview = const FilePreview(
+        columns: ['Date', 'Amount', 'State'],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '50', 'State': 'COMPLETATO'},
+          {'Date': '2025-01-02', 'Amount': '999', 'State': 'EXCLUDED'},
+        ],
+        totalRows: 2,
+      );
+
+      final result = await importer.previewTransactionImport(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+        balanceMode: 'filtered',
+        balanceFilterColumn: 'State',
+        balanceFilterInclude: {'COMPLETATO'},
+      );
+
+      // Filtered import sum = 50 (the 999 row is excluded).
+      // Pre-cutoff balance (filtered cumulative from stored balance_after) = 200.
+      // Predicted = 200 + 50 = 250.
+      expect(result.importSum, 50.0);
+      expect(result.predictedBalance, 250.0);
+    });
+
     test('importTransactions starting balance is 0 when no pre-cutoff rows exist', () async {
       final accountId = await db.into(db.accounts).insert(
         AccountsCompanion.insert(name: 'FreshAccount'),
