@@ -35,19 +35,6 @@ final _log = getLogger('Main');
 /// Feature flag: enable demo DB generation (disabled by default, enable at compile time).
 const _enableDemo = bool.fromEnvironment('ENABLE_DEMO', defaultValue: false);
 
-/// Tables that are updated by background sync (prices, rates, compositions).
-/// Changes to these should NOT trigger Google Drive upload.
-const _backgroundTables = {
-  'market_prices', 'exchange_rates', 'app_configs', 'asset_compositions',
-};
-
-/// Stream of user-initiated table updates only (excludes background sync tables).
-Stream<void> _userTableUpdates(AppDatabase db) {
-  return db.tableUpdates().where((updates) {
-    return updates.any((u) => !_backgroundTables.contains(u.table));
-  }).map((_) {});
-}
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initLogging();
@@ -293,56 +280,38 @@ class _AppShellState extends ConsumerState<AppShell> {
     super.dispose();
   }
 
+  /// Restore the Drive sign-in session silently (if possible) so the manual
+  /// Backup/Restore buttons in Import/Export can call Drive without an
+  /// interactive prompt every time. We do NOT auto-pull or auto-push — all
+  /// Drive operations are explicit user actions; see _backupToDrive /
+  /// _restoreFromDrive in the Import/Export dialog.
   Future<void> _initDriveSync() async {
     final sync = ref.read(googleDriveSyncProvider);
-    final signedIn = await sync.trySilentSignIn();
-    if (!signedIn) {
-      if (sync.needsReauth && mounted) {
-        _log.info('Drive sync: showing re-auth SnackBar');
-        final s = ref.read(appStringsProvider);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(s.syncReauthNeeded),
-          duration: const Duration(seconds: 8),
-          action: SnackBarAction(
-            label: s.settingsSyncSignIn,
-            onPressed: () async {
-              final ok = await sync.signIn();
-              if (!ok) return;
-              _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
-              _wireSyncCallbacks(sync);
-              final pulled = await sync.pullIfNewerOnStartup();
-              if (pulled && mounted) {
-                ref.read(dbReloadTrigger.notifier).state++;
-              }
-              final db = ref.read(databaseProvider);
-              sync.startAutoSync(_userTableUpdates(db));
-            },
-          ),
-        ));
-      }
-      return;
-    }
-    _log.info('Drive sync: signed in as ${sync.userEmail}');
     _wireSyncCallbacks(sync);
-
-    final pulled = await sync.pullIfNewerOnStartup();
-    if (pulled && mounted) {
-      _log.info('Drive sync: pulled newer DB from remote');
-      ref.read(dbReloadTrigger.notifier).state++;
+    final signedIn = await sync.trySilentSignIn();
+    if (signedIn) {
+      _log.info('Drive sync: signed in as ${sync.userEmail}');
+    } else if (sync.needsReauth && mounted) {
+      _log.info('Drive sync: needs re-auth (use Settings to sign in)');
+      final s = ref.read(appStringsProvider);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(s.syncReauthNeeded),
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: s.settingsSyncSignIn,
+          onPressed: () async {
+            final ok = await sync.signIn();
+            if (ok) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
+          },
+        ),
+      ));
     }
-
-    // Start auto-push on DB changes
-    final db = ref.read(databaseProvider);
-    sync.startAutoSync(_userTableUpdates(db));
   }
 
   Future<void> _checkEmptyDb() async {
     try {
       final db = ref.read(databaseProvider);
-      final sync = ref.read(googleDriveSyncProvider);
       final hasData = await _dbHasUserData(db);
-      sync.setHasUserData(hasData);
-      _wireSyncCallbacks(sync);
       if (!hasData && mounted) {
         setState(() => _showLanding = true);
       }
@@ -410,45 +379,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     return assetCount + accountCount > 0;
   }
 
-  Future<ConflictChoice> _showConflictDialog(ConflictInfo info) async {
-    if (!mounted) return ConflictChoice.keepRemote;
-    final s = ref.read(appStringsProvider);
-    final remoteTime = '${info.remoteModifiedTime.toLocal()}'.split('.').first;
-    final choice = await showDialog<ConflictChoice>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.warning_amber, color: Theme.of(ctx).colorScheme.error),
-            const SizedBox(width: 8),
-            Text(s.conflictTitle),
-          ],
-        ),
-        content: Text(s.conflictBody(info.remoteDeviceName, remoteTime)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, ConflictChoice.cancel),
-            child: Text(s.conflictCancel),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, ConflictChoice.keepRemote),
-            child: Text(s.conflictKeepRemote),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ConflictChoice.keepLocal),
-            child: Text(s.conflictKeepLocal),
-          ),
-        ],
-      ),
-    );
-    return choice ?? ConflictChoice.cancel;
-  }
 
-  /// Wire up sync service callbacks (user data check + conflict dialog + DB reload).
+  /// Wire up sync service callbacks needed for the explicit
+  /// Backup/Restore-from-Drive operations.
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
-    sync.checkHasUserData = () => _dbHasUserData(ref.read(databaseProvider));
-    sync.onConflict = _showConflictDialog;
     sync.copyFromAttached = (tmpPath) => _mergeRemoteDb(tmpPath);
     sync.onDbReplaced = () {
       if (mounted) {
@@ -564,19 +498,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       final online = await ref.read(networkMonitorProvider).check();
       ref.read(networkOnlineProvider.notifier).state = online;
 
-      // Drive pull is best-effort
-      final sync = ref.read(googleDriveSyncProvider);
-      if (sync.isSignedIn) {
-        try {
-          final pulled = await sync.pullIfNewerOnStartup();
-          if (pulled && mounted) {
-            ref.read(dbReloadTrigger.notifier).state++;
-          }
-        } catch (e) {
-          _log.warning('Manual refresh: Drive pull failed, continuing: $e');
-        }
-      }
-
       // Market data sync is best-effort
       _log.info('Manual refresh: syncing market data...');
       try {
@@ -686,11 +607,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                           if (!ok) return;
                           if (mounted) setState(() => _syncingDrive = true);
                           _wireSyncCallbacks(sync);
-                          final pulled = await sync.pullIfNewerOnStartup();
-                          if (pulled) ref.read(dbReloadTrigger.notifier).state++;
-                          final db = ref.read(databaseProvider);
-                          sync.setHasUserData(await _dbHasUserData(db));
-                          sync.startAutoSync(_userTableUpdates(db));
+                          try {
+                            final restored = await sync.restoreFromDrive();
+                            if (restored != null && mounted) {
+                              ref.read(dbReloadTrigger.notifier).state++;
+                            }
+                          } catch (e) {
+                            _log.warning('Landing sync: restore failed: $e');
+                          }
                           if (mounted) {
                             setState(() {
                               _syncingDrive = false;
@@ -959,6 +883,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   Future<void> _showImportExportDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
+    final sync = ref.read(googleDriveSyncProvider);
+    final isSignedIn = sync.isSignedIn;
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -978,6 +904,21 @@ class _AppShellState extends ConsumerState<AppShell> {
               subtitle: Text(s.importExportImportHint),
               onTap: () => Navigator.pop(ctx, 'import'),
             ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.cloud_upload),
+              title: Text(s.importExportBackupDrive),
+              subtitle: Text(isSignedIn ? s.importExportBackupDriveHint : s.importExportSignInFirst),
+              enabled: isSignedIn,
+              onTap: isSignedIn ? () => Navigator.pop(ctx, 'backup') : null,
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_download),
+              title: Text(s.importExportRestoreDrive),
+              subtitle: Text(isSignedIn ? s.importExportRestoreDriveHint : s.importExportSignInFirst),
+              enabled: isSignedIn,
+              onTap: isSignedIn ? () => Navigator.pop(ctx, 'restore') : null,
+            ),
           ],
         ),
         actions: [
@@ -995,6 +936,117 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     } else if (action == 'import') {
       await _importDb(context);
+    } else if (action == 'backup') {
+      await _backupToDrive(context);
+    } else if (action == 'restore') {
+      await _restoreFromDrive(context);
+    }
+  }
+
+  String _formatRemoteInfo(AppStrings s, DriveFileInfo info) {
+    final size = _formatBytes(info.size);
+    final date = '${info.modifiedTime.toLocal()}'.split('.').first;
+    return s.importExportRemoteInfo(size, date, info.deviceName);
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _backupToDrive(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final sync = ref.read(googleDriveSyncProvider);
+
+    // Pre-flight: show the user what will be overwritten on Drive.
+    final existing = await sync.getRemoteInfo();
+    if (!context.mounted) return;
+    final remoteInfo = existing != null ? _formatRemoteInfo(s, existing) : null;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.importExportBackupConfirmTitle),
+        content: Text(s.importExportBackupConfirmBody(remoteInfo)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.importExportBackupDrive),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await sync.backupToDrive();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.importExportBackupSuccess)),
+      );
+    } catch (e) {
+      _log.warning('backupToDrive failed: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${s.importExportBackupFailed}: $e')),
+      );
+    }
+  }
+
+  Future<void> _restoreFromDrive(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final sync = ref.read(googleDriveSyncProvider);
+
+    // Pre-flight: show the user what will be pulled from Drive.
+    final existing = await sync.getRemoteInfo();
+    if (!context.mounted) return;
+    if (existing == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.importExportRestoreEmpty)),
+      );
+      return;
+    }
+    final remoteInfo = _formatRemoteInfo(s, existing);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.importExportRestoreConfirmTitle),
+        content: Text(s.importExportRestoreConfirmBody(remoteInfo)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(s.importExportRestoreDrive),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      _wireSyncCallbacks(sync);
+      final restored = await sync.restoreFromDrive();
+      if (!context.mounted) return;
+      if (restored == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.importExportRestoreEmpty)),
+        );
+        return;
+      }
+      ref.read(dbReloadTrigger.notifier).state++;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.importExportRestoreSuccess)),
+      );
+    } catch (e) {
+      _log.warning('restoreFromDrive failed: $e');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${s.importExportRestoreFailed}: $e')),
+      );
     }
   }
 
@@ -1222,15 +1274,9 @@ class _AppShellState extends ConsumerState<AppShell> {
                       onPressed: () async {
                         final ok = await sync.signIn();
                         if (ok) {
-                          // Pull remote DB if newer, then start auto-sync
+                          // Just sign in. Backup/Restore are explicit user
+                          // actions in the Import/Export dialog.
                           _wireSyncCallbacks(sync);
-                          final pulled = await sync.pullIfNewerOnStartup();
-                          if (pulled) {
-                            ref.read(dbReloadTrigger.notifier).state++;
-                          }
-                          final db = ref.read(databaseProvider);
-                          sync.setHasUserData(await _dbHasUserData(db));
-                          sync.startAutoSync(_userTableUpdates(db));
                           setDialogState(() {});
                         }
                       },
