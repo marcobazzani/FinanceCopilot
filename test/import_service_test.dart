@@ -8,7 +8,6 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/import_service.dart';
 import 'package:finance_copilot/services/isin_lookup_service.dart';
-import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 
 void main() {
   late AppDatabase db;
@@ -246,6 +245,7 @@ Date,Amount
           const ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
         ],
         accountId: accountId,
+        appLocale: 'it_IT',
       );
       final tx = (await db.select(db.transactions).get()).first;
       expect(tx.amount, 1234.56);
@@ -319,35 +319,7 @@ Date,Amount
     });
   });
 
-  group('Amount parser', () {
-    test('standard decimal values', () {
-      expect(amt.parseAmount('260.44'), 260.44);
-      expect(amt.parseAmount('1.5'), 1.5);
-      expect(amt.parseAmount('12.34'), 12.34);
-    });
-
-    test('3 decimal places from XLSX (was bug: treated as thousands)', () {
-      // After XLSX fix, these arrive as "260.4370" (4 digits) and are parsed correctly.
-      // But even without XLSX fix, parseAmount should handle them:
-      expect(amt.parseAmount('260.4370'), closeTo(260.437, 0.0001));
-      expect(amt.parseAmount('238.7110'), closeTo(238.711, 0.0001));
-    });
-
-    test('European thousands with dot', () {
-      expect(amt.parseAmount('1.234'), 1234.0);
-      expect(amt.parseAmount('1.234.567'), 1234567.0);
-    });
-
-    test('European decimal with comma', () {
-      expect(amt.parseAmount('260,44'), 260.44);
-      expect(amt.parseAmount('1,5'), 1.5);
-    });
-
-    test('European thousands + decimal', () {
-      expect(amt.parseAmount('1.234,56'), 1234.56);
-      expect(amt.parseAmount('1,234.56'), 1234.56);
-    });
-  });
+  // Locale-aware parser tests live in test/amount_parser_test.dart.
 
   group('Asset event import', () {
     FilePreview makeAssetPreview(List<List<String>> rows) {
@@ -1109,6 +1081,138 @@ Date,Amount
       expect(txs.length, 2);
       expect(txs[0].balanceAfter, 500.0);
       expect(txs[1].balanceAfter, 300.0);
+    });
+  });
+
+  group('Number-locale persistence and resolution (issue #60)', () {
+    FilePreview makeSpotPreview(List<List<String>> rows) {
+      return FilePreview(
+        columns: ['isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: rows.map((r) => {
+          'isin': r[0], 'quantity': r[1], 'price': r[2],
+          'currency': r[3], 'amount': r[4],
+        }).toList(),
+        totalRows: rows.length,
+      );
+    }
+
+    const spotMappings = [
+      ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+      ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+      ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+      ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+    ];
+
+    test('issue #60 — Italian "80,000" / "81,050" parsed as 80 / 81.05', () async {
+      // The literal #60 scenario: Sella XLSX certificate row with
+      // Italian-locale 3-decimal display.
+      final intId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker IT'),
+      );
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['XS3209104044', '80,000', '81,050', 'EUR', '6.484,00'],
+        ]),
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: intId,
+        appLocale: 'it_IT',
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events.length, 1);
+      expect(events.first.quantity, 80.0);
+      expect(events.first.price, closeTo(81.05, 1e-9));
+      expect(events.first.amount, closeTo(6484.0, 1e-9));
+    });
+
+    test('per-intermediary override is persisted and reused', () async {
+      final intId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker A'),
+      );
+
+      // First import: user explicitly picks en_US.
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
+        ]),
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: intId,
+        numberLocaleOverride: 'en_US',
+        appLocale: 'it_IT',
+      );
+
+      // Override should be persisted on the intermediary.
+      final inter = await (db.select(db.intermediaries)
+            ..where((i) => i.id.equals(intId)))
+          .getSingle();
+      expect(inter.defaultImportLocale, 'en_US');
+
+      // Second import without override: parses under saved 'en_US',
+      // not the app locale 'it_IT'. "1,000" is one thousand under en_US.
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['IE00B4L5Y983', '1,000', '100', 'EUR', '100000'],
+        ]),
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: intId,
+        appLocale: 'it_IT',
+      );
+      final events = await db.select(db.assetEvents).get();
+      // Last event reflects the en_US parse.
+      final last = events.last;
+      expect(last.quantity, 1000.0);
+    });
+
+    test('per-account override is persisted on ImportConfigs', () async {
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'Test'),
+      );
+      final tempDir2 = await Directory.systemTemp.createTemp('fc_locale_');
+      addTearDown(() async => await tempDir2.delete(recursive: true));
+      final f = File('${tempDir2.path}/tx.csv')
+        ..writeAsStringSync('Date,Amount\n01/01/2024,"1.234,56"\n');
+      final preview = await importer.parseFile(f.path);
+      await importer.importTransactions(
+        preview: preview,
+        mappings: [
+          const ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          const ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        appLocale: 'en_US',
+      );
+      final cfg = await (db.select(db.importConfigs)
+            ..where((c) => c.accountId.equals(accountId)))
+          .getSingle();
+      expect(cfg.numberLocale, 'it_IT');
+      final tx = (await db.select(db.transactions).get()).first;
+      expect(tx.amount, closeTo(1234.56, 1e-9));
+    });
+
+    test('appLocale fallback when no override and no saved value', () async {
+      final intId = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Broker NoOverride'),
+      );
+      await importer.importAssetEventsGrouped(
+        preview: makeSpotPreview([
+          ['IE00B4L5Y983', '5.000', '100', 'EUR', '500.000'],
+        ]),
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: intId,
+        appLocale: 'it_IT', // 5.000 is 5000 under it_IT
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events.first.quantity, 5000.0);
+      // No override given → defaultImportLocale stays NULL.
+      final inter = await (db.select(db.intermediaries)
+            ..where((i) => i.id.equals(intId)))
+          .getSingle();
+      expect(inter.defaultImportLocale, isNull);
     });
   });
 }

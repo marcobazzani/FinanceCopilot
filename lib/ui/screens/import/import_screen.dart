@@ -83,6 +83,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   int? _targetId; // accountId or assetId
   int? _selectedIntermediaryId; // for asset imports
 
+  /// Number-format locale chosen in the wizard. `null` = "Auto" (resolved
+  /// from the per-source saved value or from the app locale at import time).
+  /// When the user explicitly picks a value here, it is persisted to the
+  /// import-source config (per account / per intermediary / global income).
+  String? _selectedNumberLocale;
+
   // Asset import mode: 'historic' (date+rate required) or 'current' (default to today, rate auto-fetched)
   String _assetImportMode = 'historic';
 
@@ -438,6 +444,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     _log.info('_loadSavedConfig: found config for account $accountId');
     _savedConfig = config;
+    _selectedNumberLocale = config.numberLocale;
 
     // Check if noHeader is saved -- need to set before re-parse
     final savedMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
@@ -772,6 +779,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         fullPreview = await importer.getFullRows(fullPreview);
       }
 
+      final appLocale = ref.read(appLocaleProvider).value;
       if (_target == ImportTarget.transaction && _targetId != null) {
         final result = await importer.previewTransactionImport(
           preview: fullPreview,
@@ -780,6 +788,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           balanceMode: _balanceMode,
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
+          numberLocale: _selectedNumberLocale,
+          appLocale: appLocale,
         );
         if (mounted) _setState(() => _txPreview = result);
       } else if (_target == ImportTarget.assetEvent) {
@@ -794,6 +804,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
+          numberLocale: _selectedNumberLocale,
+          appLocale: appLocale,
         );
         if (mounted) _setState(() => _assetPreview = result);
       }

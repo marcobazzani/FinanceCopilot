@@ -701,6 +701,7 @@ class AppStrings {
   String errorParsingClipboard(Object e) => _it ? 'Errore nel parsificare gli appunti: $e' : 'Error parsing clipboard: $e';
   String get selectAccount         => _it ? 'Seleziona conto'          : 'Select Account';
   String get importSummary         => _it ? 'Riepilogo importazione'   : 'Import Summary';
+  String get numberFormatLabel     => _it ? 'Formato numeri'           : 'Number format';
   String sourceFile(String name)   => _it ? 'Origine: $name'           : 'Source: $name';
   String get clipboard             => _it ? 'Appunti'                  : 'Clipboard';
   String rowCount(int n)           => _it ? 'Righe: $n'                : 'Rows: $n';
