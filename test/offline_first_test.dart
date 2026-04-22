@@ -187,13 +187,14 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 29 after assets.intermediary_id NOT NULL migration', () async {
+    test('schema version is 30 after number-locale columns added', () async {
       // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
       // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
-      // a "Default" intermediary and enforces the column non-null in Dart.
+      // a "Default" intermediary; v30 added per-source number-format locale
+      // columns to import_configs and intermediaries.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 29);
+      expect(version, 30);
     });
 
     test('accounts table has no ghost columns', () async {

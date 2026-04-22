@@ -54,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -432,6 +432,21 @@ class AppDatabase extends _$AppDatabase {
             } else {
               _log.info('Migration 29: no orphan assets to backfill');
             }
+          }
+          if (from < 30) {
+            // Per-source number-format locale for imports. NULL means
+            // "Auto — use the app's configured locale at import time".
+            if (!await _hasColumn('import_configs', 'number_locale')) {
+              await customStatement(
+                'ALTER TABLE import_configs ADD COLUMN number_locale TEXT',
+              );
+            }
+            if (!await _hasColumn('intermediaries', 'default_import_locale')) {
+              await customStatement(
+                'ALTER TABLE intermediaries ADD COLUMN default_import_locale TEXT',
+              );
+            }
+            _log.info('Migration 30: added number_locale columns');
           }
         },
       );

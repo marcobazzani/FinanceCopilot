@@ -125,6 +125,10 @@ class Intermediaries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 100)();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  /// Number-format locale used to parse asset-event imports under this
+  /// intermediary (e.g. 'it_IT', 'en_US'). NULL means "Auto — use the
+  /// app locale".
+  TextColumn get defaultImportLocale => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -361,6 +365,9 @@ class ImportConfigs extends Table {
   TextColumn get mappingsJson => text().withDefault(const Constant('{}'))(); // JSON: {targetField: sourceColumn}
   TextColumn get formulaJson => text().withDefault(const Constant('[]'))(); // JSON: [{operator, sourceColumn}]
   TextColumn get hashColumnsJson => text().withDefault(const Constant('[]'))(); // JSON: [col1, col2, ...]
+  /// Number-format locale used to parse this account's import files
+  /// (e.g. 'it_IT', 'en_US'). NULL means "Auto — use the app locale".
+  TextColumn get numberLocale => text().nullable()();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 

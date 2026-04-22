@@ -86,6 +86,9 @@ extension _ConfirmStep on _ImportScreenState {
                   const SizedBox(height: 24),
                 ],
 
+                _buildNumberLocalePicker(),
+                const SizedBox(height: 16),
+
                 // Summary
                 Card(
                   child: Padding(
@@ -292,7 +295,17 @@ extension _ConfirmStep on _ImportScreenState {
         }
         return RadioGroup<int?>(
           groupValue: _selectedIntermediaryId,
-          onChanged: (v) => _setState(() => _selectedIntermediaryId = v),
+          onChanged: (v) async {
+            _setState(() => _selectedIntermediaryId = v);
+            // Pre-load this intermediary's persisted number-format locale.
+            if (v != null) {
+              final all = await ref.read(intermediaryServiceProvider).getAll();
+              final inter = all.where((i) => i.id == v).firstOrNull;
+              if (mounted && inter != null) {
+                _setState(() => _selectedNumberLocale = inter.defaultImportLocale);
+              }
+            }
+          },
           child: Column(
             children: [
               ...intermediaries.map((i) => RadioListTile<int?>(
@@ -497,6 +510,8 @@ extension _ConfirmStep on _ImportScreenState {
         });
       }
 
+      final appLocale = ref.read(appLocaleProvider).value;
+
       final ImportResult result;
       if (_target == ImportTarget.transaction) {
         result = await importer.importTransactions(
@@ -507,6 +522,8 @@ extension _ConfirmStep on _ImportScreenState {
           balanceMode: _balanceMode,
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
+          numberLocaleOverride: _selectedNumberLocale,
+          appLocale: appLocale,
         );
       } else if (_target == ImportTarget.income) {
         final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
@@ -515,6 +532,8 @@ extension _ConfirmStep on _ImportScreenState {
           mappings: mappings,
           defaultCurrency: baseCurrency,
           onProgress: onProgress,
+          numberLocaleOverride: _selectedNumberLocale,
+          appLocale: appLocale,
         );
       } else {
         // Remove type mapping if using sign-based detection
@@ -537,6 +556,8 @@ extension _ConfirmStep on _ImportScreenState {
           rateService: ref.read(exchangeRateServiceProvider),
           baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
           intermediaryId: _selectedIntermediaryId!, // gated by _canImport
+          numberLocaleOverride: _selectedNumberLocale,
+          appLocale: appLocale,
         );
         result = assetResult.result;
       }
@@ -573,5 +594,53 @@ extension _ConfirmStep on _ImportScreenState {
         _importing = false;
       });
     }
+  }
+
+  /// Locales the user can pick for number-format parsing in the wizard.
+  /// `null` value = "Auto" (resolve from app locale at import time).
+  static const List<(String?, String)> _numberLocaleOptions = [
+    (null, 'Auto'),
+    ('it_IT', 'Italiano (it_IT)'),
+    ('en_US', 'English / US (en_US)'),
+    ('en_GB', 'English / UK (en_GB)'),
+    ('de_DE', 'Deutsch (de_DE)'),
+    ('fr_FR', 'Français (fr_FR)'),
+    ('es_ES', 'Español (es_ES)'),
+  ];
+
+  Widget _buildNumberLocalePicker() {
+    final s = ref.watch(appStringsProvider);
+    final appLocale = ref.watch(appLocaleProvider).value;
+    final autoLabel = appLocale != null && appLocale.isNotEmpty
+        ? 'Auto ($appLocale)'
+        : 'Auto';
+    final items = _numberLocaleOptions.map((opt) {
+      final label = opt.$1 == null ? autoLabel : opt.$2;
+      return DropdownMenuItem<String?>(
+        value: opt.$1,
+        child: Text(label),
+      );
+    }).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                s.numberFormatLabel,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DropdownButton<String?>(
+              value: _selectedNumberLocale,
+              hint: Text(autoLabel),
+              items: items,
+              onChanged: (v) => _setState(() => _selectedNumberLocale = v),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

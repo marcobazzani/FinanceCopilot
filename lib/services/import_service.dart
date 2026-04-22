@@ -156,6 +156,12 @@ class ImportService {
   final AppDatabase _db;
   final FileParserService _parser = FileParserService();
 
+  /// Locale used for the current import call. Set by each public import
+  /// method before any number parsing happens, then read by `_parseAmount`
+  /// and `_tryParseAmount`. Defaults to en_US for safety.
+  // ignore: prefer_final_fields  // mutated per import call
+  String _activeLocale = 'en_US';
+
   ImportService(this._db);
 
   // ──────────────────────────────────────────────
@@ -233,8 +239,20 @@ class ImportService {
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
+    /// User's per-import locale choice from the wizard. Persisted to
+    /// `ImportConfigs.numberLocale` for this account when non-null.
+    /// NULL means "Auto — fall back to the saved value or [appLocale]".
+    String? numberLocaleOverride,
+    /// App's configured locale (e.g. `it_IT`). Used as the final fallback
+    /// when no per-source override or saved value exists.
+    String? appLocale,
   }) async {
-    _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings');
+    await _setLocaleForAccount(
+      accountId: accountId,
+      override: numberLocaleOverride,
+      appLocale: appLocale,
+    );
+    _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -427,8 +445,19 @@ class ImportService {
     /// ALL assets under this intermediary. Required — unassigned was removed
     /// in schema v29.
     required int intermediaryId,
+    /// User's per-import locale choice from the wizard. Persisted to
+    /// `Intermediaries.defaultImportLocale` for this intermediary when
+    /// non-null. NULL means "Auto — fall back to saved or [appLocale]".
+    String? numberLocaleOverride,
+    /// App's configured locale (e.g. `it_IT`). Final fallback.
+    String? appLocale,
   }) async {
-    _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
+    await _setLocaleForIntermediary(
+      intermediaryId: intermediaryId,
+      override: numberLocaleOverride,
+      appLocale: appLocale,
+    );
+    _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -744,8 +773,17 @@ class ImportService {
     required List<ColumnMapping> mappings,
     required String defaultCurrency,
     void Function(int processed, int total)? onProgress,
+    /// User's per-import locale choice. Persisted to the
+    /// `IMPORT_INCOME_LOCALE` AppConfigs key when non-null.
+    String? numberLocaleOverride,
+    /// App's configured locale (e.g. `it_IT`). Final fallback.
+    String? appLocale,
   }) async {
-    _log.info('importIncomes: ${preview.totalRows} rows, ${mappings.length} mappings, defaultCurrency=$defaultCurrency');
+    await _setLocaleForIncome(
+      override: numberLocaleOverride,
+      appLocale: appLocale,
+    );
+    _log.info('importIncomes: ${preview.totalRows} rows, ${mappings.length} mappings, defaultCurrency=$defaultCurrency, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -846,8 +884,17 @@ class ImportService {
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
+    /// Locale used for parsing during preview only — NOT persisted.
+    String? numberLocale,
+    String? appLocale,
   }) async {
-    _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows');
+    final saved = numberLocale ??
+        (await (_db.select(_db.importConfigs)
+                  ..where((c) => c.accountId.equals(accountId)))
+                .getSingleOrNull())
+            ?.numberLocale;
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+    _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -983,8 +1030,16 @@ class ImportService {
     Set<String>? sellValues,
     Set<String>? excludedIsins,
     Map<String, IsinExchangeOption>? selectedExchanges,
+    /// Locale used for parsing during preview only — NOT persisted.
+    /// Caller resolves to whatever the wizard selection is right now.
+    String? numberLocale,
+    String? appLocale,
   }) async {
-    _log.info('previewAssetEventImport: ${preview.totalRows} rows');
+    _activeLocale = amt.resolveImportLocale(
+      saved: numberLocale,
+      appLocale: appLocale,
+    );
+    _log.info('previewAssetEventImport: ${preview.totalRows} rows, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final isinMapping = mappingByField['isin'];
 
@@ -1090,8 +1145,107 @@ class ImportService {
   /// Parse a date string. Delegates to shared [date_parse.parseDate].
   DateTime _parseDate(String s) => date_parse.parseDate(s);
 
-  double _parseAmount(String s) => amt.parseAmount(s);
-  double? _tryParseAmount(String? s) => amt.tryParseAmount(s);
+  double _parseAmount(String s) => amt.parseAmount(s, locale: _activeLocale);
+  double? _tryParseAmount(String? s) => amt.tryParseAmount(s, locale: _activeLocale);
+
+  // ──────────────────────────────────────────────
+  // Number-locale persistence (per-flow)
+  // ──────────────────────────────────────────────
+
+  /// Resolve the effective locale for a transaction import on [accountId]:
+  /// 1. wizard `override` (also persists it to ImportConfigs)
+  /// 2. previously-saved `ImportConfigs.numberLocale[accountId]`
+  /// 3. `appLocale`
+  /// 4. `en_US` (final fallback in [amt.resolveImportLocale])
+  Future<void> _setLocaleForAccount({
+    required int accountId,
+    required String? override,
+    required String? appLocale,
+  }) async {
+    final saved = override ??
+        (await (_db.select(_db.importConfigs)
+                  ..where((c) => c.accountId.equals(accountId)))
+                .getSingleOrNull())
+            ?.numberLocale;
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+
+    if (override != null) {
+      // Upsert into ImportConfigs. If no row exists yet, create one with
+      // sensible defaults so future opens of the wizard show the choice.
+      final existing = await (_db.select(_db.importConfigs)
+            ..where((c) => c.accountId.equals(accountId)))
+          .getSingleOrNull();
+      if (existing == null) {
+        await _db.into(_db.importConfigs).insert(ImportConfigsCompanion.insert(
+              accountId: accountId,
+              numberLocale: Value(override),
+            ));
+      } else {
+        await (_db.update(_db.importConfigs)
+              ..where((c) => c.accountId.equals(accountId)))
+            .write(ImportConfigsCompanion(
+          numberLocale: Value(override),
+          updatedAt: Value(DateTime.now()),
+        ));
+      }
+    }
+  }
+
+  /// Resolve the effective locale for an asset-event import on
+  /// [intermediaryId]. Same priority order as [_setLocaleForAccount];
+  /// persistence target is `Intermediaries.defaultImportLocale`.
+  Future<void> _setLocaleForIntermediary({
+    required int intermediaryId,
+    required String? override,
+    required String? appLocale,
+  }) async {
+    final saved = override ??
+        (await (_db.select(_db.intermediaries)
+                  ..where((i) => i.id.equals(intermediaryId)))
+                .getSingleOrNull())
+            ?.defaultImportLocale;
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+
+    if (override != null) {
+      await (_db.update(_db.intermediaries)
+            ..where((i) => i.id.equals(intermediaryId)))
+          .write(IntermediariesCompanion(
+        defaultImportLocale: Value(override),
+        updatedAt: Value(DateTime.now()),
+      ));
+    }
+  }
+
+  static const _incomeLocaleConfigKey = 'IMPORT_INCOME_LOCALE';
+
+  /// Resolve the effective locale for an income import. Persistence target
+  /// is the `IMPORT_INCOME_LOCALE` AppConfigs row (single global value;
+  /// income imports don't have a per-source key today).
+  Future<void> _setLocaleForIncome({
+    required String? override,
+    required String? appLocale,
+  }) async {
+    String? saved = override;
+    if (saved == null) {
+      final row = await _db.customSelect(
+        'SELECT value FROM app_configs WHERE key = ?',
+        variables: [Variable.withString(_incomeLocaleConfigKey)],
+      ).getSingleOrNull();
+      final v = row?.read<String?>('value');
+      if (v != null && v.isNotEmpty) saved = v;
+    }
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+
+    if (override != null) {
+      await _db.into(_db.appConfigs).insertOnConflictUpdate(
+            AppConfigsCompanion.insert(
+              key: _incomeLocaleConfigKey,
+              value: override,
+              description: const Value('Number-format locale for income imports'),
+            ),
+          );
+    }
+  }
 
   EventType _parseEventType(String s, {Set<String>? buyValues, Set<String>? sellValues}) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
