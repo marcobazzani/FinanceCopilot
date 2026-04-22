@@ -282,6 +282,31 @@ Future<int> seedIncome(AppDatabase db, {double amount = 1000.0}) async {
       ));
 }
 
+/// Tap the "Default" intermediary radio in the Confirm step of asset
+/// imports. Required since schema v29 (asset imports refuse to proceed
+/// without an intermediary). Assumes pumpApp seeded the "Default" name.
+Future<void> selectDefaultIntermediary(WidgetTester tester) async {
+  final defaultRadio = find.text('Default');
+  await tester.ensureVisible(defaultRadio.first);
+  await settle(tester);
+  await tester.tap(defaultRadio.first);
+  await settle(tester);
+}
+
+/// Pick a number-format locale from the Confirm step dropdown (schema v30).
+/// Needed when the import fixture uses a format different from the test app
+/// locale — e.g. comma-decimal European data on an en_US test environment.
+/// Pass the label shown in the menu, e.g. 'Italiano (it_IT)'.
+Future<void> selectImportLocale(WidgetTester tester, String label) async {
+  final dropdown = find.byType(DropdownButton<String?>);
+  await tester.ensureVisible(dropdown.first);
+  await settle(tester);
+  await tester.tap(dropdown.first);
+  await settle(tester);
+  await tester.tap(find.text(label).last);
+  await settle(tester);
+}
+
 /// Tap Buy/Sell ChoiceChips for asset type-from-column mapping.
 /// First row's value → Buy, second row's value → Sell.
 Future<void> tapBuySellChips(WidgetTester tester) async {

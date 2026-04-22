@@ -167,7 +167,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         // Check for legacy DB at old Documents path and migrate if found
         final migrated = await _migrateLegacyDb(dbFile);
         if (!migrated) {
-          _log.info('No DB file found, showing landing page');
+          _log.info('No DB file ${dbFile.path} found, showing landing page');
           if (mounted) setState(() => _showLanding = true);
           return;
         }
