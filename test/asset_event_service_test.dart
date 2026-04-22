@@ -9,6 +9,7 @@ import 'package:finance_copilot/services/asset_event_service.dart';
 void main() {
   late AppDatabase db;
   late AssetEventService service;
+  late int iid;
 
   /// Helper: insert a parent asset and return its id.
   Future<int> createAsset(String name) async {
@@ -18,12 +19,14 @@ void main() {
           instrumentType: const Value(InstrumentType.etf),
           assetClass: const Value(AssetClass.equity),
           valuationMethod: ValuationMethod.eventDriven,
+          intermediaryId: iid,
         ));
   }
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = AssetEventService(db);
+    iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
   });
 
   tearDown(() async => await db.close());

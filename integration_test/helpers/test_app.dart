@@ -55,6 +55,11 @@ Future<AppDatabase> pumpApp(
     }
   }
 
+  // Seed a default intermediary (required by assets since schema v29).
+  await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(
+    name: 'Default',
+  ));
+
   // Seed a dummy account so the landing page doesn't show (empty DB check)
   await db.into(db.accounts).insert(AccountsCompanion.insert(
     name: '_test_seed', sortOrder: const Value(999),
@@ -214,12 +219,14 @@ Future<int> seedAsset(
   String? exchange,
   String? currency,
 }) async {
+  final intermediaries = await db.select(db.intermediaries).get();
   return db.into(db.assets).insert(AssetsCompanion.insert(
         name: name,
         assetType: AssetType.stockEtf,
         instrumentType: const Value(InstrumentType.etf),
         assetClass: const Value(AssetClass.equity),
         valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: intermediaries.first.id,
         isin: Value(isin),
         ticker: Value(ticker),
         exchange: Value(exchange),
@@ -273,6 +280,31 @@ Future<int> seedIncome(AppDatabase db, {double amount = 1000.0}) async {
         valueDate: DateTime(2025, 1, 15),
         amount: amount,
       ));
+}
+
+/// Tap the "Default" intermediary radio in the Confirm step of asset
+/// imports. Required since schema v29 (asset imports refuse to proceed
+/// without an intermediary). Assumes pumpApp seeded the "Default" name.
+Future<void> selectDefaultIntermediary(WidgetTester tester) async {
+  final defaultRadio = find.text('Default');
+  await tester.ensureVisible(defaultRadio.first);
+  await settle(tester);
+  await tester.tap(defaultRadio.first);
+  await settle(tester);
+}
+
+/// Pick a number-format locale from the Confirm step dropdown (schema v30).
+/// Needed when the import fixture uses a format different from the test app
+/// locale — e.g. comma-decimal European data on an en_US test environment.
+/// Pass the label shown in the menu, e.g. 'Italiano (it_IT)'.
+Future<void> selectImportLocale(WidgetTester tester, String label) async {
+  final dropdown = find.byType(DropdownButton<String?>);
+  await tester.ensureVisible(dropdown.first);
+  await settle(tester);
+  await tester.tap(dropdown.first);
+  await settle(tester);
+  await tester.tap(find.text(label).last);
+  await settle(tester);
 }
 
 /// Tap Buy/Sell ChoiceChips for asset type-from-column mapping.

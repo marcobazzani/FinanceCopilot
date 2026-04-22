@@ -31,6 +31,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    await selectDefaultIntermediary(tester);
+
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     for (var i = 0; i < 30; i++) {
@@ -65,6 +67,9 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+
+    await selectDefaultIntermediary(tester);
+    await selectImportLocale(tester, 'Italiano (it_IT)');
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
@@ -104,6 +109,8 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+
+    await selectDefaultIntermediary(tester);
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
@@ -158,6 +165,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    await selectDefaultIntermediary(tester);
+
     final scrollable = find.byType(Scrollable);
     if (scrollable.evaluate().isNotEmpty) {
       await tester.drag(scrollable.last, const Offset(0, -300));
@@ -208,12 +217,16 @@ void main() {
 
     final excludeIsin = find.text('IE00BKM4GZ66');
     expect(excludeIsin, findsOneWidget);
+    await tester.ensureVisible(excludeIsin);
+    await settle(tester);
     final isinRow = find.ancestor(of: excludeIsin, matching: find.byType(Row));
     final checkbox = find.descendant(of: isinRow.first, matching: find.byType(Checkbox));
     if (checkbox.evaluate().isNotEmpty) {
       await tester.tap(checkbox.first);
       await settle(tester);
     }
+
+    await selectDefaultIntermediary(tester);
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));

@@ -86,6 +86,9 @@ extension _ConfirmStep on _ImportScreenState {
                   const SizedBox(height: 24),
                 ],
 
+                _buildNumberLocalePicker(),
+                const SizedBox(height: 16),
+
                 // Summary
                 Card(
                   child: Padding(
@@ -253,12 +256,20 @@ extension _ConfirmStep on _ImportScreenState {
               FilledButton.icon(
                 icon: const Icon(Icons.check),
                 label: Text(s.importButton),
-                onPressed: (isAssetImport || isIncomeImport || _targetId != null) ? _executeImport : null,
+                onPressed: _canImport(isAssetImport, isIncomeImport) ? _executeImport : null,
               ),
             ],
           ),
       ],
     );
+  }
+
+  /// Asset imports require an intermediary selection. Income imports don't.
+  /// Transaction imports require a target account.
+  bool _canImport(bool isAssetImport, bool isIncomeImport) {
+    if (isAssetImport) return _selectedIntermediaryId != null;
+    if (isIncomeImport) return true;
+    return _targetId != null;
   }
 
   Widget _buildIntermediarySelector() {
@@ -267,20 +278,47 @@ extension _ConfirmStep on _ImportScreenState {
     return intermediariesAsync.when(
       data: (intermediaries) {
         if (intermediaries.isEmpty) {
-          return Text(s.unassigned, style: const TextStyle(color: Colors.grey));
+          // Empty state: give the user an inline CTA to create one.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.selectIntermediaryEmpty,
+                  style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.add),
+                label: Text(s.addIntermediary),
+                onPressed: _createIntermediaryInline,
+              ),
+            ],
+          );
         }
         return RadioGroup<int?>(
           groupValue: _selectedIntermediaryId,
-          onChanged: (v) => _setState(() => _selectedIntermediaryId = v),
+          onChanged: (v) async {
+            _setState(() => _selectedIntermediaryId = v);
+            // Pre-load this intermediary's persisted number-format locale.
+            if (v != null) {
+              final all = await ref.read(intermediaryServiceProvider).getAll();
+              final inter = all.where((i) => i.id == v).firstOrNull;
+              if (mounted && inter != null) {
+                _setState(() => _selectedNumberLocale = inter.defaultImportLocale);
+              }
+            }
+          },
           child: Column(
             children: [
               ...intermediaries.map((i) => RadioListTile<int?>(
                 title: Text(i.name),
                 value: i.id,
               )),
-              RadioListTile<int?>(
-                title: Text(s.unassigned),
-                value: null,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: Text(s.addIntermediary),
+                  onPressed: _createIntermediaryInline,
+                ),
               ),
             ],
           ),
@@ -289,6 +327,38 @@ extension _ConfirmStep on _ImportScreenState {
       loading: () => const CircularProgressIndicator(),
       error: (e, _) => Text(s.error(e)),
     );
+  }
+
+  Future<void> _createIntermediaryInline() async {
+    final s = ref.read(appStringsProvider);
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(s.addIntermediary),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(labelText: s.intermediaryName),
+            autofocus: true,
+            onChanged: (_) => setDialogState(() {}),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: nameCtrl.text.trim().isNotEmpty
+                  ? () => Navigator.pop(ctx, nameCtrl.text.trim())
+                  : null,
+              child: Text(s.create),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final svc = ref.read(intermediaryServiceProvider);
+    final id = await svc.create(name: name);
+    if (mounted) _setState(() => _selectedIntermediaryId = id);
   }
 
   Widget _buildImportPreview() {
@@ -440,6 +510,8 @@ extension _ConfirmStep on _ImportScreenState {
         });
       }
 
+      final appLocale = ref.read(appLocaleProvider).value;
+
       final ImportResult result;
       if (_target == ImportTarget.transaction) {
         result = await importer.importTransactions(
@@ -450,6 +522,8 @@ extension _ConfirmStep on _ImportScreenState {
           balanceMode: _balanceMode,
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
+          numberLocaleOverride: _selectedNumberLocale,
+          appLocale: appLocale,
         );
       } else if (_target == ImportTarget.income) {
         final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
@@ -458,6 +532,8 @@ extension _ConfirmStep on _ImportScreenState {
           mappings: mappings,
           defaultCurrency: baseCurrency,
           onProgress: onProgress,
+          numberLocaleOverride: _selectedNumberLocale,
+          appLocale: appLocale,
         );
       } else {
         // Remove type mapping if using sign-based detection
@@ -479,7 +555,9 @@ extension _ConfirmStep on _ImportScreenState {
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
           baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-          intermediaryId: _selectedIntermediaryId,
+          intermediaryId: _selectedIntermediaryId!, // gated by _canImport
+          numberLocaleOverride: _selectedNumberLocale,
+          appLocale: appLocale,
         );
         result = assetResult.result;
       }
@@ -516,5 +594,53 @@ extension _ConfirmStep on _ImportScreenState {
         _importing = false;
       });
     }
+  }
+
+  /// Locales the user can pick for number-format parsing in the wizard.
+  /// `null` value = "Auto" (resolve from app locale at import time).
+  static const List<(String?, String)> _numberLocaleOptions = [
+    (null, 'Auto'),
+    ('it_IT', 'Italiano (it_IT)'),
+    ('en_US', 'English / US (en_US)'),
+    ('en_GB', 'English / UK (en_GB)'),
+    ('de_DE', 'Deutsch (de_DE)'),
+    ('fr_FR', 'Français (fr_FR)'),
+    ('es_ES', 'Español (es_ES)'),
+  ];
+
+  Widget _buildNumberLocalePicker() {
+    final s = ref.watch(appStringsProvider);
+    final appLocale = ref.watch(appLocaleProvider).value;
+    final autoLabel = appLocale != null && appLocale.isNotEmpty
+        ? 'Auto ($appLocale)'
+        : 'Auto';
+    final items = _numberLocaleOptions.map((opt) {
+      final label = opt.$1 == null ? autoLabel : opt.$2;
+      return DropdownMenuItem<String?>(
+        value: opt.$1,
+        child: Text(label),
+      );
+    }).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                s.numberFormatLabel,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            DropdownButton<String?>(
+              value: _selectedNumberLocale,
+              hint: Text(autoLabel),
+              items: items,
+              onChanged: (v) => _setState(() => _selectedNumberLocale = v),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
