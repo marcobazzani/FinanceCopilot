@@ -101,7 +101,12 @@ class TransactionService {
     final mappings = jsonDecode(config.mappingsJson) as Map<String, dynamic>;
     final mode = (mappings['__balanceMode'] as String?) ?? 'none';
     if (mode == 'none') return;
-    await recalculateBalances(accountId, balanceMode: mode, savedMappings: mappings);
+    await recalculateBalances(
+      accountId,
+      balanceMode: mode,
+      savedMappings: mappings,
+      numberLocale: config.numberLocale,
+    );
   }
 
   /// Batch-update balanceAfter for multiple transactions in a single DB transaction.
@@ -131,8 +136,10 @@ class TransactionService {
     int accountId, {
     required String balanceMode,
     Map<String, dynamic> savedMappings = const {},
+    String? numberLocale,
   }) async {
     if (balanceMode == 'none') return 0;
+    final locale = numberLocale ?? 'en_US';
 
     final txs = await getByAccount(accountId);
     if (txs.isEmpty) return 0;
@@ -165,7 +172,7 @@ class TransactionService {
         if (balanceColumn != null && tx.rawMetadata != null) {
           final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
           final raw = meta[balanceColumn]?.toString() ?? '';
-          newBalance = amt.tryParseAmount(raw);
+          newBalance = amt.tryParseAmount(raw, locale: locale);
         }
       } else if (balanceMode == 'cumulative') {
         balanceCents += toCents(tx.amount);

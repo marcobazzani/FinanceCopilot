@@ -47,6 +47,17 @@ class $IntermediariesTable extends Intermediaries
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _defaultImportLocaleMeta =
+      const VerificationMeta('defaultImportLocale');
+  @override
+  late final GeneratedColumn<String> defaultImportLocale =
+      GeneratedColumn<String>(
+        'default_import_locale',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -76,6 +87,7 @@ class $IntermediariesTable extends Intermediaries
     id,
     name,
     sortOrder,
+    defaultImportLocale,
     createdAt,
     updatedAt,
   ];
@@ -106,6 +118,15 @@ class $IntermediariesTable extends Intermediaries
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('default_import_locale')) {
+      context.handle(
+        _defaultImportLocaleMeta,
+        defaultImportLocale.isAcceptableOrUnknown(
+          data['default_import_locale']!,
+          _defaultImportLocaleMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -141,6 +162,10 @@ class $IntermediariesTable extends Intermediaries
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      defaultImportLocale: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}default_import_locale'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -162,12 +187,18 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
   final int id;
   final String name;
   final int sortOrder;
+
+  /// Number-format locale used to parse asset-event imports under this
+  /// intermediary (e.g. 'it_IT', 'en_US'). NULL means "Auto — use the
+  /// app locale".
+  final String? defaultImportLocale;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Intermediary({
     required this.id,
     required this.name,
     required this.sortOrder,
+    this.defaultImportLocale,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -177,6 +208,9 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || defaultImportLocale != null) {
+      map['default_import_locale'] = Variable<String>(defaultImportLocale);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -187,6 +221,9 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
       id: Value(id),
       name: Value(name),
       sortOrder: Value(sortOrder),
+      defaultImportLocale: defaultImportLocale == null && nullToAbsent
+          ? const Value.absent()
+          : Value(defaultImportLocale),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -201,6 +238,9 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      defaultImportLocale: serializer.fromJson<String?>(
+        json['defaultImportLocale'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -212,6 +252,7 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'defaultImportLocale': serializer.toJson<String?>(defaultImportLocale),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -221,12 +262,16 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
     int? id,
     String? name,
     int? sortOrder,
+    Value<String?> defaultImportLocale = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Intermediary(
     id: id ?? this.id,
     name: name ?? this.name,
     sortOrder: sortOrder ?? this.sortOrder,
+    defaultImportLocale: defaultImportLocale.present
+        ? defaultImportLocale.value
+        : this.defaultImportLocale,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -235,6 +280,9 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      defaultImportLocale: data.defaultImportLocale.present
+          ? data.defaultImportLocale.value
+          : this.defaultImportLocale,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -246,6 +294,7 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('defaultImportLocale: $defaultImportLocale, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -253,7 +302,14 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, sortOrder, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    sortOrder,
+    defaultImportLocale,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -261,6 +317,7 @@ class Intermediary extends DataClass implements Insertable<Intermediary> {
           other.id == this.id &&
           other.name == this.name &&
           other.sortOrder == this.sortOrder &&
+          other.defaultImportLocale == this.defaultImportLocale &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -269,12 +326,14 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
   final Value<int> id;
   final Value<String> name;
   final Value<int> sortOrder;
+  final Value<String?> defaultImportLocale;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const IntermediariesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.defaultImportLocale = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -282,6 +341,7 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
     this.id = const Value.absent(),
     required String name,
     this.sortOrder = const Value.absent(),
+    this.defaultImportLocale = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : name = Value(name);
@@ -289,6 +349,7 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
     Expression<int>? id,
     Expression<String>? name,
     Expression<int>? sortOrder,
+    Expression<String>? defaultImportLocale,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -296,6 +357,8 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (defaultImportLocale != null)
+        'default_import_locale': defaultImportLocale,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -305,6 +368,7 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
     Value<int>? id,
     Value<String>? name,
     Value<int>? sortOrder,
+    Value<String?>? defaultImportLocale,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -312,6 +376,7 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
       id: id ?? this.id,
       name: name ?? this.name,
       sortOrder: sortOrder ?? this.sortOrder,
+      defaultImportLocale: defaultImportLocale ?? this.defaultImportLocale,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -329,6 +394,11 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (defaultImportLocale.present) {
+      map['default_import_locale'] = Variable<String>(
+        defaultImportLocale.value,
+      );
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -344,6 +414,7 @@ class IntermediariesCompanion extends UpdateCompanion<Intermediary> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('defaultImportLocale: $defaultImportLocale, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -9278,6 +9349,17 @@ class $ImportConfigsTable extends ImportConfigs
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _numberLocaleMeta = const VerificationMeta(
+    'numberLocale',
+  );
+  @override
+  late final GeneratedColumn<String> numberLocale = GeneratedColumn<String>(
+    'number_locale',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -9298,6 +9380,7 @@ class $ImportConfigsTable extends ImportConfigs
     mappingsJson,
     formulaJson,
     hashColumnsJson,
+    numberLocale,
     updatedAt,
   ];
   @override
@@ -9356,6 +9439,15 @@ class $ImportConfigsTable extends ImportConfigs
         ),
       );
     }
+    if (data.containsKey('number_locale')) {
+      context.handle(
+        _numberLocaleMeta,
+        numberLocale.isAcceptableOrUnknown(
+          data['number_locale']!,
+          _numberLocaleMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -9395,6 +9487,10 @@ class $ImportConfigsTable extends ImportConfigs
         DriftSqlType.string,
         data['${effectivePrefix}hash_columns_json'],
       )!,
+      numberLocale: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}number_locale'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -9415,6 +9511,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
   final String mappingsJson;
   final String formulaJson;
   final String hashColumnsJson;
+
+  /// Number-format locale used to parse this account's import files
+  /// (e.g. 'it_IT', 'en_US'). NULL means "Auto — use the app locale".
+  final String? numberLocale;
   final DateTime updatedAt;
   const ImportConfig({
     required this.id,
@@ -9423,6 +9523,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     required this.mappingsJson,
     required this.formulaJson,
     required this.hashColumnsJson,
+    this.numberLocale,
     required this.updatedAt,
   });
   @override
@@ -9434,6 +9535,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     map['mappings_json'] = Variable<String>(mappingsJson);
     map['formula_json'] = Variable<String>(formulaJson);
     map['hash_columns_json'] = Variable<String>(hashColumnsJson);
+    if (!nullToAbsent || numberLocale != null) {
+      map['number_locale'] = Variable<String>(numberLocale);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -9446,6 +9550,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
       mappingsJson: Value(mappingsJson),
       formulaJson: Value(formulaJson),
       hashColumnsJson: Value(hashColumnsJson),
+      numberLocale: numberLocale == null && nullToAbsent
+          ? const Value.absent()
+          : Value(numberLocale),
       updatedAt: Value(updatedAt),
     );
   }
@@ -9462,6 +9569,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
       mappingsJson: serializer.fromJson<String>(json['mappingsJson']),
       formulaJson: serializer.fromJson<String>(json['formulaJson']),
       hashColumnsJson: serializer.fromJson<String>(json['hashColumnsJson']),
+      numberLocale: serializer.fromJson<String?>(json['numberLocale']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -9475,6 +9583,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
       'mappingsJson': serializer.toJson<String>(mappingsJson),
       'formulaJson': serializer.toJson<String>(formulaJson),
       'hashColumnsJson': serializer.toJson<String>(hashColumnsJson),
+      'numberLocale': serializer.toJson<String?>(numberLocale),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -9486,6 +9595,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     String? mappingsJson,
     String? formulaJson,
     String? hashColumnsJson,
+    Value<String?> numberLocale = const Value.absent(),
     DateTime? updatedAt,
   }) => ImportConfig(
     id: id ?? this.id,
@@ -9494,6 +9604,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     mappingsJson: mappingsJson ?? this.mappingsJson,
     formulaJson: formulaJson ?? this.formulaJson,
     hashColumnsJson: hashColumnsJson ?? this.hashColumnsJson,
+    numberLocale: numberLocale.present ? numberLocale.value : this.numberLocale,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   ImportConfig copyWithCompanion(ImportConfigsCompanion data) {
@@ -9510,6 +9621,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
       hashColumnsJson: data.hashColumnsJson.present
           ? data.hashColumnsJson.value
           : this.hashColumnsJson,
+      numberLocale: data.numberLocale.present
+          ? data.numberLocale.value
+          : this.numberLocale,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -9523,6 +9637,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
           ..write('mappingsJson: $mappingsJson, ')
           ..write('formulaJson: $formulaJson, ')
           ..write('hashColumnsJson: $hashColumnsJson, ')
+          ..write('numberLocale: $numberLocale, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -9536,6 +9651,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     mappingsJson,
     formulaJson,
     hashColumnsJson,
+    numberLocale,
     updatedAt,
   );
   @override
@@ -9548,6 +9664,7 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
           other.mappingsJson == this.mappingsJson &&
           other.formulaJson == this.formulaJson &&
           other.hashColumnsJson == this.hashColumnsJson &&
+          other.numberLocale == this.numberLocale &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -9558,6 +9675,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
   final Value<String> mappingsJson;
   final Value<String> formulaJson;
   final Value<String> hashColumnsJson;
+  final Value<String?> numberLocale;
   final Value<DateTime> updatedAt;
   const ImportConfigsCompanion({
     this.id = const Value.absent(),
@@ -9566,6 +9684,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     this.mappingsJson = const Value.absent(),
     this.formulaJson = const Value.absent(),
     this.hashColumnsJson = const Value.absent(),
+    this.numberLocale = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
   ImportConfigsCompanion.insert({
@@ -9575,6 +9694,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     this.mappingsJson = const Value.absent(),
     this.formulaJson = const Value.absent(),
     this.hashColumnsJson = const Value.absent(),
+    this.numberLocale = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : accountId = Value(accountId);
   static Insertable<ImportConfig> custom({
@@ -9584,6 +9704,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     Expression<String>? mappingsJson,
     Expression<String>? formulaJson,
     Expression<String>? hashColumnsJson,
+    Expression<String>? numberLocale,
     Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
@@ -9593,6 +9714,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
       if (mappingsJson != null) 'mappings_json': mappingsJson,
       if (formulaJson != null) 'formula_json': formulaJson,
       if (hashColumnsJson != null) 'hash_columns_json': hashColumnsJson,
+      if (numberLocale != null) 'number_locale': numberLocale,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
@@ -9604,6 +9726,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     Value<String>? mappingsJson,
     Value<String>? formulaJson,
     Value<String>? hashColumnsJson,
+    Value<String?>? numberLocale,
     Value<DateTime>? updatedAt,
   }) {
     return ImportConfigsCompanion(
@@ -9613,6 +9736,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
       mappingsJson: mappingsJson ?? this.mappingsJson,
       formulaJson: formulaJson ?? this.formulaJson,
       hashColumnsJson: hashColumnsJson ?? this.hashColumnsJson,
+      numberLocale: numberLocale ?? this.numberLocale,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -9638,6 +9762,9 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     if (hashColumnsJson.present) {
       map['hash_columns_json'] = Variable<String>(hashColumnsJson.value);
     }
+    if (numberLocale.present) {
+      map['number_locale'] = Variable<String>(numberLocale.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -9653,6 +9780,7 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
           ..write('mappingsJson: $mappingsJson, ')
           ..write('formulaJson: $formulaJson, ')
           ..write('hashColumnsJson: $hashColumnsJson, ')
+          ..write('numberLocale: $numberLocale, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -12556,6 +12684,7 @@ typedef $$IntermediariesTableCreateCompanionBuilder =
       Value<int> id,
       required String name,
       Value<int> sortOrder,
+      Value<String?> defaultImportLocale,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -12564,6 +12693,7 @@ typedef $$IntermediariesTableUpdateCompanionBuilder =
       Value<int> id,
       Value<String> name,
       Value<int> sortOrder,
+      Value<String?> defaultImportLocale,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -12642,6 +12772,11 @@ class $$IntermediariesTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get defaultImportLocale => $composableBuilder(
+    column: $table.defaultImportLocale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12730,6 +12865,11 @@ class $$IntermediariesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get defaultImportLocale => $composableBuilder(
+    column: $table.defaultImportLocale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -12758,6 +12898,11 @@ class $$IntermediariesTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get defaultImportLocale => $composableBuilder(
+    column: $table.defaultImportLocale,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -12849,12 +12994,14 @@ class $$IntermediariesTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String?> defaultImportLocale = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => IntermediariesCompanion(
                 id: id,
                 name: name,
                 sortOrder: sortOrder,
+                defaultImportLocale: defaultImportLocale,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -12863,12 +13010,14 @@ class $$IntermediariesTableTableManager
                 Value<int> id = const Value.absent(),
                 required String name,
                 Value<int> sortOrder = const Value.absent(),
+                Value<String?> defaultImportLocale = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => IntermediariesCompanion.insert(
                 id: id,
                 name: name,
                 sortOrder: sortOrder,
+                defaultImportLocale: defaultImportLocale,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -19751,6 +19900,7 @@ typedef $$ImportConfigsTableCreateCompanionBuilder =
       Value<String> mappingsJson,
       Value<String> formulaJson,
       Value<String> hashColumnsJson,
+      Value<String?> numberLocale,
       Value<DateTime> updatedAt,
     });
 typedef $$ImportConfigsTableUpdateCompanionBuilder =
@@ -19761,6 +19911,7 @@ typedef $$ImportConfigsTableUpdateCompanionBuilder =
       Value<String> mappingsJson,
       Value<String> formulaJson,
       Value<String> hashColumnsJson,
+      Value<String?> numberLocale,
       Value<DateTime> updatedAt,
     });
 
@@ -19823,6 +19974,11 @@ class $$ImportConfigsTableFilterComposer
 
   ColumnFilters<String> get hashColumnsJson => $composableBuilder(
     column: $table.hashColumnsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get numberLocale => $composableBuilder(
+    column: $table.numberLocale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -19889,6 +20045,11 @@ class $$ImportConfigsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get numberLocale => $composableBuilder(
+    column: $table.numberLocale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -19945,6 +20106,11 @@ class $$ImportConfigsTableAnnotationComposer
 
   GeneratedColumn<String> get hashColumnsJson => $composableBuilder(
     column: $table.hashColumnsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get numberLocale => $composableBuilder(
+    column: $table.numberLocale,
     builder: (column) => column,
   );
 
@@ -20009,6 +20175,7 @@ class $$ImportConfigsTableTableManager
                 Value<String> mappingsJson = const Value.absent(),
                 Value<String> formulaJson = const Value.absent(),
                 Value<String> hashColumnsJson = const Value.absent(),
+                Value<String?> numberLocale = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => ImportConfigsCompanion(
                 id: id,
@@ -20017,6 +20184,7 @@ class $$ImportConfigsTableTableManager
                 mappingsJson: mappingsJson,
                 formulaJson: formulaJson,
                 hashColumnsJson: hashColumnsJson,
+                numberLocale: numberLocale,
                 updatedAt: updatedAt,
               ),
           createCompanionCallback:
@@ -20027,6 +20195,7 @@ class $$ImportConfigsTableTableManager
                 Value<String> mappingsJson = const Value.absent(),
                 Value<String> formulaJson = const Value.absent(),
                 Value<String> hashColumnsJson = const Value.absent(),
+                Value<String?> numberLocale = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => ImportConfigsCompanion.insert(
                 id: id,
@@ -20035,6 +20204,7 @@ class $$ImportConfigsTableTableManager
                 mappingsJson: mappingsJson,
                 formulaJson: formulaJson,
                 hashColumnsJson: hashColumnsJson,
+                numberLocale: numberLocale,
                 updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0
