@@ -51,18 +51,16 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     return ListenableBuilder(
       listenable: _selection,
       builder: (lbCtx, _) {
-        // Build the id list in rendered order: grouped by intermediary, then
-        // unassigned last. This matches what _buildGroup actually displays
-        // and is what range-select on long-press needs.
+        // Build the id list in rendered order: grouped by intermediary.
+        // Every asset must have an intermediary (schema v29 invariant).
         final assets = assetsAsync.value ?? const <Asset>[];
         final intermediariesNow = intermediariesAsync.value ?? const <Intermediary>[];
-        final grouping = <int?, List<int>>{};
+        final grouping = <int, List<int>>{};
         for (final a in assets) {
           (grouping[a.intermediaryId] ??= []).add(a.id);
         }
         final allAssetIds = <int>[
           for (final i in intermediariesNow) ...?grouping[i.id],
-          ...?grouping[null],
         ];
         _selection.setOrderedIds(allAssetIds);
         return Scaffold(
@@ -93,25 +91,19 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           final stats = statsAsync.value ?? {};
           final intermediaries = intermediariesAsync.value ?? [];
 
-          final grouped = <int?, List<Asset>>{};
+          final grouped = <int, List<Asset>>{};
           for (final asset in assets) {
             (grouped[asset.intermediaryId] ??= []).add(asset);
           }
 
-          final groupOrder = <int?>[
-            ...intermediaries.map((i) => i.id),
-            null,
-          ];
-
           return ListView(
             padding: const EdgeInsets.only(bottom: 80),
             children: [
-              for (final groupId in groupOrder)
-                if (grouped[groupId]?.isNotEmpty ?? false)
+              for (final i in intermediaries)
+                if (grouped[i.id]?.isNotEmpty ?? false)
                   _buildGroup(
-                    context, s, groupId,
-                    groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
-                    grouped[groupId] ?? [],
+                    context, s, i.id, i,
+                    grouped[i.id] ?? [],
                     stats, convertedStats, marketValues, baseCurrency, locale,
                     intermediaries,
                   ),
@@ -157,8 +149,8 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   Widget _buildGroup(
     BuildContext context,
     AppStrings s,
-    int? groupId,
-    Intermediary? intermediary,
+    int groupId,
+    Intermediary intermediary,
     List<Asset> assets,
     Map<int, AssetStats> stats,
     Map<int, double?> convertedStats,
@@ -167,8 +159,6 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     String locale,
     List<Intermediary> intermediaries,
   ) {
-    final title = intermediary?.name ?? s.unassigned;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -176,15 +166,11 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Icon(
-                intermediary != null ? Icons.business : Icons.folder_open,
-                size: 18,
-                color: Colors.grey,
-              ),
+              const Icon(Icons.business, size: 18, color: Colors.grey),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '$title (${assets.length})',
+                  '${intermediary.name} (${assets.length})',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -300,7 +286,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                   children: [
                     Expanded(
                       child: intermediaries.isEmpty
-                          ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
+                          ? Center(child: Text(s.selectIntermediaryEmpty, style: TextStyle(color: Colors.grey)))
                           : ReorderableListView.builder(
                               shrinkWrap: true,
                               buildDefaultDragHandles: false,
@@ -379,7 +365,7 @@ class _AssetTile extends StatelessWidget {
   final VoidCallback onTap;
   final AppStrings strings;
   final List<Intermediary> intermediaries;
-  final void Function(int? newIntermediaryId) onMove;
+  final void Function(int newIntermediaryId) onMove;
 
   const _AssetTile({
     required this.asset,
@@ -540,11 +526,11 @@ class _AssetTile extends StatelessWidget {
               ],
             ),
             const SizedBox(width: 4),
-            PopupMenuButton<int?>(
+            PopupMenuButton<int>(
               icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
               tooltip: strings.selectIntermediary,
-              itemBuilder: (_) => <PopupMenuEntry<int?>>[
-                PopupMenuItem<int?>(
+              itemBuilder: (_) => <PopupMenuEntry<int>>[
+                PopupMenuItem<int>(
                   enabled: false,
                   child: Text(
                     strings.selectIntermediary,
@@ -553,7 +539,7 @@ class _AssetTile extends StatelessWidget {
                 ),
                 const PopupMenuDivider(),
                 for (final i in intermediaries)
-                  PopupMenuItem<int?>(
+                  PopupMenuItem<int>(
                     value: i.id,
                     child: Row(
                       children: [
@@ -565,18 +551,6 @@ class _AssetTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                PopupMenuItem<int?>(
-                  value: null,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.folder_open, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(strings.unassigned)),
-                      if (asset.intermediaryId == null)
-                        const Icon(Icons.check, size: 18),
-                    ],
-                  ),
-                ),
               ],
               onSelected: onMove,
             ),
@@ -671,6 +645,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   final _manualNameCtrl = TextEditingController();
   InstrumentType? _instrumentType;
   AssetClass? _assetClass;
+  int? _selectedIntermediaryId;
 
   @override
   void dispose() {
@@ -871,29 +846,95 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          _buildIntermediaryPicker(s),
         ],
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
         FilledButton(
-          onPressed: () async {
-            final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-            final exchange = _selectedExchange ?? 'MIL';
-            final currency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
-            await widget.ref.read(assetServiceProvider).create(
-                  name: r.description,
-                  ticker: r.symbol.isNotEmpty ? r.symbol : null,
-                  exchange: exchange,
-                  currency: currency,
-                  instrumentType: _instrumentType,
-                  assetClass: _assetClass,
-                );
-            if (mounted) Navigator.pop(context);
-          },
+          onPressed: _selectedIntermediaryId != null
+              ? () async {
+                  final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
+                  final exchange = _selectedExchange ?? 'MIL';
+                  final currency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
+                  await widget.ref.read(assetServiceProvider).create(
+                        name: r.description,
+                        ticker: r.symbol.isNotEmpty ? r.symbol : null,
+                        exchange: exchange,
+                        currency: currency,
+                        instrumentType: _instrumentType,
+                        assetClass: _assetClass,
+                        intermediaryId: _selectedIntermediaryId!,
+                      );
+                  if (mounted) Navigator.pop(context);
+                }
+              : null,
           child: Text(s.create),
         ),
       ],
     );
+  }
+
+  Widget _buildIntermediaryPicker(AppStrings s) {
+    final intermediariesAsync = widget.ref.watch(intermediariesProvider);
+    final list = intermediariesAsync.value ?? const <Intermediary>[];
+    if (list.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(s.selectIntermediaryEmpty, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.add, size: 18),
+            label: Text(s.addIntermediary),
+            onPressed: _createIntermediaryInline,
+          ),
+        ],
+      );
+    }
+    return DropdownButtonFormField<int>(
+      initialValue: _selectedIntermediaryId,
+      decoration: InputDecoration(labelText: s.selectIntermediary, isDense: true),
+      items: list
+          .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name, style: const TextStyle(fontSize: 13))))
+          .toList(),
+      onChanged: (v) {
+        if (v != null) setState(() => _selectedIntermediaryId = v);
+      },
+    );
+  }
+
+  Future<void> _createIntermediaryInline() async {
+    final s = widget.ref.read(appStringsProvider);
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(s.addIntermediary),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(labelText: s.intermediaryName),
+            autofocus: true,
+            onChanged: (_) => setDialogState(() {}),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: nameCtrl.text.trim().isNotEmpty
+                  ? () => Navigator.pop(ctx, nameCtrl.text.trim())
+                  : null,
+              child: Text(s.create),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final svc = widget.ref.read(intermediaryServiceProvider);
+    final id = await svc.create(name: name);
+    if (mounted) setState(() => _selectedIntermediaryId = id);
   }
 
   Widget _buildManualDialog() {
@@ -941,12 +982,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          _buildIntermediaryPicker(s),
         ],
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
         FilledButton(
-          onPressed: _manualNameCtrl.text.trim().isNotEmpty
+          onPressed: (_manualNameCtrl.text.trim().isNotEmpty && _selectedIntermediaryId != null)
               ? () async {
                   final name = _manualNameCtrl.text.trim();
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
@@ -956,6 +999,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                         valuationMethod: ValuationMethod.eventDriven,
                         instrumentType: _instrumentType,
                         assetClass: _assetClass,
+                        intermediaryId: _selectedIntermediaryId!,
                       );
                   if (mounted) Navigator.pop(context);
                 }

@@ -701,6 +701,7 @@ class AppStrings {
   String errorParsingClipboard(Object e) => _it ? 'Errore nel parsificare gli appunti: $e' : 'Error parsing clipboard: $e';
   String get selectAccount         => _it ? 'Seleziona conto'          : 'Select Account';
   String get importSummary         => _it ? 'Riepilogo importazione'   : 'Import Summary';
+  String get numberFormatLabel     => _it ? 'Formato numeri'           : 'Number format';
   String sourceFile(String name)   => _it ? 'Origine: $name'           : 'Source: $name';
   String get clipboard             => _it ? 'Appunti'                  : 'Clipboard';
   String rowCount(int n)           => _it ? 'Righe: $n'                : 'Rows: $n';
@@ -890,6 +891,7 @@ class AppStrings {
       : 'Delete "$name"? Accounts and assets will be moved to "Unassigned".';
   String get intermediaryMoved     => _it ? 'Spostato con successo'     : 'Moved successfully';
   String get selectIntermediary    => _it ? 'Seleziona intermediario'   : 'Select Intermediary';
+  String get selectIntermediaryEmpty => _it ? 'Nessun intermediario. Creane uno per procedere.' : 'No intermediary yet. Create one to continue.';
   String get close                 => _it ? 'Chiudi'                    : 'Close';
 
   // ── Multi-select ─────────────────────────────────────────

@@ -54,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -399,6 +399,54 @@ class AppDatabase extends _$AppDatabase {
             }
             _log.info('Migration 28: dropped legacy CAPEX/IncomeAdj tables, '
                 'renamed buffers FK, dropped transactions.depreciation_id');
+          }
+          if (from < 29) {
+            // Every asset must now have an intermediary. Any asset currently
+            // without one is moved to a "Default" intermediary created on the
+            // fly (or reused if it already exists).
+            final orphanCount = (await customSelect(
+              'SELECT COUNT(*) AS c FROM assets WHERE intermediary_id IS NULL',
+            ).getSingle()).read<int>('c');
+
+            if (orphanCount > 0) {
+              // Find or create the Default intermediary.
+              final existing = await customSelect(
+                "SELECT id FROM intermediaries WHERE name = 'Default' LIMIT 1",
+              ).getSingleOrNull();
+              int defaultId;
+              if (existing != null) {
+                defaultId = existing.read<int>('id');
+              } else {
+                await customStatement(
+                  "INSERT INTO intermediaries (name) VALUES ('Default')",
+                );
+                defaultId = (await customSelect(
+                  "SELECT id FROM intermediaries WHERE name = 'Default' LIMIT 1",
+                ).getSingle()).read<int>('id');
+              }
+              await customStatement(
+                'UPDATE assets SET intermediary_id = ? WHERE intermediary_id IS NULL',
+                [defaultId],
+              );
+              _log.info('Migration 29: moved $orphanCount orphan assets to Default intermediary (id=$defaultId)');
+            } else {
+              _log.info('Migration 29: no orphan assets to backfill');
+            }
+          }
+          if (from < 30) {
+            // Per-source number-format locale for imports. NULL means
+            // "Auto — use the app's configured locale at import time".
+            if (!await _hasColumn('import_configs', 'number_locale')) {
+              await customStatement(
+                'ALTER TABLE import_configs ADD COLUMN number_locale TEXT',
+              );
+            }
+            if (!await _hasColumn('intermediaries', 'default_import_locale')) {
+              await customStatement(
+                'ALTER TABLE intermediaries ADD COLUMN default_import_locale TEXT',
+              );
+            }
+            _log.info('Migration 30: added number_locale columns');
           }
         },
       );

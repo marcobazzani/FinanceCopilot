@@ -85,6 +85,9 @@ void main() {
 
   group('Asset & AssetEvent', () {
     test('insert asset with events and snapshot', () async {
+      final iid = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'Default'),
+      );
       final assetId = await db.into(db.assets).insert(
         AssetsCompanion.insert(
           name: 'iShares Core MSCI World',
@@ -92,6 +95,7 @@ void main() {
           instrumentType: const Value(InstrumentType.etf),
           assetClass: const Value(AssetClass.equity),
           valuationMethod: ValuationMethod.marketPrice,
+          intermediaryId: iid,
         ),
       );
 

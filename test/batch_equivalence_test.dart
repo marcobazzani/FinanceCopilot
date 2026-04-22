@@ -16,9 +16,11 @@ import 'package:finance_copilot/services/investing_com_service.dart';
 
 void main() {
   late AppDatabase db;
+  late int iid;
 
-  setUp(() {
+  setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
+    iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
   });
 
   tearDown(() async => await db.close());
@@ -32,6 +34,7 @@ void main() {
       name: name,
       assetType: AssetType.stockEtf,
       valuationMethod: valuation,
+      intermediaryId: iid,
     ));
   }
 

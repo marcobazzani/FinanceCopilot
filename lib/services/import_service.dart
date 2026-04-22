@@ -156,6 +156,12 @@ class ImportService {
   final AppDatabase _db;
   final FileParserService _parser = FileParserService();
 
+  /// Locale used for the current import call. Set by each public import
+  /// method before any number parsing happens, then read by `_parseAmount`
+  /// and `_tryParseAmount`. Defaults to en_US for safety.
+  // ignore: prefer_final_fields  // mutated per import call
+  String _activeLocale = 'en_US';
+
   ImportService(this._db);
 
   // ──────────────────────────────────────────────
@@ -233,8 +239,20 @@ class ImportService {
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
+    /// User's per-import locale choice from the wizard. Persisted to
+    /// `ImportConfigs.numberLocale` for this account when non-null.
+    /// NULL means "Auto — fall back to the saved value or [appLocale]".
+    String? numberLocaleOverride,
+    /// App's configured locale (e.g. `it_IT`). Used as the final fallback
+    /// when no per-source override or saved value exists.
+    String? appLocale,
   }) async {
-    _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings');
+    await _setLocaleForAccount(
+      accountId: accountId,
+      override: numberLocaleOverride,
+      appLocale: appLocale,
+    );
+    _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -423,11 +441,23 @@ class ImportService {
     /// If provided, fills missing exchange rates from historical data after import.
     ExchangeRateService? rateService,
     required String baseCurrency,
-    /// If set, new assets are assigned to this intermediary and deletion
-    /// is scoped to ALL assets under this intermediary.
-    int? intermediaryId,
+    /// New assets are assigned to this intermediary; deletion is scoped to
+    /// ALL assets under this intermediary. Required — unassigned was removed
+    /// in schema v29.
+    required int intermediaryId,
+    /// User's per-import locale choice from the wizard. Persisted to
+    /// `Intermediaries.defaultImportLocale` for this intermediary when
+    /// non-null. NULL means "Auto — fall back to saved or [appLocale]".
+    String? numberLocaleOverride,
+    /// App's configured locale (e.g. `it_IT`). Final fallback.
+    String? appLocale,
   }) async {
-    _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings');
+    await _setLocaleForIntermediary(
+      intermediaryId: intermediaryId,
+      override: numberLocaleOverride,
+      appLocale: appLocale,
+    );
+    _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -475,11 +505,15 @@ class ImportService {
 
     _log.info('importAssetEventsGrouped: found ${isinToRows.length} unique ISINs');
 
-    // Find or create asset for each ISIN
+    // Find or create asset for each ISIN. Scope the lookup to this
+    // intermediary so the same ISIN held at two brokers produces two
+    // independent asset rows (one per broker, each with its own events).
     final assetsByIsin = <String, int>{};
     final existingByIsin = <String, int>{};
     final existingRows = await _db.customSelect(
-      "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != ''",
+      "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != '' "
+      "AND intermediary_id = ?",
+      variables: [Variable.withInt(intermediaryId)],
       readsFrom: {_db.assets},
     ).get();
     for (final row in existingRows) {
@@ -536,7 +570,7 @@ class ImportService {
           isin: Value(isin),
           currency: Value(currency),
           exchange: Value(exchange),
-          intermediaryId: Value(intermediaryId),
+          intermediaryId: intermediaryId,
         ));
         assetsByIsin[isin] = assetId;
         _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker, exchange=$exchange');
@@ -672,56 +706,28 @@ class ImportService {
     }
 
     if (isSpot) {
-      // Spot import: wipe ALL events for the target scope (no date filter)
-      if (intermediaryId != null) {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id IN '
-          '(SELECT id FROM assets WHERE intermediary_id = ?)',
-          variables: [Variable.withInt(intermediaryId)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
-      } else {
-        for (final assetId in byAsset.keys) {
-          final deleted = await _db.customUpdate(
-            'DELETE FROM asset_events WHERE asset_id IN '
-            '(SELECT id FROM assets WHERE intermediary_id IS NULL AND id = ?)',
-            variables: [Variable.withInt(assetId)],
-            updates: {_db.assetEvents},
-          );
-          totalDeleted += deleted;
-          _log.fine('importAssetEventsGrouped: spot wipe unassigned asset $assetId - deleted $deleted events');
-        }
-      }
+      // Spot import: every asset belongs to one intermediary, so the wipe
+      // scope is the full set of events under that intermediary.
+      totalDeleted = await _db.customUpdate(
+        'DELETE FROM asset_events WHERE asset_id IN '
+        '(SELECT id FROM assets WHERE intermediary_id = ?)',
+        variables: [Variable.withInt(intermediaryId)],
+        updates: {_db.assetEvents},
+      );
+      _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
     } else {
-      // Transaction import: date-based wipe-and-replace
+      // Transaction import: date-based wipe-and-replace, scoped to the
+      // intermediary's assets.
       final globalOldest = companions.map((c) => c.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
       final globalCutoff = DateTime(globalOldest.year, globalOldest.month, globalOldest.day);
       final cutoffEpoch = globalCutoff.millisecondsSinceEpoch ~/ 1000;
-
-      if (intermediaryId != null) {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id IN '
-          '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
-          variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
-      } else {
-        for (final entry in byAsset.entries) {
-          final assetId = entry.key;
-          final events = entry.value;
-          final oldestDate = events.map((e) => e.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
-          final cutoff = DateTime(oldestDate.year, oldestDate.month, oldestDate.day);
-          final deleted = await _db.customUpdate(
-            'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
-            variables: [Variable.withInt(assetId), Variable.withInt(cutoff.millisecondsSinceEpoch ~/ 1000)],
-            updates: {_db.assetEvents},
-          );
-          totalDeleted += deleted;
-          _log.fine('importAssetEventsGrouped: asset $assetId - deleted $deleted events from ${formatYmd(cutoff)}');
-        }
-      }
+      totalDeleted = await _db.customUpdate(
+        'DELETE FROM asset_events WHERE asset_id IN '
+        '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
+        variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
+        updates: {_db.assetEvents},
+      );
+      _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
     }
 
     _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
@@ -767,8 +773,17 @@ class ImportService {
     required List<ColumnMapping> mappings,
     required String defaultCurrency,
     void Function(int processed, int total)? onProgress,
+    /// User's per-import locale choice. Persisted to the
+    /// `IMPORT_INCOME_LOCALE` AppConfigs key when non-null.
+    String? numberLocaleOverride,
+    /// App's configured locale (e.g. `it_IT`). Final fallback.
+    String? appLocale,
   }) async {
-    _log.info('importIncomes: ${preview.totalRows} rows, ${mappings.length} mappings, defaultCurrency=$defaultCurrency');
+    await _setLocaleForIncome(
+      override: numberLocaleOverride,
+      appLocale: appLocale,
+    );
+    _log.info('importIncomes: ${preview.totalRows} rows, ${mappings.length} mappings, defaultCurrency=$defaultCurrency, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -869,8 +884,17 @@ class ImportService {
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
+    /// Locale used for parsing during preview only — NOT persisted.
+    String? numberLocale,
+    String? appLocale,
   }) async {
-    _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows');
+    final saved = numberLocale ??
+        (await (_db.select(_db.importConfigs)
+                  ..where((c) => c.accountId.equals(accountId)))
+                .getSingleOrNull())
+            ?.numberLocale;
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+    _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -1006,8 +1030,16 @@ class ImportService {
     Set<String>? sellValues,
     Set<String>? excludedIsins,
     Map<String, IsinExchangeOption>? selectedExchanges,
+    /// Locale used for parsing during preview only — NOT persisted.
+    /// Caller resolves to whatever the wizard selection is right now.
+    String? numberLocale,
+    String? appLocale,
   }) async {
-    _log.info('previewAssetEventImport: ${preview.totalRows} rows');
+    _activeLocale = amt.resolveImportLocale(
+      saved: numberLocale,
+      appLocale: appLocale,
+    );
+    _log.info('previewAssetEventImport: ${preview.totalRows} rows, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final isinMapping = mappingByField['isin'];
 
@@ -1113,8 +1145,107 @@ class ImportService {
   /// Parse a date string. Delegates to shared [date_parse.parseDate].
   DateTime _parseDate(String s) => date_parse.parseDate(s);
 
-  double _parseAmount(String s) => amt.parseAmount(s);
-  double? _tryParseAmount(String? s) => amt.tryParseAmount(s);
+  double _parseAmount(String s) => amt.parseAmount(s, locale: _activeLocale);
+  double? _tryParseAmount(String? s) => amt.tryParseAmount(s, locale: _activeLocale);
+
+  // ──────────────────────────────────────────────
+  // Number-locale persistence (per-flow)
+  // ──────────────────────────────────────────────
+
+  /// Resolve the effective locale for a transaction import on [accountId]:
+  /// 1. wizard `override` (also persists it to ImportConfigs)
+  /// 2. previously-saved `ImportConfigs.numberLocale[accountId]`
+  /// 3. `appLocale`
+  /// 4. `en_US` (final fallback in [amt.resolveImportLocale])
+  Future<void> _setLocaleForAccount({
+    required int accountId,
+    required String? override,
+    required String? appLocale,
+  }) async {
+    final saved = override ??
+        (await (_db.select(_db.importConfigs)
+                  ..where((c) => c.accountId.equals(accountId)))
+                .getSingleOrNull())
+            ?.numberLocale;
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+
+    if (override != null) {
+      // Upsert into ImportConfigs. If no row exists yet, create one with
+      // sensible defaults so future opens of the wizard show the choice.
+      final existing = await (_db.select(_db.importConfigs)
+            ..where((c) => c.accountId.equals(accountId)))
+          .getSingleOrNull();
+      if (existing == null) {
+        await _db.into(_db.importConfigs).insert(ImportConfigsCompanion.insert(
+              accountId: accountId,
+              numberLocale: Value(override),
+            ));
+      } else {
+        await (_db.update(_db.importConfigs)
+              ..where((c) => c.accountId.equals(accountId)))
+            .write(ImportConfigsCompanion(
+          numberLocale: Value(override),
+          updatedAt: Value(DateTime.now()),
+        ));
+      }
+    }
+  }
+
+  /// Resolve the effective locale for an asset-event import on
+  /// [intermediaryId]. Same priority order as [_setLocaleForAccount];
+  /// persistence target is `Intermediaries.defaultImportLocale`.
+  Future<void> _setLocaleForIntermediary({
+    required int intermediaryId,
+    required String? override,
+    required String? appLocale,
+  }) async {
+    final saved = override ??
+        (await (_db.select(_db.intermediaries)
+                  ..where((i) => i.id.equals(intermediaryId)))
+                .getSingleOrNull())
+            ?.defaultImportLocale;
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+
+    if (override != null) {
+      await (_db.update(_db.intermediaries)
+            ..where((i) => i.id.equals(intermediaryId)))
+          .write(IntermediariesCompanion(
+        defaultImportLocale: Value(override),
+        updatedAt: Value(DateTime.now()),
+      ));
+    }
+  }
+
+  static const _incomeLocaleConfigKey = 'IMPORT_INCOME_LOCALE';
+
+  /// Resolve the effective locale for an income import. Persistence target
+  /// is the `IMPORT_INCOME_LOCALE` AppConfigs row (single global value;
+  /// income imports don't have a per-source key today).
+  Future<void> _setLocaleForIncome({
+    required String? override,
+    required String? appLocale,
+  }) async {
+    String? saved = override;
+    if (saved == null) {
+      final row = await _db.customSelect(
+        'SELECT value FROM app_configs WHERE key = ?',
+        variables: [Variable.withString(_incomeLocaleConfigKey)],
+      ).getSingleOrNull();
+      final v = row?.read<String?>('value');
+      if (v != null && v.isNotEmpty) saved = v;
+    }
+    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+
+    if (override != null) {
+      await _db.into(_db.appConfigs).insertOnConflictUpdate(
+            AppConfigsCompanion.insert(
+              key: _incomeLocaleConfigKey,
+              value: override,
+              description: const Value('Number-format locale for income imports'),
+            ),
+          );
+    }
+  }
 
   EventType _parseEventType(String s, {Set<String>? buyValues, Set<String>? sellValues}) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');

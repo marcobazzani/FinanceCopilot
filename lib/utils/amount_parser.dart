@@ -1,58 +1,31 @@
-/// Parses amount/balance strings, handling both European (1.234,56) and
-/// standard (1,234.56) number formats.
-double parseAmount(String s) {
-  s = s.trim();
-  if (s.isEmpty) throw const FormatException('Empty amount');
+import 'package:intl/intl.dart';
 
-  // Remove currency symbols and whitespace used as thousands separator
-  s = s.replaceAll(RegExp(r'[€$£¥\s]'), '').trim();
-
-  // Both dot and comma present → disambiguate by position
-  if (s.contains(',') && s.contains('.')) {
-    final lastComma = s.lastIndexOf(',');
-    final lastDot = s.lastIndexOf('.');
-    if (lastComma > lastDot) {
-      // European: dots are thousands, comma is decimal (1.234,56)
-      s = s.replaceAll('.', '').replaceAll(',', '.');
-    } else {
-      // Standard: commas are thousands, dot is decimal (1,234.56)
-      s = s.replaceAll(',', '');
-    }
-  } else if (s.contains(',')) {
-    // Comma only: ≤2 digits after → decimal, 3 digits → thousands
-    final parts = s.split(',');
-    if (parts.length > 2) {
-      // Multiple commas: definitely thousands (1,234,567)
-      s = s.replaceAll(',', '');
-    } else if (parts.last.length == 3) {
-      // Exactly 3 digits after comma: thousands separator (1,234)
-      s = s.replaceAll(',', '');
-    } else {
-      // 1-2 digits after comma: decimal separator (1,5 or 1,50)
-      s = s.replaceAll(',', '.');
-    }
-  } else if (s.contains('.')) {
-    // Dot only: ≤2 digits after → decimal, 3 digits → thousands
-    final parts = s.split('.');
-    if (parts.length > 2) {
-      // Multiple dots: definitely thousands (1.234.567)
-      s = s.replaceAll('.', '');
-    } else if (parts.last.length == 3 && parts.first.isNotEmpty) {
-      // Exactly 3 digits after dot: thousands separator (1.234)
-      s = s.replaceAll('.', '');
-    }
-    // Otherwise: decimal point (1.5, 12.34, etc.) — keep as is
-  }
-
-  return double.parse(s);
+/// Parses an amount/balance string under the given locale.
+///
+/// Locale must be an ICU locale tag the app uses (e.g. `it_IT`, `en_US`,
+/// `de_DE`, `fr_FR`, `es_ES`, `en_GB`). The decimal/thousands separators
+/// come from the locale — no heuristic guessing.
+double parseAmount(String s, {required String locale}) {
+  final cleaned = s.replaceAll(RegExp(r'[€$£¥]'), '').trim();
+  if (cleaned.isEmpty) throw const FormatException('Empty amount');
+  return NumberFormat.decimalPattern(locale).parse(cleaned).toDouble();
 }
 
-/// Like [parseAmount] but returns null on failure instead of throwing.
-double? tryParseAmount(String? s) {
+/// Like [parseAmount] but returns null on null/empty/parse-failure.
+double? tryParseAmount(String? s, {required String locale}) {
   if (s == null || s.trim().isEmpty) return null;
   try {
-    return parseAmount(s);
+    return parseAmount(s, locale: locale);
   } catch (_) {
     return null;
   }
 }
+
+/// Pick the effective locale to parse an import file under.
+///
+/// Priority:
+///  1. The user's per-source override (`saved`), if any.
+///  2. The app's configured locale (`appLocale`).
+///  3. `en_US` as a final safety net.
+String resolveImportLocale({String? saved, required String? appLocale}) =>
+    saved ?? appLocale ?? 'en_US';

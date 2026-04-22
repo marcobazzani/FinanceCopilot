@@ -5,7 +5,12 @@ on:
     branches: [develop]
     tags: ['v*']
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:

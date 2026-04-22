@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/services/import_service.dart';
 
 import 'helpers/test_app.dart';
@@ -67,6 +68,10 @@ void main() {
 
   testWidgets('Import CSV: European format (semicolon, comma decimal)', (tester) async {
     final db = await pumpApp(tester, seed: (db) async {
+      // Italian-locale user importing an Italian-locale file.
+      await db.into(db.appConfigs).insertOnConflictUpdate(
+            AppConfigsCompanion.insert(key: 'LOCALE', value: 'it_IT'),
+          );
       await seedAccount(db, name: 'EU Bank');
     });
 
