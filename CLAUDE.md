@@ -86,7 +86,7 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
 # Navigation
 
-- Do NOT run `find` or exploratory commands to locate files — check the code directly.
+- Prefer checking logs, existing codebase knowledge, and context first. Only use `find` or other CLI exploratory commands when the built-in tools (Glob, Grep, Read) cannot locate what you need.
 
 # Long-Running Commands
 

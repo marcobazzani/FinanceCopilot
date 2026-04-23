@@ -1,0 +1,27 @@
+# Build outputs and intermediates
+build/
+
+# Dart/Flutter tooling cache
+.dart_tool/
+.pub-cache/
+.pub/
+
+# Platform dependency managers
+ios/Pods/
+android/.gradle/
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# OS junk
+.DS_Store
+
+# Worktrees
+.worktrees/
+.claude/worktrees/
+
+# Symbolication / obfuscation
+app.*.symbols
+app.*.map.json

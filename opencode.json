@@ -1,0 +1,9 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": {
+    "dart": {
+      "command": ["dart", "language-server", "--protocol=lsp"],
+      "extensions": [".dart"]
+    }
+  }
+}
