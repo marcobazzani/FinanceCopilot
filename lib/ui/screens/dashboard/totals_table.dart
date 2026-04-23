@@ -40,19 +40,8 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
       return (current, hMax);
     }
 
-    // Cash = accounts + spread adjustments
-    final (cashTotal, cashMax) = lastValueAndMax([
-      ...d.accounts.map((s) => s.spots),
-      ...d.adjustments.map((s) => s.spots),
-    ]);
-
-    // Saving = accounts + invested + adjustments + income adj
-    final (savingTotal, savingMax) = lastValueAndMax([
-      ...d.accounts.map((s) => s.spots),
-      ...d.assetInvested.map((s) => s.spots),
-      ...d.adjustments.map((s) => s.spots),
-      ...d.incomeAdjustments.map((s) => s.spots),
-    ]);
+    final (cashTotal, cashMax)     = lastValueAndMax([d.cashSpots]);
+    final (savingTotal, savingMax) = lastValueAndMax([d.savingSpots]);
 
     // Invested = cost basis of invested assets
     final (investedTotal, investedMax) = lastValueAndMax(d.assetInvested.map((s) => s.spots).toList());
@@ -70,8 +59,8 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     // Build rows: label, total, delta vs historical max, series for drill-down
     final rows = <_TotalRow>[
       _TotalRow(s.dashTotalAssets, totalAssetsTotal, totalAssetsTotal - totalAssetsMax, [...d.accounts, ...d.assetMarket, ...d.adjustments]),
-      _TotalRow(s.dashCash, cashTotal, cashTotal - cashMax, [...d.accounts, ...d.adjustments]),
-      _TotalRow(s.dashSaving, savingTotal, savingTotal - savingMax, [...d.accounts, ...d.assetInvested, ...d.adjustments, ...d.incomeAdjustments]),
+      _TotalRow(s.dashCash, cashTotal, cashTotal - cashMax, d.cashSeries),
+      _TotalRow(s.dashSaving, savingTotal, savingTotal - savingMax, d.savingSeries),
       _TotalRow(s.dashInvested, investedTotal, investedTotal - investedMax, d.assetInvested),
       _TotalRow(s.dashPortfolio, portfolioTotal, portfolioTotal - portfolioMax, d.assetMarket),
     ];

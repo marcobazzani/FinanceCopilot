@@ -289,19 +289,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       ...toConfigs(allData.adjustments),
     ]);
 
-    // Cash: all accounts + spread adjustments only (no income adj)
-    final cashJson = jsonEncode([
-      ...toConfigs(allData.accounts),
-      ...toConfigs(allData.adjustments),
-    ]);
-
-    // Saving: all accounts + all invested assets + all adjustments (spread + income)
-    final savingJson = jsonEncode([
-      ...toConfigs(allData.accounts),
-      ...toConfigs(allData.assetInvested),
-      ...toConfigs(allData.adjustments),
-      ...toConfigs(allData.incomeAdjustments),
-    ]);
+    final cashJson   = jsonEncode(toConfigs(allData.cashSeries));
+    final savingJson = jsonEncode(toConfigs(allData.savingSeries));
 
     // Invested: all invested assets
     final investedJson = jsonEncode(toConfigs(allData.assetInvested));
