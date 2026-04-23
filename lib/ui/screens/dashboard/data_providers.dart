@@ -497,12 +497,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   }
 
   // 2. Build total saving series (same composition as Cash Flow tab)
-  final savingSpots = buildTotalSpots([
-    ...allSeriesData.accounts.map((s) => s.spots),
-    ...allSeriesData.assetInvested.map((s) => s.spots),
-    ...allSeriesData.adjustments.map((s) => s.spots),
-    ...allSeriesData.incomeAdjustments.map((s) => s.spots),
-  ]);
+  final savingSpots = allSeriesData.savingSpots;
 
   double lookupNAV(DateTime date) {
     final x = date.difference(allSeriesData.firstDate).inDays.toDouble();

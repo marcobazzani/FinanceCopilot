@@ -18,6 +18,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final assetsAsync = ref.watch(activeAssetsProvider);
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
+    final allDataAsync = ref.watch(allSeriesDataProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
@@ -32,7 +33,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final pctFmt = NumberFormat('0.00', locale);
 
     // Wait for all required data before rendering — avoids flicker with zeros
-    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading) {
+    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading || allDataAsync.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (assetsAsync.hasError) return Center(child: Text(s.error(assetsAsync.error ?? '')));
@@ -42,11 +43,12 @@ class _FinancialHealthTab extends ConsumerWidget {
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (assets) {
         final marketValues = marketValuesAsync.value ?? {};
-        final accountStats = accountStatsAsync.value ?? {};
         final ieData = ieAsync.value;
 
-        // Compute totals — split liquid vs illiquid investments
-        final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
+        // Cash = latest value of the Cash chart (accounts + adjustments) — single source of truth.
+        final allData = allDataAsync.value;
+        final cashSpots = allData?.cashSpots ?? const <FlSpot>[];
+        final cash = cashSpots.isEmpty ? 0.0 : cashSpots.last.y;
         final activeAssets = assets;
         const illiquidTypes = {InstrumentType.pension, InstrumentType.realEstate, InstrumentType.alternative, InstrumentType.liability};
         double liquidInvestments = 0;

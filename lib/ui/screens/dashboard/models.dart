@@ -45,6 +45,21 @@ class AllSeriesData {
   });
 
   List<ChartSeries> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...assetGain, ...adjustments, ...incomeAdjustments];
+
+  /// Series composing the Cash chart: accounts + adjustments (incl. materialized inflows).
+  List<ChartSeries> get cashSeries => [...accounts, ...adjustments];
+
+  /// Series composing the Saving chart: accounts + invested + adjustments + income adj.
+  List<ChartSeries> get savingSeries =>
+      [...accounts, ...assetInvested, ...adjustments, ...incomeAdjustments];
+
+  /// Carry-forward total Cash spots — what the Cash chart plots.
+  List<FlSpot> get cashSpots =>
+      buildTotalSpots(cashSeries.map((s) => s.spots).toList());
+
+  /// Carry-forward total Saving spots — what the Saving chart plots.
+  List<FlSpot> get savingSpots =>
+      buildTotalSpots(savingSeries.map((s) => s.spots).toList());
 }
 
 // ════════════════════════════════════════════════════

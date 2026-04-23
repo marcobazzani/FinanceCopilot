@@ -123,19 +123,8 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final ieData  = ieAsync.value;
 
-    // Saving = accounts + invested + adjustments (spread + income)
-    final savingSpots = buildTotalSpots([
-      ...allData.accounts.map((s) => s.spots),
-      ...allData.assetInvested.map((s) => s.spots),
-      ...allData.adjustments.map((s) => s.spots),
-      ...allData.incomeAdjustments.map((s) => s.spots),
-    ]);
-
-    // Cash = accounts + spread adjustments only
-    final cashSpots = buildTotalSpots([
-      ...allData.accounts.map((s) => s.spots),
-      ...allData.adjustments.map((s) => s.spots),
-    ]);
+    final savingSpots = allData.savingSpots;
+    final cashSpots   = allData.cashSpots;
 
     // Spending = cumulative sum of negative daily deltas of saving
     final spendingSpots = _buildSpendingFromSaving(savingSpots);
