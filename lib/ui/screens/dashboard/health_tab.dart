@@ -45,23 +45,21 @@ class _FinancialHealthTab extends ConsumerWidget {
         final marketValues = marketValuesAsync.value ?? {};
         final ieData = ieAsync.value;
 
-        // Cash = latest value of the Cash chart (accounts + adjustments) — single source of truth.
+        // Cash / Portfolio / Liquid Investments flow from the user's
+        // configured History-tab charts (option B). Each falls back to the
+        // hard-coded composition when the role chart is missing.
         final allData = allDataAsync.value;
-        final cashSpots = allData?.cashSpots ?? const <FlSpot>[];
-        final cash = cashSpots.isEmpty ? 0.0 : cashSpots.last.y;
+        final userCharts = ref.watch(dashboardChartsProvider).value ?? const <DashboardChart>[];
         final activeAssets = assets;
-        const illiquidTypes = {InstrumentType.pension, InstrumentType.realEstate, InstrumentType.alternative, InstrumentType.liability};
-        double liquidInvestments = 0;
-        double illiquidInvestments = 0;
-        for (final asset in activeAssets) {
-          final mv = marketValues[asset.id] ?? 0.0;
-          if (illiquidTypes.contains(asset.instrumentType)) {
-            illiquidInvestments += mv;
-          } else {
-            liquidInvestments += mv;
-          }
-        }
-        final investments = liquidInvestments + illiquidInvestments;
+        final cash = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('cash', userCharts, allData, activeAssets);
+        final investments = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('portfolio', userCharts, allData, activeAssets);
+        final liquidInvestments = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('liquid_investments', userCharts, allData, activeAssets);
 
         // Current year for savings/expenses. Rolling 12m for income-to-wealth.
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;

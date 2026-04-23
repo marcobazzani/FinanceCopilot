@@ -246,7 +246,40 @@ class AppStrings {
   String get dashSaving          => _it ? 'Risparmi'           : 'Saving';
   String get dashInvested        => _it ? 'Investito'          : 'Invested';
   String get dashPortfolio       => _it ? 'Portafoglio'        : 'Portfolio';
+  String get dashLiquidInvestments => _it ? 'Investimenti liquidi' : 'Liquid Investments';
   String get dashPerformance     => _it ? 'Performance'        : 'Performance';
+  // ── Chart editor (configurable History-tab charts) ──
+  String get chartNewTitle         => _it ? 'Nuovo grafico'         : 'New Chart';
+  String get chartEditTitle        => _it ? 'Modifica grafico'      : 'Edit Chart';
+  String get chartTitleLabel       => _it ? 'Titolo grafico'        : 'Chart title';
+  String get chartSectionAccounts  => _it ? 'Conti'                 : 'Accounts';
+  String get chartSectionAssets    => _it ? 'Attività'              : 'Assets';
+  String get chartSectionSpreadAdj => _it ? 'Aggiustamenti dilaz.'  : 'Spread Adjustments';
+  String get chartSectionIncomeAdj => _it ? 'Aggiustamenti entrate' : 'Income Adjustments';
+  String get chartSectionOutflowAdj => _it ? 'Aggiustamenti in uscita' : 'Outflow Adjustments';
+  String get chartSectionInflowAdj  => _it ? 'Aggiustamenti in entrata': 'Inflow Adjustments';
+  String get chartAssetInvested    => _it ? 'Investito'             : 'Invested';
+  String get chartAssetMarket      => _it ? 'Mercato'               : 'Market';
+  String get chartAssetGain        => _it ? 'Guadagno'              : 'Gain';
+  String get chartAdjValue         => _it ? 'Valore'                : 'Value';
+  String get chartAdjEvents        => _it ? 'Eventi'                : 'Events';
+  String get chartSelectAll        => _it ? 'Seleziona tutto'       : 'Select All';
+  String get chartDeselectAll      => _it ? 'Deseleziona tutto'     : 'Deselect All';
+  String get chartCombineNewTitle  => _it ? 'Combina grafici'       : 'Combine Charts';
+  String get chartCombineEditTitle => _it ? 'Modifica combinazione' : 'Edit Combined Chart';
+  String get chartCombineTitleLabel=> _it ? 'Titolo combinazione'   : 'Combined chart title';
+  String get chartCombinePickHint  => _it ? 'Seleziona 2+ grafici:' : 'Select charts to combine (2+):';
+  String get chartCombineAutoAll     => _it ? 'Includi automaticamente tutti i grafici' : 'Auto-include all charts';
+  String get chartCombineAutoAllHint => _it
+      ? 'La combinazione si aggiorna quando aggiungi o rimuovi grafici.'
+      : 'The overlay updates as you add or remove charts.';
+  String get chartDeleteTitle      => _it ? 'Elimina grafico?'      : 'Delete Chart?';
+  String chartDeleteConfirm(String t) => _it ? 'Eliminare "$t"?' : 'Delete "$t"?';
+  String get chartResetDefaults      => _it ? 'Ripristina predefiniti' : 'Reset to Defaults';
+  String get chartResetConfirmTitle  => _it ? 'Ripristinare i grafici predefiniti?' : 'Reset charts to defaults?';
+  String get chartResetConfirmBody   => _it
+      ? 'Tutti i grafici attuali saranno cancellati e sostituiti dai predefiniti.'
+      : 'All current charts will be deleted and replaced with the defaults.';
   String get cfVelocity          => _it ? 'Velocità'           : 'Velocity';
   String get colTotal            => _it ? 'Totale'             : 'Total';
   String get colAvg              => _it ? 'Media'              : 'Avg';
