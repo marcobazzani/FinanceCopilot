@@ -68,8 +68,9 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     super.initState();
     final e = widget.event;
     _nameCtrl = TextEditingController(text: e?.name ?? '');
+    final initLocale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     _amountCtrl = TextEditingController(
-      text: e != null ? fmt.amountFormat(Platform.localeName).format(e.totalAmount) : '',
+      text: e != null ? fmt.amountFormat(initLocale).format(e.totalAmount) : '',
     );
     _stepsCtrl = TextEditingController(text: '12');
     _notesCtrl = TextEditingController(text: e?.notes ?? '');
