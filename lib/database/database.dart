@@ -515,7 +515,11 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  /// Seed default dashboard widgets: price changes card + two charts.
+  /// Seed default dashboard widgets on fresh install. Emits the Price
+  /// Changes widget plus four role-tagged charts (cash / saving / portfolio
+  /// / liquid_investments) that Cash Flow + Health resolve by role.
+  /// Existing installs rely on the in-app "Reset to defaults" FAB instead
+  /// of this seed, which only runs once.
   Future<void> _seedDefaultCharts() async {
     // Widget 0: Price Changes card
     await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
@@ -525,40 +529,77 @@ class AppDatabase extends _$AppDatabase {
       seriesJson: '[]',
     ));
 
-    // Gather all active accounts, assets, and extraordinary events
     final accounts = await (select(this.accounts)..where((a) => a.isActive.equals(true))).get();
     final assets = await (select(this.assets)..where((a) => a.isActive.equals(true))).get();
     final events = await (select(extraordinaryEvents)..where((e) => e.isActive.equals(true))).get();
 
-    // Chart 1: Net Worth — accounts + invested assets + extraordinary events.
-    // Outflow events use the 'adjustment' series key, inflow events use
-    // 'income_adj' — matching the partitioning in the chart data provider.
-    final nwSeries = <Map<String, dynamic>>[
+    // Cash = accounts + outflow-event adjustments (stored via the split
+    // value/events keys). Role: 'cash'.
+    final cashSeries = <Map<String, dynamic>>[
       for (final a in accounts) {'type': 'account', 'id': a.id},
-      for (final a in assets) {'type': 'asset_invested', 'id': a.id},
-      for (final e in events)
-        {
-          'type': e.direction == EventDirection.outflow ? 'adjustment' : 'income_adj',
-          'id': e.id,
-        },
-    ];
-    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Net Worth',
-      sortOrder: const Value(1),
-      seriesJson: _encodeJson(nwSeries),
-    ));
-
-    // Chart 2: Invested vs Market — all assets (invested + market)
-    final invSeries = <Map<String, dynamic>>[
-      for (final a in assets) ...[
-        {'type': 'asset_invested', 'id': a.id},
-        {'type': 'asset_market', 'id': a.id},
+      for (final e in events.where((e) => e.direction == EventDirection.outflow)) ...[
+        {'type': 'adjustment_value', 'id': e.id},
+        {'type': 'adjustment_events', 'id': e.id},
       ],
     ];
     await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Invested vs Market Value',
+      title: 'Cash',
+      widgetType: const Value('cash'),
+      sortOrder: const Value(1),
+      seriesJson: _encodeJson(cashSeries),
+    ));
+
+    // Saving = accounts + invested assets + outflow adjustments + inflow
+    // (income) adjustments. Role: 'saving'.
+    final savingSeries = <Map<String, dynamic>>[
+      for (final a in accounts) {'type': 'account', 'id': a.id},
+      for (final a in assets) {'type': 'asset_invested', 'id': a.id},
+      for (final e in events) ...[
+        if (e.direction == EventDirection.outflow) ...[
+          {'type': 'adjustment_value', 'id': e.id},
+          {'type': 'adjustment_events', 'id': e.id},
+        ] else ...[
+          {'type': 'income_adj_value', 'id': e.id},
+          {'type': 'income_adj_events', 'id': e.id},
+        ],
+      ],
+    ];
+    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Saving',
+      widgetType: const Value('saving'),
       sortOrder: const Value(2),
-      seriesJson: _encodeJson(invSeries),
+      seriesJson: _encodeJson(savingSeries),
+    ));
+
+    // Portfolio = market values of every active asset. Role: 'portfolio'.
+    final portfolioSeries = <Map<String, dynamic>>[
+      for (final a in assets) {'type': 'asset_market', 'id': a.id},
+    ];
+    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Portfolio',
+      widgetType: const Value('portfolio'),
+      sortOrder: const Value(3),
+      seriesJson: _encodeJson(portfolioSeries),
+    ));
+
+    // Liquid Investments = market values excluding pension / realEstate /
+    // alternative / liability. Role: 'liquid_investments'.
+    const illiquid = {
+      InstrumentType.pension,
+      InstrumentType.realEstate,
+      InstrumentType.alternative,
+      InstrumentType.liability,
+    };
+    final liquidSeries = <Map<String, dynamic>>[
+      for (final a in assets)
+        if (!illiquid.contains(a.instrumentType))
+          {'type': 'asset_market', 'id': a.id},
+    ];
+    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
+      title: 'Liquid Investments',
+      widgetType: const Value('liquid_investments'),
+      sortOrder: const Value(4),
+      seriesJson: _encodeJson(liquidSeries),
     ));
   }
 

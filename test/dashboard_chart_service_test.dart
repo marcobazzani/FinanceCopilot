@@ -32,8 +32,9 @@ void main() {
     });
 
     test('create multiple charts, verify sortOrder auto-increment', () async {
-      // Database seeds 3 widgets with sortOrder 0, 1, 2.
-      // Next created charts should get 3, 4, 5.
+      // Database seeds 5 widgets with sortOrder 0..4 (price_changes + cash +
+      // saving + portfolio + liquid_investments). Next created charts auto-
+      // increment from there.
       final id1 = await service.create(title: 'A', seriesJson: '[]');
       final id2 = await service.create(title: 'B', seriesJson: '[]');
       final id3 = await service.create(title: 'C', seriesJson: '[]');
@@ -43,9 +44,9 @@ void main() {
       final b = charts.firstWhere((c) => c.id == id2);
       final c = charts.firstWhere((c) => c.id == id3);
 
-      expect(a.sortOrder, 3);
-      expect(b.sortOrder, 4);
-      expect(c.sortOrder, 5);
+      expect(a.sortOrder, 5);
+      expect(b.sortOrder, 6);
+      expect(c.sortOrder, 7);
     });
 
     test('update title', () async {
