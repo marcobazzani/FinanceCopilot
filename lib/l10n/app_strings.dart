@@ -250,6 +250,10 @@ class AppStrings {
   String get dashPerformance     => _it ? 'Performance'        : 'Performance';
   // ── Chart editor (configurable History-tab charts) ──
   String get chartNewTitle         => _it ? 'Nuovo grafico'         : 'New Chart';
+  String get moveUp                => _it ? 'Sposta su'              : 'Move up';
+  String get moveDown              => _it ? 'Sposta giù'             : 'Move down';
+  String get chartNewCustom        => _it ? 'Grafico personalizzato…' : 'Custom chart…';
+  String chartRestoreRole(String name) => _it ? 'Ripristina $name' : 'Restore $name';
   String get chartEditTitle        => _it ? 'Modifica grafico'      : 'Edit Chart';
   String get chartTitleLabel       => _it ? 'Titolo grafico'        : 'Chart title';
   String get chartSectionAccounts  => _it ? 'Conti'                 : 'Accounts';
@@ -258,6 +262,7 @@ class AppStrings {
   String get chartSectionIncomeAdj => _it ? 'Aggiustamenti entrate' : 'Income Adjustments';
   String get chartSectionOutflowAdj => _it ? 'Aggiustamenti in uscita' : 'Outflow Adjustments';
   String get chartSectionInflowAdj  => _it ? 'Aggiustamenti in entrata': 'Inflow Adjustments';
+  String get chartSectionEphemeralAdj => _it ? 'Aggiustamenti effimeri' : 'Ephemeral Adjustments';
   String get chartAssetInvested    => _it ? 'Investito'             : 'Invested';
   String get chartAssetMarket      => _it ? 'Mercato'               : 'Market';
   String get chartAssetGain        => _it ? 'Guadagno'              : 'Gain';
@@ -280,6 +285,14 @@ class AppStrings {
   String get chartResetConfirmBody   => _it
       ? 'Tutti i grafici attuali saranno cancellati e sostituiti dai predefiniti.'
       : 'All current charts will be deleted and replaced with the defaults.';
+  String get chartExportTitle        => _it ? 'Esporta configurazione' : 'Export config';
+  String get chartExportInstructions => _it
+      ? 'Copiato negli appunti. Per renderlo il nuovo predefinito per tutti gli utenti:\n1. Apri assets/default_charts.json nell\'editor.\n2. Sostituisci il contenuto con quello degli appunti.\n3. flutter pub get && flutter build …\n4. Esegui il commit della modifica.'
+      : 'Copied to clipboard. To make this the new default for every user:\n1. Open assets/default_charts.json in your editor.\n2. Replace its contents with the clipboard.\n3. flutter pub get && flutter build …\n4. Commit the asset change.';
+  String get chartExportPartialTitle => _it ? 'Esportazione non possibile' : 'Cannot export';
+  String chartExportPartialBody(String reason) => _it
+      ? 'Almeno un grafico ha una selezione parziale di una categoria, quindi non può essere espresso senza id specifici. Modifica i grafici in modo che ogni sezione sia tutta selezionata o tutta deselezionata.\n\n$reason'
+      : 'At least one chart has a partial category selection so it cannot be expressed without specific ids. Edit the charts so every section is fully selected or fully cleared.\n\n$reason';
   String get cfVelocity          => _it ? 'Velocità'           : 'Velocity';
   String get colTotal            => _it ? 'Totale'             : 'Total';
   String get colAvg              => _it ? 'Media'              : 'Avg';
@@ -534,6 +547,10 @@ class AppStrings {
   String get eventTreatmentLabel         => _it ? 'Trattamento'             : 'Treatment';
   String get eventTreatmentInstant       => _it ? 'Istantaneo'              : 'Instant';
   String get eventTreatmentSpread        => _it ? 'Dilazionato'             : 'Spread';
+  String get eventEphemeralLabel         => _it ? 'Effimero (linea di credito)' : 'Ephemeral (line of credit)';
+  String get eventEphemeralHelp          => _it
+      ? 'Soldi che non hai ma puoi spendere: contribuiscono al Cash ma non ai Risparmi.'
+      : 'Money you don\'t have but can spend: contributes to Cash but not Saving.';
   String get eventBasicsSection          => _it ? 'Dettagli'                : 'Basics';
   String get eventDateLabel              => _it ? "Data dell'evento"        : 'Event date';
   String get eventSpreadSection          => _it ? 'Dilazione'               : 'Spread';

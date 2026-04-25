@@ -42,6 +42,7 @@ AllSeriesData _fixture() {
         spots: const [FlSpot(2, -100), FlSpot(10, -400)],
       ),
     ],
+    ephemeralInflows: const [],
     incomeAdjustments: [
       ChartSeries(
         key: 'income_adj:1',
@@ -150,6 +151,41 @@ void main() {
       expect(got.map((s) => s.y).toList(), [1500, 1400, 3400, 3500, 4000, 4950]);
     });
 
+    test('ephemeral inflows raise Cash but never enter Saving', () {
+      final d = AllSeriesData(
+        firstDate: DateTime(2024, 1, 1),
+        accounts: [
+          ChartSeries(
+            key: 'account:1',
+            name: 'Checking',
+            color: Colors.blue,
+            spots: const [FlSpot(0, 1000), FlSpot(10, 1000)],
+          ),
+        ],
+        assetInvested: const [],
+        assetMarket: const [],
+        assetGain: const [],
+        adjustments: const [],
+        incomeAdjustments: const [],
+        ephemeralInflows: [
+          ChartSeries(
+            key: 'ephemeral_inflow_value:5',
+            name: 'Line of credit',
+            color: Colors.amber,
+            // Stored negative (inflow anchor convention) — the cash getter
+            // negates it so the absolute value adds to Cash.
+            spots: const [FlSpot(2, -500)],
+          ),
+        ],
+        baseCurrency: 'EUR',
+      );
+      // Cash should include +500 from x=2 onward (negation of -500).
+      final cash = {for (final s in d.cashSpots) s.x: s.y};
+      expect(cash[2], 1500); // 1000 + 500
+      // Saving must not include the ephemeral series at all.
+      expect(d.savingSpots.every((p) => p.y == 1000), isTrue);
+    });
+
     test('all-empty AllSeriesData yields empty cash/saving spots', () {
       final empty = AllSeriesData(
         firstDate: DateTime(2024, 1, 1),
@@ -159,6 +195,7 @@ void main() {
         assetGain: const [],
         adjustments: const [],
         incomeAdjustments: const [],
+        ephemeralInflows: const [],
         baseCurrency: 'EUR',
       );
       expect(empty.cashSeries, isEmpty);

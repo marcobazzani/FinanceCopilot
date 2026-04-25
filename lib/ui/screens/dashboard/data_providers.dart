@@ -394,6 +394,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   final adjustmentSeries = <ChartSeries>[];
   final incomeAdjSeries = <ChartSeries>[];
+  final ephemeralInflowSeries = <ChartSeries>[];
 
   // Compute carry-forward spots from a day→delta map, using the event's FX
   // rate on each day. Pure helper — returns empty when the map is empty.
@@ -448,9 +449,25 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     final valueSpots = await buildSpots(valueMap, event.currency);
     final eventSpots = await buildSpots(eventsMap, event.currency);
 
-    final valuePrefix = isOutflow ? 'adjustment_value' : 'income_adj_value';
-    final eventsPrefix = isOutflow ? 'adjustment_events' : 'income_adj_events';
-    final bucket = isOutflow ? adjustmentSeries : incomeAdjSeries;
+    // Ephemeral inflows live in their own bucket; non-ephemeral inflows
+    // stay in incomeAdjSeries; outflows always in adjustmentSeries.
+    final isEphemeral = !isOutflow && event.isEphemeral;
+    final String valuePrefix;
+    final String eventsPrefix;
+    final List<ChartSeries> bucket;
+    if (isOutflow) {
+      valuePrefix = 'adjustment_value';
+      eventsPrefix = 'adjustment_events';
+      bucket = adjustmentSeries;
+    } else if (isEphemeral) {
+      valuePrefix = 'ephemeral_inflow_value';
+      eventsPrefix = 'ephemeral_inflow_events';
+      bucket = ephemeralInflowSeries;
+    } else {
+      valuePrefix = 'income_adj_value';
+      eventsPrefix = 'income_adj_events';
+      bucket = incomeAdjSeries;
+    }
 
     if (valueSpots.isNotEmpty) {
       bucket.add(ChartSeries(
@@ -482,6 +499,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     assetGain: assetGainSeries,
     adjustments: adjustmentSeries,
     incomeAdjustments: incomeAdjSeries,
+    ephemeralInflows: ephemeralInflowSeries,
     baseCurrency: baseCurrency,
   );
 });
@@ -518,7 +536,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   // 2. Build total saving series — resolved from the user's configured
   // Saving chart when present (option B), else hard-coded composition.
-  final userCharts = await ref.watch(dashboardChartsProvider.future);
+  final userCharts = ref.watch(dashboardChartsProvider);
   final activeAssets = await ref.watch(activeAssetsProvider.future);
   final savingSpots = _DashboardScreenState.spotsForRole(
     'saving',

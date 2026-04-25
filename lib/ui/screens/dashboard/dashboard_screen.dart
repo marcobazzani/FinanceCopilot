@@ -3,8 +3,11 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
+import '../../../build_flags.dart';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
@@ -17,6 +20,9 @@ import '../../../database/database.dart';
 import '../../../database/tables.dart';
 import '../../../database/providers.dart';
 import '../../../l10n/app_strings.dart';
+import '../../../models/dashboard_chart.dart';
+import '../../../services/default_charts_exporter.dart';
+import '../../../services/default_charts_loader.dart';
 import '../../../services/exchange_rate_service.dart';
 import '../../../services/financial_health_service.dart';
 import '../../../services/allocation_computation_service.dart';
@@ -164,13 +170,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           );
         }
 
-        final userCharts = ref.watch(dashboardChartsProvider).value ?? const <DashboardChart>[];
-        final activeAssets = ref.watch(activeAssetsProvider).value ?? const <Asset>[];
-        // DB-stored charts are authoritative once any exist. Static defaults
-        // are used only as a fallback when the DB has no rows (fresh install).
-        final rawCharts = userCharts.isNotEmpty
-            ? userCharts
-            : _buildStaticCharts(allData, activeAssets, s);
+        final rawCharts = ref.watch(dashboardChartsProvider);
+        // dashboardChartsProvider returns DB rows in debug mode and the
+        // JSON-derived list in release mode — single source of truth.
         // Render order: Price Changes widget first, then combined-overlay
         // charts (Totals), then everything else (regular + role-tagged).
         // Within each bucket, preserve the user's sort_order.
@@ -187,7 +189,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             return a.sortOrder.compareTo(b.sortOrder);
           });
 
-        // Build set of chart IDs that are sources of a combined chart
+        // Build set of chart IDs that are sources of a combined chart.
+        // A chart is collapsed (rendered in an ExpansionTile) when, and
+        // only when, another chart references it as a source.
         final collapsedChartIds = <int>{};
         for (final chart in charts) {
           if (chart.widgetType == 'chart' && chart.sourceChartIds != null) {
@@ -195,8 +199,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             collapsedChartIds.addAll(resolved);
           }
         }
-        // Performance chart is self-collapsible (not part of Totals)
-        collapsedChartIds.add(-8);
 
         return Stack(
           children: [
@@ -251,7 +253,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             final hidden = _hiddenFor(chart.id);
             final zoom = _zoomFor(chart.id);
             final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
-            final isUserChart = chart.id > 0; // DB rows have positive ids; static defaults are negative
+            // In release mode every chart is read-only; in debug mode user
+            // charts (positive DB ids) get full editor affordances. Static
+            // / JSON-loaded charts (negative ids) are never editable.
+            // In-memory charts have negative ids; the previous DB-positive
+            // gate is now obsolete. The editor is shown for every chart in
+            // debug mode (and never in release mode).
+            final isUserChart = debugChartsEnabled;
+            // Only bucket-2 charts (regular + role-tagged) are reorderable.
+            // Price Changes and the combined Totals overlay stay fixed.
+            final isReorderable = isUserChart && bucket(chart) == 2;
+            final bucket2 = charts.where((c) => bucket(c) == 2).toList();
+            final pos = bucket2.indexWhere((c) => c.id == chart.id);
+            final canMoveUp = isReorderable && pos > 0;
+            final canMoveDown = isReorderable && pos >= 0 && pos < bucket2.length - 1;
+
+            // Per Material/HIG: actions belong to a single owner. When this
+            // chart lives inside an ExpansionTile (source of the combined
+            // overlay) the Tile header owns edit/delete/reorder, so the
+            // inner chart card renders without them to avoid duplication.
+            final isInsideExpansionTile = collapsedChartIds.contains(chart.id);
 
             final chartCard = _ChartCard(
               chart: chart,
@@ -266,12 +287,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               zoomMaxX: zoom.maxX,
               zoomMinY: zoom.minY,
               zoomMaxY: zoom.maxY,
-              onEdit: isUserChart
+              onEdit: (isUserChart && !isInsideExpansionTile)
                   ? () => isCombined
                       ? _showCombineChartsDialog(context, charts, chart)
                       : _showChartEditor(context, allData, chart)
                   : null,
-              onDelete: isUserChart ? () => _deleteChart(context, chart) : null,
+              onDelete: (isUserChart && !isInsideExpansionTile)
+                  ? () => _deleteChart(context, chart)
+                  : null,
+              onMoveUp: (canMoveUp && !isInsideExpansionTile)
+                  ? () => _moveChart(charts, chart, -1)
+                  : null,
+              onMoveDown: (canMoveDown && !isInsideExpansionTile)
+                  ? () => _moveChart(charts, chart, 1)
+                  : null,
               onToggle: (key) => setState(() {
                 hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
               }),
@@ -303,6 +332,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (canMoveUp)
+                              IconButton(
+                                icon: const Icon(Icons.arrow_upward, size: 18),
+                                onPressed: () => _moveChart(charts, chart, -1),
+                                tooltip: s.moveUp,
+                              ),
+                            if (canMoveDown)
+                              IconButton(
+                                icon: const Icon(Icons.arrow_downward, size: 18),
+                                onPressed: () => _moveChart(charts, chart, 1),
+                                tooltip: s.moveDown,
+                              ),
                             IconButton(
                               icon: const Icon(Icons.edit_outlined, size: 18),
                               onPressed: () => isCombined
@@ -331,13 +372,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             );
           },
         ),
-            Positioned(
+            if (debugChartsEnabled) Positioned(
               right: 16,
               bottom: 16,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Dedicated Export FAB with a dirty dot when the in-memory
+                  // editor state differs from the loaded JSON. Click to dump
+                  // the current config; paste-and-rebuild instructions in
+                  // the modal that follows.
+                  Stack(
+                    alignment: Alignment.topRight,
+                    clipBehavior: Clip.none,
+                    children: [
+                      FloatingActionButton.small(
+                        heroTag: 'dash_export',
+                        tooltip: s.chartExportTitle,
+                        onPressed: () => _exportConfig(context, charts),
+                        child: const Icon(Icons.ios_share),
+                      ),
+                      if (ref.watch(chartsDirtyProvider))
+                        Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade400,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Theme.of(context).scaffoldBackgroundColor,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   FloatingActionButton.small(
                     heroTag: 'dash_reset',
                     tooltip: s.chartResetDefaults,
@@ -357,11 +432,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                     ),
                     const SizedBox(height: 8),
                   ],
-                  FloatingActionButton(
-                    heroTag: 'dash_add',
-                    tooltip: s.chartNewTitle,
-                    onPressed: () => _showChartEditor(context, allData, null),
-                    child: const Icon(Icons.add),
+                  MenuAnchor(
+                    builder: (ctx, ctrl, _) => FloatingActionButton(
+                      heroTag: 'dash_add',
+                      tooltip: s.chartNewTitle,
+                      onPressed: () => ctrl.isOpen ? ctrl.close() : ctrl.open(),
+                      child: const Icon(Icons.add),
+                    ),
+                    menuChildren: [
+                      MenuItemButton(
+                        leadingIcon: const Icon(Icons.tune),
+                        onPressed: () => _showChartEditor(context, allData, null),
+                        child: Text(s.chartNewCustom),
+                      ),
+                      const Divider(height: 1),
+                      for (final role in const ['cash', 'saving', 'portfolio', 'liquid_investments'])
+                        MenuItemButton(
+                          leadingIcon: const Icon(Icons.add_chart),
+                          onPressed: charts.any((c) => c.widgetType == role)
+                              ? null // already present — disabled
+                              : () => _restoreRoleChart(role, allData, s),
+                          child: Text(s.chartRestoreRole(_roleLabel(role, s))),
+                        ),
+                    ],
                   ),
                 ],
               ),
@@ -386,17 +479,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
     if (result == null) return;
 
-    final service = ref.read(dashboardChartServiceProvider);
+    final notifier = ref.read(editableChartsProvider.notifier);
     final seriesJson = jsonEncode(result.selectedSeries);
 
-    if (existing != null && existing.id > 0) {
-      await service.update(
-        existing.id,
+    if (existing != null) {
+      notifier.update(existing.copyWith(
         title: result.title,
         seriesJson: seriesJson,
-      );
+      ));
     } else {
-      await service.create(title: result.title, seriesJson: seriesJson);
+      notifier.add(DashboardChart(
+        id: 0, // notifier assigns
+        title: result.title,
+        widgetType: 'chart',
+        sortOrder: 0,
+        seriesJson: seriesJson,
+        createdAt: DateTime.now(),
+      ));
     }
   }
 
@@ -419,22 +518,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
     if (result == null) return;
 
-    final service = ref.read(dashboardChartServiceProvider);
+    final notifier = ref.read(editableChartsProvider.notifier);
     final sourceField =
         result.autoAll ? '*' : jsonEncode(result.selectedChartIds);
 
-    if (existing != null && existing.id > 0) {
-      await service.update(
-        existing.id,
+    if (existing != null) {
+      notifier.update(existing.copyWith(
         title: result.title,
         sourceChartIds: sourceField,
-      );
+      ));
     } else {
-      await service.create(
+      notifier.add(DashboardChart(
+        id: 0,
         title: result.title,
+        widgetType: 'chart',
+        sortOrder: 0,
         seriesJson: '[]',
         sourceChartIds: sourceField,
-      );
+        createdAt: DateTime.now(),
+      ));
     }
   }
 
@@ -459,37 +561,141 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       ),
     );
     if (confirmed != true) return;
-
-    final service = ref.read(dashboardChartServiceProvider);
-    // Wipe existing rows so we start clean.
-    final existing = await service.getAll();
-    for (final c in existing) {
-      await service.delete(c.id);
-    }
-
-    // Seed from the live static defaults.
-    final activeAssets = ref.read(activeAssetsProvider).value ?? const <Asset>[];
-    final defaults = _buildStaticCharts(allData, activeAssets, s);
-    // Two-pass: create non-combined first, then combined referencing real ids.
-    for (final chart in defaults) {
-      if (chart.sourceChartIds != null) continue;
-      await service.create(
-        title: chart.title,
-        seriesJson: chart.seriesJson,
-        widgetType: chart.widgetType,
-      );
-    }
-    for (final chart in defaults) {
-      if (chart.sourceChartIds == null) continue;
-      // Dynamic marker: Totals auto-includes any non-combined chart present.
-      await service.create(
-        title: chart.title,
-        seriesJson: chart.seriesJson,
-        widgetType: chart.widgetType,
-        sourceChartIds: '*',
-      );
-    }
+    // Reset is a one-liner against the in-memory notifier — no DB
+    // round-trip. The pristine list is the most-recently loaded JSON.
+    ref.read(editableChartsProvider.notifier).reset();
   }
+
+  /// Move a chart up (-1) or down (+1) within the reorderable bucket.
+  /// Fixed items (Price Changes, combined overlay) keep their positions
+  /// and sortOrder; only bucket-2 charts are affected.
+  Future<void> _moveChart(
+    List<DashboardChart> charts,
+    DashboardChart chart,
+    int direction,
+  ) async {
+    // bucket() is defined above in _buildChartsTab's scope, but reorder is
+    // called from a handler outside it — recompute here for clarity.
+    int bucket(DashboardChart c) {
+      if (c.widgetType == 'price_changes') return 0;
+      if (c.sourceChartIds != null) return 1;
+      return 2;
+    }
+
+    final bucket2 = charts.where((c) => bucket(c) == 2).toList();
+    final idx = bucket2.indexWhere((c) => c.id == chart.id);
+    if (idx < 0) return;
+    final target = idx + direction;
+    if (target < 0 || target >= bucket2.length) return;
+
+    final tmp = bucket2[idx];
+    bucket2[idx] = bucket2[target];
+    bucket2[target] = tmp;
+
+    // Reassemble the full order — fixed items keep the top, bucket-2 gets
+    // the new arrangement — and write back via the service.
+    // The notifier's `move` operates on adjacent indices in the full list.
+    // We just convert (chart, direction) to a notifier call.
+    ref.read(editableChartsProvider.notifier).move(chart.id, direction);
+  }
+
+  /// Debug-only: serialize the current dashboard_charts table back into the
+  /// category-based JSON schema and copy to clipboard. Shows a modal with
+  /// the JSON preview and instructions to commit the file.
+  Future<void> _exportConfig(
+    BuildContext context,
+    List<DashboardChart> charts,
+  ) async {
+    final s = ref.read(appStringsProvider);
+    final accounts = ref.read(accountsProvider).value ?? const <Account>[];
+    final assets = ref.read(activeAssetsProvider).value ?? const <Asset>[];
+    final events = ref.read(extraordinaryEventsProvider).value ?? const <ExtraordinaryEvent>[];
+    String json;
+    try {
+      json = DefaultChartsExporter().export(
+        charts: charts,
+        activeAccounts: accounts,
+        activeAssets: assets,
+        activeEvents: events,
+      );
+    } on PartialCategoryExportException catch (e) {
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(s.chartExportPartialTitle),
+          content: Text(s.chartExportPartialBody('${e.chartTitle}: ${e.reason}')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(s.cancel),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: json));
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.chartExportTitle),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.chartExportInstructions,
+                    style: Theme.of(ctx).textTheme.bodyMedium),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: SelectableText(
+                    json,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(s.done),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Recreate a single role chart from the current seed defaults, without
+  /// touching any other dashboard_charts row. Used by the "+" FAB menu so
+  /// the user can restore an accidentally-deleted Cash / Saving / Portfolio
+  /// / Liquid Investments chart with one click.
+  Future<void> _restoreRoleChart(
+    String role,
+    AllSeriesData allData,
+    AppStrings s,
+  ) async {
+    // The notifier's `restoreRole` already grabs a fresh template from
+    // the pristine list (which itself was the most recent JSON load).
+    ref.read(editableChartsProvider.notifier).restoreRole(role);
+  }
+
+  String _roleLabel(String role, AppStrings s) => switch (role) {
+        'cash'               => s.dashCash,
+        'saving'             => s.dashSaving,
+        'portfolio'          => s.dashPortfolio,
+        'liquid_investments' => s.dashLiquidInvestments,
+        _                    => role,
+      };
 
   Future<void> _deleteChart(BuildContext context, DashboardChart chart) async {
     final s = ref.read(appStringsProvider);
@@ -512,7 +718,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       ),
     );
     if (confirmed == true) {
-      await ref.read(dashboardChartServiceProvider).delete(chart.id);
+      ref.read(editableChartsProvider.notifier).delete(chart.id);
     }
   }
 
@@ -538,84 +744,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     );
   }
 
-  /// Build the fixed set of dashboard widgets from live series data.
-  /// Widget definitions are static; series are resolved dynamically from all
-  /// active accounts, assets, and adjustments — no IDs are hardcoded.
-  List<DashboardChart> _buildStaticCharts(
-    AllSeriesData allData,
-    List<Asset> activeAssets,
-    AppStrings s,
-  ) {
-    final now = DateTime.now();
-
-    List<Map<String, dynamic>> toConfigs(List<ChartSeries> series) => series.map((s) {
-          final parts = s.key.split(':');
-          return {'type': parts[0], 'id': int.parse(parts[1])};
-        }).toList();
-
-    // Total Assets: all accounts + all market values + spread adjustments
-    final totalAssetsJson = jsonEncode([
-      ...toConfigs(allData.accounts),
-      ...toConfigs(allData.assetMarket),
-      ...toConfigs(allData.adjustments),
-    ]);
-
-    final cashJson   = jsonEncode(toConfigs(allData.cashSeries));
-    final savingJson = jsonEncode(toConfigs(allData.savingSeries));
-
-    // Invested: all invested assets
-    final investedJson = jsonEncode(toConfigs(allData.assetInvested));
-
-    // Portfolio: all market-value assets
-    final portfolioJson = jsonEncode(toConfigs(allData.assetMarket));
-
-    // Liquid Investments: market-value assets whose instrumentType is not
-    // pension / realEstate / alternative / liability. Same filter Health
-    // used to apply inline; now materialised as an editable chart.
-    final liquidInvestmentsJson =
-        jsonEncode(toConfigs(_liquidAssetMarket(allData, activeAssets)));
-
-    // Performance: gain per asset (market - invested)
-    final performanceJson = jsonEncode(toConfigs(allData.assetGain));
-
-    // Stable negative IDs avoid clashing with any real DB rows
-    const idPriceChanges = -1;
-    const idTotals = -2;
-    const idTotalAssets = -3;
-    const idCash = -4;
-    const idSaving = -5;
-    const idInvested = -6;
-    const idPortfolio = -7;
-    const idLiquidInvestments = -9;
-    const idPerformance = -8;
-
-    return [
-      DashboardChart(id: idPriceChanges, title: s.dashPriceChanges, widgetType: 'price_changes',
-          sortOrder: 0, seriesJson: '[]', createdAt: now),
-      DashboardChart(id: idTotals, title: s.dashTotals, widgetType: 'chart',
-          sortOrder: 1, seriesJson: '[]',
-          sourceChartIds: jsonEncode([idTotalAssets, idCash, idSaving, idInvested, idPortfolio]),
-          createdAt: now),
-      DashboardChart(id: idTotalAssets, title: s.dashTotalAssets, widgetType: 'chart',
-          sortOrder: 2, seriesJson: totalAssetsJson, createdAt: now),
-      // Cash / Saving / Portfolio / Liquid Investments carry dedicated
-      // widget_type markers so Cash Flow + Health can resolve them by role.
-      DashboardChart(id: idCash, title: s.dashCash, widgetType: 'cash',
-          sortOrder: 3, seriesJson: cashJson, createdAt: now),
-      DashboardChart(id: idSaving, title: s.dashSaving, widgetType: 'saving',
-          sortOrder: 4, seriesJson: savingJson, createdAt: now),
-      DashboardChart(id: idInvested, title: s.dashInvested, widgetType: 'chart',
-          sortOrder: 5, seriesJson: investedJson, createdAt: now),
-      DashboardChart(id: idPortfolio, title: s.dashPortfolio, widgetType: 'portfolio',
-          sortOrder: 6, seriesJson: portfolioJson, createdAt: now),
-      DashboardChart(id: idLiquidInvestments, title: s.dashLiquidInvestments,
-          widgetType: 'liquid_investments',
-          sortOrder: 7, seriesJson: liquidInvestmentsJson, createdAt: now),
-      DashboardChart(id: idPerformance, title: s.dashPerformance, widgetType: 'chart',
-          sortOrder: 8, seriesJson: performanceJson, createdAt: now),
-    ];
-  }
-
   /// Resolve the source chart IDs for a combined chart.
   /// Literal "*" means "every non-widget, non-combined chart present" —
   /// this is how the seeded Totals chart stays in sync as the user adds
@@ -634,7 +762,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           .toList();
     }
     try {
-      return (jsonDecode(src) as List).cast<int>();
+      final decoded = jsonDecode(src);
+      if (decoded is! List) return const [];
+      // Two supported forms: list of int ids (legacy) or list of chart
+      // titles (used by the JSON-driven loader, since in-memory ids are
+      // not stable across rebuilds).
+      if (decoded.every((e) => e is int)) {
+        return decoded.cast<int>();
+      }
+      if (decoded.every((e) => e is String)) {
+        final byTitle = {for (final c in allCharts) c.title: c.id};
+        return [
+          for (final t in decoded.cast<String>())
+            if (byTitle.containsKey(t)) byTitle[t]!,
+        ];
+      }
+      return const [];
     } catch (_) {
       return const [];
     }

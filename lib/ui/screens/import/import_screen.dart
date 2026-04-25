@@ -89,6 +89,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// import-source config (per account / per intermediary / global income).
   String? _selectedNumberLocale;
 
+  /// Effective locale to use for stringifying XLSX numeric cells. Mirrors
+  /// the resolution `parseAmount` does later: explicit selection > app
+  /// locale > en_US. Without this, parser would emit "7707.97" while
+  /// parseAmount with it_IT would misread the dot as thousands separator.
+  String _effectiveNumberLocale() =>
+      _selectedNumberLocale ?? ref.read(appLocaleProvider).value ?? 'en_US';
+
   // Asset import mode: 'historic' (date+rate required) or 'current' (default to today, rate auto-fetched)
   String _assetImportMode = 'historic';
 
@@ -285,7 +292,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
-      final preview = await importer.parseFile(path, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader);
+      final preview = await importer.parseFile(path, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader, numberLocale: _effectiveNumberLocale());
       if (preview.rows.isEmpty) {
         _log.warning('_loadFile: file is empty after parsing');
         setState(() => _error = ref.read(appStringsProvider).fileEmpty);
@@ -375,7 +382,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _log.info('_reparseFile: re-parsing with skipRows=$_skipRows, sheet=$_selectedSheet');
     try {
       final importer = ref.read(importServiceProvider);
-      final preview = await importer.parseFile(_filePath!, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader);
+      final preview = await importer.parseFile(_filePath!, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader, numberLocale: _effectiveNumberLocale());
       if (preview.rows.isEmpty) {
         _log.warning('_reparseFile: empty after skipping $_skipRows rows');
         setState(() => _error = ref.read(appStringsProvider).fileEmptyAfterSkip(_skipRows));
@@ -449,7 +456,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     // Check if noHeader is saved -- need to set before re-parse
     final savedMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
     final savedNoHeader = savedMappings['__noHeader'] == 'true';
-    final needsReparse = (config.skipRows > 0 && config.skipRows != _skipRows) || (savedNoHeader != _noHeader);
+    final localeChanged = _preview != null && _preview!.numberLocale != _effectiveNumberLocale();
+    final needsReparse = (config.skipRows > 0 && config.skipRows != _skipRows) || (savedNoHeader != _noHeader) || localeChanged;
 
     if (savedNoHeader) _noHeader = true;
     if (config.skipRows > 0) {
@@ -616,7 +624,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     setState(() => _loadingUniqueValues = true);
     try {
       final importer = ref.read(importServiceProvider);
-      final full = await importer.getFullRows(_preview!);
+      final full = await importer.getFullRows(_preview!, numberLocale: _effectiveNumberLocale());
       final values = <String>{};
       for (final row in full.rows) {
         final v = (row[column] ?? '').trim();
@@ -773,10 +781,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final importer = ref.read(importServiceProvider);
       final mappings = _buildColumnMappings();
 
-      // Get full rows if preview was capped
+      // Get full rows only when the preview was capped. Locale mismatches
+      // are handled inside ImportService.
       var fullPreview = _preview!;
       if (fullPreview.rows.length < fullPreview.totalRows) {
-        fullPreview = await importer.getFullRows(fullPreview);
+        fullPreview = await importer.getFullRows(fullPreview, numberLocale: _effectiveNumberLocale());
       }
 
       final appLocale = ref.read(appLocaleProvider).value;

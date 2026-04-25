@@ -126,7 +126,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     // Cash and Saving flow from the user's configured History-tab charts
     // (stored in dashboard_charts) — option B. Fallback to hard-coded
     // compositions when the user deleted the role chart.
-    final userCharts = ref.watch(dashboardChartsProvider).value ?? const <DashboardChart>[];
+    final userCharts = ref.watch(dashboardChartsProvider);
     final activeAssets = ref.watch(activeAssetsProvider).value ?? const <Asset>[];
     final savingSpots = _DashboardScreenState.spotsForRole('saving', userCharts, allData, activeAssets);
     final cashSpots   = _DashboardScreenState.spotsForRole('cash',   userCharts, allData, activeAssets);

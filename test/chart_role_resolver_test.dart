@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/models/dashboard_chart.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart'
     show AllSeriesData, ChartRoles, ChartSeries, buildTotalSpots;
 
@@ -64,6 +65,7 @@ AllSeriesData _allData() {
       ),
     ],
     incomeAdjustments: const [],
+    ephemeralInflows: const [],
     baseCurrency: 'EUR',
   );
 }

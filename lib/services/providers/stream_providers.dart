@@ -48,8 +48,50 @@ final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, a
   return ref.watch(assetEventServiceProvider).watchByAsset(assetId);
 });
 
-final dashboardChartsProvider = StreamProvider<List<DashboardChart>>((ref) {
-  return ref.watch(dashboardChartServiceProvider).watchAll();
+/// Loads `assets/default_charts.json` and expands the categories against
+/// the live accounts / assets / events. Always available — both the
+/// editor (debug mode) and the read-only renderer (release mode) use it
+/// as their starting point.
+final defaultChartsLoadedProvider = FutureProvider<List<DashboardChart>>((ref) async {
+  final accounts = await ref.watch(accountsProvider.future);
+  final assets = await ref.watch(activeAssetsProvider.future);
+  final events = await ref.watch(extraordinaryEventsProvider.future);
+  return const DefaultChartsLoader().load(
+    activeAccounts: accounts.where((a) => a.isActive).toList(),
+    activeAssets: assets,
+    activeEvents: events,
+  );
+});
+
+/// In-memory editor state — only meaningful when `debugChartsEnabled` is
+/// true. Listens to `defaultChartsLoadedProvider`; when the JSON load
+/// emits, the notifier resets to a fresh state with that list as both
+/// `charts` and `pristine`. User edits go on top until the next reload.
+final editableChartsProvider =
+    StateNotifierProvider<EditableChartsNotifier, EditableChartsState>((ref) {
+  final loaded = ref.watch(defaultChartsLoadedProvider).value ??
+      const <DashboardChart>[];
+  return EditableChartsNotifier(EditableChartsState(
+    charts: List.of(loaded),
+    pristine: List.of(loaded),
+  ));
+});
+
+/// Dashboard charts source — debug mode reads the editor notifier, release
+/// reads the JSON-loaded list directly. No DB persistence either way.
+final dashboardChartsProvider = Provider<List<DashboardChart>>((ref) {
+  if (debugChartsEnabled) {
+    return ref.watch(editableChartsProvider).charts;
+  }
+  return ref.watch(defaultChartsLoadedProvider).value ??
+      const <DashboardChart>[];
+});
+
+/// True when the editor's working set differs from the pristine JSON
+/// baseline. Drives the dirty dot on the Export FAB.
+final chartsDirtyProvider = Provider<bool>((ref) {
+  if (!debugChartsEnabled) return false;
+  return ref.watch(editableChartsProvider).isDirty;
 });
 
 // ── Buffer transactions (reimbursements; shared across events) ──
