@@ -337,16 +337,6 @@ class AppConfigs extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-class DashboardCharts extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  TextColumn get title => text().withLength(min: 1, max: 200)();
-  TextColumn get widgetType => text().withDefault(const Constant('chart'))();
-  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
-  TextColumn get seriesJson => text()(); // JSON array of series configs
-  TextColumn get sourceChartIds => text().nullable()(); // JSON array of chart IDs, e.g. "[1,3]"
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-}
-
 class Incomes extends Table {
   IntColumn get id => integer().autoIncrement()();
   DateTimeColumn get date => dateTime()();
@@ -405,6 +395,10 @@ class ExtraordinaryEvents extends Table {
 
   TextColumn get notes => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  /// Inflow-only flag for "money I don't have but can spend" — i.e. a line
+  /// of credit. Ephemeral inflows belong to Cash (negated) but never to
+  /// Saving. Only meaningful for direction=inflow + treatment=instant.
+  BoolColumn get isEphemeral => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }

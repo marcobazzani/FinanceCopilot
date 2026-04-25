@@ -1,20 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash",
-      "Read",
-      "Edit",
-      "Write",
-      "WebFetch",
-      "Grep",
-      "Glob",
-      "LS",
-      "MultiEdit",
-      "NotebookRead",
-      "NotebookEdit",
-      "TodoRead",
-      "TodoWrite",
-      "WebSearch"
-    ]
-  }
+      "Bash(python3 *)",
+      "mcp__browseruse__page_snapshot",
+      "mcp__browseruse__page_fill_form",
+      "mcp__browseruse__page_click",
+      "mcp__browseruse__page_type",
+      "Bash(gh secret *)",
+      "Bash(gh run *)",
+      "Bash(brew update *)",
+      "Bash(brew upgrade *)",
+      "Bash(adb devices *)",
+      "Bash(adb *)",
+      "Bash(dart run *)",
+      "Bash(dart analyze *)",
+      "Bash(grep -v \"^Analyzing\\\\|^$\\\\|packages have newer\")",
+      "Bash(flutter test *)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
 }

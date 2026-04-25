@@ -23,6 +23,10 @@ class _ChartCard extends ConsumerWidget {
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
   final ValueChanged<double> onHeightChanged;
   final Widget? headerExtra; // optional trailing widget in title bar (e.g. MA window input)
+  final VoidCallback? onEdit;     // optional — shows edit icon when non-null (user charts)
+  final VoidCallback? onDelete;   // optional — shows delete icon when non-null (user charts)
+  final VoidCallback? onMoveUp;   // optional — shows up-arrow when non-null (reorderable)
+  final VoidCallback? onMoveDown; // optional — shows down-arrow when non-null (reorderable)
 
   const _ChartCard({
     required this.chart,
@@ -43,6 +47,10 @@ class _ChartCard extends ConsumerWidget {
     required this.onZoom,
     required this.onHeightChanged,
     this.headerExtra,
+    this.onEdit,
+    this.onDelete,
+    this.onMoveUp,
+    this.onMoveDown,
   });
 
   /// Build total spots with smart asset handling:
@@ -131,6 +139,30 @@ class _ChartCard extends ConsumerWidget {
                   icon: const Icon(Icons.zoom_out_map, size: 18),
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: s.resetZoom,
+                ),
+              if (onMoveUp != null)
+                IconButton(
+                  icon: const Icon(Icons.arrow_upward, size: 18),
+                  onPressed: onMoveUp,
+                  tooltip: s.moveUp,
+                ),
+              if (onMoveDown != null)
+                IconButton(
+                  icon: const Icon(Icons.arrow_downward, size: 18),
+                  onPressed: onMoveDown,
+                  tooltip: s.moveDown,
+                ),
+              if (onEdit != null)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  onPressed: onEdit,
+                  tooltip: s.edit,
+                ),
+              if (onDelete != null)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: onDelete,
+                  tooltip: s.delete,
                 ),
               ?headerExtra,
             ],

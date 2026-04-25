@@ -29,8 +29,9 @@ class AllSeriesData {
   final List<ChartSeries> assetInvested; // key: "asset_invested:<id>"
   final List<ChartSeries> assetMarket;   // key: "asset_market:<id>"
   final List<ChartSeries> assetGain;     // key: "asset_gain:<id>"  (market - invested)
-  final List<ChartSeries> adjustments;      // key: "adjustment:<id>"
-  final List<ChartSeries> incomeAdjustments; // key: "income_adj:<id>"
+  final List<ChartSeries> adjustments;          // key: "adjustment_value/events:<id>"  — outflow events
+  final List<ChartSeries> incomeAdjustments;    // key: "income_adj_value/events:<id>"  — non-ephemeral inflow events
+  final List<ChartSeries> ephemeralInflows;     // key: "ephemeral_inflow_value/events:<id>" — line-of-credit inflows
   final String baseCurrency;
 
   const AllSeriesData({
@@ -41,10 +42,50 @@ class AllSeriesData {
     required this.assetGain,
     required this.adjustments,
     required this.incomeAdjustments,
+    required this.ephemeralInflows,
     required this.baseCurrency,
   });
 
-  List<ChartSeries> get allSeries => [...accounts, ...assetInvested, ...assetMarket, ...assetGain, ...adjustments, ...incomeAdjustments];
+  List<ChartSeries> get allSeries => [
+        ...accounts,
+        ...assetInvested,
+        ...assetMarket,
+        ...assetGain,
+        ...adjustments,
+        ...incomeAdjustments,
+        ...ephemeralInflows,
+      ];
+
+  /// Series composing the Cash chart: accounts + adjustments + ephemeral
+  /// inflows negated (line-of-credit money raises Cash in absolute value).
+  /// Used as the resolver fallback when no `cash` role chart exists.
+  List<ChartSeries> get cashSeries => [
+        ...accounts,
+        ...adjustments,
+        ...ephemeralInflows.map(_negate),
+      ];
+
+  /// Series composing the Saving chart: accounts + invested + adjustments
+  /// + non-ephemeral inflow adjustments. Ephemeral inflows are excluded.
+  List<ChartSeries> get savingSeries =>
+      [...accounts, ...assetInvested, ...adjustments, ...incomeAdjustments];
+
+  static ChartSeries _negate(ChartSeries s) => ChartSeries(
+        key: s.key,
+        name: s.name,
+        color: s.color,
+        spots: s.spots.map((p) => FlSpot(p.x, -p.y)).toList(),
+        isDashed: s.isDashed,
+        rightAxis: s.rightAxis,
+      );
+
+  /// Carry-forward total Cash spots — what the Cash chart plots.
+  List<FlSpot> get cashSpots =>
+      buildTotalSpots(cashSeries.map((s) => s.spots).toList());
+
+  /// Carry-forward total Saving spots — what the Saving chart plots.
+  List<FlSpot> get savingSpots =>
+      buildTotalSpots(savingSeries.map((s) => s.spots).toList());
 }
 
 // ════════════════════════════════════════════════════

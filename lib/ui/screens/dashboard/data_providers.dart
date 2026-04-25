@@ -394,41 +394,18 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   final adjustmentSeries = <ChartSeries>[];
   final incomeAdjSeries = <ChartSeries>[];
+  final ephemeralInflowSeries = <ChartSeries>[];
 
-  for (final event in activeEvents) {
-    final entries = allEventEntries[event.id] ?? const [];
-    final deltaMap = <int, double>{};
-
-    // Anchor delta.
-    final anchorSign = event.direction == EventDirection.outflow ? 1.0 : -1.0;
-    final anchorKey = toDayKey(event.eventDate);
-    deltaMap[anchorKey] = (deltaMap[anchorKey] ?? 0) + anchorSign * event.totalAmount;
-    allDayKeys.add(anchorKey);
-
-    // Entries are pre-signed per direction — sum as-is.
-    for (final entry in entries) {
-      final dayKey = toDayKey(entry.date);
-      deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) + entry.amount;
-      allDayKeys.add(dayKey);
-    }
-
-    // Reimbursements reduce saving further (only meaningful on spread outflows).
-    if (event.bufferId != null) {
-      for (final r in allReimbursements[event.bufferId!] ?? const []) {
-        final dayKey = toDayKey(r.operationDate);
-        deltaMap[dayKey] = (deltaMap[dayKey] ?? 0) - r.amount.abs();
-      }
-    }
-
-    if (deltaMap.isEmpty) continue;
-
+  // Compute carry-forward spots from a day→delta map, using the event's FX
+  // rate on each day. Pure helper — returns empty when the map is empty.
+  Future<List<FlSpot>> buildSpots(Map<int, double> deltaMap, String currency) async {
+    if (deltaMap.isEmpty) return const [];
     final days = deltaMap.keys.toList()..sort();
     final spots = <FlSpot>[];
     var cumulative = 0.0;
     double? prevY;
-
     for (final dayKey in days) {
-      final rate = await rates.getRate(event.currency, dayKey);
+      final rate = await rates.getRate(currency, dayKey);
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
@@ -439,19 +416,79 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       spots.add(FlSpot(x, y));
       prevY = y;
     }
+    return spots;
+  }
 
-    // Partition by direction to preserve legacy series keys and downstream
-    // Saving = accounts + invested + adjustments + incomeAdjustments formula.
+  for (final event in activeEvents) {
+    final entries = allEventEntries[event.id] ?? const [];
     final isOutflow = event.direction == EventDirection.outflow;
-    final series = ChartSeries(
-      key: isOutflow ? 'adjustment:${event.id}' : 'income_adj:${event.id}',
-      name: event.name,
-      color: _chartColors[colorIdx % _chartColors.length],
-      spots: spots,
-      isDashed: true,
-    );
-    (isOutflow ? adjustmentSeries : incomeAdjSeries).add(series);
-    colorIdx++;
+    final anchorSign = isOutflow ? 1.0 : -1.0;
+
+    // Split each event into two independently-toggleable series so the
+    // chart editor can offer "Value" (the anchor at eventDate) and
+    // "Events" (entries + reimbursements over time) as separate picks.
+    final valueMap = <int, double>{
+      toDayKey(event.eventDate): anchorSign * event.totalAmount,
+    };
+    allDayKeys.add(toDayKey(event.eventDate));
+
+    final eventsMap = <int, double>{};
+    for (final entry in entries) {
+      final dayKey = toDayKey(entry.date);
+      eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) + entry.amount;
+      allDayKeys.add(dayKey);
+    }
+    if (event.bufferId != null) {
+      for (final r in allReimbursements[event.bufferId!] ?? const []) {
+        final dayKey = toDayKey(r.operationDate);
+        eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) - r.amount.abs();
+        allDayKeys.add(dayKey);
+      }
+    }
+
+    final valueSpots = await buildSpots(valueMap, event.currency);
+    final eventSpots = await buildSpots(eventsMap, event.currency);
+
+    // Ephemeral inflows live in their own bucket; non-ephemeral inflows
+    // stay in incomeAdjSeries; outflows always in adjustmentSeries.
+    final isEphemeral = !isOutflow && event.isEphemeral;
+    final String valuePrefix;
+    final String eventsPrefix;
+    final List<ChartSeries> bucket;
+    if (isOutflow) {
+      valuePrefix = 'adjustment_value';
+      eventsPrefix = 'adjustment_events';
+      bucket = adjustmentSeries;
+    } else if (isEphemeral) {
+      valuePrefix = 'ephemeral_inflow_value';
+      eventsPrefix = 'ephemeral_inflow_events';
+      bucket = ephemeralInflowSeries;
+    } else {
+      valuePrefix = 'income_adj_value';
+      eventsPrefix = 'income_adj_events';
+      bucket = incomeAdjSeries;
+    }
+
+    if (valueSpots.isNotEmpty) {
+      bucket.add(ChartSeries(
+        key: '$valuePrefix:${event.id}',
+        name: event.name,
+        color: _chartColors[colorIdx % _chartColors.length],
+        spots: valueSpots,
+        isDashed: true,
+      ));
+      colorIdx++;
+    }
+    if (eventSpots.isNotEmpty) {
+      bucket.add(ChartSeries(
+        key: '$eventsPrefix:${event.id}',
+        name: event.name,
+        color: _chartColors[colorIdx % _chartColors.length],
+        spots: eventSpots,
+        isDashed: true,
+      ));
+      colorIdx++;
+    }
   }
 
   return AllSeriesData(
@@ -462,6 +499,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     assetGain: assetGainSeries,
     adjustments: adjustmentSeries,
     incomeAdjustments: incomeAdjSeries,
+    ephemeralInflows: ephemeralInflowSeries,
     baseCurrency: baseCurrency,
   );
 });
@@ -496,13 +534,16 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
   }
 
-  // 2. Build total saving series (same composition as Cash Flow tab)
-  final savingSpots = buildTotalSpots([
-    ...allSeriesData.accounts.map((s) => s.spots),
-    ...allSeriesData.assetInvested.map((s) => s.spots),
-    ...allSeriesData.adjustments.map((s) => s.spots),
-    ...allSeriesData.incomeAdjustments.map((s) => s.spots),
-  ]);
+  // 2. Build total saving series — resolved from the user's configured
+  // Saving chart when present (option B), else hard-coded composition.
+  final userCharts = ref.watch(dashboardChartsProvider);
+  final activeAssets = await ref.watch(activeAssetsProvider.future);
+  final savingSpots = _DashboardScreenState.spotsForRole(
+    'saving',
+    userCharts,
+    allSeriesData,
+    activeAssets,
+  );
 
   double lookupNAV(DateTime date) {
     final x = date.difference(allSeriesData.firstDate).inDays.toDouble();

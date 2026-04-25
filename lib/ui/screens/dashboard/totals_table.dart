@@ -7,8 +7,16 @@ part of 'dashboard_screen.dart';
 class _SummaryTotalsTable extends ConsumerStatefulWidget {
   final AllSeriesData allData;
   final String locale;
+  /// One row per non-combined, non-widget chart currently on the History tab.
+  /// The table stays in sync with the user's chart list — delete a chart,
+  /// its row disappears; rename a chart, the row label follows.
+  final List<({String title, List<ChartSeries> series})> chartRows;
 
-  const _SummaryTotalsTable({required this.allData, required this.locale});
+  const _SummaryTotalsTable({
+    required this.allData,
+    required this.locale,
+    required this.chartRows,
+  });
 
   @override
   ConsumerState<_SummaryTotalsTable> createState() => _SummaryTotalsTableState();
@@ -24,8 +32,6 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     final amtFmt = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 2);
     final theme = Theme.of(context);
 
-    final d = widget.allData;
-
     // Compute last value and historical max (excluding last point) for each group
     (double current, double histMax) lastValueAndMax(List<List<FlSpot>> spotLists) {
       final total = buildTotalSpots(spotLists);
@@ -40,41 +46,18 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
       return (current, hMax);
     }
 
-    // Cash = accounts + spread adjustments
-    final (cashTotal, cashMax) = lastValueAndMax([
-      ...d.accounts.map((s) => s.spots),
-      ...d.adjustments.map((s) => s.spots),
-    ]);
+    // Build one row per chart — totals are derived from the chart's own series
+    // using the same "smart" aggregation as the chart cards (when an asset has
+    // both invested and market series visible, only market counts toward total).
+    final rows = <_TotalRow>[];
+    for (final cr in widget.chartRows) {
+      final totalSpots = _DashboardScreenState._buildSmartTotalSpotsStatic(cr.series);
+      final (curr, histMax) = lastValueAndMax([totalSpots]);
+      rows.add(_TotalRow(cr.title, curr, curr - histMax, cr.series));
+    }
 
-    // Saving = accounts + invested + adjustments + income adj
-    final (savingTotal, savingMax) = lastValueAndMax([
-      ...d.accounts.map((s) => s.spots),
-      ...d.assetInvested.map((s) => s.spots),
-      ...d.adjustments.map((s) => s.spots),
-      ...d.incomeAdjustments.map((s) => s.spots),
-    ]);
-
-    // Invested = cost basis of invested assets
-    final (investedTotal, investedMax) = lastValueAndMax(d.assetInvested.map((s) => s.spots).toList());
-
-    // Portfolio = current market value of assets
-    final (portfolioTotal, portfolioMax) = lastValueAndMax(d.assetMarket.map((s) => s.spots).toList());
-
-    // Total Assets = accounts + market values + adjustments
-    final (totalAssetsTotal, totalAssetsMax) = lastValueAndMax([
-      ...d.accounts.map((s) => s.spots),
-      ...d.assetMarket.map((s) => s.spots),
-      ...d.adjustments.map((s) => s.spots),
-    ]);
-
-    // Build rows: label, total, delta vs historical max, series for drill-down
-    final rows = <_TotalRow>[
-      _TotalRow(s.dashTotalAssets, totalAssetsTotal, totalAssetsTotal - totalAssetsMax, [...d.accounts, ...d.assetMarket, ...d.adjustments]),
-      _TotalRow(s.dashCash, cashTotal, cashTotal - cashMax, [...d.accounts, ...d.adjustments]),
-      _TotalRow(s.dashSaving, savingTotal, savingTotal - savingMax, [...d.accounts, ...d.assetInvested, ...d.adjustments, ...d.incomeAdjustments]),
-      _TotalRow(s.dashInvested, investedTotal, investedTotal - investedMax, d.assetInvested),
-      _TotalRow(s.dashPortfolio, portfolioTotal, portfolioTotal - portfolioMax, d.assetMarket),
-    ];
+    // Nothing to show? Hide the card entirely.
+    if (rows.isEmpty) return const SizedBox.shrink();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 24),
