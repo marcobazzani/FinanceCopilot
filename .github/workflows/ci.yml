@@ -313,7 +313,9 @@ jobs:
 
   update-tap:
     needs: release
-    if: always() && needs.release.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    # Skip pre-release tags (anything with a hyphen, e.g. v0.7.1-rc1) so
+    # they don't reach the Homebrew stable tap.
+    if: always() && needs.release.result == 'success' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
     runs-on: ubuntu-latest
     steps:
       - name: Update Homebrew cask version
