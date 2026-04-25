@@ -165,6 +165,18 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
                 onToggleGroup: _toggleGroup,
                 s: s,
               ),
+
+              _EventAdjustmentsGrid(
+                label: s.chartSectionEphemeralAdj,
+                series: d.ephemeralInflows,
+                valuePrefix: 'ephemeral_inflow_value',
+                eventsPrefix: 'ephemeral_inflow_events',
+                selected: _selected,
+                inverted: _inverted,
+                onCycle: _cycleSign,
+                onToggleGroup: _toggleGroup,
+                s: s,
+              ),
             ],
           ),
         ),

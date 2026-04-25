@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as xl;
+import 'package:intl/intl.dart';
 
 import '../utils/logger.dart';
 import 'import_service.dart' show FilePreview;
@@ -63,26 +64,27 @@ FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
   return FilePreview(columns: columns, rows: dataRows, totalRows: dataRows.length);
 }
 
-/// Convert an XLSX cell value to string, preserving numeric precision.
-/// XLSX numeric cells always use '.' as decimal separator. Values with
-/// exactly 3 decimal places (e.g. 260.437) would be misinterpreted by
-/// parseAmount as European thousands (260,437). Adding a trailing zero
-/// (260.4370) prevents this without changing the numeric value.
-String _xlsCellToString(dynamic value) {
-  // Excel package wraps values in CellValue types (DoubleCellValue, IntCellValue, etc.)
-  double? numericValue;
+/// Convert an XLSX cell value to string. For numeric cells, format using
+/// the import locale so that downstream `parseAmount` (locale-aware) can
+/// round-trip the value. Without this, a double like 7707.97 emitted as
+/// "7707.97" gets misparsed by it_IT's NumberFormat (which treats '.' as
+/// thousands separator) into 770797.
+String _xlsCellToString(dynamic value, {String? numberLocale}) {
+  double? doubleValue;
   if (value is xl.DoubleCellValue) {
-    numericValue = value.value;
+    doubleValue = value.value;
   } else if (value is double) {
-    numericValue = value;
+    doubleValue = value;
+  } else if (value is xl.IntCellValue) {
+    return value.value.toString();
+  } else if (value is int) {
+    return value.toString();
   }
-  if (numericValue != null) {
-    final s = numericValue.toString();
-    final dotIdx = s.indexOf('.');
-    if (dotIdx >= 0 && s.length - dotIdx - 1 == 3) {
-      return numericValue.toStringAsFixed(4);
+  if (doubleValue != null) {
+    if (numberLocale != null) {
+      return NumberFormat.decimalPattern(numberLocale).format(doubleValue);
     }
-    return s;
+    return doubleValue.toString();
   }
   return value?.toString().trim() ?? '';
 }
@@ -92,6 +94,7 @@ FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
   final sheetName = args['sheetName'] as String?;
   final skipRows = args['skipRows'] as int;
   final noHeader = args['noHeader'] as bool? ?? false;
+  final numberLocale = args['numberLocale'] as String?;
 
   final excel = xl.Excel.decodeBytes(bytes);
   final sheet = sheetName != null ? excel.tables[sheetName] : excel.tables.values.first;
@@ -115,7 +118,7 @@ FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
     dataRows = effectiveRows.map((row) {
       final map = <String, String>{};
       for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = _xlsCellToString(row[i]?.value);
+        map[columns[i]] = _xlsCellToString(row[i]?.value, numberLocale: numberLocale);
       }
       return map;
     }).toList();
@@ -125,7 +128,7 @@ FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
     dataRows = effectiveRows.skip(1).map((row) {
       final map = <String, String>{};
       for (var i = 0; i < columns.length && i < row.length; i++) {
-        map[columns[i]] = _xlsCellToString(row[i]?.value);
+        map[columns[i]] = _xlsCellToString(row[i]?.value, numberLocale: numberLocale);
       }
       return map;
     }).toList();
@@ -146,8 +149,8 @@ List<String> _listSheetsIsolate(List<int> bytes) {
 class FileParserService {
   /// Parse a file and return a preview of columns + rows.
   /// Runs heavy parsing in a separate isolate to avoid UI jank.
-  Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false}) async {
-    _log.info('parseFile: path=$filePath, sheet=$sheetName, skipRows=$skipRows, noHeader=$noHeader');
+  Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false, String? numberLocale}) async {
+    _log.info('parseFile: path=$filePath, sheet=$sheetName, skipRows=$skipRows, noHeader=$noHeader, numberLocale=$numberLocale');
     final ext = filePath.toLowerCase().split('.').last;
     final FilePreview result;
     switch (ext) {
@@ -168,6 +171,7 @@ class FileParserService {
           'sheetName': sheetName,
           'skipRows': skipRows,
           'noHeader': noHeader,
+          'numberLocale': numberLocale,
         }));
       default:
         throw UnsupportedError('Unsupported file format: .$ext');
@@ -183,6 +187,7 @@ class FileParserService {
       skipRows: skipRows,
       noHeader: noHeader,
       sheetName: sheetName,
+      numberLocale: numberLocale,
     );
   }
 
@@ -224,11 +229,14 @@ class FileParserService {
 
   /// Re-parse the full file to get ALL rows (for import, not preview).
   /// Returns a FilePreview with all rows — only call this during import.
-  Future<FilePreview> getFullRows(FilePreview preview) async {
-    // If preview already has all rows (small file), return as-is
-    if (preview.rows.length >= preview.totalRows) return preview;
+  Future<FilePreview> getFullRows(FilePreview preview, {String? numberLocale}) async {
+    // If preview already has all rows AND uses the same locale, return as-is.
+    final effectiveLocale = numberLocale ?? preview.numberLocale;
+    if (preview.rows.length >= preview.totalRows && effectiveLocale == preview.numberLocale) {
+      return preview;
+    }
 
-    _log.info('getFullRows: re-parsing ${preview.totalRows} rows from source');
+    _log.info('getFullRows: re-parsing ${preview.totalRows} rows from source (numberLocale=$effectiveLocale)');
     if (preview.filePath != null) {
       final ext = preview.filePath!.toLowerCase().split('.').last;
       switch (ext) {
@@ -249,6 +257,7 @@ class FileParserService {
             'sheetName': preview.sheetName,
             'skipRows': preview.skipRows,
             'noHeader': preview.noHeader,
+            'numberLocale': effectiveLocale,
           }));
       }
     } else if (preview.clipboardText != null) {
@@ -260,5 +269,24 @@ class FileParserService {
       }));
     }
     return preview;
+  }
+
+  /// Like [getFullRows] but parses on the calling isolate. Used for short
+  /// re-parses inside `ImportService` where spawning an isolate would
+  /// dominate the cost (e.g. tests pumping a fixed number of frames). Only
+  /// XLSX/XLS go through here today; other code paths still use the
+  /// isolate-based [getFullRows].
+  Future<FilePreview> getFullRowsInProcess(FilePreview preview, {String? numberLocale}) async {
+    if (preview.filePath == null) return preview;
+    final ext = preview.filePath!.toLowerCase().split('.').last;
+    if (ext != 'xlsx' && ext != 'xls') return getFullRows(preview, numberLocale: numberLocale);
+    final bytes = await File(preview.filePath!).readAsBytes();
+    return _parseExcelIsolate({
+      'bytes': bytes,
+      'sheetName': preview.sheetName,
+      'skipRows': preview.skipRows,
+      'noHeader': preview.noHeader,
+      'numberLocale': numberLocale ?? preview.numberLocale,
+    });
   }
 }

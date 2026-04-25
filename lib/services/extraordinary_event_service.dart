@@ -83,13 +83,21 @@ class ExtraordinaryEventService {
     DateTime? spreadStart,
     DateTime? spreadEnd,
     String? notes,
+    bool isEphemeral = false,
   }) async {
     if (treatment == EventTreatment.spread) {
       if (stepFrequency == null || spreadStart == null || spreadEnd == null) {
         throw ArgumentError('spread treatment requires stepFrequency, spreadStart, spreadEnd');
       }
     }
-    _log.info('create: name=$name, $direction/$treatment, amount=$totalAmount');
+    if (isEphemeral &&
+        (direction != EventDirection.inflow || treatment != EventTreatment.instant)) {
+      throw ArgumentError(
+        'isEphemeral is only valid for inflow/instant events',
+      );
+    }
+    _log.info('create: name=$name, $direction/$treatment, amount=$totalAmount'
+        '${isEphemeral ? ', ephemeral' : ''}');
     final id = await _db.into(_db.extraordinaryEvents).insert(
       ExtraordinaryEventsCompanion.insert(
         name: name,
@@ -103,6 +111,7 @@ class ExtraordinaryEventService {
         spreadStart: Value(spreadStart),
         spreadEnd: Value(spreadEnd),
         notes: Value(notes),
+        isEphemeral: Value(isEphemeral),
       ),
     );
     if (treatment == EventTreatment.spread) {

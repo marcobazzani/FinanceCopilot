@@ -9787,468 +9787,6 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
   }
 }
 
-class $DashboardChartsTable extends DashboardCharts
-    with TableInfo<$DashboardChartsTable, DashboardChart> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $DashboardChartsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _titleMeta = const VerificationMeta('title');
-  @override
-  late final GeneratedColumn<String> title = GeneratedColumn<String>(
-    'title',
-    aliasedName,
-    false,
-    additionalChecks: GeneratedColumn.checkTextLength(
-      minTextLength: 1,
-      maxTextLength: 200,
-    ),
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _widgetTypeMeta = const VerificationMeta(
-    'widgetType',
-  );
-  @override
-  late final GeneratedColumn<String> widgetType = GeneratedColumn<String>(
-    'widget_type',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant('chart'),
-  );
-  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
-    'sortOrder',
-  );
-  @override
-  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
-    'sort_order',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(0),
-  );
-  static const VerificationMeta _seriesJsonMeta = const VerificationMeta(
-    'seriesJson',
-  );
-  @override
-  late final GeneratedColumn<String> seriesJson = GeneratedColumn<String>(
-    'series_json',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _sourceChartIdsMeta = const VerificationMeta(
-    'sourceChartIds',
-  );
-  @override
-  late final GeneratedColumn<String> sourceChartIds = GeneratedColumn<String>(
-    'source_chart_ids',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    title,
-    widgetType,
-    sortOrder,
-    seriesJson,
-    sourceChartIds,
-    createdAt,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'dashboard_charts';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<DashboardChart> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('title')) {
-      context.handle(
-        _titleMeta,
-        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_titleMeta);
-    }
-    if (data.containsKey('widget_type')) {
-      context.handle(
-        _widgetTypeMeta,
-        widgetType.isAcceptableOrUnknown(data['widget_type']!, _widgetTypeMeta),
-      );
-    }
-    if (data.containsKey('sort_order')) {
-      context.handle(
-        _sortOrderMeta,
-        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
-      );
-    }
-    if (data.containsKey('series_json')) {
-      context.handle(
-        _seriesJsonMeta,
-        seriesJson.isAcceptableOrUnknown(data['series_json']!, _seriesJsonMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_seriesJsonMeta);
-    }
-    if (data.containsKey('source_chart_ids')) {
-      context.handle(
-        _sourceChartIdsMeta,
-        sourceChartIds.isAcceptableOrUnknown(
-          data['source_chart_ids']!,
-          _sourceChartIdsMeta,
-        ),
-      );
-    }
-    if (data.containsKey('created_at')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  DashboardChart map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return DashboardChart(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      title: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}title'],
-      )!,
-      widgetType: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}widget_type'],
-      )!,
-      sortOrder: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}sort_order'],
-      )!,
-      seriesJson: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}series_json'],
-      )!,
-      sourceChartIds: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}source_chart_ids'],
-      ),
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}created_at'],
-      )!,
-    );
-  }
-
-  @override
-  $DashboardChartsTable createAlias(String alias) {
-    return $DashboardChartsTable(attachedDatabase, alias);
-  }
-}
-
-class DashboardChart extends DataClass implements Insertable<DashboardChart> {
-  final int id;
-  final String title;
-  final String widgetType;
-  final int sortOrder;
-  final String seriesJson;
-  final String? sourceChartIds;
-  final DateTime createdAt;
-  const DashboardChart({
-    required this.id,
-    required this.title,
-    required this.widgetType,
-    required this.sortOrder,
-    required this.seriesJson,
-    this.sourceChartIds,
-    required this.createdAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['title'] = Variable<String>(title);
-    map['widget_type'] = Variable<String>(widgetType);
-    map['sort_order'] = Variable<int>(sortOrder);
-    map['series_json'] = Variable<String>(seriesJson);
-    if (!nullToAbsent || sourceChartIds != null) {
-      map['source_chart_ids'] = Variable<String>(sourceChartIds);
-    }
-    map['created_at'] = Variable<DateTime>(createdAt);
-    return map;
-  }
-
-  DashboardChartsCompanion toCompanion(bool nullToAbsent) {
-    return DashboardChartsCompanion(
-      id: Value(id),
-      title: Value(title),
-      widgetType: Value(widgetType),
-      sortOrder: Value(sortOrder),
-      seriesJson: Value(seriesJson),
-      sourceChartIds: sourceChartIds == null && nullToAbsent
-          ? const Value.absent()
-          : Value(sourceChartIds),
-      createdAt: Value(createdAt),
-    );
-  }
-
-  factory DashboardChart.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return DashboardChart(
-      id: serializer.fromJson<int>(json['id']),
-      title: serializer.fromJson<String>(json['title']),
-      widgetType: serializer.fromJson<String>(json['widgetType']),
-      sortOrder: serializer.fromJson<int>(json['sortOrder']),
-      seriesJson: serializer.fromJson<String>(json['seriesJson']),
-      sourceChartIds: serializer.fromJson<String?>(json['sourceChartIds']),
-      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'title': serializer.toJson<String>(title),
-      'widgetType': serializer.toJson<String>(widgetType),
-      'sortOrder': serializer.toJson<int>(sortOrder),
-      'seriesJson': serializer.toJson<String>(seriesJson),
-      'sourceChartIds': serializer.toJson<String?>(sourceChartIds),
-      'createdAt': serializer.toJson<DateTime>(createdAt),
-    };
-  }
-
-  DashboardChart copyWith({
-    int? id,
-    String? title,
-    String? widgetType,
-    int? sortOrder,
-    String? seriesJson,
-    Value<String?> sourceChartIds = const Value.absent(),
-    DateTime? createdAt,
-  }) => DashboardChart(
-    id: id ?? this.id,
-    title: title ?? this.title,
-    widgetType: widgetType ?? this.widgetType,
-    sortOrder: sortOrder ?? this.sortOrder,
-    seriesJson: seriesJson ?? this.seriesJson,
-    sourceChartIds: sourceChartIds.present
-        ? sourceChartIds.value
-        : this.sourceChartIds,
-    createdAt: createdAt ?? this.createdAt,
-  );
-  DashboardChart copyWithCompanion(DashboardChartsCompanion data) {
-    return DashboardChart(
-      id: data.id.present ? data.id.value : this.id,
-      title: data.title.present ? data.title.value : this.title,
-      widgetType: data.widgetType.present
-          ? data.widgetType.value
-          : this.widgetType,
-      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
-      seriesJson: data.seriesJson.present
-          ? data.seriesJson.value
-          : this.seriesJson,
-      sourceChartIds: data.sourceChartIds.present
-          ? data.sourceChartIds.value
-          : this.sourceChartIds,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DashboardChart(')
-          ..write('id: $id, ')
-          ..write('title: $title, ')
-          ..write('widgetType: $widgetType, ')
-          ..write('sortOrder: $sortOrder, ')
-          ..write('seriesJson: $seriesJson, ')
-          ..write('sourceChartIds: $sourceChartIds, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode => Object.hash(
-    id,
-    title,
-    widgetType,
-    sortOrder,
-    seriesJson,
-    sourceChartIds,
-    createdAt,
-  );
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is DashboardChart &&
-          other.id == this.id &&
-          other.title == this.title &&
-          other.widgetType == this.widgetType &&
-          other.sortOrder == this.sortOrder &&
-          other.seriesJson == this.seriesJson &&
-          other.sourceChartIds == this.sourceChartIds &&
-          other.createdAt == this.createdAt);
-}
-
-class DashboardChartsCompanion extends UpdateCompanion<DashboardChart> {
-  final Value<int> id;
-  final Value<String> title;
-  final Value<String> widgetType;
-  final Value<int> sortOrder;
-  final Value<String> seriesJson;
-  final Value<String?> sourceChartIds;
-  final Value<DateTime> createdAt;
-  const DashboardChartsCompanion({
-    this.id = const Value.absent(),
-    this.title = const Value.absent(),
-    this.widgetType = const Value.absent(),
-    this.sortOrder = const Value.absent(),
-    this.seriesJson = const Value.absent(),
-    this.sourceChartIds = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  });
-  DashboardChartsCompanion.insert({
-    this.id = const Value.absent(),
-    required String title,
-    this.widgetType = const Value.absent(),
-    this.sortOrder = const Value.absent(),
-    required String seriesJson,
-    this.sourceChartIds = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  }) : title = Value(title),
-       seriesJson = Value(seriesJson);
-  static Insertable<DashboardChart> custom({
-    Expression<int>? id,
-    Expression<String>? title,
-    Expression<String>? widgetType,
-    Expression<int>? sortOrder,
-    Expression<String>? seriesJson,
-    Expression<String>? sourceChartIds,
-    Expression<DateTime>? createdAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (title != null) 'title': title,
-      if (widgetType != null) 'widget_type': widgetType,
-      if (sortOrder != null) 'sort_order': sortOrder,
-      if (seriesJson != null) 'series_json': seriesJson,
-      if (sourceChartIds != null) 'source_chart_ids': sourceChartIds,
-      if (createdAt != null) 'created_at': createdAt,
-    });
-  }
-
-  DashboardChartsCompanion copyWith({
-    Value<int>? id,
-    Value<String>? title,
-    Value<String>? widgetType,
-    Value<int>? sortOrder,
-    Value<String>? seriesJson,
-    Value<String?>? sourceChartIds,
-    Value<DateTime>? createdAt,
-  }) {
-    return DashboardChartsCompanion(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      widgetType: widgetType ?? this.widgetType,
-      sortOrder: sortOrder ?? this.sortOrder,
-      seriesJson: seriesJson ?? this.seriesJson,
-      sourceChartIds: sourceChartIds ?? this.sourceChartIds,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (title.present) {
-      map['title'] = Variable<String>(title.value);
-    }
-    if (widgetType.present) {
-      map['widget_type'] = Variable<String>(widgetType.value);
-    }
-    if (sortOrder.present) {
-      map['sort_order'] = Variable<int>(sortOrder.value);
-    }
-    if (seriesJson.present) {
-      map['series_json'] = Variable<String>(seriesJson.value);
-    }
-    if (sourceChartIds.present) {
-      map['source_chart_ids'] = Variable<String>(sourceChartIds.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<DateTime>(createdAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('DashboardChartsCompanion(')
-          ..write('id: $id, ')
-          ..write('title: $title, ')
-          ..write('widgetType: $widgetType, ')
-          ..write('sortOrder: $sortOrder, ')
-          ..write('seriesJson: $seriesJson, ')
-          ..write('sourceChartIds: $sourceChartIds, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-}
-
 class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -11269,6 +10807,21 @@ class $ExtraordinaryEventsTable extends ExtraordinaryEvents
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _isEphemeralMeta = const VerificationMeta(
+    'isEphemeral',
+  );
+  @override
+  late final GeneratedColumn<bool> isEphemeral = GeneratedColumn<bool>(
+    'is_ephemeral',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_ephemeral" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -11309,6 +10862,7 @@ class $ExtraordinaryEventsTable extends ExtraordinaryEvents
     bufferId,
     notes,
     isActive,
+    isEphemeral,
     createdAt,
     updatedAt,
   ];
@@ -11402,6 +10956,15 @@ class $ExtraordinaryEventsTable extends ExtraordinaryEvents
         isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
       );
     }
+    if (data.containsKey('is_ephemeral')) {
+      context.handle(
+        _isEphemeralMeta,
+        isEphemeral.isAcceptableOrUnknown(
+          data['is_ephemeral']!,
+          _isEphemeralMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -11485,6 +11048,10 @@ class $ExtraordinaryEventsTable extends ExtraordinaryEvents
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
+      isEphemeral: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_ephemeral'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -11535,6 +11102,11 @@ class ExtraordinaryEvent extends DataClass
   final int? bufferId;
   final String? notes;
   final bool isActive;
+
+  /// Inflow-only flag for "money I don't have but can spend" — i.e. a line
+  /// of credit. Ephemeral inflows belong to Cash (negated) but never to
+  /// Saving. Only meaningful for direction=inflow + treatment=instant.
+  final bool isEphemeral;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ExtraordinaryEvent({
@@ -11552,6 +11124,7 @@ class ExtraordinaryEvent extends DataClass
     this.bufferId,
     this.notes,
     required this.isActive,
+    required this.isEphemeral,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -11594,6 +11167,7 @@ class ExtraordinaryEvent extends DataClass
       map['notes'] = Variable<String>(notes);
     }
     map['is_active'] = Variable<bool>(isActive);
+    map['is_ephemeral'] = Variable<bool>(isEphemeral);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -11627,6 +11201,7 @@ class ExtraordinaryEvent extends DataClass
           ? const Value.absent()
           : Value(notes),
       isActive: Value(isActive),
+      isEphemeral: Value(isEphemeral),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -11657,6 +11232,7 @@ class ExtraordinaryEvent extends DataClass
       bufferId: serializer.fromJson<int?>(json['bufferId']),
       notes: serializer.fromJson<String?>(json['notes']),
       isActive: serializer.fromJson<bool>(json['isActive']),
+      isEphemeral: serializer.fromJson<bool>(json['isEphemeral']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -11687,6 +11263,7 @@ class ExtraordinaryEvent extends DataClass
       'bufferId': serializer.toJson<int?>(bufferId),
       'notes': serializer.toJson<String?>(notes),
       'isActive': serializer.toJson<bool>(isActive),
+      'isEphemeral': serializer.toJson<bool>(isEphemeral),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -11707,6 +11284,7 @@ class ExtraordinaryEvent extends DataClass
     Value<int?> bufferId = const Value.absent(),
     Value<String?> notes = const Value.absent(),
     bool? isActive,
+    bool? isEphemeral,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ExtraordinaryEvent(
@@ -11728,6 +11306,7 @@ class ExtraordinaryEvent extends DataClass
     bufferId: bufferId.present ? bufferId.value : this.bufferId,
     notes: notes.present ? notes.value : this.notes,
     isActive: isActive ?? this.isActive,
+    isEphemeral: isEphemeral ?? this.isEphemeral,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -11755,6 +11334,9 @@ class ExtraordinaryEvent extends DataClass
       bufferId: data.bufferId.present ? data.bufferId.value : this.bufferId,
       notes: data.notes.present ? data.notes.value : this.notes,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      isEphemeral: data.isEphemeral.present
+          ? data.isEphemeral.value
+          : this.isEphemeral,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -11777,6 +11359,7 @@ class ExtraordinaryEvent extends DataClass
           ..write('bufferId: $bufferId, ')
           ..write('notes: $notes, ')
           ..write('isActive: $isActive, ')
+          ..write('isEphemeral: $isEphemeral, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -11799,6 +11382,7 @@ class ExtraordinaryEvent extends DataClass
     bufferId,
     notes,
     isActive,
+    isEphemeral,
     createdAt,
     updatedAt,
   );
@@ -11820,6 +11404,7 @@ class ExtraordinaryEvent extends DataClass
           other.bufferId == this.bufferId &&
           other.notes == this.notes &&
           other.isActive == this.isActive &&
+          other.isEphemeral == this.isEphemeral &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -11839,6 +11424,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
   final Value<int?> bufferId;
   final Value<String?> notes;
   final Value<bool> isActive;
+  final Value<bool> isEphemeral;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const ExtraordinaryEventsCompanion({
@@ -11856,6 +11442,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
     this.bufferId = const Value.absent(),
     this.notes = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.isEphemeral = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -11874,6 +11461,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
     this.bufferId = const Value.absent(),
     this.notes = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.isEphemeral = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : name = Value(name),
@@ -11896,6 +11484,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
     Expression<int>? bufferId,
     Expression<String>? notes,
     Expression<bool>? isActive,
+    Expression<bool>? isEphemeral,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -11914,6 +11503,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
       if (bufferId != null) 'buffer_id': bufferId,
       if (notes != null) 'notes': notes,
       if (isActive != null) 'is_active': isActive,
+      if (isEphemeral != null) 'is_ephemeral': isEphemeral,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -11934,6 +11524,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
     Value<int?>? bufferId,
     Value<String?>? notes,
     Value<bool>? isActive,
+    Value<bool>? isEphemeral,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -11952,6 +11543,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
       bufferId: bufferId ?? this.bufferId,
       notes: notes ?? this.notes,
       isActive: isActive ?? this.isActive,
+      isEphemeral: isEphemeral ?? this.isEphemeral,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -12010,6 +11602,9 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
+    if (isEphemeral.present) {
+      map['is_ephemeral'] = Variable<bool>(isEphemeral.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -12036,6 +11631,7 @@ class ExtraordinaryEventsCompanion extends UpdateCompanion<ExtraordinaryEvent> {
           ..write('bufferId: $bufferId, ')
           ..write('notes: $notes, ')
           ..write('isActive: $isActive, ')
+          ..write('isEphemeral: $isEphemeral, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -12640,9 +12236,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $HealthReimbursementsTable(this);
   late final $AppConfigsTable appConfigs = $AppConfigsTable(this);
   late final $ImportConfigsTable importConfigs = $ImportConfigsTable(this);
-  late final $DashboardChartsTable dashboardCharts = $DashboardChartsTable(
-    this,
-  );
   late final $IncomesTable incomes = $IncomesTable(this);
   late final $AssetCompositionsTable assetCompositions =
       $AssetCompositionsTable(this);
@@ -12671,7 +12264,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     healthReimbursements,
     appConfigs,
     importConfigs,
-    dashboardCharts,
     incomes,
     assetCompositions,
     extraordinaryEvents,
@@ -20274,250 +19866,6 @@ typedef $$ImportConfigsTableProcessedTableManager =
       ImportConfig,
       PrefetchHooks Function({bool accountId})
     >;
-typedef $$DashboardChartsTableCreateCompanionBuilder =
-    DashboardChartsCompanion Function({
-      Value<int> id,
-      required String title,
-      Value<String> widgetType,
-      Value<int> sortOrder,
-      required String seriesJson,
-      Value<String?> sourceChartIds,
-      Value<DateTime> createdAt,
-    });
-typedef $$DashboardChartsTableUpdateCompanionBuilder =
-    DashboardChartsCompanion Function({
-      Value<int> id,
-      Value<String> title,
-      Value<String> widgetType,
-      Value<int> sortOrder,
-      Value<String> seriesJson,
-      Value<String?> sourceChartIds,
-      Value<DateTime> createdAt,
-    });
-
-class $$DashboardChartsTableFilterComposer
-    extends Composer<_$AppDatabase, $DashboardChartsTable> {
-  $$DashboardChartsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get title => $composableBuilder(
-    column: $table.title,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get widgetType => $composableBuilder(
-    column: $table.widgetType,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get sortOrder => $composableBuilder(
-    column: $table.sortOrder,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get seriesJson => $composableBuilder(
-    column: $table.seriesJson,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get sourceChartIds => $composableBuilder(
-    column: $table.sourceChartIds,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnFilters(column),
-  );
-}
-
-class $$DashboardChartsTableOrderingComposer
-    extends Composer<_$AppDatabase, $DashboardChartsTable> {
-  $$DashboardChartsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get title => $composableBuilder(
-    column: $table.title,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get widgetType => $composableBuilder(
-    column: $table.widgetType,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get sortOrder => $composableBuilder(
-    column: $table.sortOrder,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get seriesJson => $composableBuilder(
-    column: $table.seriesJson,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get sourceChartIds => $composableBuilder(
-    column: $table.sourceChartIds,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-}
-
-class $$DashboardChartsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $DashboardChartsTable> {
-  $$DashboardChartsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<String> get title =>
-      $composableBuilder(column: $table.title, builder: (column) => column);
-
-  GeneratedColumn<String> get widgetType => $composableBuilder(
-    column: $table.widgetType,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<int> get sortOrder =>
-      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
-
-  GeneratedColumn<String> get seriesJson => $composableBuilder(
-    column: $table.seriesJson,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<String> get sourceChartIds => $composableBuilder(
-    column: $table.sourceChartIds,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<DateTime> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
-}
-
-class $$DashboardChartsTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $DashboardChartsTable,
-          DashboardChart,
-          $$DashboardChartsTableFilterComposer,
-          $$DashboardChartsTableOrderingComposer,
-          $$DashboardChartsTableAnnotationComposer,
-          $$DashboardChartsTableCreateCompanionBuilder,
-          $$DashboardChartsTableUpdateCompanionBuilder,
-          (
-            DashboardChart,
-            BaseReferences<
-              _$AppDatabase,
-              $DashboardChartsTable,
-              DashboardChart
-            >,
-          ),
-          DashboardChart,
-          PrefetchHooks Function()
-        > {
-  $$DashboardChartsTableTableManager(
-    _$AppDatabase db,
-    $DashboardChartsTable table,
-  ) : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$DashboardChartsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$DashboardChartsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$DashboardChartsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<String> title = const Value.absent(),
-                Value<String> widgetType = const Value.absent(),
-                Value<int> sortOrder = const Value.absent(),
-                Value<String> seriesJson = const Value.absent(),
-                Value<String?> sourceChartIds = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => DashboardChartsCompanion(
-                id: id,
-                title: title,
-                widgetType: widgetType,
-                sortOrder: sortOrder,
-                seriesJson: seriesJson,
-                sourceChartIds: sourceChartIds,
-                createdAt: createdAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required String title,
-                Value<String> widgetType = const Value.absent(),
-                Value<int> sortOrder = const Value.absent(),
-                required String seriesJson,
-                Value<String?> sourceChartIds = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => DashboardChartsCompanion.insert(
-                id: id,
-                title: title,
-                widgetType: widgetType,
-                sortOrder: sortOrder,
-                seriesJson: seriesJson,
-                sourceChartIds: sourceChartIds,
-                createdAt: createdAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
-              .toList(),
-          prefetchHooksCallback: null,
-        ),
-      );
-}
-
-typedef $$DashboardChartsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $DashboardChartsTable,
-      DashboardChart,
-      $$DashboardChartsTableFilterComposer,
-      $$DashboardChartsTableOrderingComposer,
-      $$DashboardChartsTableAnnotationComposer,
-      $$DashboardChartsTableCreateCompanionBuilder,
-      $$DashboardChartsTableUpdateCompanionBuilder,
-      (
-        DashboardChart,
-        BaseReferences<_$AppDatabase, $DashboardChartsTable, DashboardChart>,
-      ),
-      DashboardChart,
-      PrefetchHooks Function()
-    >;
 typedef $$IncomesTableCreateCompanionBuilder =
     IncomesCompanion Function({
       Value<int> id,
@@ -21108,6 +20456,7 @@ typedef $$ExtraordinaryEventsTableCreateCompanionBuilder =
       Value<int?> bufferId,
       Value<String?> notes,
       Value<bool> isActive,
+      Value<bool> isEphemeral,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -21127,6 +20476,7 @@ typedef $$ExtraordinaryEventsTableUpdateCompanionBuilder =
       Value<int?> bufferId,
       Value<String?> notes,
       Value<bool> isActive,
+      Value<bool> isEphemeral,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -21286,6 +20636,11 @@ class $$ExtraordinaryEventsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isEphemeral => $composableBuilder(
+    column: $table.isEphemeral,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
@@ -21439,6 +20794,11 @@ class $$ExtraordinaryEventsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isEphemeral => $composableBuilder(
+    column: $table.isEphemeral,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -21547,6 +20907,11 @@ class $$ExtraordinaryEventsTableAnnotationComposer
 
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<bool> get isEphemeral => $composableBuilder(
+    column: $table.isEphemeral,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -21682,6 +21047,7 @@ class $$ExtraordinaryEventsTableTableManager
                 Value<int?> bufferId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<bool> isEphemeral = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => ExtraordinaryEventsCompanion(
@@ -21699,6 +21065,7 @@ class $$ExtraordinaryEventsTableTableManager
                 bufferId: bufferId,
                 notes: notes,
                 isActive: isActive,
+                isEphemeral: isEphemeral,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -21718,6 +21085,7 @@ class $$ExtraordinaryEventsTableTableManager
                 Value<int?> bufferId = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<bool> isEphemeral = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => ExtraordinaryEventsCompanion.insert(
@@ -21735,6 +21103,7 @@ class $$ExtraordinaryEventsTableTableManager
                 bufferId: bufferId,
                 notes: notes,
                 isActive: isActive,
+                isEphemeral: isEphemeral,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -22316,8 +21685,6 @@ class $AppDatabaseManager {
       $$AppConfigsTableTableManager(_db, _db.appConfigs);
   $$ImportConfigsTableTableManager get importConfigs =>
       $$ImportConfigsTableTableManager(_db, _db.importConfigs);
-  $$DashboardChartsTableTableManager get dashboardCharts =>
-      $$DashboardChartsTableTableManager(_db, _db.dashboardCharts);
   $$IncomesTableTableManager get incomes =>
       $$IncomesTableTableManager(_db, _db.incomes);
   $$AssetCompositionsTableTableManager get assetCompositions =>

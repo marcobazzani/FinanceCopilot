@@ -43,6 +43,10 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   late DateTime _eventDate;
   late DateTime _boundaryDate;
   late _SpreadMode _spreadMode;
+  late bool _isEphemeral;
+
+  bool get _canBeEphemeral =>
+      _direction == EventDirection.inflow && _treatment == EventTreatment.instant;
 
   bool get _isEditing => widget.event != null;
   String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
@@ -79,6 +83,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     _treatment = e?.treatment ?? EventTreatment.instant;
     _stepFrequency = e?.stepFrequency ?? StepFrequency.monthly;
     _eventDate = e?.eventDate ?? DateTime.now();
+    _isEphemeral = e?.isEphemeral ?? false;
 
     // Infer spread mode from stored spread window (when editing spread events).
     if (e != null && e.treatment == EventTreatment.spread &&
@@ -134,6 +139,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     final amount = _parsedAmount(locale);
     if (amount == null) return;
     final svc = ref.read(extraordinaryEventServiceProvider);
+    final ephemeral = _canBeEphemeral && _isEphemeral;
 
     if (_isEditing) {
       await svc.update(
@@ -149,6 +155,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
           spreadStart: Value(_treatment == EventTreatment.spread ? _spreadStart : null),
           spreadEnd: Value(_treatment == EventTreatment.spread ? _spreadEnd : null),
           notes: Value(_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
+          isEphemeral: Value(ephemeral),
         ),
       );
     } else {
@@ -163,6 +170,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
         spreadStart: _treatment == EventTreatment.spread ? _spreadStart : null,
         spreadEnd: _treatment == EventTreatment.spread ? _spreadEnd : null,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        isEphemeral: ephemeral,
       );
     }
     if (mounted) Navigator.pop(context);
@@ -255,6 +263,19 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                     selected: {_treatment},
                     onSelectionChanged: (set) => setState(() => _treatment = set.first),
                   ),
+                  if (_canBeEphemeral) ...[
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.eventEphemeralLabel),
+                      subtitle: Text(
+                        s.eventEphemeralHelp,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      value: _isEphemeral,
+                      onChanged: (v) => setState(() => _isEphemeral = v),
+                    ),
+                  ],
                 ],
               ),
             ),

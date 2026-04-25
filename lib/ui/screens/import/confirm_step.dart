@@ -27,7 +27,7 @@ extension _ConfirmStep on _ImportScreenState {
     var source = _preview!;
     if (source.rows.length < source.totalRows) {
       final importer = ref.read(importServiceProvider);
-      source = await importer.getFullRows(source);
+      source = await importer.getFullRows(source, numberLocale: _effectiveNumberLocale());
     }
 
     final isinCol = _mappings['isin']!;
@@ -495,11 +495,14 @@ extension _ConfirmStep on _ImportScreenState {
 
       _log.info('_executeImport: ${mappings.length} column mappings built');
 
-      // Re-parse full file if preview was capped (large files)
+      // Re-parse full file if the on-screen preview was capped (large
+      // files). Locale mismatches are handled inside ImportService —
+      // re-parsing here would also fire for CSV (locale-agnostic), adding
+      // pointless Isolate work.
       var fullPreview = _preview!;
       if (fullPreview.rows.length < fullPreview.totalRows) {
         _log.info('_executeImport: re-parsing full file (${fullPreview.totalRows} rows)...');
-        fullPreview = await importer.getFullRows(fullPreview);
+        fullPreview = await importer.getFullRows(fullPreview, numberLocale: _effectiveNumberLocale());
         _log.info('_executeImport: re-parsed ${fullPreview.rows.length} rows');
       }
 
@@ -636,7 +639,10 @@ extension _ConfirmStep on _ImportScreenState {
               value: _selectedNumberLocale,
               hint: Text(autoLabel),
               items: items,
-              onChanged: (v) => _setState(() => _selectedNumberLocale = v),
+              onChanged: (v) {
+                _setState(() => _selectedNumberLocale = v);
+                _computePreview();
+              },
             ),
           ],
         ),

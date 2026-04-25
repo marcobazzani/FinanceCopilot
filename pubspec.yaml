@@ -90,5 +90,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/app_icon.png
+    - assets/default_charts.json
     # Test fixtures — bundled for integration tests (negligible size in release)
     - integration_test/fixtures/

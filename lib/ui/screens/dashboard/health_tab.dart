@@ -49,7 +49,7 @@ class _FinancialHealthTab extends ConsumerWidget {
         // configured History-tab charts (option B). Each falls back to the
         // hard-coded composition when the role chart is missing.
         final allData = allDataAsync.value;
-        final userCharts = ref.watch(dashboardChartsProvider).value ?? const <DashboardChart>[];
+        final userCharts = ref.watch(dashboardChartsProvider);
         final activeAssets = assets;
         final cash = allData == null
             ? 0.0

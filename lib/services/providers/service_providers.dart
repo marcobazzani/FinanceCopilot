@@ -54,11 +54,9 @@ final compositionServiceProvider = Provider<CompositionService>((ref) {
   );
 });
 
-// ── Dashboard chart providers ──
-
-final dashboardChartServiceProvider = Provider<DashboardChartService>((ref) {
-  return DashboardChartService(ref.watch(databaseProvider));
-});
+// Dashboard chart configuration is no longer DB-backed; see
+// `lib/services/editable_charts_notifier.dart` and
+// `lib/services/default_charts_loader.dart`.
 
 // ── Buffer provider (shared with ExtraordinaryEvents for reimbursements) ──
 
