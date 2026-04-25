@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "charts": [
+    {
+      "widgetType": "price_changes",
+      "title": "Price Changes"
+    },
+    {
+      "widgetType": "chart",
+      "title": "Totals",
+      "sourceChartIds": "[\"Portfolio\",\"Cash\",\"Invested\",\"Saving\",\"Total Assets\"]"
+    },
+    {
+      "widgetType": "chart",
+      "title": "Total Assets",
+      "categories": [
+        "all_market",
+        "all_accounts",
+        "outflow_value",
+        "outflow_events"
+      ]
+    },
+    {
+      "role": "saving",
+      "title": "Saving",
+      "categories": [
+        "all_invested",
+        "all_accounts",
+        "outflow_value",
+        "outflow_events",
+        "non_ephemeral_inflow_value",
+        "non_ephemeral_inflow_events",
+        "ephemeral_inflow_events"
+      ]
+    },
+    {
+      "widgetType": "chart",
+      "title": "Invested",
+      "categories": [
+        "all_invested"
+      ]
+    },
+    {
+      "role": "cash",
+      "title": "Cash",
+      "categories": [
+        "all_accounts",
+        "outflow_value",
+        "outflow_events",
+        {
+          "category": "ephemeral_inflow_value",
+          "sign": -1
+        }
+      ]
+    },
+    {
+      "role": "portfolio",
+      "title": "Portfolio",
+      "categories": [
+        "all_market"
+      ]
+    },
+    {
+      "role": "liquid_investments",
+      "title": "Liquid Investments",
+      "categories": [
+        "all_market_liquid"
+      ]
+    },
+    {
+      "widgetType": "chart",
+      "title": "Performance",
+      "categories": [
+        "all_gain"
+      ]
+    }
+  ]
+}

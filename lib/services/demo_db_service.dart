@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
@@ -96,8 +95,8 @@ class DemoDbService {
       progress('Creating adjustments...');
       await _insertDepreciation(db);
 
-      progress('Creating charts...');
-      await _insertDashboardCharts(db);
+      // Charts are no longer DB-persisted — they come from
+      // assets/default_charts.json at runtime.
 
       progress('Finalizing...');
     } finally {
@@ -715,30 +714,4 @@ class DemoDbService {
     }
   }
 
-  // ── Dashboard charts ──
-
-  static Future<void> _insertDashboardCharts(AppDatabase db) async {
-    final investedMarketSeries = <Map<String, dynamic>>[];
-    for (var id = 1; id <= 6; id++) {
-      investedMarketSeries.add({'type': 'asset_market', 'id': id});
-      investedMarketSeries.add({'type': 'asset_invested', 'id': id});
-    }
-    await db.into(db.dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Invested vs Market Value',
-      sortOrder: const Value(0),
-      seriesJson: jsonEncode(investedMarketSeries),
-    ));
-
-    final netWorthSeries = <Map<String, dynamic>>[
-      {'type': 'account', 'id': 1},
-      {'type': 'account', 'id': 2},
-      {'type': 'adjustment', 'id': 1},
-      for (var id = 1; id <= 6; id++) {'type': 'asset_invested', 'id': id},
-    ];
-    await db.into(db.dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Net Worth',
-      sortOrder: const Value(1),
-      seriesJson: jsonEncode(netWorthSeries),
-    ));
-  }
 }

@@ -187,14 +187,23 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 30 after number-locale columns added', () async {
+    test('schema version is 32 after dashboard_charts dropped', () async {
       // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
       // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
       // a "Default" intermediary; v30 added per-source number-format locale
-      // columns to import_configs and intermediaries.
+      // columns; v31 added extraordinary_events.is_ephemeral; v32 dropped
+      // the dashboard_charts table (chart configuration is now read from
+      // assets/default_charts.json — no DB persistence).
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 30);
+      expect(version, 32);
+    });
+
+    test('dashboard_charts table is gone', () async {
+      final rows = await db.customSelect(
+        "SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='dashboard_charts'",
+      ).get();
+      expect(rows.first.read<int>('c'), 0);
     });
 
     test('accounts table has no ghost columns', () async {

@@ -18,6 +18,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final assetsAsync = ref.watch(activeAssetsProvider);
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
+    final allDataAsync = ref.watch(allSeriesDataProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
 
@@ -32,7 +33,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final pctFmt = NumberFormat('0.00', locale);
 
     // Wait for all required data before rendering — avoids flicker with zeros
-    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading) {
+    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading || allDataAsync.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (assetsAsync.hasError) return Center(child: Text(s.error(assetsAsync.error ?? '')));
@@ -42,24 +43,23 @@ class _FinancialHealthTab extends ConsumerWidget {
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (assets) {
         final marketValues = marketValuesAsync.value ?? {};
-        final accountStats = accountStatsAsync.value ?? {};
         final ieData = ieAsync.value;
 
-        // Compute totals — split liquid vs illiquid investments
-        final cash = accountStats.values.whereType<double>().fold(0.0, (a, b) => a + b);
+        // Cash / Portfolio / Liquid Investments flow from the user's
+        // configured History-tab charts (option B). Each falls back to the
+        // hard-coded composition when the role chart is missing.
+        final allData = allDataAsync.value;
+        final userCharts = ref.watch(dashboardChartsProvider);
         final activeAssets = assets;
-        const illiquidTypes = {InstrumentType.pension, InstrumentType.realEstate, InstrumentType.alternative, InstrumentType.liability};
-        double liquidInvestments = 0;
-        double illiquidInvestments = 0;
-        for (final asset in activeAssets) {
-          final mv = marketValues[asset.id] ?? 0.0;
-          if (illiquidTypes.contains(asset.instrumentType)) {
-            illiquidInvestments += mv;
-          } else {
-            liquidInvestments += mv;
-          }
-        }
-        final investments = liquidInvestments + illiquidInvestments;
+        final cash = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('cash', userCharts, allData, activeAssets);
+        final investments = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('portfolio', userCharts, allData, activeAssets);
+        final liquidInvestments = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('liquid_investments', userCharts, allData, activeAssets);
 
         // Current year for savings/expenses. Rolling 12m for income-to-wealth.
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;

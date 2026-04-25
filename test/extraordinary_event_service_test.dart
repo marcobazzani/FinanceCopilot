@@ -304,6 +304,68 @@ void main() {
     });
   });
 
+  group('Ephemeral inflow flag', () {
+    test('defaults to false when not specified', () async {
+      final id = await service.create(
+        name: 'Regular inflow',
+        direction: EventDirection.inflow,
+        treatment: EventTreatment.instant,
+        totalAmount: 500,
+        currency: 'EUR',
+        eventDate: DateTime(2024, 6, 1),
+      );
+      final event = await service.getById(id);
+      expect(event.isEphemeral, isFalse);
+    });
+
+    test('persists when set to true on inflow/instant', () async {
+      final id = await service.create(
+        name: 'Line of credit',
+        direction: EventDirection.inflow,
+        treatment: EventTreatment.instant,
+        totalAmount: 500,
+        currency: 'EUR',
+        eventDate: DateTime(2024, 6, 1),
+        isEphemeral: true,
+      );
+      final event = await service.getById(id);
+      expect(event.isEphemeral, isTrue);
+    });
+
+    test('rejects ephemeral on outflow direction', () async {
+      expect(
+        () => service.create(
+          name: 'Bad',
+          direction: EventDirection.outflow,
+          treatment: EventTreatment.instant,
+          totalAmount: 100,
+          currency: 'EUR',
+          eventDate: DateTime(2024, 6, 1),
+          isEphemeral: true,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejects ephemeral on spread treatment', () async {
+      expect(
+        () => service.create(
+          name: 'Bad',
+          direction: EventDirection.inflow,
+          treatment: EventTreatment.spread,
+          totalAmount: 1200,
+          currency: 'EUR',
+          eventDate: DateTime(2024, 1, 1),
+          stepFrequency: StepFrequency.monthly,
+          spreadStart: DateTime(2024, 1, 1),
+          spreadEnd: DateTime(2024, 12, 1),
+          isEphemeral: true,
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('Buffer linking', () {
     test('createLinkedBuffer works for spread events', () async {
       final id = await service.create(

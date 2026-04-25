@@ -32,7 +32,6 @@ final _log = getLogger('Database');
   HealthReimbursements,
   AppConfigs,
   ImportConfigs,
-  DashboardCharts,
   Incomes,
   AssetCompositions,
   ExtraordinaryEvents,
@@ -54,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 30;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -63,7 +62,6 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           await _createIndexes();
           await _seedAppConfig();
-          await _seedDefaultCharts();
           _log.info('Database schema created and seeded');
         },
         onUpgrade: (Migrator m, int from, int to) async {
@@ -127,8 +125,8 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('DROP TABLE IF EXISTS calendar_days');
           }
           if (from < 13) {
-            await m.createTable(dashboardCharts);
-            await _seedDefaultCharts();
+            // dashboardCharts table was created here historically; v32
+            // drops it again (chart config now lives in JSON asset).
           }
           if (from < 14) {
             // Legacy tables (income_adjustments, income_adjustment_expenses)
@@ -448,6 +446,24 @@ class AppDatabase extends _$AppDatabase {
             }
             _log.info('Migration 30: added number_locale columns');
           }
+          if (from < 31) {
+            // Ephemeral inflow adjustments — line-of-credit money. Routed
+            // to Cash (negated) but never to Saving.
+            if (!await _hasColumn('extraordinary_events', 'is_ephemeral')) {
+              await customStatement(
+                'ALTER TABLE extraordinary_events '
+                'ADD COLUMN is_ephemeral INTEGER NOT NULL DEFAULT 0',
+              );
+            }
+            _log.info('Migration 31: added extraordinary_events.is_ephemeral');
+          }
+          if (from < 32) {
+            // Chart configuration moved to assets/default_charts.json. The
+            // dashboard_charts table is no longer used; drop it (and its
+            // generated row data) entirely.
+            await customStatement('DROP TABLE IF EXISTS dashboard_charts');
+            _log.info('Migration 32: dropped dashboard_charts table');
+          }
         },
       );
 
@@ -515,62 +531,6 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  /// Seed default dashboard widgets: price changes card + two charts.
-  Future<void> _seedDefaultCharts() async {
-    // Widget 0: Price Changes card
-    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Price Changes',
-      widgetType: const Value('price_changes'),
-      sortOrder: const Value(0),
-      seriesJson: '[]',
-    ));
-
-    // Gather all active accounts, assets, and extraordinary events
-    final accounts = await (select(this.accounts)..where((a) => a.isActive.equals(true))).get();
-    final assets = await (select(this.assets)..where((a) => a.isActive.equals(true))).get();
-    final events = await (select(extraordinaryEvents)..where((e) => e.isActive.equals(true))).get();
-
-    // Chart 1: Net Worth — accounts + invested assets + extraordinary events.
-    // Outflow events use the 'adjustment' series key, inflow events use
-    // 'income_adj' — matching the partitioning in the chart data provider.
-    final nwSeries = <Map<String, dynamic>>[
-      for (final a in accounts) {'type': 'account', 'id': a.id},
-      for (final a in assets) {'type': 'asset_invested', 'id': a.id},
-      for (final e in events)
-        {
-          'type': e.direction == EventDirection.outflow ? 'adjustment' : 'income_adj',
-          'id': e.id,
-        },
-    ];
-    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Net Worth',
-      sortOrder: const Value(1),
-      seriesJson: _encodeJson(nwSeries),
-    ));
-
-    // Chart 2: Invested vs Market — all assets (invested + market)
-    final invSeries = <Map<String, dynamic>>[
-      for (final a in assets) ...[
-        {'type': 'asset_invested', 'id': a.id},
-        {'type': 'asset_market', 'id': a.id},
-      ],
-    ];
-    await into(dashboardCharts).insert(DashboardChartsCompanion.insert(
-      title: 'Invested vs Market Value',
-      sortOrder: const Value(2),
-      seriesJson: _encodeJson(invSeries),
-    ));
-  }
-
-  static String _encodeJson(List<Map<String, dynamic>> list) {
-    // Manual JSON encoding to avoid importing dart:convert in this file
-    final items = list.map((m) {
-      final type = m['type'] as String;
-      final id = m['id'] as int;
-      return '{"type":"$type","id":$id}';
-    }).join(',');
-    return '[$items]';
-  }
 }
 
 /// Ensure sqlite3 native library is configured (needed on Android).

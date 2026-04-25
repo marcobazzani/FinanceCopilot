@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:intl/intl.dart';
 
 import '../database/database.dart';
 import '../database/tables.dart';
@@ -57,6 +59,9 @@ class FilePreview {
   final int skipRows;
   final bool noHeader;
   final String? sheetName;
+  /// Locale used to format numeric XLSX cells when stringifying. Stored so
+  /// `getFullRows` can detect when a locale change requires re-parsing.
+  final String? numberLocale;
 
   const FilePreview({
     required this.columns,
@@ -67,6 +72,7 @@ class FilePreview {
     this.skipRows = 0,
     this.noHeader = false,
     this.sheetName,
+    this.numberLocale,
   });
 }
 
@@ -168,15 +174,16 @@ class ImportService {
   // Step 1: Parse file → FilePreview (delegates to FileParserService)
   // ──────────────────────────────────────────────
 
-  Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false}) =>
-      _parser.parseFile(filePath, sheetName: sheetName, skipRows: skipRows, noHeader: noHeader);
+  Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false, String? numberLocale}) =>
+      _parser.parseFile(filePath, sheetName: sheetName, skipRows: skipRows, noHeader: noHeader, numberLocale: numberLocale);
 
   Future<List<String>> listSheets(String filePath) => _parser.listSheets(filePath);
 
   Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) =>
       _parser.parseClipboard(text, skipRows: skipRows, noHeader: noHeader);
 
-  Future<FilePreview> getFullRows(FilePreview preview) => _parser.getFullRows(preview);
+  Future<FilePreview> getFullRows(FilePreview preview, {String? numberLocale}) =>
+      _parser.getFullRows(preview, numberLocale: numberLocale);
 
   // ──────────────────────────────────────────────
   // Helpers: mapping resolution
@@ -201,7 +208,7 @@ class ImportService {
     // Try numeric sum
     final nums = values.map((v) => _tryParseAmount(v)).toList();
     if (nums.every((n) => n != null)) {
-      return nums.fold(0.0, (a, b) => a + b!).toString();
+      return _formatAmount(nums.fold(0.0, (a, b) => a + b!));
     }
 
     // String concatenation with delimiter
@@ -220,7 +227,67 @@ class ImportService {
         result += value;
       }
     }
-    return result.toString();
+    return _formatAmount(result);
+  }
+
+  /// Format a numeric result so it round-trips through `_parseAmount`. Plain
+  /// `toString()` always emits '.' as decimal — which it_IT (and other EU
+  /// locales) then re-parse as a thousands separator, multiplying the value.
+  String _formatAmount(double v) =>
+      NumberFormat.decimalPattern(_activeLocale).format(v);
+
+  /// Re-parse the underlying file when the preview's `numberLocale` no
+  /// longer matches `_activeLocale`. Only matters for XLSX (numeric cells
+  /// are formatted at parse time). CSV/clipboard text is locale-agnostic
+  /// at the row-string level, so it's a no-op there.
+  ///
+  /// If the source file is unavailable (e.g. integration tests that copy
+  /// to a tmp dir and delete it), fall back to re-formatting the in-memory
+  /// row strings: numeric-looking dot-decimal values get rewritten in the
+  /// active locale's format. CSV columns with text content are never
+  /// numeric-shaped so this is safe.
+  Future<FilePreview> _ensurePreviewLocale(FilePreview preview) async {
+    if (preview.numberLocale == _activeLocale) return preview;
+    if (preview.filePath == null) return _reformatPreviewInPlace(preview);
+    final ext = preview.filePath!.toLowerCase().split('.').last;
+    if (ext != 'xlsx' && ext != 'xls') return preview;
+    if (!await File(preview.filePath!).exists()) {
+      return _reformatPreviewInPlace(preview);
+    }
+    // Inline re-parse (no Isolate.run): test environments pump a handful
+    // of frames and would otherwise time out waiting for an isolate.
+    return _parser.getFullRowsInProcess(preview, numberLocale: _activeLocale);
+  }
+
+  /// Rewrite strings that look like a Dart-default `double.toString()`
+  /// (e.g. "7707.97", "-42.5") so they round-trip through the active
+  /// locale's parser. Invariant: only digits, optional sign, exactly one
+  /// dot — that's the shape XLSX cells produce when no locale is given.
+  static final _dotDecimal = RegExp(r'^-?\d+\.\d+$');
+  FilePreview _reformatPreviewInPlace(FilePreview preview) {
+    final fmt = NumberFormat.decimalPattern(_activeLocale);
+    final newRows = preview.rows.map((row) {
+      final out = <String, String>{};
+      row.forEach((k, v) {
+        if (_dotDecimal.hasMatch(v)) {
+          out[k] = fmt.format(double.parse(v));
+        } else {
+          out[k] = v;
+        }
+      });
+      return out;
+    }).toList();
+    return FilePreview(
+      columns: preview.columns,
+      rows: newRows,
+      totalRows: preview.totalRows,
+      filePath: preview.filePath,
+      clipboardText: preview.clipboardText,
+      skipRows: preview.skipRows,
+      noHeader: preview.noHeader,
+      sheetName: preview.sheetName,
+      numberLocale: _activeLocale,
+    );
   }
 
   // ──────────────────────────────────────────────
@@ -252,6 +319,7 @@ class ImportService {
       override: numberLocaleOverride,
       appLocale: appLocale,
     );
+    preview = await _ensurePreviewLocale(preview);
     _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
@@ -894,6 +962,7 @@ class ImportService {
                 .getSingleOrNull())
             ?.numberLocale;
     _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+    preview = await _ensurePreviewLocale(preview);
     _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];

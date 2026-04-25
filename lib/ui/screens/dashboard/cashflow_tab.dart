@@ -123,19 +123,13 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final ieData  = ieAsync.value;
 
-    // Saving = accounts + invested + adjustments (spread + income)
-    final savingSpots = buildTotalSpots([
-      ...allData.accounts.map((s) => s.spots),
-      ...allData.assetInvested.map((s) => s.spots),
-      ...allData.adjustments.map((s) => s.spots),
-      ...allData.incomeAdjustments.map((s) => s.spots),
-    ]);
-
-    // Cash = accounts + spread adjustments only
-    final cashSpots = buildTotalSpots([
-      ...allData.accounts.map((s) => s.spots),
-      ...allData.adjustments.map((s) => s.spots),
-    ]);
+    // Cash and Saving flow from the user's configured History-tab charts
+    // (stored in dashboard_charts) — option B. Fallback to hard-coded
+    // compositions when the user deleted the role chart.
+    final userCharts = ref.watch(dashboardChartsProvider);
+    final activeAssets = ref.watch(activeAssetsProvider).value ?? const <Asset>[];
+    final savingSpots = _DashboardScreenState.spotsForRole('saving', userCharts, allData, activeAssets);
+    final cashSpots   = _DashboardScreenState.spotsForRole('cash',   userCharts, allData, activeAssets);
 
     // Spending = cumulative sum of negative daily deltas of saving
     final spendingSpots = _buildSpendingFromSaving(savingSpots);
