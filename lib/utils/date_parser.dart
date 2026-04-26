@@ -17,14 +17,25 @@ DateTime parseDate(String s) {
   }
 
   // ── Numeric formats ──
+  //
+  // Strict month/day ranges: we'd rather throw than let the DateTime
+  // constructor silently normalize "99/99/2024" into a far-future date.
+  // Anchoring ymd with `$` ensures ISO 8601 timestamps with a TZ offset
+  // (e.g. "2024-01-15T10:00:00+02:00") fall through to DateTime.parse,
+  // which preserves the offset.
 
   // dd/MM/yyyy or dd-MM-yyyy or dd.MM.yyyy (with optional HH:mm:ss)
   final dmy = RegExp(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$').firstMatch(s);
   if (dmy != null) {
+    final day = int.parse(dmy.group(1)!);
+    final month = int.parse(dmy.group(2)!);
+    if (!_validDayMonth(day, month)) {
+      throw FormatException('Invalid day/month in date: $s');
+    }
     return DateTime(
       int.parse(dmy.group(3)!),
-      int.parse(dmy.group(2)!),
-      int.parse(dmy.group(1)!),
+      month,
+      day,
       int.tryParse(dmy.group(4) ?? '') ?? 0,
       int.tryParse(dmy.group(5) ?? '') ?? 0,
       int.tryParse(dmy.group(6) ?? '') ?? 0,
@@ -32,12 +43,17 @@ DateTime parseDate(String s) {
   }
 
   // yyyy-MM-dd or yyyy/MM/dd (with optional time T or space separated)
-  final ymd = RegExp(r'^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?').firstMatch(s);
+  final ymd = RegExp(r'^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?$').firstMatch(s);
   if (ymd != null) {
+    final month = int.parse(ymd.group(2)!);
+    final day = int.parse(ymd.group(3)!);
+    if (!_validDayMonth(day, month)) {
+      throw FormatException('Invalid day/month in date: $s');
+    }
     return DateTime(
       int.parse(ymd.group(1)!),
-      int.parse(ymd.group(2)!),
-      int.parse(ymd.group(3)!),
+      month,
+      day,
       int.tryParse(ymd.group(4) ?? '') ?? 0,
       int.tryParse(ymd.group(5) ?? '') ?? 0,
       int.tryParse(ymd.group(6) ?? '') ?? 0,
@@ -47,9 +63,14 @@ DateTime parseDate(String s) {
   // dd/MM/yy (2-digit year)
   final dmy2 = RegExp(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$').firstMatch(s);
   if (dmy2 != null) {
+    final day = int.parse(dmy2.group(1)!);
+    final month = int.parse(dmy2.group(2)!);
+    if (!_validDayMonth(day, month)) {
+      throw FormatException('Invalid day/month in date: $s');
+    }
     var year = int.parse(dmy2.group(3)!);
     year += year > 50 ? 1900 : 2000;
-    return DateTime(year, int.parse(dmy2.group(2)!), int.parse(dmy2.group(1)!));
+    return DateTime(year, month, day);
   }
 
   // yyyyMMdd (compact, no separators)
@@ -136,3 +157,6 @@ DateTime? tryParseDate(String text) {
     return null;
   }
 }
+
+bool _validDayMonth(int day, int month) =>
+    month >= 1 && month <= 12 && day >= 1 && day <= 31;

@@ -110,13 +110,15 @@ class ExchangeRateService {
 
     if (currencies.isEmpty) return;
 
-    // Find earliest date across all data
+    // Find earliest date across all data. asset_events / transactions /
+    // incomes use value_date (canonical per CLAUDE.md); market_prices has
+    // a single date column.
     final earliestRow = await _db.customSelect(
       'SELECT MIN(d) AS earliest FROM ('
-      '  SELECT MIN(date) AS d FROM asset_events'
+      '  SELECT MIN(value_date) AS d FROM asset_events'
       '  UNION ALL SELECT MIN(date) AS d FROM market_prices'
-      '  UNION ALL SELECT MIN(operation_date) AS d FROM transactions'
-      '  UNION ALL SELECT MIN(date) AS d FROM incomes'
+      '  UNION ALL SELECT MIN(value_date) AS d FROM transactions'
+      '  UNION ALL SELECT MIN(value_date) AS d FROM incomes'
       ')',
     ).getSingleOrNull();
     final earliestEpoch = earliestRow?.readNullable<int>('earliest');
@@ -217,14 +219,15 @@ class ExchangeRateService {
   }
 
   /// Convert [amount] from [from] currency to [to] currency at [date].
-  /// Returns original amount if rate is unavailable (with warning).
-  Future<double> convertAmount(
+  /// Returns null when no rate is available — callers must surface or skip,
+  /// not silently fall back to a wrong number.
+  Future<double?> convertAmount(
       double amount, String from, String to, DateTime date) async {
     if (from == to) return amount;
     final rate = await getRate(from, to, date);
     if (rate == null) {
-      _log.warning('convertAmount: no $from/$to rate for ${date.toIso8601String().substring(0, 10)} - returning unconverted $amount $from');
-      return amount;
+      _log.warning('convertAmount: no $from/$to rate for ${date.toIso8601String().substring(0, 10)} - returning null');
+      return null;
     }
     return amount * rate;
   }
@@ -246,14 +249,14 @@ class ExchangeRateService {
     return getRate(from, to, DateTime.now());
   }
 
-  /// Convert [amount] using today's live rate.
-  /// Falls back to stored rate if live fetch fails.
-  Future<double> convertLive(double amount, String from, String to) async {
+  /// Convert [amount] using today's live rate (live fetch, then DB fallback).
+  /// Returns null when no rate is available — callers must surface or skip.
+  Future<double?> convertLive(double amount, String from, String to) async {
     if (from == to) return amount;
     final rate = await getLiveRate(from, to);
     if (rate == null) {
-      _log.warning('convertLive: no $from/$to rate available - returning unconverted $amount $from');
-      return amount;
+      _log.warning('convertLive: no $from/$to rate available - returning null');
+      return null;
     }
     return amount * rate;
   }
@@ -264,26 +267,29 @@ class ExchangeRateService {
 class CachedRateResolver {
   final ExchangeRateService _rateService;
   final String baseCurrency;
-  final _cache = <String, double>{};
+  final _cache = <String, double?>{};
 
   CachedRateResolver(this._rateService, this.baseCurrency);
 
-  Future<double> getRate(String from, int dayKey) async {
+  /// Returns the [from]->[baseCurrency] rate at [dayKey], or null if unavailable.
+  /// Null results are cached too so we don't re-query missing pairs every spot.
+  Future<double?> getRate(String from, int dayKey) async {
     if (from == baseCurrency) return 1.0;
     final key = '$from:$dayKey';
-    if (_cache.containsKey(key)) return _cache[key]!;
+    if (_cache.containsKey(key)) return _cache[key];
     final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
     final rate = await _rateService.getRate(from, baseCurrency, date);
     if (rate == null) {
-      _log.warning('CachedRateResolver: no $from/$baseCurrency rate for ${date.toIso8601String().substring(0, 10)} - using 1.0 (INACCURATE)');
+      _log.warning('CachedRateResolver: no $from/$baseCurrency rate for ${date.toIso8601String().substring(0, 10)}');
     }
-    _cache[key] = rate ?? 1.0;
-    return rate ?? 1.0;
+    _cache[key] = rate;
+    return rate;
   }
 }
 
-/// Convert an amount to base currency using stored rate or live fallback.
-Future<double> convertToBase({
+/// Convert an amount to base currency using stored rate or DB-resolved rate.
+/// Returns null if neither a stored nor a historical rate is available.
+Future<double?> convertToBase({
   required double amount,
   required String currency,
   required String baseCurrency,
@@ -294,5 +300,6 @@ Future<double> convertToBase({
   if (currency == baseCurrency) return amount.abs();
   if (storedRate != null && storedRate > 0) return amount.abs() / storedRate;
   final rate = await resolver.getRate(currency, dayKey);
+  if (rate == null) return null;
   return amount.abs() * rate;
 }

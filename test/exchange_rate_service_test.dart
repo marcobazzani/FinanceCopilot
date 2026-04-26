@@ -95,13 +95,12 @@ void main() {
       expect(result, 250.0);
     });
 
-    test('returns original amount with warning when rate unavailable', () async {
-      // This is a known limitation: when no FX rate is available, the original
-      // amount is returned unconverted. This is INACCURATE but preferable to
-      // crashing. The warning log allows monitoring for these cases.
+    test('returns null when rate unavailable', () async {
+      // No silent fallback to the unconverted amount: callers must surface
+      // missing rates instead of mixing different currencies in a total.
       final result = await service.convertAmount(
           100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
-      expect(result, 100.0); // unconverted fallback
+      expect(result, isNull);
     });
 
     test('converts cross-rate correctly', () async {
@@ -181,10 +180,11 @@ void main() {
       expect(result, closeTo(110.0, 1e-10));
     });
 
-    test('returns unconverted amount when rate missing (warns)', () async {
-      // No rates in DB, no investing service
+    test('returns null when rate missing', () async {
+      // No rates in DB, no investing service. Must not silently return the
+      // unconverted amount.
       final result = await service.convertLive(200.0, 'EUR', 'JPY');
-      expect(result, 200.0); // fallback: unconverted
+      expect(result, isNull);
     });
   });
 
@@ -225,24 +225,25 @@ void main() {
       expect(rate2, closeTo(1.0 / 1.12, 1e-10));
     });
 
-    test('returns 1.0 with warning when rate is missing', () async {
-      // No rates in DB
+    test('returns null when rate is missing', () async {
+      // No rates in DB. Must surface as null instead of silently using 1.0,
+      // which would treat the foreign currency as if it were the base.
       final resolver = CachedRateResolver(service, 'EUR');
       final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
 
       final rate = await resolver.getRate('USD', dayKey);
-      expect(rate, 1.0); // fallback when missing
+      expect(rate, isNull);
     });
 
-    test('caches the 1.0 fallback so subsequent calls do not re-query', () async {
+    test('caches the null result so subsequent calls do not re-query', () async {
       final resolver = CachedRateResolver(service, 'EUR');
       final dayKey = DateTime(2024, 1, 15).millisecondsSinceEpoch ~/ 1000;
 
-      // Both calls return 1.0 fallback
+      // Both calls return null without re-hitting the DB.
       final rate1 = await resolver.getRate('USD', dayKey);
       final rate2 = await resolver.getRate('USD', dayKey);
-      expect(rate1, 1.0);
-      expect(rate2, 1.0);
+      expect(rate1, isNull);
+      expect(rate2, isNull);
     });
 
     test('works with non-EUR base currency', () async {

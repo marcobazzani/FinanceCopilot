@@ -180,7 +180,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                           ],
                         ],
                       ),
-                      subtitle: Text(dateFmt.format(ev.date), style: const TextStyle(fontSize: 12)),
+                      subtitle: Text(dateFmt.format(ev.valueDate), style: const TextStyle(fontSize: 12)),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,

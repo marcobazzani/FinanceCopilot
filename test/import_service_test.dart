@@ -1215,4 +1215,388 @@ Date,Amount
       expect(inter.defaultImportLocale, isNull);
     });
   });
+
+  group('Balance ordering — valueDate, not operationDate', () {
+    test('cumulative balanceAfter follows valueDate order, not csv/operation order', () async {
+      // CLAUDE.md convention: valueDate is the canonical order for balance
+      // computation. Two transactions with operationDate vs valueDate flipped
+      // must produce a balanceAfter consistent with the (later) recalc that
+      // sorts by valueDate.
+      //
+      //   row 0: operationDate=2024-01-05, valueDate=2024-01-01, amount=+100
+      //   row 1: operationDate=2024-01-03, valueDate=2024-01-04, amount=+50
+      //
+      // valueDate order: row0 (Jan 1) -> row1 (Jan 4)
+      // Running balance in valueDate order: 100, 150.
+      // Pre-fix code sorted by operationDate (Jan 3, Jan 5) -> 50, 150 — so
+      // row0's balanceAfter was 150 instead of 100.
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'OrderTest'),
+      );
+      final file = writeCsv('order.csv', '''
+OpDate,ValDate,Amount
+05/01/2024,01/01/2024,100
+03/01/2024,04/01/2024,50
+''');
+      final preview = await importer.parseFile(file.path);
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'OpDate', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'ValDate', targetField: 'valueDate'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+      );
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      expect(txs, hasLength(2));
+      // First by valueDate: Jan 1, +100 -> balance 100
+      expect(txs[0].valueDate, DateTime(2024, 1, 1));
+      expect(txs[0].amount, 100.0);
+      expect(txs[0].balanceAfter, 100.0);
+      // Second by valueDate: Jan 4, +50 -> balance 150
+      expect(txs[1].valueDate, DateTime(2024, 1, 4));
+      expect(txs[1].amount, 50.0);
+      expect(txs[1].balanceAfter, 150.0);
+    });
+  });
+
+  group('Balance-diff mode — preview parity with import', () {
+    test('previewTransactionImport reports same first-row=0 as importTransactions', () async {
+      // The import path was fixed in a prior change; the preview path had
+      // the same bug duplicated and would lie to the user before they hit
+      // the Import button.
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'BankP'),
+      );
+      final file = writeCsv('balprev.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,1100
+17/01/2024,1080
+''');
+      final preview = await importer.parseFile(file.path);
+      final result = await importer.previewTransactionImport(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount',
+              balanceDiffColumn: 'Balance'),
+        ],
+        accountId: accountId,
+      );
+      // importSum is the sum of all parsed amounts. The diffs are 0+100+(-20)=80.
+      // Pre-fix code summed 1000+100-20=1080.
+      expect(result.parsedRows, 3);
+      expect(result.importSum, closeTo(80.0, 1e-9),
+          reason: 'sum must match the import path (round-6 fix)');
+    });
+  });
+
+  group('Balance-diff mode — first row + gaps', () {
+    test('first row amount is 0 (no diff possible)', () async {
+      // Pre-fix bug: when prevBalance is null on row 0 the code returned
+      // `balance ?? 0`, i.e. it silently imported the starting balance as
+      // the first transaction's amount, inflating the account by the entire
+      // opening balance.
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'BankX'),
+      );
+      final file = writeCsv('bal.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,1100
+17/01/2024,1080
+''');
+      final preview = await importer.parseFile(file.path);
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount',
+              balanceDiffColumn: 'Balance'),
+        ],
+        accountId: accountId,
+      );
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      expect(txs, hasLength(3));
+      expect(txs[0].amount, 0.0,
+          reason: 'first row has no prior balance, must be 0 not 1000');
+      expect(txs[1].amount, closeTo(100.0, 1e-9));
+      expect(txs[2].amount, closeTo(-20.0, 1e-9));
+    });
+
+    test('gap in balance column carries the last known balance', () async {
+      // Row 1 has no balance — the diff for row 2 should be (row2 - row0),
+      // not (row2 - 0). Pre-fix code reset prevBalance to null on the gap
+      // and then row 2 fell back to `balance ?? 0` = the full balance.
+      final accountId = await db.into(db.accounts).insert(
+        AccountsCompanion.insert(name: 'BankY'),
+      );
+      final file = writeCsv('gap.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,
+17/01/2024,1080
+''');
+      final preview = await importer.parseFile(file.path);
+      await importer.importTransactions(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount',
+              balanceDiffColumn: 'Balance'),
+        ],
+        accountId: accountId,
+      );
+      final txs = await (db.select(db.transactions)
+            ..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      expect(txs, hasLength(3));
+      expect(txs[0].amount, 0.0);
+      expect(txs[1].amount, 0.0,
+          reason: 'gap row has no parseable balance, contributes 0');
+      expect(txs[2].amount, closeTo(80.0, 1e-9),
+          reason: 'diff is computed against last known balance (1000), not 0');
+    });
+  });
+
+  group('event type — unknown strings must not silently become BUY', () {
+    test('row with DIVIDEND type is rejected, not imported as buy', () async {
+      // Pre-fix: unknown type strings defaulted to EventType.buy, silently
+      // turning dividends/taxes/transfers into phantom buys that inflated
+      // the asset's cost basis.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'price', 'currency', 'amount'],
+        rows: const [
+          {'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'type': 'BUY',
+           'quantity': '10', 'price': '100', 'currency': 'EUR', 'amount': '1000'},
+          {'date': '2024-02-15', 'isin': 'IE00B4L5Y983', 'type': 'DIVIDEND',
+           'quantity': '0', 'price': '0', 'currency': 'EUR', 'amount': '5'},
+        ],
+        totalRows: 2,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+      );
+      expect(result.result.importedRows, 1,
+          reason: 'only the BUY row should import; DIVIDEND has no mapping');
+      expect(result.result.errorRows, 1);
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.type, EventType.buy);
+      expect(events.first.amount, 1000);
+    });
+
+    test('user-supplied buyValues mapping overrides the default rejection', () async {
+      // The buyValues set is the explicit escape hatch: if the user maps
+      // their CSV's "DIVIDEND" string to BUY, the row imports as buy.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'price', 'currency', 'amount'],
+        rows: const [
+          {'date': '2024-02-15', 'isin': 'IE00B4L5Y983', 'type': 'DIVIDEND',
+           'quantity': '0', 'price': '0', 'currency': 'EUR', 'amount': '5'},
+        ],
+        totalRows: 1,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        buyValues: {'DIVIDEND'},
+      );
+      expect(result.result.importedRows, 1);
+      expect(result.result.errorRows, 0);
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.type, EventType.buy);
+    });
+  });
+
+  group('importAssetEventsGrouped — all rows fail', () {
+    test('returns error result instead of crashing with Bad state: No element', () async {
+      // Every row has unparseable data (bad ISIN format). The pre-fix code
+      // reached `companions.map(...).reduce(...)` with an empty list and
+      // threw StateError before producing a response.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: [
+          {'date': 'not-a-date', 'isin': '???', 'quantity': 'x', 'price': 'y',
+           'currency': 'EUR', 'amount': 'z'},
+          {'date': 'also-bad', 'isin': '!!!', 'quantity': 'a', 'price': 'b',
+           'currency': 'EUR', 'amount': 'c'},
+        ],
+        totalRows: 2,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+      );
+      expect(result.result.importedRows, 0);
+      expect(result.result.errorRows, 2);
+      expect(result.assetsByIsin, isEmpty);
+      // No crash — verified by reaching this point.
+    });
+  });
+
+  group('computeFee — commission from formula', () {
+    // Helper: build a cross-currency-style preview (rate column included).
+    FilePreview makeFeePreview(List<List<String>> rows) {
+      return FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount', 'rate'],
+        rows: rows.map((r) => {
+          'date': r[0], 'isin': r[1], 'quantity': r[2], 'price': r[3],
+          'currency': r[4], 'amount': r[5], 'rate': r[6],
+        }).toList(),
+        totalRows: rows.length,
+      );
+    }
+
+    const feeMappings = [
+      ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+      ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+      ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+      ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+      ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+      ColumnMapping(sourceColumn: 'rate', targetField: 'exchangeRate'),
+    ];
+
+    test('commission is null when exchange-rate cell is empty', () async {
+      // qty=10 USD-quoted, price=100 USD, account amount=900 EUR, rate
+      // missing. The old behavior fabricated commission =
+      // |900 - 10*100/1.0| = 100, treating EUR and USD as 1:1. The correct
+      // behavior is to leave commission null so the user sees the gap.
+      final preview = makeFeePreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'USD', '900', ''],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: feeMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        computeFee: true,
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.commission, isNull,
+          reason: 'commission must not be fabricated from a 1.0 rate fallback');
+    });
+
+    test('commission is null when exchange-rate cell is non-numeric', () async {
+      final preview = makeFeePreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'USD', '900', 'n/a'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: feeMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        computeFee: true,
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.commission, isNull);
+    });
+
+    test('commission is null when exchange-rate cell is zero', () async {
+      // Zero is a sentinel for "missing" in the existing code path; it must
+      // produce null commission too, not a 1.0 fabrication.
+      final preview = makeFeePreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'USD', '900', '0'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: feeMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        computeFee: true,
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.commission, isNull);
+    });
+
+    test('commission is computed correctly when rate is present', () async {
+      // amount=1085 EUR, qty=10, price=100 USD, rate=1.10 (USD/EUR).
+      // Expected commission = |1085 - 10*100/1.10| = |1085 - 909.0909..| ≈ 175.91
+      final preview = makeFeePreview([
+        ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'USD', '1085', '1.10'],
+      ]);
+      await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: feeMappings,
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        computeFee: true,
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.commission, isNotNull);
+      expect(events.first.commission!, closeTo(1085 - 1000 / 1.10, 1e-6));
+    });
+
+    test('commission is computed when no exchange-rate column is mapped (same-currency case)', () async {
+      // No rate column at all → assume same currency, no fabrication concern.
+      // amount=1010, qty=10, price=100 → commission = |1010 - 1000| = 10
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: [
+          {
+            'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'quantity': '10',
+            'price': '100', 'currency': 'EUR', 'amount': '1010',
+          },
+        ],
+        totalRows: 1,
+      );
+      await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        computeFee: true,
+      );
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.first.commission, isNotNull);
+      expect(events.first.commission!, closeTo(10.0, 1e-6));
+    });
+  });
 }

@@ -259,6 +259,54 @@ void main() {
       expect(s.lastDate, isNotNull);
     });
 
+    test('firstDate/lastDate use valueDate, not operationDate', () async {
+      // Two events whose `date` (operationDate) and `valueDate` are flipped:
+      //   A: date=2024-06-01, valueDate=2024-01-15  (early valueDate)
+      //   B: date=2024-01-15, valueDate=2024-06-01  (late valueDate)
+      // Pre-fix code aggregated MIN/MAX of `date`, returning Jan 15 .. Jun 1
+      // by coincidence. Force a case where they diverge: A's valueDate is
+      // *earlier* than B's. firstDate must be A.valueDate (Jan 15) and
+      // lastDate must be B.valueDate (Jun 1) — same dates, just sourced
+      // from valueDate not operationDate. Verify by adding a third event
+      // whose operationDate is OUTSIDE the valueDate range:
+      //   C: date=2025-01-01 (way later op), valueDate=2024-03-15 (mid val)
+      // If stats used `date`, lastDate would be 2025-01-01. With valueDate,
+      // lastDate stays 2024-06-01.
+      final iid = await db.into(db.intermediaries).insert(
+        IntermediariesCompanion.insert(name: 'IM-VD'),
+      );
+      final assetId = await service.create(
+          name: 'VD', currency: 'EUR', intermediaryId: iid);
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 1, 15),
+        type: EventType.buy,
+        amount: 100,
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 1, 15),
+        valueDate: DateTime(2024, 6, 1),
+        type: EventType.buy,
+        amount: 200,
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2025, 1, 1),
+        valueDate: DateTime(2024, 3, 15),
+        type: EventType.buy,
+        amount: 50,
+      ));
+
+      final stats = await service.getStatsForAll();
+      final s = stats[assetId]!;
+      expect(s.firstDate, DateTime(2024, 1, 15),
+          reason: 'firstDate must be the earliest valueDate');
+      expect(s.lastDate, DateTime(2024, 6, 1),
+          reason: 'lastDate must be the latest valueDate, ignoring operationDate');
+    });
+
     test('sell events reduce totalQuantity', () async {
       final assetId = await service.create(name: 'BuySell', currency: 'EUR', intermediaryId: iid);
 

@@ -20,16 +20,11 @@ void main() {
       expect(result.day, 15);
     });
 
-    test('parses US-style date as dd/mm when ambiguous "01/15/2024"', () {
-      // The parser treats dd/MM/yyyy, so 01/15/2024 would be day=01, month=15
-      // which is technically invalid but DateTime allows month overflow.
-      // However the regex matches dd/MM/yyyy first, so month=15 is what we get.
-      final result = tryParseDate('01/15/2024');
-      expect(result, isNotNull);
-      // Month 15 overflows: DateTime(2024, 15, 1) = March 1, 2025
-      expect(result!.year, 2025);
-      expect(result.month, 3);
-      expect(result.day, 1);
+    test('rejects ambiguous "01/15/2024" with month > 12', () {
+      // Old behavior silently produced March 1, 2025 by overflowing the
+      // DateTime constructor. That hides bad import data — we'd rather the
+      // user see a parse failure than book a transaction in the wrong year.
+      expect(tryParseDate('01/15/2024'), isNull);
     });
 
     test('parses "15-Jan-2024"', () {
@@ -135,6 +130,70 @@ void main() {
 
     test('throws FormatException for empty string', () {
       expect(() => parseDate(''), throwsFormatException);
+    });
+  });
+
+  group('ISO 8601 with timezone offset', () {
+    test('"2024-01-15T10:00:00+02:00" preserves the UTC instant', () {
+      // The literal numbers describe 10:00 in UTC+2, i.e. 08:00 UTC. The
+      // parser must agree with Dart's DateTime.parse, not strip the offset
+      // and treat 10:00 as local time.
+      final parsed = parseDate('2024-01-15T10:00:00+02:00');
+      final reference = DateTime.parse('2024-01-15T10:00:00+02:00');
+      expect(parsed.toUtc(), reference.toUtc());
+    });
+
+    test('"2024-01-15T10:00:00Z" preserves the UTC instant', () {
+      final parsed = parseDate('2024-01-15T10:00:00Z');
+      final reference = DateTime.parse('2024-01-15T10:00:00Z');
+      expect(parsed.toUtc(), reference.toUtc());
+    });
+
+    test('"2024-01-15T10:00:00-05:00" preserves the UTC instant', () {
+      final parsed = parseDate('2024-01-15T10:00:00-05:00');
+      final reference = DateTime.parse('2024-01-15T10:00:00-05:00');
+      expect(parsed.toUtc(), reference.toUtc());
+    });
+  });
+
+  group('Range validation', () {
+    test('rejects month > 12 in dd/MM/yyyy', () {
+      // Old behavior: DateTime(2024, 99, 99) silently normalized to a far
+      // future date. Must throw instead.
+      expect(() => parseDate('99/99/2024'), throwsFormatException);
+    });
+
+    test('rejects day > 31 in dd/MM/yyyy', () {
+      expect(() => parseDate('32/01/2024'), throwsFormatException);
+    });
+
+    test('rejects month 0 and day 0', () {
+      expect(() => parseDate('0/1/2024'), throwsFormatException);
+      expect(() => parseDate('1/0/2024'), throwsFormatException);
+    });
+
+    test('rejects month > 12 in yyyy-MM-dd', () {
+      expect(() => parseDate('2024-13-01'), throwsFormatException);
+    });
+
+    test('rejects day > 31 in yyyy-MM-dd', () {
+      expect(() => parseDate('2024-01-32'), throwsFormatException);
+    });
+
+    test('still accepts valid edge values', () {
+      // Boundaries that should remain valid
+      expect(parseDate('31/12/2024').day, 31);
+      expect(parseDate('01/01/2024').day, 1);
+      expect(parseDate('2024-12-31').month, 12);
+    });
+  });
+
+  group('Trailing junk', () {
+    test('rejects extra characters after yyyy-MM-dd', () {
+      // Without anchoring, the regex consumed the prefix and silently
+      // ignored "extra", which then caused dates with TZ offsets to lose
+      // their offset.
+      expect(tryParseDate('2024-01-15extra'), isNull);
     });
   });
 }

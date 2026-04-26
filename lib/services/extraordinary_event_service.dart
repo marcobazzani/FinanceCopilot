@@ -129,6 +129,14 @@ class ExtraordinaryEventService {
       final event = await getById(id);
       if (event.treatment == EventTreatment.spread) {
         await generateScheduledEntries(id);
+      } else {
+        // Treatment changed away from spread — drop any leftover scheduled
+        // entries so they don't show up as ghost rows on the event timeline.
+        await (_db.delete(_db.extraordinaryEventEntries)
+              ..where((e) =>
+                  e.eventId.equals(id) &
+                  e.entryKind.equalsValue(EventEntryKind.scheduled)))
+            .go();
       }
     }
     return rows > 0;
@@ -214,8 +222,11 @@ class ExtraordinaryEventService {
 
   Future<double> _totalReimbursed(ExtraordinaryEvent event) async {
     if (event.bufferId == null) return 0;
+    // Net reimbursement: a negative entry is a refund/clawback and must
+    // *reduce* the total, not add to it (which is what SUM(ABS) does).
+    // ABS-after-SUM keeps the magnitude positive without double-counting.
     final result = await _db.customSelect(
-      'SELECT COALESCE(SUM(ABS(amount)), 0.0) AS total '
+      'SELECT COALESCE(ABS(SUM(amount)), 0.0) AS total '
       'FROM buffer_transactions '
       'WHERE buffer_id = ? AND is_reimbursement = 1',
       variables: [Variable.withInt(event.bufferId!)],
@@ -314,7 +325,9 @@ class ExtraordinaryEventService {
       if (bufferIds.isNotEmpty) {
         final bufPlaceholders = bufferIds.map((_) => '?').join(', ');
         final reimbRows = await _db.customSelect(
-          'SELECT buffer_id, COALESCE(SUM(ABS(amount)), 0.0) AS total '
+          // Net reimbursement: refunds (negative entries) reduce the total;
+          // SUM(ABS) would double-count them. See _totalReimbursed.
+          'SELECT buffer_id, COALESCE(ABS(SUM(amount)), 0.0) AS total '
           'FROM buffer_transactions '
           'WHERE buffer_id IN ($bufPlaceholders) AND is_reimbursement = 1 '
           'GROUP BY buffer_id',

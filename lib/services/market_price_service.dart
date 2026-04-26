@@ -181,9 +181,11 @@ abstract class MarketPriceService {
   // ──────────────────────────────────────────────
 
   /// Date of the first "buy" event for an asset, or null if none.
+  /// Uses value_date per CLAUDE.md (canonical "money moved" date) so the
+  /// price-history fetch window starts no later than the actual investment.
   Future<DateTime?> getFirstBuyDate(int assetId) async {
     final row = await db.customSelect(
-      "SELECT MIN(date) AS min_date FROM asset_events WHERE asset_id = ? AND type = 'buy'",
+      "SELECT MIN(value_date) AS min_date FROM asset_events WHERE asset_id = ? AND type = 'buy'",
       variables: [Variable.withInt(assetId)],
     ).getSingleOrNull();
     return row?.readNullable<DateTime>('min_date');

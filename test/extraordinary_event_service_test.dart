@@ -258,6 +258,38 @@ void main() {
       final deleted = await service.deleteMany([]);
       expect(deleted, 0);
     });
+
+    test('changing treatment from spread to instant clears scheduled entries', () async {
+      // Create a spread event — generates 3 scheduled entries.
+      final id = await service.create(
+        name: 'Car',
+        direction: EventDirection.outflow,
+        treatment: EventTreatment.spread,
+        totalAmount: 300,
+        currency: 'EUR',
+        eventDate: DateTime(2024, 1, 1),
+        stepFrequency: StepFrequency.monthly,
+        spreadStart: DateTime(2024, 1, 1),
+        spreadEnd: DateTime(2024, 3, 1),
+      );
+      expect(await service.getEntries(id), hasLength(3));
+
+      // Edit to instant treatment. Pre-fix: scheduled entries lingered as
+      // ghost rows on the event detail timeline.
+      await service.update(id, ExtraordinaryEventsCompanion(
+        treatment: const Value(EventTreatment.instant),
+        stepFrequency: const Value(null),
+        spreadStart: const Value(null),
+        spreadEnd: const Value(null),
+      ));
+
+      final remaining = await service.getEntries(id);
+      final scheduled = remaining
+          .where((e) => e.entryKind == EventEntryKind.scheduled)
+          .toList();
+      expect(scheduled, isEmpty,
+          reason: 'spread→instant must drop the now-irrelevant scheduled entries');
+    });
   });
 
   group('Stats', () {
@@ -401,6 +433,49 @@ void main() {
         () => service.createLinkedBuffer(id),
         throwsStateError,
       );
+    });
+
+    test('a refund (negative reimbursement) reduces the reimbursed total', () async {
+      // Pre-fix: SUM(ABS(amount)) treated the refund as additional
+      // reimbursement, so net 0 reimbursement looked like 600 and the
+      // schedule collapsed to 0/step.
+      final id = await service.create(
+        name: 'Car',
+        direction: EventDirection.outflow,
+        treatment: EventTreatment.spread,
+        totalAmount: 600,
+        currency: 'EUR',
+        eventDate: DateTime(2024, 1, 1),
+        stepFrequency: StepFrequency.monthly,
+        spreadStart: DateTime(2024, 1, 1),
+        spreadEnd: DateTime(2024, 6, 1),
+      );
+      final bufferId = await service.createLinkedBuffer(id);
+
+      // Reimbursement +300 (received from insurance).
+      await db.into(db.bufferTransactions).insert(BufferTransactionsCompanion.insert(
+        bufferId: bufferId,
+        operationDate: DateTime(2024, 2, 1),
+        valueDate: DateTime(2024, 2, 1),
+        amount: 300,
+        balanceAfter: 300,
+        isReimbursement: const Value(true),
+      ));
+      // Refund -300 of the reimbursement (insurance clawback). Net = 0.
+      await db.into(db.bufferTransactions).insert(BufferTransactionsCompanion.insert(
+        bufferId: bufferId,
+        operationDate: DateTime(2024, 3, 1),
+        valueDate: DateTime(2024, 3, 1),
+        amount: -300,
+        balanceAfter: 0,
+        isReimbursement: const Value(true),
+      ));
+
+      await service.generateScheduledEntries(id);
+      final entries = await service.getEntries(id);
+      // Net reimbursed=0 → full 600 spreads across 6 months → -100/step.
+      expect(entries[0].amount, -100,
+          reason: 'a refund must offset the prior reimbursement, not double-count');
     });
 
     test('reimbursements reduce effective spread amount', () async {
