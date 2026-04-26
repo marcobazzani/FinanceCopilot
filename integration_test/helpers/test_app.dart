@@ -172,27 +172,26 @@ Future<void> pushImportScreen(
 /// Default false keeps local runs fast.
 const _slowTests = bool.fromEnvironment('SLOW_TESTS');
 
-const _settleFrames = _slowTests ? 15 : 5;
-const _longSettleFrames = _slowTests ? 30 : 10;
+const _settleFrames = _slowTests ? 15 : 4;
+const _longSettleFrames = _slowTests ? 30 : 8;
+const _frameMs = _slowTests ? 100 : 50;
 
 /// Pump frames to let the widget tree rebuild after navigation/tap.
 /// Use instead of pumpAndSettle() which hangs on stream providers.
 ///
-/// Default: 5 frames (500ms). With --dart-define=SLOW_TESTS=true: 15 frames
-/// (1.5s) for slow CI emulators. Short enough that SnackBars don't auto-dismiss.
+/// Default: 4 frames × 50ms = 200ms. With --dart-define=SLOW_TESTS=true:
+/// 15 frames × 100ms = 1.5s for slow CI emulators.
 Future<void> settle(WidgetTester tester) async {
   for (var i = 0; i < _settleFrames; i++) {
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: _frameMs));
   }
 }
 
 /// Extra-long settle for heavy UI transitions (scroll + dropdown rebuild).
-/// Use after scrolling ListViews or opening complex dialogs.
-///
-/// Default: 10 frames (1s). With --dart-define=SLOW_TESTS=true: 30 frames (3s).
+/// Default: 8 × 50ms = 400ms. SLOW: 30 × 100ms = 3s.
 Future<void> longSettle(WidgetTester tester) async {
   for (var i = 0; i < _longSettleFrames; i++) {
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: _frameMs));
   }
 }
 
