@@ -27,6 +27,7 @@ import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/buffer_service.dart';
 import 'package:finance_copilot/services/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/services/transaction_service.dart';
 
 import 'helpers/test_app.dart';
 
@@ -191,12 +192,180 @@ void main() {
         reason: 'old 3 rows from cutoff onward wiped');
     expect(reimportResult.importedRows, 5);
     fincoTxs = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(fineco.id)))
+          ..where((t) => t.accountId.equals(fineco.id))
+          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
         .get();
-    // Original 3 dates already replaced once at this point. With the wipe,
-    // there are exactly the new 5 rows (round-6 / round-10 fixes).
     expect(fincoTxs, hasLength(5));
     expect(fincoTxs.any((t) => t.description == 'Groceries Updated' && t.amount == -55.00), isTrue);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 6b: stress balance-per-row.  After re-import + recalc, every
+    // transaction's `balanceAfter` must equal the running sum of all
+    // amounts up to and including its valueDate (cumulative mode).
+    // Verifies round-10's valueDate-ordered seeding end-to-end.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('6b. Cumulative balance per row — recalc + verify');
+    final txService = TransactionService(db);
+    await txService.recalculateBalances(fineco.id, balanceMode: 'cumulative');
+    fincoTxs = await (db.select(db.transactions)
+          ..where((t) => t.accountId.equals(fineco.id))
+          ..orderBy([(t) => OrderingTerm.asc(t.valueDate), (t) => OrderingTerm.asc(t.id)]))
+        .get();
+    var running = 0.0;
+    for (final tx in fincoTxs) {
+      running += tx.amount;
+      expect(tx.balanceAfter, closeTo(running, 0.001),
+          reason: 'tx "${tx.description}" should have balanceAfter == cumulative sum');
+    }
+    _step('   ✓ all ${fincoTxs.length} balanceAfter values match running sum');
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 6c: SKIP-ROWS import — drive the import wizard with a fixture
+    // that has 2 leading garbage rows. UI exercises the skipRows spinner
+    // through pushImportScreen pre-parse. Account: Revolut.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('6c. Skip-rows transaction import — transactions_skip_rows.xlsx');
+    late FilePreview previewSkip;
+    await tester.runAsync(() async {
+      previewSkip = await parseFixture(db, 'transactions_skip_rows.xlsx', skipRows: 2);
+    });
+    await pushImportScreen(
+      tester,
+      preview: previewSkip,
+      target: ImportTarget.transaction,
+      accountName: 'Revolut',
+      db: db,
+    );
+    await longSettle(tester);
+    await tester.tap(find.text('Next'));
+    await longSettle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Import'));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Import Complete'), findsOneWidget);
+    final revolutTxsAfterSkip = await (db.select(db.transactions)
+          ..where((t) => t.accountId.equals(revolut.id)))
+        .get();
+    expect(revolutTxsAfterSkip, hasLength(2),
+        reason: 'skipRows=2 means only 2 data rows imported');
+    while (find.byType(BackButton).evaluate().isNotEmpty) {
+      await tester.tap(find.byType(BackButton).first);
+      await settle(tester);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 6d: FORMULA AMOUNT import — third account using
+    // transactions_formula.csv (Credit / Debit columns).
+    // The formula builder UI is too dense for stable tap-driving; use
+    // ImportService directly with formulaTerms — same code path the UI
+    // produces from the visual builder.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('6d. Formula amount import — Credit + (-Debit)');
+    final formulaAccountId = await db.into(db.accounts).insert(
+      AccountsCompanion.insert(name: 'FormulaAcc', currency: const Value('EUR')),
+    );
+    late FilePreview formulaPreview;
+    await tester.runAsync(() async {
+      formulaPreview = await parseFixture(db, 'transactions_formula.csv');
+    });
+    final formulaResult = await importer.importTransactions(
+      preview: formulaPreview,
+      mappings: const [
+        ColumnMapping(sourceColumn: 'Data_Operazione', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Data_Valuta', targetField: 'valueDate'),
+        ColumnMapping(sourceColumn: 'Description', targetField: 'description'),
+        ColumnMapping(targetField: 'amount', formulaTerms: [
+          FormulaTerm(operator: '+', sourceColumn: 'Credit'),
+          FormulaTerm(operator: '-', sourceColumn: 'Debit'),
+        ]),
+      ],
+      accountId: formulaAccountId,
+    );
+    expect(formulaResult.importedRows, 3);
+    final formulaTxs = await (db.select(db.transactions)
+          ..where((t) => t.accountId.equals(formulaAccountId)))
+        .get();
+    expect(formulaTxs.any((t) => t.description == 'Salary' && t.amount == 2000.00), isTrue);
+    expect(formulaTxs.any((t) => t.description == 'Rent' && t.amount == -150.00), isTrue);
+    expect(formulaTxs.any((t) => t.description == 'Groceries' && t.amount == -30.00), isTrue);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 6e: BALANCE-FROM-COLUMN mode — the CSV ships per-row balance
+    // values; the importer just stores them verbatim instead of computing
+    // a cumulative sum.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('6e. Balance-from-column import — verbatim balanceAfter');
+    final balCol = makePreview('''
+date,desc,amount,bal
+01/01/2025,opening,1000,1000
+05/01/2025,paycheck,500,1500
+10/01/2025,coffee,-25,1475''');
+    final balColAccountId = await db.into(db.accounts).insert(
+      AccountsCompanion.insert(name: 'BalColAcc', currency: const Value('EUR')),
+    );
+    final balColResult = await importer.importTransactions(
+      preview: balCol,
+      mappings: const [
+        ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'desc', targetField: 'description'),
+        ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ColumnMapping(sourceColumn: 'bal', targetField: 'balanceAfter'),
+      ],
+      accountId: balColAccountId,
+      balanceMode: 'column',
+    );
+    expect(balColResult.importedRows, 3);
+    final balColTxs = await (db.select(db.transactions)
+          ..where((t) => t.accountId.equals(balColAccountId))
+          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+        .get();
+    expect(balColTxs[0].balanceAfter, 1000.0);
+    expect(balColTxs[1].balanceAfter, 1500.0);
+    expect(balColTxs[2].balanceAfter, 1475.0);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 6f: BALANCE-DELTA mode — the CSV has only running-balance
+    // values; per-row amount = current balance − prior balance. First
+    // row contributes 0 (round-6 fix), missing/garbage rows carry the
+    // last-known balance forward instead of resetting.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('6f. Balance-delta import — first row 0, gap carries forward');
+    final balDeltaPreview = makePreview('''
+date,desc,bal
+01/01/2025,opening,1000
+05/01/2025,paycheck,1100
+
+15/01/2025,coffee,1080''');
+    final balDeltaAccountId = await db.into(db.accounts).insert(
+      AccountsCompanion.insert(name: 'BalDeltaAcc', currency: const Value('EUR')),
+    );
+    final balDeltaResult = await importer.importTransactions(
+      preview: balDeltaPreview,
+      mappings: const [
+        ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'desc', targetField: 'description'),
+        ColumnMapping(
+          sourceColumn: 'bal',
+          targetField: 'amount',
+          balanceDiffColumn: 'bal',
+        ),
+      ],
+      accountId: balDeltaAccountId,
+    );
+    expect(balDeltaResult.importedRows, greaterThan(0));
+    final balDeltaTxs = await (db.select(db.transactions)
+          ..where((t) => t.accountId.equals(balDeltaAccountId))
+          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+        .get();
+    final openingTx = balDeltaTxs.firstWhere((t) => t.description == 'opening');
+    expect(openingTx.amount, 0.0,
+        reason: 'first balance-diff row contributes 0 (round-6 fix)');
+    final paycheckTx = balDeltaTxs.firstWhere((t) => t.description == 'paycheck');
+    expect(paycheckTx.amount, closeTo(100.0, 0.001));
+    final coffeeTx = balDeltaTxs.firstWhere((t) => t.description == 'coffee');
+    expect(coffeeTx.amount, closeTo(-20.0, 0.001),
+        reason: 'gap row preserved last-known balance, diff = 1080 - 1100');
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 7: ASSET event XLSX import — wizard end-to-end, multi-ISIN
