@@ -115,8 +115,10 @@ Future<AppDatabase> pumpApp(
   return db;
 }
 
-/// Load a real fixture file from integration_test/fixtures/ via the asset bundle.
-/// Writes to a temp file so the real CSV/XLSX parser is exercised end-to-end.
+/// Load a real fixture file from integration_test/fixtures/ via the asset
+/// bundle. Writes to a temp file so the real CSV/XLSX parser is exercised
+/// end-to-end. Returns a FilePreview with ALL rows (not just the 5+5
+/// preview cap), so service-driven imports get the full dataset.
 Future<FilePreview> parseFixture(AppDatabase db, String fixtureName, {int skipRows = 0}) async {
   final importer = ImportService(db);
   final data = await rootBundle.load('integration_test/fixtures/$fixtureName');
@@ -124,7 +126,13 @@ Future<FilePreview> parseFixture(AppDatabase db, String fixtureName, {int skipRo
   final tmpFile = File('${tmpDir.path}/$fixtureName');
   await tmpFile.writeAsBytes(data.buffer.asUint8List());
   try {
-    return await importer.parseFile(tmpFile.path, skipRows: skipRows);
+    final preview = await importer.parseFile(tmpFile.path, skipRows: skipRows);
+    // parseFile caps preview rows; expand to all rows before the tmp file
+    // is deleted so service-driven imports see the full dataset.
+    if (preview.rows.length < preview.totalRows) {
+      return await importer.getFullRows(preview);
+    }
+    return preview;
   } finally {
     await tmpDir.delete(recursive: true);
   }
