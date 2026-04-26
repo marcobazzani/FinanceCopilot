@@ -41,6 +41,10 @@ Future<AppDatabase> pumpApp(
   Future<void> Function(AppDatabase db)? seed,
   bool useRealServices = false,
   bool createDbFile = true,
+  /// Set to false to start with a genuinely empty DB — no Default
+  /// intermediary, no `_test_seed` account. The app's landing page WILL
+  /// show; tests that opt in must dismiss it (tap "Start fresh").
+  bool seedTestState = true,
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
 
@@ -55,15 +59,16 @@ Future<AppDatabase> pumpApp(
     }
   }
 
-  // Seed a default intermediary (required by assets since schema v29).
-  await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(
-    name: 'Default',
-  ));
-
-  // Seed a dummy account so the landing page doesn't show (empty DB check)
-  await db.into(db.accounts).insert(AccountsCompanion.insert(
-    name: '_test_seed', sortOrder: const Value(999),
-  ));
+  if (seedTestState) {
+    // Seed a default intermediary (required by assets since schema v29).
+    await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(
+      name: 'Default',
+    ));
+    // Seed a dummy account so the landing page doesn't show (empty DB check).
+    await db.into(db.accounts).insert(AccountsCompanion.insert(
+      name: '_test_seed', sortOrder: const Value(999),
+    ));
+  }
 
   if (seed != null) {
     await seed(db);
