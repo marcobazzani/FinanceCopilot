@@ -69,34 +69,43 @@ void main() {
     // Step 3: Accounts tab → create the Default intermediary first
     //          (asset imports require one since schema v29).
     // ─────────────────────────────────────────────────────────────────────
-    _step('3. Accounts tab → create Default intermediary');
+    // The add/edit sub-dialog now opens ON TOP of Manage Intermediaries
+    // (the previous flow popped Manage first, leaving the user with no
+    // visible feedback after Create). Close button explicitly dismisses.
+    _step('3. Accounts tab → Manage Intermediaries → add Default');
     await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
-    // Tap the small intermediary FAB (Icons.business).
     await tester.tap(find.byIcon(Icons.business));
     await longSettle(tester);
     expect(find.text('Intermediaries'), findsOneWidget);
-    // "Add Intermediary" button.
     await tester.tap(find.text('Add Intermediary'));
     await longSettle(tester);
     await tester.enterText(find.byType(TextField), 'Default');
     await settle(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Create'));
     await longSettle(tester);
+    // Manage Intermediaries should still be visible with the new row.
+    expect(find.text('Default'), findsWidgets,
+        reason: 'Default row should appear in the Manage list after Create');
+    final defaultRow = await db.select(db.intermediaries).get();
+    expect(defaultRow, hasLength(1));
+    _step('   ✓ created Default (id=${defaultRow.first.id}) — visible in dialog');
 
+    _step('3b. Add Broker intermediary (same dialog still open)');
+    await tester.tap(find.text('Add Intermediary'));
+    await longSettle(tester);
+    await tester.enterText(find.byType(TextField), 'Broker');
+    await settle(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await longSettle(tester);
+    expect(find.text('Broker'), findsWidgets);
     var intermediaries = await db.select(db.intermediaries).get();
-    expect(intermediaries, hasLength(1));
-    expect(intermediaries.first.name, 'Default');
-
-    // Service-driven for the second intermediary — the Manage
-    // Intermediaries dialog uses a fixed 400px-high SizedBox that
-    // overflows the test window once any rows render.
-    _step('3b. Create Broker intermediary (service)');
-    await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Broker'),
-    );
-    intermediaries = await db.select(db.intermediaries).get();
     expect(intermediaries, hasLength(2));
+    _step('   ✓ created Broker (id=${intermediaries.last.id}) — both rows visible');
+
+    // Close Manage Intermediaries to return to the accounts screen.
+    await tester.tap(find.widgetWithText(FilledButton, 'Close'));
+    await longSettle(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 4: create two accounts — Fineco (EUR) and Revolut (USD).

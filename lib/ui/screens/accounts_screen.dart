@@ -347,69 +347,58 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
           final intermediaries = ref.watch(intermediariesProvider).value ?? [];
           return AlertDialog(
             title: Text(s.intermediaries),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 350),
-              child: SizedBox(
-                height: 400,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: intermediaries.isEmpty
-                          ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
-                          : ReorderableListView.builder(
-                              shrinkWrap: true,
-                              buildDefaultDragHandles: false,
-                              itemCount: intermediaries.length,
-                              onReorder: (oldIndex, newIndex) {
-                                if (newIndex > oldIndex) newIndex--;
-                                final reordered = List<Intermediary>.from(intermediaries);
-                                final item = reordered.removeAt(oldIndex);
-                                reordered.insert(newIndex, item);
-                                ref.read(intermediaryServiceProvider)
-                                    .reorder(reordered.map((i) => i.id).toList());
-                              },
-                              itemBuilder: (ctx, i) {
-                                final inter = intermediaries[i];
-                                return ListTile(
-                                  key: ValueKey(inter.id),
-                                  leading: ReorderableDragStartListener(
-                                    index: i,
-                                    child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-                                  ),
-                                  title: Text(inter.name),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, size: 18),
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          _showIntermediaryDialog(context, intermediary: inter);
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete, size: 18),
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          _confirmDeleteIntermediary(context, inter);
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+            // Open the add/edit/delete sub-dialogs on top of this dialog
+            // (don't pop first) so the user sees the updated list when
+            // the sub-dialog closes. Fixed-size box with explicit
+            // dimensions avoids intrinsic-width recursion that AlertDialog
+            // triggers on shrink-wrapped lists.
+            content: SizedBox(
+              width: 320,
+              height: 400,
+              child: intermediaries.isEmpty
+                  ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
+                  : ReorderableListView.builder(
+                      buildDefaultDragHandles: false,
+                      itemCount: intermediaries.length,
+                      onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) newIndex--;
+                        final reordered = List<Intermediary>.from(intermediaries);
+                        final item = reordered.removeAt(oldIndex);
+                        reordered.insert(newIndex, item);
+                        ref.read(intermediaryServiceProvider)
+                            .reorder(reordered.map((i) => i.id).toList());
+                      },
+                      itemBuilder: (ctx, i) {
+                        final inter = intermediaries[i];
+                        return ListTile(
+                          key: ValueKey(inter.id),
+                          leading: ReorderableDragStartListener(
+                            index: i,
+                            child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+                          ),
+                          title: Text(inter.name),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 18),
+                                onPressed: () =>
+                                    _showIntermediaryDialog(context, intermediary: inter),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, size: 18),
+                                onPressed: () =>
+                                    _confirmDeleteIntermediary(context, inter),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              ),
             ),
             actions: [
               TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showIntermediaryDialog(context);
-                },
+                onPressed: () => _showIntermediaryDialog(context),
                 child: Text(s.addIntermediary),
               ),
               FilledButton(
