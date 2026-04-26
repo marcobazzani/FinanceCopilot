@@ -225,7 +225,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: Text(
-                          '${dateFmt.format(income.date)} · ${_typeLabel(s, income.type)}',
+                          '${dateFmt.format(income.valueDate)} · ${_typeLabel(s, income.type)}',
                         ),
                         trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                         onTap: () => _showEditDialog(context, income),
@@ -356,7 +356,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   Future<void> _showEditDialog(BuildContext context, Income income) async {
     final s = ref.read(appStringsProvider);
     final dateFmt = fmt.shortDateFormat(_locale);
-    final dateCtl = TextEditingController(text: dateFmt.format(income.date));
+    // Display valueDate per CLAUDE.md convention (canonical "money moved" date).
+    final dateCtl = TextEditingController(text: dateFmt.format(income.valueDate));
     final amountCtl = TextEditingController(text: income.amount.toString());
     var currency = income.currency;
     var type = income.type;
@@ -443,10 +444,13 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       return;
     }
 
+    // Update both date and valueDate together — the user only sees one field
+    // and editing it should not leave the two columns inconsistent.
     await ref.read(incomeServiceProvider).update(
       income.id,
       IncomesCompanion(
         date: Value(date),
+        valueDate: Value(date),
         amount: Value(amount),
         type: Value(type),
         currency: Value(currency),
@@ -462,7 +466,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(s.deleteIncomeTitle),
-        content: Text(s.deleteIncomeConfirm(amtFormat.format(income.amount), income.currency, dateFmt.format(income.date))),
+        content: Text(s.deleteIncomeConfirm(amtFormat.format(income.amount), income.currency, dateFmt.format(income.valueDate))),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
           FilledButton(

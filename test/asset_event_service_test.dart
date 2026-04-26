@@ -113,6 +113,35 @@ void main() {
       expect(events[1].date, DateTime(2024, 3, 1));
       expect(events[2].date, DateTime(2024, 1, 1));
     });
+
+    test('orders by valueDate (CLAUDE.md convention) when dates differ', () async {
+      // Two events whose `date` and `valueDate` are flipped:
+      //   A: date=2024-06-01 (op), valueDate=2024-01-15 (val) — amount 100
+      //   B: date=2024-01-15 (op), valueDate=2024-06-01 (val) — amount 200
+      // valueDate-desc order should be B then A. Pre-fix order (by `date`)
+      // would have been A then B.
+      final assetId = await createAsset('ValueDateOrdered');
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 1, 15),
+        type: EventType.buy,
+        amount: 100,
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 1, 15),
+        valueDate: DateTime(2024, 6, 1),
+        type: EventType.buy,
+        amount: 200,
+      ));
+
+      final events = await service.getByAsset(assetId);
+      expect(events, hasLength(2));
+      expect(events[0].amount, 200,
+          reason: 'event B has the later valueDate and must come first');
+      expect(events[1].amount, 100);
+    });
   });
 
   group('update', () {

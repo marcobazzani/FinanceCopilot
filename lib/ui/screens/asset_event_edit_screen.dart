@@ -81,7 +81,8 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
 
-    _selectedDate = ev?.date ?? DateTime.now();
+    // Initialize from valueDate per CLAUDE.md (canonical "money moved" date).
+    _selectedDate = ev?.valueDate ?? DateTime.now();
     _dateCtrl = TextEditingController(text: dateFmt.format(_selectedDate));
     _amountCtrl = TextEditingController(text: _fmtNum(ev?.amount));
     _quantityCtrl = TextEditingController(text: _fmtNum(ev?.quantity, decimals: 4));
@@ -443,7 +444,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
       await svc.update(
         widget.event!.id,
         AssetEventsCompanion(
+          // Update both date and valueDate together — the user only sees one
+          // field and editing it must not leave the two columns inconsistent.
           date: drift.Value(_selectedDate),
+          valueDate: drift.Value(_selectedDate),
           type: drift.Value(_eventType),
           amount: drift.Value(amount),
           quantity: drift.Value(quantity),
