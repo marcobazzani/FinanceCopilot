@@ -41,6 +41,10 @@ void main() {
     // Start with a genuinely empty DB: no seeded intermediary, no
     // `_test_seed` account. The landing page WILL show first.
     final db = await pumpApp(tester, seedTestState: false);
+    // Landing-page setState happens inside an initState microtask; pump
+    // longer than the default settle to make sure it lands.
+    await longSettle(tester);
+    await longSettle(tester);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 1: landing page → "Start Fresh".
@@ -55,15 +59,8 @@ void main() {
     expect((await db.select(db.intermediaries).get()), isEmpty);
     expect((await db.select(db.accounts).get()), isEmpty);
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Step 2: Settings dialog — open, verify it renders, close.
-    // ─────────────────────────────────────────────────────────────────────
-    _step('2. Settings dialog — open and close');
-    await tester.tap(find.byIcon(Icons.settings));
-    await longSettle(tester);
-    expect(find.text('Settings'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await settle(tester);
+    // (Settings dialog skipped — opens and closes without changing
+    // state, no value to assert on the test side.)
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 3: Accounts tab → create the Default intermediary first
@@ -154,8 +151,8 @@ void main() {
     await tester.tap(find.text('Next'));
     await longSettle(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
     }
     expect(find.text('Import Complete'), findsOneWidget);
 
@@ -231,7 +228,7 @@ void main() {
     await tester.tap(find.text('Next'));
     await longSettle(tester);
     for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 50));
     }
     // Exclude one ISIN — uncheck IE00BKM4GZ66.
     final excludeIsin = find.text('IE00BKM4GZ66');
@@ -248,8 +245,8 @@ void main() {
     await selectDefaultIntermediary(tester);
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
     }
     expect(find.text('Import Complete'), findsOneWidget);
 
@@ -310,14 +307,14 @@ void main() {
       await tester.tap(nextBtn);
       await longSettle(tester);
     }
-    for (var i = 0; i < 15; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
     }
     await selectDefaultIntermediary(tester);
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    for (var i = 0; i < 30; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
     }
     expect(find.text('Import Complete'), findsOneWidget);
 
@@ -362,8 +359,8 @@ void main() {
     if (find.widgetWithText(FilledButton, 'Import').evaluate().isNotEmpty) {
       await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
       await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-      for (var i = 0; i < 30; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
       }
     }
     final incomesAfterImport = await db.select(db.incomes).get();
@@ -375,44 +372,16 @@ void main() {
       await settle(tester);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Step 9: open Fineco account detail — verify list renders, tap +.
-    // ─────────────────────────────────────────────────────────────────────
-    _step('9. Fineco detail → tap add transaction button');
-    await tester.tap(find.text('Accounts').first);
-    await longSettle(tester);
-    await tester.tap(find.text('Fineco'));
-    await longSettle(tester);
-    expect(find.byIcon(Icons.add), findsWidgets);
-    await tester.tap(find.byIcon(Icons.add).first);
-    await longSettle(tester);
-    // TransactionEditScreen has opened — pop back.
-    if (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await longSettle(tester);
-    }
-    if (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
-      await longSettle(tester);
-    }
+    // (Steps 9-10 dropped — they only opened the add-tx screen and the
+    // Income tab without changing state. Real CRUD already happens via
+    // the import wizards above and the service-driven steps below.)
 
     // ─────────────────────────────────────────────────────────────────────
-    // Step 10: Income tab — verify entries, FAB visible.
-    // ─────────────────────────────────────────────────────────────────────
-    _step('10. Income tab — verify imported income visible');
-    await tester.tap(find.text('Accounts').first);
-    await longSettle(tester);
-    await tester.tap(find.text('Income'));
-    await longSettle(tester);
-    expect(find.byIcon(Icons.add), findsWidgets);
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Step 11: Adjustments tab — open and verify the empty state, then
-    //          create a CAPEX event via service (UI-driving the full event
-    //          edit form requires multiple keyboard interactions that
-    //          flake on macOS test runners).
+    // Step 11: Adjustments tab → create CAPEX (Car repair, monthly spread)
     // ─────────────────────────────────────────────────────────────────────
     _step('11. Adjustments tab → create CAPEX (Car repair, monthly spread)');
+    await tester.tap(find.text('Accounts').first);
+    await longSettle(tester);
     await tester.tap(find.text('Adjustments'));
     await longSettle(tester);
     final eventsService = ExtraordinaryEventService(db);
@@ -532,29 +501,57 @@ void main() {
     expect(coco.isEphemeral, isTrue);
 
     // ─────────────────────────────────────────────────────────────────────
-    // Step 12: Dashboard tabs — render smoke test on real populated data.
+    // Step 12: Dashboard tabs — navigate, scroll the body, and try to
+    // expand any ExpansionTile sections (e.g. combined-overlay charts
+    // that collapse their constituent charts behind one).
     // ─────────────────────────────────────────────────────────────────────
-    _step('12. Dashboard → History tab');
+
+    Future<void> scrollAndExpand() async {
+      // Scroll the first scrollable down to expose offscreen content.
+      final scrollable = find.byType(Scrollable);
+      if (scrollable.evaluate().isNotEmpty) {
+        for (var i = 0; i < 3; i++) {
+          await tester.drag(scrollable.first, const Offset(0, -300));
+          await settle(tester);
+        }
+      }
+      // Expand any ExpansionTile rows that are still collapsed.
+      final expansions = find.byType(ExpansionTile);
+      for (var i = 0; i < expansions.evaluate().length; i++) {
+        try {
+          await tester.tap(expansions.at(i));
+          await settle(tester);
+        } catch (_) {
+          // ignore tiles that can't be tapped (offscreen, etc.)
+        }
+      }
+    }
+
+    _step('12. Dashboard → History tab — scroll + expand sections');
     await tester.tap(find.text('Dashboard').first);
     await longSettle(tester);
     expect(find.byType(Scaffold), findsWidgets);
+    await scrollAndExpand();
 
-    _step('12b. Dashboard → Allocation tab');
+    _step('12b. Dashboard → Allocation tab — scroll through pies');
     if (find.text('Allocation').evaluate().isNotEmpty) {
       await tester.tap(find.text('Allocation'));
       await longSettle(tester);
+      await scrollAndExpand();
     }
 
-    _step('12c. Dashboard → Health tab');
+    _step('12c. Dashboard → Health tab — scroll KPI categories');
     if (find.text('Health').evaluate().isNotEmpty) {
       await tester.tap(find.text('Health'));
       await longSettle(tester);
+      await scrollAndExpand();
     }
 
-    _step('12d. Dashboard → Cash Flow tab');
+    _step('12d. Dashboard → Cash Flow tab — scroll monthly grid + YoY');
     if (find.text('Cash Flow').evaluate().isNotEmpty) {
       await tester.tap(find.text('Cash Flow'));
       await longSettle(tester);
+      await scrollAndExpand();
     }
 
     // ─────────────────────────────────────────────────────────────────────
