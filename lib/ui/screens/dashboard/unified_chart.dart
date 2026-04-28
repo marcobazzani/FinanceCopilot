@@ -27,7 +27,69 @@ class DashedLinePainter extends CustomPainter {
 }
 
 // ════════════════════════════════════════════════════
-// Drag-to-zoom wrapper (CloudWatch style)
+// Zoom math helpers (file-local, unit-tested)
+// ════════════════════════════════════════════════════
+
+/// Compute a new X window after zooming and/or panning, anchored at the
+/// focal pixel. Result is clamped to `[0, totalDays]`. When the resulting
+/// span would meet or exceed `totalDays`, the full data range is returned.
+({double minX, double maxX}) computeZoomedXRange({
+  required double currentMinX,
+  required double currentMaxX,
+  required double focalPx,
+  required double leftReserved,
+  required double chartWidth,
+  required double scaleFactor,
+  required double panPx,
+  required double totalDays,
+}) {
+  final currentRange = currentMaxX - currentMinX;
+  final pxFromLeft = focalPx - leftReserved;
+  final focalChartX = currentMinX + pxFromLeft / chartWidth * currentRange;
+
+  var newRange = currentRange / scaleFactor;
+  if (newRange >= totalDays) return (minX: 0, maxX: totalDays);
+  if (newRange < 1) newRange = 1;
+
+  var newMinX = focalChartX - pxFromLeft / chartWidth * newRange - panPx * (newRange / chartWidth);
+  var newMaxX = newMinX + newRange;
+
+  if (newMinX < 0) {
+    newMinX = 0;
+    newMaxX = newRange;
+  }
+  if (newMaxX > totalDays) {
+    newMaxX = totalDays;
+    newMinX = totalDays - newRange;
+  }
+  return (minX: newMinX, maxX: newMaxX);
+}
+
+/// Compute a new Y window after zooming and/or panning, anchored at the
+/// focal pixel. Y axis is inverted vs pixels (pixel 0 = top = max Y).
+/// Y has no clamping — chart data may legitimately extend beyond the
+/// current zoom window.
+({double minY, double maxY}) computeZoomedYRange({
+  required double currentMinY,
+  required double currentMaxY,
+  required double focalPy,
+  required double chartHeight,
+  required double scaleFactor,
+  required double panPy,
+}) {
+  final currentRange = currentMaxY - currentMinY;
+  final fractionFromBottom = 1.0 - focalPy / chartHeight;
+  final focalChartY = currentMinY + fractionFromBottom * currentRange;
+
+  final newRange = currentRange / scaleFactor;
+  final dyUnits = panPy * (newRange / chartHeight);
+  final newMinY = focalChartY - fractionFromBottom * newRange + dyUnits;
+  final newMaxY = newMinY + newRange;
+  return (minY: newMinY, maxY: newMaxY);
+}
+
+// ════════════════════════════════════════════════════
+// Drag/pinch/pan/wheel zoom wrapper
 // ════════════════════════════════════════════════════
 
 class DragZoomWrapper extends StatefulWidget {
@@ -36,6 +98,7 @@ class DragZoomWrapper extends StatefulWidget {
   final double xMax;
   final double yMin;
   final double yMax;
+  final double totalDays;
   final double leftReserved = 60;
   final double bottomReserved = 28;
   final DateTime firstDate;
@@ -43,12 +106,13 @@ class DragZoomWrapper extends StatefulWidget {
   final String locale;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
-  const DragZoomWrapper({super.key, 
+  const DragZoomWrapper({super.key,
     required this.child,
     required this.xMin,
     required this.xMax,
     this.yMin = 0,
     this.yMax = 1,
+    required this.totalDays,
     required this.firstDate,
     required this.baseCurrency,
     required this.locale,
@@ -63,6 +127,12 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   Offset? _dragStart;
   Offset? _dragCurrent;
   bool _isDragging = false;
+  bool _panning = false;
+  PointerDeviceKind? _activeKind;
+
+  double? _scaleStartMinX;
+  double? _scaleStartMaxX;
+  double? _scaleStartFocalChartX;
 
   double _pixelToChartX(double px, double chartWidth) {
     final fraction = (px - widget.leftReserved) / chartWidth;
@@ -73,6 +143,126 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     // Y is inverted: top of widget = max Y, bottom of chart area = min Y
     final fraction = 1.0 - (py / chartHeight);
     return widget.yMin + fraction * (widget.yMax - widget.yMin);
+  }
+
+  bool get _isZoomedX => (widget.xMax - widget.xMin) < widget.totalDays - 1e-6;
+  bool get _isZoomedY => (widget.yMax - widget.yMin) > 0;
+
+  void _resetTransientState() {
+    _dragStart = null;
+    _dragCurrent = null;
+    _isDragging = false;
+    _panning = false;
+    _activeKind = null;
+  }
+
+  void _handleMousePan(PointerMoveEvent e, double chartWidth, double chartHeight) {
+    final xRange = widget.xMax - widget.xMin;
+    final yRange = widget.yMax - widget.yMin;
+    if (xRange <= 0 || chartWidth <= 0) return;
+
+    final dxUnits = e.delta.dx * xRange / chartWidth;
+    var newMinX = widget.xMin - dxUnits;
+    var newMaxX = widget.xMax - dxUnits;
+    if (newMinX < 0) {
+      newMinX = 0;
+      newMaxX = xRange;
+    }
+    if (newMaxX > widget.totalDays) {
+      newMaxX = widget.totalDays;
+      newMinX = widget.totalDays - xRange;
+    }
+
+    double? newMinY, newMaxY;
+    if (yRange > 0 && chartHeight > 0) {
+      // Y is inverted: dragging the mouse down should shift the visible
+      // window DOWN as well, so we add dy.
+      final dyUnits = e.delta.dy * yRange / chartHeight;
+      newMinY = widget.yMin + dyUnits;
+      newMaxY = widget.yMax + dyUnits;
+    }
+    widget.onZoom(newMinX, newMaxX, newMinY, newMaxY);
+  }
+
+  void _handleWheelZoom(PointerScrollEvent sig, double chartWidth, double chartHeight) {
+    if (chartWidth <= 0) return;
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    final factor = exp(-sig.scrollDelta.dy * 0.0015);
+
+    if (!shift) {
+      final r = computeZoomedXRange(
+        currentMinX: widget.xMin,
+        currentMaxX: widget.xMax,
+        focalPx: sig.localPosition.dx,
+        leftReserved: widget.leftReserved,
+        chartWidth: chartWidth,
+        scaleFactor: factor,
+        panPx: 0,
+        totalDays: widget.totalDays,
+      );
+      final stillZoomedY = _isZoomedY;
+      if (r.minX <= 0 && r.maxX >= widget.totalDays - 1e-6) {
+        widget.onZoom(null, null, stillZoomedY ? widget.yMin : null, stillZoomedY ? widget.yMax : null);
+      } else {
+        widget.onZoom(r.minX, r.maxX, stillZoomedY ? widget.yMin : null, stillZoomedY ? widget.yMax : null);
+      }
+      return;
+    }
+
+    if (!_isZoomedY || chartHeight <= 0) return;
+    final r = computeZoomedYRange(
+      currentMinY: widget.yMin,
+      currentMaxY: widget.yMax,
+      focalPy: sig.localPosition.dy,
+      chartHeight: chartHeight,
+      scaleFactor: factor,
+      panPy: 0,
+    );
+    widget.onZoom(widget.xMin, widget.xMax, r.minY, r.maxY);
+  }
+
+  void _onScaleStart(ScaleStartDetails d, double chartWidth) {
+    if (_activeKind == PointerDeviceKind.mouse || chartWidth <= 0) return;
+    _scaleStartMinX = widget.xMin;
+    _scaleStartMaxX = widget.xMax;
+    final pxToUnits = (widget.xMax - widget.xMin) / chartWidth;
+    _scaleStartFocalChartX =
+        widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnits;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth) {
+    if (_scaleStartMinX == null || chartWidth <= 0) return;
+
+    final isPinch = d.pointerCount >= 2;
+    if (!isPinch && !_isZoomedX) return; // let parent vertical scroll keep this gesture
+
+    final startRange = _scaleStartMaxX! - _scaleStartMinX!;
+    var newRange = startRange / d.scale;
+    if (newRange >= widget.totalDays) {
+      widget.onZoom(null, null, null, null);
+      return;
+    }
+    if (newRange < 1) newRange = 1;
+
+    final focalPxFromLeft = d.localFocalPoint.dx - widget.leftReserved;
+    var newMinX = _scaleStartFocalChartX! - focalPxFromLeft / chartWidth * newRange;
+    var newMaxX = newMinX + newRange;
+
+    if (newMinX < 0) {
+      newMinX = 0;
+      newMaxX = newRange;
+    }
+    if (newMaxX > widget.totalDays) {
+      newMaxX = widget.totalDays;
+      newMinX = newMaxX - newRange;
+    }
+    widget.onZoom(newMinX, newMaxX, null, null);
+  }
+
+  void _onScaleEnd(ScaleEndDetails _) {
+    _scaleStartMinX = null;
+    _scaleStartMaxX = null;
+    _scaleStartFocalChartX = null;
   }
 
   @override
@@ -87,14 +277,22 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
         return Listener(
           behavior: HitTestBehavior.translucent,
           onPointerDown: (e) {
+            _activeKind = e.kind;
+            if (e.kind != PointerDeviceKind.mouse) return;
+            final shift = HardwareKeyboard.instance.isShiftPressed;
             setState(() {
               _dragStart = e.localPosition;
               _dragCurrent = e.localPosition;
               _isDragging = false;
+              _panning = shift;
             });
           },
           onPointerMove: (e) {
-            if (_dragStart == null) return;
+            if (_activeKind != PointerDeviceKind.mouse || _dragStart == null) return;
+            if (_panning) {
+              _handleMousePan(e, chartWidth, chartHeight);
+              return;
+            }
             final dist = (e.localPosition - _dragStart!).distance;
             if (dist > 5) _isDragging = true;
             if (_isDragging) {
@@ -102,6 +300,14 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
             }
           },
           onPointerUp: (e) {
+            if (_activeKind != PointerDeviceKind.mouse) {
+              setState(_resetTransientState);
+              return;
+            }
+            if (_panning) {
+              setState(_resetTransientState);
+              return;
+            }
             if (_isDragging && _dragStart != null && _dragCurrent != null) {
               final x1 = _pixelToChartX(_dragStart!.dx, chartWidth);
               final x2 = _pixelToChartX(_dragCurrent!.dx, chartWidth);
@@ -129,19 +335,40 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                 widget.onZoom(newMinX ?? widget.xMin, newMaxX ?? widget.xMax, newMinY, newMaxY);
               }
             }
-            setState(() {
-              _dragStart = null;
-              _dragCurrent = null;
-              _isDragging = false;
-            });
+            setState(_resetTransientState);
           },
-          child: GestureDetector(
+          onPointerCancel: (_) {
+            setState(_resetTransientState);
+          },
+          onPointerSignal: (sig) {
+            if (sig is PointerScrollEvent) {
+              _handleWheelZoom(sig, chartWidth, chartHeight);
+            }
+          },
+          child: RawGestureDetector(
             behavior: HitTestBehavior.translucent,
-            onDoubleTap: () => widget.onZoom(null, null, null, null),
-            child: Stack(
-              children: [
-                widget.child,
-                if (_isDragging && _dragStart != null && _dragCurrent != null)
+            gestures: <Type, GestureRecognizerFactory>{
+              ScaleGestureRecognizer:
+                  GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
+                () => ScaleGestureRecognizer(
+                  supportedDevices: const {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.stylus,
+                  },
+                ),
+                (r) => r
+                  ..onStart = (d) { _onScaleStart(d, chartWidth); }
+                  ..onUpdate = (d) { _onScaleUpdate(d, chartWidth); }
+                  ..onEnd = _onScaleEnd,
+              ),
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onDoubleTap: () => widget.onZoom(null, null, null, null),
+              child: Stack(
+                children: [
+                  widget.child,
+                  if (_isDragging && !_panning && _dragStart != null && _dragCurrent != null)
                   Positioned(
                     left: min(_dragStart!.dx, _dragCurrent!.dx),
                     top: min(_dragStart!.dy, _dragCurrent!.dy),
@@ -171,7 +398,8 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                       ),
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         );
