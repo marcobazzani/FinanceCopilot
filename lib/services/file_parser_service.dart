@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as xl;
+import 'package:flutter/foundation.dart' show compute;
 import 'package:intl/intl.dart';
 
 import '../utils/logger.dart';
@@ -157,22 +157,22 @@ class FileParserService {
       case 'csv':
       case 'tsv':
         final content = await File(filePath).readAsString();
-        result = await Isolate.run(() => _parseCsvIsolate({
+        result = await compute(_parseCsvIsolate, <String, dynamic>{
           'content': content,
           'separator': ext == 'tsv' ? '\t' : null,
           'skipRows': skipRows,
           'noHeader': noHeader,
-        }));
+        });
       case 'xlsx':
       case 'xls':
         final bytes = await File(filePath).readAsBytes();
-        result = await Isolate.run(() => _parseExcelIsolate({
+        result = await compute(_parseExcelIsolate, <String, dynamic>{
           'bytes': bytes,
           'sheetName': sheetName,
           'skipRows': skipRows,
           'noHeader': noHeader,
           'numberLocale': numberLocale,
-        }));
+        });
       default:
         throw UnsupportedError('Unsupported file format: .$ext');
     }
@@ -195,7 +195,7 @@ class FileParserService {
   Future<List<String>> listSheets(String filePath) async {
     _log.fine('listSheets: $filePath');
     final bytes = await File(filePath).readAsBytes();
-    final sheets = await Isolate.run(() => _listSheetsIsolate(bytes));
+    final sheets = await compute(_listSheetsIsolate, bytes);
     _log.info('listSheets: found ${sheets.length} sheets: $sheets');
     return sheets;
   }
@@ -203,12 +203,12 @@ class FileParserService {
   /// Parse clipboard/pasted text as CSV/TSV → FilePreview.
   Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) async {
     _log.info('parseClipboard: ${text.length} chars, skipRows=$skipRows, noHeader=$noHeader');
-    final result = await Isolate.run(() => _parseCsvIsolate({
+    final result = await compute(_parseCsvIsolate, <String, dynamic>{
       'content': text,
       'separator': null, // auto-detect
       'skipRows': skipRows,
       'noHeader': noHeader,
-    }));
+    });
     final previewRows = _capPreviewRows(result.rows);
     _log.info('parseClipboard: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
     return FilePreview(
@@ -243,30 +243,30 @@ class FileParserService {
         case 'csv':
         case 'tsv':
           final content = await File(preview.filePath!).readAsString();
-          return Isolate.run(() => _parseCsvIsolate({
+          return compute(_parseCsvIsolate, <String, dynamic>{
             'content': content,
             'separator': ext == 'tsv' ? '\t' : null,
             'skipRows': preview.skipRows,
             'noHeader': preview.noHeader,
-          }));
+          });
         case 'xlsx':
         case 'xls':
           final bytes = await File(preview.filePath!).readAsBytes();
-          return Isolate.run(() => _parseExcelIsolate({
+          return compute(_parseExcelIsolate, <String, dynamic>{
             'bytes': bytes,
             'sheetName': preview.sheetName,
             'skipRows': preview.skipRows,
             'noHeader': preview.noHeader,
             'numberLocale': effectiveLocale,
-          }));
+          });
       }
     } else if (preview.clipboardText != null) {
-      return Isolate.run(() => _parseCsvIsolate({
+      return compute(_parseCsvIsolate, <String, dynamic>{
         'content': preview.clipboardText!,
         'separator': null,
         'skipRows': preview.skipRows,
         'noHeader': preview.noHeader,
-      }));
+      });
     }
     return preview;
   }
