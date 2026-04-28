@@ -306,6 +306,11 @@ void main() {
     await settle(tester);
     await tester.enterText(fields.at(4), '500');
     await settle(tester);
+    // Clear before typing — currency field is pre-populated with the
+    // account's currency ('EUR' for Revolut). Android IME doesn't always
+    // replace existing content via a single enterText call (macOS does).
+    await tester.enterText(fields.at(5), '');
+    await settle(tester);
     await tester.enterText(fields.at(5), 'USD');
     await settle(tester);
 
