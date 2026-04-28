@@ -213,6 +213,7 @@ class _ChartCard extends ConsumerWidget {
                       xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
                       yMin: effectiveMinY,
                       yMax: effectiveMaxY,
+                      totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 1,
                       firstDate: allData.firstDate,
                       baseCurrency: allData.baseCurrency,
                       locale: locale,
