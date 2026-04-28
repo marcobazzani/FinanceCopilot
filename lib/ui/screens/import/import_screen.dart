@@ -201,6 +201,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (widget.testPreview != null) {
       _preview = widget.testPreview;
       _autoMap(widget.testPreview!.columns);
+      // Mirror production _loadFile: apply any saved config for the
+      // preselected account so quick-confirm renders when available.
+      Future.microtask(() => _loadSavedConfig(widget.testPreview!.columns));
     }
     // Shared file from another app (Android share target)
     if (widget.initialFilePath != null) {

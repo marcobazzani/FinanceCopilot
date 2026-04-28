@@ -114,7 +114,6 @@ class AppStrings {
   // ── Landing page ──────────────────────────────────────────
   String get landingTitle             => _it ? 'Benvenuto in FinanceCopilot' : 'Welcome to FinanceCopilot';
   String get landingSubtitle          => _it ? 'Il tuo database e vuoto. Come vuoi iniziare?' : 'Your database is empty. How would you like to start?';
-  String get landingCreateDemo        => _it ? 'Genera Dati Demo'           : 'Generate Demo Data';
   String get landingImportDb          => _it ? 'Importa Database Esistente' : 'Import Existing Database';
   String get landingStartFresh        => _it ? 'Inizia da zero'             : 'Start Fresh';
   String get landingSyncDrive         => _it ? 'Sincronizza con Google Drive' : 'Sync with Google Drive';
