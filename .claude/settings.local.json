@@ -15,7 +15,9 @@
       "Bash(dart run *)",
       "Bash(dart analyze *)",
       "Bash(grep -v \"^Analyzing\\\\|^$\\\\|packages have newer\")",
-      "Bash(flutter test *)"
+      "Bash(flutter test *)",
+      "Bash(mkdir -p /root/.claude/plans)",
+      "Read(//root/.claude/plans/**)"
     ],
     "defaultMode": "bypassPermissions"
   },
