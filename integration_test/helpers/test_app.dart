@@ -77,21 +77,26 @@ Future<AppDatabase> pumpApp(
   final overrides = [
     // Override DB with in-memory instance
     databaseProvider.overrideWith((ref) => db),
-    // Stub exchange rate service -- uses DB but won't sync
-    exchangeRateServiceProvider.overrideWith((ref) {
-      return ExchangeRateService(db);
-    }),
     // Stub Google Drive sync -- no network in tests
     googleDriveSyncProvider.overrideWith((ref) => GoogleDriveSyncService()),
   ];
 
   if (!useRealServices) {
+    // Stubbed mode: NoOp market prices and FX without an investing service.
     overrides.add(
       marketPriceServiceProvider.overrideWith((ref) {
         return NoOpMarketPriceService(db);
       }),
     );
+    overrides.add(
+      exchangeRateServiceProvider.overrideWith((ref) {
+        return ExchangeRateService(db);
+      }),
+    );
   }
+  // useRealServices=true: leave marketPriceServiceProvider and
+  // exchangeRateServiceProvider at their defaults so the real
+  // InvestingComService + investing-backed FX run with real HTTP.
 
   // Suppress non-logic Flutter errors in integration tests:
   // - KeyUpEvent: keyboard state leak between tests in same process
@@ -180,26 +185,87 @@ Future<void> pushImportScreen(
 /// Default false keeps local runs fast.
 const _slowTests = bool.fromEnvironment('SLOW_TESTS');
 
-const _settleFrames = _slowTests ? 15 : 4;
-const _longSettleFrames = _slowTests ? 30 : 8;
-const _frameMs = _slowTests ? 100 : 50;
+// 60fps frame cadence — 16ms keeps the on-screen window animating
+// smoothly during settle/longSettle/pumpFor. With 50ms frames the
+// progress indicators stuttered visibly on the macOS test driver.
+const _frameMs = _slowTests ? 33 : 16;
+const _settleMs = _slowTests ? 600 : 200;
+const _longSettleMs = _slowTests ? 1500 : 500;
 
-/// Pump frames to let the widget tree rebuild after navigation/tap.
-/// Use instead of pumpAndSettle() which hangs on stream providers.
+/// Pump frames at ~60fps to let the widget tree rebuild after
+/// navigation/tap. Use instead of pumpAndSettle() which hangs on
+/// stream providers.
 ///
-/// Default: 4 frames × 50ms = 200ms. With --dart-define=SLOW_TESTS=true:
-/// 15 frames × 100ms = 1.5s for slow CI emulators.
+/// Default total wall time: 200ms (~12 frames at 16ms). SLOW_TESTS:
+/// 600ms.
 Future<void> settle(WidgetTester tester) async {
-  for (var i = 0; i < _settleFrames; i++) {
+  final n = _settleMs ~/ _frameMs;
+  for (var i = 0; i < n; i++) {
     await tester.pump(const Duration(milliseconds: _frameMs));
   }
 }
 
 /// Extra-long settle for heavy UI transitions (scroll + dropdown rebuild).
-/// Default: 8 × 50ms = 400ms. SLOW: 30 × 100ms = 3s.
+/// Default: 500ms (~32 frames at 16ms). SLOW_TESTS: 1.5s.
 Future<void> longSettle(WidgetTester tester) async {
-  for (var i = 0; i < _longSettleFrames; i++) {
+  final n = _longSettleMs ~/ _frameMs;
+  for (var i = 0; i < n; i++) {
     await tester.pump(const Duration(milliseconds: _frameMs));
+  }
+}
+
+/// Long live-pump: yields the test clock to runAsync (so real Futures —
+/// HTTP, timers, isolate work — can complete) AND pumps frames between
+/// each yield, so the on-screen window keeps animating during long
+/// network waits. Replaces `runAsync(Future.delayed(45s)) + longSettle`
+/// which froze the UI for the entire delay.
+Future<void> pumpFor(WidgetTester tester, Duration total) async {
+  final end = DateTime.now().add(total);
+  while (DateTime.now().isBefore(end)) {
+    // Yield ~100ms of real time so HTTP/timers can fire,
+    // then pump one frame so the spinner / chart / list animates.
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+    await tester.pump(const Duration(milliseconds: _frameMs));
+  }
+}
+
+/// Bounded smart scroll that never enters the over-scroll bounce
+/// zone. Each iteration picks the largest vertically-scrollable
+/// widget currently in the tree (so chart gesture-detector
+/// scrollables with maxExtent==0 don't short-circuit, and the right
+/// scrollable is re-resolved if a tab swap rebuilt the tree). Checks
+/// the edge BEFORE each drag — no rubber-band stretch on the last
+/// step.
+///
+/// `direction = -1` scrolls down (drag content up), `+1` scrolls up.
+Future<void> smartScroll(
+  WidgetTester tester,
+  Finder _, {
+  int direction = -1,
+  double step = 500,
+  int maxIter = 20,
+}) async {
+  for (var i = 0; i < maxIter; i++) {
+    Element? bestEl;
+    ScrollableState? bestState;
+    double bestExtent = -1;
+    for (final el in find.byType(Scrollable).evaluate()) {
+      final state = el is StatefulElement ? el.state : null;
+      if (state is! ScrollableState) continue;
+      if (state.position.axis != Axis.vertical) continue;
+      final extent = state.position.maxScrollExtent;
+      if (extent > bestExtent) {
+        bestExtent = extent;
+        bestState = state;
+        bestEl = el;
+      }
+    }
+    if (bestEl == null || bestState == null || bestExtent <= 0) return;
+    final pos = bestState.position;
+    if (direction < 0 && pos.pixels >= pos.maxScrollExtent - 1) return;
+    if (direction > 0 && pos.pixels <= pos.minScrollExtent + 1) return;
+    await tester.drag(find.byElementPredicate((e) => e == bestEl), Offset(0, direction * step));
+    await settle(tester);
   }
 }
 
