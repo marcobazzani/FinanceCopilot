@@ -458,6 +458,7 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                       xMax: _zoomMaxX ?? lastX,
                       yMin: effectiveMinY,
                       yMax: effectiveMaxY,
+                      totalDays: lastX,
                       firstDate: widget.firstDate,
                       baseCurrency: widget.currency,
                       locale: locale,
