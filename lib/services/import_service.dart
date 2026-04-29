@@ -402,26 +402,8 @@ class ImportService {
           amount = _parseAmount(amountStr);
         }
 
-        // Parse value date
-        DateTime? valueDate;
-        if (valueDateMapping != null) {
-          final vdStr = _resolveMapping(valueDateMapping, row);
-          if (vdStr != null && vdStr.isNotEmpty) {
-            try { valueDate = _parseDate(vdStr); } catch (_) {}
-          }
-        }
-
-        // Parse operation date with fallback to value date (and vice versa)
-        DateTime date;
-        try {
-          date = _parseDate(dateStr);
-        } catch (_) {
-          if (valueDate != null) {
-            date = valueDate;
-          } else {
-            rethrow;
-          }
-        }
+        var valueDate = _tryParseDateMapping(valueDateMapping, row);
+        final date = _parseDateWithFallback(dateStr, valueDate);
         valueDate ??= date;
 
         final rawMetadata = <String, String>{};
@@ -689,29 +671,10 @@ class ImportService {
       }
 
       try {
-        // Parse value date
-        final vdMapping = mappingByField['valueDate'];
-        DateTime? valueDate;
-        if (vdMapping != null) {
-          final vdStr = _resolveMapping(vdMapping, row);
-          if (vdStr != null && vdStr.isNotEmpty) {
-            try { valueDate = _parseDate(vdStr); } catch (_) {}
-          }
-        }
-
-        // Parse operation date with fallback to value date (and vice versa)
+        var valueDate = _tryParseDateMapping(mappingByField['valueDate'], row);
         late final DateTime date;
         if (dateMapping != null) {
-          final dateStr = _resolveMapping(dateMapping, row) ?? '';
-          try {
-            date = _parseDate(dateStr);
-          } catch (_) {
-            if (valueDate != null) {
-              date = valueDate;
-            } else {
-              rethrow;
-            }
-          }
+          date = _parseDateWithFallback(_resolveMapping(dateMapping, row) ?? '', valueDate);
         } else {
           final now = DateTime.now();
           date = DateTime(now.year, now.month, now.day);
@@ -922,28 +885,8 @@ class ImportService {
         final amountStr = _resolveMapping(amountMapping, row) ?? '';
         final amount = _parseAmount(amountStr);
 
-        // Parse value date
-        final vdMapping = mappingByField['valueDate'];
-        DateTime? valueDate;
-        if (vdMapping != null) {
-          final vdStr = _resolveMapping(vdMapping, row);
-          if (vdStr != null && vdStr.isNotEmpty) {
-            try { valueDate = _parseDate(vdStr); } catch (_) {}
-          }
-        }
-
-        // Parse operation date with fallback to value date (and vice versa)
-        final dateStr = _resolveMapping(dateMapping, row) ?? '';
-        DateTime date;
-        try {
-          date = _parseDate(dateStr);
-        } catch (_) {
-          if (valueDate != null) {
-            date = valueDate;
-          } else {
-            rethrow;
-          }
-        }
+        var valueDate = _tryParseDateMapping(mappingByField['valueDate'], row);
+        final date = _parseDateWithFallback(_resolveMapping(dateMapping, row) ?? '', valueDate);
         valueDate ??= date;
         final typeStr = typeMapping != null ? (_resolveMapping(typeMapping, row) ?? '') : '';
         final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? defaultCurrency) : defaultCurrency;
@@ -1046,25 +989,8 @@ class ImportService {
           amount = _parseAmount(amountStr);
         }
 
-        // Parse value date (for fallback only)
-        DateTime? valueDate;
-        if (valueDateMapping != null) {
-          final vdStr = _resolveMapping(valueDateMapping, row);
-          if (vdStr != null && vdStr.isNotEmpty) {
-            try { valueDate = _parseDate(vdStr); } catch (_) {}
-          }
-        }
-
-        DateTime date;
-        try {
-          date = _parseDate(dateStr);
-        } catch (_) {
-          if (valueDate != null) {
-            date = valueDate;
-          } else {
-            rethrow;
-          }
-        }
+        final valueDate = _tryParseDateMapping(valueDateMapping, row);
+        final date = _parseDateWithFallback(dateStr, valueDate);
 
         // Check filtered mode
         if (balanceMode == 'filtered' && balanceFilterColumn != null) {
@@ -1246,6 +1172,24 @@ class ImportService {
 
   /// Parse a date string. Delegates to shared [date_parse.parseDate].
   DateTime _parseDate(String s) => date_parse.parseDate(s);
+
+  /// Try to parse a date column from [mapping] in [row]; returns null on missing/invalid.
+  DateTime? _tryParseDateMapping(ColumnMapping? mapping, Map<String, String> row) {
+    if (mapping == null) return null;
+    final s = _resolveMapping(mapping, row);
+    if (s == null || s.isEmpty) return null;
+    try { return _parseDate(s); } catch (_) { return null; }
+  }
+
+  /// Parse [dateStr] with fallback to [fallback] when parsing fails.
+  /// If both fail (parse error and no fallback), rethrows the parse error.
+  DateTime _parseDateWithFallback(String dateStr, DateTime? fallback) {
+    try { return _parseDate(dateStr); }
+    catch (_) {
+      if (fallback != null) return fallback;
+      rethrow;
+    }
+  }
 
   double _parseAmount(String s) => amt.parseAmount(s, locale: _activeLocale);
   double? _tryParseAmount(String? s) => amt.tryParseAmount(s, locale: _activeLocale);
