@@ -16,6 +16,7 @@ import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
+import '../../utils/dialogs.dart';
 
 class IncomeScreen extends ConsumerStatefulWidget {
   const IncomeScreen({super.key});
@@ -140,9 +141,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     if (entries.isEmpty) {
       if (mounted) {
         final s = ref.read(appStringsProvider);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.noValidRowsClipboard)),
-        );
+        showInfoSnack(context, s.noValidRowsClipboard);
       }
       return;
     }
@@ -150,9 +149,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     await ref.read(incomeServiceProvider).bulkCreate(entries);
     if (mounted) {
       final s = ref.read(appStringsProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.pastedIncomeRecords(entries.length))),
-      );
+      showInfoSnack(context, s.pastedIncomeRecords(entries.length));
     }
   }
 
@@ -338,9 +335,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.invalidDateOrAmount)),
-        );
+        showInfoSnack(context, s.invalidDateOrAmount);
       }
       return;
     }
@@ -437,9 +432,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.invalidDateOrAmount)),
-        );
+        showInfoSnack(context, s.invalidDateOrAmount);
       }
       return;
     }
@@ -462,23 +455,16 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     final s = ref.read(appStringsProvider);
     final amtFormat = fmt.amountFormat(_locale);
     final dateFmt = fmt.shortDateFormat(_locale);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteIncomeTitle),
-        content: Text(s.deleteIncomeConfirm(amtFormat.format(income.amount), income.currency, dateFmt.format(income.valueDate))),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.deleteIncomeTitle,
+      content: s.deleteIncomeConfirm(amtFormat.format(income.amount), income.currency, dateFmt.format(income.valueDate)),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       await ref.read(incomeServiceProvider).delete(income.id);
     }
   }

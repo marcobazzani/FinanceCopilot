@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import '../../utils/dialogs.dart';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
@@ -345,9 +346,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     );
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.incomeFlaggedSnack)),
-      );
+      showInfoSnack(context, s.incomeFlaggedSnack);
     }
   }
 
@@ -355,57 +354,37 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     final s = ref.read(appStringsProvider);
     final txCount = ref.read(accountTransactionsProvider(widget.account.id)).value?.length ?? 0;
     if (txCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.noTransactionsToWipe)),
-      );
+      showInfoSnack(context, s.noTransactionsToWipe);
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.wipeAllTransactionsTitle),
-        content: Text(
-          '${s.wipeTransactionsBody(widget.account.name)}${s.cannotBeUndone}',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.wipe),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.wipeAllTransactionsTitle,
+      content: '${s.wipeTransactionsBody(widget.account.name)}${s.cannotBeUndone}',
+      confirmLabel: s.wipe,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.orange,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       _log.warning('wiping transactions for account ${widget.account.id}');
       final deleted = await ref.read(transactionServiceProvider).deleteByAccount(widget.account.id);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.wipedTransactions(deleted))),
-        );
+        showInfoSnack(context, s.wipedTransactions(deleted));
       }
     }
   }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteAccountTitle),
-        content: Text(s.deleteAccountConfirm(widget.account.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.deleteAccountTitle,
+      content: s.deleteAccountConfirm(widget.account.name),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       _log.warning('deleting account id=${widget.account.id} name=${widget.account.name}');
       await ref.read(accountServiceProvider).delete(widget.account.id);
       if (context.mounted) Navigator.pop(context);
@@ -483,9 +462,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     final txs = await ref.read(transactionServiceProvider).getByAccount(widget.account.id);
     if (txs.isEmpty) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.noTransactionsToRecalc)),
-        );
+        showInfoSnack(context, s.noTransactionsToRecalc);
       }
       return;
     }
@@ -696,9 +673,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
       savedMappings: mappings,
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.recalculatedBalances(updated))),
-      );
+      showInfoSnack(context, s.recalculatedBalances(updated));
     }
   }
 }
