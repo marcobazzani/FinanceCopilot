@@ -275,8 +275,8 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
 
   release:
-    needs: [build, integration-test, integration-test-android]
-    if: always() && needs.build.result == 'success' && needs.integration-test.result == 'success' && needs.integration-test-android.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [test, integration-test, integration-test-android, build]
+    if: always() && needs.test.result == 'success' && needs.integration-test.result == 'success' && needs.integration-test-android.result == 'success' && needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -326,8 +326,8 @@ jobs:
           git push
 
   latest:
-    needs: [build, integration-test, integration-test-android]
-    if: always() && needs.build.result == 'success' && needs.integration-test.result == 'success' && needs.integration-test-android.result == 'success' && github.ref == 'refs/heads/develop'
+    needs: [test, integration-test, integration-test-android, build]
+    if: always() && needs.test.result == 'success' && needs.integration-test.result == 'success' && needs.integration-test-android.result == 'success' && needs.build.result == 'success' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: write
