@@ -104,6 +104,10 @@ class DragZoomWrapper extends StatefulWidget {
   final DateTime firstDate;
   final String baseCurrency;
   final String locale;
+  /// True when the parent has explicitly zoomed Y (rectangle zoom set
+  /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
+  /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
+  final bool zoomedY;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
   const DragZoomWrapper({super.key,
@@ -117,6 +121,7 @@ class DragZoomWrapper extends StatefulWidget {
     required this.baseCurrency,
     required this.locale,
     required this.onZoom,
+    this.zoomedY = false,
   });
 
   @override
@@ -145,8 +150,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     return widget.yMin + fraction * (widget.yMax - widget.yMin);
   }
 
-  bool get _isZoomedX => (widget.xMax - widget.xMin) < widget.totalDays - 1e-6;
-  bool get _isZoomedY => (widget.yMax - widget.yMin) > 0;
+  bool get _isZoomedY => widget.zoomedY;
 
   void _resetTransientState() {
     _dragStart = null;
@@ -174,9 +178,10 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     }
 
     double? newMinY, newMaxY;
-    if (yRange > 0 && chartHeight > 0) {
+    if (widget.zoomedY && yRange > 0 && chartHeight > 0) {
       // Y is inverted: dragging the mouse down should shift the visible
-      // window DOWN as well, so we add dy.
+      // window DOWN as well, so we add dy. Only pan Y when the user has
+      // explicitly zoomed Y; otherwise the auto-fit Y window must stay put.
       final dyUnits = e.delta.dy * yRange / chartHeight;
       newMinY = widget.yMin + dyUnits;
       newMaxY = widget.yMax + dyUnits;
@@ -186,6 +191,12 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
 
   void _handleWheelZoom(PointerScrollEvent sig, double chartWidth, double chartHeight) {
     if (chartWidth <= 0) return;
+    // Plain wheel must scroll the parent page; only zoom when the user
+    // explicitly opts in with Cmd (macOS) or Ctrl (Win/Linux) — same
+    // convention as Google Maps / Mapbox / Excel.
+    final cmdOrCtrl = HardwareKeyboard.instance.isControlPressed
+        || HardwareKeyboard.instance.isMetaPressed;
+    if (!cmdOrCtrl) return;
     final shift = HardwareKeyboard.instance.isShiftPressed;
     final factor = exp(-sig.scrollDelta.dy * 0.0015);
 
@@ -232,9 +243,6 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
 
   void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth) {
     if (_scaleStartMinX == null || chartWidth <= 0) return;
-
-    final isPinch = d.pointerCount >= 2;
-    if (!isPinch && !_isZoomedX) return; // let parent vertical scroll keep this gesture
 
     final startRange = _scaleStartMaxX! - _scaleStartMinX!;
     var newRange = startRange / d.scale;
@@ -425,8 +433,12 @@ class UnifiedChart extends StatelessWidget {
   final double? zoomMinY;
   final double? zoomMaxY;
   final bool isPrivate;
+  /// True when the X axis is currently zoomed in. Disables fl_chart's built-in
+  /// tap/drag tooltip handling so our parent ScaleGestureRecognizer can claim
+  /// single-finger pan on touch devices.
+  final bool zoomedX;
 
-  const UnifiedChart({super.key, 
+  const UnifiedChart({super.key,
     required this.firstDate,
     required this.visible,
     required this.totalSpots,
@@ -439,6 +451,7 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMinY,
     this.zoomMaxY,
     this.isPrivate = false,
+    this.zoomedX = false,
   });
 
   @override
@@ -595,6 +608,7 @@ class UnifiedChart extends StatelessWidget {
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
           enabled: !isPrivate,
+          handleBuiltInTouches: !zoomedX,
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
