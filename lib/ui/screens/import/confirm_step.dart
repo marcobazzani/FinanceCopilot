@@ -67,6 +67,51 @@ extension _ConfirmStep on _ImportScreenState {
     return _fullIsinSummary ?? const {};
   }
 
+  /// Show a modal hosting the shared URL-paste recovery widget for [isin].
+  /// On a successful resolve we synthesise an [IsinExchangeOption] from the
+  /// returned [InvestingSearchResult] and inject it into the lookup map so
+  /// the row in the confirm screen now shows the resolved listing.
+  Future<void> _openUrlPasteDialog(String isin) async {
+    final s = ref.read(appStringsProvider);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(s.instrumentNotFoundHeadline),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: IsinUrlPasteRecovery(
+            userQuery: isin,
+            cacheKey: isin,
+            defaultExchange: _defaultExchange != null
+                ? (investingExchangeToCode[_defaultExchange!] ?? 'MIL')
+                : 'MIL',
+            onResolved: (result) {
+              final option = IsinExchangeOption(
+                cid: result.cid,
+                ticker: result.symbol,
+                name: result.description,
+                exchange: result.exchange,
+                url: result.url,
+                typeName: result.type.split(' - ').first,
+              );
+              _setState(() {
+                _isinLookupResults![isin] = IsinLookupResult(options: [option]);
+                _selectedExchanges[isin] = option;
+              });
+              Navigator.of(ctx).pop();
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(s.cancel),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildConfirm() {
     final s = ref.watch(appStringsProvider);
     final isAssetImport = _target == ImportTarget.assetEvent;
@@ -195,7 +240,22 @@ extension _ConfirmStep on _ImportScreenState {
                                     else if (options.length == 1)
                                       Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: TextStyle(fontSize: 12, color: excluded ? Colors.grey : null)))
                                     else
-                                      Expanded(child: Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey))),
+                                      Expanded(
+                                        child: Row(children: [
+                                          Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                          const SizedBox(width: 8),
+                                          TextButton.icon(
+                                            icon: const Icon(Icons.link, size: 14),
+                                            label: Text(s.pasteUrlShort, style: const TextStyle(fontSize: 11)),
+                                            style: TextButton.styleFrom(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              visualDensity: VisualDensity.compact,
+                                            ),
+                                            onPressed: excluded ? null : () => _openUrlPasteDialog(isin),
+                                          ),
+                                        ]),
+                                      ),
                                   ],
                                 ),
                               );
