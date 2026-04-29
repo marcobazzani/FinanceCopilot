@@ -16,6 +16,7 @@ import '../../utils/logger.dart';
 import 'asset_detail_charts_provider.dart';
 import 'asset_event_edit_screen.dart';
 import 'dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
+import '../widgets/isin_url_paste_recovery.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -935,8 +936,20 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                 )
               else if (_searchCtrl.text.trim().length >= 3)
                 Expanded(
-                  child: Center(
-                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
+                  child: SingleChildScrollView(
+                    child: IsinUrlPasteRecovery(
+                      userQuery: _searchCtrl.text.trim(),
+                      cacheKey: widget.asset.isin?.isNotEmpty == true
+                          ? widget.asset.isin!
+                          : (widget.asset.ticker?.isNotEmpty == true
+                              ? widget.asset.ticker!
+                              : _searchCtrl.text.trim().toUpperCase()),
+                      defaultExchange: widget.asset.exchange ?? 'MIL',
+                      onResolved: (result) {
+                        setState(() => _results = [..._results, result]);
+                        _selectResult(result);
+                      },
+                    ),
                   ),
                 )
               else
