@@ -463,6 +463,7 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                       baseCurrency: widget.currency,
                       locale: locale,
                       onZoom: _onZoom,
+                      zoomedY: _zoomMinY != null || _zoomMaxY != null,
                       child: UnifiedChart(
                         firstDate: widget.firstDate,
                         visible: widget.series,
@@ -476,6 +477,7 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                         zoomMinY: _zoomMinY,
                         zoomMaxY: _zoomMaxY,
                         isPrivate: isPrivate,
+                        zoomedX: _zoomMinX != null || _zoomMaxX != null,
                       ),
                     ),
                     if (hasZoom)
