@@ -2,33 +2,16 @@ part of 'providers.dart';
 
 // ── Service providers ──
 
-final intermediaryServiceProvider = Provider<IntermediaryService>((ref) {
-  return IntermediaryService(ref.watch(databaseProvider));
-});
+Provider<T> _dbService<T>(T Function(AppDatabase) ctor) =>
+    Provider<T>((ref) => ctor(ref.watch(databaseProvider)));
 
-final accountServiceProvider = Provider<AccountService>((ref) {
-  return AccountService(ref.watch(databaseProvider));
-});
-
-final assetServiceProvider = Provider<AssetService>((ref) {
-  return AssetService(ref.watch(databaseProvider));
-});
-
-final importServiceProvider = Provider<ImportService>((ref) {
-  return ImportService(ref.watch(databaseProvider));
-});
-
-final transactionServiceProvider = Provider<TransactionService>((ref) {
-  return TransactionService(ref.watch(databaseProvider));
-});
-
-final assetEventServiceProvider = Provider<AssetEventService>((ref) {
-  return AssetEventService(ref.watch(databaseProvider));
-});
-
-final importConfigServiceProvider = Provider<ImportConfigService>((ref) {
-  return ImportConfigService(ref.watch(databaseProvider));
-});
+final intermediaryServiceProvider = _dbService(IntermediaryService.new);
+final accountServiceProvider = _dbService(AccountService.new);
+final assetServiceProvider = _dbService(AssetService.new);
+final importServiceProvider = _dbService(ImportService.new);
+final transactionServiceProvider = _dbService(TransactionService.new);
+final assetEventServiceProvider = _dbService(AssetEventService.new);
+final importConfigServiceProvider = _dbService(ImportConfigService.new);
 
 final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
   final priceService = ref.watch(marketPriceServiceProvider);
@@ -60,18 +43,12 @@ final compositionServiceProvider = Provider<CompositionService>((ref) {
 
 // ── Buffer provider (shared with ExtraordinaryEvents for reimbursements) ──
 
-final bufferServiceProvider = Provider<BufferService>((ref) {
-  return BufferService(ref.watch(databaseProvider));
-});
+final bufferServiceProvider = _dbService(BufferService.new);
 
 // ── Extraordinary events (unified CAPEX + IncomeAdj replacement) ──
 
-final extraordinaryEventServiceProvider = Provider<ExtraordinaryEventService>((ref) {
-  return ExtraordinaryEventService(ref.watch(databaseProvider));
-});
+final extraordinaryEventServiceProvider = _dbService(ExtraordinaryEventService.new);
 
 // ── Income providers ──
 
-final incomeServiceProvider = Provider<IncomeService>((ref) {
-  return IncomeService(ref.watch(databaseProvider));
-});
+final incomeServiceProvider = _dbService(IncomeService.new);

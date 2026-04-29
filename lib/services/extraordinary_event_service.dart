@@ -44,19 +44,14 @@ class ExtraordinaryEventService {
 
   // ── Event CRUD ──
 
-  Stream<List<ExtraordinaryEvent>> watchAll() {
-    return (_db.select(_db.extraordinaryEvents)
-          ..where((e) => e.isActive.equals(true))
-          ..orderBy([(e) => OrderingTerm.desc(e.eventDate)]))
-        .watch();
-  }
+  SimpleSelectStatement<$ExtraordinaryEventsTable, ExtraordinaryEvent> _activeEvents() =>
+      _db.select(_db.extraordinaryEvents)
+        ..where((e) => e.isActive.equals(true))
+        ..orderBy([(e) => OrderingTerm.desc(e.eventDate)]);
 
-  Future<List<ExtraordinaryEvent>> getAll() {
-    return (_db.select(_db.extraordinaryEvents)
-          ..where((e) => e.isActive.equals(true))
-          ..orderBy([(e) => OrderingTerm.desc(e.eventDate)]))
-        .get();
-  }
+  Stream<List<ExtraordinaryEvent>> watchAll() => _activeEvents().watch();
+
+  Future<List<ExtraordinaryEvent>> getAll() => _activeEvents().get();
 
   Future<ExtraordinaryEvent> getById(int id) {
     return (_db.select(_db.extraordinaryEvents)
@@ -257,12 +252,6 @@ class ExtraordinaryEventService {
         description: Value(description),
       ),
     );
-  }
-
-  Future<void> updateManualEntry(int entryId, ExtraordinaryEventEntriesCompanion companion) async {
-    await (_db.update(_db.extraordinaryEventEntries)
-          ..where((e) => e.id.equals(entryId)))
-        .write(companion);
   }
 
   Future<void> deleteEntry(int entryId) async {

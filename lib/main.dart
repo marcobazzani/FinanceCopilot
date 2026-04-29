@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'utils/dialogs.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -898,9 +899,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (action == 'export') {
       final path = await DbTransferService.exportDb();
       if (path != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.settingsExportSuccess)),
-        );
+        showInfoSnack(context, s.settingsExportSuccess);
       }
     } else if (action == 'import') {
       await _importDb(context);
@@ -951,15 +950,11 @@ class _AppShellState extends ConsumerState<AppShell> {
     try {
       await sync.backupToDrive();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.importExportBackupSuccess)),
-      );
+      showInfoSnack(context, s.importExportBackupSuccess);
     } catch (e) {
       _log.warning('backupToDrive failed: $e');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${s.importExportBackupFailed}: $e')),
-      );
+      showInfoSnack(context, '${s.importExportBackupFailed}: $e');
     }
   }
 
@@ -971,9 +966,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final existing = await sync.getRemoteInfo();
     if (!context.mounted) return;
     if (existing == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.importExportRestoreEmpty)),
-      );
+      showInfoSnack(context, s.importExportRestoreEmpty);
       return;
     }
     final remoteInfo = _formatRemoteInfo(s, existing);
@@ -1000,21 +993,15 @@ class _AppShellState extends ConsumerState<AppShell> {
       final restored = await sync.restoreFromDrive();
       if (!context.mounted) return;
       if (restored == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.importExportRestoreEmpty)),
-        );
+        showInfoSnack(context, s.importExportRestoreEmpty);
         return;
       }
       ref.read(dbReloadTrigger.notifier).state++;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.importExportRestoreSuccess)),
-      );
+      showInfoSnack(context, s.importExportRestoreSuccess);
     } catch (e) {
       _log.warning('restoreFromDrive failed: $e');
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${s.importExportRestoreFailed}: $e')),
-      );
+      showInfoSnack(context, '${s.importExportRestoreFailed}: $e');
     }
   }
 
@@ -1022,11 +1009,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final s = ref.read(appStringsProvider);
     final db = ref.read(databaseProvider);
 
-    // Check if DB has user data
-    final assetCount = (await db.customSelect('SELECT COUNT(*) AS c FROM assets').getSingle()).read<int>('c');
-    final accountCount = (await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle()).read<int>('c');
-
-    if (assetCount + accountCount > 0) {
+    if (await _dbHasUserData(db)) {
       if (!context.mounted) return;
       final action = await showDialog<String>(
         context: context,
@@ -1061,9 +1044,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     ref.read(dbReloadTrigger.notifier).state++;
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.settingsImportSuccess)),
-      );
+      showInfoSnack(context, s.settingsImportSuccess);
     }
   }
 
@@ -1075,9 +1056,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (exported == null) {
       // User cancelled the export — abort wipe
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.settingsWipeCancelled)),
-        );
+        showInfoSnack(context, s.settingsWipeCancelled);
       }
       return;
     }

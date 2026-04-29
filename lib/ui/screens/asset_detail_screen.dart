@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import '../../utils/dialogs.dart';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
@@ -16,6 +17,7 @@ import '../../utils/logger.dart';
 import 'asset_detail_charts_provider.dart';
 import 'asset_event_edit_screen.dart';
 import 'dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
+import '../widgets/asset_search.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -257,57 +259,37 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
     final s = ref.read(appStringsProvider);
     final evCount = ref.read(assetEventsProvider(asset.id)).value?.length ?? 0;
     if (evCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.noEventsToWipe)),
-      );
+      showInfoSnack(context, s.noEventsToWipe);
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.wipeAllEventsTitle),
-        content: Text(
-          '${s.wipeEventsBody(evCount, asset.name)}${s.cannotBeUndone}',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.wipe),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.wipeAllEventsTitle,
+      content: '${s.wipeEventsBody(evCount, asset.name)}${s.cannotBeUndone}',
+      confirmLabel: s.wipe,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.orange,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       _log.warning('wiping events for asset ${asset.id}');
       final deleted = await ref.read(assetEventServiceProvider).deleteByAsset(asset.id);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.wipedEvents(deleted))),
-        );
+        showInfoSnack(context, s.wipedEvents(deleted));
       }
     }
   }
 
   Future<void> _confirmDeleteAsset(BuildContext context, WidgetRef ref) async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteAssetTitle),
-        content: Text(s.deleteAssetConfirm(asset.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.deleteAssetTitle,
+      content: s.deleteAssetConfirm(asset.name),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       _log.warning('deleting asset id=${asset.id}, name=${asset.name}');
       await ref.read(assetEventServiceProvider).deleteByAsset(asset.id);
       await ref.read(assetServiceProvider).delete(asset.id);
@@ -656,10 +638,6 @@ class _EditAssetDialog extends StatefulWidget {
 }
 
 class _EditAssetDialogState extends State<_EditAssetDialog> {
-  final _searchCtrl = TextEditingController();
-  Timer? _debounce;
-  List<InvestingSearchResult> _results = [];
-  bool _searching = false;
   bool _searchMode = false;
 
   // Edit fields (pre-populated from asset)
@@ -687,39 +665,11 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
-    _searchCtrl.dispose();
     _nameCtrl.dispose();
     _tickerCtrl.dispose();
     _isinCtrl.dispose();
     _terCtrl.dispose();
     super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    _debounce?.cancel();
-    if (query.trim().length < 3) {
-      setState(() {
-        _results = [];
-        _searching = false;
-      });
-      return;
-    }
-    setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final service = widget.ref.read(marketPriceServiceProvider) as InvestingComService;
-      try {
-        final results = await service.search(query.trim());
-        if (mounted && _searchCtrl.text.trim() == query.trim()) {
-          setState(() {
-            _results = results;
-            _searching = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) setState(() => _searching = false);
-      }
-    });
   }
 
   void _selectResult(InvestingSearchResult result) {
@@ -869,11 +819,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       actions: [
         if (widget.asset.valuationMethod != ValuationMethod.eventDriven)
           TextButton(
-            onPressed: () => setState(() {
-              _searchCtrl.clear();
-              _results = [];
-              _searchMode = true;
-            }),
+            onPressed: () => setState(() => _searchMode = true),
             child: Text(s.search),
           ),
         TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
@@ -891,63 +837,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       title: Text(s.searchAssetTitle),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
-        child: SizedBox(
-          height: 350,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  labelText: s.search,
-                  hintText: s.searchAssetsHint,
-                  prefixIcon: const Icon(Icons.search),
-                ),
-                autofocus: true,
-                onChanged: _onSearchChanged,
-              ),
-              const SizedBox(height: 12),
-              if (_searching)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (_results.isNotEmpty)
-                Expanded(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _results.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final r = _results[i];
-                      return ListTile(
-                        dense: true,
-                        title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
-                        subtitle: Text(
-                          '${r.symbol}  ·  ${r.type}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        onTap: () => _selectResult(r),
-                      );
-                    },
-                  ),
-                )
-              else if (_searchCtrl.text.trim().length >= 3)
-                Expanded(
-                  child: Center(
-                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-                  ),
-                )
-              else
-                Expanded(
-                  child: Center(
-                    child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                  ),
-                ),
-            ],
-          ),
-        ),
+        child: AssetSearchSection(widgetRef: widget.ref, onSelect: _selectResult),
       ),
       actions: [
         TextButton(
