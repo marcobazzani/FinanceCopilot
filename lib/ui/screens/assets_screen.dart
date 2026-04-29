@@ -16,6 +16,7 @@ import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
+import '../widgets/asset_search.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -631,10 +632,6 @@ class _CreateAssetDialog extends StatefulWidget {
 }
 
 class _CreateAssetDialogState extends State<_CreateAssetDialog> {
-  final _searchCtrl = TextEditingController();
-  Timer? _debounce;
-  List<InvestingSearchResult> _results = [];
-  bool _searching = false;
   bool _manual = false;
 
   // Step 2: selected result
@@ -649,36 +646,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
-    _searchCtrl.dispose();
     _manualNameCtrl.dispose();
     super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    _debounce?.cancel();
-    if (query.trim().length < 3) {
-      setState(() {
-        _results = [];
-        _searching = false;
-      });
-      return;
-    }
-    setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final service = widget.ref.read(marketPriceServiceProvider) as InvestingComService;
-      try {
-        final results = await service.search(query.trim());
-        if (mounted && _searchCtrl.text.trim() == query.trim()) {
-          setState(() {
-            _results = results;
-            _searching = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) setState(() => _searching = false);
-      }
-    });
   }
 
   void _selectResult(InvestingSearchResult result) {
@@ -719,63 +688,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       title: Text(s.newAssetTitle),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
-        child: SizedBox(
-          height: 350,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  labelText: s.search,
-                  hintText: s.searchAssetsHint,
-                  prefixIcon: const Icon(Icons.search),
-                ),
-                autofocus: true,
-                onChanged: _onSearchChanged,
-              ),
-              const SizedBox(height: 12),
-              if (_searching)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (_results.isNotEmpty)
-                Expanded(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _results.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final r = _results[i];
-                      return ListTile(
-                        dense: true,
-                        title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
-                        subtitle: Text(
-                          '${r.symbol}  ·  ${r.type}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        onTap: () => _selectResult(r),
-                      );
-                    },
-                  ),
-                )
-              else if (_searchCtrl.text.trim().length >= 3)
-                Expanded(
-                  child: Center(
-                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-                  ),
-                )
-              else
-                Expanded(
-                  child: Center(
-                    child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                  ),
-                ),
-            ],
-          ),
-        ),
+        child: AssetSearchSection(widgetRef: widget.ref, onSelect: _selectResult),
       ),
       actions: [
         TextButton(

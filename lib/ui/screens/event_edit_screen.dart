@@ -1,11 +1,11 @@
 import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
+import '../../utils/dialogs.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../database/database.dart';
 import '../../database/tables.dart';
-import '../../l10n/app_strings.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
@@ -178,34 +178,22 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
 
   Future<void> _delete() async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.delete),
-        content: Text(s.deleteAdjustmentConfirm(widget.event!.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.delete,
+      content: s.deleteAdjustmentConfirm(widget.event!.name),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await ref.read(extraordinaryEventServiceProvider).delete(widget.event!.id);
       if (mounted) Navigator.pop(context);
     }
   }
 
   Future<void> _pickDate(DateTime initial, void Function(DateTime) onPicked) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
+    final picked = await pickDate(context, initial, firstYear: 2000);
     if (picked != null) setState(() => onPicked(picked));
   }
 
@@ -344,7 +332,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                       initialValue: _stepFrequency,
                       decoration: InputDecoration(labelText: s.stepFrequencyLabel),
                       items: StepFrequency.values
-                          .map((f) => DropdownMenuItem(value: f, child: Text(_freqLabel(s, f))))
+                          .map((f) => DropdownMenuItem(value: f, child: Text(s.freqLabel(f))))
                           .toList(),
                       onChanged: (v) => setState(() => _stepFrequency = v ?? StepFrequency.monthly),
                     ),
@@ -439,12 +427,6 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     );
   }
 
-  String _freqLabel(AppStrings s, StepFrequency f) => switch (f) {
-        StepFrequency.weekly => s.freqWeekly,
-        StepFrequency.monthly => s.freqMonthly,
-        StepFrequency.quarterly => s.freqQuarterly,
-        StepFrequency.yearly => s.freqYearly,
-      };
 }
 
 class _SectionCard extends StatelessWidget {

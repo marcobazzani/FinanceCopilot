@@ -9,6 +9,7 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/exchange_rate_service.dart';
 import '../../services/providers/providers.dart';
+import '../../utils/dialogs.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
@@ -403,12 +404,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(1990),
-      lastDate: DateTime(2100),
-    );
+    final picked = await pickDate(context, _selectedDate);
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
@@ -480,22 +476,15 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
 
   Future<void> _confirmDelete() async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteEventTitle),
-        content: Text(s.cannotBeUndone),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.deleteEventTitle,
+      content: s.cannotBeUndone,
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       _log.warning('deleting event id=${widget.event!.id}');
       await ref.read(assetEventServiceProvider).delete(widget.event!.id);
       if (mounted) Navigator.pop(context);

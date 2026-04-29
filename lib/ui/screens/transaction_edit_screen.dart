@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart' as drift;
 import 'dart:io';
+import '../../utils/dialogs.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -220,12 +221,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(1990),
-      lastDate: DateTime(2100),
-    );
+    final picked = await pickDate(context, _selectedDate);
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
@@ -275,22 +271,15 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
 
   Future<void> _confirmDelete() async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteTransactionTitle),
-        content: Text(s.cannotBeUndone),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.deleteTransactionTitle,
+      content: s.cannotBeUndone,
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       _log.warning('deleting transaction id=${widget.transaction!.id}');
       await ref.read(transactionServiceProvider).delete(widget.transaction!.id);
       if (mounted) Navigator.pop(context);
