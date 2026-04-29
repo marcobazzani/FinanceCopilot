@@ -25,6 +25,7 @@ const supportedExchanges = <String, String>{
 /// Derived from `_exchangeNames` in investing_com_service.dart.
 const investingExchangeToCode = <String, String>{
   'Milano': 'MIL',
+  'Milan': 'MIL',
   'NASDAQ': 'NMS',
   'NYSE': 'NYQ',
   'AMEX': 'ASE',

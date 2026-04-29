@@ -431,6 +431,41 @@ class AppStrings {
   String get noResultsFound      => _it ? 'Nessun risultato trovato'          : 'No results found';
   String get typeAtLeast3Chars   => _it ? 'Inserisci almeno 3 caratteri'      : 'Type at least 3 characters';
   String get enterManually       => _it ? 'Inserisci manualmente'             : 'Enter manually';
+
+  // ── Instrument-not-found recovery (URL paste) ─────────────────────────
+  // The literal "<query> investing.com" appears in instrumentNotFoundExplanation
+  // because that is the literal search query the user must type into a search
+  // engine — not a brand mention. The surrounding text refers to the source
+  // generically as "il fornitore di dati di mercato" / "the market data
+  // provider".
+  String get instrumentNotFoundHeadline => _it
+      ? 'Strumento non trovato'
+      : 'Instrument not found';
+  String instrumentNotFoundExplanation(String query) {
+    final q = query.trim().isEmpty ? (_it ? 'lo strumento' : 'the instrument') : query.trim();
+    return _it
+        ? 'Cerca su Google, Bing o un altro motore di ricerca il termine "$q investing.com", apri il primo risultato sul sito del fornitore di dati di mercato e copia l\'indirizzo della pagina. Incollalo qui sotto.'
+        : 'Search Google, Bing or another search engine for "$q investing.com", open the first result on the market data provider\'s site and copy the page address. Paste it below.';
+  }
+  String get pasteInstrumentUrlLabel => _it ? 'Indirizzo della pagina' : 'Page address';
+  String get pasteUrlShort           => _it ? 'Incolla URL'             : 'Paste URL';
+  String get verifyButton            => _it ? 'Verifica'                : 'Verify';
+  String get urlInvalidFormat        => _it
+      ? 'Indirizzo non valido. Deve iniziare con http:// o https://.'
+      : 'Invalid address. It must start with http:// or https://.';
+  String get urlWrongHost            => _it
+      ? 'L\'indirizzo non proviene dal fornitore di dati di mercato supportato.'
+      : 'The address is not from the supported market data provider.';
+  String get urlUnsupportedCategory  => _it
+      ? 'Categoria di strumento non supportata. Prova con un\'azione, ETF, fondo o obbligazione.'
+      : 'Unsupported instrument category. Try a stock, ETF, fund or bond.';
+  String get urlFetchFailed          => _it
+      ? 'Impossibile raggiungere la pagina. Verifica la connessione e riprova.'
+      : 'Could not reach the page. Check your connection and try again.';
+  String get urlParseFailed          => _it
+      ? 'Pagina trovata ma impossibile leggere i dati dello strumento. Controlla che l\'indirizzo punti alla scheda dello strumento.'
+      : 'Page found but instrument data could not be read. Make sure the address points to the instrument page.';
+
   String get createAssetTitle    => _it ? 'Crea attività'                     : 'Create Asset';
   String symbolLabel(String s)   => 'Symbol: $s';
   String typeLabel(String t)     => _it ? 'Tipo: $t'                          : 'Type: $t';
