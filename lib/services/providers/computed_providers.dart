@@ -16,6 +16,8 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
     if (account.currency == baseCurrency) {
       result[account.id] = stat.balance;
     } else {
+      // Null when no rate is available — surface as null in the map rather
+      // than fabricate a wrong value.
       result[account.id] = await rateService.convertLive(
         stat.balance!, account.currency, baseCurrency,
       );
@@ -36,9 +38,12 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
 
   final result = <int, double?>{};
 
-  // Same-currency assets: use pre-aggregated stats directly
+  // Same-currency assets: use pre-aggregated stats directly.
+  // Inactive assets are excluded — same convention as
+  // assetDailyChangesProvider and the dashboard chart provider.
   final foreignAssetIds = <int>[];
   for (final asset in assets) {
+    if (!asset.isActive) continue;
     final stat = stats[asset.id];
     if (stat == null || stat.totalInvested == 0) continue;
     if (asset.currency == baseCurrency) {
@@ -55,6 +60,7 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
       final events = allEvents[asset.id];
       if (events == null || events.isEmpty) continue;
       var total = 0.0;
+      var unresolved = false;
       for (final ev in events) {
         if (ev.currency == baseCurrency) {
           total += ev.amount;
@@ -67,11 +73,18 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
             await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
                 .write(AssetEventsCompanion(exchangeRate: Value(rate)));
           } else {
-            total += await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+            // Live fallback. If even that has no rate, the asset's total
+            // would be partial — don't expose a wrong number, mark as null.
+            final live = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+            if (live == null) {
+              unresolved = true;
+              break;
+            }
+            total += live;
           }
         }
       }
-      result[asset.id] = total;
+      result[asset.id] = unresolved ? null : total;
     }
   }
   return result;
@@ -90,6 +103,9 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   final now = DateTime.now();
   _log.info('assetMarketValues: ${assets.length} assets, ${stats.length} stats, base=$baseCurrency');
   for (final asset in assets) {
+    // Inactive assets are excluded — same convention as
+    // assetDailyChangesProvider and the dashboard chart provider.
+    if (!asset.isActive) continue;
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
     // Use stored DB price (background sync keeps it fresh)
@@ -98,18 +114,24 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
       _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
       continue;
     }
-    double fxRate = 1.0;
-    if (asset.currency != baseCurrency) {
-      final rate = await rateService.getLiveRate(asset.currency, baseCurrency);
-      if (rate != null) {
-        fxRate = rate;
-      } else {
-        _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+    final double? fxRate;
+    if (asset.currency == baseCurrency) {
+      fxRate = 1.0;
+    } else {
+      fxRate = await rateService.getLiveRate(asset.currency, baseCurrency);
+      if (fxRate == null) {
+        _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, skipping');
+        continue;
       }
     }
     final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
-    final value = stat.totalQuantity * price / bondDiv * fxRate;
-    result[asset.id] = value;
+    final value = computeAssetBaseValue(
+      quantity: stat.totalQuantity,
+      price: price,
+      bondDivisor: bondDiv,
+      fxRate: fxRate,
+    );
+    if (value != null) result[asset.id] = value;
   }
   _log.info('assetMarketValues: ${result.length} assets with values');
   return result;
@@ -184,11 +206,14 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double prevFx = 1.0;
     if (asset.currency != baseCurrency) {
       final liveFx = await rateService.getLiveRate(asset.currency, baseCurrency);
-      if (liveFx != null) {
-        todayFx = liveFx;
-      } else {
-        _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, using 1.0 (INACCURATE)');
+      if (liveFx == null) {
+        // No live FX -> we cannot value this asset in base currency. Drop it
+        // from the change list rather than silently report a 1:1 conversion,
+        // which would inflate the visible price-change for foreign assets.
+        _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, skipping');
+        continue;
       }
+      todayFx = liveFx;
       prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
     }
 
@@ -266,7 +291,10 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
         await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
             .write(AssetEventsCompanion(exchangeRate: Value(rate)));
       } else {
-        result[ev.id] = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+        // Live fallback. Skip the event if no rate is available — the UI
+        // gates on containsKey, so the converted line is simply hidden.
+        final live = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+        if (live != null) result[ev.id] = live;
       }
     }
   }

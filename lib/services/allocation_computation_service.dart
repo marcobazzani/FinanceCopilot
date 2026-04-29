@@ -3,6 +3,12 @@ import 'dart:math';
 import '../database/database.dart';
 
 /// Groups assets by a field, sums market values, returns sorted descending map.
+///
+/// Skips non-positive values (negative liabilities and zeros). Allocation
+/// pie charts can't render negative slices meaningfully and the drill-down
+/// helpers (`drillDownByField`, `weightedBreakdown`, `drillDownData`) all
+/// already exclude them — keeping this consistent so a slice's value
+/// matches what the drill-down shows.
 Map<String, double> groupByField(
   List<Asset> assets,
   Map<int, double> values,
@@ -11,7 +17,7 @@ Map<String, double> groupByField(
   final map = <String, double>{};
   for (final asset in assets) {
     final val = values[asset.id];
-    if (val == null || val == 0) continue;
+    if (val == null || val <= 0) continue;
     final key = keyFn(asset);
     map[key] = (map[key] ?? 0) + val;
   }

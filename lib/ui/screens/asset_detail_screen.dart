@@ -180,7 +180,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                           ],
                         ],
                       ),
-                      subtitle: Text(dateFmt.format(ev.date), style: const TextStyle(fontSize: 12)),
+                      subtitle: Text(dateFmt.format(ev.valueDate), style: const TextStyle(fontSize: 12)),
                       trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
@@ -458,6 +458,7 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                       xMax: _zoomMaxX ?? lastX,
                       yMin: effectiveMinY,
                       yMax: effectiveMaxY,
+                      totalDays: lastX,
                       firstDate: widget.firstDate,
                       baseCurrency: widget.currency,
                       locale: locale,

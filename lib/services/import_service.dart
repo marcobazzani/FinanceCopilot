@@ -216,11 +216,42 @@ class ImportService {
   }
 
   /// Evaluate a formula: sum of terms (each term is +/- a column's numeric value).
+  ///
+  /// Empty cells contribute 0 (a missing optional column is fine). A non-empty
+  /// cell that fails to parse signals bad data — return an empty string so the
+  /// Build per-row amounts from running balances: each amount is the
+  /// difference between this row's balance and the most recent prior valid
+  /// balance. The first row has no prior balance and contributes 0; rows
+  /// with missing/garbage cells also contribute 0 but do NOT clear the
+  /// last-known balance, so a single bad cell doesn't cause the next row
+  /// to look like a huge transaction.
+  List<double> _computeBalanceDiffs(
+      List<Map<String, String>> rows, String balCol) {
+    final out = <double>[];
+    double? prevBalance;
+    for (final row in rows) {
+      final balance = _tryParseAmount(row[balCol] ?? '');
+      if (balance != null && prevBalance != null) {
+        out.add(balance - prevBalance);
+      } else {
+        out.add(0);
+      }
+      if (balance != null) prevBalance = balance;
+    }
+    return out;
+  }
+
+  /// row's amount surfaces as missing rather than producing a half-correct sum.
   String _evaluateFormula(List<FormulaTerm> terms, Map<String, String> row) {
     double result = 0;
     for (final term in terms) {
-      final raw = row[term.sourceColumn] ?? '';
-      final value = _tryParseAmount(raw) ?? 0;
+      final raw = (row[term.sourceColumn] ?? '').trim();
+      if (raw.isEmpty) continue;
+      final value = _tryParseAmount(raw);
+      if (value == null) {
+        _log.warning('formula: unparseable value "$raw" in column ${term.sourceColumn} - row dropped');
+        return '';
+      }
       if (term.operator == '-') {
         result -= value;
       } else {
@@ -333,23 +364,12 @@ class ImportService {
       );
     }
 
-    // Pre-compute balance-diff amounts if needed
+    // Pre-compute balance-diff amounts if needed.
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
       _log.info('importTransactions: balance-diff mode, column=${amountMapping.balanceDiffColumn}');
-      final balCol = amountMapping.balanceDiffColumn!;
-      balanceDiffAmounts = [];
-      double? prevBalance;
-      for (final row in preview.rows) {
-        final raw = row[balCol] ?? '';
-        final balance = _tryParseAmount(raw);
-        if (balance != null && prevBalance != null) {
-          balanceDiffAmounts.add(balance - prevBalance);
-        } else {
-          balanceDiffAmounts.add(balance ?? 0);
-        }
-        prevBalance = balance;
-      }
+      balanceDiffAmounts = _computeBalanceDiffs(
+          preview.rows, amountMapping.balanceDiffColumn!);
     }
 
     // Fetch account's currency for fallback
@@ -729,11 +749,20 @@ class ImportService {
           eventType = isNeg ? EventType.sell : EventType.buy;
         }
 
-        // Fee: from column or computed as |amount| - qty * price / rate
+        // Fee: from column or computed as |amount| - qty * price / rate.
+        // When an exchange-rate column is mapped but its cell is empty / 0 /
+        // unparseable, we cannot derive a commission — leave it null rather
+        // than fabricate one from a 1.0 fallback (which silently treats two
+        // currencies as equivalent and has produced wrong commissions).
         double? commission;
         if (computeFee && qty != null && price != null) {
-          final effectiveRate = (rate != null && rate != 0) ? rate : 1.0;
-          commission = (amount.abs() - qty.abs() * price / effectiveRate).abs();
+          if (exchangeRateMapping == null) {
+            // No rate column mapped → assume same currency, no division.
+            commission = (amount.abs() - qty.abs() * price).abs();
+          } else if (rate != null && rate > 0) {
+            commission = (amount.abs() - qty.abs() * price / rate).abs();
+          }
+          // else: rate column was mapped but value is missing/zero → null.
         } else if (commMapping != null) {
           commission = _tryParseAmount(_resolveMapping(commMapping, row));
         }
@@ -762,6 +791,21 @@ class ImportService {
     }
 
     onProgress?.call(preview.rows.length, preview.rows.length);
+
+    // Every row failed to parse — return an explicit error result instead of
+    // continuing into the wipe step (which would `reduce` an empty list).
+    if (companions.isEmpty) {
+      _log.warning('importAssetEventsGrouped: no rows parsed (errors=$errorCount)');
+      return AssetImportResult(
+        result: ImportResult(
+          totalRows: preview.totalRows,
+          importedRows: 0,
+          errorRows: errorCount,
+          errors: errors,
+        ),
+        assetsByIsin: const {},
+      );
+    }
 
     // Wipe-and-replace: for spot imports (no date column) delete ALL existing
     // events for the scope; for transaction imports keep the date-based cutoff.
@@ -978,19 +1022,8 @@ class ImportService {
     // Pre-compute balance-diff amounts if needed
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
-      final balCol = amountMapping.balanceDiffColumn!;
-      balanceDiffAmounts = [];
-      double? prevBalance;
-      for (final row in preview.rows) {
-        final raw = row[balCol] ?? '';
-        final balance = _tryParseAmount(raw);
-        if (balance != null && prevBalance != null) {
-          balanceDiffAmounts.add(balance - prevBalance);
-        } else {
-          balanceDiffAmounts.add(balance ?? 0);
-        }
-        prevBalance = balance;
-      }
+      balanceDiffAmounts = _computeBalanceDiffs(
+          preview.rows, amountMapping.balanceDiffColumn!);
     }
 
     final valueDateMapping = mappingByField['valueDate'];
@@ -1329,7 +1362,11 @@ class ImportService {
     const buyAliases = {'BUY', 'ACQUISTO', 'COMPRA', 'B', 'A', 'KAUF', 'ACHAT'};
     if (sellAliases.contains(normalized)) return EventType.sell;
     if (buyAliases.contains(normalized)) return EventType.buy;
-    return EventType.buy;
+    // Unknown type — fail loudly so the user knows to either add a custom
+    // buyValues/sellValues mapping or omit the type column. The previous
+    // silent fallback to BUY turned dividends/taxes/transfers into phantom
+    // buys and inflated the asset's cost basis.
+    throw FormatException('Unknown event type "$s" (normalized: "$normalized")');
   }
 
   /// Pre-cutoff balance for the account at [cutoffEpoch].
@@ -1383,11 +1420,16 @@ class ImportService {
       return;
     }
 
-    // Sort chronologically (date ASC, csvIndex ASC) so cumulative balance
-    // accumulates from oldest to newest, regardless of CSV row order.
+    // Sort chronologically by valueDate (the canonical "money moved" date,
+    // per CLAUDE.md), with csvIndex as a stable tiebreaker. Sorting by
+    // operationDate here would disagree with the later recalc path which
+    // uses valueDate, producing different balanceAfter values for the same
+    // set of transactions.
     final indexed = List.generate(rows.length, (i) => i);
     indexed.sort((a, b) {
-      final cmp = rows[a].date.compareTo(rows[b].date);
+      final aDate = rows[a].valueDate ?? rows[a].date;
+      final bDate = rows[b].valueDate ?? rows[b].date;
+      final cmp = aDate.compareTo(bDate);
       if (cmp != 0) return cmp;
       return rows[a].csvIndex.compareTo(rows[b].csvIndex);
     });

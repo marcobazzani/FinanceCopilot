@@ -83,4 +83,66 @@ void main() {
       expect(result, isEmpty);
     });
   });
+
+  group('getFirstBuyDate — valueDate convention', () {
+    test('returns the earliest valueDate, not operationDate', () async {
+      // A buy with a much-later operationDate but earlier valueDate must
+      // win. Pre-fix code used MIN(date) which returned 2024-06-01.
+      final assetId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'Buy VD',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: iid,
+      ));
+      // Late operationDate, early valueDate
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 1, 15),
+        type: EventType.buy,
+        amount: 100,
+      ));
+      // Earlier operationDate, later valueDate (red herring for the
+      // pre-fix code: MIN(date) here returns 2024-03-01)
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 3, 1),
+        valueDate: DateTime(2024, 4, 1),
+        type: EventType.buy,
+        amount: 50,
+      ));
+
+      final firstBuy = await service.getFirstBuyDate(assetId);
+      expect(firstBuy, DateTime(2024, 1, 15),
+          reason: 'must be the earliest valueDate (Jan 15), not the earliest operationDate (Mar 1)');
+    });
+
+    test('ignores non-buy events even if their valueDate is earlier', () async {
+      final assetId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'NonBuy ignored',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: iid,
+      ));
+      // A revalue with earlier valueDate must NOT count
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
+        type: EventType.revalue,
+        amount: 1000,
+      ));
+      // A buy is the only thing that should count
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 5, 1),
+        valueDate: DateTime(2024, 5, 1),
+        type: EventType.buy,
+        amount: 100,
+      ));
+
+      final firstBuy = await service.getFirstBuyDate(assetId);
+      expect(firstBuy, DateTime(2024, 5, 1));
+    });
+  });
 }

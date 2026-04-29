@@ -263,64 +263,65 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                   );
                 }
 
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final tableContent = Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
-                              headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
-                              headerCell('%', _SortCol.pct),
-                              headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
-                            ],
-                          ),
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
+                          headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
+                          headerCell('%', _SortCol.pct),
+                          headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
+                        ],
+                      ),
+                    ),
+                    ...sorted.map((c) {
+                      final hasFx = c.currency != c.baseCurrency;
+                      final prevValueBase = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
+                      final basePct = prevValueBase != 0 ? (c.valueDiff / prevValueBase) * 100 : 0.0;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Column(
+                          children: [
+                            _buildRow(
+                              theme: theme,
+                              name: c.ticker ?? c.name,
+                              marketValue: c.todayPrice * c.todayFxRate,
+                              pricePct: basePct,
+                              valueDiff: c.valueDiff,
+                              amtFmt: amtFmt,
+                              url: c.investingUrl,
+                              isPrivate: isPrivate,
+                              marketOpen: c.marketOpen,
+                              s: s,
+                            ),
+                            if (hasFx)
+                              _buildSubRow(
+                                theme: theme,
+                                assetPrice: c.todayPrice,
+                                assetPricePct: c.pricePct,
+                                assetValueDiff: c.priceDiff * c.quantity / c.priceDivisor,
+                                assetCurrency: c.currency,
+                                amtFmt: amtFmt,
+                                isPrivate: isPrivate,
+                              ),
+                          ],
                         ),
-                        ...sorted.map((c) {
-                          final hasFx = c.currency != c.baseCurrency;
-                          final prevValueBase = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
-                          final basePct = prevValueBase != 0 ? (c.valueDiff / prevValueBase) * 100 : 0.0;
-                          return _buildRow(
-                            theme: theme,
-                            name: c.ticker ?? c.name,
-                            marketValue: c.todayPrice * c.todayFxRate,
-                            pricePct: basePct,
-                            valueDiff: c.valueDiff,
-                            amtFmt: amtFmt,
-                            url: c.investingUrl,
-                            isPrivate: isPrivate,
-                            assetPrice: hasFx ? c.todayPrice : null,
-                            assetCurrency: hasFx ? c.currency : null,
-                            marketOpen: c.marketOpen,
-                            s: s,
-                            assetPricePct: hasFx ? c.pricePct : null,
-                            assetValueDiff: hasFx ? c.priceDiff * c.quantity / c.priceDivisor : null,
-                          );
-                        }),
-                        const Divider(height: 16),
-                        _buildRow(
-                          theme: theme,
-                          name: s.legendTotal,
-                          marketValue: null,
-                          pricePct: totalPct,
-                          valueDiff: totalDiff,
-                          amtFmt: amtFmt,
-                          bold: true,
-                          isPrivate: isPrivate,
-                        ),
-                      ],
-                    );
-                    // On narrow screens, allow horizontal scrolling for the data table
-                    if (constraints.maxWidth < 500) {
-                      return SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SizedBox(width: 500, child: tableContent),
                       );
-                    }
-                    return tableContent;
-                  },
+                    }),
+                    const Divider(height: 16),
+                    _buildRow(
+                      theme: theme,
+                      name: s.legendTotal,
+                      marketValue: null,
+                      pricePct: totalPct,
+                      valueDiff: totalDiff,
+                      amtFmt: amtFmt,
+                      bold: true,
+                      isPrivate: isPrivate,
+                    ),
+                  ],
                 );
               },
             ),
@@ -345,10 +346,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required bool isPrivate,
     bool? marketOpen,
     AppStrings? s,
-    double? assetPrice,
-    String? assetCurrency,
-    double? assetPricePct,
-    double? assetValueDiff,
   }) {
     final isPositive = valueDiff >= 0;
     final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
@@ -359,100 +356,128 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
         : child;
 
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (marketOpen != null)
+                Tooltip(
+                  message: marketOpen ? (s?.marketOpen ?? '') : (s?.marketClosed ?? ''),
+                  child: Container(
+                    width: 7, height: 7,
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: marketOpen ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                ),
+              Flexible(
+                child: url != null
+                    ? MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => launchUrl(Uri.parse(url)),
+                          child: Text(
+                            name,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: weight,
+                              color: theme.colorScheme.primary,
+                              decoration: TextDecoration.underline,
+                              decorationColor: theme.colorScheme.primary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                    : Text(
+                        name,
+                        style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          flex: 2,
+          child: marketValue != null
+              ? Text(
+                  amtFmt.format(marketValue),
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
+                  textAlign: TextAlign.right,
+                )
+              : Text('', style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11), textAlign: TextAlign.right),
+        ),
+        Expanded(
+          flex: 2,
+          child: Text(
+            '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%',
+            style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight, fontSize: 11),
+            textAlign: TextAlign.right,
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: maybeBlur(Text(
+            '$arrow${amtFmt.format(valueDiff.abs())}',
+            style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
+            textAlign: TextAlign.right,
+          )),
+        ),
+      ],
+    );
+  }
+
+  /// Indented, smaller-font continuation of the row above showing the
+  /// asset's native-currency price/pct/diff. Rendered only when the
+  /// asset's currency differs from base.
+  Widget _buildSubRow({
+    required ThemeData theme,
+    required double assetPrice,
+    required double assetPricePct,
+    required double assetValueDiff,
+    required String assetCurrency,
+    required NumberFormat amtFmt,
+    required bool isPrivate,
+  }) {
+    final pctColor = _bracketColor(assetPricePct);
+    final diffColor = _bracketColor(assetValueDiff);
+    final priceStr = amtFmt.format(assetPrice);
+    final pctStr = '${assetPricePct >= 0 ? '+' : ''}${assetPricePct.toStringAsFixed(2)}%';
+    final diffStr = '${assetValueDiff >= 0 ? '+' : ''}${amtFmt.format(assetValueDiff)}';
+
+    Widget maybeBlur(Widget child) => isPrivate
+        ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
+        : child;
+
+    final subStyle = TextStyle(fontSize: 9, color: Colors.grey.shade500);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.only(top: 1),
       child: Row(
         children: [
           Expanded(
             flex: 3,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (marketOpen != null)
-                  Tooltip(
-                    message: marketOpen ? (s?.marketOpen ?? '') : (s?.marketClosed ?? ''),
-                    child: Container(
-                      width: 7, height: 7,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: marketOpen ? Colors.green : Colors.grey,
-                      ),
-                    ),
-                  ),
-                Flexible(
-                  child: url != null
-                      ? MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => launchUrl(Uri.parse(url)),
-                            child: Text(
-                              name,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: weight,
-                                color: theme.colorScheme.primary,
-                                decoration: TextDecoration.underline,
-                                decorationColor: theme.colorScheme.primary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                      : Text(
-                          name,
-                          style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Text('\u21B3 $assetCurrency', style: subStyle),
             ),
           ),
           Expanded(
             flex: 2,
-            child: marketValue != null
-                ? Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: amtFmt.format(marketValue)),
-                      if (assetPrice != null && assetCurrency != null)
-                        TextSpan(
-                          text: ' (${amtFmt.format(assetPrice)} $assetCurrency)',
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 9),
-                        ),
-                    ]),
-                    style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
-                    textAlign: TextAlign.right,
-                  )
-                : Text('', style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11), textAlign: TextAlign.right),
+            child: Text(priceStr, style: subStyle, textAlign: TextAlign.right),
           ),
           Expanded(
             flex: 2,
-            child: Text.rich(
-              TextSpan(children: [
-                TextSpan(text: '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%'),
-                if (assetPricePct != null && assetPricePct != pricePct)
-                  TextSpan(
-                    text: ' (${assetPricePct >= 0 ? '+' : ''}${assetPricePct.toStringAsFixed(2)}%)',
-                    style: TextStyle(color: _bracketColor(assetPricePct), fontSize: 9),
-                  ),
-              ]),
-              style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight, fontSize: 11),
-              textAlign: TextAlign.right,
-            ),
+            child: Text(pctStr, style: subStyle.copyWith(color: pctColor), textAlign: TextAlign.right),
           ),
           Expanded(
             flex: 3,
-            child: maybeBlur(Text.rich(
-              TextSpan(children: [
-                TextSpan(text: '$arrow${amtFmt.format(valueDiff.abs())}'),
-                if (assetValueDiff != null && assetValueDiff != 0)
-                  TextSpan(
-                    text: ' (${assetValueDiff >= 0 ? '+' : ''}${amtFmt.format(assetValueDiff)})',
-                    style: TextStyle(color: _bracketColor(assetValueDiff), fontSize: 9),
-                  ),
-              ]),
-              style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
-              textAlign: TextAlign.right,
-            )),
+            child: maybeBlur(Text(diffStr, style: subStyle.copyWith(color: diffColor), textAlign: TextAlign.right)),
           ),
         ],
       ),

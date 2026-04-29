@@ -1,0 +1,41 @@
+Tipo,Prodotto,Data di inizio,Data di completamento,Descrizione,Importo,Costo,Valuta,State,Saldo
+Ricarica,Attuale,2020-01-05 12:00:00,2020-01-05 12:00:00,"Ricarica conto",200.00,0.00,EUR,COMPLETATO,200.00
+Pagamento con carta,Attuale,2020-02-14 12:00:00,2020-02-14 12:00:00,"Restaurant Roma",-45.50,0.00,EUR,COMPLETATO,154.50
+Pagamento con carta,Attuale,2020-04-03 12:00:00,2020-04-03 12:00:00,"Online shopping",-89.99,0.00,EUR,COMPLETATO,64.51
+Cambia valuta,Attuale,2020-06-10 12:00:00,2020-06-10 12:00:00,"EUR -> USD conversion",-50.00,0.50,EUR,COMPLETATO,14.01
+Ricarica,Attuale,2020-09-02 12:00:00,2020-09-02 12:00:00,"Top up monthly",300.00,0.00,EUR,COMPLETATO,314.01
+Pagamento,Attuale,2020-11-25 12:00:00,2020-11-25 12:00:00,"Friend transfer",-20.00,0.00,EUR,COMPLETATO,294.01
+Ricarica,Attuale,2021-01-08 12:00:00,2021-01-08 12:00:00,"Top up",250.00,0.00,EUR,COMPLETATO,544.01
+Pagamento con carta,Attuale,2021-03-17 12:00:00,2021-03-17 12:00:00,"Hotel booking",-180.00,0.00,EUR,COMPLETATO,364.01
+Rimborso,Attuale,2021-04-01 12:00:00,2021-04-01 12:00:00,"Refund hotel",30.00,0.00,EUR,COMPLETATO,394.01
+Commissione,Attuale,2021-05-15 12:00:00,2021-05-15 12:00:00,"Currency fee",-2.50,0.00,EUR,COMPLETATO,391.51
+Pagamento con carta,Attuale,2021-07-22 12:00:00,2021-07-22 12:00:00,"Groceries",-75.30,0.00,EUR,COMPLETATO,316.21
+Ricompensa,Attuale,2021-12-28 12:00:00,2021-12-28 12:00:00,"Cashback bonus",5.00,0.00,EUR,COMPLETATO,321.21
+Ricarica,Attuale,2022-01-06 12:00:00,2022-01-06 12:00:00,"Salary top-up",500.00,0.00,EUR,COMPLETATO,821.21
+Pagamento con carta,Attuale,2022-02-11 12:00:00,2022-02-11 12:00:00,"Subscription Netflix",-12.99,0.00,EUR,COMPLETATO,808.22
+Pagamento con carta,Attuale,2022-04-19 12:00:00,2022-04-19 12:00:00,"Flight booking",-245.00,0.00,EUR,COMPLETATO,563.22
+Rimborso su carta,Attuale,2022-05-30 12:00:00,2022-05-30 12:00:00,"Cancelled flight refund",245.00,0.00,EUR,COMPLETATO,808.22
+Pagamento con carta,Attuale,2022-08-08 12:00:00,2022-08-08 12:00:00,"Restaurant",-55.00,0.00,EUR,COMPLETATO,753.22
+Prelievo,Attuale,2022-11-14 12:00:00,2022-11-14 12:00:00,"ATM withdrawal",-100.00,1.50,EUR,COMPLETATO,651.72
+Ricarica,Attuale,2023-02-03 12:00:00,2023-02-03 12:00:00,"Top up",400.00,0.00,EUR,COMPLETATO,1051.72
+Pagamento con carta,Attuale,2023-03-22 12:00:00,2023-03-22 12:00:00,"Online shopping",-134.20,0.00,EUR,COMPLETATO,917.52
+Cambia valuta,Attuale,2023-05-18 12:00:00,2023-05-18 12:00:00,"EUR -> GBP",-100.00,0.99,EUR,COMPLETATO,816.53
+Pagamento,Attuale,2023-07-05 12:00:00,2023-07-05 12:00:00,"Friend lunch",-25.50,0.00,EUR,COMPLETATO,791.03
+Chargeback su carta,Attuale,2023-08-12 12:00:00,2023-08-12 12:00:00,"Disputed charge reversed",89.99,0.00,EUR,COMPLETATO,881.02
+Pagamento con carta,Attuale,2023-10-20 12:00:00,2023-10-20 12:00:00,"Hotel Milano",-210.00,0.00,EUR,COMPLETATO,671.02
+Ricarica,Attuale,2024-01-11 12:00:00,2024-01-11 12:00:00,"Top up new year",600.00,0.00,EUR,COMPLETATO,1271.02
+Pagamento con carta,Attuale,2024-02-28 12:00:00,2024-02-28 12:00:00,"Online shopping",-78.50,0.00,EUR,COMPLETATO,1192.52
+Pagamento con carta,Attuale,2024-05-04 12:00:00,2024-05-04 12:00:00,"Restaurant",-42.00,0.00,EUR,COMPLETATO,1150.52
+Commissione,Attuale,2024-05-04 12:00:00,2024-05-04 12:00:00,"FX fee",-0.50,0.00,EUR,COMPLETATO,1150.02
+Rimborso,Attuale,2024-06-17 12:00:00,2024-06-17 12:00:00,"Friend repaid lunch",25.50,0.00,EUR,COMPLETATO,1175.52
+Pagamento con carta,Attuale,2024-09-09 12:00:00,2024-09-09 12:00:00,"Subscription Spotify",-9.99,0.00,EUR,COMPLETATO,1165.53
+Pagamento con carta,Attuale,2024-12-01 12:00:00,2024-12-01 12:00:00,"Holiday gifts",-180.00,0.00,EUR,COMPLETATO,985.53
+Ricarica,Attuale,2025-01-07 12:00:00,2025-01-07 12:00:00,"Top up",500.00,0.00,EUR,COMPLETATO,1485.53
+Pagamento con carta,Attuale,2025-02-14 12:00:00,2025-02-14 12:00:00,"Restaurant Valentino",-85.00,0.00,EUR,COMPLETATO,1400.53
+Pagamento con carta,Attuale,2025-03-11 12:00:00,2025-03-11 12:00:00,"Online shopping",-55.00,0.00,EUR,COMPLETATO,1345.53
+Cambia valuta,Attuale,2025-04-22 12:00:00,2025-04-22 12:00:00,"EUR -> USD",-200.00,1.50,EUR,COMPLETATO,1144.03
+Pagamento con carta,Attuale,2025-06-05 12:00:00,2025-06-05 12:00:00,"Restaurant",-42.00,0.00,EUR,COMPLETATO,1102.03
+Rimborso,Attuale,2025-07-18 12:00:00,2025-07-18 12:00:00,"Refund product",55.00,0.00,EUR,COMPLETATO,1157.03
+Pagamento con carta,Attuale,2025-09-22 12:00:00,2025-09-22 12:00:00,"Concert tickets",-120.00,0.00,EUR,COMPLETATO,1037.03
+Pagamento con carta,Attuale,2025-11-11 12:00:00,2025-11-11 12:00:00,"Black Friday deal",-89.99,0.00,EUR,COMPLETATO,947.04
+Pagamento con carta,Attuale,2025-12-19 12:00:00,2025-12-19 12:00:00,"Christmas gifts",-180.00,0.00,EUR,COMPLETATO,767.04

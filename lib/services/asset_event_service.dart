@@ -14,14 +14,14 @@ class AssetEventService {
   Stream<List<AssetEvent>> watchByAsset(int assetId) {
     return (_db.select(_db.assetEvents)
           ..where((e) => e.assetId.equals(assetId))
-          ..orderBy([(e) => OrderingTerm.desc(e.date)]))
+          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)]))
         .watch();
   }
 
   Future<List<AssetEvent>> getByAsset(int assetId) {
     return (_db.select(_db.assetEvents)
           ..where((e) => e.assetId.equals(assetId))
-          ..orderBy([(e) => OrderingTerm.desc(e.date)]))
+          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)]))
         .get();
   }
 
@@ -30,7 +30,7 @@ class AssetEventService {
     if (assetIds.isEmpty) return {};
     final events = await (_db.select(_db.assetEvents)
           ..where((e) => e.assetId.isIn(assetIds))
-          ..orderBy([(e) => OrderingTerm.desc(e.date)]))
+          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)]))
         .get();
     final result = <int, List<AssetEvent>>{};
     for (final event in events) {

@@ -13,13 +13,13 @@ class IncomeService {
 
   Stream<List<Income>> watchAll() {
     return (_db.select(_db.incomes)
-          ..orderBy([(i) => OrderingTerm.desc(i.date)]))
+          ..orderBy([(i) => OrderingTerm.desc(i.valueDate)]))
         .watch();
   }
 
   Future<List<Income>> getAll() {
     return (_db.select(_db.incomes)
-          ..orderBy([(i) => OrderingTerm.desc(i.date)]))
+          ..orderBy([(i) => OrderingTerm.desc(i.valueDate)]))
         .get();
   }
 
