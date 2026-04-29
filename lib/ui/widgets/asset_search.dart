@@ -5,14 +5,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/investing_com_service.dart';
 import '../../services/providers/providers.dart';
+import 'isin_url_paste_recovery.dart';
 
 /// Reusable asset search results section.
 /// Shows a search field, debounces queries, and renders a result list.
 /// Calls [onSelect] when the user taps a result.
+///
+/// When the search returns no results, optionally falls back to an
+/// [IsinUrlPasteRecovery] widget so the user can paste a known URL/ISIN.
+/// To enable, supply both [recoveryCacheKeyBuilder] and
+/// [recoveryDefaultExchange]; otherwise a "no results" placeholder is shown.
 class AssetSearchSection extends StatefulWidget {
   final WidgetRef widgetRef;
   final ValueChanged<InvestingSearchResult> onSelect;
-  const AssetSearchSection({super.key, required this.widgetRef, required this.onSelect});
+  final String Function(String query)? recoveryCacheKeyBuilder;
+  final String? recoveryDefaultExchange;
+  /// Fires whenever the search returns a fresh list of results (including
+  /// the empty-list case). Lets the caller derive sibling listings, etc.
+  final ValueChanged<List<InvestingSearchResult>>? onResultsChanged;
+  /// Fires on every search-field text change (debounced or not).
+  final ValueChanged<String>? onQueryChanged;
+  const AssetSearchSection({
+    super.key,
+    required this.widgetRef,
+    required this.onSelect,
+    this.recoveryCacheKeyBuilder,
+    this.recoveryDefaultExchange,
+    this.onResultsChanged,
+    this.onQueryChanged,
+  });
 
   @override
   State<AssetSearchSection> createState() => _AssetSearchSectionState();
@@ -32,12 +53,14 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
   }
 
   void _onSearchChanged(String query) {
+    widget.onQueryChanged?.call(query);
     _debounce?.cancel();
     if (query.trim().length < 3) {
       setState(() {
         _results = [];
         _searching = false;
       });
+      widget.onResultsChanged?.call(const []);
       return;
     }
     setState(() => _searching = true);
@@ -50,6 +73,7 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
             _results = results;
             _searching = false;
           });
+          widget.onResultsChanged?.call(results);
         }
       } catch (_) {
         if (mounted) setState(() => _searching = false);
@@ -104,9 +128,20 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
             )
           else if (_searchCtrl.text.trim().length >= 3)
             Expanded(
-              child: Center(
-                child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-              ),
+              child: widget.recoveryCacheKeyBuilder != null
+                  && widget.recoveryDefaultExchange != null
+                ? SingleChildScrollView(
+                    child: IsinUrlPasteRecovery(
+                      userQuery: _searchCtrl.text.trim(),
+                      cacheKey:
+                          widget.recoveryCacheKeyBuilder!(_searchCtrl.text.trim()),
+                      defaultExchange: widget.recoveryDefaultExchange!,
+                      onResolved: widget.onSelect,
+                    ),
+                  )
+                : Center(
+                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
+                  ),
             )
           else
             Expanded(

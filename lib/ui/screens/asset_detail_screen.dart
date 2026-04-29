@@ -839,7 +839,16 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       title: Text(s.searchAssetTitle),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
-        child: AssetSearchSection(widgetRef: widget.ref, onSelect: _selectResult),
+        child: AssetSearchSection(
+          widgetRef: widget.ref,
+          onSelect: _selectResult,
+          recoveryDefaultExchange: widget.asset.exchange ?? 'MIL',
+          recoveryCacheKeyBuilder: (q) => widget.asset.isin?.isNotEmpty == true
+              ? widget.asset.isin!
+              : (widget.asset.ticker?.isNotEmpty == true
+                  ? widget.asset.ticker!
+                  : q.toUpperCase()),
+        ),
       ),
       actions: [
         TextButton(
