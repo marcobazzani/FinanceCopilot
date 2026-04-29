@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   test:
+    if: "!startsWith(github.ref, 'refs/tags/v')"
     strategy:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
@@ -43,6 +44,7 @@ jobs:
         run: flutter test --dart-define=DB_FILE_NAME=finance_copilot_test.db
 
   integration-test:
+    if: "!startsWith(github.ref, 'refs/tags/v')"
     strategy:
       fail-fast: false
       matrix:
@@ -82,6 +84,7 @@ jobs:
         run: flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 
   integration-test-android:
+    if: "!startsWith(github.ref, 'refs/tags/v')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -275,8 +278,10 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
 
   release:
-    needs: [test, integration-test, integration-test-android, build]
-    if: always() && needs.test.result == 'success' && needs.integration-test.result == 'success' && needs.integration-test-android.result == 'success' && needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    # Tests are skipped on tag pushes — they already ran on the PR that
+    # merged this commit into main, gated by branch protection.
+    if: always() && needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
