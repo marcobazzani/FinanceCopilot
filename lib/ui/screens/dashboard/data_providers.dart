@@ -107,6 +107,10 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         amount: netAmount, currency: currency, baseCurrency: baseCurrency,
         storedRate: storedRate, resolver: rates, dayKey: dayKey,
       );
+      // No rate available -> drop this event from the chart series rather
+      // than feed a wrong number into cumulative totals. The resolver has
+      // already emitted a warning when this happens.
+      if (baseAmount == null) continue;
 
       perAssetDeltas.putIfAbsent(assetId, () => {});
       perAssetDeltas[assetId]![dayKey] =
@@ -150,6 +154,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       if (dayMap.containsKey(dayKey)) running = dayMap[dayKey];
       if (running != null) {
         final rate = await rates.getRate(account.currency, dayKey);
+        if (rate == null) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
         spots.add(FlSpot(x, running * rate));
@@ -299,9 +304,12 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       }
       if (!started) continue;
       if (lastPrice != null && cumQuantity > 0) {
-        // Batch lookup; fall back to async resolver for EUR cross-rates
+        // Batch lookup; fall back to async resolver for EUR cross-rates.
+        // If neither yields a rate, skip the spot rather than plot a value
+        // computed with an implicit 1.0 FX rate.
         final fxRate = lookupFx(asset.currency, dayKey) ??
             await rates.getRate(asset.currency, dayKey);
+        if (fxRate == null) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
         final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
@@ -406,12 +414,16 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     double? prevY;
     for (final dayKey in days) {
       final rate = await rates.getRate(currency, dayKey);
+      // We must still accumulate the delta to keep the series consistent on
+      // later days — but if no FX rate is available, skip plotting this spot
+      // rather than emit a value computed against base 1:1.
+      cumulative += deltaMap[dayKey]!;
+      if (rate == null) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
       final x = dt.difference(firstDate).inDays.toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
         spots.add(FlSpot(x - 0.5, prevY));
       }
-      cumulative += deltaMap[dayKey]!;
       final y = cumulative * rate;
       spots.add(FlSpot(x, y));
       prevY = y;
@@ -440,7 +452,9 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     }
     if (event.bufferId != null) {
       for (final r in allReimbursements[event.bufferId!] ?? const []) {
-        final dayKey = toDayKey(r.operationDate);
+        // valueDate per CLAUDE.md — chart day-keys use the canonical
+        // "money moved" date, never operation_date.
+        final dayKey = toDayKey(r.valueDate);
         eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) - r.amount.abs();
         allDayKeys.add(dayKey);
       }
@@ -519,9 +533,12 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   final rates = _RateResolver(rateService, baseCurrency);
 
-  // 1. Load incomes (excluding refunds), convert to base currency
+  // 1. Load incomes (excluding refunds), convert to base currency.
+  // Ordered by value_date per CLAUDE.md convention — operation_date is only
+  // for import dedup, never for display/aggregation.
   final rows = await db.customSelect(
-    "SELECT date, amount, currency FROM incomes WHERE type != 'refund' ORDER BY date ASC",
+    "SELECT value_date AS date, amount, currency FROM incomes "
+    "WHERE type != 'refund' ORDER BY value_date ASC",
   ).get();
 
   final incomeByMonth = <(int, int), double>{};
@@ -530,6 +547,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     final amount = row.read<double>('amount');
     final currency = row.read<String>('currency');
     final rate = await rates.getRate(currency, toDayKey(dt));
+    if (rate == null) continue; // no rate -> exclude rather than mis-sum
     final key = (dt.year, dt.month);
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
   }

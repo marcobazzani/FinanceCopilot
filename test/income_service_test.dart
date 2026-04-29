@@ -146,4 +146,32 @@ void main() {
       expect(all, isEmpty);
     });
   });
+
+  group('ordering — valueDate, not operationDate', () {
+    test('getAll orders by valueDate (CLAUDE.md convention) when dates differ', () {
+      // Two incomes whose `date` and `valueDate` are flipped:
+      //   A: date=2024-02-01 (op), valueDate=2024-01-15 (val)
+      //   B: date=2024-01-15 (op), valueDate=2024-02-01 (val)
+      // valueDate-desc order should be B then A.
+      final a = IncomesCompanion.insert(
+        date: DateTime(2024, 2, 1),
+        valueDate: DateTime(2024, 1, 15),
+        amount: 100,
+      );
+      final b = IncomesCompanion.insert(
+        date: DateTime(2024, 1, 15),
+        valueDate: DateTime(2024, 2, 1),
+        amount: 200,
+      );
+      return Future(() async {
+        await db.into(db.incomes).insert(a);
+        await db.into(db.incomes).insert(b);
+        final all = await service.getAll();
+        expect(all, hasLength(2));
+        expect(all[0].amount, 200,
+            reason: 'B has the later valueDate and must come first');
+        expect(all[1].amount, 100);
+      });
+    });
+  });
 }

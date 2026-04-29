@@ -110,9 +110,11 @@ class AssetService {
     });
   }
 
+  // first/last date use value_date per CLAUDE.md (canonical "money moved"
+  // date for display). operation_date is only for import dedup.
   static const _statsQuery =
       'SELECT asset_id, COUNT(*) AS cnt, '
-      'MIN(date) AS first_date, MAX(date) AS last_date, '
+      'MIN(value_date) AS first_date, MAX(value_date) AS last_date, '
       "SUM(CASE WHEN type IN ('buy', 'contribute') THEN ABS(amount) ELSE 0 END) AS total_invested, "
       "SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
       "         WHEN type = 'sell' THEN -COALESCE(quantity, 0) "

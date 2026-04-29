@@ -17,7 +17,6 @@ import 'l10n/app_strings.dart';
 import 'services/app_settings.dart';
 import 'services/import_service.dart';
 import 'services/db_transfer_service.dart';
-import 'services/demo_db_service.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
@@ -31,9 +30,6 @@ import 'utils/logger.dart';
 import 'version.dart';
 
 final _log = getLogger('Main');
-
-/// Feature flag: enable demo DB generation (disabled by default, enable at compile time).
-const _enableDemo = bool.fromEnvironment('ENABLE_DEMO', defaultValue: false);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -137,7 +133,6 @@ class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
   bool _isSyncing = false;
   bool _showLanding = false;
-  bool _generatingDemo = false;
   bool _syncingDrive = false;
   final _repaintKey = GlobalKey();
   StreamSubscription? _shareIntentSub;
@@ -576,7 +571,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   const SizedBox(height: 8),
                   Text(s.landingSubtitle, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
                   const SizedBox(height: 32),
-                  if (_generatingDemo || _syncingDrive)
+                  if (_syncingDrive)
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -649,14 +644,6 @@ class _AppShellState extends ConsumerState<AppShell> {
                       },
                       child: Text(s.landingStartFresh),
                     ),
-                    // Demo — behind feature flag
-                    if (_enableDemo) ...[
-                      const SizedBox(height: 12),
-                      TextButton(
-                        onPressed: _createDemo,
-                        child: Text(s.landingCreateDemo),
-                      ),
-                    ],
                   ],
                   const SizedBox(height: 24),
                   Text(
@@ -672,25 +659,6 @@ class _AppShellState extends ConsumerState<AppShell> {
         ),
       ),
     );
-  }
-
-  Future<void> _createDemo() async {
-    setState(() => _generatingDemo = true);
-    try {
-      final dbPath = await DbTransferService.dbPath;
-      await DemoDbService.generateDemoDb(dbPath);
-      if (mounted) {
-        ref.read(dbReloadTrigger.notifier).state++;
-        setState(() {
-          _showLanding = false;
-          _generatingDemo = false;
-        });
-        _startBackgroundSync();
-      }
-    } catch (e) {
-      _log.severe('Demo generation failed: $e');
-      if (mounted) setState(() => _generatingDemo = false);
-    }
   }
 
   @override

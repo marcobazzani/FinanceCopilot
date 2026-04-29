@@ -27,6 +27,7 @@ import '../isin_lookup_service.dart';
 import '../market_price_service.dart';
 import '../intermediary_service.dart';
 import '../transaction_service.dart';
+import '../../utils/asset_value_math.dart';
 import '../../utils/logger.dart';
 
 part 'app_state_providers.dart';

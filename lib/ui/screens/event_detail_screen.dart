@@ -411,7 +411,10 @@ class _TimelineItem {
   _TimelineItem.reimbursement(this.reimbursement) : entry = null;
 
   bool get isReimbursement => reimbursement != null;
-  DateTime get date => entry?.date ?? reimbursement!.operationDate;
+  // valueDate per CLAUDE.md (canonical "money moved" date for ordering/display).
+  // ExtraordinaryEventEntry has only a single date column; BufferTransaction
+  // has both, and we always want valueDate.
+  DateTime get date => entry?.date ?? reimbursement!.valueDate;
 }
 
 class _TimelineTile extends StatelessWidget {
@@ -443,7 +446,7 @@ class _TimelineTile extends StatelessWidget {
           child: Icon(Icons.call_received, size: 16, color: Colors.green.shade800),
         ),
         title: Text('${amtFmt.format(r.amount.abs())} $sym'),
-        subtitle: Text('${dateFmt.format(r.operationDate)}${r.description.isNotEmpty ? ' · ${r.description}' : ''}'),
+        subtitle: Text('${dateFmt.format(r.valueDate)}${r.description.isNotEmpty ? ' · ${r.description}' : ''}'),
         trailing: onDelete != null
             ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete)
             : null,

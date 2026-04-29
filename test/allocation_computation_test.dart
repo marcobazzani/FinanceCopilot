@@ -115,6 +115,28 @@ void main() {
       expect(result.length, 1);
       expect(result['EUR'], 300.0);
     });
+
+    test('excludes negative values consistently with drillDownByField', () {
+      // A liability has negative market value. Pie charts can't render
+      // negative slices, so groupByField must skip them — matching the
+      // existing behavior of drillDownByField/weightedBreakdown.
+      final assets = [
+        _makeAsset(id: 1, name: 'Stock', currency: 'EUR'),
+        _makeAsset(id: 2, name: 'Loan',  currency: 'EUR'),
+      ];
+      final values = {1: 1000.0, 2: -500.0};
+
+      final group = groupByField(assets, values, (a) => a.currency);
+      final drill = drillDownByField(assets, values, (a) => a.currency);
+
+      // Pre-fix: groupByField['EUR'] was 500 (1000 + -500), and the EUR
+      // drill-down had only the Stock entry (1000). The two views
+      // disagreed on what total they were breaking down.
+      expect(group['EUR'], 1000.0,
+          reason: 'liability must not deflate the positive-asset bucket');
+      expect(drill['EUR']!.length, 1);
+      expect(drill['EUR']!['Stock'], 1000.0);
+    });
   });
 
   // ─────────────────────────────────────────────
