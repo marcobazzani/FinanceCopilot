@@ -7,6 +7,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../database/database.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
+import 'investing_page_parser.dart';
 import 'market_price_service.dart';
 
 final _log = getLogger('InvestingComService');
@@ -30,6 +31,36 @@ class InvestingSearchResult {
     required this.type,
     this.url,
   });
+}
+
+/// Outcome of [InvestingComService.resolveFromInstrumentUrl].
+sealed class UrlResolveResult {
+  const UrlResolveResult();
+}
+
+class UrlResolveOk extends UrlResolveResult {
+  final InvestingSearchResult result;
+  const UrlResolveOk(this.result);
+}
+
+class UrlResolveInvalidFormat extends UrlResolveResult {
+  const UrlResolveInvalidFormat();
+}
+
+class UrlResolveWrongHost extends UrlResolveResult {
+  const UrlResolveWrongHost();
+}
+
+class UrlResolveUnsupportedCategory extends UrlResolveResult {
+  const UrlResolveUnsupportedCategory();
+}
+
+class UrlResolveFetchFailed extends UrlResolveResult {
+  const UrlResolveFetchFailed();
+}
+
+class UrlResolveParseFailed extends UrlResolveResult {
+  const UrlResolveParseFailed();
 }
 
 /// Investing.com exchange name mapping.
@@ -61,6 +92,7 @@ const _exchangeNames = <String, List<String>>{
 /// direct API calls with the obtained cookies via Dio.
 class InvestingComService extends MarketPriceService {
   final Dio _dio;
+  final Future<String?> Function(Uri)? _pageFetcher;
 
   /// Persistent headless WebView for CF-protected API calls.
   HeadlessInAppWebView? _webView;
@@ -72,7 +104,14 @@ class InvestingComService extends MarketPriceService {
   /// True after Dio gets a 403 — all subsequent fetches use JS fetch.
   bool _dioBlocked = false;
 
-  InvestingComService(super.db, {Dio? dio}) : _dio = dio ?? Dio();
+  /// [pageFetcher] is a test seam: when non-null, [resolveFromInstrumentUrl]
+  /// uses it instead of the built-in Dio + WebView fetch path.
+  InvestingComService(
+    super.db, {
+    Dio? dio,
+    Future<String?> Function(Uri)? pageFetcher,
+  })  : _dio = dio ?? Dio(),
+        _pageFetcher = pageFetcher;
 
   // ──────────────────────────────────────────────
   // Headless WebView: solve CF + make API calls in same browser context
@@ -375,81 +414,115 @@ class InvestingComService extends MarketPriceService {
       _log.warning('search: it domain failed: $e');
     }
 
-    // Fallback: if search found nothing, try web search
-    if (results.isEmpty) {
-      _log.info('search: API returned nothing, trying web search fallback');
-      final webResults = await _webSearchFallback(query);
-      for (final r in webResults) {
-        results.putIfAbsent(r.cid, () => r);
-      }
-    }
-
     _log.info('search: got ${results.length} results for $query');
     return results.values.toList();
   }
 
-  /// Fallback search using the Investing.com website search page (SSR HTML).
-  /// Uses WebView fetch when Dio is blocked.
-  Future<List<InvestingSearchResult>> _webSearchFallback(String query) async {
+  /// Resolve a user-pasted instrument page URL into an [InvestingSearchResult]
+  /// by fetching the page and parsing its embedded `__NEXT_DATA__` JSON.
+  ///
+  /// Used when the search API has an indexing gap (some bonds / niche
+  /// instruments are reachable by URL but missing from the search corpus).
+  /// Caches the resolved cid and URL under the existing
+  /// `INVESTING_CID_<cacheKey>_<exchange>` / `INVESTING_URL_<cacheKey>_<exchange>`
+  /// keys so subsequent [_searchCid] calls hit cache.
+  Future<UrlResolveResult> resolveFromInstrumentUrl(
+    Uri url, {
+    required String cacheKey,
+    required String exchange,
+  }) async {
+    return resolveFromInstrumentUrlString(
+      url.toString(),
+      cacheKey: cacheKey,
+      exchange: exchange,
+    );
+  }
+
+  /// String overload that runs canonicalisation up-front and surfaces
+  /// categorised rejection reasons for the UI.
+  Future<UrlResolveResult> resolveFromInstrumentUrlString(
+    String raw, {
+    required String cacheKey,
+    required String exchange,
+  }) async {
+    final outcome = canonicaliseInstrumentUrl(raw);
+    if (outcome.uri == null) {
+      switch (outcome.rejection!) {
+        case InstrumentUrlRejection.invalidFormat:
+          return const UrlResolveInvalidFormat();
+        case InstrumentUrlRejection.wrongHost:
+          return const UrlResolveWrongHost();
+        case InstrumentUrlRejection.unsupportedCategory:
+          return const UrlResolveUnsupportedCategory();
+      }
+    }
+    final canonical = outcome.uri!;
+
+    String? html;
     try {
-      final url = 'https://www.investing.com/search/?q=${Uri.encodeComponent(query)}&tab=quotes';
-      String? html;
-      if (_dioBlocked) {
-        html = await fetchHtml(url);
-      } else {
-        final response = await _dio.get(url, options: Options(
+      html = await (_pageFetcher ?? _fetchInstrumentPage)(canonical);
+    } catch (e) {
+      _log.fine('resolveFromInstrumentUrl: fetch threw: $e');
+      return const UrlResolveFetchFailed();
+    }
+    if (html == null || html.isEmpty) {
+      return const UrlResolveFetchFailed();
+    }
+
+    final parsed = parseInvestingPage(html, canonical);
+    if (parsed == null) {
+      return const UrlResolveParseFailed();
+    }
+
+    // Cache cid + URL so future _searchCid calls short-circuit.
+    final cidKey = 'INVESTING_CID_${cacheKey}_$exchange';
+    final urlKey = 'INVESTING_URL_${cacheKey}_$exchange';
+    await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+      key: cidKey,
+      value: parsed.cid.toString(),
+      description: Value('Investing.com cid for $cacheKey on $exchange'),
+    ));
+    if (parsed.url != null && parsed.url!.isNotEmpty) {
+      await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
+        key: urlKey,
+        value: parsed.url!,
+        description: Value('Investing.com URL for $cacheKey'),
+      ));
+    }
+    _log.info('resolveFromInstrumentUrl: $cacheKey on $exchange -> cid=${parsed.cid}');
+    return UrlResolveOk(parsed);
+  }
+
+  /// Fetch an instrument page HTML. Plain Dio first (works for most pages and
+  /// avoids cross-origin fetch limits); if blocked (403), fall back to the
+  /// CF-aware WebView fetch.
+  Future<String?> _fetchInstrumentPage(Uri url) async {
+    try {
+      final response = await _dio.get<String>(
+        url.toString(),
+        options: Options(
           headers: {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
             'Accept-Language': 'en-US,en;q=0.9',
           },
           responseType: ResponseType.plain,
           followRedirects: true,
-        ));
-        html = response.data as String;
-      }
-      if (html == null) return [];
-
-      // Parse results: each quote row is an <a> with class "js-inner-all-results-quote-item"
-      // Structure: <a href="/rates-bonds/..."> containing:
-      //   .second = symbol, .third = name, .fourth = "type exchange"
-      final results = <InvestingSearchResult>[];
-      final rowPattern = RegExp(
-        r'js-inner-all-results-quote-item[^"]*"\s+href="([^"]+)".*?'
-        r'second">([^<]*)<.*?'
-        r'third">([^<]*)<.*?'
-        r'fourth[^>]*>([^<]*)<',
-        dotAll: true,
+          validateStatus: (s) => s != null && s < 400,
+        ),
       );
-
-      for (final match in rowPattern.allMatches(html)) {
-        final href = match.group(1)?.trim() ?? '';
-        final symbol = match.group(2)?.trim() ?? '';
-        final name = match.group(3)?.trim() ?? '';
-        final typeExchange = match.group(4)?.trim() ?? '';
-
-        // Skip template rows
-        if (name.contains('{{')) continue;
-
-        // Generate a pseudo CID from the URL hash (stable per URL)
-        final cid = href.hashCode.abs();
-
-        results.add(InvestingSearchResult(
-          cid: cid,
-          description: name,
-          symbol: symbol,
-          exchange: '',
-          flag: '',
-          type: typeExchange,
-          url: href,
-        ));
+      return response.data;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        _log.info('_fetchInstrumentPage: 403, retrying via WebView for ${url.path}');
+        return await fetchHtml(url.toString());
       }
-
-      _log.info('_webSearchFallback: found ${results.length} results');
-      return results;
+      _log.fine('_fetchInstrumentPage: ${e.response?.statusCode} for ${url.path}');
+      return null;
     } catch (e) {
-      _log.warning('_webSearchFallback: failed: $e');
-      return [];
+      _log.fine('_fetchInstrumentPage: $e');
+      return null;
     }
   }
 

@@ -16,6 +16,7 @@ import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
+import '../widgets/asset_search.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -618,6 +619,26 @@ class _AssetTile extends StatelessWidget {
   }
 }
 
+/// Pure helper extracted for testability.
+///
+/// Given the full set of search [results] returned for the user's query and
+/// the [picked] result, return every other result describing the same
+/// instrument (same description) whose exchange we know how to map to an
+/// internal code. Falls back to `[picked]` when no siblings exist so the
+/// caller always has at least one listing to render.
+List<InvestingSearchResult> exchangeListingsFor(
+  List<InvestingSearchResult> results,
+  InvestingSearchResult picked,
+) {
+  final siblings = results
+      .where((x) =>
+          x.description.isNotEmpty &&
+          x.description == picked.description &&
+          investingExchangeToCode[x.exchange] != null)
+      .toList();
+  return siblings.isNotEmpty ? siblings : [picked];
+}
+
 // ──────────────────────────────────────────────
 // Create Asset Dialog — two-step search flow
 // ──────────────────────────────────────────────
@@ -631,15 +652,22 @@ class _CreateAssetDialog extends StatefulWidget {
 }
 
 class _CreateAssetDialogState extends State<_CreateAssetDialog> {
-  final _searchCtrl = TextEditingController();
-  Timer? _debounce;
-  List<InvestingSearchResult> _results = [];
-  bool _searching = false;
   bool _manual = false;
+
+  // Step 1: search state mirrored from AssetSearchSection so step 2 can
+  // derive sibling exchange listings and capture the user's typed query
+  // (used to persist a pasted ISIN as the asset's price-sync cache key).
+  String _typedQuery = '';
+  List<InvestingSearchResult> _allResults = const [];
 
   // Step 2: selected result
   InvestingSearchResult? _selected;
   String? _selectedExchange;
+
+  /// Exchange listings discovered for the same instrument (same description).
+  /// Drives the exchange dropdown so users can only pick exchanges where the
+  /// instrument actually trades. Each entry has a distinct cid.
+  List<InvestingSearchResult> _listings = const [];
 
   // Manual entry
   final _manualNameCtrl = TextEditingController();
@@ -649,36 +677,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
-    _searchCtrl.dispose();
     _manualNameCtrl.dispose();
     super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    _debounce?.cancel();
-    if (query.trim().length < 3) {
-      setState(() {
-        _results = [];
-        _searching = false;
-      });
-      return;
-    }
-    setState(() => _searching = true);
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final service = widget.ref.read(marketPriceServiceProvider) as InvestingComService;
-      try {
-        final results = await service.search(query.trim());
-        if (mounted && _searchCtrl.text.trim() == query.trim()) {
-          setState(() {
-            _results = results;
-            _searching = false;
-          });
-        }
-      } catch (_) {
-        if (mounted) setState(() => _searching = false);
-      }
-    });
   }
 
   void _selectResult(InvestingSearchResult result) {
@@ -689,6 +689,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       _selectedExchange = code ?? 'MIL';
       _instrumentType = instrument;
       _assetClass = assetCls;
+      _listings = exchangeListingsFor(_allResults, result);
     });
   }
 
@@ -698,6 +699,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     final prefix = type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
     return classifyFromInvestingType(prefix);
   }
+
+  static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
+  static bool _isinShaped(String s) => _kIsinRegex.hasMatch(s.toUpperCase());
 
   void _backToSearch() {
     setState(() {
@@ -719,62 +723,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       title: Text(s.newAssetTitle),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 400),
-        child: SizedBox(
-          height: 350,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  labelText: s.search,
-                  hintText: s.searchAssetsHint,
-                  prefixIcon: const Icon(Icons.search),
-                ),
-                autofocus: true,
-                onChanged: _onSearchChanged,
-              ),
-              const SizedBox(height: 12),
-              if (_searching)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (_results.isNotEmpty)
-                Expanded(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _results.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final r = _results[i];
-                      return ListTile(
-                        dense: true,
-                        title: Text(r.description, overflow: TextOverflow.ellipsis, maxLines: 1),
-                        subtitle: Text(
-                          '${r.symbol}  ·  ${r.type}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        trailing: Text(r.flag, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        onTap: () => _selectResult(r),
-                      );
-                    },
-                  ),
-                )
-              else if (_searchCtrl.text.trim().length >= 3)
-                Expanded(
-                  child: Center(
-                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-                  ),
-                )
-              else
-                Expanded(
-                  child: Center(
-                    child: Text(s.typeAtLeast3Chars, style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                  ),
-                ),
-            ],
-          ),
+        child: AssetSearchSection(
+          widgetRef: widget.ref,
+          onSelect: _selectResult,
+          recoveryDefaultExchange: _selectedExchange ?? 'MIL',
+          recoveryCacheKeyBuilder: (q) =>
+              _isinShaped(q) ? q.toUpperCase() : q,
+          onQueryChanged: (q) => _typedQuery = q,
+          onResultsChanged: (rs) => _allResults = rs,
         ),
       ),
       actions: [
@@ -801,19 +757,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           Text(s.symbolLabel(r.symbol), style: const TextStyle(fontSize: 13, color: Colors.grey)),
           Text(s.typeLabel(r.type), style: const TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedExchange,
-            decoration: InputDecoration(
-              labelText: s.stockExchange,
-              isDense: true,
-            ),
-            items: supportedExchanges.entries
-                .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
-                .toList(),
-            onChanged: (v) {
-              if (v != null) setState(() => _selectedExchange = v);
-            },
-          ),
+          _buildExchangeDropdown(s),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -858,9 +802,16 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
                   final exchange = _selectedExchange ?? 'MIL';
                   final currency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
+                  // If the user searched by an ISIN-shaped string, persist it
+                  // so price sync can use it as the cache key (otherwise the
+                  // ticker — e.g. a bond's "BE000035160=MI" — is not a valid
+                  // search term and price sync silently fails).
+                  final typed = _typedQuery.trim().toUpperCase();
+                  final isin = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$').hasMatch(typed) ? typed : null;
                   await widget.ref.read(assetServiceProvider).create(
                         name: r.description,
                         ticker: r.symbol.isNotEmpty ? r.symbol : null,
+                        isin: isin,
                         exchange: exchange,
                         currency: currency,
                         instrumentType: _instrumentType,
@@ -873,6 +824,68 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           child: Text(s.create),
         ),
       ],
+    );
+  }
+
+  Widget _buildExchangeDropdown(AppStrings s) {
+    // Build (code → label, listing) entries from the discovered listings so
+    // the user can only pick exchanges where the instrument actually trades.
+    // Falls back to the global supportedExchanges list when no listings were
+    // discovered (manual flow / unmappable exchange names).
+    final byCode = <String, (String, InvestingSearchResult)>{};
+    for (final l in _listings) {
+      final code = investingExchangeToCode[l.exchange];
+      if (code == null) continue;
+      byCode.putIfAbsent(code, () {
+        // Use the supportedExchanges label when available so the wording stays
+        // consistent across the app; otherwise show the raw provider name.
+        final label = supportedExchanges.entries
+            .firstWhere((e) => e.value == code, orElse: () => MapEntry(l.exchange, code))
+            .key;
+        return (label, l);
+      });
+    }
+
+    if (byCode.isEmpty) {
+      return DropdownButtonFormField<String>(
+        initialValue: _selectedExchange,
+        decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
+        items: supportedExchanges.entries
+            .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) setState(() => _selectedExchange = v);
+        },
+      );
+    }
+
+    if (byCode.length == 1) {
+      final entry = byCode.entries.first;
+      return InputDecorator(
+        decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
+        child: Text(entry.value.$1, style: const TextStyle(fontSize: 13)),
+      );
+    }
+
+    final initial = byCode.containsKey(_selectedExchange) ? _selectedExchange : byCode.keys.first;
+    return DropdownButtonFormField<String>(
+      initialValue: initial,
+      decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
+      items: byCode.entries
+          .map((e) => DropdownMenuItem(
+                value: e.key,
+                child: Text(e.value.$1, style: const TextStyle(fontSize: 13)),
+              ))
+          .toList(),
+      onChanged: (v) {
+        if (v == null) return;
+        final pair = byCode[v];
+        if (pair == null) return;
+        setState(() {
+          _selectedExchange = v;
+          _selected = pair.$2; // swap to the listing that matches the chosen exchange
+        });
+      },
     );
   }
 

@@ -218,6 +218,7 @@ class _ChartCard extends ConsumerWidget {
                       baseCurrency: allData.baseCurrency,
                       locale: locale,
                       onZoom: onZoom,
+                      zoomedY: zoomMinY != null || zoomMaxY != null,
                       child: UnifiedChart(
                         firstDate: allData.firstDate,
                         visible: drawnSeries,
@@ -231,6 +232,7 @@ class _ChartCard extends ConsumerWidget {
                         zoomMinY: zoomMinY,
                         zoomMaxY: zoomMaxY,
                         isPrivate: isPrivate,
+                        zoomedX: zoomMinX != null || zoomMaxX != null,
                       ),
                     );
                   })

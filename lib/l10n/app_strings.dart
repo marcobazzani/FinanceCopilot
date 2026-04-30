@@ -46,7 +46,6 @@ class AppStrings {
   String get invalidNumber => _it ? 'Numero non valido'   : 'Invalid number';
 
   // ── App shell / navigation ──────────────────────────────
-  String get appTitle              => 'FinanceCopilot';
   String get navDashboard          => 'Dashboard';
   String get navAccounts           => _it ? 'Conti'             : 'Accounts';
   String get navAssets             => _it ? 'Portafoglio'       : 'Assets';
@@ -55,7 +54,6 @@ class AppStrings {
   String get tooltipHideAmounts    => _it ? 'Nascondi importi'  : 'Hide amounts';
   String get tooltipShowAmounts    => _it ? 'Mostra importi'    : 'Show amounts';
   String get tooltipRefreshPrices  => _it ? 'Aggiorna prezzi di mercato' : 'Refresh Market Prices';
-  String get tooltipChangeDatabase => _it ? 'Cambia database'   : 'Change Database';
   String get tooltipSettings       => _it ? 'Impostazioni'      : 'Settings';
   String get tooltipImportFile     => _it ? 'Importa file'      : 'Import File';
 
@@ -68,7 +66,6 @@ class AppStrings {
   String get settingsClearCacheSubtitle => _it ? 'Prezzi, tassi di cambio, composizione' : 'Prices, exchange rates, composition';
   String get settingsClearButton        => _it ? 'Cancella'                   : 'Clear';
   String get settingsCacheCleared       => _it ? 'Dati in cache cancellati'   : 'Cached data cleared';
-  String get settingsData              => _it ? 'Gestione Dati'             : 'Data Management';
   String get settingsExportDb          => _it ? 'Esporta DB'                : 'Export DB';
   String get settingsImportDb          => _it ? 'Importa DB'                : 'Import DB';
   String get settingsExportSuccess     => _it ? 'Database esportato'        : 'Database exported';
@@ -87,7 +84,6 @@ class AppStrings {
   String get importExportBackupDriveHint   => _it ? 'Carica il database corrente su Drive (sovrascrive il backup precedente)' : 'Upload current database to Drive (overwrites previous backup)';
   String get importExportRestoreDrive      => _it ? 'Ripristina da Google Drive' : 'Restore from Google Drive';
   String get importExportRestoreDriveHint  => _it ? 'Sostituisci il database locale con il backup di Drive' : 'Replace local database with the Drive backup';
-  String get importExportNotSignedIn       => _it ? 'Non sei collegato a Google Drive' : 'Not signed in to Google Drive';
   String get importExportSignInFirst       => _it ? 'Accedi a Google Drive nelle Impostazioni per usare backup/restore' : 'Sign in to Google Drive in Settings to use backup/restore';
   String get importExportBackupConfirmTitle => _it ? 'Backup su Google Drive?' : 'Backup to Google Drive?';
   String importExportBackupConfirmBody(String? remoteInfo) {
@@ -136,18 +132,10 @@ class AppStrings {
   String get syncReauthNeeded          => _it ? 'Accedi di nuovo a Google Drive per continuare la sincronizzazione' : 'Please sign in to Google Drive again to continue syncing';
 
   // ── Sync Conflict ──────────────────────────────────
-  String get conflictTitle              => _it ? 'Conflitto di sincronizzazione' : 'Sync Conflict';
-  String conflictBody(String remoteDevice, String remoteTime) =>
-      _it ? 'Sia questo dispositivo che "$remoteDevice" hanno modifiche non sincronizzate.\nUltimo aggiornamento remoto: $remoteTime.\n\nQuale versione vuoi mantenere?'
-          : 'Both this device and "$remoteDevice" have unsynchronized changes.\nLast remote update: $remoteTime.\n\nWhich version do you want to keep?';
-  String get conflictKeepLocal          => _it ? 'Tieni locale'                  : 'Keep Local';
-  String get conflictKeepRemote         => _it ? 'Tieni remoto'                  : 'Keep Remote';
-  String get conflictCancel             => _it ? 'Annulla'                       : 'Cancel';
 
   // ── Dashboard ───────────────────────────────────────────
   String get dashTabHistory      => _it ? 'Storico'           : 'History';
   String get dashTabCashFlow     => _it ? 'Flussi di cassa'  : 'Cash Flow';
-  String get dashTabAllocation   => _it ? 'Allocazione'      : 'Allocation';
   String get dashTabAssetsOverview => _it ? 'Panoramica Asset' : 'Assets Overview';
   String get dashTabHealth       => _it ? 'Salute'            : 'Health';
 
@@ -157,7 +145,6 @@ class AppStrings {
   String get healthTer             => 'TER';
   String get healthMarketValue     => _it ? 'Valore'                  : 'Value';
   String get healthAnnualCost      => _it ? 'Costo annuo'             : 'Annual Cost';
-  String get healthTotalCost       => _it ? 'Costo totale'            : 'Total Cost';
   String get healthNoTer           => _it ? 'Nessun TER disponibile'  : 'No TER data available';
   String get healthWeightedTer     => _it ? 'TER medio ponderato'     : 'Weighted Avg TER';
 
@@ -232,21 +219,15 @@ class AppStrings {
   String get dashNoData          => _it
       ? 'Nessun dato. Importa transazioni o aggiungi attività per iniziare.'
       : 'No data yet. Import transactions or add assets to get started.';
-  String get dashShowComponents  => _it ? 'Mostra componenti'  : 'Show components';
-  String get dashHideComponents  => _it ? 'Nascondi componenti': 'Hide components';
-  String get dashResetZoom       => _it ? 'Reset zoom'         : 'Reset zoom';
   String get dashNotEnoughData   => _it ? 'Dati insufficienti per il grafico' : 'Not enough data to plot';
   String get dashAssets          => _it ? 'Attività'           : 'Assets';
   String get dashPriceChanges    => _it ? 'Variazioni prezzo'  : 'Price Changes';
   String get dashNoPriceData     => _it ? 'Nessun dato di prezzo disponibile' : 'No price data available';
   String get dashTotals          => _it ? 'Totali'             : 'Totals';
-  String get dashTotalAssets     => _it ? 'Patrimonio totale'  : 'Total Assets';
   String get dashCash            => _it ? 'Liquidità'          : 'Cash';
   String get dashSaving          => _it ? 'Risparmi'           : 'Saving';
-  String get dashInvested        => _it ? 'Investito'          : 'Invested';
   String get dashPortfolio       => _it ? 'Portafoglio'        : 'Portfolio';
   String get dashLiquidInvestments => _it ? 'Investimenti liquidi' : 'Liquid Investments';
-  String get dashPerformance     => _it ? 'Performance'        : 'Performance';
   // ── Chart editor (configurable History-tab charts) ──
   String get chartNewTitle         => _it ? 'Nuovo grafico'         : 'New Chart';
   String get moveUp                => _it ? 'Sposta su'              : 'Move up';
@@ -257,8 +238,6 @@ class AppStrings {
   String get chartTitleLabel       => _it ? 'Titolo grafico'        : 'Chart title';
   String get chartSectionAccounts  => _it ? 'Conti'                 : 'Accounts';
   String get chartSectionAssets    => _it ? 'Attività'              : 'Assets';
-  String get chartSectionSpreadAdj => _it ? 'Aggiustamenti dilaz.'  : 'Spread Adjustments';
-  String get chartSectionIncomeAdj => _it ? 'Aggiustamenti entrate' : 'Income Adjustments';
   String get chartSectionOutflowAdj => _it ? 'Aggiustamenti in uscita' : 'Outflow Adjustments';
   String get chartSectionInflowAdj  => _it ? 'Aggiustamenti in entrata': 'Inflow Adjustments';
   String get chartSectionEphemeralAdj => _it ? 'Aggiustamenti effimeri' : 'Ephemeral Adjustments';
@@ -304,8 +283,6 @@ class AppStrings {
   String get resetZoom           => 'Reset zoom';
   String get colAsset            => _it ? 'Attività'           : 'Asset';
   String get colPrice            => _it ? 'Prezzo'             : 'Price';
-  String get maLabel             => 'MA:';
-  String nTransactions(int n)    => _it ? '$n transazioni'     : '$n transactions';
 
   // ── Dashboard cash-flow chart titles ────────────────────
   String get chartYearlyBarTitle          => _it ? 'Entrate / Uscite / Risparmio per Anno'   : 'Income / Expenses / Savings per Year';
@@ -329,7 +306,6 @@ class AppStrings {
   String get colDailyInc      => _it ? 'Giorn. Ent.'   : 'Daily Inc';
   String get colDailyExp      => _it ? 'Giorn. Usc.'   : 'Daily Exp';
   String get colMonth         => _it ? 'Mese'           : 'Month';
-  String get colYTD           => 'YTD';
   String get eoyLabel         => _it ? '  Pre. anno~'   : '  EOY~';
   String get eoyFormula       => _it
       ? 'Formula: totale anno prec. × progresso anno corr. ÷ stesso periodo anno prec.'
@@ -359,7 +335,6 @@ class AppStrings {
   String lastRecord(String d)  => _it ? 'Ultimo record $d': 'Last record $d';
 
   // ── Account Detail ───────────────────────────────────────
-  String get tooltipReindexDedup      => _it ? 'Reindicizza chiavi dedup'   : 'Reindex Dedup Keys';
   String get tooltipRecalcBalance     => _it ? 'Ricalcola saldo'            : 'Recalculate Balance';
   String get tooltipAddTransaction    => _it ? 'Aggiungi transazione'       : 'Add Transaction';
   String get tooltipEditAccount       => _it ? 'Modifica conto'             : 'Edit Account';
@@ -377,26 +352,11 @@ class AppStrings {
       : 'Delete "$n" and all transactions?';
   String get editAccountTitle         => _it ? 'Modifica conto'             : 'Edit Account';
   String get institution              => _it ? 'Istituto'                   : 'Institution';
-  String get noImportedTransactions   => _it
-      ? 'Nessuna transazione importata con metadati trovata.'
-      : 'No imported transactions with metadata found.';
-  String get reindexDedupTitle        => _it ? 'Reindicizza chiavi dedup'   : 'Reindex Dedup Keys';
-  String withMetadata(int n)          => _it ? '$n con metadati.'           : '$n with metadata.';
-  String get selectDedupColumns       => _it ? 'Seleziona colonne per hash dedup:' : 'Select columns for dedup hash:';
-  String get dedupHashHelp            => _it
-      ? "L'hash identifica univocamente una riga. I duplicati con lo stesso hash verranno rimossi."
-      : 'The hash uniquely identifies a row. Duplicates with the same hash will be removed.';
-  String get previewFirstRow          => _it ? 'Anteprima (prima riga):'    : 'Preview (first row):';
-  String get reindexButton            => _it ? 'Reindicizza e rimuovi duplicati' : 'Reindex & Remove Duplicates';
-  String reindexResult(int u, int d)  => _it
-      ? 'Reindicizzate $u righe. Rimossi $d duplicati.'
-      : 'Reindexed $u hashes. Removed $d duplicates.';
   String get noTransactionsToRecalc   => _it ? 'Nessuna transazione da ricalcolare.' : 'No transactions to recalculate.';
   String get recalcBalanceTitle       => _it ? 'Ricalcola saldo'            : 'Recalculate Balance';
   String get recalcBalanceHelp        => _it
       ? 'Scegli come calcolare il saldo per ogni transazione.'
       : 'Choose how to compute balanceAfter for each transaction.';
-  String get recalcNone               => _it ? 'Nessuno'            : 'None';
   String get recalcColumn             => _it ? 'Colonna'            : 'Column';
   String get recalcCumulative         => _it ? 'Somma cumulativa'   : 'Cumulative sum';
   String get recalcFiltered           => _it ? 'Somma filtrata'     : 'Filtered sum';
@@ -431,12 +391,46 @@ class AppStrings {
   String get noResultsFound      => _it ? 'Nessun risultato trovato'          : 'No results found';
   String get typeAtLeast3Chars   => _it ? 'Inserisci almeno 3 caratteri'      : 'Type at least 3 characters';
   String get enterManually       => _it ? 'Inserisci manualmente'             : 'Enter manually';
+
+  // ── Instrument-not-found recovery (URL paste) ─────────────────────────
+  // The literal "<query> investing.com" appears in instrumentNotFoundExplanation
+  // because that is the literal search query the user must type into a search
+  // engine — not a brand mention. The surrounding text refers to the source
+  // generically as "il fornitore di dati di mercato" / "the market data
+  // provider".
+  String get instrumentNotFoundHeadline => _it
+      ? 'Strumento non trovato'
+      : 'Instrument not found';
+  String instrumentNotFoundExplanation(String query) {
+    final q = query.trim().isEmpty ? (_it ? 'lo strumento' : 'the instrument') : query.trim();
+    return _it
+        ? 'Cerca su Google, Bing o un altro motore di ricerca il termine "$q investing.com", apri il primo risultato sul sito del fornitore di dati di mercato e copia l\'indirizzo della pagina. Incollalo qui sotto.'
+        : 'Search Google, Bing or another search engine for "$q investing.com", open the first result on the market data provider\'s site and copy the page address. Paste it below.';
+  }
+  String get pasteInstrumentUrlLabel => _it ? 'Indirizzo della pagina' : 'Page address';
+  String get pasteUrlShort           => _it ? 'Incolla URL'             : 'Paste URL';
+  String get verifyButton            => _it ? 'Verifica'                : 'Verify';
+  String get urlInvalidFormat        => _it
+      ? 'Indirizzo non valido. Deve iniziare con http:// o https://.'
+      : 'Invalid address. It must start with http:// or https://.';
+  String get urlWrongHost            => _it
+      ? 'L\'indirizzo non proviene dal fornitore di dati di mercato supportato.'
+      : 'The address is not from the supported market data provider.';
+  String get urlUnsupportedCategory  => _it
+      ? 'Categoria di strumento non supportata. Prova con un\'azione, ETF, fondo o obbligazione.'
+      : 'Unsupported instrument category. Try a stock, ETF, fund or bond.';
+  String get urlFetchFailed          => _it
+      ? 'Impossibile raggiungere la pagina. Verifica la connessione e riprova.'
+      : 'Could not reach the page. Check your connection and try again.';
+  String get urlParseFailed          => _it
+      ? 'Pagina trovata ma impossibile leggere i dati dello strumento. Controlla che l\'indirizzo punti alla scheda dello strumento.'
+      : 'Page found but instrument data could not be read. Make sure the address points to the instrument page.';
+
   String get createAssetTitle    => _it ? 'Crea attività'                     : 'Create Asset';
   String symbolLabel(String s)   => 'Symbol: $s';
   String typeLabel(String t)     => _it ? 'Tipo: $t'                          : 'Type: $t';
   String get stockExchange       => _it ? 'Borsa valori'                      : 'Stock Exchange';
   String get newAssetManualTitle => _it ? 'Nuova attività (manuale)'           : 'New Asset (Manual)';
-  String get identifierLabel     => _it ? 'Identificatore (ISIN, ticker, ecc.)' : 'Identifier (ISIN, ticker, etc.)';
   String get isinLabel           => _it ? 'Identificatore (ISIN, ID fondo, ecc.)' : 'Identifier (ISIN, fund ID, etc.)';
   String get noEventsYetShort    => _it ? 'Nessun evento'            : 'No events yet';
   String nEvents(int n)          => _it ? '$n eventi'                : '$n events';
@@ -503,39 +497,21 @@ class AppStrings {
   String get deleteTransactionTitle => _it ? 'Elimina transazione?'   : 'Delete Transaction?';
 
   // ── Capex / Adjustments ──────────────────────────────────
-  String get capexTabSavingSpent     => _it ? 'Spese dilazionate'      : 'Spread Expenses';
-  String get capexTabDonationSpent   => _it ? 'Donazioni / Eredità'    : 'Donations / Inheritance';
-  String get noSpreadAdjustments     => _it
-      ? 'Nessun aggiustamento dilazionato.\nAggiungi un elemento per distribuire grandi spese nel tempo.'
-      : 'No spread adjustments yet.\nAdd an item to spread large expenses over time.';
-  String get noIncomeAdjustments     => _it
-      ? 'Nessun aggiustamento entrate.\nAggiungi una donazione o importo forfait da sottrarre dal patrimonio netto.'
-      : 'No income adjustments yet.\nAdd a donation or lump sum to subtract from net worth.';
-  String expLabel(String d)          => _it ? 'Spesa: $d'              : 'Exp: $d';
 
   // ── Capex Detail ─────────────────────────────────────────
-  String get tooltipRegenerateEntries => _it ? 'Rigenera voci'         : 'Regenerate Entries';
   String get entriesRegenerated       => _it ? 'Voci rigenerate.'      : 'Entries regenerated.';
   String get savingEvents             => _it ? 'Eventi risparmio'      : 'Saving Events';
   String get tooltipAddReimbursement  => _it ? 'Aggiungi rimborso'     : 'Add Reimbursement';
-  String get reimbursementEnabled     => _it ? 'Rimborso abilitato.'   : 'Reimbursement tracking enabled.';
   String get enableReimbursements     => _it ? 'Abilita rimborsi'      : 'Enable Reimbursements';
-  String get noEventsCapex            => _it ? 'Nessun evento.'        : 'No events yet.';
   String totalReimbursed(String amt)  => _it ? 'Totale rimborsato: $amt' : 'Total reimbursed: $amt';
   String get addReimbursementTitle    => _it ? 'Aggiungi rimborso'     : 'Add Reimbursement';
-  String get reimbursementFromHint    => _it ? 'es. Da Marco'          : 'e.g. From John';
-  String get deleteReimbursementTitle => _it ? 'Elimina rimborso?'     : 'Delete Reimbursement?';
   String get deleteAdjustmentTitle    => _it ? 'Elimina aggiustamento?': 'Delete Adjustment?';
   String deleteAdjustmentConfirm(String n) => _it
       ? 'Eliminare "$n" e tutte le voci?\nQuesta operazione non può essere annullata.'
       : 'Delete "$n" and all its entries?\nThis cannot be undone.';
   String get totalLabel          => _it ? 'Totale'             : 'Total';
-  String get expenseLabel        => _it ? 'Spesa'              : 'Expense';
   String get spreadLabel         => _it ? 'Distribuzione'      : 'Spread';
   String get reimbursement       => _it ? 'Rimborso'           : 'Reimbursement';
-  String cumulativeRemaining(String cum, String rem) => _it
-      ? 'Cumulativo: $cum · Rimanente: $rem'
-      : 'Cumulative: $cum · Remaining: $rem';
   String datePrefix(String d)    => _it ? 'Data: $d'           : 'Date: $d';
 
   // ── Extraordinary Events (unified Adjustments redesign) ──
@@ -567,6 +543,12 @@ class AppStrings {
   String get freqMonthly                 => _it ? 'Mensile'                 : 'Monthly';
   String get freqQuarterly               => _it ? 'Trimestrale'             : 'Quarterly';
   String get freqYearly                  => _it ? 'Annuale'                 : 'Yearly';
+  String freqLabel(StepFrequency f) => switch (f) {
+        StepFrequency.weekly => freqWeekly,
+        StepFrequency.monthly => freqMonthly,
+        StepFrequency.quarterly => freqQuarterly,
+        StepFrequency.yearly => freqYearly,
+      };
   String get extraordinaryEvents         => _it ? 'Eventi straordinari'     : 'Extraordinary Events';
   String get adjustmentsInfoTitle        => _it ? 'Cosa sono gli aggiustamenti' : 'What these events are';
   String get adjustmentsInfoBody         => _it
@@ -587,46 +569,13 @@ class AppStrings {
   // ── Capex Edit ───────────────────────────────────────────
   String get editAdjustmentTitle  => _it ? 'Modifica aggiustamento'   : 'Edit Adjustment';
   String get newAdjustmentTitle   => _it ? 'Nuovo aggiustamento'       : 'New Adjustment';
-  String get capexNameHint        => _it ? 'es. Auto, Ristrutturazione cucina' : 'e.g. Car, Kitchen renovation';
   String get totalAmount          => _it ? 'Importo totale'            : 'Total Amount';
-  String rateLabel(String b, String c) => _it ? 'Tasso $b/$c'         : 'Rate $b/$c';
   String get reimbursements       => _it ? 'Rimborsi'                  : 'Reimbursements';
   String get stepFrequency        => _it ? 'Frequenza step'            : 'Step Frequency';
-  String get directionBackward    => _it ? 'Indietro'                  : 'Backward';
-  String get directionForward     => _it ? 'Avanti'                    : 'Forward';
-  String get directionStartSteps  => _it ? 'Inizio + Steps'            : 'Start + Steps';
-  String get numberOfSteps        => _it ? 'Numero di step'            : 'Number of Steps';
-  String get saveAndAddAnother    => _it ? 'Salva e aggiungi altro'    : 'Save & Add Another';
-  String get editReimbursementTitle => _it ? 'Modifica rimborso'       : 'Edit Reimbursement';
-  String get savedAddAnother      => _it ? 'Salvato! Aggiungine un altro.' : 'Saved! Add another.';
-  String get expenseDateLabel     => _it ? 'Data spesa'                : 'Expense Date';
-  String get expenseDateHelp     => _it ? 'Data spesa (quando il denaro è uscito)' : 'Expense Date (when money left)';
-  String effectiveAmountToSpread(String amt, String sym) => _it
-      ? 'Importo effettivo da distribuire: $amt $sym'
-      : 'Effective amount to spread: $amt $sym';
-  String get spreadBackwardHelp  => _it
-      ? 'Distribuzione risparmi dalla data inizio fino alla data spesa'
-      : 'Spread savings from start date up to expense date';
-  String get spreadForwardHelp   => _it
-      ? 'Distribuzione costo dalla data spesa alla data fine'
-      : 'Spread cost from expense date to end date';
-  String get spreadStartStepsHelp => _it
-      ? 'Distribuzione dalla data inizio per N step'
-      : 'Spread from start date for N steps';
-  String stepsFromTo(int n, String from, String to) => _it
-      ? '$n step da $from a $to'
-      : '$n steps from $from to $to';
   String get startDate           => _it ? 'Data inizio'               : 'Start Date';
   String get endDate             => _it ? 'Data fine'                 : 'End Date';
-  String get minOne              => _it ? 'Min 1'                     : 'Min 1';
 
   // ── Capex Screen ────────────────────────────────────────
-  String reimbLabel(String amt)  => _it ? 'Rimb: $amt'                : 'Reimb: $amt';
-  String nSteps(int n, String range) => _it ? '$n step · $range'      : '$n steps · $range';
-  String incomeLabel(String amt) => _it ? 'Reddito: $amt'             : 'Income: $amt';
-  String spentRemaining(String spent, String rem) => _it
-      ? 'Speso: $spent · Rimanente: $rem'
-      : 'Spent: $spent · Remaining: $rem';
 
   // ── Income ───────────────────────────────────────────────
   String get noValidRowsClipboard  => _it ? 'Nessuna riga valida trovata negli appunti' : 'No valid rows found in clipboard';
@@ -655,32 +604,9 @@ class AppStrings {
   String get importFromFileTooltip => _it ? 'Importa da file'           : 'Import from file';
 
   // ── Income Adjustment Detail ──────────────────────────────
-  String get expensesLabel          => _it ? 'Spese'                    : 'Expenses';
-  String get tooltipAddExpense      => _it ? 'Aggiungi spesa'           : 'Add Expense';
-  String get noExpensesYet          => _it
-      ? 'Nessuna spesa. Aggiungila quando spendi questi soldi.'
-      : 'No expenses yet. Add when you spend this money.';
-  String get addExpenseTitle        => _it ? 'Aggiungi spesa'           : 'Add Expense';
-  String get expenseHint            => _it ? 'es. Mobili, Viaggio'      : 'e.g. Furniture, Travel';
-  String get deleteExpenseTitle     => _it ? 'Elimina spesa?'           : 'Delete Expense?';
-  String get deleteIncomeAdjTitle   => _it ? 'Elimina aggiustamento reddito?' : 'Delete Income Adjustment?';
-  String deleteIncomeAdjConfirm(String n) => _it
-      ? 'Eliminare "$n" e tutte le spese?\nQuesta operazione non può essere annullata.'
-      : 'Delete "$n" and all its expenses?\nThis cannot be undone.';
-  String get incomeChip          => _it ? 'Reddito'                   : 'Income';
-  String get incomeDateFieldLabel => _it ? 'Data reddito'             : 'Income Date';
-  String get spentLabel          => _it ? 'Speso'                     : 'Spent';
-  String get remainingLabel      => _it ? 'Rimanente'                 : 'Remaining';
 
   // ── Income Adjustment Edit ────────────────────────────────
-  String get editIncomeAdjTitle   => _it ? 'Modifica aggiustamento reddito' : 'Edit Income Adjustment';
-  String get newIncomeAdjTitle    => _it ? 'Nuovo aggiustamento reddito'     : 'New Income Adjustment';
-  String get incomeAdjNameHint    => _it ? 'es. Donazione, Eredità'          : 'e.g. Donation, Inheritance';
   String get remaining            => _it ? 'Rimanente: '                      : 'Remaining: ';
-  String get editExpenseTitle     => _it ? 'Modifica spesa'                   : 'Edit Expense';
-  String get incomeDateLabel      => _it ? 'Data reddito'                     : 'Income Date';
-  String get incomeDateHelp      => _it ? 'Data reddito (quando il denaro è arrivato)' : 'Income Date (when money arrived)';
-  String spentOf(String spent, String total) => _it ? 'Speso: $spent / $total' : 'Spent: $spent / $total';
   String get expense             => _it ? 'Spesa'                              : 'Expense';
 
   // ── Import Screen ────────────────────────────────────────
@@ -726,10 +652,6 @@ class AppStrings {
   String get unmappedHelp          => _it
       ? 'Le colonne non mappate vengono salvate come metadati'
       : 'Unmapped columns are stored as metadata';
-  String get dedupKeyColumns       => _it ? 'Colonne chiave dedup'   : 'Dedup key columns';
-  String get dedupKeyHelp          => _it
-      ? 'Seleziona le colonne che identificano una riga unica (i duplicati verranno saltati)'
-      : 'Select which columns identify a unique row (duplicates will be skipped)';
   String previewRows(int n)        => _it ? 'Anteprima ($n righe)'   : 'Preview ($n rows)';
   String get first5Rows            => _it ? 'Prime 5 righe'          : 'First 5 rows';
   String hiddenRows(int n)         => _it ? '⋯ $n righe nascoste ⋯' : '⋯ $n rows hidden ⋯';
@@ -776,12 +698,7 @@ class AppStrings {
   String get noAccountsCreate      => _it ? 'Nessun conto. Creane uno prima.' : 'No accounts yet. Create one first.';
   String get createAccount         => _it ? 'Crea conto'               : 'Create Account';
   String get newAccount            => _it ? '+ Nuovo conto'            : '+ New Account';
-  String get noAssetsCreate        => _it ? 'Nessuna attività. Creane una prima.' : 'No assets yet. Create one first.';
   String get createAsset            => _it ? 'Crea attività'            : 'Create Asset';
-  String get newAsset              => _it ? '+ Nuova attività'         : '+ New Asset';
-  String get lookingUpIsin         => _it ? 'Ricerca ISIN...'          : 'Looking up ISIN...';
-  String get isinNotFound          => _it ? 'ISIN non trovato'         : 'ISIN not found';
-  String get isinHint              => _it ? 'es. IE00B4L5Y983'         : 'e.g. IE00B4L5Y983';
 
   // ── Import Result ───────────────────────────────────────
   String get importComplete        => _it ? 'Importazione completata'  : 'Import Complete';
@@ -804,7 +721,6 @@ class AppStrings {
   String get buysLabel             => _it ? 'Acquisti'                 : 'Buys';
   String get sellsLabel            => _it ? 'Vendite'                  : 'Sells';
   String get assetLabel            => _it ? 'Attività'                 : 'Asset';
-  String get previewError          => _it ? 'Errore anteprima'         : 'Preview error';
 
   // ── Column Mapper ───────────────────────────────────────
   String get modeLabel             => _it ? 'Modalità: '               : 'Mode: ';
@@ -881,19 +797,6 @@ class AppStrings {
   String get assetClassMultiAsset      => _it ? 'Misto'                          : 'Multi-Asset';
 
   // ── Legacy asset type labels (kept for backward compat) ──
-  String get assetTypeStock            => _it ? 'Azione'                         : 'Stock';
-  String get assetTypeStockEtf         => _it ? 'ETF Azionario'                  : 'Stock ETF';
-  String get assetTypeBondEtf          => _it ? 'ETF Obbligazionario'            : 'Bond ETF';
-  String get assetTypeCommodityEtf     => _it ? 'ETF Commodity'                  : 'Commodity ETF';
-  String get assetTypeGoldEtc          => _it ? 'ETC Oro'                        : 'Gold ETC';
-  String get assetTypeMoneyMarketEtf   => _it ? 'ETF Monetario'                  : 'Money Market ETF';
-  String get assetTypeCrypto           => 'Crypto';
-  String get assetTypeCash             => _it ? 'Liquidità'                      : 'Cash';
-  String get assetTypePension          => _it ? 'Pensione'                       : 'Pension';
-  String get assetTypeDeposit          => _it ? 'Deposito'                       : 'Deposit';
-  String get assetTypeRealEstate       => _it ? 'Immobili'                       : 'Real Estate';
-  String get assetTypeAlternative      => _it ? 'Alternativo'                    : 'Alternative';
-  String get assetTypeLiability        => _it ? 'Passività'                      : 'Liability';
   String get top1                      => 'Top 1';
   String get top3                      => 'Top 3';
   String get top5                      => 'Top 5';
@@ -938,7 +841,6 @@ class AppStrings {
   String deleteIntermediaryConfirm(String name) => _it
       ? 'Eliminare "$name"? Conti e strumenti verranno spostati in "Non assegnato".'
       : 'Delete "$name"? Accounts and assets will be moved to "Unassigned".';
-  String get intermediaryMoved     => _it ? 'Spostato con successo'     : 'Moved successfully';
   String get selectIntermediary    => _it ? 'Seleziona intermediario'   : 'Select Intermediary';
   String get selectIntermediaryEmpty => _it ? 'Nessun intermediario. Creane uno per procedere.' : 'No intermediary yet. Create one to continue.';
   String get close                 => _it ? 'Chiudi'                    : 'Close';
@@ -953,25 +855,9 @@ class AppStrings {
       : '$n items will be permanently deleted. This cannot be undone.';
 
   // ── DB Picker ────────────────────────────────────────────
-  String get dbPickerTitle        => _it ? 'Apri un database'        : 'Open a Database';
-  String get dbPickerOpenFile     => _it ? 'Apri file...'            : 'Open File...';
-  String get dbPickerNewProject   => _it ? 'Nuovo progetto'          : 'New Project';
-  String get dbPickerCreateDemo   => _it ? 'Crea DB demo'            : 'Create Demo DB';
-  String get dbPickerGenerating   => _it ? 'Generazione...'          : 'Generating...';
-  String dbPickerDemoFailed(Object e) => _it
-      ? 'Errore generazione demo DB: $e'
-      : 'Failed to generate demo DB: $e';
-  String get dbPickerRecent       => _it ? 'Recenti'                 : 'Recent';
-  String get dbPickerRemoveRecent => _it ? 'Rimuovi dai recenti'     : 'Remove from recent';
-  String get openDatabase        => _it ? 'Apri database'            : 'Open Database';
-  String get createNewProject    => _it ? 'Crea nuovo progetto'      : 'Create new project';
-  String get chooseDemoFolder    => _it ? 'Scegli cartella per database demo' : 'Choose folder for demo database';
 
   // ── Main / App Shell ────────────────────────────────────
-  String dbOpenFailed(Object e)  => _it ? 'Impossibile aprire il database:\n$e' : 'Failed to open database:\n$e';
-  String get backToPicker        => _it ? 'Torna alla selezione'     : 'Back to picker';
   String get noNetworkRetry      => _it ? 'Nessuna rete - tocca per riprovare' : 'No network - tap to retry';
-  String get systemDefault       => _it ? 'Predefinito di sistema'   : 'System Default';
 
   // ── Bug Reporter / Ticketer ────────────────────────────
   String get ticketerTitle        => _it ? 'Segnala un bug'            : 'Report a Bug';

@@ -766,10 +766,6 @@ extension _ColumnMapperStep on _ImportScreenState {
             ),
           ],
         ],
-
-        // Fee/cost column -- available for cumulative and filtered modes
-
-
       ],
     );
   }

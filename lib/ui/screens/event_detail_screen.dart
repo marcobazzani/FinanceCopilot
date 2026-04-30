@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../utils/dialogs.dart';
 
 import '../../database/database.dart';
 import '../../database/providers.dart';
@@ -68,9 +69,7 @@ class _DetailBody extends ConsumerWidget {
               onPressed: () async {
                 await ref.read(extraordinaryEventServiceProvider).generateScheduledEntries(event.id);
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(s.entriesRegenerated)),
-                  );
+                  showInfoSnack(context, s.entriesRegenerated);
                 }
               },
             ),
@@ -100,7 +99,7 @@ class _DetailBody extends ConsumerWidget {
                       Chip(label: Text(event.currency)),
                       if (isSpread && event.stepFrequency != null) ...[
                         const SizedBox(width: 8),
-                        Chip(label: Text(_freqLabel(s, event.stepFrequency!))),
+                        Chip(label: Text(s.freqLabel(event.stepFrequency!))),
                       ],
                     ],
                   ),
@@ -230,37 +229,27 @@ class _DetailBody extends ConsumerWidget {
     );
   }
 
-  String _freqLabel(AppStrings s, StepFrequency f) => switch (f) {
-        StepFrequency.weekly => s.freqWeekly,
-        StepFrequency.monthly => s.freqMonthly,
-        StepFrequency.quarterly => s.freqQuarterly,
-        StepFrequency.yearly => s.freqYearly,
-      };
-
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteAdjustmentTitle),
-        content: Text(s.deleteAdjustmentConfirm(event.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.deleteAdjustmentTitle,
+      content: s.deleteAdjustmentConfirm(event.name),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await ref.read(extraordinaryEventServiceProvider).delete(event.id);
       if (context.mounted) Navigator.pop(context);
     }
   }
 
-  Future<void> _addManualEntry(BuildContext context, WidgetRef ref) async {
+  Future<({double amount, String desc, DateTime date})?> _promptAmountDescDate(
+    BuildContext context,
+    WidgetRef ref, {
+    required String title,
+  }) async {
     final s = ref.read(appStringsProvider);
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final amountCtrl = TextEditingController();
@@ -271,7 +260,7 @@ class _DetailBody extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.addEventEntryTitle),
+          title: Text(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -288,12 +277,7 @@ class _DetailBody extends ConsumerWidget {
               const SizedBox(height: 8),
               InkWell(
                 onTap: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    initialDate: date,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
+                  final picked = await pickDate(ctx, date, firstYear: 2000);
                   if (picked != null) setDialogState(() => date = picked);
                 },
                 child: InputDecorator(
@@ -310,80 +294,38 @@ class _DetailBody extends ConsumerWidget {
         ),
       ),
     );
-    if (result != true) return;
+    if (result != true) return null;
     final amount = fmt.tryParseLocalized(amountCtrl.text, locale: locale);
-    if (amount == null) return;
+    if (amount == null) return null;
+    return (amount: amount, desc: descCtrl.text.trim(), date: date);
+  }
+
+  Future<void> _addManualEntry(BuildContext context, WidgetRef ref) async {
+    final s = ref.read(appStringsProvider);
+    final entry = await _promptAmountDescDate(context, ref, title: s.addEventEntryTitle);
+    if (entry == null) return;
     await ref.read(extraordinaryEventServiceProvider).addManualEntry(
           eventId: event.id,
-          date: date,
-          amount: amount,
-          description: descCtrl.text.trim(),
+          date: entry.date,
+          amount: entry.amount,
+          description: entry.desc,
         );
   }
 
   Future<void> _addReimbursement(BuildContext context, WidgetRef ref) async {
     final s = ref.read(appStringsProvider);
-    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
-    final amountCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    var date = DateTime.now();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.addReimbursementTitle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amountCtrl,
-                decoration: InputDecoration(labelText: s.amount),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: descCtrl,
-                decoration: InputDecoration(labelText: s.descriptionOptional),
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    initialDate: date,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) setDialogState(() => date = picked);
-                },
-                child: InputDecorator(
-                  decoration: InputDecoration(labelText: s.dateLabel),
-                  child: Text(fmt.shortDateFormat(locale).format(date)),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
-          ],
-        ),
-      ),
-    );
-    if (result != true) return;
-    final amount = fmt.tryParseLocalized(amountCtrl.text, locale: locale);
-    if (amount == null) return;
+    final entry = await _promptAmountDescDate(context, ref, title: s.addReimbursementTitle);
+    if (entry == null) return;
     final db = ref.read(databaseProvider);
     await db.into(db.bufferTransactions).insert(
           BufferTransactionsCompanion.insert(
             bufferId: event.bufferId!,
-            operationDate: date,
-            valueDate: date,
-            amount: amount,
+            operationDate: entry.date,
+            valueDate: entry.date,
+            amount: entry.amount,
             balanceAfter: 0,
             currency: Value(event.currency),
-            description: Value(descCtrl.text.trim()),
+            description: Value(entry.desc),
             isReimbursement: const Value(true),
           ),
         );
