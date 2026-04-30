@@ -263,8 +263,15 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth, double chartHeight) {
     if (_scaleStartMinX == null || chartWidth <= 0) return;
 
+    // Per-axis scale factors so a horizontal-dominant pinch widens X
+    // without compressing Y, and vice versa. `d.scale` is the geometric
+    // mean — using it would force aspect-ratio-locked zoom, which is
+    // not how iOS Stocks / Google Finance / TradingView behave.
+    final xScale = widget.fullPinch ? d.horizontalScale : d.scale;
+    final yScale = widget.fullPinch ? d.verticalScale : d.scale;
+
     final startRange = _scaleStartMaxX! - _scaleStartMinX!;
-    var newRange = startRange / d.scale;
+    var newRange = startRange / xScale;
     if (newRange >= widget.totalDays) {
       widget.onZoom(null, null, null, null);
       return;
@@ -286,10 +293,10 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
 
     double? newMinY, newMaxY;
     if (widget.fullPinch && _scaleStartMinY != null && chartHeight > 0) {
-      // Y zoom: same pinch scale, anchored on focal Y. No clamp on Y —
+      // Y zoom uses verticalScale, anchored on focal Y. No clamp on Y —
       // data may legitimately extend beyond the visible window.
       final startYRange = _scaleStartMaxY! - _scaleStartMinY!;
-      final newYRange = startYRange / d.scale;
+      final newYRange = startYRange / yScale;
       final fractionFromBottom = 1.0 - d.localFocalPoint.dy / chartHeight;
       newMinY = _scaleStartFocalChartY! - fractionFromBottom * newYRange;
       newMaxY = newMinY + newYRange;
@@ -470,6 +477,10 @@ class UnifiedChart extends StatelessWidget {
   /// tap/drag tooltip handling so our parent ScaleGestureRecognizer can claim
   /// single-finger pan on touch devices.
   final bool zoomedX;
+  /// True for the immersive full-screen view, where zoom updates fire at
+  /// pointer-frequency and the 150ms LineChart tween becomes the
+  /// bottleneck. Skipping the tween makes pinch feel native.
+  final bool liveZoom;
 
   const UnifiedChart({super.key,
     required this.firstDate,
@@ -485,6 +496,7 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMaxY,
     this.isPrivate = false,
     this.zoomedX = false,
+    this.liveZoom = false,
   });
 
   @override
@@ -579,6 +591,11 @@ class UnifiedChart extends StatelessWidget {
     final xRange = xMax - xMin;
 
     return LineChart(
+      // In full-screen / live-zoom mode, kill the 150ms implicit tween
+      // — pinch updates fire ~60Hz and each tween queues frames, which
+      // is what makes the chart feel laggy. Static views still get the
+      // smooth animation.
+      duration: liveZoom ? Duration.zero : const Duration(milliseconds: 150),
       LineChartData(
         minX: xMin,
         maxX: xMax,
