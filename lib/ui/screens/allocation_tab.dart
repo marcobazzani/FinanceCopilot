@@ -281,39 +281,49 @@ class _DrillableDonutState extends State<_DrillableDonut> {
     final entries = data.entries.toList();
     return Column(
       children: [
-        SizedBox(
-          height: 200,
-          child: PieChart(
-            PieChartData(
-              sectionsSpace: 2,
-              centerSpaceRadius: 50,
-              pieTouchData: onSliceTap != null
-                  ? PieTouchData(
-                      touchCallback: (event, response) {
-                        if (event is FlTapUpEvent &&
-                            response?.touchedSection != null) {
-                          final idx = response!.touchedSection!.touchedSectionIndex;
-                          if (idx >= 0 && idx < entries.length) {
-                            onSliceTap(entries[idx].key);
-                          }
-                        }
-                      },
-                    )
-                  : null,
-              sections: List.generate(entries.length, (i) {
-                final pct = entries[i].value / total * 100;
-                return PieChartSectionData(
-                  value: entries[i].value,
-                  color: _colorAt(i),
-                  radius: 60,
-                  title: pct >= 5 ? '${pct.toStringAsFixed(1)}%' : '',
-                  titleStyle: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                );
-              }),
+        // Constrain the chart's hit area to the disc itself — fl_chart's
+        // internal PanGestureRecognizer otherwise claims the entire
+        // bounding box on touch-down (see fl_chart#1307), which can
+        // hold pointer state and starve the surrounding TabBar of taps
+        // on macOS (Flutter#136622-class arena bug).
+        Center(
+          child: SizedBox(
+            width: 200,
+            height: 200,
+            child: ClipOval(
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 50,
+                  pieTouchData: onSliceTap != null
+                      ? PieTouchData(
+                          touchCallback: (event, response) {
+                            if (event is FlTapUpEvent &&
+                                response?.touchedSection != null) {
+                              final idx = response!.touchedSection!.touchedSectionIndex;
+                              if (idx >= 0 && idx < entries.length) {
+                                onSliceTap(entries[idx].key);
+                              }
+                            }
+                          },
+                        )
+                      : null,
+                  sections: List.generate(entries.length, (i) {
+                    final pct = entries[i].value / total * 100;
+                    return PieChartSectionData(
+                      value: entries[i].value,
+                      color: _colorAt(i),
+                      radius: 60,
+                      title: pct >= 5 ? '${pct.toStringAsFixed(1)}%' : '',
+                      titleStyle: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    );
+                  }),
+                ),
+              ),
             ),
           ),
         ),
