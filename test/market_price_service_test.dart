@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -143,6 +144,83 @@ void main() {
 
       final firstBuy = await service.getFirstBuyDate(assetId);
       expect(firstBuy, DateTime(2024, 5, 1));
+    });
+  });
+
+  group('initialSyncDefaultFrom — widened window', () {
+    test('subtracts the 14-day buffer from firstBuy', () {
+      // Buy on a holiday: prior trading days must still be reachable.
+      // 2026-05-01 is a public holiday in Italy; without the buffer the
+      // fetch window collapses to a single non-trading day and the API
+      // returns no rows.
+      final firstBuy = DateTime(2026, 5, 1);
+      expect(
+        InvestingComService.initialSyncDefaultFrom(firstBuy),
+        DateTime(2026, 4, 17),
+      );
+    });
+
+    test('falls back to 2020-01-01 when firstBuy is null', () {
+      expect(
+        InvestingComService.initialSyncDefaultFrom(null),
+        DateTime(2020, 1, 1),
+      );
+    });
+  });
+
+  group('assetsWithoutMarketPrice query', () {
+    // Pin the SQL used by assetsWithoutMarketPriceProvider so the UI badge
+    // surfaces precisely the assets whose displayed value is a buy/revalue
+    // fallback rather than a real market quote.
+    test('flags marketPrice assets with no rows in market_prices', () async {
+      // Asset with no market_prices -> should be flagged.
+      final flagged = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'Stale bond',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: iid,
+      ));
+      // Asset with a stored price -> should NOT be flagged.
+      final priced = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'Live ETF',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        intermediaryId: iid,
+      ));
+      await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
+        assetId: priced,
+        date: DateTime(2026, 4, 30),
+        closePrice: 101.24,
+        currency: 'EUR',
+      ));
+      // Event-driven asset (e.g. real estate) -> should NOT be flagged
+      // even with no market_prices row, since marketPrice isn't its source.
+      final manual = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'Apartment',
+        assetType: AssetType.realEstate,
+        valuationMethod: ValuationMethod.eventDriven,
+        intermediaryId: iid,
+      ));
+      // Inactive marketPrice asset with no prices -> excluded too.
+      final inactiveId = await db.into(db.assets).insert(AssetsCompanion.insert(
+        name: 'Old position',
+        assetType: AssetType.stockEtf,
+        valuationMethod: ValuationMethod.marketPrice,
+        isActive: const drift.Value(false),
+        intermediaryId: iid,
+      ));
+
+      final rows = await db.customSelect(
+        "SELECT a.id FROM assets a "
+        "WHERE a.is_active = 1 "
+        "AND a.valuation_method = 'marketPrice' "
+        "AND NOT EXISTS (SELECT 1 FROM market_prices mp WHERE mp.asset_id = a.id)",
+      ).get();
+      final ids = rows.map((r) => r.read<int>('id')).toSet();
+      expect(ids, {flagged});
+      expect(ids.contains(priced), isFalse);
+      expect(ids.contains(manual), isFalse);
+      expect(ids.contains(inactiveId), isFalse);
     });
   });
 }

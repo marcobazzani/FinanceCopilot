@@ -1007,6 +1007,17 @@ class InvestingComService extends MarketPriceService {
   /// Max concurrent HTTP requests to Investing.com to avoid rate-limiting.
   static const _maxConcurrency = 3;
 
+  /// Buffer subtracted from firstBuy on initial sync. Covers a long weekend
+  /// or holiday cluster so a single non-trading day around the buy date
+  /// doesn't yield an empty fetch window.
+  static const _initialSyncBuffer = Duration(days: 14);
+
+  /// Default fetch start when no prior price has been stored. Subtracts
+  /// [_initialSyncBuffer] from the asset's first buy so a holiday/weekend
+  /// around the buy date still captures the prior trading day.
+  static DateTime initialSyncDefaultFrom(DateTime? firstBuy) =>
+      firstBuy?.subtract(_initialSyncBuffer) ?? DateTime(2020, 1, 1);
+
   @override
   Future<void> syncPrices({bool forceToday = false}) async {
     try {
@@ -1033,7 +1044,7 @@ class InvestingComService extends MarketPriceService {
         final lastDate = await getLastSyncDate(asset.id);
         final firstBuy = await getFirstBuyDate(asset.id);
         final firstPrice = await getFirstPriceDate(asset.id);
-        final defaultFrom = firstBuy ?? DateTime(2020, 1, 1);
+        final defaultFrom = initialSyncDefaultFrom(firstBuy);
 
         final needsBackfill = firstBuy != null &&
             firstPrice != null &&
@@ -1128,7 +1139,7 @@ class InvestingComService extends MarketPriceService {
           // Forward fetch (incremental or forceToday)
           final lastDate = await getLastSyncDate(asset.id);
           final firstBuy = await getFirstBuyDate(asset.id);
-          final defaultFrom = firstBuy ?? DateTime(2020, 1, 1);
+          final defaultFrom = initialSyncDefaultFrom(firstBuy);
 
           // Re-fetch from lastDate (not +1) so that an intraday price stored
           // during trading hours gets corrected with the actual close.
