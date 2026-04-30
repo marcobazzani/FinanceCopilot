@@ -608,7 +608,19 @@ class UnifiedChart extends StatelessWidget {
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
           enabled: !isPrivate,
-          handleBuiltInTouches: !zoomedX,
+          // On touch platforms, fl_chart's built-in recognizer wins the
+          // gesture arena on touch-down and would block our parent
+          // ScaleGestureRecognizer from ever seeing pinch / pan — even
+          // before the chart is zoomed. Disable it entirely on mobile
+          // (we lose drag-tooltip on mobile in exchange for working
+          // pinch + pan; tap-tooltip can be re-added later via a
+          // separate TapGestureRecognizer). On desktop we still want
+          // the hover/tap tooltip, and our mouse drag is captured by
+          // the parent Listener so there's no conflict.
+          handleBuiltInTouches: switch (defaultTargetPlatform) {
+            TargetPlatform.iOS || TargetPlatform.android => false,
+            _ => !zoomedX,
+          },
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
