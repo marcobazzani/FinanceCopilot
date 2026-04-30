@@ -433,6 +433,7 @@ class AppStrings {
   String get newAssetManualTitle => _it ? 'Nuova attività (manuale)'           : 'New Asset (Manual)';
   String get isinLabel           => _it ? 'Identificatore (ISIN, ID fondo, ecc.)' : 'Identifier (ISIN, fund ID, etc.)';
   String get noEventsYetShort    => _it ? 'Nessun evento'            : 'No events yet';
+  String get noMarketData        => _it ? 'Quotazione non disponibile' : 'No market data';
   String nEvents(int n)          => _it ? '$n eventi'                : '$n events';
   String sinceDate(String d)     => _it ? 'Dal $d'                   : 'Since $d';
   String lastDate(String d)      => _it ? 'Ultimo $d'                : 'Last $d';

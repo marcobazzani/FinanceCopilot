@@ -48,6 +48,8 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final convertedStats = ref.watch(convertedAssetStatsProvider).value ?? {};
     final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
+    final noMarketData =
+        ref.watch(assetsWithoutMarketPriceProvider).value ?? const <int>{};
 
     return ListenableBuilder(
       listenable: _selection,
@@ -105,7 +107,8 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                   _buildGroup(
                     context, s, i.id, i,
                     grouped[i.id] ?? [],
-                    stats, convertedStats, marketValues, baseCurrency, locale,
+                    stats, convertedStats, marketValues, noMarketData,
+                    baseCurrency, locale,
                     intermediaries,
                   ),
             ],
@@ -156,6 +159,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     Map<int, AssetStats> stats,
     Map<int, double?> convertedStats,
     Map<int, double> marketValues,
+    Set<int> noMarketData,
     String baseCurrency,
     String locale,
     List<Intermediary> intermediaries,
@@ -192,6 +196,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
               stats: stat,
               convertedInvested: convertedStats[asset.id],
               marketValue: marketValues[asset.id],
+              hasNoMarketData: noMarketData.contains(asset.id),
               baseCurrency: baseCurrency,
               locale: locale,
               strings: s,
@@ -361,6 +366,7 @@ class _AssetTile extends StatelessWidget {
   final AssetStats? stats;
   final double? convertedInvested;
   final double? marketValue;
+  final bool hasNoMarketData;
   final String baseCurrency;
   final String locale;
   final VoidCallback onTap;
@@ -373,6 +379,7 @@ class _AssetTile extends StatelessWidget {
     required this.stats,
     this.convertedInvested,
     this.marketValue,
+    this.hasNoMarketData = false,
     required this.baseCurrency,
     required this.locale,
     required this.onTap,
@@ -461,7 +468,11 @@ class _AssetTile extends StatelessWidget {
                       color: asset.isActive ? null : Colors.grey,
                     ),
                   ),
-                  if (convertedInvested != null && convertedInvested! > 0) ...[
+                  if (hasNoMarketData) ...[
+                    const SizedBox(height: 2),
+                    _buildNoMarketDataBadge(theme),
+                  ] else if (convertedInvested != null &&
+                      convertedInvested! > 0) ...[
                     const SizedBox(height: 2),
                     _buildGainLoss(theme, amtFormat),
                   ],
@@ -557,6 +568,31 @@ class _AssetTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildNoMarketDataBadge(ThemeData theme) {
+    return Tooltip(
+      message: strings.noMarketData,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 12,
+            color: theme.colorScheme.error,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            strings.noMarketData,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+            ),
+          ),
+        ],
       ),
     );
   }
