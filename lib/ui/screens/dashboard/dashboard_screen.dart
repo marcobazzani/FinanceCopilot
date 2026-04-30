@@ -142,10 +142,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              // NeverScrollable so a 2-finger pinch on a chart doesn't get
-              // claimed by the page-swipe horizontal drag — the focal-point
-              // motion of a pinch is otherwise interpreted as a tab change.
-              physics: const NeverScrollableScrollPhysics(),
               children: [
                 const _FinancialHealthTab(),
                 _buildChartsTab(allDataAsync, locale, language, context, s),
