@@ -6,6 +6,7 @@ import 'dart:ui';
 import '../../../build_flags.dart';
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
