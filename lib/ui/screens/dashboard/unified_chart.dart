@@ -108,6 +108,12 @@ class DragZoomWrapper extends StatefulWidget {
   /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
   /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
   final bool zoomedY;
+  /// Full-screen / immersive mode. On touch, pinch zooms BOTH axes
+  /// (anchored at the focal point) and a single-finger drag pans both.
+  /// Use for a dedicated full-screen chart — not for the dashboard
+  /// mini-charts where a 2-finger pinch fights the parent TabBarView
+  /// page-swipe.
+  final bool fullPinch;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
   const DragZoomWrapper({super.key,
@@ -122,6 +128,7 @@ class DragZoomWrapper extends StatefulWidget {
     required this.locale,
     required this.onZoom,
     this.zoomedY = false,
+    this.fullPinch = false,
   });
 
   @override
@@ -138,6 +145,10 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   double? _scaleStartMinX;
   double? _scaleStartMaxX;
   double? _scaleStartFocalChartX;
+  // Full-pinch (Y) state — only populated when widget.fullPinch is true.
+  double? _scaleStartMinY;
+  double? _scaleStartMaxY;
+  double? _scaleStartFocalChartY;
 
   double _pixelToChartX(double px, double chartWidth) {
     final fraction = (px - widget.leftReserved) / chartWidth;
@@ -232,16 +243,24 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     widget.onZoom(widget.xMin, widget.xMax, r.minY, r.maxY);
   }
 
-  void _onScaleStart(ScaleStartDetails d, double chartWidth) {
+  void _onScaleStart(ScaleStartDetails d, double chartWidth, double chartHeight) {
     if (_activeKind == PointerDeviceKind.mouse || chartWidth <= 0) return;
     _scaleStartMinX = widget.xMin;
     _scaleStartMaxX = widget.xMax;
-    final pxToUnits = (widget.xMax - widget.xMin) / chartWidth;
+    final pxToUnitsX = (widget.xMax - widget.xMin) / chartWidth;
     _scaleStartFocalChartX =
-        widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnits;
+        widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnitsX;
+    if (widget.fullPinch && chartHeight > 0) {
+      _scaleStartMinY = widget.yMin;
+      _scaleStartMaxY = widget.yMax;
+      final yRange = widget.yMax - widget.yMin;
+      // Y is inverted: pixel 0 = top = max Y.
+      final fractionFromBottom = 1.0 - d.localFocalPoint.dy / chartHeight;
+      _scaleStartFocalChartY = widget.yMin + fractionFromBottom * yRange;
+    }
   }
 
-  void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth) {
+  void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth, double chartHeight) {
     if (_scaleStartMinX == null || chartWidth <= 0) return;
 
     final startRange = _scaleStartMaxX! - _scaleStartMinX!;
@@ -264,13 +283,27 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
       newMaxX = widget.totalDays;
       newMinX = newMaxX - newRange;
     }
-    widget.onZoom(newMinX, newMaxX, null, null);
+
+    double? newMinY, newMaxY;
+    if (widget.fullPinch && _scaleStartMinY != null && chartHeight > 0) {
+      // Y zoom: same pinch scale, anchored on focal Y. No clamp on Y —
+      // data may legitimately extend beyond the visible window.
+      final startYRange = _scaleStartMaxY! - _scaleStartMinY!;
+      final newYRange = startYRange / d.scale;
+      final fractionFromBottom = 1.0 - d.localFocalPoint.dy / chartHeight;
+      newMinY = _scaleStartFocalChartY! - fractionFromBottom * newYRange;
+      newMaxY = newMinY + newYRange;
+    }
+    widget.onZoom(newMinX, newMaxX, newMinY, newMaxY);
   }
 
   void _onScaleEnd(ScaleEndDetails _) {
     _scaleStartMinX = null;
     _scaleStartMaxX = null;
     _scaleStartFocalChartX = null;
+    _scaleStartMinY = null;
+    _scaleStartMaxY = null;
+    _scaleStartFocalChartY = null;
   }
 
   @override
@@ -365,8 +398,8 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                   },
                 ),
                 (r) => r
-                  ..onStart = (d) { _onScaleStart(d, chartWidth); }
-                  ..onUpdate = (d) { _onScaleUpdate(d, chartWidth); }
+                  ..onStart = (d) { _onScaleStart(d, chartWidth, chartHeight); }
+                  ..onUpdate = (d) { _onScaleUpdate(d, chartWidth, chartHeight); }
                   ..onEnd = _onScaleEnd,
               ),
             },
