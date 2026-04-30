@@ -142,6 +142,7 @@ class _FullscreenChartScreenState extends ConsumerState<FullscreenChartScreen> {
               zoomMaxY: _zoomMaxY,
               isPrivate: widget.isPrivate,
               zoomedX: _zoomMinX != null || _zoomMaxX != null,
+              liveZoom: true,
             ),
           ),
         ),
