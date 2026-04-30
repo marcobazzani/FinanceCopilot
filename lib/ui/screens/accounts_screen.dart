@@ -57,9 +57,6 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
         Expanded(
           child: TabBarView(
             controller: _tabController,
-            // Match dashboard: don't let page-swipe gestures steal focus
-            // from chart pinch / pan; tabs change via the TabBar tap.
-            physics: const NeverScrollableScrollPhysics(),
             children: const [
               _AccountsListTab(),
               IncomeScreen(),
