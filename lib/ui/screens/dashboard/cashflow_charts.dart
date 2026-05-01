@@ -298,9 +298,8 @@ class _MonthlyByYearLineChart extends ConsumerStatefulWidget {
   final String locale;
   final String language;
   final String field;    // 'income' or 'expenses'
-  final int? maxYears;   // limit to most recent N years
   const _MonthlyByYearLineChart({required this.data, required this.locale,
-                                  required this.language, required this.field, this.maxYears});
+                                  required this.language, required this.field});
 
   @override
   ConsumerState<_MonthlyByYearLineChart> createState() => _MonthlyByYearLineChartState();
@@ -324,10 +323,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
     final isPrivate = ref.watch(privacyModeProvider);
     final amtFmt = fmt.amountFormat(widget.locale);
     final sym    = currencySymbol(widget.data.baseCurrency);
-    var   years  = widget.data.years;
-    if (widget.maxYears != null && years.length > widget.maxYears!) {
-      years = years.sublist(years.length - widget.maxYears!);
-    }
+    final years  = widget.data.years;
     if (years.isEmpty) return const SizedBox.shrink();
 
     // Build visible line bars only

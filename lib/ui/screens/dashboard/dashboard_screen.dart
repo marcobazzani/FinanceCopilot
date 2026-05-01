@@ -31,6 +31,7 @@ import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
+import 'eoy_projection.dart';
 import 'fullscreen_chart_screen.dart';
 
 part 'models.dart';
