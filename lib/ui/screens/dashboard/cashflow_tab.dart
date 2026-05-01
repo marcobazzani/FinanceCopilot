@@ -234,7 +234,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
               // Chart 5 equivalent: monthly expenses by year (x=months, recent years)
               ExpansionTile(
                 title: Text(s.chartMonthlyExpensesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'expenses', maxYears: 5)],
+                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
               ),
               // Tables
               ExpansionTile(
@@ -247,7 +247,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
               ),
               ExpansionTile(
                 title: Text(s.chartMonthlyExpTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'expenses', maxYears: 5)],
+                children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
               ),
               ExpansionTile(
                 title: Text(s.chartYoYTitle, style: const TextStyle(fontWeight: FontWeight.w600)),

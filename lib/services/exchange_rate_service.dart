@@ -65,18 +65,7 @@ class ExchangeRateService {
           continue;
         }
         _log.fine('syncRates: EUR/$currency = $rate');
-        companions.add(ExchangeRatesCompanion(
-          fromCurrency: const Value('EUR'),
-          toCurrency: Value(currency),
-          date: Value(storeDate),
-          rate: Value(rate),
-        ));
-        companions.add(ExchangeRatesCompanion(
-          fromCurrency: Value(currency),
-          toCurrency: const Value('EUR'),
-          date: Value(storeDate),
-          rate: Value(1.0 / rate),
-        ));
+        companions.addAll(_eurRatePair(currency, storeDate, rate));
       }
 
       if (companions.isNotEmpty) {
@@ -149,18 +138,7 @@ class ExchangeRateService {
         // Store EUR→X and the inverse X→EUR
         final companions = <ExchangeRatesCompanion>[];
         for (final entry in rates.entries) {
-          companions.add(ExchangeRatesCompanion(
-            fromCurrency: const Value('EUR'),
-            toCurrency: Value(currency),
-            date: Value(entry.key),
-            rate: Value(entry.value),
-          ));
-          companions.add(ExchangeRatesCompanion(
-            fromCurrency: Value(currency),
-            toCurrency: const Value('EUR'),
-            date: Value(entry.key),
-            rate: Value(1.0 / entry.value),
-          ));
+          companions.addAll(_eurRatePair(currency, entry.key, entry.value));
         }
 
         await _db.batch((batch) {
@@ -260,6 +238,12 @@ class ExchangeRateService {
     }
     return amount * rate;
   }
+
+  /// Build an EUR↔[currency] companion pair for [date] at [rate] (EUR→[currency]).
+  static List<ExchangeRatesCompanion> _eurRatePair(String currency, DateTime date, double rate) => [
+        ExchangeRatesCompanion(fromCurrency: const Value('EUR'), toCurrency: Value(currency), date: Value(date), rate: Value(rate)),
+        ExchangeRatesCompanion(fromCurrency: Value(currency), toCurrency: const Value('EUR'), date: Value(date), rate: Value(1.0 / rate)),
+      ];
 }
 
 /// Cached exchange rate resolver for chart computations.

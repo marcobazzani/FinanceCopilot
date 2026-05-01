@@ -189,8 +189,8 @@ const _slowTests = bool.fromEnvironment('SLOW_TESTS');
 // smoothly during settle/longSettle/pumpFor. With 50ms frames the
 // progress indicators stuttered visibly on the macOS test driver.
 const _frameMs = _slowTests ? 33 : 16;
-const _settleMs = _slowTests ? 600 : 200;
-const _longSettleMs = _slowTests ? 1500 : 500;
+const _settleMs = _slowTests ? 600 : 100;
+const _longSettleMs = _slowTests ? 1500 : 250;
 
 /// Pump frames at ~60fps to let the widget tree rebuild after
 /// navigation/tap. Use instead of pumpAndSettle() which hangs on
@@ -402,6 +402,180 @@ Future<void> tapBuySellChips(WidgetTester tester) async {
     await tester.tap(sellChips.last);
     await settle(tester);
   }
+}
+
+// ── Wizard widget helpers ─────────────────────────────────────
+//
+// These drive the column-mapper / confirm step UIs. They locate widgets
+// by visible label text plus the wizard's known shape (row + dropdown
+// pattern), so callers don't need to know widget keys.
+
+/// Tap the column-mapping dropdown for the field whose visible label
+/// matches [fieldLabel] (case-insensitive; tolerates a trailing " *" that
+/// the wizard adds for required fields, and the lowercase "amount *"
+/// label produced by `s.amountRequired` in the transaction simple-mode
+/// row). Picks [columnName] from the menu.
+///
+/// The mapping rows live in a lazy ListView that recycles children
+/// scrolled out of view, so we scroll the list until the target label is
+/// visible before tapping its dropdown.
+Future<void> setMapping(
+  WidgetTester tester,
+  String fieldLabel,
+  String columnName,
+) async {
+  final wanted = fieldLabel.toLowerCase();
+  Finder labelText() => find.byWidgetPredicate(
+        (w) {
+          if (w is! Text || w.data == null) return false;
+          final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
+          return clean.toLowerCase() == wanted;
+        },
+        description: 'mapping-row Text matching "$fieldLabel" (case-insensitive)',
+      );
+  // Scroll the column-mapper ListView until the label is in the tree.
+  // The mapper's ListView is the first vertical Scrollable on the
+  // ImportScreen route. Try both directions because we don't know
+  // whether the row is above or below the current viewport.
+  if (labelText().evaluate().isEmpty) {
+    final scrollable = find.byType(Scrollable);
+    if (scrollable.evaluate().isNotEmpty) {
+      // Scroll up first (drag-down): brings rows above into view.
+      try {
+        await tester.scrollUntilVisible(
+          labelText(), -200,
+          scrollable: scrollable.first, maxScrolls: 8,
+        );
+      } catch (_) {}
+      if (labelText().evaluate().isEmpty) {
+        // Try downward.
+        try {
+          await tester.scrollUntilVisible(
+            labelText(), 200,
+            scrollable: scrollable.first, maxScrolls: 8,
+          );
+        } catch (_) {}
+      }
+    }
+  }
+  expect(labelText(), findsWidgets,
+      reason: 'mapping label "$fieldLabel" not found in column mapper');
+  final mappingRow = find.ancestor(
+    of: labelText().first,
+    matching: find.byType(Padding),
+  );
+  Finder dropdown = find.descendant(
+    of: mappingRow.first,
+    matching: find.byType(DropdownButtonFormField<String>),
+  );
+  expect(dropdown, findsWidgets,
+      reason: 'no dropdown found in mapping row for "$fieldLabel"');
+  await tester.ensureVisible(dropdown.first);
+  await settle(tester);
+  await tester.tap(dropdown.first);
+  await longSettle(tester);
+  await tester.tap(find.text(columnName).last);
+  await longSettle(tester);
+}
+
+/// Tap the historic/current SegmentedButton for asset imports.
+/// [optionLabel] should match the localized button text (e.g. "Historic",
+/// "Current").
+Future<void> setSegmentMode(WidgetTester tester, String optionLabel) async {
+  final button = find.text(optionLabel);
+  expect(button, findsWidgets,
+      reason: 'SegmentedButton option "$optionLabel" not found');
+  await tester.ensureVisible(button.first);
+  await settle(tester);
+  await tester.tap(button.first);
+  await longSettle(tester);
+}
+
+/// Tap the amount-mode button labeled [modeLabel] (e.g. "Direct",
+/// "Formula", "Balance Δ"). Expects the `_buildAmountModeButtons` row to
+/// be visible.
+Future<void> tapAmountMode(WidgetTester tester, String modeLabel) async {
+  final btn = find.widgetWithText(OutlinedButton, modeLabel);
+  expect(btn, findsWidgets,
+      reason: 'amount mode button "$modeLabel" not found');
+  await tester.ensureVisible(btn.first);
+  await settle(tester);
+  await tester.tap(btn.first);
+  await longSettle(tester);
+}
+
+/// Tap the Buy/Sell ChoiceChip for the row whose value text is [value].
+/// Used for the type-from-column mapping in asset imports.
+///
+/// The unique-value Text is rendered with fontSize 13; chip-label Text
+/// uses fontSize 11. We anchor on the value Text via that style so the
+/// helper still works when [value] equals a chip label like "Buy".
+Future<void> tapBuySellForValue(
+  WidgetTester tester,
+  String value, {
+  required bool buy,
+  String buyLabel = 'Buy',
+  String sellLabel = 'Sell',
+}) async {
+  final valueText = find.byWidgetPredicate(
+    (w) => w is Text && w.data == value && (w.style?.fontSize ?? 0) >= 13,
+    description: 'unique-value Text "$value" (fontSize >= 13)',
+  );
+  expect(valueText, findsWidgets,
+      reason: 'unique-value row "$value" not found for type-from-column');
+  final rowAnc = find.ancestor(of: valueText.first, matching: find.byType(Row));
+  expect(rowAnc, findsWidgets);
+  final chip = find.descendant(
+    of: rowAnc.first,
+    matching: find.widgetWithText(ChoiceChip, buy ? buyLabel : sellLabel),
+  );
+  expect(chip, findsWidgets,
+      reason: 'ChoiceChip "${buy ? buyLabel : sellLabel}" not found in row "$value"');
+  await tester.ensureVisible(chip.first);
+  await settle(tester);
+  await tester.tap(chip.first);
+  await settle(tester);
+}
+
+/// Tap the intermediary RadioListTile in the Confirm step that has the
+/// given [name]. Anchors on the title Text and walks up to the
+/// RadioListTile ancestor (matching the runtime type, which depends on
+/// how the calling widget's generic type was resolved).
+Future<void> selectIntermediary(WidgetTester tester, String name) async {
+  final titleText = find.text(name);
+  expect(titleText, findsWidgets,
+      reason: 'intermediary "$name" Text not found in confirm step');
+  // Find the closest RadioListTile ancestor without pinning the generic.
+  final tile = find.ancestor(
+    of: titleText.first,
+    matching: find.byWidgetPredicate(
+      (w) => w.runtimeType.toString().startsWith('RadioListTile'),
+      description: 'RadioListTile (any generic)',
+    ),
+  );
+  expect(tile, findsWidgets,
+      reason: 'intermediary radio "$name" not found in confirm step');
+  await tester.ensureVisible(tile.first);
+  await settle(tester);
+  await tester.tap(tile.first);
+  await settle(tester);
+}
+
+/// Set the Skip-rows numeric field at the top of the column mapper to
+/// [n]. Drives the field's text input and triggers a re-parse on submit.
+Future<void> setSkipRows(WidgetTester tester, int n) async {
+  // The skipRows field is the only TextFormField on the column-mapper
+  // step until preview rows render; locate it via its label sibling.
+  final label = find.textContaining('Skip rows');
+  expect(label, findsWidgets, reason: 'Skip rows label not found');
+  final wrap = find.ancestor(of: label.first, matching: find.byType(Wrap)).first;
+  final field = find.descendant(of: wrap, matching: find.byType(TextFormField));
+  expect(field, findsWidgets, reason: 'Skip rows text field not found');
+  await tester.ensureVisible(field.first);
+  await settle(tester);
+  await tester.enterText(field.first, n.toString());
+  await tester.testTextInput.receiveAction(TextInputAction.done);
+  await longSettle(tester);
 }
 
 /// Creates a FilePreview from raw CSV content (for import tests).

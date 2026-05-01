@@ -42,13 +42,6 @@ class NetworkMonitor {
     return _online;
   }
 
-  /// Mark as offline (e.g. after repeated 403/520 errors).
-  void markOffline() {
-    if (_online) _log.info('Marked offline due to repeated errors');
-    _online = false;
-    _lastCheck = DateTime.now();
-  }
-
   /// Force a fresh check on next call.
   void reset() {
     _lastCheck = null;

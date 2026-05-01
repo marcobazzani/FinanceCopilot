@@ -5,9 +5,8 @@ class _MonthlyGrid extends ConsumerWidget {
   final String locale;
   final String language;
   final String field; // 'income' or 'expenses'
-  final int? maxYears;
   const _MonthlyGrid({required this.data, required this.locale,
-                      required this.language, required this.field, this.maxYears});
+                      required this.language, required this.field});
 
   List<String> _localizedMonths() {
     final f = DateFormat('MMM', language);
@@ -22,10 +21,7 @@ class _MonthlyGrid extends ConsumerWidget {
     final sym    = currencySymbol(data.baseCurrency);
     final now    = DateTime.now();
 
-    var years = data.years;
-    if (maxYears != null && years.length > maxYears!) {
-      years = years.sublist(years.length - maxYears!);
-    }
+    final years = data.years;
     final yearLabels = years.map((y) => y.year).toList();
 
     // avg column: average per year for each month

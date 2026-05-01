@@ -6,6 +6,7 @@ import 'dart:ui';
 import '../../../build_flags.dart';
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,6 +31,8 @@ import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
+import 'eoy_projection.dart';
+import 'fullscreen_chart_screen.dart';
 
 part 'models.dart';
 part 'rate_resolver.dart';

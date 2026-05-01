@@ -100,6 +100,7 @@ void main() {
         ticker: 'SAP', exchange: 'XETRA', currency: 'EUR');
       await seedBuyEvent(db, assetId: a12, date: DateTime(2024, 4, 1),
         amount: 1800.0, quantity: 10, price: 180.0);
+
     }, useRealServices: true);
 
     // Wait for background sync — 10 assets, real HTTP
