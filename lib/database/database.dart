@@ -53,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 32;
+  int get schemaVersion => 33;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -463,6 +463,32 @@ class AppDatabase extends _$AppDatabase {
             // generated row data) entirely.
             await customStatement('DROP TABLE IF EXISTS dashboard_charts');
             _log.info('Migration 32: dropped dashboard_charts table');
+          }
+          if (from < 33) {
+            // Backfill: every existing revalue event becomes a market_prices
+            // row, so manual assets render in every dashboard, allocation,
+            // health KPI, and chart consumer the same way priced assets do.
+            // close_price = revalue.amount / qty_at_value_date so a later
+            // buy/sell can't retroactively shift the implied per-unit price.
+            await customStatement(
+              "INSERT OR REPLACE INTO market_prices (asset_id, date, close_price, currency) "
+              "SELECT e.asset_id, e.value_date, e.amount / qty.q, "
+              "       COALESCE((SELECT a.currency FROM assets a WHERE a.id = e.asset_id), 'EUR') "
+              "FROM asset_events e "
+              "JOIN ("
+              "  SELECT rev.id, "
+              "         (SELECT SUM(CASE WHEN sub.type = 'buy' THEN COALESCE(sub.quantity, 0) "
+              "                          WHEN sub.type = 'sell' THEN -COALESCE(sub.quantity, 0) "
+              "                          ELSE 0 END) "
+              "          FROM asset_events sub "
+              "          WHERE sub.asset_id = rev.asset_id "
+              "          AND sub.value_date <= rev.value_date) AS q "
+              "  FROM asset_events rev "
+              "  WHERE rev.type = 'revalue'"
+              ") qty ON qty.id = e.id "
+              "WHERE e.type = 'revalue' AND qty.q > 0",
+            );
+            _log.info('Migration 33: backfilled market_prices from revalue events');
           }
         },
       );
