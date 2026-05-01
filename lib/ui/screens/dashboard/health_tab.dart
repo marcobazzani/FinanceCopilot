@@ -82,7 +82,7 @@ class _FinancialHealthTab extends ConsumerWidget {
           }
         }
 
-        final categories = computeKpis(
+        var categories = computeKpis(
           cash: cash, investments: investments,
           liquidInvestments: liquidInvestments,
           annualIncome: annualIncome, rollingIncome: rollingIncome,
@@ -90,6 +90,43 @@ class _FinancialHealthTab extends ConsumerWidget {
           annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
           s: s, locale: locale,
         );
+
+        // Augment the Savings Rate KPI's info dialog with an EoY projection
+        // (formerly shown as the "EOY~" row in the Yearly Summary table).
+        if (ieData != null && ieData.years.length >= 2) {
+          final current = ieData.years.last;
+          final prev = ieData.years[ieData.years.length - 2];
+          final eoySpan = buildEoyExplanationSpan(
+            current: _toEoyYear(current),
+            prev: _toEoyYear(prev),
+            amtFmt: fmt.amountFormat(locale),
+            pctFmt: NumberFormat('0.0%'),
+            sym: currencySymbol(ieData.baseCurrency),
+            s: s,
+          );
+          if (eoySpan != null) {
+            categories = categories.map((cat) {
+              if (cat.name != s.healthCatLiquidity) return cat;
+              final newKpis = cat.kpis.map((k) {
+                if (k.name != s.kpiSavingsRate) return k;
+                final rich = TextSpan(children: [
+                  TextSpan(text: '${k.formula}\n\n'),
+                  eoySpan,
+                ]);
+                return HealthKpi(
+                  name: k.name,
+                  value: k.value,
+                  unit: k.unit,
+                  rating: k.rating,
+                  description: k.description,
+                  formula: k.formula,
+                  formulaRich: rich,
+                );
+              }).toList();
+              return KpiCategory(name: cat.name, kpis: newKpis, overallRating: cat.overallRating);
+            }).toList();
+          }
+        }
 
         // Build Performance & Diversification category
         HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
@@ -390,16 +427,33 @@ class _KpiCardState extends State<_KpiCard> {
                   ),
                 ),
                 const Spacer(),
-                if (kpi.formula.isNotEmpty)
+                if (kpi.formula.isNotEmpty || kpi.formulaRich != null)
                   InkWell(
-                    onTap: () => showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: Text(kpi.name, style: const TextStyle(fontSize: 14)),
-                        content: Text(kpi.formula, style: TextStyle(fontSize: 13, fontFamily: 'monospace', color: theme.colorScheme.onSurfaceVariant)),
-                        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
-                      ),
-                    ),
+                    onTap: () {
+                      final baseStyle = TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      );
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: Text(kpi.name, style: const TextStyle(fontSize: 14)),
+                          content: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 480),
+                            child: SingleChildScrollView(
+                              child: kpi.formulaRich != null
+                                  ? SelectableText.rich(
+                                      kpi.formulaRich!,
+                                      style: baseStyle,
+                                    )
+                                  : SelectableText(kpi.formula, style: baseStyle),
+                            ),
+                          ),
+                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                        ),
+                      );
+                    },
                     child: Icon(Icons.info_outline, size: 16, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   ),
               ],
