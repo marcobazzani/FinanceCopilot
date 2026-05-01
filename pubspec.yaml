@@ -93,3 +93,4 @@ flutter:
     - assets/default_charts.json
     # Test fixtures — bundled for integration tests (negligible size in release)
     - integration_test/fixtures/
+    - integration_test/fixtures/pension/

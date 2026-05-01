@@ -554,6 +554,7 @@ extension _ConfirmStep on _ImportScreenState {
           isinLookup: isinLookup,
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          revalueValues: _revalueValues.isNotEmpty ? _revalueValues : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
@@ -561,6 +562,7 @@ extension _ConfirmStep on _ImportScreenState {
           intermediaryId: _selectedIntermediaryId!, // gated by _canImport
           numberLocaleOverride: _selectedNumberLocale,
           appLocale: appLocale,
+          targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
         );
         result = assetResult.result;
       }

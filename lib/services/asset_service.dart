@@ -115,7 +115,7 @@ class AssetService {
   static const _statsQuery =
       'SELECT asset_id, COUNT(*) AS cnt, '
       'MIN(value_date) AS first_date, MAX(value_date) AS last_date, '
-      "SUM(CASE WHEN type IN ('buy', 'contribute') THEN ABS(amount) ELSE 0 END) AS total_invested, "
+      "SUM(CASE WHEN type = 'buy' THEN ABS(amount) ELSE 0 END) AS total_invested, "
       "SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
       "         WHEN type = 'sell' THEN -COALESCE(quantity, 0) "
       '         ELSE 0 END) AS total_qty '

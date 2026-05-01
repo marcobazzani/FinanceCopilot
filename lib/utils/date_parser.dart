@@ -60,6 +60,24 @@ DateTime parseDate(String s) {
     );
   }
 
+  // MM/YYYY (period only — no day) → last day of that month.
+  // Used by pension statements that report a "period" column like
+  // "12/2024". Resolving to the last day puts revalue snapshots at the
+  // end of the period so they sort AFTER that period's contributes,
+  // which is what the resync's qty-at-value-date anchor expects.
+  // Anchored before dmy2 so a 2-digit year like "12/24" is still
+  // interpreted as dd/MM/yy, not MM/YYYY.
+  final mYy = RegExp(r'^(\d{1,2})[/\-.](\d{4})$').firstMatch(s);
+  if (mYy != null) {
+    final month = int.parse(mYy.group(1)!);
+    final year = int.parse(mYy.group(2)!);
+    if (month < 1 || month > 12) {
+      throw FormatException('Invalid month in date: $s');
+    }
+    // DateTime(y, m+1, 0) = last day of month m, robust across leap years.
+    return DateTime(year, month + 1, 0);
+  }
+
   // dd/MM/yy (2-digit year)
   final dmy2 = RegExp(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$').firstMatch(s);
   if (dmy2 != null) {
