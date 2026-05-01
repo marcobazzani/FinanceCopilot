@@ -140,6 +140,26 @@ class _ChartCard extends ConsumerWidget {
                   onPressed: () => onZoom(null, null, null, null),
                   tooltip: s.resetZoom,
                 ),
+              IconButton(
+                icon: const Icon(Icons.fullscreen, size: 20),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      fullscreenDialog: true,
+                      builder: (_) => FullscreenChartScreen(
+                        title: chart.title,
+                        series: drawnSeries,
+                        totalSpots: totalSpots,
+                        showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
+                        firstDate: allData.firstDate,
+                        baseCurrency: allData.baseCurrency,
+                        isPrivate: isPrivate,
+                      ),
+                    ),
+                  );
+                },
+                tooltip: s.fullscreen,
+              ),
               if (onMoveUp != null)
                 IconButton(
                   icon: const Icon(Icons.arrow_upward, size: 18),
@@ -208,29 +228,54 @@ class _ChartCard extends ConsumerWidget {
                     final effectiveMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
                     final effectiveMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
 
-                    return DragZoomWrapper(
-                      xMin: zoomMinX ?? 0,
-                      xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
-                      yMin: effectiveMinY,
-                      yMax: effectiveMaxY,
-                      totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 1,
-                      firstDate: allData.firstDate,
-                      baseCurrency: allData.baseCurrency,
-                      locale: locale,
-                      onZoom: onZoom,
-                      child: UnifiedChart(
+                    return GestureDetector(
+                      // Long-press anywhere on the chart opens the
+                      // immersive full-screen view. Discoverable via the
+                      // expand icon in the title bar; this is the
+                      // power-user shortcut. Long-press's 500ms hold
+                      // threshold doesn't conflict with pinch / pan.
+                      onLongPress: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            fullscreenDialog: true,
+                            builder: (_) => FullscreenChartScreen(
+                              title: chart.title,
+                              series: drawnSeries,
+                              totalSpots: totalSpots,
+                              showTotal: showTotal,
+                              firstDate: allData.firstDate,
+                              baseCurrency: allData.baseCurrency,
+                              isPrivate: isPrivate,
+                            ),
+                          ),
+                        );
+                      },
+                      child: DragZoomWrapper(
+                        xMin: zoomMinX ?? 0,
+                        xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
+                        yMin: effectiveMinY,
+                        yMax: effectiveMaxY,
+                        totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 1,
                         firstDate: allData.firstDate,
-                        visible: drawnSeries,
-                        totalSpots: totalSpots,
-                        showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
                         baseCurrency: allData.baseCurrency,
                         locale: locale,
-                        language: language,
-                        zoomMinX: zoomMinX,
-                        zoomMaxX: zoomMaxX,
-                        zoomMinY: zoomMinY,
-                        zoomMaxY: zoomMaxY,
-                        isPrivate: isPrivate,
+                        onZoom: onZoom,
+                        zoomedY: zoomMinY != null || zoomMaxY != null,
+                        child: UnifiedChart(
+                          firstDate: allData.firstDate,
+                          visible: drawnSeries,
+                          totalSpots: totalSpots,
+                          showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
+                          baseCurrency: allData.baseCurrency,
+                          locale: locale,
+                          language: language,
+                          zoomMinX: zoomMinX,
+                          zoomMaxX: zoomMaxX,
+                          zoomMinY: zoomMinY,
+                          zoomMaxY: zoomMaxY,
+                          isPrivate: isPrivate,
+                          zoomedX: zoomMinX != null || zoomMaxX != null,
+                        ),
                       ),
                     );
                   })

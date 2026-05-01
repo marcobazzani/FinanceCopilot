@@ -45,48 +45,11 @@ Color _colorAt(int index) => _palette[index % _palette.length];
 // Helpers
 // ════════════════════════════════════════════════════
 
-/// Groups assets by a field, sums market values, returns sorted descending map.
-Map<String, double> _groupByField(
-  List<Asset> assets,
-  Map<int, double> values,
-  String Function(Asset) keyFn,
-) =>
-    alloc.groupByField(assets, values, keyFn);
-
-/// Drill-down for simple field grouping: for each group key, which assets contribute.
-Map<String, Map<String, double>> _drillDownByField(
-  List<Asset> assets,
-  Map<int, double> values,
-  String Function(Asset) keyFn,
-) =>
-    alloc.drillDownByField(assets, values, keyFn);
-
 String _pct(double value, double total) =>
     total > 0 ? '${(value / total * 100).toStringAsFixed(1)}%' : '0%';
 
 String _fmtMoney(double value, String locale, String currency) =>
     NumberFormat.currency(locale: locale, symbol: currency, decimalDigits: 0).format(value);
-
-/// Compute weighted breakdown using composition data.
-Map<String, double> _weightedBreakdown(
-  List<Asset> assets,
-  Map<int, double> marketValues,
-  Map<int, List<AssetComposition>> compositions,
-  String compositionType,
-  String Function(Asset) fallback,
-) =>
-    alloc.weightedBreakdown(assets, marketValues, compositions, compositionType, fallback);
-
-/// Compute drill-down data: for each key in the breakdown, which assets contribute.
-/// Returns `Map<sliceKey, Map<assetName, value>>`.
-Map<String, Map<String, double>> _drillDownData(
-  List<Asset> assets,
-  Map<int, double> marketValues,
-  Map<int, List<AssetComposition>> compositions,
-  String compositionType,
-  String Function(Asset) fallback,
-) =>
-    alloc.drillDownData(assets, marketValues, compositions, compositionType, fallback);
 
 // ════════════════════════════════════════════════════
 // AllocationTab
@@ -123,45 +86,45 @@ class AllocationTab extends ConsumerWidget {
           }
 
           // Weighted breakdowns
-          final byCountry = _weightedBreakdown(
+          final byCountry = alloc.weightedBreakdown(
             assets, marketValues, compositions, 'country',
             (a) => a.country ?? s.unclassified,
           );
-          final bySector = _weightedBreakdown(
+          final bySector = alloc.weightedBreakdown(
             assets, marketValues, compositions, 'sector',
             (a) => a.sector ?? s.unclassified,
           );
-          final byHolding = _weightedBreakdown(
+          final byHolding = alloc.weightedBreakdown(
             assets, marketValues, compositions, 'holding',
             (a) => a.name,
           );
-          final byType = _groupByField(
+          final byType = alloc.groupByField(
             assets, marketValues, (a) => s.assetClassLabel(a.assetClass),
           );
-          final byInstrument = _groupByField(
+          final byInstrument = alloc.groupByField(
             assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
           );
-          final byCurrency = _groupByField(assets, marketValues, (a) => a.currency);
+          final byCurrency = alloc.groupByField(assets, marketValues, (a) => a.currency);
 
           // Drill-down data for clickable charts
-          final countryDrill = _drillDownData(
+          final countryDrill = alloc.drillDownData(
             assets, marketValues, compositions, 'country',
             (a) => a.country ?? s.unclassified,
           );
-          final sectorDrill = _drillDownData(
+          final sectorDrill = alloc.drillDownData(
             assets, marketValues, compositions, 'sector',
             (a) => a.sector ?? s.unclassified,
           );
-          final typeDrill = _drillDownByField(
+          final typeDrill = alloc.drillDownByField(
             assets, marketValues, (a) => s.assetClassLabel(a.assetClass),
           );
-          final instrumentDrill = _drillDownByField(
+          final instrumentDrill = alloc.drillDownByField(
             assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
           );
 
           final holdingEntries = byHolding.entries.toList();
           // Concentration uses actual portfolio positions, not ETF look-through
-          final byPosition = _groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
+          final byPosition = alloc.groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
           final positionEntries = byPosition.entries.toList();
 
           final cards = <Widget>[
@@ -318,39 +281,49 @@ class _DrillableDonutState extends State<_DrillableDonut> {
     final entries = data.entries.toList();
     return Column(
       children: [
-        SizedBox(
-          height: 200,
-          child: PieChart(
-            PieChartData(
-              sectionsSpace: 2,
-              centerSpaceRadius: 50,
-              pieTouchData: onSliceTap != null
-                  ? PieTouchData(
-                      touchCallback: (event, response) {
-                        if (event is FlTapUpEvent &&
-                            response?.touchedSection != null) {
-                          final idx = response!.touchedSection!.touchedSectionIndex;
-                          if (idx >= 0 && idx < entries.length) {
-                            onSliceTap(entries[idx].key);
-                          }
-                        }
-                      },
-                    )
-                  : null,
-              sections: List.generate(entries.length, (i) {
-                final pct = entries[i].value / total * 100;
-                return PieChartSectionData(
-                  value: entries[i].value,
-                  color: _colorAt(i),
-                  radius: 60,
-                  title: pct >= 5 ? '${pct.toStringAsFixed(1)}%' : '',
-                  titleStyle: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                );
-              }),
+        // Constrain the chart's hit area to the disc itself — fl_chart's
+        // internal PanGestureRecognizer otherwise claims the entire
+        // bounding box on touch-down (see fl_chart#1307), which can
+        // hold pointer state and starve the surrounding TabBar of taps
+        // on macOS (Flutter#136622-class arena bug).
+        Center(
+          child: SizedBox(
+            width: 200,
+            height: 200,
+            child: ClipOval(
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 50,
+                  pieTouchData: onSliceTap != null
+                      ? PieTouchData(
+                          touchCallback: (event, response) {
+                            if (event is FlTapUpEvent &&
+                                response?.touchedSection != null) {
+                              final idx = response!.touchedSection!.touchedSectionIndex;
+                              if (idx >= 0 && idx < entries.length) {
+                                onSliceTap(entries[idx].key);
+                              }
+                            }
+                          },
+                        )
+                      : null,
+                  sections: List.generate(entries.length, (i) {
+                    final pct = entries[i].value / total * 100;
+                    return PieChartSectionData(
+                      value: entries[i].value,
+                      color: _colorAt(i),
+                      radius: 60,
+                      title: pct >= 5 ? '${pct.toStringAsFixed(1)}%' : '',
+                      titleStyle: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    );
+                  }),
+                ),
+              ),
             ),
           ),
         ),

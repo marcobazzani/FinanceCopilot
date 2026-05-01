@@ -137,6 +137,21 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   return result;
 });
 
+/// IDs of active, marketPrice-valued assets that have no rows in
+/// `market_prices`. The asset's displayed value falls back to the buy or
+/// revalue price; the UI uses this set to flag the value as not market-sourced.
+final assetsWithoutMarketPriceProvider = FutureProvider<Set<int>>((ref) async {
+  final db = ref.watch(databaseProvider);
+  ref.watch(priceRefreshCounter); // refresh after each sync attempt
+  final rows = await db.customSelect(
+    "SELECT a.id FROM assets a "
+    "WHERE a.is_active = 1 "
+    "AND a.valuation_method = 'marketPrice' "
+    "AND NOT EXISTS (SELECT 1 FROM market_prices mp WHERE mp.asset_id = a.id)",
+  ).get();
+  return rows.map((r) => r.read<int>('id')).toSet();
+});
+
 /// Price change per asset over a lookback period.
 class AssetDailyChange {
   final String name;

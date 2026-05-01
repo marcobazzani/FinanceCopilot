@@ -45,6 +45,8 @@ class HealthKpi {
   final Rating rating;
   final String description;
   final String formula; // e.g. "Cash / Net Worth x 100 = 15.000 / 100.000 x 100"
+  /// When set, the info dialog renders this rich span instead of [formula].
+  final TextSpan? formulaRich;
 
   const HealthKpi({
     required this.name,
@@ -53,6 +55,7 @@ class HealthKpi {
     this.rating = Rating.na,
     this.description = '',
     this.formula = '',
+    this.formulaRich,
   });
 }
 

@@ -104,6 +104,16 @@ class DragZoomWrapper extends StatefulWidget {
   final DateTime firstDate;
   final String baseCurrency;
   final String locale;
+  /// True when the parent has explicitly zoomed Y (rectangle zoom set
+  /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
+  /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
+  final bool zoomedY;
+  /// Full-screen / immersive mode. On touch, pinch zooms BOTH axes
+  /// (anchored at the focal point) and a single-finger drag pans both.
+  /// Use for a dedicated full-screen chart — not for the dashboard
+  /// mini-charts where a 2-finger pinch fights the parent TabBarView
+  /// page-swipe.
+  final bool fullPinch;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
   const DragZoomWrapper({super.key,
@@ -117,6 +127,8 @@ class DragZoomWrapper extends StatefulWidget {
     required this.baseCurrency,
     required this.locale,
     required this.onZoom,
+    this.zoomedY = false,
+    this.fullPinch = false,
   });
 
   @override
@@ -133,6 +145,10 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   double? _scaleStartMinX;
   double? _scaleStartMaxX;
   double? _scaleStartFocalChartX;
+  // Full-pinch (Y) state — only populated when widget.fullPinch is true.
+  double? _scaleStartMinY;
+  double? _scaleStartMaxY;
+  double? _scaleStartFocalChartY;
 
   double _pixelToChartX(double px, double chartWidth) {
     final fraction = (px - widget.leftReserved) / chartWidth;
@@ -145,8 +161,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     return widget.yMin + fraction * (widget.yMax - widget.yMin);
   }
 
-  bool get _isZoomedX => (widget.xMax - widget.xMin) < widget.totalDays - 1e-6;
-  bool get _isZoomedY => (widget.yMax - widget.yMin) > 0;
+  bool get _isZoomedY => widget.zoomedY;
 
   void _resetTransientState() {
     _dragStart = null;
@@ -174,9 +189,10 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     }
 
     double? newMinY, newMaxY;
-    if (yRange > 0 && chartHeight > 0) {
+    if (widget.zoomedY && yRange > 0 && chartHeight > 0) {
       // Y is inverted: dragging the mouse down should shift the visible
-      // window DOWN as well, so we add dy.
+      // window DOWN as well, so we add dy. Only pan Y when the user has
+      // explicitly zoomed Y; otherwise the auto-fit Y window must stay put.
       final dyUnits = e.delta.dy * yRange / chartHeight;
       newMinY = widget.yMin + dyUnits;
       newMaxY = widget.yMax + dyUnits;
@@ -186,6 +202,12 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
 
   void _handleWheelZoom(PointerScrollEvent sig, double chartWidth, double chartHeight) {
     if (chartWidth <= 0) return;
+    // Plain wheel must scroll the parent page; only zoom when the user
+    // explicitly opts in with Cmd (macOS) or Ctrl (Win/Linux) — same
+    // convention as Google Maps / Mapbox / Excel.
+    final cmdOrCtrl = HardwareKeyboard.instance.isControlPressed
+        || HardwareKeyboard.instance.isMetaPressed;
+    if (!cmdOrCtrl) return;
     final shift = HardwareKeyboard.instance.isShiftPressed;
     final factor = exp(-sig.scrollDelta.dy * 0.0015);
 
@@ -221,23 +243,35 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     widget.onZoom(widget.xMin, widget.xMax, r.minY, r.maxY);
   }
 
-  void _onScaleStart(ScaleStartDetails d, double chartWidth) {
+  void _onScaleStart(ScaleStartDetails d, double chartWidth, double chartHeight) {
     if (_activeKind == PointerDeviceKind.mouse || chartWidth <= 0) return;
     _scaleStartMinX = widget.xMin;
     _scaleStartMaxX = widget.xMax;
-    final pxToUnits = (widget.xMax - widget.xMin) / chartWidth;
+    final pxToUnitsX = (widget.xMax - widget.xMin) / chartWidth;
     _scaleStartFocalChartX =
-        widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnits;
+        widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnitsX;
+    if (widget.fullPinch && chartHeight > 0) {
+      _scaleStartMinY = widget.yMin;
+      _scaleStartMaxY = widget.yMax;
+      final yRange = widget.yMax - widget.yMin;
+      // Y is inverted: pixel 0 = top = max Y.
+      final fractionFromBottom = 1.0 - d.localFocalPoint.dy / chartHeight;
+      _scaleStartFocalChartY = widget.yMin + fractionFromBottom * yRange;
+    }
   }
 
-  void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth) {
+  void _onScaleUpdate(ScaleUpdateDetails d, double chartWidth, double chartHeight) {
     if (_scaleStartMinX == null || chartWidth <= 0) return;
 
-    final isPinch = d.pointerCount >= 2;
-    if (!isPinch && !_isZoomedX) return; // let parent vertical scroll keep this gesture
+    // Per-axis scale factors so a horizontal-dominant pinch widens X
+    // without compressing Y, and vice versa. `d.scale` is the geometric
+    // mean — using it would force aspect-ratio-locked zoom, which is
+    // not how iOS Stocks / Google Finance / TradingView behave.
+    final xScale = widget.fullPinch ? d.horizontalScale : d.scale;
+    final yScale = widget.fullPinch ? d.verticalScale : d.scale;
 
     final startRange = _scaleStartMaxX! - _scaleStartMinX!;
-    var newRange = startRange / d.scale;
+    var newRange = startRange / xScale;
     if (newRange >= widget.totalDays) {
       widget.onZoom(null, null, null, null);
       return;
@@ -256,13 +290,27 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
       newMaxX = widget.totalDays;
       newMinX = newMaxX - newRange;
     }
-    widget.onZoom(newMinX, newMaxX, null, null);
+
+    double? newMinY, newMaxY;
+    if (widget.fullPinch && _scaleStartMinY != null && chartHeight > 0) {
+      // Y zoom uses verticalScale, anchored on focal Y. No clamp on Y —
+      // data may legitimately extend beyond the visible window.
+      final startYRange = _scaleStartMaxY! - _scaleStartMinY!;
+      final newYRange = startYRange / yScale;
+      final fractionFromBottom = 1.0 - d.localFocalPoint.dy / chartHeight;
+      newMinY = _scaleStartFocalChartY! - fractionFromBottom * newYRange;
+      newMaxY = newMinY + newYRange;
+    }
+    widget.onZoom(newMinX, newMaxX, newMinY, newMaxY);
   }
 
   void _onScaleEnd(ScaleEndDetails _) {
     _scaleStartMinX = null;
     _scaleStartMaxX = null;
     _scaleStartFocalChartX = null;
+    _scaleStartMinY = null;
+    _scaleStartMaxY = null;
+    _scaleStartFocalChartY = null;
   }
 
   @override
@@ -357,8 +405,8 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                   },
                 ),
                 (r) => r
-                  ..onStart = (d) { _onScaleStart(d, chartWidth); }
-                  ..onUpdate = (d) { _onScaleUpdate(d, chartWidth); }
+                  ..onStart = (d) { _onScaleStart(d, chartWidth, chartHeight); }
+                  ..onUpdate = (d) { _onScaleUpdate(d, chartWidth, chartHeight); }
                   ..onEnd = _onScaleEnd,
               ),
             },
@@ -425,8 +473,16 @@ class UnifiedChart extends StatelessWidget {
   final double? zoomMinY;
   final double? zoomMaxY;
   final bool isPrivate;
+  /// True when the X axis is currently zoomed in. Disables fl_chart's built-in
+  /// tap/drag tooltip handling so our parent ScaleGestureRecognizer can claim
+  /// single-finger pan on touch devices.
+  final bool zoomedX;
+  /// True for the immersive full-screen view, where zoom updates fire at
+  /// pointer-frequency and the 150ms LineChart tween becomes the
+  /// bottleneck. Skipping the tween makes pinch feel native.
+  final bool liveZoom;
 
-  const UnifiedChart({super.key, 
+  const UnifiedChart({super.key,
     required this.firstDate,
     required this.visible,
     required this.totalSpots,
@@ -439,6 +495,8 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMinY,
     this.zoomMaxY,
     this.isPrivate = false,
+    this.zoomedX = false,
+    this.liveZoom = false,
   });
 
   @override
@@ -533,6 +591,11 @@ class UnifiedChart extends StatelessWidget {
     final xRange = xMax - xMin;
 
     return LineChart(
+      // In full-screen / live-zoom mode, kill the 150ms implicit tween
+      // — pinch updates fire ~60Hz and each tween queues frames, which
+      // is what makes the chart feel laggy. Static views still get the
+      // smooth animation.
+      duration: liveZoom ? Duration.zero : const Duration(milliseconds: 150),
       LineChartData(
         minX: xMin,
         maxX: xMax,
@@ -595,6 +658,19 @@ class UnifiedChart extends StatelessWidget {
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
           enabled: !isPrivate,
+          // On touch platforms, fl_chart's built-in recognizer wins the
+          // gesture arena on touch-down and would block our parent
+          // ScaleGestureRecognizer from ever seeing pinch / pan — even
+          // before the chart is zoomed. Disable it entirely on mobile
+          // (we lose drag-tooltip on mobile in exchange for working
+          // pinch + pan; tap-tooltip can be re-added later via a
+          // separate TapGestureRecognizer). On desktop we still want
+          // the hover/tap tooltip, and our mouse drag is captured by
+          // the parent Listener so there's no conflict.
+          handleBuiltInTouches: switch (defaultTargetPlatform) {
+            TargetPlatform.iOS || TargetPlatform.android => false,
+            _ => !zoomedX,
+          },
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,
             fitInsideVertically: true,
