@@ -1192,6 +1192,155 @@ void main() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // 11C. Pension import (cashflow-only event-driven asset)
+    //
+    // Mirrors what the user does for their Fondo Cometa PPP: create a
+    // pension asset with valuationMethod=eventDriven, then import a
+    // single TSV containing monthly contributions and yearly position
+    // snapshots into that one asset (targetAssetId mode, no per-row
+    // ISIN). Asserts every consumer sees the right value:
+    //   - getLatestRevalueAmount = 49555.72 (Feb-2026)
+    //   - market_prices materialised at all 6 anchor dates
+    //   - getPrice returns the latest close_price for any future date
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11C. Pension import (PPP) → single asset, contribute + revalue');
+    {
+      final anyIntermediary = (await db.select(db.intermediaries).get()).first;
+      final pensionAsset = AssetsCompanion.insert(
+        name: 'Fondo Cometa (Test)',
+        assetType: AssetType.pension,
+        instrumentType: const Value(InstrumentType.pension),
+        assetClass: const Value(AssetClass.multiAsset),
+        valuationMethod: ValuationMethod.eventDriven,
+        currency: const Value('EUR'),
+        intermediaryId: anyIntermediary.id,
+      );
+      final pensionId = await db.into(db.assets).insert(pensionAsset);
+
+      final importer = ImportService(db);
+      final preview = await parseFixtureNoHeader(
+        db,
+        'pension/ppp_import.tsv',
+        numberLocale: 'it_IT',
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Column 4', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Column 2', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'Column 5', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'Column 1', targetField: 'description'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: anyIntermediary.id,
+        targetAssetId: pensionId,
+        contributeValues: const {'C/TFR', 'C/Azienda', 'C/Iscritto'},
+        revalueValues: const {'TOTALEP'},
+        numberLocaleOverride: 'it_IT',
+      );
+      expect(result.result.errorRows, 0,
+          reason: 'PPP import errors: ${result.result.errors}');
+
+      // The import does batched inserts, so the resync isn't triggered
+      // automatically; run it once to materialize market_prices.
+      final eventService = AssetEventService(db);
+      await eventService.resyncRevaluePricesForAsset(pensionId);
+
+      // Truth from PPP_FULL: latest revalue = 49555.72.
+      final latest = await eventService.getLatestRevalueAmount(pensionId);
+      expect(latest, isNotNull);
+      expect(latest!, closeTo(49555.72, 0.01));
+
+      // Cost basis (Σ contributes) ≈ 47222.43 from PPP_FULL.
+      final totals = await db.customSelect(
+        "SELECT SUM(amount) AS total FROM asset_events "
+        "WHERE asset_id = ? AND type IN ('buy','contribute')",
+        variables: [Variable.withInt(pensionId)],
+      ).getSingle();
+      expect(totals.read<double>('total'), closeTo(47222.43, 0.01));
+
+      // 6 anchor revalue dates each with a market_prices row.
+      final prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(pensionId))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .get();
+      expect(prices, hasLength(6));
+
+      // getPrice for any future date returns the latest close_price.
+      final priceService = InvestingComService(db);
+      final priceLatest = await priceService.getPrice(pensionId, DateTime(2026, 12, 31));
+      expect(priceLatest, isNotNull);
+      expect(priceLatest! - prices.last.closePrice, closeTo(0.0, 0.0001));
+
+      _step('   ✓ PPP imported (111 rows, 6 revalues, €47222.43 invested → '
+          '€49555.72 position)');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11D. 401(k)-style multi-sub-fund import
+    //
+    // The same importer works for unit-denominated, multi-sub-fund
+    // statements via the existing ISIN-grouped path. Each sub-fund
+    // becomes its own asset; explicit qty/price column mappings win
+    // over the A3 cash-only auto-fill.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11D. 401(k) multi-sub-fund import (3 ISINs → 3 assets)');
+    {
+      final anyIntermediary = (await db.select(db.intermediaries).get()).first;
+      final importer = ImportService(db);
+      final assetsBefore = (await db.select(db.assets).get()).length;
+
+      final fullPreview = await parseFixture(db, 'pension/us_401k_sample.csv');
+      final result = await importer.importAssetEventsGrouped(
+        preview: fullPreview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'bucket', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'fund_isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'units', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'unit_price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'USD',
+        intermediaryId: anyIntermediary.id,
+        contributeValues: const {
+          'employee_pretax', 'employee_roth', 'employer_match',
+          'employer_nonelective', 'rollover',
+        },
+        revalueValues: const {'position_snapshot'},
+        numberLocaleOverride: 'en_US',
+      );
+      expect(result.result.errorRows, 0,
+          reason: '401(k) import errors: ${result.result.errors}');
+
+      final assetsAfter = await db.select(db.assets).get();
+      expect(assetsAfter.length - assetsBefore, 3,
+          reason: '3 unique ISINs → 3 new assets');
+
+      // Every contribute on a 401(k) sub-fund carries the explicit NAV
+      // from the CSV (auto-fill must NOT have synthesized 1.0). Scope
+      // by ISIN since 11C's PPP contributes also exist in this DB and
+      // they DO carry price=1.0 by design.
+      final fund401kIds = assetsAfter
+          .where((a) => a.isin != null && a.isin!.startsWith('US922908'))
+          .map((a) => a.id)
+          .toList();
+      expect(fund401kIds, hasLength(3));
+      final contribs = await (db.select(db.assetEvents)
+            ..where((e) =>
+                e.type.equalsValue(EventType.buy) &
+                e.assetId.isIn(fund401kIds)))
+          .get();
+      expect(contribs, isNotEmpty);
+      for (final c in contribs) {
+        expect(c.price, isNotNull);
+        expect(c.price!, greaterThan(1.0),
+            reason: 'real NAVs are >1; price=1.0 means auto-fill misfired');
+      }
+      _step('   ✓ 401(k) imported (3 sub-funds, units×NAV preserved)');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // ACT VII — Account recalc dialog flow
     // (account_detail_screen.dart was 31.6%)
     // ─────────────────────────────────────────────────────────────────────

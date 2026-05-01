@@ -352,4 +352,123 @@ void main() {
       expect(prices[1].closePrice, 120.0);
     });
   });
+
+  group('contribute-only assets (pension shape)', () {
+    // Pension contributes carry synthetic quantity=amount, price=1.0 so
+    // the resync's qty SUM picks them up. close_price = revalue.amount /
+    // Σ contribute.quantity = "growth ratio per €1 invested". These pin
+    // the same anchoring guarantees as the buy-only tests above, but
+    // for the cashflow-only path that PPP / Riester / UK SIPP rely on.
+
+    test('1. contribute-only asset: revalue close_price = amount / Σ qty',
+        () async {
+      final assetId = await createAsset('PPP-shape');
+      // 3 monthly contributes of 100 each → qty = 300.
+      for (var m = 1; m <= 3; m++) {
+        await service.create(
+          assetId: assetId,
+          date: DateTime(2024, m, 28),
+          type: EventType.buy,
+          amount: 100.0,
+          quantity: 100.0,
+          price: 1.0,
+          currency: 'EUR',
+        );
+      }
+      // Revalue at 315 → growth of 5% on €300 contributed.
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 3, 31),
+        type: EventType.revalue,
+        amount: 315.0,
+        currency: 'EUR',
+      );
+
+      final prices = await pricesFor(assetId);
+      expect(prices, hasLength(1));
+      expect(prices.first.date, DateTime(2024, 3, 31));
+      expect(prices.first.closePrice, closeTo(1.05, 0.0001));
+    });
+
+    test('2. pre-revalue contribute reduces close_price (more denominator)',
+        () async {
+      final assetId = await createAsset('PPP-shape');
+      // First contribute + revalue: 100 contrib, 110 position → 1.10.
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 31),
+        type: EventType.buy,
+        amount: 100.0,
+        quantity: 100.0,
+        price: 1.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 6, 30),
+        type: EventType.revalue,
+        amount: 110.0,
+        currency: 'EUR',
+      );
+      var prices = await pricesFor(assetId);
+      expect(prices.first.closePrice, closeTo(1.10, 0.0001));
+
+      // Add a pre-revalue contribute: now qty = 200, but the revalue
+      // amount stays 110 (it's an absolute snapshot). Resync recomputes
+      // close_price = 110/200 = 0.55. Note: this is a *retroactive*
+      // edit to history — usually the user would update the revalue too.
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 3, 31),
+        type: EventType.buy,
+        amount: 100.0,
+        quantity: 100.0,
+        price: 1.0,
+        currency: 'EUR',
+      );
+      prices = await pricesFor(assetId);
+      expect(prices.first.closePrice, closeTo(0.55, 0.0001),
+          reason: 'pre-revalue contribute must reduce the close_price');
+    });
+
+    test('3. post-revalue contribute does NOT shift close_price',
+        () async {
+      final assetId = await createAsset('PPP-shape');
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 31),
+        type: EventType.buy,
+        amount: 100.0,
+        quantity: 100.0,
+        price: 1.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 6, 30),
+        type: EventType.revalue,
+        amount: 110.0,
+        currency: 'EUR',
+      );
+      var prices = await pricesFor(assetId);
+      expect(prices.first.closePrice, closeTo(1.10, 0.0001));
+
+      // Add a post-revalue contribute: qty grows to 200 but the
+      // revalue's anchor is fixed at value_date 2024-06-30, where qty=100.
+      // close_price must stay 1.10. (Subsequent value tracking happens
+      // via `qty(t) × last_close_price` at consumer-time.)
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 7, 31),
+        type: EventType.buy,
+        amount: 100.0,
+        quantity: 100.0,
+        price: 1.0,
+        currency: 'EUR',
+      );
+      prices = await pricesFor(assetId);
+      expect(prices.first.closePrice, closeTo(1.10, 0.0001),
+          reason: 'post-revalue contribute must NOT shift the anchored price');
+    });
+  });
 }

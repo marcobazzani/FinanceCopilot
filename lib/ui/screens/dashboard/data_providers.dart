@@ -91,7 +91,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       final storedRate = row.readNullable<double>('exchange_rate');
 
       double sign;
-      if (type == 'buy' || type == 'contribute') {
+      if (type == 'buy') {
         sign = 1.0;
       } else if (type == 'sell') {
         sign = -1.0;
@@ -533,12 +533,16 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   final rates = _RateResolver(rateService, baseCurrency);
 
-  // 1. Load incomes (excluding refunds), convert to base currency.
-  // Ordered by value_date per CLAUDE.md convention — operation_date is only
-  // for import dedup, never for display/aggregation.
+  // 1. Load incomes (excluding refunds and pension contributions),
+  // convert to base currency. Both refund and pensionContribution are
+  // money received but not "personal income" — the user reports them in
+  // the ledger but doesn't want them inflating salary totals.
+  // Ordered by value_date per CLAUDE.md convention — operation_date is
+  // only for import dedup, never for display/aggregation.
   final rows = await db.customSelect(
     "SELECT value_date AS date, amount, currency FROM incomes "
-    "WHERE type != 'refund' ORDER BY value_date ASC",
+    "WHERE type NOT IN ('refund', 'pensionContribution') "
+    "ORDER BY value_date ASC",
   ).get();
 
   final incomeByMonth = <(int, int), double>{};

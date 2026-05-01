@@ -9860,6 +9860,20 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     requiredDuringInsert: false,
     defaultValue: const Constant('EUR'),
   );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<int> assetId = GeneratedColumn<int>(
+    'asset_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES assets (id)',
+    ),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -9880,6 +9894,7 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     amount,
     type,
     currency,
+    assetId,
     createdAt,
   ];
   @override
@@ -9927,6 +9942,12 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
         currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
       );
     }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -9968,6 +9989,10 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
         DriftSqlType.string,
         data['${effectivePrefix}currency'],
       )!,
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}asset_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -9991,6 +10016,12 @@ class Income extends DataClass implements Insertable<Income> {
   final double amount;
   final IncomeType type;
   final String currency;
+
+  /// Optional source asset — populated for `pensionContribution` rows so
+  /// re-importing a pension statement can wipe-and-replace its income
+  /// entries by `(asset_id, type='pensionContribution')`. NULL for
+  /// account-only income (salary, refunds, etc.).
+  final int? assetId;
   final DateTime createdAt;
   const Income({
     required this.id,
@@ -9999,6 +10030,7 @@ class Income extends DataClass implements Insertable<Income> {
     required this.amount,
     required this.type,
     required this.currency,
+    this.assetId,
     required this.createdAt,
   });
   @override
@@ -10012,6 +10044,9 @@ class Income extends DataClass implements Insertable<Income> {
       map['type'] = Variable<String>($IncomesTable.$convertertype.toSql(type));
     }
     map['currency'] = Variable<String>(currency);
+    if (!nullToAbsent || assetId != null) {
+      map['asset_id'] = Variable<int>(assetId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -10024,6 +10059,9 @@ class Income extends DataClass implements Insertable<Income> {
       amount: Value(amount),
       type: Value(type),
       currency: Value(currency),
+      assetId: assetId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(assetId),
       createdAt: Value(createdAt),
     );
   }
@@ -10042,6 +10080,7 @@ class Income extends DataClass implements Insertable<Income> {
         serializer.fromJson<String>(json['type']),
       ),
       currency: serializer.fromJson<String>(json['currency']),
+      assetId: serializer.fromJson<int?>(json['assetId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -10057,6 +10096,7 @@ class Income extends DataClass implements Insertable<Income> {
         $IncomesTable.$convertertype.toJson(type),
       ),
       'currency': serializer.toJson<String>(currency),
+      'assetId': serializer.toJson<int?>(assetId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -10068,6 +10108,7 @@ class Income extends DataClass implements Insertable<Income> {
     double? amount,
     IncomeType? type,
     String? currency,
+    Value<int?> assetId = const Value.absent(),
     DateTime? createdAt,
   }) => Income(
     id: id ?? this.id,
@@ -10076,6 +10117,7 @@ class Income extends DataClass implements Insertable<Income> {
     amount: amount ?? this.amount,
     type: type ?? this.type,
     currency: currency ?? this.currency,
+    assetId: assetId.present ? assetId.value : this.assetId,
     createdAt: createdAt ?? this.createdAt,
   );
   Income copyWithCompanion(IncomesCompanion data) {
@@ -10086,6 +10128,7 @@ class Income extends DataClass implements Insertable<Income> {
       amount: data.amount.present ? data.amount.value : this.amount,
       type: data.type.present ? data.type.value : this.type,
       currency: data.currency.present ? data.currency.value : this.currency,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -10099,14 +10142,23 @@ class Income extends DataClass implements Insertable<Income> {
           ..write('amount: $amount, ')
           ..write('type: $type, ')
           ..write('currency: $currency, ')
+          ..write('assetId: $assetId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, date, valueDate, amount, type, currency, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    date,
+    valueDate,
+    amount,
+    type,
+    currency,
+    assetId,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -10117,6 +10169,7 @@ class Income extends DataClass implements Insertable<Income> {
           other.amount == this.amount &&
           other.type == this.type &&
           other.currency == this.currency &&
+          other.assetId == this.assetId &&
           other.createdAt == this.createdAt);
 }
 
@@ -10127,6 +10180,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   final Value<double> amount;
   final Value<IncomeType> type;
   final Value<String> currency;
+  final Value<int?> assetId;
   final Value<DateTime> createdAt;
   const IncomesCompanion({
     this.id = const Value.absent(),
@@ -10135,6 +10189,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     this.amount = const Value.absent(),
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
+    this.assetId = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   IncomesCompanion.insert({
@@ -10144,6 +10199,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     required double amount,
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
+    this.assetId = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : date = Value(date),
        valueDate = Value(valueDate),
@@ -10155,6 +10211,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     Expression<double>? amount,
     Expression<String>? type,
     Expression<String>? currency,
+    Expression<int>? assetId,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -10164,6 +10221,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
       if (amount != null) 'amount': amount,
       if (type != null) 'type': type,
       if (currency != null) 'currency': currency,
+      if (assetId != null) 'asset_id': assetId,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -10175,6 +10233,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     Value<double>? amount,
     Value<IncomeType>? type,
     Value<String>? currency,
+    Value<int?>? assetId,
     Value<DateTime>? createdAt,
   }) {
     return IncomesCompanion(
@@ -10184,6 +10243,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
       amount: amount ?? this.amount,
       type: type ?? this.type,
       currency: currency ?? this.currency,
+      assetId: assetId ?? this.assetId,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -10211,6 +10271,9 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     if (currency.present) {
       map['currency'] = Variable<String>(currency.value);
     }
+    if (assetId.present) {
+      map['asset_id'] = Variable<int>(assetId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -10226,6 +10289,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
           ..write('amount: $amount, ')
           ..write('type: $type, ')
           ..write('currency: $currency, ')
+          ..write('assetId: $assetId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -15249,6 +15313,25 @@ final class $$AssetsTableReferences
     );
   }
 
+  static MultiTypedResultKey<$IncomesTable, List<Income>> _incomesRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.incomes,
+    aliasName: $_aliasNameGenerator(db.assets.id, db.incomes.assetId),
+  );
+
+  $$IncomesTableProcessedTableManager get incomesRefs {
+    final manager = $$IncomesTableTableManager(
+      $_db,
+      $_db.incomes,
+    ).filter((f) => f.assetId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_incomesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$AssetCompositionsTable, List<AssetComposition>>
   _assetCompositionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
@@ -15491,6 +15574,31 @@ class $$AssetsTableFilterComposer
           }) => $$MarketPricesTableFilterComposer(
             $db: $db,
             $table: $db.marketPrices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> incomesRefs(
+    Expression<bool> Function($$IncomesTableFilterComposer f) f,
+  ) {
+    final $$IncomesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.incomes,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IncomesTableFilterComposer(
+            $db: $db,
+            $table: $db.incomes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -15865,6 +15973,31 @@ class $$AssetsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> incomesRefs<T extends Object>(
+    Expression<T> Function($$IncomesTableAnnotationComposer a) f,
+  ) {
+    final $$IncomesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.incomes,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IncomesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.incomes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> assetCompositionsRefs<T extends Object>(
     Expression<T> Function($$AssetCompositionsTableAnnotationComposer a) f,
   ) {
@@ -15910,6 +16043,7 @@ class $$AssetsTableTableManager
             bool assetEventsRefs,
             bool assetSnapshotsRefs,
             bool marketPricesRefs,
+            bool incomesRefs,
             bool assetCompositionsRefs,
           })
         > {
@@ -16040,6 +16174,7 @@ class $$AssetsTableTableManager
                 assetEventsRefs = false,
                 assetSnapshotsRefs = false,
                 marketPricesRefs = false,
+                incomesRefs = false,
                 assetCompositionsRefs = false,
               }) {
                 return PrefetchHooks(
@@ -16048,6 +16183,7 @@ class $$AssetsTableTableManager
                     if (assetEventsRefs) db.assetEvents,
                     if (assetSnapshotsRefs) db.assetSnapshots,
                     if (marketPricesRefs) db.marketPrices,
+                    if (incomesRefs) db.incomes,
                     if (assetCompositionsRefs) db.assetCompositions,
                   ],
                   addJoins:
@@ -16147,6 +16283,23 @@ class $$AssetsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (incomesRefs)
+                        await $_getPrefetchedData<Asset, $AssetsTable, Income>(
+                          currentTable: table,
+                          referencedTable: $$AssetsTableReferences
+                              ._incomesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).incomesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (assetCompositionsRefs)
                         await $_getPrefetchedData<
                           Asset,
@@ -16193,6 +16346,7 @@ typedef $$AssetsTableProcessedTableManager =
         bool assetEventsRefs,
         bool assetSnapshotsRefs,
         bool marketPricesRefs,
+        bool incomesRefs,
         bool assetCompositionsRefs,
       })
     >;
@@ -19874,6 +20028,7 @@ typedef $$IncomesTableCreateCompanionBuilder =
       required double amount,
       Value<IncomeType> type,
       Value<String> currency,
+      Value<int?> assetId,
       Value<DateTime> createdAt,
     });
 typedef $$IncomesTableUpdateCompanionBuilder =
@@ -19884,8 +20039,32 @@ typedef $$IncomesTableUpdateCompanionBuilder =
       Value<double> amount,
       Value<IncomeType> type,
       Value<String> currency,
+      Value<int?> assetId,
       Value<DateTime> createdAt,
     });
+
+final class $$IncomesTableReferences
+    extends BaseReferences<_$AppDatabase, $IncomesTable, Income> {
+  $$IncomesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
+    $_aliasNameGenerator(db.incomes.assetId, db.assets.id),
+  );
+
+  $$AssetsTableProcessedTableManager? get assetId {
+    final $_column = $_itemColumn<int>('asset_id');
+    if ($_column == null) return null;
+    final manager = $$AssetsTableTableManager(
+      $_db,
+      $_db.assets,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
 
 class $$IncomesTableFilterComposer
     extends Composer<_$AppDatabase, $IncomesTable> {
@@ -19931,6 +20110,29 @@ class $$IncomesTableFilterComposer
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$AssetsTableFilterComposer get assetId {
+    final $$AssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$IncomesTableOrderingComposer
@@ -19976,6 +20178,29 @@ class $$IncomesTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$AssetsTableOrderingComposer get assetId {
+    final $$AssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$IncomesTableAnnotationComposer
@@ -20007,6 +20232,29 @@ class $$IncomesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$AssetsTableAnnotationComposer get assetId {
+    final $$AssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$IncomesTableTableManager
@@ -20020,9 +20268,9 @@ class $$IncomesTableTableManager
           $$IncomesTableAnnotationComposer,
           $$IncomesTableCreateCompanionBuilder,
           $$IncomesTableUpdateCompanionBuilder,
-          (Income, BaseReferences<_$AppDatabase, $IncomesTable, Income>),
+          (Income, $$IncomesTableReferences),
           Income,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool assetId})
         > {
   $$IncomesTableTableManager(_$AppDatabase db, $IncomesTable table)
     : super(
@@ -20043,6 +20291,7 @@ class $$IncomesTableTableManager
                 Value<double> amount = const Value.absent(),
                 Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
+                Value<int?> assetId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => IncomesCompanion(
                 id: id,
@@ -20051,6 +20300,7 @@ class $$IncomesTableTableManager
                 amount: amount,
                 type: type,
                 currency: currency,
+                assetId: assetId,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -20061,6 +20311,7 @@ class $$IncomesTableTableManager
                 required double amount,
                 Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
+                Value<int?> assetId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => IncomesCompanion.insert(
                 id: id,
@@ -20069,12 +20320,58 @@ class $$IncomesTableTableManager
                 amount: amount,
                 type: type,
                 currency: currency,
+                assetId: assetId,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$IncomesTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({assetId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$IncomesTableReferences
+                                    ._assetIdTable(db),
+                                referencedColumn: $$IncomesTableReferences
+                                    ._assetIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -20089,9 +20386,9 @@ typedef $$IncomesTableProcessedTableManager =
       $$IncomesTableAnnotationComposer,
       $$IncomesTableCreateCompanionBuilder,
       $$IncomesTableUpdateCompanionBuilder,
-      (Income, BaseReferences<_$AppDatabase, $IncomesTable, Income>),
+      (Income, $$IncomesTableReferences),
       Income,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool assetId})
     >;
 typedef $$AssetCompositionsTableCreateCompanionBuilder =
     AssetCompositionsCompanion Function({

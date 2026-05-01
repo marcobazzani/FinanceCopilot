@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:convert';
 
 import '../../../database/database.dart';
+import '../../../database/tables.dart';
 import '../../../services/import_service.dart';
 import '../../../services/isin_lookup_service.dart';
 import '../../../l10n/app_strings.dart';
@@ -135,9 +136,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'valueDate', 'amount', 'description'],
-    ImportTarget.assetEvent => _assetImportMode == 'historic'
-        ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
-        : ['isin', 'quantity', 'price', 'currency'],
+    // Asset event imports come in two flavors:
+    //   - byIsin (ISIN-grouped, e.g. broker trades, 401(k) multi-sub-fund):
+    //     ISIN column drives asset creation/lookup.
+    //   - singleAsset (pension funds, manual holdings): every row routes
+    //     to one pre-existing asset chosen by the user, no ISIN needed,
+    //     unit columns are optional (cash-only contributes auto-fill).
+    ImportTarget.assetEvent => _assetEventMode == 'singleAsset'
+        ? <String>[]
+        : (_assetImportMode == 'historic'
+            ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
+            : ['isin', 'quantity', 'price', 'currency']),
     ImportTarget.income => ['date', 'amount'],
   };
 
@@ -173,6 +182,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _typeMode = 'column';
   final Set<String> _buyValues = {};
   final Set<String> _sellValues = {};
+  // Revalue tagging — populated from the wizard's chip UI when the user
+  // is importing position-snapshot rows (PPP TOTALEP, etc.). Each unique
+  // value in the type column gets tagged as exactly one of buy/sell/
+  // revalue. Pension contributions get tagged Buy (they're cash inflows
+  // that grow the position — semantically identical to a discounted
+  // buy). See `_parseEventType` in lib/services/import_service.dart.
+  final Set<String> _revalueValues = {};
+
+  // Asset-event single-asset mode: when set, every parsed row routes to
+  // this pre-existing asset (pension funds, manual holdings) instead of
+  // being grouped by ISIN. Toggled by a SegmentedButton in the wizard
+  // when target = assetEvent.
+  String _assetEventMode = 'byIsin'; // 'byIsin' | 'singleAsset'
+  int? _singleAssetTargetId;
 
   // Cached unique values per column (from ALL rows, not just preview)
   final Map<String, List<String>> _fullUniqueValues = {};
@@ -687,17 +710,29 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_target == ImportTarget.transaction && !_sameSettlementDate && _mappings['valueDate'] == null) return false;
     // amount: either simple mapping, formula, balance-diff, or auto-calc
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
-    // Asset events also require ISIN
-    if (_target == ImportTarget.assetEvent && _mappings['isin'] == null) return false;
-    // Asset events with "from column" type: every unique value must be mapped to Buy or Sell
+    // Asset events: in `byIsin` mode require an ISIN column; in
+    // `singleAsset` mode require a target asset id instead.
+    if (_target == ImportTarget.assetEvent) {
+      if (_assetEventMode == 'byIsin' && _mappings['isin'] == null) return false;
+      if (_assetEventMode == 'singleAsset' && _singleAssetTargetId == null) return false;
+    }
+    // Asset events with "from column" type: every unique value must be
+    // tagged as exactly one of Buy/Sell/Revalue. The Buy/Sell pair is
+    // required only for ISIN-grouped trade imports; pension statements
+    // typically tag contributions as Buy and TOTALEP rows as Revalue.
     if (_target == ImportTarget.assetEvent && _typeMode == 'column' && _mappings['type'] != null) {
       final typeCol = _mappings['type']!;
       final uniqueVals = _fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol);
       if (uniqueVals.isNotEmpty) {
-        final allMapped = uniqueVals.every((v) => _buyValues.contains(v) || _sellValues.contains(v));
+        final allMapped = uniqueVals.every((v) =>
+            _buyValues.contains(v) ||
+            _sellValues.contains(v) ||
+            _revalueValues.contains(v));
         if (!allMapped) return false;
-        // Must have at least one Buy and one Sell value
-        if (_buyValues.isEmpty || _sellValues.isEmpty) return false;
+        // At least one tag of any kind must exist.
+        if (_buyValues.isEmpty && _sellValues.isEmpty && _revalueValues.isEmpty) {
+          return false;
+        }
       }
     }
     return true;
@@ -736,6 +771,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _typeMode = 'column';
     _buyValues.clear();
     _sellValues.clear();
+    _revalueValues.clear();
+    _assetEventMode = 'byIsin';
+    _singleAssetTargetId = null;
     _isinLookupResults = null;
     _selectedExchanges.clear();
     _defaultExchange = null;
@@ -814,10 +852,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mappings: mappings,
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          revalueValues: _revalueValues.isNotEmpty ? _revalueValues : null,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           numberLocale: _selectedNumberLocale,
           appLocale: appLocale,
+          targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
         );
         if (mounted) _setState(() => _assetPreview = result);
       }
