@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../database/database.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
+import 'asset_event_service.dart';
 
 final _log = getLogger('MarketPriceService');
 
@@ -210,8 +211,10 @@ abstract class MarketPriceService {
   }
 
   /// Get close price on or before [date] for [assetId].
-  /// Falls back to revalue events: returns revalue_amount / total_quantity
-  /// so the result is always a per-unit price.
+  /// Revalue events are materialised into market_prices rows by
+  /// [AssetEventService.resyncRevaluePricesForAsset], so they're picked up
+  /// here automatically. Falls back to the last buy event's price for assets
+  /// that have neither market_prices rows nor revalues.
   Future<double?> getPrice(int assetId, DateTime date) async {
     final epochSec = date.millisecondsSinceEpoch ~/ 1000;
     final row = await db.customSelect(
@@ -220,31 +223,8 @@ abstract class MarketPriceService {
       variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
     ).getSingleOrNull();
     if (row != null) return row.readNullable<double>('close_price');
-    // Fallback: revalue amount / quantity = per-unit price
-    return _revaluePrice(assetId, epochSec);
-  }
-
-  /// Derive a per-unit price from a revalue event or last buy price.
-  /// Fallback chain: revalue_amount / quantity, then last buy price.
-  Future<double?> _revaluePrice(int assetId, int epochSec) async {
-    // Try revalue first
-    final revalue = await db.customSelect(
-      "SELECT amount FROM asset_events "
-      "WHERE asset_id = ? AND type = 'revalue' AND date <= ? ORDER BY date DESC LIMIT 1",
-      variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
-    ).getSingleOrNull();
-    if (revalue != null) {
-      final amount = revalue.read<double>('amount');
-      final qtyRow = await db.customSelect(
-        "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-        "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
-        "FROM asset_events WHERE asset_id = ?",
-        variables: [Variable.withInt(assetId)],
-      ).getSingleOrNull();
-      final qty = qtyRow?.readNullable<double>('qty') ?? 0;
-      return qty > 0 ? amount / qty : amount;
-    }
-    // Fallback: last buy price
+    // Last-buy-price fallback for assets with no market_prices and no
+    // revalues materialised yet.
     final buyRow = await db.customSelect(
       "SELECT price FROM asset_events "
       "WHERE asset_id = ? AND type = 'buy' AND price IS NOT NULL AND date <= ? "
@@ -278,7 +258,8 @@ abstract class MarketPriceService {
   }
 
   /// Get all prices for an asset, sorted by date ascending.
-  /// Falls back to revalue events (converted to per-unit prices) if no market prices exist.
+  /// Revalue events are materialised into market_prices rows so they appear
+  /// here without a separate fallback path.
   Future<List<MapEntry<DateTime, double>>> getPriceHistory(int assetId) async {
     final rows = await db.customSelect(
       'SELECT date, close_price FROM market_prices '
@@ -286,47 +267,12 @@ abstract class MarketPriceService {
       variables: [Variable.withInt(assetId)],
     ).get();
 
-    final marketPrices = rows.map((r) => MapEntry(
-      DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
-      r.read<double>('close_price'),
-    )).toList();
-
-    // Also gather revalue-derived prices (total value / quantity = per-unit)
-    final qtyRow = await db.customSelect(
-      "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-      "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
-      "FROM asset_events WHERE asset_id = ?",
-      variables: [Variable.withInt(assetId)],
-    ).getSingleOrNull();
-    final qty = qtyRow?.readNullable<double>('qty') ?? 0;
-    final revalueRows = await db.customSelect(
-      "SELECT date, amount FROM asset_events "
-      "WHERE asset_id = ? AND type = 'revalue' ORDER BY date ASC",
-      variables: [Variable.withInt(assetId)],
-    ).get();
-    final revaluePrices = revalueRows.map((r) {
-      final amount = r.read<double>('amount');
-      return MapEntry(
-        DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
-        qty > 0 ? amount / qty : amount,
-      );
-    }).toList();
-
-    if (marketPrices.isEmpty) return revaluePrices;
-    if (revaluePrices.isEmpty) return marketPrices;
-
-    // Merge: market prices take precedence, revalue fills gaps
-    final marketDates = marketPrices.map((e) =>
-        DateTime(e.key.year, e.key.month, e.key.day)).toSet();
-    final merged = [...marketPrices];
-    for (final rv in revaluePrices) {
-      final day = DateTime(rv.key.year, rv.key.month, rv.key.day);
-      if (!marketDates.contains(day)) {
-        merged.add(rv);
-      }
-    }
-    merged.sort((a, b) => a.key.compareTo(b.key));
-    return merged;
+    return rows
+        .map((r) => MapEntry(
+              DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+              r.read<double>('close_price'),
+            ))
+        .toList();
   }
 
   /// Get all prices for multiple assets in a single query, sorted by date ascending.
@@ -349,23 +295,24 @@ abstract class MarketPriceService {
         r.read<double>('close_price'),
       ));
     }
-
-    // Fallback: for assets with no market prices, use getPriceHistory
-    // which includes the revalue event fallback
-    final missing = assetIds.where((id) => !result.containsKey(id)).toList();
-    for (final id in missing) {
-      final fallback = await getPriceHistory(id);
-      if (fallback.isNotEmpty) result[id] = fallback;
-    }
-
     return result;
   }
 
   /// Clear all cached data (market prices, exchange rates, compositions).
+  /// Revalue-derived prices are immediately re-materialised so manual assets
+  /// keep rendering correctly after a cache wipe.
   Future<void> clearCache() async {
     await db.delete(db.marketPrices).go();
     await db.delete(db.exchangeRates).go();
     await db.delete(db.assetCompositions).go();
     _log.info('Cleared all cached data (prices, exchange rates, compositions)');
+    // Rematerialise revalue events into market_prices.
+    final eventService = AssetEventService(db);
+    final assetIdRows = await db.customSelect(
+      "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
+    ).get();
+    for (final row in assetIdRows) {
+      await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
+    }
   }
 }
