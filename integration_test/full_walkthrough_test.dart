@@ -23,6 +23,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/asset_event_service.dart';
 import 'package:finance_copilot/services/buffer_service.dart';
 import 'package:finance_copilot/services/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/import_config_service.dart';
@@ -1452,6 +1453,100 @@ void main() {
           await longSettle(tester);
         }
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11B. Revalue → market_prices materialisation.
+    //
+    // A revalue on a manual asset must produce a market_prices row anchored
+    // to the qty-at-revalue-date so the asset shows up everywhere priced
+    // assets do (dashboards, allocation, charts) and so a later buy can't
+    // retroactively shift the implied per-unit price.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11B. Manual asset revalue → market_prices anchoring');
+    final manualHolding = await (db.select(db.assets)
+          ..where((a) => a.name.equals('My Custom Holding')))
+        .getSingleOrNull();
+    if (manualHolding == null) {
+      _step('   ⚠ skipping (manual asset not present from 11A)');
+    } else {
+      final eventService = AssetEventService(db);
+      // Buy 10 units @ 100 EUR on day 1.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      // Revalue total to 1200 EUR on day 10 → expected close_price = 120.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 10),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+
+      var prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .get();
+      expect(prices, hasLength(1),
+          reason: 'revalue must materialise exactly one market_prices row');
+      expect(prices.first.date, DateTime(2024, 1, 10));
+      expect(prices.first.closePrice, 120.0,
+          reason: '1200 / qty(10) = 120 per unit');
+
+      // Add a later buy of 5 units. The revalue's close_price must NOT
+      // shift — it stays anchored to qty(=10) at value_date 2024-01-10.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 20),
+        type: EventType.buy,
+        amount: 600.0,
+        quantity: 5.0,
+        price: 120.0,
+        currency: 'EUR',
+      );
+      prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(prices.first.closePrice, 120.0,
+          reason: 'post-revalue buy must NOT shift the anchored close_price');
+
+      // getPrice() now reads the materialised row directly.
+      final priceService = InvestingComService(db);
+      final livePrice = await priceService.getPrice(manualHolding.id, DateTime(2024, 6, 1));
+      expect(livePrice, 120.0);
+
+      // Pre-revalue buy added retroactively must recompute the row
+      // (qty-at-revalue becomes 12 → close_price = 1200/12 = 100).
+      final laterBuyId = await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 5),
+        type: EventType.buy,
+        amount: 200.0,
+        quantity: 2.0,
+        currency: 'EUR',
+      );
+      var afterAdd = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(afterAdd.first.closePrice, 100.0,
+          reason: 'pre-revalue buy must reduce the anchored close_price');
+
+      // Removing the pre-revalue buy must put close_price back to 120.
+      await eventService.delete(laterBuyId);
+      afterAdd = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(afterAdd.first.closePrice, 120.0,
+          reason: 'deleting the pre-revalue buy must restore the anchor');
+      _step('   ✓ revalue materialised, anchored to qty-at-date, robust to '
+          'pre/post-revalue buys');
     }
 
     // ─────────────────────────────────────────────────────────────────────

@@ -5,7 +5,6 @@
 /// so that future changes cannot silently diverge (e.g. missing fallback
 /// paths, different date handling, different aggregation precision).
 library;
-import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -49,21 +48,22 @@ void main() {
     }
   }
 
+  // Goes through AssetEventService.create so revalue events are
+  // materialised into market_prices rows the way they are in production.
   Future<void> insertEvent(int assetId, {
     required DateTime date,
     required EventType type,
     required double amount,
     double? quantity,
   }) async {
-    await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+    await AssetEventService(db).create(
       assetId: assetId,
       date: date,
-      valueDate: date,
       type: type,
       amount: amount,
-      quantity: Value(quantity),
-      currency: Value('EUR'),
-    ));
+      quantity: quantity,
+      currency: 'EUR',
+    );
   }
 
   // ═══════════════════════════════════════════════════
