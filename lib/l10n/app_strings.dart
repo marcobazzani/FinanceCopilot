@@ -635,6 +635,7 @@ class AppStrings {
     'exchangeRate' => _it ? 'Tasso di cambio' : 'Exchange Rate',
     'commission' => _it ? 'Commissione' : 'Commission',
     'balanceAfter' => _it ? 'Saldo dopo' : 'Balance After',
+    'orderRef' => _it ? 'Riferimento ordine' : 'Order Reference',
     _ => field,
   };
 
@@ -738,11 +739,18 @@ class AppStrings {
   String get fromSign              => _it ? 'Dal segno (+/-)'          : 'From sign (+/-)';
   String get buyLabel              => _it ? 'Acquisto'                 : 'Buy';
   String get sellLabel             => _it ? 'Vendita'                  : 'Sell';
+  String get feeLabel              => _it ? 'Commissione'              : 'Fee';
   String get signBasedHelp         => _it
       ? 'Quantità o importo negativo = Vendita, positivo = Acquisto'
       : 'Negative quantity or amount = Sell, positive = Buy';
+  String get signBasedNegativeIsBuyLabel => _it
+      ? 'Acquisti con segno negativo (flusso di cassa)'
+      : 'Buys are negative (cash-flow convention)';
   String get computedLabel         => _it ? 'Calcolato'                : 'Computed';
-  String get buySellAllRequired    => _it ? 'Ogni valore deve essere assegnato a Acquisto o Vendita' : 'Every value must be assigned to Buy or Sell';
+  String get buySellAllRequired    => _it ? 'Ogni valore deve essere assegnato a Acquisto, Vendita o Commissione' : 'Every value must be assigned to Buy, Sell, or Fee';
+  String get orderRefHelp          => _it
+      ? 'Opzionale: con la colonna mappata, le commissioni vengono unite alla transazione corrispondente. Senza, vengono ignorate.'
+      : 'Optional: when mapped, fees are folded into the matching trade. Without it, fees are dropped.';
 
   // ── Allocation ───────────────────────────────────────────
   String get noMarketValues    => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';
@@ -754,7 +762,7 @@ class AppStrings {
 
   // ── Import wizard ──────────────────────────────────────────
   String get buySellDetection  => _it ? 'Rilevamento Acquisto / Vendita' : 'Buy / Sell Detection';
-  String get mapBuySell        => _it ? 'Mappa valori in Acquisto / Vendita:' : 'Map values to Buy / Sell:';
+  String get mapBuySell        => _it ? 'Mappa valori in Acquisto / Vendita / Commissione:' : 'Map values to Buy / Sell / Fee:';
   String get feeCommission     => _it ? 'Commissione'               : 'Fee / Commission';
   String get balanceColumn     => _it ? 'Colonna saldo:'            : 'Balance column:';
   String get amountRequired    => _it ? 'importo *'                 : 'amount *';

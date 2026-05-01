@@ -176,6 +176,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _typeMode = 'column';
   final Set<String> _buyValues = {};
   final Set<String> _sellValues = {};
+  /// Type-column values that mark a row as an external fee (e.g.
+  /// "Commissioni" in Directa exports). When the user also maps an
+  /// `orderRef` column, fee rows are folded into the parent Buy/Sell's
+  /// commission. Without orderRef, they're silently dropped.
+  final Set<String> _feeValues = {};
+  /// Sign-mode convention: when true, a negative cash-flow amount is a BUY
+  /// (Directa-style: negative = money out = bought it). Default false keeps
+  /// the historical "negative = sell" behavior.
+  bool _negativeIsBuy = false;
 
   // Cached unique values per column (from ALL rows, not just preview)
   final Map<String, List<String>> _fullUniqueValues = {};
@@ -692,15 +701,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
     // Asset events also require ISIN
     if (_target == ImportTarget.assetEvent && _mappings['isin'] == null) return false;
-    // Asset events with "from column" type: every unique value must be mapped to Buy or Sell
+    // Asset events with "from column" type: every unique value must be mapped
+    // to Buy, Sell, or Fee (Fee is for non-event rows like Commissioni).
     if (_target == ImportTarget.assetEvent && _typeMode == 'column' && _mappings['type'] != null) {
       final typeCol = _mappings['type']!;
       final uniqueVals = _fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol);
       if (uniqueVals.isNotEmpty) {
-        final allMapped = uniqueVals.every((v) => _buyValues.contains(v) || _sellValues.contains(v));
+        final allMapped = uniqueVals.every((v) =>
+            _buyValues.contains(v) || _sellValues.contains(v) || _feeValues.contains(v));
         if (!allMapped) return false;
-        // Must have at least one Buy and one Sell value
-        if (_buyValues.isEmpty || _sellValues.isEmpty) return false;
+        // Must have at least one Buy or Sell value (a file with only fee
+        // rows would have nothing to import).
+        if (_buyValues.isEmpty && _sellValues.isEmpty) return false;
       }
     }
     return true;
@@ -739,6 +751,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _typeMode = 'column';
     _buyValues.clear();
     _sellValues.clear();
+    _feeValues.clear();
+    _mappings.remove('orderRef');
+    _negativeIsBuy = false;
     _isinLookupResults = null;
     _selectedExchanges.clear();
     _defaultExchange = null;
@@ -817,6 +832,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           mappings: mappings,
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          feeValues: _feeValues.isNotEmpty ? _feeValues : null,
+          negativeIsBuy: _typeMode == 'sign' && _negativeIsBuy,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           numberLocale: _selectedNumberLocale,

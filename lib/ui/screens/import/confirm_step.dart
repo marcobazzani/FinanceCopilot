@@ -614,6 +614,8 @@ extension _ConfirmStep on _ImportScreenState {
           isinLookup: isinLookup,
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          feeValues: _feeValues.isNotEmpty ? _feeValues : null,
+          negativeIsBuy: _typeMode == 'sign' && _negativeIsBuy,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
