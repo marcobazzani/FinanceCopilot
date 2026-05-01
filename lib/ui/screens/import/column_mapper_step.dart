@@ -797,6 +797,8 @@ extension _ColumnMapperStep on _ImportScreenState {
               _mappings['type'] = null;
               _buyValues.clear();
               _sellValues.clear();
+              _feeValues.clear();
+              _mappings.remove('orderRef');
               _fullUniqueValues.remove(_mappings['type']);
             }
           }),
@@ -811,7 +813,8 @@ extension _ColumnMapperStep on _ImportScreenState {
             ...uniqueVals.map((val) {
               final isBuy = _buyValues.contains(val);
               final isSell = _sellValues.contains(val);
-              final isUnmapped = !isBuy && !isSell;
+              final isFee = _feeValues.contains(val);
+              final isUnmapped = !isBuy && !isSell && !isFee;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
@@ -830,6 +833,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                       selected: isBuy,
                       onSelected: (_) => _setState(() {
                         _sellValues.remove(val);
+                        _feeValues.remove(val);
                         if (isBuy) { _buyValues.remove(val); } else { _buyValues.add(val); }
                       }),
                       visualDensity: VisualDensity.compact,
@@ -840,7 +844,24 @@ extension _ColumnMapperStep on _ImportScreenState {
                       selected: isSell,
                       onSelected: (_) => _setState(() {
                         _buyValues.remove(val);
+                        _feeValues.remove(val);
                         if (isSell) { _sellValues.remove(val); } else { _sellValues.add(val); }
+                      }),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                    ChoiceChip(
+                      label: Text(s.feeLabel, style: const TextStyle(fontSize: 11)),
+                      selected: isFee,
+                      onSelected: (_) => _setState(() {
+                        _buyValues.remove(val);
+                        _sellValues.remove(val);
+                        if (isFee) {
+                          _feeValues.remove(val);
+                          if (_feeValues.isEmpty) _mappings.remove('orderRef');
+                        } else {
+                          _feeValues.add(val);
+                        }
                       }),
                       visualDensity: VisualDensity.compact,
                     ),
@@ -848,7 +869,8 @@ extension _ColumnMapperStep on _ImportScreenState {
                 ),
               );
             }),
-            if (uniqueVals.any((v) => !_buyValues.contains(v) && !_sellValues.contains(v)))
+            if (uniqueVals.any((v) =>
+                !_buyValues.contains(v) && !_sellValues.contains(v) && !_feeValues.contains(v)))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
@@ -856,13 +878,51 @@ extension _ColumnMapperStep on _ImportScreenState {
                   style: TextStyle(fontSize: 12, color: Colors.red.shade300),
                 ),
               ),
+            // Optional join key for external fee rows. Appears only when at
+            // least one Type value is bucketed as Fee. Empty = drop fees.
+            if (_feeValues.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _buildMappingRow('orderRef', columns),
+              Padding(
+                padding: const EdgeInsets.only(left: 4, top: 2),
+                child: Text(
+                  s.orderRefHelp,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ],
           ],
-        ] else
+        ] else ...[
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(s.signBasedHelp,
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ),
+          // Toggle for cash-flow convention: brokers like Directa export buys
+          // with a negative sign (money out). Default keeps the historical
+          // "negative = sell" interpretation.
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: _negativeIsBuy,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (v) => _setState(() => _negativeIsBuy = v ?? false),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => _setState(() => _negativeIsBuy = !_negativeIsBuy),
+                    child: Text(s.signBasedNegativeIsBuyLabel,
+                        style: const TextStyle(fontSize: 12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

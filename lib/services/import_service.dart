@@ -83,6 +83,12 @@ class ImportResult {
   final int deletedRows;
   final int errorRows;
   final List<String> errors;
+  /// External fee rows (asset imports) whose `(isin, orderRef)` key matched
+  /// no parent Buy/Sell. The fee amount was discarded; the count is
+  /// surfaced so the user can investigate. Always 0 for transaction imports.
+  final int unmatchedFees;
+  /// External fee rows successfully folded into a parent's `commission`.
+  final int attachedFees;
 
   const ImportResult({
     required this.totalRows,
@@ -90,6 +96,8 @@ class ImportResult {
     this.deletedRows = 0,
     required this.errorRows,
     this.errors = const [],
+    this.unmatchedFees = 0,
+    this.attachedFees = 0,
   });
 }
 
@@ -147,12 +155,19 @@ class AssetEventImportPreview {
   final int errorRows;
   final List<String> errors;
   final Map<String, AssetPreviewSummary> assetSummary;
+  /// External fee rows that would be folded into a parent's commission
+  /// during the real import.
+  final int attachedFees;
+  /// External fee rows that did not match any parent Buy/Sell.
+  final int unmatchedFees;
 
   const AssetEventImportPreview({
     required this.parsedRows,
     required this.errorRows,
     this.errors = const [],
     required this.assetSummary,
+    this.attachedFees = 0,
+    this.unmatchedFees = 0,
   });
 }
 
@@ -504,6 +519,18 @@ class ImportService {
     IsinLookupService? isinLookup,
     Set<String>? buyValues,
     Set<String>? sellValues,
+    /// Type-column values that mark a row as an *external fee* (e.g.
+    /// "Commissioni" / "Bollo" in Directa-style exports). When the
+    /// `orderRef` field is also mapped, fee rows are joined to their parent
+    /// Buy/Sell on `(isin, orderRef)` and folded into the parent's
+    /// `commission`. When `orderRef` is unmapped (or its cell is empty),
+    /// the fee row is dropped silently — no DB write, no error.
+    Set<String>? feeValues,
+    /// Sign-based detection (when no type column is mapped): when true, a
+    /// negative cash-flow amount is treated as a BUY (Directa-style:
+    /// negative = money out = bought). Default false keeps the historical
+    /// behavior (negative = sell).
+    bool negativeIsBuy = false,
     /// ISIN → selected exchange option (from UI picker). If null, uses first result.
     Map<String, IsinExchangeOption>? selectedExchanges,
     /// ISINs to skip during import (unchecked by user in exchange picker).
@@ -552,10 +579,40 @@ class ImportService {
     final exchangeRateMapping = mappingByField['exchangeRate'];
     final commMapping = mappingByField['commission'];
     final descMapping = mappingByField['description'];
+    final orderRefMapping = mappingByField['orderRef'];
 
     var imported = 0;
     var errorCount = 0;
+    var attachedFees = 0;
+    var unmatchedFees = 0;
     final errors = <String>[];
+
+    // Pre-pass: collect external fee rows by (isin, orderRef) so the main
+    // loop can fold them into the parent Buy/Sell's commission. When
+    // orderRefMapping is null, fee rows are dropped silently — matching
+    // the just-shipped Skip behavior. When the type column isn't mapped or
+    // feeValues is empty, this pre-pass is a no-op.
+    final externalFeeByKey = <String, double>{};
+    final externalFeeUsed = <String, bool>{};
+    if (typeMapping != null && feeValues != null && feeValues.isNotEmpty) {
+      for (final row in preview.rows) {
+        final typeStr = _resolveMapping(typeMapping, row) ?? '';
+        final normalized = typeStr.trim().toUpperCase().replaceAll(' ', '_');
+        final isFee = feeValues.any((v) => v.toUpperCase() == normalized);
+        if (!isFee) continue;
+        if (orderRefMapping == null) continue; // drop silently
+        final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+        if (orderRef.isEmpty) continue; // drop silently
+        final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
+        if (isin.isEmpty) continue;
+        final amountStr = amountMapping == null ? '' : (_resolveMapping(amountMapping, row) ?? '');
+        final amt = _tryParseAmount(amountStr);
+        if (amt == null) continue;
+        final key = '$isin|$orderRef';
+        externalFeeByKey[key] = (externalFeeByKey[key] ?? 0) + amt.abs();
+        externalFeeUsed[key] = false;
+      }
+    }
 
     // First pass: collect unique ISINs and find/create assets
     final isinToRows = <String, List<int>>{};
@@ -706,28 +763,57 @@ class ImportService {
         final EventType eventType;
         if (typeMapping != null) {
           final typeStr = _resolveMapping(typeMapping, row) ?? 'BUY';
-          eventType = _parseEventType(typeStr, buyValues: buyValues, sellValues: sellValues);
+          final parsed = _parseEventType(typeStr,
+              buyValues: buyValues, sellValues: sellValues, feeValues: feeValues);
+          if (parsed == null) {
+            // Fee row — already collected in the pre-pass. Skip from main
+            // event creation; matching/attaching happens below per parent.
+            continue;
+          }
+          eventType = parsed;
+        } else if (negativeIsBuy) {
+          // Cash-flow convention: only the amount sign matters. Quantity is
+          // typically positive in these exports (e.g. Directa).
+          eventType = amount < 0 ? EventType.buy : EventType.sell;
         } else {
+          // Historical convention: a negative quantity OR a negative amount
+          // indicates a sell.
           final isNeg = (qty != null && qty < 0) || amount < 0;
           eventType = isNeg ? EventType.sell : EventType.buy;
         }
 
-        // Fee: from column or computed as |amount| - qty * price / rate.
-        // When an exchange-rate column is mapped but its cell is empty / 0 /
-        // unparseable, we cannot derive a commission — leave it null rather
-        // than fabricate one from a 1.0 fallback (which silently treats two
-        // currencies as equivalent and has produced wrong commissions).
+        // External-row fee takes precedence: when a Commissioni row matched
+        // this trade's (isin, orderRef), the inline/computed paths are
+        // ignored. They're independent in the wizard but mutually exclusive
+        // per row in practice — no broker emits both.
         double? commission;
-        if (computeFee && qty != null && price != null) {
-          if (exchangeRateMapping == null) {
-            // No rate column mapped → assume same currency, no division.
-            commission = (amount.abs() - qty.abs() * price).abs();
-          } else if (rate != null && rate > 0) {
-            commission = (amount.abs() - qty.abs() * price / rate).abs();
+        String? extKey;
+        if (orderRefMapping != null && externalFeeByKey.isNotEmpty) {
+          final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+          if (orderRef.isNotEmpty) {
+            final candidate = '$isin|$orderRef';
+            if (externalFeeByKey.containsKey(candidate) &&
+                externalFeeUsed[candidate] != true) {
+              commission = externalFeeByKey[candidate];
+              extKey = candidate;
+            }
           }
-          // else: rate column was mapped but value is missing/zero → null.
-        } else if (commMapping != null) {
-          commission = _tryParseAmount(_resolveMapping(commMapping, row));
+        }
+        if (commission == null) {
+          // Fall through to the existing inline paths.
+          if (computeFee && qty != null && price != null) {
+            if (exchangeRateMapping == null) {
+              commission = (amount.abs() - qty.abs() * price).abs();
+            } else if (rate != null && rate > 0) {
+              commission = (amount.abs() - qty.abs() * price / rate).abs();
+            }
+          } else if (commMapping != null) {
+            commission = _tryParseAmount(_resolveMapping(commMapping, row));
+          }
+        }
+        if (extKey != null) {
+          externalFeeUsed[extKey] = true;
+          attachedFees++;
         }
 
         companions.add(AssetEventsCompanion.insert(
@@ -829,14 +915,22 @@ class ImportService {
       if (filled > 0) _log.info('importAssetEventsGrouped: filled $filled missing exchange rates');
     }
 
-    _log.info('importAssetEventsGrouped: done - imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}');
+    // Tally external fee rows that found no matching parent in this batch.
+    for (final used in externalFeeUsed.values) {
+      if (!used) unmatchedFees++;
+    }
+    if (unmatchedFees > 0) {
+      _log.warning('importAssetEventsGrouped: $unmatchedFees external fee row(s) had no matching parent (isin, orderRef)');
+    }
+    _log.info('importAssetEventsGrouped: done - imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}, attachedFees=$attachedFees, unmatchedFees=$unmatchedFees');
     return AssetImportResult(
       result: ImportResult(
         totalRows: preview.totalRows,
         importedRows: imported,
-
         errorRows: errorCount,
         errors: errors,
+        attachedFees: attachedFees,
+        unmatchedFees: unmatchedFees,
       ),
       assetsByIsin: assetsByIsin,
     );
@@ -1056,6 +1150,8 @@ class ImportService {
     required List<ColumnMapping> mappings,
     Set<String>? buyValues,
     Set<String>? sellValues,
+    Set<String>? feeValues,
+    bool negativeIsBuy = false,
     Set<String>? excludedIsins,
     Map<String, IsinExchangeOption>? selectedExchanges,
     /// Locale used for parsing during preview only — NOT persisted.
@@ -1082,9 +1178,12 @@ class ImportService {
     final qtyMapping = mappingByField['quantity'];
     final amountMapping = mappingByField['amount'];
     final currencyMapping = mappingByField['currency'];
+    final orderRefMapping = mappingByField['orderRef'];
 
     var parsed = 0;
     var errorCount = 0;
+    var attachedFees = 0;
+    var unmatchedFees = 0;
     final errors = <String>[];
 
     // Accumulate per-ISIN: buyCount, sellCount, netQty
@@ -1092,6 +1191,25 @@ class ImportService {
     final sellCountByIsin = <String, int>{};
     final netQtyByIsin = <String, double>{};
     final currencyByIsin = <String, String>{};
+
+    // Pre-pass: tally external fee rows by (isin, orderRef) so the main
+    // loop can mark them as attached when their parent appears. Mirrors
+    // the live-import pre-pass exactly.
+    final feeKeysSeen = <String, bool>{}; // key → "matched in main pass?"
+    if (typeMapping != null && feeValues != null && feeValues.isNotEmpty) {
+      for (final row in preview.rows) {
+        final typeStr = _resolveMapping(typeMapping, row) ?? '';
+        final normalized = typeStr.trim().toUpperCase().replaceAll(' ', '_');
+        final isFee = feeValues.any((v) => v.toUpperCase() == normalized);
+        if (!isFee) continue;
+        if (orderRefMapping == null) continue;
+        final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+        if (orderRef.isEmpty) continue;
+        final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
+        if (isin.isEmpty) continue;
+        feeKeysSeen.putIfAbsent('$isin|$orderRef', () => false);
+      }
+    }
 
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
@@ -1111,7 +1229,12 @@ class ImportService {
         final EventType eventType;
         if (typeMapping != null) {
           final typeStr = _resolveMapping(typeMapping, row) ?? 'BUY';
-          eventType = _parseEventType(typeStr, buyValues: buyValues, sellValues: sellValues);
+          final parsed = _parseEventType(typeStr,
+              buyValues: buyValues, sellValues: sellValues, feeValues: feeValues);
+          if (parsed == null) continue; // fee row — counted in pre-pass
+          eventType = parsed;
+        } else if (negativeIsBuy) {
+          eventType = (amount != null && amount < 0) ? EventType.buy : EventType.sell;
         } else {
           final isNeg = (qty != null && qty < 0) || (amount != null && amount < 0);
           eventType = isNeg ? EventType.sell : EventType.buy;
@@ -1127,11 +1250,27 @@ class ImportService {
           currencyByIsin[isin] = (_resolveMapping(currencyMapping, row) ?? '').trim();
         }
 
+        // Mark a matching external fee row as "attached" so the unmatched
+        // tally below is accurate.
+        if (orderRefMapping != null && feeKeysSeen.isNotEmpty) {
+          final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+          if (orderRef.isNotEmpty) {
+            final key = '$isin|$orderRef';
+            if (feeKeysSeen.containsKey(key) && feeKeysSeen[key] == false) {
+              feeKeysSeen[key] = true;
+              attachedFees++;
+            }
+          }
+        }
+
         parsed++;
       } catch (e) {
         errorCount++;
         if (errors.length < 5) errors.add('Line ${i + 1}: $e');
       }
+    }
+    for (final used in feeKeysSeen.values) {
+      if (!used) unmatchedFees++;
     }
 
     // Look up existing asset names for known ISINs
@@ -1157,12 +1296,14 @@ class ImportService {
       );
     }
 
-    _log.info('previewAssetEventImport: parsed=$parsed, errors=$errorCount, assets=${summary.length}');
+    _log.info('previewAssetEventImport: parsed=$parsed, errors=$errorCount, assets=${summary.length}, attachedFees=$attachedFees, unmatchedFees=$unmatchedFees');
     return AssetEventImportPreview(
       parsedRows: parsed,
       errorRows: errorCount,
       errors: errors,
       assetSummary: summary,
+      attachedFees: attachedFees,
+      unmatchedFees: unmatchedFees,
     );
   }
 
@@ -1293,9 +1434,21 @@ class ImportService {
     }
   }
 
-  EventType _parseEventType(String s, {Set<String>? buyValues, Set<String>? sellValues}) {
+  /// Returns `null` when the row is an external fee row (the type value
+  /// matched [feeValues] — e.g. "Commissioni" / "Bollo" / "Dividendi" in
+  /// cash-flow-style broker exports). Fee rows are handled by the caller's
+  /// two-pass loop (matched by orderRef and folded into the parent's
+  /// commission, or dropped when no match). Throws when the type value is
+  /// genuinely unrecognized so the caller can surface a clear error.
+  EventType? _parseEventType(
+    String s, {
+    Set<String>? buyValues,
+    Set<String>? sellValues,
+    Set<String>? feeValues,
+  }) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
     // Custom user-defined mappings take priority
+    if (feeValues != null && feeValues.any((v) => v.toUpperCase() == normalized)) return null;
     if (buyValues != null && buyValues.any((v) => v.toUpperCase() == normalized)) return EventType.buy;
     if (sellValues != null && sellValues.any((v) => v.toUpperCase() == normalized)) return EventType.sell;
     // Direct enum match
