@@ -97,6 +97,158 @@ extension _ColumnMapperStep on _ImportScreenState {
     );
   }
 
+  /// Compact asset picker for `singleAsset` mode. Shown beside the
+  /// "Import into single asset" toggle when target = assetEvent.
+  ///
+  /// Filter: excludes any asset that already has rows in `market_prices`
+  /// (i.e. is being priced by Investing). The single-asset import path is
+  /// for assets the user values themselves through events; assets with an
+  /// external feed should use the ISIN-grouped path or simply rely on the
+  /// market-price flow without an event-import at all.
+  ///
+  /// Includes an inline "Create empty asset" affordance so the user can
+  /// spin up a fresh import target without leaving the wizard.
+  Widget _buildSingleAssetPicker(AppStrings s) {
+    final assetsAsync = ref.watch(assetsProvider);
+    final pricedAsync = ref.watch(assetIdsWithMarketPricesProvider);
+    return assetsAsync.when(
+      data: (assets) {
+        final priced = pricedAsync.maybeWhen(data: (s) => s, orElse: () => const <int>{});
+        // Strict "manual" filter: no market_prices = no external feed.
+        final manual = assets.where((a) => !priced.contains(a.id)).toList();
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            SizedBox(
+              width: 260,
+              child: DropdownButtonFormField<int>(
+                initialValue: _singleAssetTargetId,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  labelText: s.pickAssetForImport,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                items: manual.isEmpty
+                    ? [DropdownMenuItem<int>(value: null, enabled: false, child: Text(s.noAssetsAvailable))]
+                    : manual
+                        .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                onChanged: manual.isEmpty
+                    ? null
+                    : (v) => _setState(() {
+                          _singleAssetTargetId = v;
+                          if (v != null) {
+                            final picked = manual.firstWhere((a) => a.id == v);
+                            _selectedIntermediaryId = picked.intermediaryId;
+                          }
+                        }),
+              ),
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(s.createEmptyAsset, style: const TextStyle(fontSize: 12)),
+              onPressed: _showCreateEmptyAssetDialog,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            ),
+          ],
+        );
+      },
+      loading: () => const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
+
+  /// Inline dialog: create a fresh manual asset without leaving the
+  /// import wizard. Minimal fields — name, intermediary, currency. Type
+  /// defaults to `alternative` since the picker filters by "no market
+  /// data" rather than by instrument type. After insert, auto-selects
+  /// the new asset as the import target.
+  Future<void> _showCreateEmptyAssetDialog() async {
+    final s = ref.read(appStringsProvider);
+    final nameCtrl = TextEditingController();
+    final intermediaries = await ref.read(intermediaryServiceProvider).getAll();
+    if (intermediaries.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(s.noIntermediariesAvailable)),
+        );
+      }
+      return;
+    }
+    int? pickedIntermediary = _selectedIntermediaryId ?? intermediaries.first.id;
+    final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
+    String currency = baseCurrency;
+    if (!mounted) return;
+
+    final created = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(s.createEmptyAsset),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(labelText: s.name),
+                  onChanged: (_) => setLocal(() {}),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: pickedIntermediary,
+                  decoration: InputDecoration(labelText: s.intermediaryName),
+                  items: intermediaries
+                      .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name)))
+                      .toList(),
+                  onChanged: (v) => setLocal(() => pickedIntermediary = v),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: currency,
+                  decoration: const InputDecoration(labelText: 'Currency'),
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (v) => currency = v.trim().toUpperCase(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
+                  ? () async {
+                      final id = await ref.read(assetServiceProvider).create(
+                            name: nameCtrl.text.trim(),
+                            currency: currency.isEmpty ? baseCurrency : currency,
+                            valuationMethod: ValuationMethod.eventDriven,
+                            instrumentType: InstrumentType.alternative,
+                            assetClass: AssetClass.alternative,
+                            intermediaryId: pickedIntermediary!,
+                          );
+                      if (ctx.mounted) Navigator.pop(ctx, id);
+                    }
+                  : null,
+              child: Text(s.create),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (created != null && mounted) {
+      _setState(() {
+        _singleAssetTargetId = created;
+        _selectedIntermediaryId = pickedIntermediary;
+      });
+    }
+  }
+
   /// Compact account selector (DropdownButtonFormField) shown above the file picker
   /// when the user is importing transactions without a preselected account.
   Widget _buildInlineAccountSelector() {
@@ -282,11 +434,48 @@ extension _ColumnMapperStep on _ImportScreenState {
                       ),
                     ),
                     Text(
-                      _assetImportMode == 'historic'
-                          ? s.dateExchangeRequired
-                          : s.dateDefaultsToday,
+                      _assetEventMode == 'singleAsset'
+                          ? s.singleAssetHelp
+                          : (_assetImportMode == 'historic'
+                              ? s.dateExchangeRequired
+                              : s.dateDefaultsToday),
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // ByIsin (multi-asset) vs SingleAsset (pension/manual) toggle.
+                // Toggle changes _requiredFields so the column-mapper hides
+                // ISIN/quantity/price when the user picks a single target asset.
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(value: 'byIsin', label: Text(s.importByIsin)),
+                        ButtonSegment(value: 'singleAsset', label: Text(s.importIntoSingleAsset)),
+                      ],
+                      selected: {_assetEventMode},
+                      onSelectionChanged: (v) => _setState(() {
+                        _assetEventMode = v.first;
+                        if (_assetEventMode == 'singleAsset') {
+                          // Drop ISIN/quantity/price mappings — single-asset
+                          // mode routes everything to one pre-existing asset
+                          // and synthesises qty/price for cash contributes.
+                          _mappings.remove('isin');
+                        } else {
+                          _singleAssetTargetId = null;
+                        }
+                      }),
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    if (_assetEventMode == 'singleAsset')
+                      _buildSingleAssetPicker(s),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -798,6 +987,7 @@ extension _ColumnMapperStep on _ImportScreenState {
               _buyValues.clear();
               _sellValues.clear();
               _feeValues.clear();
+              _revalueValues.clear();
               _mappings.remove('orderRef');
               _fullUniqueValues.remove(_mappings['type']);
             }
@@ -813,11 +1003,25 @@ extension _ColumnMapperStep on _ImportScreenState {
             ...uniqueVals.map((val) {
               final isBuy = _buyValues.contains(val);
               final isSell = _sellValues.contains(val);
+              final isRevalue = _revalueValues.contains(val);
               final isFee = _feeValues.contains(val);
-              final isUnmapped = !isBuy && !isSell && !isFee;
+              final isUnmapped = !isBuy && !isSell && !isRevalue && !isFee;
+              // Tagging is exclusive: picking one chip clears the others.
+              // Fee maintains its orderRef-cleanup invariant.
+              void tag(Set<String> target, bool currently) => _setState(() {
+                _buyValues.remove(val);
+                _sellValues.remove(val);
+                _revalueValues.remove(val);
+                _feeValues.remove(val);
+                if (!currently) target.add(val);
+                if (_feeValues.isEmpty) _mappings.remove('orderRef');
+              });
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
                     SizedBox(
                       width: 140,
@@ -827,42 +1031,28 @@ extension _ColumnMapperStep on _ImportScreenState {
                         fontWeight: isUnmapped ? FontWeight.bold : null,
                       ), overflow: TextOverflow.ellipsis),
                     ),
-                    const SizedBox(width: 8),
                     ChoiceChip(
                       label: Text(s.buyLabel, style: const TextStyle(fontSize: 11)),
                       selected: isBuy,
-                      onSelected: (_) => _setState(() {
-                        _sellValues.remove(val);
-                        _feeValues.remove(val);
-                        if (isBuy) { _buyValues.remove(val); } else { _buyValues.add(val); }
-                      }),
+                      onSelected: (_) => tag(_buyValues, isBuy),
                       visualDensity: VisualDensity.compact,
                     ),
-                    const SizedBox(width: 4),
                     ChoiceChip(
                       label: Text(s.sellLabel, style: const TextStyle(fontSize: 11)),
                       selected: isSell,
-                      onSelected: (_) => _setState(() {
-                        _buyValues.remove(val);
-                        _feeValues.remove(val);
-                        if (isSell) { _sellValues.remove(val); } else { _sellValues.add(val); }
-                      }),
+                      onSelected: (_) => tag(_sellValues, isSell),
                       visualDensity: VisualDensity.compact,
                     ),
-                    const SizedBox(width: 4),
+                    ChoiceChip(
+                      label: Text(s.revalueLabel, style: const TextStyle(fontSize: 11)),
+                      selected: isRevalue,
+                      onSelected: (_) => tag(_revalueValues, isRevalue),
+                      visualDensity: VisualDensity.compact,
+                    ),
                     ChoiceChip(
                       label: Text(s.feeLabel, style: const TextStyle(fontSize: 11)),
                       selected: isFee,
-                      onSelected: (_) => _setState(() {
-                        _buyValues.remove(val);
-                        _sellValues.remove(val);
-                        if (isFee) {
-                          _feeValues.remove(val);
-                          if (_feeValues.isEmpty) _mappings.remove('orderRef');
-                        } else {
-                          _feeValues.add(val);
-                        }
-                      }),
+                      onSelected: (_) => tag(_feeValues, isFee),
                       visualDensity: VisualDensity.compact,
                     ),
                   ],
@@ -870,7 +1060,10 @@ extension _ColumnMapperStep on _ImportScreenState {
               );
             }),
             if (uniqueVals.any((v) =>
-                !_buyValues.contains(v) && !_sellValues.contains(v) && !_feeValues.contains(v)))
+                !_buyValues.contains(v) &&
+                !_sellValues.contains(v) &&
+                !_revalueValues.contains(v) &&
+                !_feeValues.contains(v)))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(

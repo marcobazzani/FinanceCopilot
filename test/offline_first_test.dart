@@ -190,17 +190,18 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 33 after revalue->market_prices backfill', () async {
+    test('schema version is 34 after incomes.asset_id added', () async {
       // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
       // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
       // a "Default" intermediary; v30 added per-source number-format locale
       // columns; v31 added extraordinary_events.is_ephemeral; v32 dropped
       // the dashboard_charts table; v33 backfilled market_prices rows from
       // existing revalue events so manual assets render the same way priced
-      // assets do.
+      // assets do; v34 added incomes.asset_id so pension-contribution rows
+      // can be wiped-and-replaced per asset on re-import.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 33);
+      expect(version, 34);
     });
 
     test('dashboard_charts table is gone', () async {

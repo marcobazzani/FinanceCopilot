@@ -53,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 33;
+  int get schemaVersion => 34;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -470,6 +470,8 @@ class AppDatabase extends _$AppDatabase {
             // health KPI, and chart consumer the same way priced assets do.
             // close_price = revalue.amount / qty_at_value_date so a later
             // buy/sell can't retroactively shift the implied per-unit price.
+            // Must stay in sync with resyncRevaluePricesForAsset in
+            // asset_event_service.dart.
             await customStatement(
               "INSERT OR REPLACE INTO market_prices (asset_id, date, close_price, currency) "
               "SELECT e.asset_id, e.value_date, e.amount / qty.q, "
@@ -489,6 +491,17 @@ class AppDatabase extends _$AppDatabase {
               "WHERE e.type = 'revalue' AND qty.q > 0",
             );
             _log.info('Migration 33: backfilled market_prices from revalue events');
+          }
+          if (from < 34) {
+            // Add `asset_id` column to incomes so pension-contribution
+            // rows can be linked back to their source pension fund. The
+            // column is nullable; existing rows leave it NULL.
+            if (!await _hasColumn('incomes', 'asset_id')) {
+              await customStatement(
+                'ALTER TABLE incomes ADD COLUMN asset_id INTEGER REFERENCES assets(id)',
+              );
+              _log.info('Migration 34: added asset_id column to incomes');
+            }
           }
         },
       );

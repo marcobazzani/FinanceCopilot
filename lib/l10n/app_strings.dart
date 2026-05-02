@@ -587,12 +587,9 @@ class AppStrings {
   String get addIncomeTitle        => _it ? 'Aggiungi reddito'          : 'Add Income';
   String get editIncomeTitle       => _it ? 'Modifica reddito'          : 'Edit Income';
   String get incomeTypeLabel       => _it ? 'Tipo'                      : 'Type';
-  String get incomeTypeIncome      => _it ? 'Reddito'                   : 'Income';
-  String get incomeTypeRefund      => _it ? 'Rimborso'                  : 'Refund';
-  String get incomeTypeSalary      => _it ? 'Stipendio'                 : 'Salary';
-  String get incomeTypeDonation    => _it ? 'Donazione'                 : 'Donation';
-  String get incomeTypeCoupon      => _it ? 'Cedola'                    : 'Coupon';
-  String get incomeTypeOther       => _it ? 'Altro reddito'             : 'Other Income';
+  String get incomeTypeIncome              => _it ? 'Reddito'              : 'Income';
+  String get incomeTypeRefund              => _it ? 'Rimborso'             : 'Refund';
+  String get incomeTypePensionContribution => _it ? 'Contributo previdenziale' : 'Pension contribution';
   String get flagAsIncomeTooltip   => _it ? 'Segna come reddito'        : 'Flag as Income';
   String get flagAsIncomeTitle     => _it ? 'Segna come reddito'        : 'Flag as Income';
   String get incomeFlaggedSnack    => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
@@ -740,6 +737,19 @@ class AppStrings {
   String get buyLabel              => _it ? 'Acquisto'                 : 'Buy';
   String get sellLabel             => _it ? 'Vendita'                  : 'Sell';
   String get feeLabel              => _it ? 'Commissione'              : 'Fee';
+  String get revalueLabel          => _it ? 'Rivalutazione'            : 'Revalue';
+  String get pensionFundLabel      => _it ? 'Fondo pensione'           : 'Pension fund';
+  String get importIntoSingleAsset => _it ? 'Importa in un singolo asset' : 'Import into single asset';
+  String get importByIsin          => _it ? 'Raggruppa per ISIN'       : 'Group by ISIN';
+  String get pickAssetForImport    => _it ? 'Asset di destinazione'    : 'Target asset';
+  String get noAssetsAvailable     => _it ? 'Nessun asset disponibile' : 'No assets available';
+  String get singleAssetHelp       => _it
+      ? 'Tutte le righe vanno in un asset esistente; ISIN/quote/prezzo non richiesti'
+      : 'All rows go into one existing asset; no ISIN/quantity/price needed';
+  String get createEmptyAsset      => _it ? 'Nuovo asset'              : 'Create empty asset';
+  String get noIntermediariesAvailable => _it
+      ? 'Nessun intermediario; creane uno prima'
+      : 'No intermediaries; create one first';
   String get signBasedHelp         => _it
       ? 'Quantità o importo negativo = Vendita, positivo = Acquisto'
       : 'Negative quantity or amount = Sell, positive = Buy';

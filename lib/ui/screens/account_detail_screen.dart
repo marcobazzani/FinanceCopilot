@@ -304,15 +304,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
   Future<void> _flagAsIncome(Transaction tx) async {
     final s = ref.read(appStringsProvider);
-    var selectedType = IncomeType.salary;
+    var selectedType = IncomeType.income;
 
     String typeLabel(IncomeType t) => switch (t) {
-      IncomeType.income   => s.incomeTypeIncome,
-      IncomeType.refund   => s.incomeTypeRefund,
-      IncomeType.salary   => s.incomeTypeSalary,
-      IncomeType.donation => s.incomeTypeDonation,
-      IncomeType.coupon   => s.incomeTypeCoupon,
-      IncomeType.other    => s.incomeTypeOther,
+      IncomeType.income              => s.incomeTypeIncome,
+      IncomeType.refund              => s.incomeTypeRefund,
+      IncomeType.pensionContribution => s.incomeTypePensionContribution,
     };
 
     final confirmed = await showDialog<bool>(

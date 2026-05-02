@@ -506,6 +506,28 @@ class _AppShellState extends ConsumerState<AppShell> {
         _log.warning('Manual refresh: market sync failed: $e');
       }
 
+      // Rebuild market_prices from existing revalue events. Catches
+      // cases where revalues were inserted via a path that bypasses
+      // AssetEventService.create's post-CRUD resync (e.g. CSV import's
+      // batched insert), and re-anchors close_price after any
+      // intervening buy/sell that shifted the qty-at-revalue.
+      try {
+        final db = ref.read(databaseProvider);
+        final eventService = ref.read(assetEventServiceProvider);
+        final rows = await db.customSelect(
+          "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
+          readsFrom: {db.assetEvents},
+        ).get();
+        for (final row in rows) {
+          await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
+        }
+        if (rows.isNotEmpty) {
+          _log.info('Manual refresh: resynced market_prices for ${rows.length} asset(s) with revalues');
+        }
+      } catch (e) {
+        _log.warning('Manual refresh: revalue resync failed: $e');
+      }
+
       try {
         await ref.read(compositionServiceProvider).syncCompositions();
       } catch (e) {

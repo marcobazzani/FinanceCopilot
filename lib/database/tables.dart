@@ -96,7 +96,17 @@ enum EventType {
   revalue,
 }
 
-enum IncomeType { income, refund, salary, donation, coupon, other }
+enum IncomeType {
+  income,
+  // Money received but NOT counting toward "personal income" totals.
+  // Refunds are tax/purchase money returns; pensionContribution rows are
+  // employer/state/voluntary deposits into a pension fund. Both are
+  // excluded from the dashboard's income aggregation but visible in the
+  // ledger so the user can audit cashflows. Filter: see
+  // lib/ui/screens/dashboard/data_providers.dart `WHERE type NOT IN (...)`.
+  refund,
+  pensionContribution,
+}
 
 enum StepFrequency { weekly, monthly, quarterly, yearly }
 
@@ -344,6 +354,11 @@ class Incomes extends Table {
   RealColumn get amount => real()();
   TextColumn get type => textEnum<IncomeType>().withDefault(Constant(IncomeType.income.name))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  /// Optional source asset — populated for `pensionContribution` rows so
+  /// re-importing a pension statement can wipe-and-replace its income
+  /// entries by `(asset_id, type='pensionContribution')`. NULL for
+  /// account-only income (salary, refunds, etc.).
+  IntColumn get assetId => integer().nullable().references(Assets, #id)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
