@@ -558,10 +558,18 @@ Future<void> tapBuySellForValue(
   );
   expect(valueText, findsWidgets,
       reason: 'unique-value row "$value" not found for type-from-column');
-  final rowAnc = find.ancestor(of: valueText.first, matching: find.byType(Row));
-  expect(rowAnc, findsWidgets);
+  // Chip container is a Wrap (was Row before the pension-import merge —
+  // switched to Wrap to fit the 4th chip on narrow screens). Fall back to
+  // Row for older code paths so the helper stays robust if the layout
+  // changes again.
+  var container = find.ancestor(of: valueText.first, matching: find.byType(Wrap));
+  if (container.evaluate().isEmpty) {
+    container = find.ancestor(of: valueText.first, matching: find.byType(Row));
+  }
+  expect(container, findsWidgets,
+      reason: 'no Wrap or Row ancestor for unique-value "$value"');
   final chip = find.descendant(
-    of: rowAnc.first,
+    of: container.first,
     matching: find.widgetWithText(ChoiceChip, buy ? buyLabel : sellLabel),
   );
   expect(chip, findsWidgets,
