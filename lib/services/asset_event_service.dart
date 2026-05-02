@@ -199,6 +199,11 @@ class AssetEventService {
       if (amountRow == null) continue;
       final amount = amountRow.read<double>('amount');
 
+      // qty-at-revalue: buys add quantity, sells subtract. Pension
+      // contributions are imported as `buy` events with synthesized
+      // quantity=amount, price=1.0 (see import_service.dart A3
+      // auto-fill), so they're naturally counted here without a special
+      // case.
       final qtyRow = await _db.customSelect(
         "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
         "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
@@ -225,13 +230,13 @@ class AssetEventService {
     }
   }
 
-  /// Weighted average buy price: total_cost / total_qty for buy/contribute events.
+  /// Weighted average buy price: total_cost / total_qty for buy events.
   /// Returns null if no qualifying events exist.
   Future<double?> getAverageBuyPrice(int assetId) async {
     final row = await _db.customSelect(
       "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
       "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
-      "FROM asset_events WHERE asset_id = ? AND type IN ('buy','contribute') "
+      "FROM asset_events WHERE asset_id = ? AND type = 'buy' "
       "AND quantity IS NOT NULL AND price IS NOT NULL",
       variables: [Variable.withInt(assetId)],
     ).getSingleOrNull();

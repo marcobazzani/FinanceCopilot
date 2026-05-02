@@ -91,7 +91,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       final storedRate = row.readNullable<double>('exchange_rate');
 
       double sign;
-      if (type == 'buy' || type == 'contribute') {
+      if (type == 'buy') {
         sign = 1.0;
       } else if (type == 'sell') {
         sign = -1.0;
@@ -533,12 +533,16 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   final rates = _RateResolver(rateService, baseCurrency);
 
-  // 1. Load incomes (excluding refunds), convert to base currency.
-  // Ordered by value_date per CLAUDE.md convention — operation_date is only
-  // for import dedup, never for display/aggregation.
+  // 1. Load incomes (excluding refunds and pension contributions),
+  // convert to base currency. Both refund and pensionContribution are
+  // money received but not "personal income" — the user reports them in
+  // the ledger but doesn't want them inflating salary totals.
+  // Ordered by value_date per CLAUDE.md convention — operation_date is
+  // only for import dedup, never for display/aggregation.
   final rows = await db.customSelect(
     "SELECT value_date AS date, amount, currency FROM incomes "
-    "WHERE type != 'refund' ORDER BY value_date ASC",
+    "WHERE type NOT IN ('refund', 'pensionContribution') "
+    "ORDER BY value_date ASC",
   ).get();
 
   final incomeByMonth = <(int, int), double>{};
@@ -550,6 +554,29 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     if (rate == null) continue; // no rate -> exclude rather than mis-sum
     final key = (dt.year, dt.month);
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
+  }
+
+  // Pension contributions are external money (employer/state/severance
+  // redirect) — they inflate the pension fund's NAV without ever
+  // landing in the user's bank account. Refunds, by contrast, DO land
+  // in the bank, so their NAV impact is real personal savings — only
+  // their income classification is excluded above. Pension is the rare
+  // case where both the income side AND the savings side need to
+  // subtract, otherwise saving/expense velocity reads as if the user
+  // saved €X each month they didn't actually save.
+  final pensionRows = await db.customSelect(
+    "SELECT value_date AS date, amount, currency FROM incomes "
+    "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
+  ).get();
+  final pensionContribByMonth = <(int, int), double>{};
+  for (final row in pensionRows) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    final amount = row.read<double>('amount');
+    final currency = row.read<String>('currency');
+    final rate = await rates.getRate(currency, toDayKey(dt));
+    if (rate == null) continue;
+    final key = (dt.year, dt.month);
+    pensionContribByMonth[key] = (pensionContribByMonth[key] ?? 0) + amount * rate;
   }
 
   // 2. Build total saving series — resolved from the user's configured
@@ -586,6 +613,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     final days = effectiveEnd.difference(yStart).inDays + 1;
 
     double yearIncome = 0;
+    double yearPensionContrib = 0;
     final months = <_MonthBucket>[];
 
     for (int m = 1; m <= 12; m++) {
@@ -598,11 +626,14 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
               ? DateTime(y, m + 1, 1).subtract(const Duration(days: 1))
               : DateTime(y, 12, 31));
       final mIncome = incomeByMonth[(y, m)] ?? 0;
+      final mPensionContrib = pensionContribByMonth[(y, m)] ?? 0;
       yearIncome += mIncome;
+      yearPensionContrib += mPensionContrib;
       months.add(_MonthBucket(
         year: y, month: m,
         income: mIncome,
         navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
+        pensionContrib: mPensionContrib,
       ));
     }
 
@@ -610,14 +641,36 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
       year: y, days: days,
       income: yearIncome,
       navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
+      pensionContrib: yearPensionContrib,
       months: months,
     ));
+  }
+
+  // Cumulative pension contributions as a day-offset spot series,
+  // aligned to allSeriesData.firstDate so cashflow_tab can subtract it
+  // from savingSpots without re-running a query. Each spot's x is the
+  // day offset of that contribution; y is the running total in base
+  // currency. Used to build a "personal saving" series for velocity.
+  final sortedPension = pensionRows.toList()
+    ..sort((a, b) => a.read<int>('date').compareTo(b.read<int>('date')));
+  final pensionContribSpots = <FlSpot>[];
+  double cumulative = 0;
+  for (final row in sortedPension) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    final amount = row.read<double>('amount');
+    final currency = row.read<String>('currency');
+    final rate = await rates.getRate(currency, toDayKey(dt));
+    if (rate == null) continue;
+    cumulative += amount * rate;
+    final x = dt.difference(allSeriesData.firstDate).inDays.toDouble();
+    pensionContribSpots.add(FlSpot(x, cumulative));
   }
 
   return _IncomeExpenseData(
     years: years,
     baseCurrency: baseCurrency,
     firstDate: allSeriesData.firstDate,
+    pensionContribCumulativeSpots: pensionContribSpots,
   );
 });
 
