@@ -140,4 +140,91 @@ date,type,amount,isin
     final assets = await db.select(db.assets).get();
     expect(assets.where((a) => a.isin == 'US9229087690'), isEmpty);
   });
+
+  // Cross-product audit (post-merge of HEAD's Fee chip with the worktree's
+  // single-asset mode): the two features were merged independently, so
+  // verify the combinations behave the way the merge plan says they do.
+
+  test('single-asset + Fee bucket: fee rows drop silently, no errors',
+      () async {
+    // 2 buy rows + 1 fee row, all routed to the pre-existing pension
+    // asset. Fee is a pure no-op in single-asset mode (the pre-pass is
+    // gated on targetAssetId == null, and the per-row main loop drops
+    // fee rows via _parseEventType returning null). The merge audit
+    // verified this by reading code; this test pins it.
+    final file = writeCsv('pension_with_fee.csv', '''
+date,type,amount
+2024-01-31,buy,100.00
+2024-02-29,buy,150.00
+2024-02-29,COMMISSION,-2.50
+''');
+    final preview = await importer.parseFile(file.path);
+
+    final result = await importer.importAssetEventsGrouped(
+      preview: preview,
+      mappings: const [
+        ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+        ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+      ],
+      baseCurrency: 'EUR',
+      intermediaryId: intermediaryId,
+      targetAssetId: targetAssetId,
+      feeValues: const {'COMMISSION'},
+    );
+
+    expect(result.result.importedRows, 2,
+        reason: '2 buy rows imported; the fee row drops silently');
+    expect(result.result.errorRows, 0,
+        reason: 'fee in single-asset mode is by-design no-op, not an error');
+    expect(result.result.attachedFees, 0,
+        reason: 'pre-pass is gated on targetAssetId == null');
+    expect(result.result.unmatchedFees, 0,
+        reason: 'no orderRef → nothing to match → counted as 0, not as orphan');
+    final events = await db.select(db.assetEvents).get();
+    expect(events, hasLength(2));
+    expect(events.every((e) => e.type == EventType.buy), isTrue);
+  });
+
+  test('single-asset + Revalue: synthesis does NOT fire on revalue rows',
+      () async {
+    // Pension cash-only synthesis (effectiveQty=amount, price=1.0) is
+    // narrowly gated on EventType.buy. A revalue row in the same file
+    // must store quantity=null/price=null verbatim, so the
+    // materialise-revalue resync produces a market_prices row from
+    // amount/qty-at-date rather than a fabricated price.
+    final file = writeCsv('pension_with_revalue.csv', '''
+date,type,amount
+2024-01-31,buy,100.00
+2024-12-31,TOTALEP,1234.56
+''');
+    final preview = await importer.parseFile(file.path);
+
+    final result = await importer.importAssetEventsGrouped(
+      preview: preview,
+      mappings: const [
+        ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+        ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+      ],
+      baseCurrency: 'EUR',
+      intermediaryId: intermediaryId,
+      targetAssetId: targetAssetId,
+      revalueValues: const {'TOTALEP'},
+    );
+
+    expect(result.result.importedRows, 2);
+    expect(result.result.errorRows, 0);
+    final events = await db.select(db.assetEvents).get();
+    final buy = events.firstWhere((e) => e.type == EventType.buy);
+    final revalue = events.firstWhere((e) => e.type == EventType.revalue);
+    // Buy synthesised cash-only fields.
+    expect(buy.quantity, 100.00, reason: 'effectiveQty=amount');
+    expect(buy.price, 1.0, reason: 'effectivePrice=1.0');
+    // Revalue stays unsynthesised — the resync uses qty-at-date, not these fields.
+    expect(revalue.quantity, isNull,
+        reason: 'synthesis is gated on EventType.buy; revalue is left as-is');
+    expect(revalue.price, isNull);
+    expect(revalue.amount, 1234.56);
+  });
 }
