@@ -469,6 +469,44 @@ class AppStrings {
       ? 'Verranno eliminati tutti i $n eventi da "$name" ma l\'attività verrà mantenuta.\n\n'
       : 'This will delete all $n events from "$name" but keep the asset itself.\n\n';
 
+  // ── Asset Edit / Create — advanced (unlocked) fields ─────
+  String get assetUnlockEdit            => _it ? 'Sblocca tutti i campi'     : 'Unlock all fields';
+  String get assetLockEdit              => _it ? 'Blocca campi avanzati'     : 'Lock advanced fields';
+  String get assetTypeFieldLabel        => _it ? 'Tipo di asset'             : 'Asset type';
+  String get valuationMethodFieldLabel  => _it ? 'Metodo di valutazione'     : 'Valuation method';
+  String get taxRateOverrideLabel       => _it ? 'Aliquota fiscale (%)'      : 'Tax rate (%)';
+  String get includeInNetWorthLabel     => _it ? 'Includi nel patrimonio'    : 'Include in net worth';
+  String get currencyFieldLabel         => _it ? 'Valuta (3 lettere)'        : 'Currency (3 letters)';
+
+  // ── Composition editor ───────────────────────────────────
+  String get compositionEditTooltip     => _it ? 'Modifica composizione'     : 'Edit composition';
+  String get compositionRefreshTooltip  => _it ? 'Aggiorna dal mercato'      : 'Refresh from market';
+  String get compositionEntryName       => _it ? 'Nome'                      : 'Name';
+  String get compositionEntryWeight     => _it ? 'Peso (%)'                  : 'Weight (%)';
+  String get compositionAddRow          => _it ? 'Aggiungi riga'             : 'Add row';
+  String get compositionWeightWarning   =>
+      _it ? 'La somma dei pesi non è 100%' : 'Weights don\'t sum to 100%';
+  String assetTypeLabel(AssetType t) => {
+    AssetType.stock:       _it ? 'Azione'                  : 'Stock',
+    AssetType.stockEtf:    _it ? 'ETF azionario'           : 'Stock ETF',
+    AssetType.bondEtf:     _it ? 'ETF obbligazionario'     : 'Bond ETF',
+    AssetType.commEtf:     _it ? 'ETF materie prime'       : 'Commodity ETF',
+    AssetType.goldEtc:     _it ? 'ETC oro'                 : 'Gold ETC',
+    AssetType.monEtf:      _it ? 'ETF monetario'           : 'Money-market ETF',
+    AssetType.crypto:      _it ? 'Crypto'                  : 'Crypto',
+    AssetType.cash:        _it ? 'Liquidità'               : 'Cash',
+    AssetType.pension:     _it ? 'Fondo pensione'          : 'Pension',
+    AssetType.deposit:     _it ? 'Deposito'                : 'Deposit',
+    AssetType.realEstate:  _it ? 'Immobile'                : 'Real estate',
+    AssetType.alternative: _it ? 'Alternativo'             : 'Alternative',
+    AssetType.liability:   _it ? 'Passività'               : 'Liability',
+  }[t]!;
+  String valuationMethodLabel(ValuationMethod m) => {
+    ValuationMethod.marketPrice: _it ? 'Prezzo di mercato'  : 'Market price',
+    ValuationMethod.eventDriven: _it ? 'Manuale (eventi)'   : 'Event-driven (manual)',
+    ValuationMethod.balance:     _it ? 'Saldo'              : 'Balance',
+  }[m]!;
+
   // ── Asset Event Edit ─────────────────────────────────────
   String get editEventTitle      => _it ? 'Modifica evento'    : 'Edit Event';
   String get newEventTitle       => _it ? 'Nuovo evento'       : 'New Event';

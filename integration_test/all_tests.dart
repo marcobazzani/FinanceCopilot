@@ -12,6 +12,7 @@ library;
 
 import 'package:integration_test/integration_test.dart';
 
+import 'asset_unlock_edit_test.dart' as asset_unlock_edit;
 import 'full_walkthrough_test.dart' as full_walkthrough;
 import 'legacy_migration_test.dart' as legacy_migration;
 
@@ -19,4 +20,5 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   full_walkthrough.main();
   legacy_migration.main();
+  asset_unlock_edit.main();
 }
