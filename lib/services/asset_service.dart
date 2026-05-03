@@ -54,13 +54,18 @@ class AssetService {
     ValuationMethod valuationMethod = ValuationMethod.marketPrice,
     InstrumentType? instrumentType,
     AssetClass? assetClass,
+    AssetType assetType = AssetType.stockEtf,
+    double? ter,
+    bool? isActive,
+    bool? includeInNetWorth,
   }) {
     _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange, '
         'intermediary=$intermediaryId, valuation=${valuationMethod.name}, '
-        'instrument=${instrumentType?.name}, class=${assetClass?.name}');
+        'instrument=${instrumentType?.name}, class=${assetClass?.name}, '
+        'assetType=${assetType.name}');
     return _db.into(_db.assets).insert(AssetsCompanion.insert(
       name: name,
-      assetType: AssetType.stockEtf,
+      assetType: assetType,
       valuationMethod: valuationMethod,
       intermediaryId: intermediaryId,
       ticker: Value(ticker),
@@ -70,6 +75,9 @@ class AssetService {
       taxRate: Value(taxRate),
       instrumentType: instrumentType != null ? Value(instrumentType) : const Value.absent(),
       assetClass: assetClass != null ? Value(assetClass) : const Value.absent(),
+      ter: Value(ter),
+      isActive: isActive != null ? Value(isActive) : const Value.absent(),
+      includeInNetWorth: includeInNetWorth != null ? Value(includeInNetWorth) : const Value.absent(),
     ));
   }
 

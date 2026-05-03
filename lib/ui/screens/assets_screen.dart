@@ -689,6 +689,7 @@ class _CreateAssetDialog extends StatefulWidget {
 
 class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   bool _manual = false;
+  bool _unlocked = false;
 
   // Step 1: search state mirrored from AssetSearchSection so step 2 can
   // derive sibling exchange listings and capture the user's typed query
@@ -711,10 +712,108 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   AssetClass? _assetClass;
   int? _selectedIntermediaryId;
 
+  // Advanced (unlocked) entry — header attributes only. Composition
+  // (geographic / sector / asset class breakdown) is edited inline on the
+  // Composition panel of the asset detail screen.
+  AssetType _assetType = AssetType.stockEtf;
+  ValuationMethod? _valuationMethodOverride;
+  final _currencyCtrl = TextEditingController();
+  final _terCtrl = TextEditingController();
+  final _taxRateCtrl = TextEditingController();
+  bool _includeInNetWorth = true;
+  bool _isActive = true;
+
+  String get _locale =>
+      widget.ref.read(appLocaleProvider).value ?? Platform.localeName;
+
   @override
   void dispose() {
     _manualNameCtrl.dispose();
+    _currencyCtrl.dispose();
+    _terCtrl.dispose();
+    _taxRateCtrl.dispose();
     super.dispose();
+  }
+
+  Widget _buildLockToggle(AppStrings s) => IconButton(
+        icon: Icon(_unlocked ? Icons.lock_open : Icons.lock_outline, size: 20),
+        tooltip: _unlocked ? s.assetLockEdit : s.assetUnlockEdit,
+        onPressed: () => setState(() => _unlocked = !_unlocked),
+      );
+
+  List<Widget> _buildAdvancedFields(AppStrings s, {required bool showValuation}) {
+    return [
+      const Divider(height: 24),
+      DropdownButtonFormField<AssetType>(
+        initialValue: _assetType,
+        decoration: InputDecoration(labelText: s.assetTypeFieldLabel, isDense: true),
+        items: AssetType.values
+            .map((t) => DropdownMenuItem(value: t, child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13))))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) setState(() => _assetType = v);
+        },
+      ),
+      if (showValuation) ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<ValuationMethod>(
+          initialValue: _valuationMethodOverride,
+          decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
+          items: ValuationMethod.values
+              .map((m) => DropdownMenuItem(value: m, child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13))))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _valuationMethodOverride = v);
+          },
+        ),
+      ],
+      const SizedBox(height: 12),
+      TextField(
+        controller: _currencyCtrl,
+        decoration: InputDecoration(
+          labelText: s.currencyFieldLabel,
+          isDense: true,
+          counterText: '',
+        ),
+        textCapitalization: TextCapitalization.characters,
+        maxLength: 3,
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _terCtrl,
+        decoration: InputDecoration(
+          labelText: '${s.healthTer} (%)',
+          // Locale-aware hint: "0,22" in it_IT, "0.22" in en_US.
+          hintText: NumberFormat.decimalPattern(_locale).format(0.22),
+          isDense: true,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _taxRateCtrl,
+        decoration: InputDecoration(
+          labelText: s.taxRateOverrideLabel,
+          // Accepts percentage (26 → stored as 0.26 by create call).
+          hintText: '26',
+          isDense: true,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      ),
+      const SizedBox(height: 8),
+      SwitchListTile(
+        title: Text(s.active),
+        value: _isActive,
+        onChanged: (v) => setState(() => _isActive = v),
+        contentPadding: EdgeInsets.zero,
+      ),
+      SwitchListTile(
+        title: Text(s.includeInNetWorthLabel),
+        value: _includeInNetWorth,
+        onChanged: (v) => setState(() => _includeInNetWorth = v),
+        contentPadding: EdgeInsets.zero,
+      ),
+    ];
   }
 
   void _selectResult(InvestingSearchResult result) {
@@ -783,8 +882,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     final s = widget.ref.read(appStringsProvider);
     final r = _selected!;
     return AlertDialog(
-      title: Text(s.createAssetTitle),
-      content: Column(
+      title: Row(
+        children: [
+          Expanded(child: Text(s.createAssetTitle)),
+          _buildLockToggle(s),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -828,7 +933,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           ),
           const SizedBox(height: 16),
           _buildIntermediaryPicker(s),
+          if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
         ],
+      ),
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
@@ -837,7 +944,11 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ? () async {
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
                   final exchange = _selectedExchange ?? 'MIL';
-                  final currency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
+                  final defaultCurrency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
+                  final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
+                  final currency = (_unlocked && overrideCurrency.length == 3)
+                      ? overrideCurrency
+                      : defaultCurrency;
                   // If the user searched by an ISIN-shaped string, persist it
                   // so price sync can use it as the cache key (otherwise the
                   // ticker — e.g. a bond's "BE000035160=MI" — is not a valid
@@ -853,6 +964,17 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                         instrumentType: _instrumentType,
                         assetClass: _assetClass,
                         intermediaryId: _selectedIntermediaryId!,
+                        assetType: _unlocked ? _assetType : AssetType.stockEtf,
+                        valuationMethod: _unlocked && _valuationMethodOverride != null
+                            ? _valuationMethodOverride!
+                            : ValuationMethod.marketPrice,
+                        ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
+                        taxRate: _unlocked ? (() {
+                          final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
+                          return v == null ? null : v / 100;
+                        })() : null,
+                        isActive: _unlocked ? _isActive : null,
+                        includeInNetWorth: _unlocked ? _includeInNetWorth : null,
                       );
                   if (mounted) Navigator.pop(context);
                 }
@@ -989,8 +1111,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   Widget _buildManualDialog() {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: Text(s.newAssetManualTitle),
-      content: Column(
+      title: Row(
+        children: [
+          Expanded(child: Text(s.newAssetManualTitle)),
+          _buildLockToggle(s),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
@@ -1033,7 +1161,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           ),
           const SizedBox(height: 16),
           _buildIntermediaryPicker(s),
+          if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
         ],
+      ),
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
@@ -1042,13 +1172,27 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ? () async {
                   final name = _manualNameCtrl.text.trim();
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
+                  final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
+                  final currency = (_unlocked && overrideCurrency.length == 3)
+                      ? overrideCurrency
+                      : baseCurrency;
                   await widget.ref.read(assetServiceProvider).create(
                         name: name,
-                        currency: baseCurrency,
-                        valuationMethod: ValuationMethod.eventDriven,
+                        currency: currency,
+                        valuationMethod: _unlocked && _valuationMethodOverride != null
+                            ? _valuationMethodOverride!
+                            : ValuationMethod.eventDriven,
                         instrumentType: _instrumentType,
                         assetClass: _assetClass,
                         intermediaryId: _selectedIntermediaryId!,
+                        assetType: _unlocked ? _assetType : AssetType.stockEtf,
+                        ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
+                        taxRate: _unlocked ? (() {
+                          final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
+                          return v == null ? null : v / 100;
+                        })() : null,
+                        isActive: _unlocked ? _isActive : null,
+                        includeInNetWorth: _unlocked ? _includeInNetWorth : null,
                       );
                   if (mounted) Navigator.pop(context);
                 }
