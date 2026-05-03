@@ -72,15 +72,36 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
 - Never duplicate code. Extract shared logic into utilities or service methods.
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
+- **Before writing a new widget/util/service method, grep the codebase for existing equivalents.** If one exists, REUSE it. Copy/paste is a regression. When two implementations of the same UI element exist, the older/canonical one wins; the newer collapses into it via shared code.
+- **Fit into the current app.** Never start from scratch when an existing implementation can be extended. Read what's there before adding a parallel implementation.
 - **Financial accuracy**: NEVER silently fallback to wrong values when data is missing. No `?? 1.0` for FX rates, no returning original amounts when conversion fails. Missing data must be surfaced (log warning, show indicator, skip the calculation) — never hidden behind a default that produces silently incorrect financial figures.
+- **Per-asset price fallbacks are FORBIDDEN.** If a price is missing, the asset shows "—" and is excluded from totals with a footnote count. Never invent a value.
 - **Tests are mandatory**: Every new feature, bug fix, or service method MUST include tests. Coverage must increase, never decrease. If an existing test needs to change, the change must be proven necessary (the old behavior was wrong), not blindly modified to make it pass.
 - **NEVER modify or delete existing tests without explicit user consent.** If a test fails after your changes, the code is wrong — not the test. Fix the code to make the existing test pass. Only ask the user to change a test if you can prove the test itself encodes incorrect behavior.
 - **Before any refactor or optimization**: Write a specific test that pins the current behavior of the code you're about to change. Run it and confirm it passes. Only then refactor. After refactoring, the same test must still pass with identical results. This is non-negotiable — no behavioral change without a test proving equivalence.
 
+# UI Consistency
+
+- **Delete affordance** is one canonical pattern across the app: trashcan icon in detail view + swipe-to-delete in lists. Long-press-to-delete is forbidden going forward. Three-dot menus offering delete must be reconciled to the canonical pattern.
+- **Collapsible cards**: chevron + header layout MUST match the Cash Flow tab implementation (`lib/ui/screens/dashboard/cash_flow_tab.dart` part files). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap. Reuse the existing widget — do not re-implement.
+- **Bottom-of-screen "Next" buttons in wizards** MUST share a common navbar widget. Fix consistently across all wizards, never one-by-one.
+- **Empty states** and **error toasts/snackbars** use one shared component each, with consistent placement.
+- Before adding a new widget, grep for existing equivalents. Reuse > re-implement.
+
 # Localization
 
-- Always translate every string the user sees in the UI (use `AppStrings` / l10n).
-- Always localize dates (both input parsing and output formatting) based on the application's locale configuration.
+- Every user-visible string MUST come from `AppStrings`/l10n. Literal `Text('...')` / `Text("...")` in `lib/ui/` is a violation — fix it immediately.
+- Number parsing MUST use the active locale's decimal/group separator (`NumberFormat(localeTag).parse()`). NEVER hardcode `.` or `,` parsing logic. The Italian locale uses `,` as decimal separator — do not assume `.`.
+- Date parsing AND formatting MUST be locale-aware. Route every date through `lib/utils/date_parser.dart` (single entry point). `DateFormat` instances MUST be constructed with an explicit locale tag.
+- All locale bundles (en, it, …) must cover every key — no missing translations.
+- When responding to GitHub issues opened by Italian-speaking users, reply in Italian.
+
+# Branch & DB Discipline
+
+- **Before any code edit**: confirm the current branch matches the user's stated target. If unclear, ASK. Do not assume `develop`.
+- **Before launching the app or running integration tests**: confirm `DB_FILE_NAME` matches the intended dev DB. Mixing the dev container DB with the user's real `~/Documents/FinanceCopilot.db` is a top historical failure — never write to the real DB from tests/builds.
+- Never commit dart-defines or env-specific config to a non-feature branch.
+- When the user references a specific DB path or branch name, that overrides any default — re-confirm before acting.
 
 
 
@@ -120,8 +141,12 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - All data fetching (prices, ETF composition, etc.) must happen inside the Dart app itself.
 - The released artifact must be fully self-contained.
 - For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
-- **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, or any user-facing text. Refer to them generically (e.g. "market data provider", "composition data").
-- **Date convention**: `operationDate` = when the bank processed it (used for import wipe-and-replace dedup). `valueDate` = when the money actually moved (used for display, ordering, charts, balance computation). All UI and queries must use `valueDate` for display/ordering. `operationDate` is only for the import dedup cutoff.
+- **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, CI config, screenshots, alt text, or any user-facing text. Refer to them generically (e.g. "market data provider", "composition data"). The grep `investing|yahoo|google\.finance` MUST return zero hits in the repo.
+- **Date convention**: `operationDate` = when the bank processed it (used for import wipe-and-replace dedup). `valueDate` = when the money actually moved (used for display, ordering, charts, balance computation). All UI and queries must use `valueDate` for display/ordering. `operationDate` is only for the import dedup cutoff. Asset events and Income MUST have a populated `valueDate`.
+
+# Pre-Release Checklist
+
+- Before tagging a release on `main`, run `/pre-release-cleanup` on `develop`. Merge to `main` only after it reports zero findings across all phases (UI consistency, dedup, silent defaults, locale, date semantics, LoC, dead code, provider-name leaks, bug hunt, overreach).
 
 # Key Project Files
 
