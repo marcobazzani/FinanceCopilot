@@ -190,7 +190,7 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 34 after incomes.asset_id added', () async {
+    test('schema version is 35 after eventDriven->marketPrice promotion', () async {
       // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
       // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
       // a "Default" intermediary; v30 added per-source number-format locale
@@ -198,10 +198,13 @@ void main() {
       // the dashboard_charts table; v33 backfilled market_prices rows from
       // existing revalue events so manual assets render the same way priced
       // assets do; v34 added incomes.asset_id so pension-contribution rows
-      // can be wiped-and-replaced per asset on re-import.
+      // can be wiped-and-replaced per asset on re-import; v35 promoted
+      // eventDriven assets with a ticker or ISIN to marketPrice (the prior
+      // creation defaults left every new asset event-driven, blocking
+      // composition fetch on real stocks/funds).
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 34);
+      expect(version, 35);
     });
 
     test('dashboard_charts table is gone', () async {

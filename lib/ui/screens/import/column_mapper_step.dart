@@ -226,7 +226,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                       final id = await ref.read(assetServiceProvider).create(
                             name: nameCtrl.text.trim(),
                             currency: currency.isEmpty ? baseCurrency : currency,
-                            valuationMethod: ValuationMethod.eventDriven,
+                            valuationMethod: ValuationMethod.marketPrice,
                             instrumentType: InstrumentType.alternative,
                             assetClass: AssetClass.alternative,
                             intermediaryId: pickedIntermediary!,
