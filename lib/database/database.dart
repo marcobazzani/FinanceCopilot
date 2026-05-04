@@ -53,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 34;
+  int get schemaVersion => 35;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -502,6 +502,19 @@ class AppDatabase extends _$AppDatabase {
               );
               _log.info('Migration 34: added asset_id column to incomes');
             }
+          }
+          if (from < 35) {
+            // valuationMethod was wrongly defaulted to eventDriven for every
+            // newly-created asset. Promote any asset with a ticker or ISIN
+            // (i.e., a public price source exists) to marketPrice. Assets
+            // with neither — genuinely manual revaluation funds — stay as is.
+            await customStatement(
+              "UPDATE assets SET valuation_method='marketPrice' "
+              "WHERE valuation_method='eventDriven' "
+              "AND ((ticker IS NOT NULL AND ticker <> '') "
+              "  OR (isin IS NOT NULL AND isin <> ''))",
+            );
+            _log.info('Migration 35: promoted eventDriven assets with public source to marketPrice');
           }
         },
       );

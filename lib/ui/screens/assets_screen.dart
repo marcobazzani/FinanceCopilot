@@ -1181,7 +1181,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                         currency: currency,
                         valuationMethod: _unlocked && _valuationMethodOverride != null
                             ? _valuationMethodOverride!
-                            : ValuationMethod.eventDriven,
+                            : ValuationMethod.marketPrice,
                         instrumentType: _instrumentType,
                         assetClass: _assetClass,
                         intermediaryId: _selectedIntermediaryId!,
