@@ -121,11 +121,6 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
 The app runs sandboxed on macOS. All internal data lives inside the container.
 
-- **Protect user data**: Before running integration tests or any operation that launches the app (which may modify the DB), back up the container. Restore it before committing.
-  - Backup: `cp -a ~/Library/Containers/net.bazzani.financecopilot ~/Library/Containers/net.bazzani.financecopilot.bak`
-  - Restore: `rm -rf ~/Library/Containers/net.bazzani.financecopilot && mv ~/Library/Containers/net.bazzani.financecopilot.bak ~/Library/Containers/net.bazzani.financecopilot`
-  - Always verify the backup exists before running tests. Always restore before committing.
-
 - **macOS DB**: `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
 - **macOS logs**: `tail -f ~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application\ Support/net.bazzani.financecopilot/app.log`
 - **macOS OS log**: `log stream --predicate 'subsystem == "net.bazzani.financecopilot"' --level debug`
