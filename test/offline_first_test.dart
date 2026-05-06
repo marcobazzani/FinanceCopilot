@@ -190,21 +190,16 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 35 after eventDriven->marketPrice promotion', () async {
-      // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
-      // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
-      // a "Default" intermediary; v30 added per-source number-format locale
-      // columns; v31 added extraordinary_events.is_ephemeral; v32 dropped
-      // the dashboard_charts table; v33 backfilled market_prices rows from
-      // existing revalue events so manual assets render the same way priced
-      // assets do; v34 added incomes.asset_id so pension-contribution rows
-      // can be wiped-and-replaced per asset on re-import; v35 promoted
-      // eventDriven assets with a ticker or ISIN to marketPrice (the prior
-      // creation defaults left every new asset event-driven, blocking
-      // composition fetch on real stocks/funds).
+    test('schema version is 38 after Pillars (v36) + reference_portfolio drop (v37) + emoji drop (v38)', () async {
+      // v27..v35 — see git history for prior bumps. v36 added the Pillars
+      // and PillarAssets tables (named buckets of asset units with an
+      // optional target value). v37 dropped the originally-introduced
+      // pillars.reference_portfolio column (no concrete reference-portfolio
+      // catalog yet). v38 dropped pillars.emoji (freeform text was UX
+      // dead weight without a picker).
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 35);
+      expect(version, 38);
     });
 
     test('dashboard_charts table is gone', () async {

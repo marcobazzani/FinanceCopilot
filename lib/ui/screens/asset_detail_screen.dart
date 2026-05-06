@@ -19,6 +19,8 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_detail_charts_provider.dart';
 import 'asset_event_edit_screen.dart';
+import 'pillars/pillar_detail_screen.dart';
+import '../widgets/global_app_bar_actions.dart';
 import 'dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
 import '../widgets/asset_search.dart';
 import '../widgets/selection/selectable_item.dart';
@@ -69,7 +71,12 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
         return Scaffold(
       appBar: AppBar(
         title: Text(asset.name),
-        actions: [
+        actions: globalAppBarActions(context, ref, local: [
+          IconButton(
+            icon: const Icon(Icons.view_quilt_outlined),
+            tooltip: s.pillarAssignToTitle,
+            onPressed: () => _pickPillarThenEdit(context, ref, asset.id),
+          ),
           IconButton(
             icon: const Icon(Icons.edit),
             tooltip: s.tooltipEditAsset,
@@ -85,7 +92,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
             tooltip: s.tooltipDeleteAsset,
             onPressed: () => _confirmDeleteAsset(context, ref),
           ),
-        ],
+        ]),
       ),
       body: Column(
         children: [
@@ -264,6 +271,41 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
       context: context,
       builder: (ctx) => _EditAssetDialog(ref: ref, asset: live),
     );
+  }
+
+  Future<void> _pickPillarThenEdit(
+    BuildContext context,
+    WidgetRef ref,
+    int assetId,
+  ) async {
+    final s = ref.read(appStringsProvider);
+    final pillars = await ref.read(pillarsProvider.future);
+    if (!context.mounted) return;
+    if (pillars.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.pillarsEmptyTitle)),
+      );
+      return;
+    }
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(s.pillarPickPillar),
+        children: pillars
+            .map((p) => SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(p.id),
+                  child: Text(p.name),
+                ))
+            .toList(),
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PillarDetailScreen(
+        pillarId: picked,
+        focusAssetId: assetId,
+      ),
+    ));
   }
 
   Future<void> _confirmWipeEvents(BuildContext context, WidgetRef ref) async {

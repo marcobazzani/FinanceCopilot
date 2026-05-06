@@ -24,6 +24,24 @@ class TransactionService {
         .watch();
   }
 
+  /// All transactions across all *existing* accounts. Used by the virtual
+  /// "All accounts" read-only screen. Orphan rows whose `account_id` no
+  /// longer matches a row in `accounts` (e.g. left over from past imports
+  /// into now-deleted accounts) are excluded — they would otherwise render
+  /// as nameless `#<id>` rows that look like duplicates.
+  Stream<List<Transaction>> watchAll() {
+    final query = _db.select(_db.transactions).join([
+      innerJoin(_db.accounts, _db.accounts.id.equalsExp(_db.transactions.accountId)),
+    ])
+      ..orderBy([
+        OrderingTerm.desc(_db.transactions.valueDate),
+        OrderingTerm.desc(_db.transactions.id),
+      ]);
+    return query.watch().map(
+          (rows) => rows.map((r) => r.readTable(_db.transactions)).toList(),
+        );
+  }
+
   Future<List<Transaction>> getByAccount(int accountId) {
     return (_db.select(_db.transactions)
           ..where((t) => t.accountId.equals(accountId))

@@ -12,6 +12,7 @@ import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'event_edit_screen.dart';
+import '../widgets/global_app_bar_actions.dart';
 
 class EventDetailScreen extends ConsumerWidget {
   final int eventId;
@@ -53,7 +54,7 @@ class _DetailBody extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(event.name),
-        actions: [
+        actions: globalAppBarActions(context, ref, local: [
           IconButton(
             icon: const Icon(Icons.edit),
             tooltip: s.edit,
@@ -78,7 +79,7 @@ class _DetailBody extends ConsumerWidget {
             tooltip: s.delete,
             onPressed: () => _confirmDelete(context, ref),
           ),
-        ],
+        ]),
       ),
       body: ListView(
         children: [

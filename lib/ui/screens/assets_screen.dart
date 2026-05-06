@@ -17,6 +17,7 @@ import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/asset_search.dart';
+import '../widgets/global_app_bar_actions.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -67,6 +68,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         ];
         _selection.setOrderedIds(allAssetIds);
         return Scaffold(
+      appBar: AppBar(actions: globalAppBarActions(context, ref)),
       body: assetsAsync.when(
         data: (assets) {
           if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {

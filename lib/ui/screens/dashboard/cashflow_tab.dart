@@ -192,7 +192,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
           Builder(builder: (_) {
             final c = chartDefs[i];
             final z = _zoomFor(c.id);
-            return _ChartCard(
+            return ChartCard(
               chart: c.chart,
               series: c.series,
               allData: allData,

@@ -48,7 +48,46 @@ class AppStrings {
   // ── App shell / navigation ──────────────────────────────
   String get navDashboard          => 'Dashboard';
   String get navAccounts           => _it ? 'Conti'             : 'Accounts';
+  String get allAccounts           => _it ? 'Tutti i conti'     : 'All accounts';
   String get navAssets             => _it ? 'Portafoglio'       : 'Assets';
+  String get navPillars            => _it ? 'Pilastri'          : 'Pillars';
+
+  // ── Pillars ────────────────────────────────────────────
+  String get pillarsTitle              => _it ? 'Pilastri'                 : 'Pillars';
+  String get pillarsEmptyTitle         => _it ? 'Nessun pilastro'          : 'No pillars yet';
+  String get pillarsEmptyCta           => _it ? 'Crea il tuo primo pilastro' : 'Create your first pillar';
+  String get pillarCreateTitle         => _it ? 'Nuovo pilastro'           : 'New pillar';
+  String get pillarEditTitle           => _it ? 'Modifica pilastro'        : 'Edit pillar';
+  String get pillarFieldName           => _it ? 'Nome'                     : 'Name';
+  String get pillarFieldTargetValue    => _it ? 'Valore obiettivo'         : 'Target value';
+  String get pillarFieldTargetCurrency => _it ? 'Valuta obiettivo'         : 'Target currency';
+  String get pillarUnassigned          => _it ? 'Non assegnato'            : 'Unassigned';
+  String get pillarObjective           => _it ? 'Obiettivo'                : 'Objective';
+  String get pillarHistoryTitle        => _it ? 'Storico'                  : 'History';
+  String get pillarAddAsset            => _it ? 'Aggiungi asset'           : 'Add asset';
+  String get pillarAssignToTitle       => _it ? 'Assegna a un pilastro'    : 'Assign to pillar';
+  String get pillarAssignedQty         => _it ? 'Quantità assegnata'       : 'Assigned quantity';
+  String get pillarAvailableQty        => _it ? 'Disponibile'              : 'Available';
+  String get pillarOverAssignedBadge   => _it ? 'Eccede le partecipazioni' : 'Exceeds holdings';
+  String get pillarClipAction          => _it ? 'Adatta'                   : 'Clip';
+  String get pillarOverAssignedError   => _it
+      ? 'Quantità superiore al disponibile'
+      : 'Quantity exceeds available units';
+  String get pillarDeleteConfirm       => _it
+      ? 'Eliminare questo pilastro? Le assegnazioni verranno rimosse.'
+      : 'Delete this pillar? Assignments will be removed.';
+  String get pillarTargetProgress      => _it ? 'Progresso'                : 'Progress';
+  String pillarValue(String formatted) => _it ? 'Valore: $formatted'  : 'Value: $formatted';
+  String pillarTarget(String formatted) => _it ? 'Obiettivo: $formatted' : 'Target: $formatted';
+  String pillarAssetCount(int n)        => _it ? '$n asset' : (n == 1 ? '1 asset' : '$n assets');
+  String get pillarEditAssetsTitle      => _it ? 'Modifica asset del pilastro' : 'Edit pillar assets';
+  String get pillarShowAllAssets        => _it ? 'Tutti gli asset'         : 'All assets';
+  String get pillarShowInPillarOnly     => _it ? 'Solo nel pilastro'       : 'In pillar only';
+  String get pillarSearchAssets         => _it ? 'Cerca asset…'            : 'Search assets…';
+  String pillarUnitsOf(String n, String total) =>
+      _it ? '$n di $total unità' : '$n of $total units';
+  String pillarMaxPercent(int p)        => _it ? 'max $p%' : 'max $p%';
+  String get pillarPickPillar           => _it ? 'Scegli pilastro'         : 'Pick pillar';
   String get navAdjustments        => _it ? 'Aggiustamenti'     : 'Adjustments';
   String get navIncome             => _it ? 'Entrate'           : 'Income';
   String get tooltipHideAmounts    => _it ? 'Nascondi importi'  : 'Hide amounts';
@@ -631,6 +670,18 @@ class AppStrings {
   String get flagAsIncomeTooltip   => _it ? 'Segna come reddito'        : 'Flag as Income';
   String get flagAsIncomeTitle     => _it ? 'Segna come reddito'        : 'Flag as Income';
   String get incomeFlaggedSnack    => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
+  String get flagAsAdjustmentTooltip => _it ? 'Segna come rettifica'       : 'Mark as adjustment';
+  String get flagAsAdjustmentTitle   => _it ? 'Segna come rettifica'       : 'Mark as adjustment';
+  String get flagAsAdjustmentInflow  => _it ? 'Entrata di riferimento'     : 'Reference inflow';
+  String flagAsAdjustmentBody(String amount) => _it
+      ? 'Verrà aggiunta una rettifica di +$amount all\'entrata selezionata.'
+      : 'A +$amount adjustment will be added to the selected inflow.';
+  String get noInflowEventsAvailable => _it
+      ? 'Nessuna entrata straordinaria disponibile'
+      : 'No inflow events available';
+  String get adjustmentFlaggedSnack => _it
+      ? 'Rettifica registrata sull\'entrata'
+      : 'Adjustment recorded on inflow';
   String get invalidDateOrAmount   => _it ? 'Data o importo non valido' : 'Invalid date or amount';
   String get deleteIncomeTitle     => _it ? 'Elimina reddito?'          : 'Delete Income?';
   String deleteIncomeConfirm(String amt, String cur, String d) => _it

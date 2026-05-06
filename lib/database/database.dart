@@ -36,6 +36,8 @@ final _log = getLogger('Database');
   AssetCompositions,
   ExtraordinaryEvents,
   ExtraordinaryEventEntries,
+  Pillars,
+  PillarAssets,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -53,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 35;
+  int get schemaVersion => 38;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -516,6 +518,32 @@ class AppDatabase extends _$AppDatabase {
             );
             _log.info('Migration 35: promoted eventDriven assets with public source to marketPrice');
           }
+          if (from < 36) {
+            if (!await _tableExists('pillars')) {
+              await m.createTable(pillars);
+            }
+            if (!await _tableExists('pillar_assets')) {
+              await m.createTable(pillarAssets);
+            }
+            await _createIndexes();
+            _log.info('Migration 36: created pillars + pillar_assets');
+          }
+          if (from < 37) {
+            if (await _hasColumn('pillars', 'reference_portfolio')) {
+              await customStatement(
+                'ALTER TABLE pillars DROP COLUMN reference_portfolio',
+              );
+              _log.info('Migration 37: dropped pillars.reference_portfolio');
+            }
+          }
+          if (from < 38) {
+            if (await _hasColumn('pillars', 'emoji')) {
+              await customStatement(
+                'ALTER TABLE pillars DROP COLUMN emoji',
+              );
+              _log.info('Migration 38: dropped pillars.emoji');
+            }
+          }
         },
       );
 
@@ -556,6 +584,10 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_buffer_transactions_buffer_id '
       'ON buffer_transactions(buffer_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_pillar_assets_asset '
+      'ON pillar_assets(asset_id)',
     );
   }
 
