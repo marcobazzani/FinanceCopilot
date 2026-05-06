@@ -32,6 +32,7 @@ import '../../../services/providers/providers.dart';
 import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
+import '../../widgets/mobile_pull_to_refresh.dart';
 import 'eoy_projection.dart';
 import 'fullscreen_chart_screen.dart';
 
@@ -206,8 +207,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
         return Stack(
           children: [
-            ListView.builder(
+            MobilePullToRefresh(
+              child: ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 40, 96),
+          physics: const AlwaysScrollableScrollPhysics(),
           itemCount: charts.length,
           itemBuilder: (context, index) {
             final chart = charts[index];
@@ -376,6 +379,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             );
           },
         ),
+            ),
             if (debugChartsEnabled) Positioned(
               right: 16,
               bottom: 16,

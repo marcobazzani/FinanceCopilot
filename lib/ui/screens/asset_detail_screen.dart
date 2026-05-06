@@ -23,6 +23,7 @@ import 'pillars/pillar_detail_screen.dart';
 import '../widgets/global_app_bar_actions.dart';
 import 'dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
 import '../widgets/asset_search.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -160,8 +161,10 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                         textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
                   );
                 }
-                return ListView.separated(
+                return MobilePullToRefresh(
+                  child: ListView.separated(
                   itemCount: events.length,
+                  physics: const AlwaysScrollableScrollPhysics(),
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final ev = events[i];
@@ -221,6 +224,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                       ),
                     );
                   },
+                ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

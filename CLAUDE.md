@@ -87,6 +87,9 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 - **Bottom-of-screen "Next" buttons in wizards** MUST share a common navbar widget. Fix consistently across all wizards, never one-by-one.
 - **Empty states** and **error toasts/snackbars** use one shared component each, with consistent placement.
 - Before adding a new widget, grep for existing equivalents. Reuse > re-implement.
+- **Every primary screen** plugs into the global app shell via two paired conventions, both required so new screens automatically inherit shell features:
+  1. AppBar: `AppBar(actions: globalAppBarActions(context, ref, local: [...]))` — refresh, settings, import/export, privacy, network retry.
+  2. Body: wrap the main scrollable in `MobilePullToRefresh(child: ListView/SingleChildScrollView(physics: AlwaysScrollableScrollPhysics(), ...))` so the same global refresh fires on a pull-down (Android/iOS only; no-op on desktop).
 
 # Localization
 

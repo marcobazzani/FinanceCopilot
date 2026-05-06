@@ -13,6 +13,7 @@ import '../../utils/logger.dart';
 import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
 import '../widgets/global_app_bar_actions.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -190,8 +191,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
                 final dayHeaderFmt = fmt.fullDateFormat(locale);
                 int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
-                return ListView.builder(
+                return MobilePullToRefresh(
+                  child: ListView.builder(
                   itemCount: filtered.length,
+                  physics: const AlwaysScrollableScrollPhysics(),
                   itemBuilder: (ctx, i) {
                     final tx = filtered[i];
                     final isPositive = tx.amount >= 0;
@@ -326,6 +329,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                       ],
                     );
                   },
+                ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
