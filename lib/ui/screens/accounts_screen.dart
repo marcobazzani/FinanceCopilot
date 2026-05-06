@@ -13,6 +13,7 @@ import 'account_detail_screen.dart';
 import 'capex_screen.dart' show AdjustmentsView;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'income_screen.dart';
+import '../widgets/global_app_bar_actions.dart';
 import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
@@ -45,9 +46,10 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
-    return Column(
-      children: [
-        TabBar(
+    return Scaffold(
+      appBar: AppBar(
+        actions: globalAppBarActions(context, ref),
+        bottom: TabBar(
           controller: _tabController,
           tabs: [
             Tab(text: s.navAccounts),
@@ -55,17 +57,15 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
             Tab(text: s.navAdjustments),
           ],
         ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: const [
-              _AccountsListTab(),
-              IncomeScreen(),
-              AdjustmentsView(),
-            ],
-          ),
-        ),
-      ],
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _AccountsListTab(),
+          IncomeScreen(),
+          AdjustmentsView(),
+        ],
+      ),
     );
   }
 }
@@ -155,6 +155,7 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
               padding: const EdgeInsets.only(bottom: 80),
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
+                _AllAccountsTile(label: s.allAccounts, total: accounts.length),
                 for (final groupId in groupOrder)
                   if (grouped[groupId]?.isNotEmpty ?? false)
                     _buildGroup(
@@ -458,6 +459,37 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
               child: Text(s.create),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Virtual top-level "All accounts" entry. Pinned at the top of the list.
+/// Tapping pushes [AccountDetailScreen] in read-only mode showing the union
+/// of every account's transactions.
+class _AllAccountsTile extends ConsumerWidget {
+  final String label;
+  final int total;
+  const _AllAccountsTile({required this.label, required this.total});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: ListTile(
+        leading: const Icon(Icons.account_tree_outlined),
+        title: Text(label,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                )),
+        subtitle: Text('$total'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AccountDetailScreen(account: buildAllAccountsVirtual(label)),
+          ),
         ),
       ),
     );

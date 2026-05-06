@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/asset_event_service.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
 import 'package:finance_copilot/services/investing_com_service.dart';
 
@@ -22,9 +23,11 @@ void main() {
 
   tearDown(() async => await db.close());
 
-  /// Helper to insert a market price.
+  /// Helper to insert a market price. Uses insertOnConflictUpdate to mirror
+  /// the production investing.com sync (which overwrites same-day rows
+  /// previously written by the revalue resync).
   Future<void> insertPrice(int assetId, DateTime date, double price) async {
-    await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
+    await db.into(db.marketPrices).insertOnConflictUpdate(MarketPricesCompanion.insert(
       assetId: assetId,
       date: date,
       closePrice: price,
@@ -187,16 +190,16 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 32 after dashboard_charts dropped', () async {
-      // v27 added ExtraordinaryEvents; v28 dropped legacy CAPEX/IncomeAdj
-      // and their FK plumbing; v29 backfilled NULL asset.intermediary_id to
-      // a "Default" intermediary; v30 added per-source number-format locale
-      // columns; v31 added extraordinary_events.is_ephemeral; v32 dropped
-      // the dashboard_charts table (chart configuration is now read from
-      // assets/default_charts.json — no DB persistence).
+    test('schema version is 38 after Pillars (v36) + reference_portfolio drop (v37) + emoji drop (v38)', () async {
+      // v27..v35 — see git history for prior bumps. v36 added the Pillars
+      // and PillarAssets tables (named buckets of asset units with an
+      // optional target value). v37 dropped the originally-introduced
+      // pillars.reference_portfolio column (no concrete reference-portfolio
+      // catalog yet). v38 dropped pillars.emoji (freeform text was UX
+      // dead weight without a picker).
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 32);
+      expect(version, 38);
     });
 
     test('dashboard_charts table is gone', () async {
@@ -308,17 +311,19 @@ void main() {
       ));
     }
 
+    // Goes through AssetEventService.create so revalue events are
+    // materialised into market_prices rows the way they are in production.
     Future<void> insertEvent(int assetId, DateTime date, EventType type,
         {double? quantity, double? price, double amount = 0}) async {
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+      await AssetEventService(db).create(
         assetId: assetId,
-        type: type,
         date: date,
-        valueDate: date,
-        quantity: Value(quantity),
-        price: Value(price),
+        type: type,
         amount: amount,
-      ));
+        quantity: quantity,
+        price: price,
+        currency: 'EUR',
+      );
     }
 
     test('getPriceHistory returns revalue-derived prices when no market prices', () async {

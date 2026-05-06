@@ -96,7 +96,17 @@ enum EventType {
   revalue,
 }
 
-enum IncomeType { income, refund, salary, donation, coupon, other }
+enum IncomeType {
+  income,
+  // Money received but NOT counting toward "personal income" totals.
+  // Refunds are tax/purchase money returns; pensionContribution rows are
+  // employer/state/voluntary deposits into a pension fund. Both are
+  // excluded from the dashboard's income aggregation but visible in the
+  // ledger so the user can audit cashflows. Filter: see
+  // lib/ui/screens/dashboard/data_providers.dart `WHERE type NOT IN (...)`.
+  refund,
+  pensionContribution,
+}
 
 enum StepFrequency { weekly, monthly, quarterly, yearly }
 
@@ -344,6 +354,11 @@ class Incomes extends Table {
   RealColumn get amount => real()();
   TextColumn get type => textEnum<IncomeType>().withDefault(Constant(IncomeType.income.name))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  /// Optional source asset — populated for `pensionContribution` rows so
+  /// re-importing a pension statement can wipe-and-replace its income
+  /// entries by `(asset_id, type='pensionContribution')`. NULL for
+  /// account-only income (salary, refunds, etc.).
+  IntColumn get assetId => integer().nullable().references(Assets, #id)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -419,4 +434,32 @@ class ExtraordinaryEventEntries extends Table {
   RealColumn get cumulative => real().nullable()(); // cached for scheduled entries
   RealColumn get remaining => real().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Pillar = a named bucket of asset units with an optional objective
+/// (reference portfolio + target value). One asset's units can be split
+/// across multiple pillars; the leftover is the implicit "Unassigned" pillar.
+class Pillars extends Table {
+  TextColumn get id => text()(); // UUIDv7
+  TextColumn get name => text().withLength(min: 1, max: 200)();
+  RealColumn get targetValue => real().nullable()();
+  TextColumn get targetCurrency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Quantity of an asset assigned to a pillar. Composite PK (pillar_id, asset_id).
+/// Invariant: SUM(quantity) over all pillars for an asset <= total holding.
+/// Enforced at write-time by PillarService.
+class PillarAssets extends Table {
+  TextColumn get pillarId => text().references(Pillars, #id, onDelete: KeyAction.cascade)();
+  IntColumn get assetId => integer().references(Assets, #id, onDelete: KeyAction.cascade)();
+  RealColumn get quantity => real()();
+
+  @override
+  Set<Column> get primaryKey => {pillarId, assetId};
 }

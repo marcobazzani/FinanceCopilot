@@ -196,4 +196,47 @@ void main() {
       expect(tryParseDate('2024-01-15extra'), isNull);
     });
   });
+
+  group('MM/YYYY (period only)', () {
+    // Pension statements report a "period" column like "12/2024". We resolve
+    // this to the LAST day of that month so a year-end revalue snapshot
+    // postdates the contributions it summarizes (otherwise the revalue lands
+    // on day 1 and gets sorted before its own month's contributes, breaking
+    // the close_price anchor in `resyncRevaluePricesForAsset`).
+    test('"12/2024" resolves to 2024-12-31', () {
+      final r = parseDate('12/2024');
+      expect(r.year, 2024);
+      expect(r.month, 12);
+      expect(r.day, 31);
+    });
+
+    test('"02/2026" resolves to 2026-02-28 (non-leap)', () {
+      final r = parseDate('02/2026');
+      expect(r.year, 2026);
+      expect(r.month, 2);
+      expect(r.day, 28);
+    });
+
+    test('"02/2024" resolves to 2024-02-29 (leap year)', () {
+      final r = parseDate('02/2024');
+      expect(r.year, 2024);
+      expect(r.month, 2);
+      expect(r.day, 29);
+    });
+
+    test('"1/2025" (single-digit month) resolves to 2025-01-31', () {
+      final r = parseDate('1/2025');
+      expect(r.year, 2025);
+      expect(r.month, 1);
+      expect(r.day, 31);
+    });
+
+    test('rejects "13/2025" (invalid month)', () {
+      expect(() => parseDate('13/2025'), throwsFormatException);
+    });
+
+    test('rejects "0/2025" (invalid month 0)', () {
+      expect(() => parseDate('0/2025'), throwsFormatException);
+    });
+  });
 }

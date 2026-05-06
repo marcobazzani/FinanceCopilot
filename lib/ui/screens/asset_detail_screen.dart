@@ -6,8 +6,11 @@ import '../../utils/dialogs.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
+import '../../l10n/app_strings.dart';
+import '../../services/composition_service.dart';
 import '../../services/investing_com_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
@@ -16,6 +19,8 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'asset_detail_charts_provider.dart';
 import 'asset_event_edit_screen.dart';
+import 'pillars/pillar_detail_screen.dart';
+import '../widgets/global_app_bar_actions.dart';
 import 'dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
 import '../widgets/asset_search.dart';
 import '../widgets/mobile_pull_to_refresh.dart';
@@ -67,7 +72,12 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
         return Scaffold(
       appBar: AppBar(
         title: Text(asset.name),
-        actions: [
+        actions: globalAppBarActions(context, ref, local: [
+          IconButton(
+            icon: const Icon(Icons.view_quilt_outlined),
+            tooltip: s.pillarAssignToTitle,
+            onPressed: () => _pickPillarThenEdit(context, ref, asset.id),
+          ),
           IconButton(
             icon: const Icon(Icons.edit),
             tooltip: s.tooltipEditAsset,
@@ -83,7 +93,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
             tooltip: s.tooltipDeleteAsset,
             onPressed: () => _confirmDeleteAsset(context, ref),
           ),
-        ],
+        ]),
       ),
       body: Column(
         children: [
@@ -253,10 +263,53 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
   }
 
   Future<void> _editAsset(BuildContext context, WidgetRef ref) async {
+    // Pull the latest asset row from the live stream rather than reusing
+    // `widget.asset` (the snapshot captured when the user first opened
+    // this screen). Without this, fields edited in a previous dialog
+    // session look "not saved" on reopen — the DB is updated but the
+    // dialog re-initializes controllers from the stale snapshot.
+    final live = ref.read(assetsProvider).value
+            ?.firstWhere((a) => a.id == asset.id, orElse: () => asset) ??
+        asset;
     await showDialog(
       context: context,
-      builder: (ctx) => _EditAssetDialog(ref: ref, asset: asset),
+      builder: (ctx) => _EditAssetDialog(ref: ref, asset: live),
     );
+  }
+
+  Future<void> _pickPillarThenEdit(
+    BuildContext context,
+    WidgetRef ref,
+    int assetId,
+  ) async {
+    final s = ref.read(appStringsProvider);
+    final pillars = await ref.read(pillarsProvider.future);
+    if (!context.mounted) return;
+    if (pillars.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.pillarsEmptyTitle)),
+      );
+      return;
+    }
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(s.pillarPickPillar),
+        children: pillars
+            .map((p) => SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(p.id),
+                  child: Text(p.name),
+                ))
+            .toList(),
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PillarDetailScreen(
+        pillarId: picked,
+        focusAssetId: assetId,
+      ),
+    ));
   }
 
   Future<void> _confirmWipeEvents(BuildContext context, WidgetRef ref) async {
@@ -498,8 +551,12 @@ class _CompositionSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final compositionsAsync = ref.watch(assetCompositionsProvider);
-    final entries = compositionsAsync.value?[assetId];
-    if (entries == null || entries.isEmpty) return const SizedBox.shrink();
+    final ss = ref.watch(appStringsProvider);
+    final entries = compositionsAsync.value?[assetId] ?? const <AssetComposition>[];
+    // Panel is always rendered so manual assets (no fetched composition)
+    // can still get rows added via the per-section pencil icons. The
+    // ExpansionTile collapses to a single line when not expanded so this
+    // is cheap visual real-estate even on assets with zero rows.
 
     // Extract source URL and separate from display data
     String? sourceUrl;
@@ -512,15 +569,11 @@ class _CompositionSection extends ConsumerWidget {
       byType.putIfAbsent(e.type, () => []).add(e);
     }
 
-    if (byType.isEmpty) return const SizedBox.shrink();
-
     // Sort each group by weight descending
     for (final list in byType.values) {
       list.sort((a, b) => b.weight.compareTo(a.weight));
     }
 
-    // Display order and labels
-    final ss = ref.watch(appStringsProvider);
     final typeLabels = {
       'assetclass': ss.compositionAssetClass,
       'country': ss.compositionGeographic,
@@ -529,7 +582,6 @@ class _CompositionSection extends ConsumerWidget {
     };
     const typeOrder = ['assetclass', 'country', 'sector', 'holding'];
 
-    // Derive source label from URL
     String? sourceLabel;
     if (sourceUrl != null) {
       if (sourceUrl.contains('justetf.com')) {
@@ -544,61 +596,93 @@ class _CompositionSection extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ExpansionTile(
-        title: Text(ref.watch(appStringsProvider).composition, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        title: Row(
+          children: [
+            Text(ss.composition,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const Spacer(),
+            // Refresh: wipes rows and re-runs sync to fetch fresh market
+            // data. Hidden when there's no data yet — nothing to refresh
+            // and the network call would only return rows for assets that
+            // a market data provider can identify (typically by ISIN).
+            if (entries.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 18),
+                tooltip: ss.compositionRefreshTooltip,
+                onPressed: () => _confirmRefresh(context, ref, ss),
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(),
+              ),
+          ],
+        ),
         initiallyExpanded: false,
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
-          for (final type in typeOrder)
-            if (byType.containsKey(type)) ...[
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Text(
-                  typeLabels[type] ?? type,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.primary,
+          for (final type in typeOrder) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 4),
+              child: Row(
+                children: [
+                  Text(
+                    typeLabels[type] ?? type,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 14),
+                    tooltip: ss.compositionEditTooltip,
+                    onPressed: () => _openEditor(context, ref, type, byType[type] ?? const []),
+                    padding: const EdgeInsets.all(2),
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ),
+            ),
+            if (byType[type]?.isNotEmpty ?? false)
               ...byType[type]!.map((c) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 1),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(c.name, style: const TextStyle(fontSize: 12)),
-                    ),
-                    SizedBox(
-                      width: 80,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(2),
-                              child: LinearProgressIndicator(
-                                value: (c.weight / 100).clamp(0, 1),
-                                minHeight: 6,
-                                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    padding: const EdgeInsets.symmetric(vertical: 1),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(c.name, style: const TextStyle(fontSize: 12)),
+                        ),
+                        SizedBox(
+                          width: 80,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: LinearProgressIndicator(
+                                    value: (c.weight / 100).clamp(0, 1),
+                                    minHeight: 6,
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                              SizedBox(
+                                width: 38,
+                                child: Text(
+                                  '${c.weight.toStringAsFixed(1)}%',
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 6),
-                          SizedBox(
-                            width: 38,
-                            child: Text(
-                              '${c.weight.toStringAsFixed(1)}%',
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              )),
-            ],
-          // Source link
+                  )),
+          ],
           if (sourceUrl != null && sourceLabel != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -610,7 +694,8 @@ class _CompositionSection extends ConsumerWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
+                      Icon(Icons.open_in_new,
+                          size: 14, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 6),
                       Text(
                         ss.sourceLabel(sourceLabel),
@@ -626,6 +711,235 @@ class _CompositionSection extends ConsumerWidget {
             ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openEditor(
+    BuildContext context,
+    WidgetRef ref,
+    String type,
+    List<AssetComposition> existing,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _CompositionEditorDialog(
+        assetId: assetId,
+        type: type,
+        initial: [for (final e in existing) CompositionEntry(e.name, e.weight)],
+      ),
+    );
+  }
+
+  Future<void> _confirmRefresh(
+      BuildContext context, WidgetRef ref, AppStrings ss) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(ss.compositionRefreshTooltip),
+        content: Text(ss.cannotBeUndone),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(ss.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(ss.update),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(compositionServiceProvider).clearAndResync(assetId);
+  }
+}
+
+// ──────────────────────────────────────────────
+// Composition editor dialog — one section at a time
+// ──────────────────────────────────────────────
+
+class _CompositionEditorDialog extends ConsumerStatefulWidget {
+  final int assetId;
+  final String type;
+  final List<CompositionEntry> initial;
+  const _CompositionEditorDialog({
+    required this.assetId,
+    required this.type,
+    required this.initial,
+  });
+
+  @override
+  ConsumerState<_CompositionEditorDialog> createState() =>
+      _CompositionEditorDialogState();
+}
+
+class _CompositionEditorDialogState
+    extends ConsumerState<_CompositionEditorDialog> {
+  late final List<TextEditingController> _nameCtrls;
+  late final List<TextEditingController> _weightCtrls;
+  late final String _locale;
+
+  @override
+  void initState() {
+    super.initState();
+    _locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+    final fmt = NumberFormat.decimalPattern(_locale);
+    _nameCtrls = [
+      for (final e in widget.initial) TextEditingController(text: e.name),
+    ];
+    _weightCtrls = [
+      for (final e in widget.initial)
+        TextEditingController(text: fmt.format(e.weight)),
+    ];
+    if (_nameCtrls.isEmpty) {
+      _nameCtrls.add(TextEditingController());
+      _weightCtrls.add(TextEditingController());
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _nameCtrls) {
+      c.dispose();
+    }
+    for (final c in _weightCtrls) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addRow() {
+    setState(() {
+      _nameCtrls.add(TextEditingController());
+      _weightCtrls.add(TextEditingController());
+    });
+  }
+
+  void _deleteRow(int i) {
+    setState(() {
+      _nameCtrls.removeAt(i).dispose();
+      _weightCtrls.removeAt(i).dispose();
+    });
+  }
+
+  double get _sum {
+    double total = 0;
+    for (final c in _weightCtrls) {
+      total += fmt.tryParseLocalized(c.text, locale: _locale) ?? 0;
+    }
+    return total;
+  }
+
+  Future<void> _save() async {
+    final entries = <CompositionEntry>[];
+    for (var i = 0; i < _nameCtrls.length; i++) {
+      final name = _nameCtrls[i].text.trim();
+      final weight = fmt.tryParseLocalized(_weightCtrls[i].text, locale: _locale);
+      if (name.isEmpty || weight == null || weight <= 0) continue;
+      entries.add(CompositionEntry(name, weight));
+    }
+    await ref
+        .read(compositionServiceProvider)
+        .setEntries(widget.assetId, widget.type, entries);
+    if (mounted) Navigator.pop(context);
+  }
+
+  String _typeLabel(AppStrings ss) => switch (widget.type) {
+        'assetclass' => ss.compositionAssetClass,
+        'country' => ss.compositionGeographic,
+        'sector' => ss.compositionSector,
+        'holding' => ss.compositionTopHoldings,
+        _ => widget.type,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final ss = ref.read(appStringsProvider);
+    final sum = _sum;
+    final sumOk = (sum - 100).abs() < 0.5;
+    return AlertDialog(
+      title: Text('${ss.compositionEditTooltip} — ${_typeLabel(ss)}'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < _nameCtrls.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: _nameCtrls[i],
+                          decoration: InputDecoration(
+                            labelText: ss.compositionEntryName,
+                            isDense: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: _weightCtrls[i],
+                          decoration: InputDecoration(
+                            labelText: ss.compositionEntryWeight,
+                            isDense: true,
+                          ),
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        onPressed: () => _deleteRow(i),
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.add, size: 16),
+                    label: Text(ss.compositionAddRow),
+                    onPressed: _addRow,
+                  ),
+                  Text(
+                    'Σ ${sum.toStringAsFixed(1)}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: sumOk ? Colors.grey : Colors.orange,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              if (!sumOk)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    ss.compositionWeightWarning,
+                    style: const TextStyle(fontSize: 11, color: Colors.orange),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: Text(ss.cancel)),
+        FilledButton(onPressed: _save, child: Text(ss.save)),
+      ],
     );
   }
 }
@@ -645,6 +959,7 @@ class _EditAssetDialog extends StatefulWidget {
 
 class _EditAssetDialogState extends State<_EditAssetDialog> {
   bool _searchMode = false;
+  bool _unlocked = false;
 
   // Edit fields (pre-populated from asset)
   late final TextEditingController _nameCtrl;
@@ -656,17 +971,51 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   late InstrumentType _instrumentType;
   late AssetClass _assetClass;
 
+  // Advanced (unlock-only) controllers / selections.
+  // Header attributes only — composition (geographic / sector / asset-class
+  // breakdown) is edited inline on the Composition panel itself, not here.
+  // Asset.country / Asset.sector are an internal fallback for assets
+  // without composition data and are NOT user concepts; we don't surface
+  // them.
+  late final TextEditingController _currencyCtrl;
+  late final TextEditingController _taxRateCtrl;
+  late AssetType _assetType;
+  late ValuationMethod _valuationMethod;
+  late int _intermediaryId;
+  late bool _includeInNetWorth;
+
+  /// Cached app locale used for formatting initial values and parsing
+  /// what the user types. Captured once in [initState] so a setState
+  /// rebuild can't shift the format under us mid-edit.
+  late final String _locale;
+
+  String _fmtDouble(double? v) =>
+      v == null ? '' : NumberFormat.decimalPattern(_locale).format(v);
+
   @override
   void initState() {
     super.initState();
+    _locale = widget.ref.read(appLocaleProvider).value ?? Platform.localeName;
     _nameCtrl = TextEditingController(text: widget.asset.name);
     _tickerCtrl = TextEditingController(text: widget.asset.ticker ?? '');
     _isinCtrl = TextEditingController(text: widget.asset.isin ?? '');
-    _terCtrl = TextEditingController(text: widget.asset.ter?.toString() ?? '');
+    _terCtrl = TextEditingController(text: _fmtDouble(widget.asset.ter));
     _selectedExchange = widget.asset.exchange ?? 'MIL';
     _isActive = widget.asset.isActive;
     _instrumentType = widget.asset.instrumentType;
     _assetClass = widget.asset.assetClass;
+
+    _currencyCtrl = TextEditingController(text: widget.asset.currency);
+    // taxRate is stored as a fraction (0.26 = 26%). The field/label say
+    // "(%)" so we pre-fill and accept the percentage value (26), and
+    // convert on save.
+    _taxRateCtrl = TextEditingController(
+      text: _fmtDouble(widget.asset.taxRate == null ? null : widget.asset.taxRate! * 100),
+    );
+    _assetType = widget.asset.assetType;
+    _valuationMethod = widget.asset.valuationMethod;
+    _intermediaryId = widget.asset.intermediaryId;
+    _includeInNetWorth = widget.asset.includeInNetWorth;
   }
 
   @override
@@ -675,6 +1024,8 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     _tickerCtrl.dispose();
     _isinCtrl.dispose();
     _terCtrl.dispose();
+    _currencyCtrl.dispose();
+    _taxRateCtrl.dispose();
     super.dispose();
   }
 
@@ -692,22 +1043,39 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     final name = _nameCtrl.text.trim();
     final ticker = _tickerCtrl.text.trim().toUpperCase();
     final isin = _isinCtrl.text.trim().toUpperCase();
-    final ter = double.tryParse(_terCtrl.text.trim());
-    _log.info('saving asset id=${widget.asset.id}, name=$name');
-    await widget.ref.read(assetServiceProvider).update(
-      widget.asset.id,
-      AssetsCompanion(
-        name: Value(name),
-        ticker: Value(ticker.isNotEmpty ? ticker : null),
-        isin: Value(isin.isNotEmpty ? isin : null),
-        exchange: Value(_selectedExchange),
-        isActive: Value(_isActive),
-        instrumentType: Value(_instrumentType),
-        assetClass: Value(_assetClass),
-        ter: Value(ter),
-        updatedAt: Value(DateTime.now()),
-      ),
+    final ter = fmt.tryParseLocalized(_terCtrl.text, locale: _locale);
+    _log.info('saving asset id=${widget.asset.id}, name=$name, unlocked=$_unlocked');
+    final companion = AssetsCompanion(
+      name: Value(name),
+      ticker: Value(ticker.isNotEmpty ? ticker : null),
+      isin: Value(isin.isNotEmpty ? isin : null),
+      exchange: Value(_selectedExchange),
+      isActive: Value(_isActive),
+      instrumentType: Value(_instrumentType),
+      assetClass: Value(_assetClass),
+      ter: Value(ter),
+      updatedAt: Value(DateTime.now()),
+      // Advanced fields write only when the user explicitly unlocked the
+      // dialog. This keeps the locked path byte-identical to the original
+      // behavior and lets the pinning test stay untouched.
+      assetType: _unlocked ? Value(_assetType) : const Value.absent(),
+      valuationMethod: _unlocked ? Value(_valuationMethod) : const Value.absent(),
+      intermediaryId: _unlocked ? Value(_intermediaryId) : const Value.absent(),
+      currency: _unlocked
+          ? Value(_currencyCtrl.text.trim().toUpperCase().isEmpty
+              ? widget.asset.currency
+              : _currencyCtrl.text.trim().toUpperCase())
+          : const Value.absent(),
+      taxRate: _unlocked
+          ? Value(() {
+              // User types percent (26) — store fraction (0.26).
+              final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
+              return v == null ? null : v / 100;
+            }())
+          : const Value.absent(),
+      includeInNetWorth: _unlocked ? Value(_includeInNetWorth) : const Value.absent(),
     );
+    await widget.ref.read(assetServiceProvider).update(widget.asset.id, companion);
     if (mounted) Navigator.pop(context);
   }
 
@@ -720,7 +1088,16 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   Widget _buildEditDialog() {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: Text(s.editAssetTitle),
+      title: Row(
+        children: [
+          Expanded(child: Text(s.editAssetTitle)),
+          IconButton(
+            icon: Icon(_unlocked ? Icons.lock_open : Icons.lock_outline, size: 20),
+            tooltip: _unlocked ? s.assetLockEdit : s.assetUnlockEdit,
+            onPressed: () => setState(() => _unlocked = !_unlocked),
+          ),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -807,7 +1184,9 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               controller: _terCtrl,
               decoration: InputDecoration(
                 labelText: '${s.healthTer} (%)',
-                hintText: '0.22',
+                // Hint formatted in the user's locale: "0,22" in it_IT,
+                // "0.22" in en_US. Matches what the parser accepts.
+                hintText: _fmtDouble(0.22),
                 isDense: true,
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -819,6 +1198,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               onChanged: (v) => setState(() => _isActive = v),
               contentPadding: EdgeInsets.zero,
             ),
+            if (_unlocked) ..._buildAdvancedFields(s),
           ],
         ),
       ),
@@ -835,6 +1215,79 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         ),
       ],
     );
+  }
+
+  List<Widget> _buildAdvancedFields(AppStrings s) {
+    final intermediariesAsync = widget.ref.watch(intermediariesProvider);
+    final intermediaries = intermediariesAsync.value ?? const <Intermediary>[];
+    return [
+      const Divider(height: 24),
+      DropdownButtonFormField<AssetType>(
+        initialValue: _assetType,
+        decoration: InputDecoration(labelText: s.assetTypeFieldLabel, isDense: true),
+        items: AssetType.values
+            .map((t) => DropdownMenuItem(value: t, child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13))))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) setState(() => _assetType = v);
+        },
+      ),
+      const SizedBox(height: 12),
+      DropdownButtonFormField<ValuationMethod>(
+        initialValue: _valuationMethod,
+        decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
+        items: ValuationMethod.values
+            .map((m) => DropdownMenuItem(value: m, child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13))))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) setState(() => _valuationMethod = v);
+        },
+      ),
+      const SizedBox(height: 12),
+      if (intermediaries.isNotEmpty)
+        DropdownButtonFormField<int>(
+          initialValue: intermediaries.any((i) => i.id == _intermediaryId)
+              ? _intermediaryId
+              : intermediaries.first.id,
+          decoration: InputDecoration(labelText: s.intermediary, isDense: true),
+          items: intermediaries
+              .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name, style: const TextStyle(fontSize: 13))))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _intermediaryId = v);
+          },
+        ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _currencyCtrl,
+        decoration: InputDecoration(
+          labelText: s.currencyFieldLabel,
+          isDense: true,
+          counterText: '',
+        ),
+        textCapitalization: TextCapitalization.characters,
+        maxLength: 3,
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _taxRateCtrl,
+        decoration: InputDecoration(
+          labelText: s.taxRateOverrideLabel,
+          // Field accepts the percentage directly to match the (%) label.
+          // 26 → stored as 0.26 by _save.
+          hintText: '26',
+          isDense: true,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      ),
+      const SizedBox(height: 8),
+      SwitchListTile(
+        title: Text(s.includeInNetWorthLabel),
+        value: _includeInNetWorth,
+        onChanged: (v) => setState(() => _includeInNetWorth = v),
+        contentPadding: EdgeInsets.zero,
+      ),
+    ];
   }
 
   Widget _buildSearchDialog() {

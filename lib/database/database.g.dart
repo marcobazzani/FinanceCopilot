@@ -9860,6 +9860,20 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     requiredDuringInsert: false,
     defaultValue: const Constant('EUR'),
   );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<int> assetId = GeneratedColumn<int>(
+    'asset_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES assets (id)',
+    ),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -9880,6 +9894,7 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
     amount,
     type,
     currency,
+    assetId,
     createdAt,
   ];
   @override
@@ -9927,6 +9942,12 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
         currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
       );
     }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -9968,6 +9989,10 @@ class $IncomesTable extends Incomes with TableInfo<$IncomesTable, Income> {
         DriftSqlType.string,
         data['${effectivePrefix}currency'],
       )!,
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}asset_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -9991,6 +10016,12 @@ class Income extends DataClass implements Insertable<Income> {
   final double amount;
   final IncomeType type;
   final String currency;
+
+  /// Optional source asset — populated for `pensionContribution` rows so
+  /// re-importing a pension statement can wipe-and-replace its income
+  /// entries by `(asset_id, type='pensionContribution')`. NULL for
+  /// account-only income (salary, refunds, etc.).
+  final int? assetId;
   final DateTime createdAt;
   const Income({
     required this.id,
@@ -9999,6 +10030,7 @@ class Income extends DataClass implements Insertable<Income> {
     required this.amount,
     required this.type,
     required this.currency,
+    this.assetId,
     required this.createdAt,
   });
   @override
@@ -10012,6 +10044,9 @@ class Income extends DataClass implements Insertable<Income> {
       map['type'] = Variable<String>($IncomesTable.$convertertype.toSql(type));
     }
     map['currency'] = Variable<String>(currency);
+    if (!nullToAbsent || assetId != null) {
+      map['asset_id'] = Variable<int>(assetId);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -10024,6 +10059,9 @@ class Income extends DataClass implements Insertable<Income> {
       amount: Value(amount),
       type: Value(type),
       currency: Value(currency),
+      assetId: assetId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(assetId),
       createdAt: Value(createdAt),
     );
   }
@@ -10042,6 +10080,7 @@ class Income extends DataClass implements Insertable<Income> {
         serializer.fromJson<String>(json['type']),
       ),
       currency: serializer.fromJson<String>(json['currency']),
+      assetId: serializer.fromJson<int?>(json['assetId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -10057,6 +10096,7 @@ class Income extends DataClass implements Insertable<Income> {
         $IncomesTable.$convertertype.toJson(type),
       ),
       'currency': serializer.toJson<String>(currency),
+      'assetId': serializer.toJson<int?>(assetId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -10068,6 +10108,7 @@ class Income extends DataClass implements Insertable<Income> {
     double? amount,
     IncomeType? type,
     String? currency,
+    Value<int?> assetId = const Value.absent(),
     DateTime? createdAt,
   }) => Income(
     id: id ?? this.id,
@@ -10076,6 +10117,7 @@ class Income extends DataClass implements Insertable<Income> {
     amount: amount ?? this.amount,
     type: type ?? this.type,
     currency: currency ?? this.currency,
+    assetId: assetId.present ? assetId.value : this.assetId,
     createdAt: createdAt ?? this.createdAt,
   );
   Income copyWithCompanion(IncomesCompanion data) {
@@ -10086,6 +10128,7 @@ class Income extends DataClass implements Insertable<Income> {
       amount: data.amount.present ? data.amount.value : this.amount,
       type: data.type.present ? data.type.value : this.type,
       currency: data.currency.present ? data.currency.value : this.currency,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -10099,14 +10142,23 @@ class Income extends DataClass implements Insertable<Income> {
           ..write('amount: $amount, ')
           ..write('type: $type, ')
           ..write('currency: $currency, ')
+          ..write('assetId: $assetId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, date, valueDate, amount, type, currency, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    date,
+    valueDate,
+    amount,
+    type,
+    currency,
+    assetId,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -10117,6 +10169,7 @@ class Income extends DataClass implements Insertable<Income> {
           other.amount == this.amount &&
           other.type == this.type &&
           other.currency == this.currency &&
+          other.assetId == this.assetId &&
           other.createdAt == this.createdAt);
 }
 
@@ -10127,6 +10180,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
   final Value<double> amount;
   final Value<IncomeType> type;
   final Value<String> currency;
+  final Value<int?> assetId;
   final Value<DateTime> createdAt;
   const IncomesCompanion({
     this.id = const Value.absent(),
@@ -10135,6 +10189,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     this.amount = const Value.absent(),
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
+    this.assetId = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   IncomesCompanion.insert({
@@ -10144,6 +10199,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     required double amount,
     this.type = const Value.absent(),
     this.currency = const Value.absent(),
+    this.assetId = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : date = Value(date),
        valueDate = Value(valueDate),
@@ -10155,6 +10211,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     Expression<double>? amount,
     Expression<String>? type,
     Expression<String>? currency,
+    Expression<int>? assetId,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -10164,6 +10221,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
       if (amount != null) 'amount': amount,
       if (type != null) 'type': type,
       if (currency != null) 'currency': currency,
+      if (assetId != null) 'asset_id': assetId,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -10175,6 +10233,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     Value<double>? amount,
     Value<IncomeType>? type,
     Value<String>? currency,
+    Value<int?>? assetId,
     Value<DateTime>? createdAt,
   }) {
     return IncomesCompanion(
@@ -10184,6 +10243,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
       amount: amount ?? this.amount,
       type: type ?? this.type,
       currency: currency ?? this.currency,
+      assetId: assetId ?? this.assetId,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -10211,6 +10271,9 @@ class IncomesCompanion extends UpdateCompanion<Income> {
     if (currency.present) {
       map['currency'] = Variable<String>(currency.value);
     }
+    if (assetId.present) {
+      map['asset_id'] = Variable<int>(assetId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -10226,6 +10289,7 @@ class IncomesCompanion extends UpdateCompanion<Income> {
           ..write('amount: $amount, ')
           ..write('type: $type, ')
           ..write('currency: $currency, ')
+          ..write('assetId: $assetId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -12212,6 +12276,750 @@ class ExtraordinaryEventEntriesCompanion
   }
 }
 
+class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PillarsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetValueMeta = const VerificationMeta(
+    'targetValue',
+  );
+  @override
+  late final GeneratedColumn<double> targetValue = GeneratedColumn<double>(
+    'target_value',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _targetCurrencyMeta = const VerificationMeta(
+    'targetCurrency',
+  );
+  @override
+  late final GeneratedColumn<String> targetCurrency = GeneratedColumn<String>(
+    'target_currency',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 3,
+      maxTextLength: 3,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('EUR'),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    targetValue,
+    targetCurrency,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pillars';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Pillar> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('target_value')) {
+      context.handle(
+        _targetValueMeta,
+        targetValue.isAcceptableOrUnknown(
+          data['target_value']!,
+          _targetValueMeta,
+        ),
+      );
+    }
+    if (data.containsKey('target_currency')) {
+      context.handle(
+        _targetCurrencyMeta,
+        targetCurrency.isAcceptableOrUnknown(
+          data['target_currency']!,
+          _targetCurrencyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Pillar map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Pillar(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      targetValue: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}target_value'],
+      ),
+      targetCurrency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_currency'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PillarsTable createAlias(String alias) {
+    return $PillarsTable(attachedDatabase, alias);
+  }
+}
+
+class Pillar extends DataClass implements Insertable<Pillar> {
+  final String id;
+  final String name;
+  final double? targetValue;
+  final String targetCurrency;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const Pillar({
+    required this.id,
+    required this.name,
+    this.targetValue,
+    required this.targetCurrency,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || targetValue != null) {
+      map['target_value'] = Variable<double>(targetValue);
+    }
+    map['target_currency'] = Variable<String>(targetCurrency);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  PillarsCompanion toCompanion(bool nullToAbsent) {
+    return PillarsCompanion(
+      id: Value(id),
+      name: Value(name),
+      targetValue: targetValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetValue),
+      targetCurrency: Value(targetCurrency),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory Pillar.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Pillar(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      targetValue: serializer.fromJson<double?>(json['targetValue']),
+      targetCurrency: serializer.fromJson<String>(json['targetCurrency']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'targetValue': serializer.toJson<double?>(targetValue),
+      'targetCurrency': serializer.toJson<String>(targetCurrency),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  Pillar copyWith({
+    String? id,
+    String? name,
+    Value<double?> targetValue = const Value.absent(),
+    String? targetCurrency,
+    int? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => Pillar(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    targetValue: targetValue.present ? targetValue.value : this.targetValue,
+    targetCurrency: targetCurrency ?? this.targetCurrency,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  Pillar copyWithCompanion(PillarsCompanion data) {
+    return Pillar(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      targetValue: data.targetValue.present
+          ? data.targetValue.value
+          : this.targetValue,
+      targetCurrency: data.targetCurrency.present
+          ? data.targetCurrency.value
+          : this.targetCurrency,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Pillar(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('targetValue: $targetValue, ')
+          ..write('targetCurrency: $targetCurrency, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    targetValue,
+    targetCurrency,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Pillar &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.targetValue == this.targetValue &&
+          other.targetCurrency == this.targetCurrency &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class PillarsCompanion extends UpdateCompanion<Pillar> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<double?> targetValue;
+  final Value<String> targetCurrency;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const PillarsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.targetValue = const Value.absent(),
+    this.targetCurrency = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PillarsCompanion.insert({
+    required String id,
+    required String name,
+    this.targetValue = const Value.absent(),
+    this.targetCurrency = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name);
+  static Insertable<Pillar> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<double>? targetValue,
+    Expression<String>? targetCurrency,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (targetValue != null) 'target_value': targetValue,
+      if (targetCurrency != null) 'target_currency': targetCurrency,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PillarsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<double?>? targetValue,
+    Value<String>? targetCurrency,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return PillarsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      targetValue: targetValue ?? this.targetValue,
+      targetCurrency: targetCurrency ?? this.targetCurrency,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (targetValue.present) {
+      map['target_value'] = Variable<double>(targetValue.value);
+    }
+    if (targetCurrency.present) {
+      map['target_currency'] = Variable<String>(targetCurrency.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PillarsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('targetValue: $targetValue, ')
+          ..write('targetCurrency: $targetCurrency, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PillarAssetsTable extends PillarAssets
+    with TableInfo<$PillarAssetsTable, PillarAsset> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PillarAssetsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _pillarIdMeta = const VerificationMeta(
+    'pillarId',
+  );
+  @override
+  late final GeneratedColumn<String> pillarId = GeneratedColumn<String>(
+    'pillar_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES pillars (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<int> assetId = GeneratedColumn<int>(
+    'asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES assets (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _quantityMeta = const VerificationMeta(
+    'quantity',
+  );
+  @override
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
+    'quantity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [pillarId, assetId, quantity];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pillar_assets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PillarAsset> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('pillar_id')) {
+      context.handle(
+        _pillarIdMeta,
+        pillarId.isAcceptableOrUnknown(data['pillar_id']!, _pillarIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pillarIdMeta);
+    }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_assetIdMeta);
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(
+        _quantityMeta,
+        quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {pillarId, assetId};
+  @override
+  PillarAsset map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PillarAsset(
+      pillarId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pillar_id'],
+      )!,
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}asset_id'],
+      )!,
+      quantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}quantity'],
+      )!,
+    );
+  }
+
+  @override
+  $PillarAssetsTable createAlias(String alias) {
+    return $PillarAssetsTable(attachedDatabase, alias);
+  }
+}
+
+class PillarAsset extends DataClass implements Insertable<PillarAsset> {
+  final String pillarId;
+  final int assetId;
+  final double quantity;
+  const PillarAsset({
+    required this.pillarId,
+    required this.assetId,
+    required this.quantity,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['pillar_id'] = Variable<String>(pillarId);
+    map['asset_id'] = Variable<int>(assetId);
+    map['quantity'] = Variable<double>(quantity);
+    return map;
+  }
+
+  PillarAssetsCompanion toCompanion(bool nullToAbsent) {
+    return PillarAssetsCompanion(
+      pillarId: Value(pillarId),
+      assetId: Value(assetId),
+      quantity: Value(quantity),
+    );
+  }
+
+  factory PillarAsset.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PillarAsset(
+      pillarId: serializer.fromJson<String>(json['pillarId']),
+      assetId: serializer.fromJson<int>(json['assetId']),
+      quantity: serializer.fromJson<double>(json['quantity']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'pillarId': serializer.toJson<String>(pillarId),
+      'assetId': serializer.toJson<int>(assetId),
+      'quantity': serializer.toJson<double>(quantity),
+    };
+  }
+
+  PillarAsset copyWith({String? pillarId, int? assetId, double? quantity}) =>
+      PillarAsset(
+        pillarId: pillarId ?? this.pillarId,
+        assetId: assetId ?? this.assetId,
+        quantity: quantity ?? this.quantity,
+      );
+  PillarAsset copyWithCompanion(PillarAssetsCompanion data) {
+    return PillarAsset(
+      pillarId: data.pillarId.present ? data.pillarId.value : this.pillarId,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PillarAsset(')
+          ..write('pillarId: $pillarId, ')
+          ..write('assetId: $assetId, ')
+          ..write('quantity: $quantity')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(pillarId, assetId, quantity);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PillarAsset &&
+          other.pillarId == this.pillarId &&
+          other.assetId == this.assetId &&
+          other.quantity == this.quantity);
+}
+
+class PillarAssetsCompanion extends UpdateCompanion<PillarAsset> {
+  final Value<String> pillarId;
+  final Value<int> assetId;
+  final Value<double> quantity;
+  final Value<int> rowid;
+  const PillarAssetsCompanion({
+    this.pillarId = const Value.absent(),
+    this.assetId = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PillarAssetsCompanion.insert({
+    required String pillarId,
+    required int assetId,
+    required double quantity,
+    this.rowid = const Value.absent(),
+  }) : pillarId = Value(pillarId),
+       assetId = Value(assetId),
+       quantity = Value(quantity);
+  static Insertable<PillarAsset> custom({
+    Expression<String>? pillarId,
+    Expression<int>? assetId,
+    Expression<double>? quantity,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (pillarId != null) 'pillar_id': pillarId,
+      if (assetId != null) 'asset_id': assetId,
+      if (quantity != null) 'quantity': quantity,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PillarAssetsCompanion copyWith({
+    Value<String>? pillarId,
+    Value<int>? assetId,
+    Value<double>? quantity,
+    Value<int>? rowid,
+  }) {
+    return PillarAssetsCompanion(
+      pillarId: pillarId ?? this.pillarId,
+      assetId: assetId ?? this.assetId,
+      quantity: quantity ?? this.quantity,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (pillarId.present) {
+      map['pillar_id'] = Variable<String>(pillarId.value);
+    }
+    if (assetId.present) {
+      map['asset_id'] = Variable<int>(assetId.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<double>(quantity.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PillarAssetsCompanion(')
+          ..write('pillarId: $pillarId, ')
+          ..write('assetId: $assetId, ')
+          ..write('quantity: $quantity, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -12243,6 +13051,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ExtraordinaryEventsTable(this);
   late final $ExtraordinaryEventEntriesTable extraordinaryEventEntries =
       $ExtraordinaryEventEntriesTable(this);
+  late final $PillarsTable pillars = $PillarsTable(this);
+  late final $PillarAssetsTable pillarAssets = $PillarAssetsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -12268,7 +13078,26 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     assetCompositions,
     extraordinaryEvents,
     extraordinaryEventEntries,
+    pillars,
+    pillarAssets,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'pillars',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('pillar_assets', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'assets',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('pillar_assets', kind: UpdateKind.delete)],
+    ),
+  ]);
 }
 
 typedef $$IntermediariesTableCreateCompanionBuilder =
@@ -15249,6 +16078,25 @@ final class $$AssetsTableReferences
     );
   }
 
+  static MultiTypedResultKey<$IncomesTable, List<Income>> _incomesRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.incomes,
+    aliasName: $_aliasNameGenerator(db.assets.id, db.incomes.assetId),
+  );
+
+  $$IncomesTableProcessedTableManager get incomesRefs {
+    final manager = $$IncomesTableTableManager(
+      $_db,
+      $_db.incomes,
+    ).filter((f) => f.assetId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_incomesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$AssetCompositionsTable, List<AssetComposition>>
   _assetCompositionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
@@ -15268,6 +16116,24 @@ final class $$AssetsTableReferences
     final cache = $_typedResult.readTableOrNull(
       _assetCompositionsRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>>
+  _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.pillarAssets,
+    aliasName: $_aliasNameGenerator(db.assets.id, db.pillarAssets.assetId),
+  );
+
+  $$PillarAssetsTableProcessedTableManager get pillarAssetsRefs {
+    final manager = $$PillarAssetsTableTableManager(
+      $_db,
+      $_db.pillarAssets,
+    ).filter((f) => f.assetId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_pillarAssetsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -15500,6 +16366,31 @@ class $$AssetsTableFilterComposer
     return f(composer);
   }
 
+  Expression<bool> incomesRefs(
+    Expression<bool> Function($$IncomesTableFilterComposer f) f,
+  ) {
+    final $$IncomesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.incomes,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IncomesTableFilterComposer(
+            $db: $db,
+            $table: $db.incomes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<bool> assetCompositionsRefs(
     Expression<bool> Function($$AssetCompositionsTableFilterComposer f) f,
   ) {
@@ -15516,6 +16407,31 @@ class $$AssetsTableFilterComposer
           }) => $$AssetCompositionsTableFilterComposer(
             $db: $db,
             $table: $db.assetCompositions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> pillarAssetsRefs(
+    Expression<bool> Function($$PillarAssetsTableFilterComposer f) f,
+  ) {
+    final $$PillarAssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pillarAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarAssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.pillarAssets,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -15865,6 +16781,31 @@ class $$AssetsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> incomesRefs<T extends Object>(
+    Expression<T> Function($$IncomesTableAnnotationComposer a) f,
+  ) {
+    final $$IncomesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.incomes,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IncomesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.incomes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> assetCompositionsRefs<T extends Object>(
     Expression<T> Function($$AssetCompositionsTableAnnotationComposer a) f,
   ) {
@@ -15890,6 +16831,31 @@ class $$AssetsTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> pillarAssetsRefs<T extends Object>(
+    Expression<T> Function($$PillarAssetsTableAnnotationComposer a) f,
+  ) {
+    final $$PillarAssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pillarAssets,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarAssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.pillarAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$AssetsTableTableManager
@@ -15910,7 +16876,9 @@ class $$AssetsTableTableManager
             bool assetEventsRefs,
             bool assetSnapshotsRefs,
             bool marketPricesRefs,
+            bool incomesRefs,
             bool assetCompositionsRefs,
+            bool pillarAssetsRefs,
           })
         > {
   $$AssetsTableTableManager(_$AppDatabase db, $AssetsTable table)
@@ -16040,7 +17008,9 @@ class $$AssetsTableTableManager
                 assetEventsRefs = false,
                 assetSnapshotsRefs = false,
                 marketPricesRefs = false,
+                incomesRefs = false,
                 assetCompositionsRefs = false,
+                pillarAssetsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -16048,7 +17018,9 @@ class $$AssetsTableTableManager
                     if (assetEventsRefs) db.assetEvents,
                     if (assetSnapshotsRefs) db.assetSnapshots,
                     if (marketPricesRefs) db.marketPrices,
+                    if (incomesRefs) db.incomes,
                     if (assetCompositionsRefs) db.assetCompositions,
+                    if (pillarAssetsRefs) db.pillarAssets,
                   ],
                   addJoins:
                       <
@@ -16147,6 +17119,23 @@ class $$AssetsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (incomesRefs)
+                        await $_getPrefetchedData<Asset, $AssetsTable, Income>(
+                          currentTable: table,
+                          referencedTable: $$AssetsTableReferences
+                              ._incomesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).incomesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (assetCompositionsRefs)
                         await $_getPrefetchedData<
                           Asset,
@@ -16162,6 +17151,27 @@ class $$AssetsTableTableManager
                                 table,
                                 p0,
                               ).assetCompositionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.assetId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (pillarAssetsRefs)
+                        await $_getPrefetchedData<
+                          Asset,
+                          $AssetsTable,
+                          PillarAsset
+                        >(
+                          currentTable: table,
+                          referencedTable: $$AssetsTableReferences
+                              ._pillarAssetsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AssetsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).pillarAssetsRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.assetId == item.id,
@@ -16193,7 +17203,9 @@ typedef $$AssetsTableProcessedTableManager =
         bool assetEventsRefs,
         bool assetSnapshotsRefs,
         bool marketPricesRefs,
+        bool incomesRefs,
         bool assetCompositionsRefs,
+        bool pillarAssetsRefs,
       })
     >;
 typedef $$AssetEventsTableCreateCompanionBuilder =
@@ -19874,6 +20886,7 @@ typedef $$IncomesTableCreateCompanionBuilder =
       required double amount,
       Value<IncomeType> type,
       Value<String> currency,
+      Value<int?> assetId,
       Value<DateTime> createdAt,
     });
 typedef $$IncomesTableUpdateCompanionBuilder =
@@ -19884,8 +20897,32 @@ typedef $$IncomesTableUpdateCompanionBuilder =
       Value<double> amount,
       Value<IncomeType> type,
       Value<String> currency,
+      Value<int?> assetId,
       Value<DateTime> createdAt,
     });
+
+final class $$IncomesTableReferences
+    extends BaseReferences<_$AppDatabase, $IncomesTable, Income> {
+  $$IncomesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
+    $_aliasNameGenerator(db.incomes.assetId, db.assets.id),
+  );
+
+  $$AssetsTableProcessedTableManager? get assetId {
+    final $_column = $_itemColumn<int>('asset_id');
+    if ($_column == null) return null;
+    final manager = $$AssetsTableTableManager(
+      $_db,
+      $_db.assets,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
 
 class $$IncomesTableFilterComposer
     extends Composer<_$AppDatabase, $IncomesTable> {
@@ -19931,6 +20968,29 @@ class $$IncomesTableFilterComposer
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$AssetsTableFilterComposer get assetId {
+    final $$AssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$IncomesTableOrderingComposer
@@ -19976,6 +21036,29 @@ class $$IncomesTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$AssetsTableOrderingComposer get assetId {
+    final $$AssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$IncomesTableAnnotationComposer
@@ -20007,6 +21090,29 @@ class $$IncomesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$AssetsTableAnnotationComposer get assetId {
+    final $$AssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$IncomesTableTableManager
@@ -20020,9 +21126,9 @@ class $$IncomesTableTableManager
           $$IncomesTableAnnotationComposer,
           $$IncomesTableCreateCompanionBuilder,
           $$IncomesTableUpdateCompanionBuilder,
-          (Income, BaseReferences<_$AppDatabase, $IncomesTable, Income>),
+          (Income, $$IncomesTableReferences),
           Income,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool assetId})
         > {
   $$IncomesTableTableManager(_$AppDatabase db, $IncomesTable table)
     : super(
@@ -20043,6 +21149,7 @@ class $$IncomesTableTableManager
                 Value<double> amount = const Value.absent(),
                 Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
+                Value<int?> assetId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => IncomesCompanion(
                 id: id,
@@ -20051,6 +21158,7 @@ class $$IncomesTableTableManager
                 amount: amount,
                 type: type,
                 currency: currency,
+                assetId: assetId,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -20061,6 +21169,7 @@ class $$IncomesTableTableManager
                 required double amount,
                 Value<IncomeType> type = const Value.absent(),
                 Value<String> currency = const Value.absent(),
+                Value<int?> assetId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => IncomesCompanion.insert(
                 id: id,
@@ -20069,12 +21178,58 @@ class $$IncomesTableTableManager
                 amount: amount,
                 type: type,
                 currency: currency,
+                assetId: assetId,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$IncomesTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({assetId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$IncomesTableReferences
+                                    ._assetIdTable(db),
+                                referencedColumn: $$IncomesTableReferences
+                                    ._assetIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -20089,9 +21244,9 @@ typedef $$IncomesTableProcessedTableManager =
       $$IncomesTableAnnotationComposer,
       $$IncomesTableCreateCompanionBuilder,
       $$IncomesTableUpdateCompanionBuilder,
-      (Income, BaseReferences<_$AppDatabase, $IncomesTable, Income>),
+      (Income, $$IncomesTableReferences),
       Income,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool assetId})
     >;
 typedef $$AssetCompositionsTableCreateCompanionBuilder =
     AssetCompositionsCompanion Function({
@@ -21646,6 +22801,716 @@ typedef $$ExtraordinaryEventEntriesTableProcessedTableManager =
       ExtraordinaryEventEntry,
       PrefetchHooks Function({bool eventId})
     >;
+typedef $$PillarsTableCreateCompanionBuilder =
+    PillarsCompanion Function({
+      required String id,
+      required String name,
+      Value<double?> targetValue,
+      Value<String> targetCurrency,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$PillarsTableUpdateCompanionBuilder =
+    PillarsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<double?> targetValue,
+      Value<String> targetCurrency,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$PillarsTableReferences
+    extends BaseReferences<_$AppDatabase, $PillarsTable, Pillar> {
+  $$PillarsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>>
+  _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.pillarAssets,
+    aliasName: $_aliasNameGenerator(db.pillars.id, db.pillarAssets.pillarId),
+  );
+
+  $$PillarAssetsTableProcessedTableManager get pillarAssetsRefs {
+    final manager = $$PillarAssetsTableTableManager(
+      $_db,
+      $_db.pillarAssets,
+    ).filter((f) => f.pillarId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_pillarAssetsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$PillarsTableFilterComposer
+    extends Composer<_$AppDatabase, $PillarsTable> {
+  $$PillarsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get targetValue => $composableBuilder(
+    column: $table.targetValue,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetCurrency => $composableBuilder(
+    column: $table.targetCurrency,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> pillarAssetsRefs(
+    Expression<bool> Function($$PillarAssetsTableFilterComposer f) f,
+  ) {
+    final $$PillarAssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pillarAssets,
+      getReferencedColumn: (t) => t.pillarId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarAssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.pillarAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PillarsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PillarsTable> {
+  $$PillarsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get targetValue => $composableBuilder(
+    column: $table.targetValue,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetCurrency => $composableBuilder(
+    column: $table.targetCurrency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PillarsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PillarsTable> {
+  $$PillarsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get targetValue => $composableBuilder(
+    column: $table.targetValue,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get targetCurrency => $composableBuilder(
+    column: $table.targetCurrency,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> pillarAssetsRefs<T extends Object>(
+    Expression<T> Function($$PillarAssetsTableAnnotationComposer a) f,
+  ) {
+    final $$PillarAssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pillarAssets,
+      getReferencedColumn: (t) => t.pillarId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarAssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.pillarAssets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PillarsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PillarsTable,
+          Pillar,
+          $$PillarsTableFilterComposer,
+          $$PillarsTableOrderingComposer,
+          $$PillarsTableAnnotationComposer,
+          $$PillarsTableCreateCompanionBuilder,
+          $$PillarsTableUpdateCompanionBuilder,
+          (Pillar, $$PillarsTableReferences),
+          Pillar,
+          PrefetchHooks Function({bool pillarAssetsRefs})
+        > {
+  $$PillarsTableTableManager(_$AppDatabase db, $PillarsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PillarsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PillarsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PillarsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double?> targetValue = const Value.absent(),
+                Value<String> targetCurrency = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PillarsCompanion(
+                id: id,
+                name: name,
+                targetValue: targetValue,
+                targetCurrency: targetCurrency,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<double?> targetValue = const Value.absent(),
+                Value<String> targetCurrency = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PillarsCompanion.insert(
+                id: id,
+                name: name,
+                targetValue: targetValue,
+                targetCurrency: targetCurrency,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PillarsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({pillarAssetsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (pillarAssetsRefs) db.pillarAssets],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (pillarAssetsRefs)
+                    await $_getPrefetchedData<
+                      Pillar,
+                      $PillarsTable,
+                      PillarAsset
+                    >(
+                      currentTable: table,
+                      referencedTable: $$PillarsTableReferences
+                          ._pillarAssetsRefsTable(db),
+                      managerFromTypedResult: (p0) => $$PillarsTableReferences(
+                        db,
+                        table,
+                        p0,
+                      ).pillarAssetsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.pillarId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PillarsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PillarsTable,
+      Pillar,
+      $$PillarsTableFilterComposer,
+      $$PillarsTableOrderingComposer,
+      $$PillarsTableAnnotationComposer,
+      $$PillarsTableCreateCompanionBuilder,
+      $$PillarsTableUpdateCompanionBuilder,
+      (Pillar, $$PillarsTableReferences),
+      Pillar,
+      PrefetchHooks Function({bool pillarAssetsRefs})
+    >;
+typedef $$PillarAssetsTableCreateCompanionBuilder =
+    PillarAssetsCompanion Function({
+      required String pillarId,
+      required int assetId,
+      required double quantity,
+      Value<int> rowid,
+    });
+typedef $$PillarAssetsTableUpdateCompanionBuilder =
+    PillarAssetsCompanion Function({
+      Value<String> pillarId,
+      Value<int> assetId,
+      Value<double> quantity,
+      Value<int> rowid,
+    });
+
+final class $$PillarAssetsTableReferences
+    extends BaseReferences<_$AppDatabase, $PillarAssetsTable, PillarAsset> {
+  $$PillarAssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PillarsTable _pillarIdTable(_$AppDatabase db) =>
+      db.pillars.createAlias(
+        $_aliasNameGenerator(db.pillarAssets.pillarId, db.pillars.id),
+      );
+
+  $$PillarsTableProcessedTableManager get pillarId {
+    final $_column = $_itemColumn<String>('pillar_id')!;
+
+    final manager = $$PillarsTableTableManager(
+      $_db,
+      $_db.pillars,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_pillarIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
+    $_aliasNameGenerator(db.pillarAssets.assetId, db.assets.id),
+  );
+
+  $$AssetsTableProcessedTableManager get assetId {
+    final $_column = $_itemColumn<int>('asset_id')!;
+
+    final manager = $$AssetsTableTableManager(
+      $_db,
+      $_db.assets,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PillarAssetsTableFilterComposer
+    extends Composer<_$AppDatabase, $PillarAssetsTable> {
+  $$PillarAssetsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PillarsTableFilterComposer get pillarId {
+    final $$PillarsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.pillarId,
+      referencedTable: $db.pillars,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarsTableFilterComposer(
+            $db: $db,
+            $table: $db.pillars,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AssetsTableFilterComposer get assetId {
+    final $$AssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PillarAssetsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PillarAssetsTable> {
+  $$PillarAssetsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PillarsTableOrderingComposer get pillarId {
+    final $$PillarsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.pillarId,
+      referencedTable: $db.pillars,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarsTableOrderingComposer(
+            $db: $db,
+            $table: $db.pillars,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AssetsTableOrderingComposer get assetId {
+    final $$AssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PillarAssetsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PillarAssetsTable> {
+  $$PillarAssetsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<double> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  $$PillarsTableAnnotationComposer get pillarId {
+    final $$PillarsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.pillarId,
+      referencedTable: $db.pillars,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.pillars,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AssetsTableAnnotationComposer get assetId {
+    final $$AssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PillarAssetsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PillarAssetsTable,
+          PillarAsset,
+          $$PillarAssetsTableFilterComposer,
+          $$PillarAssetsTableOrderingComposer,
+          $$PillarAssetsTableAnnotationComposer,
+          $$PillarAssetsTableCreateCompanionBuilder,
+          $$PillarAssetsTableUpdateCompanionBuilder,
+          (PillarAsset, $$PillarAssetsTableReferences),
+          PillarAsset,
+          PrefetchHooks Function({bool pillarId, bool assetId})
+        > {
+  $$PillarAssetsTableTableManager(_$AppDatabase db, $PillarAssetsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PillarAssetsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PillarAssetsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PillarAssetsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> pillarId = const Value.absent(),
+                Value<int> assetId = const Value.absent(),
+                Value<double> quantity = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PillarAssetsCompanion(
+                pillarId: pillarId,
+                assetId: assetId,
+                quantity: quantity,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String pillarId,
+                required int assetId,
+                required double quantity,
+                Value<int> rowid = const Value.absent(),
+              }) => PillarAssetsCompanion.insert(
+                pillarId: pillarId,
+                assetId: assetId,
+                quantity: quantity,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PillarAssetsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({pillarId = false, assetId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (pillarId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.pillarId,
+                                referencedTable: $$PillarAssetsTableReferences
+                                    ._pillarIdTable(db),
+                                referencedColumn: $$PillarAssetsTableReferences
+                                    ._pillarIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$PillarAssetsTableReferences
+                                    ._assetIdTable(db),
+                                referencedColumn: $$PillarAssetsTableReferences
+                                    ._assetIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PillarAssetsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PillarAssetsTable,
+      PillarAsset,
+      $$PillarAssetsTableFilterComposer,
+      $$PillarAssetsTableOrderingComposer,
+      $$PillarAssetsTableAnnotationComposer,
+      $$PillarAssetsTableCreateCompanionBuilder,
+      $$PillarAssetsTableUpdateCompanionBuilder,
+      (PillarAsset, $$PillarAssetsTableReferences),
+      PillarAsset,
+      PrefetchHooks Function({bool pillarId, bool assetId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -21696,4 +23561,8 @@ class $AppDatabaseManager {
         _db,
         _db.extraordinaryEventEntries,
       );
+  $$PillarsTableTableManager get pillars =>
+      $$PillarsTableTableManager(_db, _db.pillars);
+  $$PillarAssetsTableTableManager get pillarAssets =>
+      $$PillarAssetsTableTableManager(_db, _db.pillarAssets);
 }

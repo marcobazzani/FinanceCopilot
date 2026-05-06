@@ -52,3 +52,11 @@ final extraordinaryEventServiceProvider = _dbService(ExtraordinaryEventService.n
 // ── Income providers ──
 
 final incomeServiceProvider = _dbService(IncomeService.new);
+
+// ── Pillar providers ──
+
+final pillarServiceProvider = _dbService(PillarService.new);
+
+/// Currently selected pillar scope on dashboards (default: All).
+final selectedPillarScopeProvider =
+    StateProvider<PillarScope>((ref) => const PillarScope.all());

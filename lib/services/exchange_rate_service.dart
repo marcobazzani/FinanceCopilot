@@ -1,9 +1,23 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../database/database.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
 import 'investing_com_service.dart';
+
+/// Tables touched by [ExchangeRateService.backfillHistoricalRates] when
+/// collecting "which currencies need historical FX data". Exposed so the
+/// non-regression test can run the exact SQL against the live schema —
+/// the prior version referenced `depreciation_schedules`, which had been
+/// dropped in a migration, and the silent SqliteException stalled FX
+/// backfill for every USD-denominated asset.
+@visibleForTesting
+const backfillCurrenciesSql =
+    'SELECT DISTINCT currency FROM assets '
+    'UNION SELECT DISTINCT currency FROM accounts '
+    'UNION SELECT DISTINCT currency FROM incomes '
+    'UNION SELECT DISTINCT currency FROM extraordinary_events';
 
 final _log = getLogger('ExchangeRateService');
 
@@ -88,12 +102,7 @@ class ExchangeRateService {
     if (_investingService == null) return;
 
     // Collect all distinct currencies used across the DB (including base currency)
-    final rows = await _db.customSelect(
-      'SELECT DISTINCT currency FROM assets '
-      'UNION SELECT DISTINCT currency FROM accounts '
-      'UNION SELECT DISTINCT currency FROM incomes '
-      'UNION SELECT DISTINCT currency FROM depreciation_schedules',
-    ).get();
+    final rows = await _db.customSelect(backfillCurrenciesSql).get();
     final currencies = rows.map((r) => r.read<String>('currency')).toSet()
       ..remove('EUR'); // EUR is always the "from" side
 
