@@ -122,10 +122,31 @@ Every direction × treatment × frequency × cardinal feature exercised:
       lazy ListView paints below-the-fold ExpansionTiles
       (`_YearlySummaryTable`, `_MonthlyGrid` × 2, `_YoYDiffTable`)
 
-## ACT XI — Cleanup
+## ACT XI — Pillars
+
+15A. **Pillars nav** — empty state shows "Create your first pillar"
+15B. **Create dialog** — name `Retirement` + target value `100000` →
+     persisted with locale-aware NumberFormat parser (no `5000.0` →
+     `50000` round-trip bug)
+15C. **Detail screen** — slider list renders one row per asset with
+     positive quantity, sorted by total asset market value desc;
+     ObjectiveCard at top, ChartCard below, sliders below that
+15D. **Service-level assign 50%** — `PillarService.assign()` round-trips
+     through to `qtyFor` / `unassignedQty` / `fractionsForPillar`;
+     SUM invariant holds (`SUM(pillar quantities) ≤ total holding`)
+15E. **Over-assign refused** — `PillarOverAssignedException` thrown when
+     `qty > available`
+15F. **ChartCard reuse** — Pillar history chart shows `Invested` (dashed)
+     + `Value` (filled) legend chips; `Total` chip is suppressed because
+     the chart passes `showTotal: false`
+15G. **Delete pillar** — explicit `delete_outline` icon in AppBar (no
+     3-dot overflow); confirmation dialog → cascade-deletes assignments
+     via `pillar_assets.pillar_id` FK
+
+## ACT XII — Cleanup
 
 16. **Cascade-delete sweep** — events, intermediaries, accounts, assets,
-    incomes; verify cascades
+    incomes, pillars; verify cascades
 
 ## Final invariant
 
