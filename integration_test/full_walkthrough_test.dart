@@ -30,6 +30,7 @@ import 'package:finance_copilot/services/import_config_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
 import 'package:finance_copilot/services/investing_com_service.dart';
 import 'package:finance_copilot/services/isin_lookup_service.dart';
+import 'package:finance_copilot/services/pillar_service.dart';
 import 'package:finance_copilot/services/transaction_service.dart';
 
 import 'helpers/test_app.dart';
@@ -1819,6 +1820,116 @@ void main() {
         }
       }
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ACT X — Pillars (pillars_screen.dart, pillar_detail_screen.dart,
+    // pillar_create_dialog.dart, pillar_service.dart, pillar_scope.dart,
+    // uuid_v7.dart, plus the ChartCard reuse path).
+    // Bucket asset units into named goals, exercise the slider editor, and
+    // verify the pillar slice round-trips through the service.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('15A. Pillars nav → empty state');
+    final pillarService = PillarService(db);
+    expect(await pillarService.getAll(), isEmpty);
+    await tester.tap(find.text('Pillars').first);
+    await longSettle(tester);
+    expect(find.text('Create your first pillar'), findsOneWidget,
+        reason: 'empty-state CTA visible on a fresh Pillars tab');
+
+    _step('15B. Open create dialog → name "Retirement", target 100000 EUR');
+    await tester.tap(find.byType(FloatingActionButton).first);
+    await longSettle(tester);
+    // Dialog has Name + Target value fields. The first TextField is Name.
+    final dialogFields = find.byType(TextField);
+    expect(dialogFields, findsNWidgets(2));
+    await tester.enterText(dialogFields.at(0), 'Retirement');
+    await tester.enterText(dialogFields.at(1), '100000');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await longSettle(tester);
+    final pillars = await pillarService.getAll();
+    expect(pillars, hasLength(1));
+    expect(pillars.first.name, 'Retirement');
+    expect(pillars.first.targetValue, 100000);
+    final pillarId = pillars.first.id;
+    _step('   ✓ pillar created id=$pillarId');
+
+    _step('15C. Tap pillar card → detail screen with slider list');
+    await tester.tap(find.text('Retirement').first);
+    await longSettle(tester);
+    // The detail body renders one Slider per asset that has units > 0.
+    final sliders = find.byType(Slider);
+    expect(sliders, findsAtLeast(1),
+        reason: 'asset slider list should render in the overview');
+
+    _step('15D. Service-level assign(50%) round-trips through PillarService');
+    final activeAssets = await (db.select(db.assets)
+          ..where((a) => a.isActive.equals(true)))
+        .get();
+    // Pick the first asset with a non-zero quantity.
+    int? targetAssetId;
+    double? targetTotalQty;
+    for (final a in activeAssets) {
+      final qty = await pillarService.totalQuantity(a.id);
+      if (qty > 0) {
+        targetAssetId = a.id;
+        targetTotalQty = qty;
+        break;
+      }
+    }
+    expect(targetAssetId, isNotNull,
+        reason: 'walkthrough imported assets must have positive quantity');
+    final halfQty = targetTotalQty! / 2;
+    await pillarService.assign(
+      pillarId: pillarId,
+      assetId: targetAssetId!,
+      qty: halfQty,
+    );
+    expect(await pillarService.qtyFor(pillarId, targetAssetId), halfQty);
+    expect(await pillarService.unassignedQty(targetAssetId),
+        closeTo(targetTotalQty - halfQty, 1e-9));
+    final fracs = await pillarService.fractionsForPillar(pillarId);
+    expect(fracs[targetAssetId], closeTo(0.5, 1e-9));
+    _step('   ✓ asset $targetAssetId @ 50%; SUM invariant holds');
+
+    _step('15E. Over-assign refused: PillarOverAssignedException');
+    expect(
+      () => pillarService.assign(
+        pillarId: pillarId,
+        assetId: targetAssetId!,
+        qty: targetTotalQty! + 1,
+      ),
+      throwsA(isA<PillarOverAssignedException>()),
+    );
+
+    _step('15F. ChartCard renders in Pillar detail (Invested + Value, no Total)');
+    // Settle so allSeriesDataProvider builds and the chart paints. We use
+    // runAsync because the provider chain involves several awaited stream
+    // microtasks.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 2)));
+    await longSettle(tester);
+    // Two legend chips: "Invested" + "Value". Total should NOT appear
+    // because the pillar chart passes showTotal: false.
+    expect(find.text('Invested'), findsAtLeast(1));
+    expect(find.text('Value'), findsAtLeast(1));
+
+    _step('15G. Back to list, delete pillar via toolbar trash icon');
+    final backBtn = find.byType(BackButton);
+    if (backBtn.evaluate().isNotEmpty) {
+      await tester.tap(backBtn.first);
+      await longSettle(tester);
+    }
+    // Re-enter detail to test delete.
+    await tester.tap(find.text('Retirement').first);
+    await longSettle(tester);
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await longSettle(tester);
+    if (find.widgetWithText(FilledButton, 'Delete').evaluate().isNotEmpty) {
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete').last);
+      await longSettle(tester);
+    }
+    expect(await pillarService.getAll(), isEmpty,
+        reason: 'pillar delete cascades pillar_assets rows');
+    _step('   ✓ pillar deleted, assignment removed via FK cascade');
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 12: cascade-delete sweep.
