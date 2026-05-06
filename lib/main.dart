@@ -513,9 +513,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   /// Full manual refresh: pull from Google Drive, then refresh market data.
-  /// Keeps the `_isSyncing` spinner active for the entire duration so the UI
-  /// reflects that work is in progress even during the Drive pull phase.
-  /// Each step is best-effort -- failures don't block subsequent steps.
+  /// Drives [isManualSyncingProvider] so the global Refresh action's spinner
+  /// reflects pulls triggered both from the AppBar button and the
+  /// pull-to-refresh gesture on mobile. Each step is best-effort -- failures
+  /// don't block subsequent steps.
   Future<void> _manualRefresh() async {
     if (_isSyncing) return;
     _isSyncing = true;

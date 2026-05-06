@@ -12,6 +12,7 @@ import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'import/import_screen.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -184,8 +185,10 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                   );
                 }
 
-                return ListView.separated(
+                return MobilePullToRefresh(
+                  child: ListView.separated(
                   itemCount: incomes.length,
+                  physics: const AlwaysScrollableScrollPhysics(),
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final income = incomes[i];
@@ -213,6 +216,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                       ),
                     );
                   },
+                ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

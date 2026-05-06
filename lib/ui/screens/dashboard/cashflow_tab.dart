@@ -185,8 +185,10 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
       ),
     ];
 
-    return ListView(
+    return MobilePullToRefresh(
+      child: ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 40, 16),
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
         for (int i = 0; i < chartDefs.length; i++) ...[
           Builder(builder: (_) {
@@ -265,6 +267,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
           }(),
         ],
       ],
+    ),
     );
   }
 }
