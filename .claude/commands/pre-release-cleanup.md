@@ -7,16 +7,13 @@ Mission: harden the codebase before a major release. Long-running and exhaustive
 ## Phase 0 — Sanity gate (do once, never skip)
 1. Confirm current branch is `develop` (or whatever target the user specified). If not, STOP and ask.
 2. Confirm `DB_FILE_NAME` in `.env` matches the intended dev DB. The user's real DB at `~/Documents/FinanceCopilot.db` is OFF-LIMITS for tests/builds.
-3. Back up the sandbox DB:
-   `cp -a ~/Library/Containers/net.bazzani.financecopilot ~/Library/Containers/net.bazzani.financecopilot.bak`
-   Verify the backup exists.
-4. Capture green baseline (all four MUST pass before proceeding):
+3. Capture green baseline (all four MUST pass before proceeding):
    - `dart fix --apply && dart analyze lib/ test/ integration_test/`  (zero warnings/infos)
    - `flutter test`
    - `flutter test integration_test/all_tests.dart -d macos`
    - `flutter test integration_test/live_data_fetch_test.dart -d macos`
-5. Record starting LoC: `find lib -name '*.dart' -not -name '*.g.dart' | xargs wc -l | tail -1`.
-6. If anything in step 4 is red, STOP — fix the existing red before this command can do anything else.
+4. Record starting LoC: `find lib -name '*.dart' -not -name '*.g.dart' | xargs wc -l | tail -1`.
+5. If anything in step 3 is red, STOP — fix the existing red before this command can do anything else.
 
 ## Phase 1 — UI consistency audit (report only, no edits)
 Catalog every instance of these patterns and flag deviations from the canonical reference:
@@ -123,8 +120,6 @@ Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For ever
   - Provider-name leaks removed (count)
   - UI inconsistencies reconciled (count + screens)
   - Next candidate areas for the following pass
-- Restore the DB backup:
-  `rm -rf ~/Library/Containers/net.bazzani.financecopilot && mv ~/Library/Containers/net.bazzani.financecopilot.bak ~/Library/Containers/net.bazzani.financecopilot`
 - Do NOT commit. Do NOT push. Wait for explicit approval.
 
 ## Hard rules (non-negotiable)
