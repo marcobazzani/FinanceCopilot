@@ -13,6 +13,14 @@ final priceRefreshCounter = StateProvider<int>((ref) => 0);
 /// Privacy mode: blur all monetary amounts for screenshot sharing.
 final privacyModeProvider = StateProvider<bool>((ref) => false);
 
+/// Whether the user-triggered price/rate/composition sync is currently
+/// running. Drives the spinner on the global Refresh icon from any screen.
+final isManualSyncingProvider = StateProvider<bool>((ref) => false);
+
+/// Whether a Drive backup/restore is currently in flight. Independent
+/// from [isManualSyncingProvider] so both spinners can co-exist.
+final isDriveSyncingProvider = StateProvider<bool>((ref) => false);
+
 /// Portable language setting (from ~/.config/FinanceCopilot/settings.json).
 /// Used before a DB is opened. Initialized on app start.
 final portableLanguageProvider = StateProvider<String>((ref) => 'en');
