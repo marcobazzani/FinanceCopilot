@@ -12,6 +12,7 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -153,8 +154,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   );
                 }
 
-                return ListView.separated(
+                return MobilePullToRefresh(
+                  child: ListView.separated(
                   itemCount: filtered.length,
+                  physics: const AlwaysScrollableScrollPhysics(),
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final tx = filtered[i];
@@ -222,6 +225,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                       ),
                     );
                   },
+                ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

@@ -13,6 +13,7 @@ import 'account_detail_screen.dart';
 import 'capex_screen.dart' show AdjustmentsView;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'income_screen.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -149,19 +150,22 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
             null, // always show unassigned
           ];
 
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 80),
-            children: [
-              for (final groupId in groupOrder)
-                if (grouped[groupId]?.isNotEmpty ?? false)
-                  _buildGroup(
-                    context, s, groupId,
-                    groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
-                    grouped[groupId] ?? [],
-                    stats, convertedStats, baseCurrency, locale,
-                    intermediaries,
-                  ),
-            ],
+          return MobilePullToRefresh(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 80),
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                for (final groupId in groupOrder)
+                  if (grouped[groupId]?.isNotEmpty ?? false)
+                    _buildGroup(
+                      context, s, groupId,
+                      groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
+                      grouped[groupId] ?? [],
+                      stats, convertedStats, baseCurrency, locale,
+                      intermediaries,
+                    ),
+              ],
+            ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
