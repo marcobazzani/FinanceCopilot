@@ -17,6 +17,7 @@ import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/asset_search.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -99,19 +100,22 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             (grouped[asset.intermediaryId] ??= []).add(asset);
           }
 
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 80),
-            children: [
-              for (final i in intermediaries)
-                if (grouped[i.id]?.isNotEmpty ?? false)
-                  _buildGroup(
-                    context, s, i.id, i,
-                    grouped[i.id] ?? [],
-                    stats, convertedStats, marketValues, noMarketData,
-                    baseCurrency, locale,
-                    intermediaries,
-                  ),
-            ],
+          return MobilePullToRefresh(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 80),
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                for (final i in intermediaries)
+                  if (grouped[i.id]?.isNotEmpty ?? false)
+                    _buildGroup(
+                      context, s, i.id, i,
+                      grouped[i.id] ?? [],
+                      stats, convertedStats, marketValues, noMarketData,
+                      baseCurrency, locale,
+                      intermediaries,
+                    ),
+              ],
+            ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),

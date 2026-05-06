@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 
 import '../../database/database.dart';
@@ -157,9 +158,12 @@ class AllocationTab extends ConsumerWidget {
               ));
               if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
             }
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(children: rows),
+            return MobilePullToRefresh(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(children: rows),
+              ),
             );
           });
         },

@@ -21,6 +21,7 @@ import 'services/db_transfer_service.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
+import 'services/refresh_service.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
@@ -132,7 +133,6 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
-  bool _isSyncing = false;
   bool _showLanding = false;
   bool _syncingDrive = false;
   final _repaintKey = GlobalKey();
@@ -482,44 +482,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
-  /// Full manual refresh: pull from Google Drive, then refresh market data.
-  /// Keeps the `_isSyncing` spinner active for the entire duration so the UI
-  /// reflects that work is in progress even during the Drive pull phase.
-  /// Each step is best-effort -- failures don't block subsequent steps.
-  Future<void> _manualRefresh() async {
-    if (_isSyncing) return;
-    setState(() => _isSyncing = true);
-    try {
-      // Update network status indicator
-      final online = await ref.read(networkMonitorProvider).check();
-      ref.read(networkOnlineProvider.notifier).state = online;
-
-      // Market data sync is best-effort
-      _log.info('Manual refresh: syncing market data...');
-      try {
-        await Future.wait([
-          ref.read(marketPriceServiceProvider).syncPrices(forceToday: true),
-          ref.read(exchangeRateServiceProvider).syncRates(force: true),
-        ]);
-        ref.read(priceRefreshCounter.notifier).state++;
-      } catch (e) {
-        _log.warning('Manual refresh: market sync failed: $e');
-      }
-
-      try {
-        await ref.read(compositionServiceProvider).syncCompositions();
-      } catch (e) {
-        _log.warning('Manual refresh: composition sync failed: $e');
-      }
-    } catch (e) {
-      _log.warning('Manual refresh error: $e');
-    } finally {
-      if (mounted) setState(() => _isSyncing = false);
-    }
-  }
+  /// Full manual refresh: shared with pull-to-refresh on mobile. Delegates to
+  /// [manualRefreshProvider] which handles the in-flight guard via
+  /// [isSyncingProvider]. Each step is best-effort -- failures don't block
+  /// subsequent steps.
+  Future<void> _manualRefresh() => ref.read(manualRefreshProvider)();
 
   Future<void> _syncPrices({bool forceToday = false}) async {
-    if (_isSyncing) return;
+    if (ref.read(isSyncingProvider)) return;
 
     // Check network first
     final monitor = ref.read(networkMonitorProvider);
@@ -530,7 +500,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       return;
     }
 
-    setState(() => _isSyncing = true);
+    ref.read(isSyncingProvider.notifier).state = true;
     try {
       _log.info('Starting market price sync (forceToday=$forceToday)...');
       await Future.wait([
@@ -539,7 +509,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       ]);
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
-      if (mounted) setState(() => _isSyncing = false);
+      if (mounted) ref.read(isSyncingProvider.notifier).state = false;
     }
   }
 
@@ -702,17 +672,20 @@ class _AppShellState extends ConsumerState<AppShell> {
             }
             return const SizedBox.shrink();
           }),
-          IconButton(
-            icon: _isSyncing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            tooltip: s.tooltipRefreshPrices,
-            onPressed: _isSyncing ? null : _manualRefresh,
-          ),
+          Consumer(builder: (context, ref, _) {
+            final syncing = ref.watch(isSyncingProvider);
+            return IconButton(
+              icon: syncing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              tooltip: s.tooltipRefreshPrices,
+              onPressed: syncing ? null : _manualRefresh,
+            );
+          }),
           IconButton(
             icon: const Icon(Icons.import_export),
             tooltip: s.tooltipImportExportDb,
