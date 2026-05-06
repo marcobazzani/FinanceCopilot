@@ -4,7 +4,7 @@ part of 'dashboard_screen.dart';
 // Unified chart card widget
 // ════════════════════════════════════════════════════
 
-class _ChartCard extends ConsumerWidget {
+class ChartCard extends ConsumerWidget {
   final DashboardChart chart;
   final List<ChartSeries> series;
   final AllSeriesData allData;
@@ -27,8 +27,12 @@ class _ChartCard extends ConsumerWidget {
   final VoidCallback? onDelete;   // optional — shows delete icon when non-null (user charts)
   final VoidCallback? onMoveUp;   // optional — shows up-arrow when non-null (reorderable)
   final VoidCallback? onMoveDown; // optional — shows down-arrow when non-null (reorderable)
+  /// When false, the Total line is not drawn and the Total legend chip is
+  /// suppressed. The header still shows the running smart-total readout.
+  final bool showTotal;
 
-  const _ChartCard({
+  const ChartCard({
+    super.key,
     required this.chart,
     required this.series,
     required this.allData,
@@ -51,6 +55,7 @@ class _ChartCard extends ConsumerWidget {
     this.onDelete,
     this.onMoveUp,
     this.onMoveDown,
+    this.showTotal = true,
   });
 
   /// Build total spots with smart asset handling:
@@ -150,7 +155,7 @@ class _ChartCard extends ConsumerWidget {
                         title: chart.title,
                         series: drawnSeries,
                         totalSpots: totalSpots,
-                        showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
+                        showTotal: showTotal && chart.sourceChartIds == null && !hidden.contains('_total'),
                         firstDate: allData.firstDate,
                         baseCurrency: allData.baseCurrency,
                         isPrivate: isPrivate,
@@ -198,7 +203,7 @@ class _ChartCard extends ConsumerWidget {
               adjustmentSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? adjustmentSeries : [],
               incomeAdjSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? incomeAdjSeries : [],
               otherSeries: combinedSeries.isNotEmpty ? combinedSeries : (cfSeries.isNotEmpty ? cfSeries : gainSeries),
-              showTotalItem: chart.sourceChartIds == null && cfSeries.isEmpty,
+              showTotalItem: showTotal && chart.sourceChartIds == null && cfSeries.isEmpty,
               hidden: hidden,
               onToggle: onToggle,
               onToggleGroup: onToggleGroup,
@@ -217,9 +222,9 @@ class _ChartCard extends ConsumerWidget {
                 ? Builder(builder: (context) {
                     // Compute Y range so _DragZoomWrapper can map pixels to chart Y
                     // Must match _UnifiedChart's Y range: include total only when shown
-                    final showTotal = chart.sourceChartIds == null && !hidden.contains('_total');
+                    final showTotalLine = showTotal && chart.sourceChartIds == null && !hidden.contains('_total');
                     final allY = [
-                      if (showTotal) ...totalSpots.map((s) => s.y),
+                      if (showTotalLine) ...totalSpots.map((s) => s.y),
                       ...drawnSeries.where((s) => !s.rightAxis).expand((s) => s.spots.map((p) => p.y)),
                     ];
                     final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
@@ -242,7 +247,7 @@ class _ChartCard extends ConsumerWidget {
                               title: chart.title,
                               series: drawnSeries,
                               totalSpots: totalSpots,
-                              showTotal: showTotal,
+                              showTotal: showTotalLine,
                               firstDate: allData.firstDate,
                               baseCurrency: allData.baseCurrency,
                               isPrivate: isPrivate,
@@ -265,7 +270,7 @@ class _ChartCard extends ConsumerWidget {
                           firstDate: allData.firstDate,
                           visible: drawnSeries,
                           totalSpots: totalSpots,
-                          showTotal: chart.sourceChartIds == null && !hidden.contains('_total'),
+                          showTotal: showTotal && chart.sourceChartIds == null && !hidden.contains('_total'),
                           baseCurrency: allData.baseCurrency,
                           locale: locale,
                           language: language,

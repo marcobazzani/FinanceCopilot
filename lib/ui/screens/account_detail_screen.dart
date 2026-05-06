@@ -12,12 +12,34 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
+import '../widgets/global_app_bar_actions.dart';
 import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
 
 final _log = getLogger('AccountDetailScreen');
+
+/// Sentinel account id used by the virtual "All accounts" entry. The detail
+/// screen detects this id and switches into a read-only, all-accounts mode.
+const int kAllAccountsId = -1;
+
+/// Builds the virtual Account row used by the "All accounts" parent entry.
+/// id == [kAllAccountsId]. Currency is intentionally a placeholder — the
+/// detail screen formats each row in its own currency in this mode.
+Account buildAllAccountsVirtual(String label) => Account(
+      id: kAllAccountsId,
+      name: label,
+      type: AccountType.bank,
+      currency: 'EUR',
+      institution: '',
+      intermediaryId: null,
+      isActive: true,
+      includeInNetWorth: true,
+      sortOrder: -1,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(0),
+    );
 
 /// Shows transactions for a single account, with search/filter and edit/delete.
 class AccountDetailScreen extends ConsumerStatefulWidget {
@@ -40,13 +62,24 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     super.dispose();
   }
 
+  bool get _isReadOnly => widget.account.id == kAllAccountsId;
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
-    final txStream = ref.watch(accountTransactionsProvider(widget.account.id));
+    final txStream = _isReadOnly
+        ? ref.watch(allTransactionsProvider)
+        : ref.watch(accountTransactionsProvider(widget.account.id));
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, widget.account.currency);
+    // Map accountId → name for the read-only All-accounts subtitle badge.
+    final accountNameById = _isReadOnly
+        ? {
+            for (final a in (ref.watch(accountsProvider).value ?? const <Account>[]))
+              a.id: a.name,
+          }
+        : const <int, String>{};
 
     return ListenableBuilder(
       listenable: _selection,
@@ -68,42 +101,44 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         return Scaffold(
       appBar: AppBar(
         title: Text(widget.account.name),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_upload),
-            tooltip: s.tooltipImportFile,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => ImportScreen(preselectedAccountId: widget.account.id)),
+        actions: globalAppBarActions(context, ref, local: [
+          if (!_isReadOnly) ...[
+            IconButton(
+              icon: const Icon(Icons.file_upload),
+              tooltip: s.tooltipImportFile,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ImportScreen(preselectedAccountId: widget.account.id)),
+              ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            tooltip: s.tooltipRecalcBalance,
-            onPressed: () => _showBalanceDialog(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: s.tooltipAddTransaction,
-            onPressed: () => _addTransaction(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: s.tooltipEditAccount,
-            onPressed: () => _editAccount(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep),
-            tooltip: s.tooltipWipeTransactions,
-            onPressed: () => _confirmWipeTransactions(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            tooltip: s.tooltipDeleteAccount,
-            color: Colors.red,
-            onPressed: () => _confirmDeleteAccount(context),
-          ),
-        ],
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet),
+              tooltip: s.tooltipRecalcBalance,
+              onPressed: () => _showBalanceDialog(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: s.tooltipAddTransaction,
+              onPressed: () => _addTransaction(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: s.tooltipEditAccount,
+              onPressed: () => _editAccount(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              tooltip: s.tooltipWipeTransactions,
+              onPressed: () => _confirmWipeTransactions(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: s.tooltipDeleteAccount,
+              color: Colors.red,
+              onPressed: () => _confirmDeleteAccount(context),
+            ),
+          ],
+        ]),
       ),
       body: Column(
         children: [
@@ -154,18 +189,21 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   );
                 }
 
+                final dayHeaderFmt = fmt.fullDateFormat(locale);
+                int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
                 return MobilePullToRefresh(
-                  child: ListView.separated(
+                  child: ListView.builder(
                   itemCount: filtered.length,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final tx = filtered[i];
                     final isPositive = tx.amount >= 0;
-                    return SelectableItem<int>(
-                      controller: _selection,
-                      id: tx.id,
-                      child: ListTile(
+                    final showHeader = i == 0 ||
+                        dayKey(filtered[i - 1].valueDate) != dayKey(tx.valueDate);
+                    final rowAmtFmt = _isReadOnly
+                        ? fmt.currencyFormat(locale, tx.currency)
+                        : amtFmt;
+                    final tile = ListTile(
                       dense: true,
                       leading: CircleAvatar(
                         radius: 16,
@@ -184,45 +222,111 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 14),
                       ),
-                      subtitle: Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
+                      subtitle: _isReadOnly
+                          ? Row(
+                              children: [
+                                Text(dateFmt.format(tx.valueDate),
+                                    style: const TextStyle(fontSize: 12)),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .secondaryContainer,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      accountNameById[tx.accountId] ??
+                                          '#${tx.accountId}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSecondaryContainer,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Text(dateFmt.format(tx.valueDate),
+                              style: const TextStyle(fontSize: 12)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '${isPositive ? '+' : ''}${amtFmt.format(tx.amount)}',
+                            '${isPositive ? '+' : ''}${rowAmtFmt.format(tx.amount)}',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
                               fontSize: 14,
                             ),
                           ),
-                          if (isPositive) ...[
+                          if (!_isReadOnly) ...[
                             const SizedBox(width: 4),
                             PopupMenuButton<String>(
                               iconSize: 18,
                               padding: EdgeInsets.zero,
-                              tooltip: s.flagAsIncomeTooltip,
+                              tooltip: isPositive
+                                  ? s.flagAsIncomeTooltip
+                                  : s.flagAsAdjustmentTooltip,
                               itemBuilder: (_) => [
-                                PopupMenuItem(
-                                  value: 'flag_income',
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.label_important_outline, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text(s.flagAsIncomeTooltip),
-                                    ],
+                                if (isPositive)
+                                  PopupMenuItem(
+                                    value: 'flag_income',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.label_important_outline, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text(s.flagAsIncomeTooltip),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  PopupMenuItem(
+                                    value: 'flag_adjustment',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.compare_arrows, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text(s.flagAsAdjustmentTooltip),
+                                      ],
+                                    ),
                                   ),
-                                ),
                               ],
                               onSelected: (v) {
                                 if (v == 'flag_income') _flagAsIncome(tx);
+                                if (v == 'flag_adjustment') _flagAsAdjustment(tx);
                               },
                             ),
                           ],
                         ],
                       ),
-                      onTap: () => _openTransaction(tx),
-                      ),
+                      onTap: _isReadOnly ? null : () => _openTransaction(tx),
+                    );
+                    final body = _isReadOnly
+                        ? tile
+                        : SelectableItem<int>(
+                            controller: _selection,
+                            id: tx.id,
+                            child: tile,
+                          );
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (showHeader)
+                          _DayHeader(
+                            label: dayHeaderFmt.format(tx.valueDate),
+                          )
+                        else
+                          const Divider(height: 1),
+                        body,
+                      ],
                     );
                   },
                 ),
@@ -236,6 +340,20 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           txStream.when(
             data: (transactions) {
               if (transactions.isEmpty) return const SizedBox();
+              if (_isReadOnly) {
+                // Mixed-currency union — balance is meaningless. Show count only.
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+                  ),
+                  child: Text(
+                    '${transactions.length} ${s.transactions}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                );
+              }
               // Use the last transaction in chronological order (latest date, then highest id)
               // to match balance computation order.
               final lastTx = transactions.reduce((a, b) {
@@ -273,7 +391,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           ),
         ],
       ),
-          bottomNavigationBar: _selection.active
+          bottomNavigationBar: (!_isReadOnly && _selection.active)
               ? SelectionActionBar<int>(
                   controller: _selection,
                   visibleIds: visibleIds,
@@ -308,15 +426,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
   Future<void> _flagAsIncome(Transaction tx) async {
     final s = ref.read(appStringsProvider);
-    var selectedType = IncomeType.salary;
+    var selectedType = IncomeType.income;
 
     String typeLabel(IncomeType t) => switch (t) {
-      IncomeType.income   => s.incomeTypeIncome,
-      IncomeType.refund   => s.incomeTypeRefund,
-      IncomeType.salary   => s.incomeTypeSalary,
-      IncomeType.donation => s.incomeTypeDonation,
-      IncomeType.coupon   => s.incomeTypeCoupon,
-      IncomeType.other    => s.incomeTypeOther,
+      IncomeType.income              => s.incomeTypeIncome,
+      IncomeType.refund              => s.incomeTypeRefund,
+      IncomeType.pensionContribution => s.incomeTypePensionContribution,
     };
 
     final confirmed = await showDialog<bool>(
@@ -351,6 +466,90 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
     if (mounted) {
       showInfoSnack(context, s.incomeFlaggedSnack);
+    }
+  }
+
+  /// Mark a NEGATIVE transaction as a manual adjustment against an Inflow
+  /// `ExtraordinaryEvent`. The user picks the inflow record (best-match
+  /// proposed by smallest |valueDate − eventDate|, currency-equal first).
+  /// `addManualEntry` flips the sign for inflow events, so the resulting
+  /// entry on the inflow has `+|tx.amount|`.
+  Future<void> _flagAsAdjustment(Transaction tx) async {
+    final s = ref.read(appStringsProvider);
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+    final amtFmt = fmt.currencyFormat(locale, tx.currency);
+
+    final allEvents = await ref.read(extraordinaryEventsProvider.future);
+    final inflows = allEvents
+        .where((e) => e.direction == EventDirection.inflow && e.isActive)
+        .toList();
+    if (inflows.isEmpty) {
+      if (mounted) showInfoSnack(context, s.noInflowEventsAvailable);
+      return;
+    }
+
+    int bestMatchScore(ExtraordinaryEvent e) {
+      // Lower is better. Currency mismatch adds a huge penalty so same-currency
+      // candidates always win when present.
+      final dayDelta =
+          (e.eventDate.difference(tx.valueDate).inDays).abs();
+      final currencyPenalty = e.currency == tx.currency ? 0 : 1000000;
+      return currencyPenalty + dayDelta;
+    }
+
+    inflows.sort((a, b) => bestMatchScore(a).compareTo(bestMatchScore(b)));
+    var selectedId = inflows.first.id;
+    final dateFmt = fmt.shortDateFormat(locale);
+
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(s.flagAsAdjustmentTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.flagAsAdjustmentBody(amtFmt.format(tx.amount.abs()))),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: selectedId,
+                isExpanded: true,
+                decoration: InputDecoration(labelText: s.flagAsAdjustmentInflow),
+                items: inflows
+                    .map((e) => DropdownMenuItem(
+                          value: e.id,
+                          child: Text(
+                            '${e.name} · ${e.currency} · ${dateFmt.format(e.eventDate)}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ))
+                    .toList(),
+                onChanged: (v) =>
+                    setDialogState(() => selectedId = v ?? selectedId),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await ref.read(extraordinaryEventServiceProvider).addManualEntry(
+          eventId: selectedId,
+          date: tx.valueDate,
+          amount: tx.amount.abs(),
+          description: tx.description,
+        );
+
+    if (mounted) {
+      showInfoSnack(context, s.adjustmentFlaggedSnack);
     }
   }
 
@@ -679,5 +878,27 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     if (mounted) {
       showInfoSnack(context, s.recalculatedBalances(updated));
     }
+  }
+}
+
+class _DayHeader extends StatelessWidget {
+  final String label;
+  const _DayHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      color: scheme.surfaceContainerHighest,
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
   }
 }

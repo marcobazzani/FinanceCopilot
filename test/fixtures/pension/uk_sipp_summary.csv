@@ -1,0 +1,9 @@
+date,bucket,amount,description
+2022-04-05,employee_contribution,4000.00,Annual employee contribution to SIPP (tax year ending 2022)
+2022-04-05,tax_relief,1000.00,HMRC basic-rate tax relief reclaim
+2023-04-05,employee_contribution,4500.00,Annual employee contribution to SIPP (tax year ending 2023)
+2023-04-05,tax_relief,1125.00,HMRC basic-rate tax relief reclaim
+2024-04-05,employee_contribution,5000.00,Annual employee contribution to SIPP (tax year ending 2024)
+2024-04-05,tax_relief,1250.00,HMRC basic-rate tax relief reclaim
+2025-04-05,employee_contribution,5500.00,Annual employee contribution to SIPP (tax year ending 2025)
+2025-04-05,tax_relief,1375.00,HMRC basic-rate tax relief reclaim

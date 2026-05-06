@@ -22,6 +22,37 @@ final activeAssetsProvider = StreamProvider<List<Asset>>((ref) {
   return ref.watch(assetServiceProvider).watchActive();
 });
 
+final pillarsProvider = StreamProvider<List<Pillar>>((ref) {
+  return ref.watch(pillarServiceProvider).watchAll();
+});
+
+final pillarAssetsProvider = StreamProvider<List<PillarAsset>>((ref) {
+  return ref.watch(pillarServiceProvider).watchAllAssignments();
+});
+
+/// For one pillar: assetId → fraction of that asset's total holding.
+final pillarFractionProvider =
+    FutureProvider.family<Map<int, double>, String>((ref, pillarId) async {
+  ref.watch(pillarAssetsProvider);
+  return ref.read(pillarServiceProvider).fractionsForPillar(pillarId);
+});
+
+final unassignedFractionProvider =
+    FutureProvider<Map<int, double>>((ref) async {
+  ref.watch(pillarAssetsProvider);
+  final assets = await ref.watch(activeAssetsProvider.future);
+  final svc = ref.read(pillarServiceProvider);
+  final out = <int, double>{};
+  for (final a in assets) {
+    final total = await svc.totalQuantity(a.id);
+    if (total > 0) {
+      final unassigned = await svc.unassignedQty(a.id);
+      out[a.id] = unassigned / total;
+    }
+  }
+  return out;
+});
+
 /// Asset composition breakdowns (country/sector/holding weights from justETF).
 final assetCompositionsProvider = StreamProvider<Map<int, List<AssetComposition>>>((ref) {
   final db = ref.watch(databaseProvider);
@@ -41,6 +72,12 @@ final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
 /// Transactions for a specific account (pass accountId as family parameter).
 final accountTransactionsProvider = StreamProvider.family<List<Transaction>, int>((ref, accountId) {
   return ref.watch(transactionServiceProvider).watchByAccount(accountId);
+});
+
+/// All transactions across every account — feeds the read-only virtual
+/// "All accounts" entry.
+final allTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
+  return ref.watch(transactionServiceProvider).watchAll();
 });
 
 /// Asset events for a specific asset (pass assetId as family parameter).

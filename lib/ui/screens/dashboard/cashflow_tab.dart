@@ -128,8 +128,15 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     // compositions when the user deleted the role chart.
     final userCharts = ref.watch(dashboardChartsProvider);
     final activeAssets = ref.watch(activeAssetsProvider).value ?? const <Asset>[];
-    final savingSpots = _DashboardScreenState.spotsForRole('saving', userCharts, allData, activeAssets);
-    final cashSpots   = _DashboardScreenState.spotsForRole('cash',   userCharts, allData, activeAssets);
+    final rawSavingSpots = _DashboardScreenState.spotsForRole('saving', userCharts, allData, activeAssets);
+    final cashSpots      = _DashboardScreenState.spotsForRole('cash',   userCharts, allData, activeAssets);
+
+    // Subtract cumulative pension contributions from saving so velocity
+    // and spending derivations reflect personal cashflow only. Pension
+    // money inflates fund NAV but never lands in the user's bank — see
+    // _IncomeExpenseData.pensionContribCumulativeSpots.
+    final pensionCum = ieData?.pensionContribCumulativeSpots ?? const <FlSpot>[];
+    final savingSpots = _subtractCumulativeSeries(rawSavingSpots, pensionCum);
 
     // Spending = cumulative sum of negative daily deltas of saving
     final spendingSpots = _buildSpendingFromSaving(savingSpots);
@@ -187,7 +194,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
           Builder(builder: (_) {
             final c = chartDefs[i];
             final z = _zoomFor(c.id);
-            return _ChartCard(
+            return ChartCard(
               chart: c.chart,
               series: c.series,
               allData: allData,

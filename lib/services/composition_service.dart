@@ -69,21 +69,22 @@ class CompositionService {
       // Skip manual/eventDriven assets — composition is user-managed
       if (asset.valuationMethod == ValuationMethod.eventDriven) continue;
 
-      // Skip if we have recent data (< 7 days old)
+      // Skip if any composition rows already exist for this asset. Once
+      // populated (by sync OR by manual edit on the Composition panel),
+      // the data is treated as authoritative. To force a fresh fetch the
+      // user clicks "Refresh from market", which clears the rows and
+      // re-runs this method (see clearAndResync). Still fetch a missing
+      // TER though — that's a single field, not the multi-row breakdown.
       final existing = await (_db.select(_db.assetCompositions)
             ..where((c) => c.assetId.equals(asset.id))
             ..limit(1))
           .getSingleOrNull();
       if (existing != null) {
-        final age = DateTime.now().difference(existing.updatedAt);
-        if (age.inDays < 7) {
-          // Even if compositions are fresh, fetch TER if missing
-          if (asset.ter == null && asset.isin != null) {
-            await _fetchTerOnly(asset);
-          }
-          _log.fine('syncCompositions: ${asset.name} - fresh (${age.inDays}d), skipping');
-          continue;
+        if (asset.ter == null && asset.isin != null) {
+          await _fetchTerOnly(asset);
         }
+        _log.fine('syncCompositions: ${asset.name} - rows exist, skipping');
+        continue;
       }
 
       try {
@@ -141,6 +142,47 @@ class CompositionService {
     }
 
     _log.info('syncCompositions: done');
+  }
+
+  /// Replace every composition row for `(assetId, type)` with the given
+  /// entries. Pass an empty `entries` to clear the section. `type` is one
+  /// of: `'assetclass'`, `'country'`, `'sector'`, `'holding'`. Weights
+  /// are percentages (0..100); callers should normalize before passing.
+  /// Once any rows exist for an asset, [syncCompositions] skips it — so
+  /// user edits stick until the user calls [clearAndResync].
+  Future<void> setEntries(int assetId, String type, List<CompositionEntry> entries) async {
+    _log.info('setEntries: assetId=$assetId type=$type count=${entries.length}');
+    await _db.transaction(() async {
+      await (_db.delete(_db.assetCompositions)
+            ..where((c) => c.assetId.equals(assetId) & c.type.equals(type)))
+          .go();
+      if (entries.isNotEmpty) {
+        await _db.batch((batch) {
+          for (final e in entries) {
+            batch.insert(
+              _db.assetCompositions,
+              AssetCompositionsCompanion.insert(
+                assetId: assetId,
+                type: type,
+                name: e.name,
+                weight: e.weight,
+              ),
+            );
+          }
+        });
+      }
+    });
+  }
+
+  /// Wipe an asset's composition rows and re-run sync for it. Backs the
+  /// "Refresh from market" button on the Composition panel — it's the
+  /// only way to opt back into automatic fetching once rows exist.
+  Future<void> clearAndResync(int assetId) async {
+    _log.info('clearAndResync: assetId=$assetId');
+    await (_db.delete(_db.assetCompositions)
+          ..where((c) => c.assetId.equals(assetId)))
+        .go();
+    await syncCompositions();
   }
 
   /// Route to the appropriate data source based on ISIN pattern and asset metadata.
@@ -659,4 +701,11 @@ class _Entry {
   final String name;
   final double weight;
   const _Entry(this.type, this.name, this.weight);
+}
+
+/// Public input value type for [CompositionService.setEntries].
+class CompositionEntry {
+  final String name;
+  final double weight;
+  const CompositionEntry(this.name, this.weight);
 }

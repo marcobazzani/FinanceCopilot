@@ -23,6 +23,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/asset_event_service.dart';
 import 'package:finance_copilot/services/buffer_service.dart';
 import 'package:finance_copilot/services/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/import_config_service.dart';
@@ -1452,6 +1453,249 @@ void main() {
           await longSettle(tester);
         }
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11B. Revalue → market_prices materialisation.
+    //
+    // A revalue on a manual asset must produce a market_prices row anchored
+    // to the qty-at-revalue-date so the asset shows up everywhere priced
+    // assets do (dashboards, allocation, charts) and so a later buy can't
+    // retroactively shift the implied per-unit price.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11B. Manual asset revalue → market_prices anchoring');
+    final manualHolding = await (db.select(db.assets)
+          ..where((a) => a.name.equals('My Custom Holding')))
+        .getSingleOrNull();
+    if (manualHolding == null) {
+      _step('   ⚠ skipping (manual asset not present from 11A)');
+    } else {
+      final eventService = AssetEventService(db);
+      // Buy 10 units @ 100 EUR on day 1.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      // Revalue total to 1200 EUR on day 10 → expected close_price = 120.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 10),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+
+      var prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .get();
+      expect(prices, hasLength(1),
+          reason: 'revalue must materialise exactly one market_prices row');
+      expect(prices.first.date, DateTime(2024, 1, 10));
+      expect(prices.first.closePrice, 120.0,
+          reason: '1200 / qty(10) = 120 per unit');
+
+      // Add a later buy of 5 units. The revalue's close_price must NOT
+      // shift — it stays anchored to qty(=10) at value_date 2024-01-10.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 20),
+        type: EventType.buy,
+        amount: 600.0,
+        quantity: 5.0,
+        price: 120.0,
+        currency: 'EUR',
+      );
+      prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(prices.first.closePrice, 120.0,
+          reason: 'post-revalue buy must NOT shift the anchored close_price');
+
+      // getPrice() now reads the materialised row directly.
+      final priceService = InvestingComService(db);
+      final livePrice = await priceService.getPrice(manualHolding.id, DateTime(2024, 6, 1));
+      expect(livePrice, 120.0);
+
+      // Pre-revalue buy added retroactively must recompute the row
+      // (qty-at-revalue becomes 12 → close_price = 1200/12 = 100).
+      final laterBuyId = await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 5),
+        type: EventType.buy,
+        amount: 200.0,
+        quantity: 2.0,
+        currency: 'EUR',
+      );
+      var afterAdd = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(afterAdd.first.closePrice, 100.0,
+          reason: 'pre-revalue buy must reduce the anchored close_price');
+
+      // Removing the pre-revalue buy must put close_price back to 120.
+      await eventService.delete(laterBuyId);
+      afterAdd = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(afterAdd.first.closePrice, 120.0,
+          reason: 'deleting the pre-revalue buy must restore the anchor');
+      _step('   ✓ revalue materialised, anchored to qty-at-date, robust to '
+          'pre/post-revalue buys');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11C. Pension import (cashflow-only event-driven asset)
+    //
+    // Mirrors what the user does for their Fondo Cometa PPP: create a
+    // pension asset with valuationMethod=eventDriven, then import a
+    // single TSV containing monthly contributions and yearly position
+    // snapshots into that one asset (targetAssetId mode, no per-row
+    // ISIN). Asserts every consumer sees the right value:
+    //   - getLatestRevalueAmount = 49555.72 (Feb-2026)
+    //   - market_prices materialised at all 6 anchor dates
+    //   - getPrice returns the latest close_price for any future date
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11C. Pension import (PPP) → single asset, contribute + revalue');
+    {
+      final anyIntermediary = (await db.select(db.intermediaries).get()).first;
+      final pensionAsset = AssetsCompanion.insert(
+        name: 'Fondo Cometa (Test)',
+        assetType: AssetType.pension,
+        instrumentType: const Value(InstrumentType.pension),
+        assetClass: const Value(AssetClass.multiAsset),
+        valuationMethod: ValuationMethod.eventDriven,
+        currency: const Value('EUR'),
+        intermediaryId: anyIntermediary.id,
+      );
+      final pensionId = await db.into(db.assets).insert(pensionAsset);
+
+      final importer = ImportService(db);
+      final preview = await parseFixtureNoHeader(
+        db,
+        'pension/ppp_import.tsv',
+        numberLocale: 'it_IT',
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Column 4', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Column 2', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'Column 5', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'Column 1', targetField: 'description'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: anyIntermediary.id,
+        targetAssetId: pensionId,
+        contributeValues: const {'C/TFR', 'C/Azienda', 'C/Iscritto'},
+        revalueValues: const {'TOTALEP'},
+        numberLocaleOverride: 'it_IT',
+      );
+      expect(result.result.errorRows, 0,
+          reason: 'PPP import errors: ${result.result.errors}');
+
+      // The import does batched inserts, so the resync isn't triggered
+      // automatically; run it once to materialize market_prices.
+      final eventService = AssetEventService(db);
+      await eventService.resyncRevaluePricesForAsset(pensionId);
+
+      // Truth from PPP_FULL: latest revalue = 49555.72.
+      final latest = await eventService.getLatestRevalueAmount(pensionId);
+      expect(latest, isNotNull);
+      expect(latest!, closeTo(49555.72, 0.01));
+
+      // Cost basis (Σ contributes) ≈ 47222.43 from PPP_FULL.
+      final totals = await db.customSelect(
+        "SELECT SUM(amount) AS total FROM asset_events "
+        "WHERE asset_id = ? AND type IN ('buy','contribute')",
+        variables: [Variable.withInt(pensionId)],
+      ).getSingle();
+      expect(totals.read<double>('total'), closeTo(47222.43, 0.01));
+
+      // 6 anchor revalue dates each with a market_prices row.
+      final prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(pensionId))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .get();
+      expect(prices, hasLength(6));
+
+      // getPrice for any future date returns the latest close_price.
+      final priceService = InvestingComService(db);
+      final priceLatest = await priceService.getPrice(pensionId, DateTime(2026, 12, 31));
+      expect(priceLatest, isNotNull);
+      expect(priceLatest! - prices.last.closePrice, closeTo(0.0, 0.0001));
+
+      _step('   ✓ PPP imported (111 rows, 6 revalues, €47222.43 invested → '
+          '€49555.72 position)');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11D. 401(k)-style multi-sub-fund import
+    //
+    // The same importer works for unit-denominated, multi-sub-fund
+    // statements via the existing ISIN-grouped path. Each sub-fund
+    // becomes its own asset; explicit qty/price column mappings win
+    // over the A3 cash-only auto-fill.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11D. 401(k) multi-sub-fund import (3 ISINs → 3 assets)');
+    {
+      final anyIntermediary = (await db.select(db.intermediaries).get()).first;
+      final importer = ImportService(db);
+      final assetsBefore = (await db.select(db.assets).get()).length;
+
+      final fullPreview = await parseFixture(db, 'pension/us_401k_sample.csv');
+      final result = await importer.importAssetEventsGrouped(
+        preview: fullPreview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'bucket', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'fund_isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'units', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'unit_price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'USD',
+        intermediaryId: anyIntermediary.id,
+        contributeValues: const {
+          'employee_pretax', 'employee_roth', 'employer_match',
+          'employer_nonelective', 'rollover',
+        },
+        revalueValues: const {'position_snapshot'},
+        numberLocaleOverride: 'en_US',
+      );
+      expect(result.result.errorRows, 0,
+          reason: '401(k) import errors: ${result.result.errors}');
+
+      final assetsAfter = await db.select(db.assets).get();
+      expect(assetsAfter.length - assetsBefore, 3,
+          reason: '3 unique ISINs → 3 new assets');
+
+      // Every contribute on a 401(k) sub-fund carries the explicit NAV
+      // from the CSV (auto-fill must NOT have synthesized 1.0). Scope
+      // by ISIN since 11C's PPP contributes also exist in this DB and
+      // they DO carry price=1.0 by design.
+      final fund401kIds = assetsAfter
+          .where((a) => a.isin != null && a.isin!.startsWith('US922908'))
+          .map((a) => a.id)
+          .toList();
+      expect(fund401kIds, hasLength(3));
+      final contribs = await (db.select(db.assetEvents)
+            ..where((e) =>
+                e.type.equalsValue(EventType.buy) &
+                e.assetId.isIn(fund401kIds)))
+          .get();
+      expect(contribs, isNotEmpty);
+      for (final c in contribs) {
+        expect(c.price, isNotNull);
+        expect(c.price!, greaterThan(1.0),
+            reason: 'real NAVs are >1; price=1.0 means auto-fill misfired');
+      }
+      _step('   ✓ 401(k) imported (3 sub-funds, units×NAV preserved)');
     }
 
     // ─────────────────────────────────────────────────────────────────────

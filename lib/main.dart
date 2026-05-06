@@ -15,18 +15,19 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'database/database.dart';
 import 'database/providers.dart';
 import 'l10n/app_strings.dart';
+import 'services/app_actions_controller.dart';
 import 'services/app_settings.dart';
 import 'services/import_service.dart';
 import 'services/db_transfer_service.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
-import 'services/refresh_service.dart';
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/import/import_screen.dart';
+import 'ui/screens/pillars/pillars_screen.dart';
 import 'utils/bug_reporter.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -138,21 +139,50 @@ class _AppShellState extends ConsumerState<AppShell> {
   final _repaintKey = GlobalKey();
   StreamSubscription? _shareIntentSub;
 
+  bool get _isSyncing => ref.read(isManualSyncingProvider);
+  set _isSyncing(bool v) =>
+      ref.read(isManualSyncingProvider.notifier).state = v;
+
   List<NavigationDestination> _destinations(AppStrings s) => [
     NavigationDestination(icon: const Icon(Icons.dashboard), label: s.navDashboard),
     NavigationDestination(icon: const Icon(Icons.account_balance), label: s.navAccounts),
     NavigationDestination(icon: const Icon(Icons.pie_chart), label: s.navAssets),
+    NavigationDestination(icon: const Icon(Icons.view_quilt_outlined), label: s.navPillars),
   ];
 
   List<(IconData, String)> _sidebarItems(AppStrings s) => [
     (Icons.dashboard, s.navDashboard),
     (Icons.account_balance, s.navAccounts),
     (Icons.pie_chart, s.navAssets),
+    (Icons.view_quilt_outlined, s.navPillars),
   ];
 
   @override
   void initState() {
     super.initState();
+    // Register global-action callbacks so any screen's AppBar can drive
+    // refresh / settings / import-export / file import / network retry.
+    Future.microtask(() {
+      ref.read(globalActionsRegistryProvider.notifier).state =
+          GlobalActionsRegistry(
+        manualRefresh: _manualRefresh,
+        showImportExportDialog: _showImportExportDialog,
+        showSettingsDialog: _showSettingsDialog,
+        openImportFiles: (ctx) async {
+          await Navigator.push(
+            ctx,
+            MaterialPageRoute(builder: (_) => const ImportScreen()),
+          );
+        },
+        retryNetwork: () async {
+          final monitor = ref.read(networkMonitorProvider);
+          monitor.reset();
+          final nowOnline = await monitor.check();
+          ref.read(networkOnlineProvider.notifier).state = nowOnline;
+          if (nowOnline) _startBackgroundSync();
+        },
+      );
+    });
     if (Platform.isAndroid) _initShareIntent();
     Future.microtask(() async {
       // Check if DB file exists before touching the provider.
@@ -482,14 +512,67 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
-  /// Full manual refresh: shared with pull-to-refresh on mobile. Delegates to
-  /// [manualRefreshProvider] which handles the in-flight guard via
-  /// [isSyncingProvider]. Each step is best-effort -- failures don't block
-  /// subsequent steps.
-  Future<void> _manualRefresh() => ref.read(manualRefreshProvider)();
+  /// Full manual refresh: pull from Google Drive, then refresh market data.
+  /// Drives [isManualSyncingProvider] so the global Refresh action's spinner
+  /// reflects pulls triggered both from the AppBar button and the
+  /// pull-to-refresh gesture on mobile. Each step is best-effort -- failures
+  /// don't block subsequent steps.
+  Future<void> _manualRefresh() async {
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      // Update network status indicator
+      final online = await ref.read(networkMonitorProvider).check();
+      ref.read(networkOnlineProvider.notifier).state = online;
+
+      // Market data sync is best-effort
+      _log.info('Manual refresh: syncing market data...');
+      try {
+        await Future.wait([
+          ref.read(marketPriceServiceProvider).syncPrices(forceToday: true),
+          ref.read(exchangeRateServiceProvider).syncRates(force: true),
+        ]);
+        ref.read(priceRefreshCounter.notifier).state++;
+      } catch (e) {
+        _log.warning('Manual refresh: market sync failed: $e');
+      }
+
+      // Rebuild market_prices from existing revalue events. Catches
+      // cases where revalues were inserted via a path that bypasses
+      // AssetEventService.create's post-CRUD resync (e.g. CSV import's
+      // batched insert), and re-anchors close_price after any
+      // intervening buy/sell that shifted the qty-at-revalue.
+      try {
+        final db = ref.read(databaseProvider);
+        final eventService = ref.read(assetEventServiceProvider);
+        final rows = await db.customSelect(
+          "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
+          readsFrom: {db.assetEvents},
+        ).get();
+        for (final row in rows) {
+          await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
+        }
+        if (rows.isNotEmpty) {
+          _log.info('Manual refresh: resynced market_prices for ${rows.length} asset(s) with revalues');
+        }
+      } catch (e) {
+        _log.warning('Manual refresh: revalue resync failed: $e');
+      }
+
+      try {
+        await ref.read(compositionServiceProvider).syncCompositions();
+      } catch (e) {
+        _log.warning('Manual refresh: composition sync failed: $e');
+      }
+    } catch (e) {
+      _log.warning('Manual refresh error: $e');
+    } finally {
+      if (mounted) _isSyncing = false;
+    }
+  }
 
   Future<void> _syncPrices({bool forceToday = false}) async {
-    if (ref.read(isSyncingProvider)) return;
+    if (_isSyncing) return;
 
     // Check network first
     final monitor = ref.read(networkMonitorProvider);
@@ -500,7 +583,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       return;
     }
 
-    ref.read(isSyncingProvider.notifier).state = true;
+    _isSyncing = true;
     try {
       _log.info('Starting market price sync (forceToday=$forceToday)...');
       await Future.wait([
@@ -509,7 +592,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       ]);
       ref.read(priceRefreshCounter.notifier).state++;
     } finally {
-      if (mounted) ref.read(isSyncingProvider.notifier).state = false;
+      if (mounted) _isSyncing = false;
     }
   }
 
@@ -518,6 +601,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       0 => const DashboardScreen(),
       1 => const AccountsScreen(),
       2 => const AssetsScreen(),
+      3 => const PillarsScreen(),
       _ => const SizedBox(),
     };
   }
@@ -643,69 +727,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     return RepaintBoundary(
       key: _repaintKey,
       child: Scaffold(
-      appBar: AppBar(
-        actions: [
-          Consumer(builder: (context, ref, _) {
-            final isPrivate = ref.watch(privacyModeProvider);
-            final ss = ref.watch(appStringsProvider);
-            return IconButton(
-              icon: Icon(isPrivate ? Icons.visibility_off : Icons.visibility),
-              tooltip: isPrivate ? ss.tooltipHideAmounts : ss.tooltipShowAmounts,
-              onPressed: () =>
-                  ref.read(privacyModeProvider.notifier).state = !isPrivate,
-            );
-          }),
-          Consumer(builder: (context, ref, _) {
-            final online = ref.watch(networkOnlineProvider);
-            if (!online) {
-              return IconButton(
-                icon: Icon(Icons.signal_wifi_off, color: Colors.red.shade300),
-                tooltip: ref.read(appStringsProvider).noNetworkRetry,
-                onPressed: () async {
-                  final monitor = ref.read(networkMonitorProvider);
-                  monitor.reset();
-                  final nowOnline = await monitor.check();
-                  ref.read(networkOnlineProvider.notifier).state = nowOnline;
-                  if (nowOnline) _startBackgroundSync();
-                },
-              );
-            }
-            return const SizedBox.shrink();
-          }),
-          Consumer(builder: (context, ref, _) {
-            final syncing = ref.watch(isSyncingProvider);
-            return IconButton(
-              icon: syncing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-              tooltip: s.tooltipRefreshPrices,
-              onPressed: syncing ? null : _manualRefresh,
-            );
-          }),
-          IconButton(
-            icon: const Icon(Icons.import_export),
-            tooltip: s.tooltipImportExportDb,
-            onPressed: () => _showImportExportDialog(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: s.tooltipSettings,
-            onPressed: () => _showSettingsDialog(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_upload),
-            tooltip: s.tooltipImportFile,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ImportScreen()),
-            ),
-          ),
-        ],
-      ),
+      // Outer AppBar removed: each tab body now carries its own AppBar with
+      // both local actions and the globals from globalAppBarActions().
       body: isWide
           ? Row(
               children: [
