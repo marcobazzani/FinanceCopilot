@@ -72,26 +72,26 @@ class UrlResolveParseFailed extends UrlResolveResult {
 }
 
 /// the market data provider exchange name mapping.
-/// Keys match internal exchange codes in `assets.exchange`.
-/// the market data provider exchange names (as returned by their search API).
-/// Multiple names per exchange code since the API uses Italian names.
-const _exchangeNames = <String, List<String>>{
-  'MIL': ['Milano', 'Milan'],
-  'NYQ': ['NASDAQ', 'NYSE'],  // the market data provider lists AMZN as NASDAQ even though it's NYQ
-  'NMS': ['NASDAQ'],
-  'NYS': ['NYSE'],
-  'ASE': ['AMEX'],
-  'XETRA': ['Xetra'],
-  'FRA': ['Francoforte', 'Frankfurt'],
-  'LON': ['London', 'Londra'],
-  'AMS': ['Amsterdam'],
-  'PAR': ['Parigi', 'Paris'],
-  'BRU': ['Bruxelles', 'Brussels'],
-  'LIS': ['Lisbona', 'Lisbon'],
-  'SIX': ['Svizzera', 'Switzerland'],
-  'TSE': ['Toronto'],
-  'HKG': ['Hong Kong'],
-  'TYO': ['Tokyo'],
+/// Synonyms accepted when filtering search results by exchange. Keys are
+/// the canonical English name we store in `assets.exchange` and use as
+/// the cache-key suffix; values are the alternative spellings the
+/// provider may return (Italian-locale variants, etc.).
+const _exchangeSynonyms = <String, List<String>>{
+  'Milan': ['Milan', 'Milano'],
+  'NYSE': ['NYSE', 'NASDAQ'],  // provider lists AMZN as NASDAQ even though it's NYSE
+  'NASDAQ': ['NASDAQ'],
+  'AMEX': ['AMEX'],
+  'Xetra': ['Xetra'],
+  'Frankfurt': ['Frankfurt', 'Francoforte'],
+  'London': ['London', 'Londra'],
+  'Amsterdam': ['Amsterdam'],
+  'Paris': ['Paris', 'Parigi'],
+  'Brussels': ['Brussels', 'Bruxelles'],
+  'Lisbon': ['Lisbon', 'Lisbona'],
+  'Switzerland': ['Switzerland', 'Svizzera'],
+  'Toronto': ['Toronto'],
+  'Hong Kong': ['Hong Kong'],
+  'Tokyo': ['Tokyo'],
 };
 
 /// Fetches historical prices from the market data provider.
@@ -564,7 +564,7 @@ class WebMarketDataService extends MarketPriceService {
       if (cached != null) return cached;
     }
 
-    final exchangeNameList = _exchangeNames[exchange] ?? [exchange];
+    final exchangeNameList = _exchangeSynonyms[exchange] ?? [exchange];
     final isIsin = searchTerm.length == 12 && RegExp(r'^[A-Z]{2}\w{10}$').hasMatch(searchTerm);
 
     _log.info('searchCid: $searchTerm on ${exchangeNameList.first} (isIsin=$isIsin)');
@@ -664,7 +664,7 @@ class WebMarketDataService extends MarketPriceService {
 
     final isin = assetRow.readNullable<String>('isin');
     final ticker = assetRow.readNullable<String>('ticker');
-    final exchange = assetRow.readNullable<String>('exchange') ?? 'MIL';
+    final exchange = assetRow.readNullable<String>('exchange') ?? 'Milan';
     final currency = assetRow.read<String>('currency');
     final searchTerm = (isin?.isNotEmpty == true) ? isin! : (ticker ?? '');
     if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
@@ -944,7 +944,7 @@ class WebMarketDataService extends MarketPriceService {
       'SELECT exchange FROM assets WHERE ticker = ? LIMIT 1',
       variables: [Variable.withString(ticker)],
     ).getSingleOrNull();
-    final exchange = row?.readNullable<String>('exchange') ?? 'MIL';
+    final exchange = row?.readNullable<String>('exchange') ?? 'Milan';
 
     final cid = await _searchCid(ticker, exchange);
     if (cid == null) return {};
@@ -969,7 +969,7 @@ class WebMarketDataService extends MarketPriceService {
     for (final asset in assets) {
       final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
       if (searchTerm == null || searchTerm.isEmpty) continue;
-      final exchange = asset.exchange ?? 'MIL';
+      final exchange = asset.exchange ?? 'Milan';
       final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
       final urlRow = await db.customSelect(
         'SELECT value FROM app_configs WHERE key = ?',
@@ -1089,7 +1089,7 @@ class WebMarketDataService extends MarketPriceService {
       await _runBatched(candidates, _maxConcurrency, (record) async {
         final (asset, searchTerm) = record;
         final label = _assetLabel(asset);
-        final cid = await _searchCid(searchTerm, asset.exchange ?? 'MIL');
+        final cid = await _searchCid(searchTerm, asset.exchange ?? 'Milan');
         if (cid != null) {
           assetCids[asset] = cid;
           _log.info('syncPrices: $label - resolved cid=$cid');

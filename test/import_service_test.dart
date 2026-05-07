@@ -357,7 +357,7 @@ Date,Amount
       expect(asset.valuationMethod, ValuationMethod.marketPrice);
     });
 
-    test('imported assets store exchange code not the market data provider name', () async {
+    test('imported assets store the provider exchange name as-is (no remap)', () async {
       final preview = makeAssetPreview([
         ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
       ]);
@@ -368,13 +368,15 @@ Date,Amount
         selectedExchanges: {
           'IE00B4L5Y983': const IsinExchangeOption(
             cid: 46925, ticker: 'SWDA', name: 'iShares MSCI World',
-            exchange: 'London', // the market data provider name, not code
+            exchange: 'London',
           ),
         },
       );
       final assetId = result.assetsByIsin['IE00B4L5Y983']!;
       final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
-      expect(asset.exchange, 'LON'); // Should be converted to code
+      // Per the canonical-name design: store what the provider gave us,
+      // no code-conversion. Cache keys + search filter use the same string.
+      expect(asset.exchange, 'London');
     });
 
     test('excludedIsins skips assets during import', () async {

@@ -7,64 +7,111 @@ import 'asset_event_service.dart';
 
 final _log = getLogger('MarketPriceService');
 
-/// Supported exchanges for the UI picker. Label → exchange code.
-const supportedExchanges = <String, String>{
-  'Borsa Italiana (Milan)': 'MIL',
-  'NYSE': 'NYQ',
-  'NASDAQ': 'NMS',
-  'XETRA (Frankfurt)': 'XETRA',
-  'London Stock Exchange': 'LON',
-  'Euronext Amsterdam': 'AMS',
-  'Euronext Paris': 'PAR',
-  'SIX Swiss Exchange': 'SIX',
-  'Toronto Stock Exchange': 'TSE',
-  'Hong Kong Stock Exchange': 'HKG',
-  'Tokyo Stock Exchange': 'TYO',
+/// Canonical exchange names — the values stored in `assets.exchange` and
+/// in the cache-key suffix. We use the provider's English name; the search
+/// service accepts language synonyms (Italian variants etc.) via its
+/// internal name list, but we never store synonyms.
+const supportedExchanges = <String>[
+  'Milan',
+  'NYSE',
+  'NASDAQ',
+  'AMEX',
+  'Xetra',
+  'Frankfurt',
+  'London',
+  'Amsterdam',
+  'Paris',
+  'Brussels',
+  'Lisbon',
+  'Switzerland',
+  'Toronto',
+  'Hong Kong',
+  'Tokyo',
+];
+
+/// Native currency for each canonical exchange name.
+const exchangeCurrency = <String, String>{
+  'Milan': 'EUR',
+  'NYSE': 'USD',
+  'NASDAQ': 'USD',
+  'AMEX': 'USD',
+  'Xetra': 'EUR',
+  'Frankfurt': 'EUR',
+  'London': 'GBP',
+  'Amsterdam': 'EUR',
+  'Paris': 'EUR',
+  'Brussels': 'EUR',
+  'Lisbon': 'EUR',
+  'Switzerland': 'CHF',
+  'Toronto': 'CAD',
+  'Hong Kong': 'HKD',
+  'Tokyo': 'JPY',
 };
 
-/// Reverse map: provider exchange name → internal code.
-/// Derived from `_exchangeNames` in the market data provider service.
-const providerExchangeToCode = <String, String>{
-  'Milano': 'MIL',
-  'Milan': 'MIL',
-  'NASDAQ': 'NMS',
-  'NYSE': 'NYQ',
-  'AMEX': 'ASE',
-  'Xetra': 'XETRA',
-  'Francoforte': 'FRA',
-  'Frankfurt': 'FRA',
-  'London': 'LON',
-  'Londra': 'LON',
-  'Amsterdam': 'AMS',
-  'Parigi': 'PAR',
-  'Paris': 'PAR',
-  'Bruxelles': 'BRU',
-  'Brussels': 'BRU',
-  'Lisbona': 'LIS',
-  'Lisbon': 'LIS',
-  'Svizzera': 'SIX',
-  'Toronto': 'TSE',
-  'Hong Kong': 'HKG',
-  'Tokyo': 'TYO',
+/// Synonym → canonical exchange name (e.g. `'Milano' → 'Milan'`,
+/// `'Londra' → 'London'`). Used to recognise listings the provider
+/// returns under a localised name and resolve them back to the canonical
+/// English name we store. Canonical names map to themselves.
+const exchangeSynonyms = <String, String>{
+  // Canonical names (identity).
+  'Milan': 'Milan',
+  'NYSE': 'NYSE',
+  'NASDAQ': 'NASDAQ',
+  'AMEX': 'AMEX',
+  'Xetra': 'Xetra',
+  'Frankfurt': 'Frankfurt',
+  'London': 'London',
+  'Amsterdam': 'Amsterdam',
+  'Paris': 'Paris',
+  'Brussels': 'Brussels',
+  'Lisbon': 'Lisbon',
+  'Switzerland': 'Switzerland',
+  'Toronto': 'Toronto',
+  'Hong Kong': 'Hong Kong',
+  'Tokyo': 'Tokyo',
+  // Synonyms.
+  'Milano': 'Milan',
+  'Londra': 'London',
+  'Francoforte': 'Frankfurt',
+  'Parigi': 'Paris',
+  'Bruxelles': 'Brussels',
+  'Lisbona': 'Lisbon',
+  'Svizzera': 'Switzerland',
 };
 
-/// Exchange code → native currency mapping.
-const exchangeCodeToCurrency = <String, String>{
-  'MIL': 'EUR',
-  'NYQ': 'USD',
-  'NMS': 'USD',
-  'ASE': 'USD',
-  'XETRA': 'EUR',
-  'FRA': 'EUR',
-  'LON': 'GBP',
-  'AMS': 'EUR',
-  'PAR': 'EUR',
-  'BRU': 'EUR',
-  'LIS': 'EUR',
-  'SIX': 'CHF',
-  'TSE': 'CAD',
-  'HKG': 'HKD',
-  'TYO': 'JPY',
+/// True when [name] is a canonical exchange name OR a recognised synonym.
+bool isKnownExchange(String name) => exchangeSynonyms.containsKey(name);
+
+/// One-shot map from legacy short-codes / synonyms to the canonical name.
+/// Used by migration v40 to heal pre-existing rows; no live code path
+/// should rely on this. Kept as a public const so the migration can
+/// consume it without duplicating the table.
+const legacyExchangeAliases = <String, String>{
+  // Codes
+  'MIL': 'Milan',
+  'NYQ': 'NYSE',
+  'NMS': 'NASDAQ',
+  'NYS': 'NYSE',
+  'ASE': 'AMEX',
+  'XETRA': 'Xetra',
+  'FRA': 'Frankfurt',
+  'LON': 'London',
+  'AMS': 'Amsterdam',
+  'PAR': 'Paris',
+  'BRU': 'Brussels',
+  'LIS': 'Lisbon',
+  'SIX': 'Switzerland',
+  'TSE': 'Toronto',
+  'HKG': 'Hong Kong',
+  'TYO': 'Tokyo',
+  // Italian synonyms
+  'Milano': 'Milan',
+  'Londra': 'London',
+  'Francoforte': 'Frankfurt',
+  'Parigi': 'Paris',
+  'Bruxelles': 'Brussels',
+  'Lisbona': 'Lisbon',
+  'Svizzera': 'Switzerland',
 };
 
 /// Abstract base for market price providers.

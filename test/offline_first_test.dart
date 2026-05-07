@@ -190,19 +190,17 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 39 after dropping yahoo_ticker + registered_events (v39)', () async {
-      // v27..v35 — see git history for prior bumps. v36 added the Pillars
-      // and PillarAssets tables (named buckets of asset units with an
-      // optional target value). v37 dropped the originally-introduced
-      // pillars.reference_portfolio column (no concrete reference-portfolio
-      // catalog yet). v38 dropped pillars.emoji (freeform text was UX
-      // dead weight without a picker). v39 dropped the never-read
-      // assets.yahoo_ticker column and the unused registered_events table,
-      // and renamed legacy app_configs cache keys from INVESTING_* to
-      // PROVIDER_*.
+    test('schema version is 40 after exchange-name normalisation (v40)', () async {
+      // v36 added Pillars + PillarAssets. v37 dropped
+      // pillars.reference_portfolio. v38 dropped pillars.emoji. v39 dropped
+      // assets.yahoo_ticker + registered_events. v40 renamed legacy
+      // app_configs INVESTING_* keys to PROVIDER_* and normalised
+      // assets.exchange (and cache-key suffixes) from internal codes /
+      // Italian variants to canonical English provider names ('MIL'→'Milan',
+      // 'NYQ'→'NYSE', 'Milano'→'Milan', etc.).
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 39);
+      expect(version, 40);
     });
 
     test('dashboard_charts table is gone', () async {

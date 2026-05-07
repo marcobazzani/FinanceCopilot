@@ -9,7 +9,7 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/asset_service.dart';
 import '../../services/web_market_data_service.dart';
-import '../../services/market_price_service.dart' show exchangeCodeToCurrency, providerExchangeToCode, supportedExchanges;
+import '../../services/market_price_service.dart' show exchangeCurrency, isKnownExchange, supportedExchanges;
 import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
 import '../../utils/dialogs.dart';
@@ -537,7 +537,7 @@ List<ProviderSearchResult> exchangeListingsFor(
       .where((x) =>
           x.description.isNotEmpty &&
           x.description == picked.description &&
-          providerExchangeToCode[x.exchange] != null)
+          isKnownExchange(x.exchange))
       .toList();
   return siblings.isNotEmpty ? siblings : [picked];
 }
@@ -719,11 +719,10 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   }
 
   void _selectResult(ProviderSearchResult result) {
-    final code = providerExchangeToCode[result.exchange];
     final (instrument, assetCls) = _classifyFromType(result.type);
     setState(() {
       _selected = result;
-      _selectedExchange = code ?? 'MIL';
+      _selectedExchange = result.exchange;
       _instrumentType = instrument;
       _assetClass = assetCls;
       _listings = exchangeListingsFor(_allResults, result);
@@ -763,7 +762,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         child: AssetSearchSection(
           widgetRef: widget.ref,
           onSelect: _selectResult,
-          recoveryDefaultExchange: _selectedExchange ?? 'MIL',
+          recoveryDefaultExchange: _selectedExchange ?? 'Milan',
           recoveryCacheKeyBuilder: (q) =>
               _isinShaped(q) ? q.toUpperCase() : q,
           onQueryChanged: (q) => _typedQuery = q,
@@ -845,8 +844,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           onPressed: _selectedIntermediaryId != null
               ? () async {
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-                  final exchange = _selectedExchange ?? 'MIL';
-                  final defaultCurrency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
+                  final exchange = _selectedExchange ?? 'Milan';
+                  final defaultCurrency = exchangeCurrency[exchange] ?? baseCurrency;
                   final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
                   final currency = (_unlocked && overrideCurrency.length == 3)
                       ? overrideCurrency
@@ -875,30 +874,24 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   }
 
   Widget _buildExchangeDropdown(AppStrings s) {
-    // Build (code → label, listing) entries from the discovered listings so
-    // the user can only pick exchanges where the instrument actually trades.
-    // Falls back to the global supportedExchanges list when no listings were
-    // discovered (manual flow / unmappable exchange names).
-    final byCode = <String, (String, ProviderSearchResult)>{};
+    // Discovered listings drive the dropdown so the user can only pick
+    // exchanges where the instrument actually trades. Falls back to the
+    // global supportedExchanges list when no listings were discovered.
+    final byName = <String, ProviderSearchResult>{};
     for (final l in _listings) {
-      final code = providerExchangeToCode[l.exchange];
-      if (code == null) continue;
-      byCode.putIfAbsent(code, () {
-        // Use the supportedExchanges label when available so the wording stays
-        // consistent across the app; otherwise show the raw provider name.
-        final label = supportedExchanges.entries
-            .firstWhere((e) => e.value == code, orElse: () => MapEntry(l.exchange, code))
-            .key;
-        return (label, l);
-      });
+      if (!isKnownExchange(l.exchange)) continue;
+      byName.putIfAbsent(l.exchange, () => l);
     }
 
-    if (byCode.isEmpty) {
+    if (byName.isEmpty) {
+      final initial = supportedExchanges.contains(_selectedExchange)
+          ? _selectedExchange
+          : supportedExchanges.first;
       return DropdownButtonFormField<String>(
-        initialValue: _selectedExchange,
+        initialValue: initial,
         decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
-        items: supportedExchanges.entries
-            .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+        items: supportedExchanges
+            .map((name) => DropdownMenuItem(value: name, child: Text(name, style: const TextStyle(fontSize: 13))))
             .toList(),
         onChanged: (v) {
           if (v != null) setState(() => _selectedExchange = v);
@@ -906,31 +899,31 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       );
     }
 
-    if (byCode.length == 1) {
-      final entry = byCode.entries.first;
+    if (byName.length == 1) {
+      final entry = byName.entries.first;
       return InputDecorator(
         decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
-        child: Text(entry.value.$1, style: const TextStyle(fontSize: 13)),
+        child: Text(entry.key, style: const TextStyle(fontSize: 13)),
       );
     }
 
-    final initial = byCode.containsKey(_selectedExchange) ? _selectedExchange : byCode.keys.first;
+    final initial = byName.containsKey(_selectedExchange) ? _selectedExchange : byName.keys.first;
     return DropdownButtonFormField<String>(
       initialValue: initial,
       decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
-      items: byCode.entries
+      items: byName.entries
           .map((e) => DropdownMenuItem(
                 value: e.key,
-                child: Text(e.value.$1, style: const TextStyle(fontSize: 13)),
+                child: Text(e.key, style: const TextStyle(fontSize: 13)),
               ))
           .toList(),
       onChanged: (v) {
         if (v == null) return;
-        final pair = byCode[v];
+        final pair = byName[v];
         if (pair == null) return;
         setState(() {
           _selectedExchange = v;
-          _selected = pair.$2; // swap to the listing that matches the chosen exchange
+          _selected = pair; // swap to the listing that matches the chosen exchange
         });
       },
     );
