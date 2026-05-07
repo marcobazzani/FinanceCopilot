@@ -1,12 +1,16 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as xl;
 import 'package:flutter/foundation.dart' show compute;
 import 'package:intl/intl.dart';
+import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
 import '../utils/logger.dart';
 import 'import_service.dart' show FilePreview;
+import 'pdf_exceptions.dart';
+import 'pdf_table_reconstructor.dart';
 
 final _log = getLogger('FileParserService');
 
@@ -142,6 +146,77 @@ List<String> _listSheetsIsolate(List<int> bytes) {
   return excel.tables.keys.toList();
 }
 
+/// Parse a PDF on the main isolate using pdfrx + the pure-Dart
+/// [PdfTableReconstructor]. We do NOT route through `compute()` because
+/// pdfrx binds to PDFium via Flutter platform channels, which the spawn
+/// helper isolate doesn't carry. PDFs are also small enough that the
+/// isolate setup cost would dominate the parse cost.
+///
+/// Throws one of the [PdfImportException] subclasses on failure; the UI
+/// layer maps each to a localized message.
+Future<FilePreview> _parsePdfMain(
+  Uint8List bytes, {
+  required int skipRows,
+  required bool noHeader,
+}) async {
+  pdfrx.PdfDocument document;
+  try {
+    document = await pdfrx.PdfDocument.openData(bytes);
+  } on pdfrx.PdfPasswordException catch (e) {
+    throw PdfEncryptedException(e.message);
+  }
+
+  try {
+    if (document.isEncrypted) {
+      throw const PdfEncryptedException('PDF is encrypted.');
+    }
+    final fragments = <PdfFragment>[];
+    for (var i = 0; i < document.pages.length; i++) {
+      final page = document.pages[i];
+      final text = await page.loadText();
+      for (final f in text.fragments) {
+        if (f.text.trim().isEmpty) continue;
+        fragments.add(PdfFragment(
+          text: f.text,
+          left: f.bounds.left,
+          top: f.bounds.top,
+          right: f.bounds.right,
+          bottom: f.bounds.bottom,
+          page: i + 1,
+        ));
+      }
+    }
+
+    final result = PdfTableReconstructor.reconstruct(fragments);
+
+    var columns = result.columns;
+    var dataRows = result.rows;
+
+    if (skipRows > 0 && skipRows < dataRows.length) {
+      dataRows = dataRows.sublist(skipRows);
+    }
+    if (noHeader) {
+      columns = List<String>.generate(columns.length, (i) => 'Column ${i + 1}');
+    }
+
+    final mapped = dataRows.map((row) {
+      final m = <String, String>{};
+      for (var i = 0; i < columns.length && i < row.length; i++) {
+        m[columns[i]] = row[i];
+      }
+      return m;
+    }).toList();
+
+    return FilePreview(
+      columns: columns,
+      rows: mapped,
+      totalRows: mapped.length,
+    );
+  } finally {
+    await document.dispose();
+  }
+}
+
 // ──────────────────────────────────────────────
 // FileParserService — CSV/Excel/clipboard parsing
 // ──────────────────────────────────────────────
@@ -173,6 +248,9 @@ class FileParserService {
           'noHeader': noHeader,
           'numberLocale': numberLocale,
         });
+      case 'pdf':
+        final bytes = await File(filePath).readAsBytes();
+        result = await _parsePdfMain(bytes, skipRows: skipRows, noHeader: noHeader);
       default:
         throw UnsupportedError('Unsupported file format: .$ext');
     }
@@ -259,6 +337,9 @@ class FileParserService {
             'noHeader': preview.noHeader,
             'numberLocale': effectiveLocale,
           });
+        case 'pdf':
+          final bytes = await File(preview.filePath!).readAsBytes();
+          return _parsePdfMain(bytes, skipRows: preview.skipRows, noHeader: preview.noHeader);
       }
     } else if (preview.clipboardText != null) {
       return compute(_parseCsvIsolate, <String, dynamic>{
