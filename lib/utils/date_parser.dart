@@ -78,6 +78,20 @@ DateTime parseDate(String s) {
     return DateTime(year, month + 1, 0);
   }
 
+  // MMMM YYYY (month name + year, no day) → last day of that month.
+  // E.g. "Gennaio 2026", "January 2026", "Févr 2026". Used by pension /
+  // periodic statements where the period column is a localized month label.
+  // Resolution mirrors the MM/YYYY case above so parser behavior is uniform.
+  final monthYearNamed =
+      RegExp(r'^(\w+)\s+(\d{4})$', caseSensitive: false).firstMatch(s);
+  if (monthYearNamed != null) {
+    final month = monthMap[monthYearNamed.group(1)!.toLowerCase()];
+    if (month != null) {
+      final year = int.parse(monthYearNamed.group(2)!);
+      return DateTime(year, month + 1, 0);
+    }
+  }
+
   // dd/MM/yy (2-digit year)
   final dmy2 = RegExp(r'^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$').firstMatch(s);
   if (dmy2 != null) {

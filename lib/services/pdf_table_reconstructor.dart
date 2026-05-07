@@ -126,6 +126,7 @@ class PdfTableReconstructor {
     final balanceAnchor = _anchorBalanceColumn(
       lines,
       dataLineIndices,
+      dateAnchor,
       amountAnchor,
       charWidth,
     );
@@ -139,12 +140,26 @@ class PdfTableReconstructor {
       charWidth: charWidth,
     );
 
-    final allAnchors = <_ColAnchor>[
+    final dataAnchors = <_ColAnchor>[
       dateAnchor,
       ...middleAnchors,
       amountAnchor,
       ?balanceAnchor,
     ]..sort((a, b) => a.xLeft.compareTo(b.xLeft));
+
+    // Header detection runs BEFORE the final cell assignment so a clean
+    // text-only header row above the data can introduce synthetic anchors
+    // for columns the data alone wouldn't reveal — e.g. an "Uscite"
+    // (debits) column whose value is empty for every row in this report
+    // but whose header is clearly printed above. Without this step those
+    // headers would either (a) merge with their nearest data anchor and
+    // produce labels like "Entrate Uscite", or (b) be dropped entirely.
+    final headerLineIndex =
+        _findHeaderLine(lines, dataLineIndices.first);
+    final allAnchors = headerLineIndex != null
+        ? _augmentAnchorsWithHeader(
+            dataAnchors, lines[headerLineIndex], charWidth)
+        : dataAnchors;
 
     final boundaries = _columnBoundaries(allAnchors);
 
@@ -157,10 +172,15 @@ class PdfTableReconstructor {
     final amountColIdx =
         allAnchors.indexWhere((a) => identical(a, amountAnchor));
 
-    final headerRow =
-        _detectHeader(lines, lineCells, dataLineIndices.first, allAnchors);
-    final columns = headerRow ??
-        List<String>.generate(allAnchors.length, (i) => 'Column ${i + 1}');
+    final columns = headerLineIndex != null
+        ? List<String>.generate(
+            allAnchors.length,
+            (k) => k < lineCells[headerLineIndex].length &&
+                    lineCells[headerLineIndex][k].isNotEmpty
+                ? lineCells[headerLineIndex][k]
+                : 'Column ${k + 1}',
+          )
+        : List<String>.generate(allAnchors.length, (i) => 'Column ${i + 1}');
 
     if (columns.length < 2 || columns.length > 12) {
       throw const PdfTableNotDetectedException(
@@ -175,6 +195,7 @@ class PdfTableReconstructor {
       dataLineSet: dataLineSet,
       dateAnchor: dateAnchor,
       amountAnchor: amountAnchor,
+      balanceAnchor: balanceAnchor,
       lineHeight: lineHeight,
     );
 
@@ -185,7 +206,7 @@ class PdfTableReconstructor {
     }
 
     final dateOk = mergedRows
-        .where((r) => _looksLikeDate(_safeCell(r, dateColIdx)))
+        .where((r) => _cellHasDate(_safeCell(r, dateColIdx)))
         .length;
     final amtOk = mergedRows
         .where((r) => _tryAnyLocaleAmount(_safeCell(r, amountColIdx)) != null)
@@ -303,16 +324,16 @@ class PdfTableReconstructor {
   // ────────────────────────────────────────────────────────
 
   static _ColAnchor _anchorDateColumn(List<_Line> lines, double charWidth) {
-    final candidates = <_FragmentInLine>[];
+    // Per-line date positions, including dates whose text was split by
+    // pdfrx into adjacent fragments (e.g. "Gennaio" + "2026", or "Jan" +
+    // "15," + "2024"). Without stitching we'd miss these entirely.
+    final perLine = <int, List<_DatePos>>{};
     var candidateLines = 0;
     for (var i = 0; i < lines.length; i++) {
-      final dateFrags =
-          lines[i].fragments.where((f) => _looksLikeDate(f.text)).toList();
-      if (dateFrags.isEmpty) continue;
+      final positions = _findDatesInLine(lines[i]);
+      if (positions.isEmpty) continue;
+      perLine[i] = positions;
       candidateLines++;
-      if (dateFrags.length == 1) {
-        candidates.add(_FragmentInLine(lineIndex: i, fragment: dateFrags.single));
-      }
     }
     if (candidateLines == 0) {
       throw const PdfTableNotDetectedException(
@@ -320,8 +341,14 @@ class PdfTableReconstructor {
       );
     }
 
+    final allCenters = <double>[];
+    for (final list in perLine.values) {
+      for (final p in list) {
+        allCenters.add(p.xCenter);
+      }
+    }
     final clusters = _cluster1D(
-      candidates.map((c) => c.fragment.xCenter).toList(),
+      allCenters,
       mergeThreshold: charWidth * 3,
     );
     if (clusters.isEmpty) {
@@ -329,28 +356,117 @@ class PdfTableReconstructor {
         'Date X-positions did not cluster.',
       );
     }
-    clusters.sort((a, b) => b.count.compareTo(a.count));
-    final dominant = clusters.first;
 
-    if (dominant.count / candidateLines < _dateAnchorSupport) {
+    // Score each cluster by how many DISTINCT lines contain a date in it.
+    // Counting lines (not fragments) is what we actually care about: a
+    // line with 5 dates in one cluster shouldn't outweigh 5 lines with
+    // one date each. Tiebreak by leftmost — the date column convention.
+    _Cluster1D? best;
+    var bestLines = 0;
+    for (final c in clusters) {
+      var supporting = 0;
+      for (final entry in perLine.entries) {
+        for (final p in entry.value) {
+          if (p.xCenter >= c.lo && p.xCenter <= c.hi) {
+            supporting++;
+            break;
+          }
+        }
+      }
+      if (best == null ||
+          supporting > bestLines ||
+          (supporting == bestLines && c.center < best.center)) {
+        best = c;
+        bestLines = supporting;
+      }
+    }
+
+    if (best == null || bestLines / candidateLines < _dateAnchorSupport) {
       throw const PdfTableNotDetectedException(
         'Dominant date cluster has weak support across candidate lines.',
       );
     }
 
-    final lefts = candidates
-        .where((c) =>
-            c.fragment.xCenter >= dominant.lo - charWidth &&
-            c.fragment.xCenter <= dominant.hi + charWidth)
-        .map((c) => c.fragment.left)
-        .toList();
-    final medianLeft = _median(lefts);
+    // Track the actual left/right edges of dates anchored to this column.
+    // We START with positions whose xCenter sits inside the dominant
+    // cluster, then iteratively pull in any other date position whose
+    // xCenter already falls inside the current band — this expands xHi
+    // to cover stitched dates that extend past the cluster (e.g. a
+    // subtotal row's "Gennaio 2026" stitch sits a few points right of
+    // the per-row stitch because of the leading "Totale" word, but the
+    // date is still semantically in the same column).
+    final lefts = <double>[];
+    final rights = <double>[];
+    var bandLo = best.lo - charWidth;
+    var bandHi = best.hi + charWidth;
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (final list in perLine.values) {
+        for (final p in list) {
+          if (p.xCenter < bandLo || p.xCenter > bandHi) continue;
+          if (p.right + charWidth > bandHi) {
+            bandHi = p.right + charWidth;
+            changed = true;
+          }
+          if (p.left - charWidth < bandLo) {
+            bandLo = p.left - charWidth;
+            changed = true;
+          }
+        }
+      }
+    }
+    for (final list in perLine.values) {
+      for (final p in list) {
+        if (p.xCenter >= bandLo && p.xCenter <= bandHi) {
+          lefts.add(p.left);
+          rights.add(p.right);
+        }
+      }
+    }
     return _ColAnchor(
       role: _ColRole.date,
-      xLeft: medianLeft,
-      xLo: dominant.lo - charWidth,
-      xHi: dominant.hi + charWidth,
+      xLeft: _median(lefts),
+      xLo: bandLo,
+      xHi: bandHi,
     );
+  }
+
+  /// Find every parseable-date position in [line], including ones whose
+  /// text was split across adjacent fragments. Greedy non-overlapping:
+  /// at each fragment we try the longest stitch (up to 3 fragments) that
+  /// parses, then advance past it.
+  ///
+  /// Capping at 3 covers practical formats: "Jan 15, 2024" (3),
+  /// "Gennaio 2026" (2), "01/2024" (1). Going wider would invite false
+  /// positives where a date-shaped substring sits inside a longer phrase.
+  static List<_DatePos> _findDatesInLine(_Line line) {
+    final frags = line.fragments;
+    final out = <_DatePos>[];
+    var i = 0;
+    while (i < frags.length) {
+      int? bestEnd;
+      final maxJ = (i + 3 <= frags.length) ? i + 3 : frags.length;
+      for (var j = i; j < maxJ; j++) {
+        final combined = frags
+            .sublist(i, j + 1)
+            .map((f) => f.text.trim())
+            .where((t) => t.isNotEmpty)
+            .join(' ');
+        if (_looksLikeDate(combined)) {
+          bestEnd = j;
+        }
+      }
+      if (bestEnd != null) {
+        final left = frags[i].left;
+        final right = frags[bestEnd].right;
+        out.add(_DatePos(left: left, right: right));
+        i = bestEnd + 1;
+      } else {
+        i++;
+      }
+    }
+    return out;
   }
 
   // ────────────────────────────────────────────────────────
@@ -389,49 +505,69 @@ class PdfTableReconstructor {
         'Amount X-positions did not cluster.',
       );
     }
+    // Walk clusters right-to-left and pick the first one that meets the
+    // support threshold. A right-most cluster that only fires on a few
+    // rows (e.g. a Saldo column with values only on subtotal rows) would
+    // fail support; the real per-row amount column sits to its left and
+    // covers every data line.
     clusters.sort((a, b) => b.center.compareTo(a.center));
-    final rightMost = clusters.first;
-
-    final supportLines = numerics
-        .where((n) =>
-            n.fragment.xCenter >= rightMost.lo - charWidth &&
-            n.fragment.xCenter <= rightMost.hi + charWidth)
-        .map((n) => n.lineIndex)
-        .toSet();
-    if (supportLines.length / dataLineIndices.length < _amountAnchorSupport) {
+    _Cluster1D? chosen;
+    Set<int>? chosenSupport;
+    for (final c in clusters) {
+      final supportLines = numerics
+          .where((n) =>
+              n.fragment.xCenter >= c.lo - charWidth &&
+              n.fragment.xCenter <= c.hi + charWidth)
+          .map((n) => n.lineIndex)
+          .toSet();
+      if (supportLines.length / dataLineIndices.length >=
+          _amountAnchorSupport) {
+        chosen = c;
+        chosenSupport = supportLines;
+        break;
+      }
+    }
+    if (chosen == null || chosenSupport == null) {
       throw const PdfTableNotDetectedException(
-        'Right-most numeric cluster has weak support across data lines.',
+        'No numeric cluster has sufficient support across data lines.',
       );
     }
 
     final lefts = numerics
-        .where((n) => supportLines.contains(n.lineIndex) &&
-            n.fragment.xCenter >= rightMost.lo - charWidth &&
-            n.fragment.xCenter <= rightMost.hi + charWidth)
+        .where((n) => chosenSupport!.contains(n.lineIndex) &&
+            n.fragment.xCenter >= chosen!.lo - charWidth &&
+            n.fragment.xCenter <= chosen.hi + charWidth)
         .map((n) => n.fragment.left)
         .toList();
     return _ColAnchor(
       role: _ColRole.amount,
       xLeft: _median(lefts),
-      xLo: rightMost.lo - charWidth,
-      xHi: rightMost.hi + charWidth,
+      xLo: chosen.lo - charWidth,
+      xHi: chosen.hi + charWidth,
     );
   }
 
   static _ColAnchor? _anchorBalanceColumn(
     List<_Line> lines,
     List<int> dataLineIndices,
+    _ColAnchor date,
     _ColAnchor amount,
     double charWidth,
   ) {
+    // Numeric clusters NOT overlapping with the amount column. Searched on
+    // BOTH sides — most layouts put balance to the right of amount, but a
+    // few (and the existing "amount = right-most" tests) put it to the
+    // left. We don't care which side; we just want the second numeric
+    // column with a credible amount of signal. Also exclude fragments
+    // inside the date band — a bare year like "2026" inside the date
+    // column parses as a number and would otherwise hijack a balance
+    // anchor between the month and the year.
     final candidates = <_FragmentInLine>[];
     for (final i in dataLineIndices) {
-      final frags = lines[i]
-          .fragments
-          .where((f) =>
-              _tryAnyLocaleAmount(f.text) != null &&
-              f.xCenter < amount.xLo)
-          .toList();
+      final frags = lines[i].fragments.where((f) =>
+          _tryAnyLocaleAmount(f.text) != null &&
+          !_xInBand(f.xCenter, amount) &&
+          !_xInBand(f.xCenter, date));
       for (final f in frags) {
         candidates.add(_FragmentInLine(lineIndex: i, fragment: f));
       }
@@ -442,6 +578,10 @@ class PdfTableReconstructor {
       mergeThreshold: charWidth * 3,
     );
     if (clusters.isEmpty) return null;
+    // Prefer right-most. Existing tests expect [date, desc, amount-col,
+    // balance-col] grids to anchor "balance" on the second-rightmost
+    // numeric (i.e. the geometric amount column), with header detection
+    // labelling cells correctly.
     clusters.sort((a, b) => b.center.compareTo(a.center));
     final secondMost = clusters.first;
 
@@ -452,8 +592,21 @@ class PdfTableReconstructor {
         .map((c) => c.lineIndex)
         .toSet();
 
+    // Two acceptance paths:
+    //  - "Dense" balance column (the typical second-numeric-column case):
+    //    must reach _balanceSupportRatio of amount support.
+    //  - "Sparse" balance column (PPP-style: Saldo only on subtotal rows):
+    //    accept any cluster with at least 2 supporting lines, provided
+    //    it sits clearly RIGHT of the amount column. This recovers the
+    //    Saldo cells on subtotal rows without forcing them to be jammed
+    //    into the amount cell.
     final amountSupport = (dataLineIndices.length * _amountAnchorSupport).ceil();
-    if (supportLines.length < amountSupport * _balanceSupportRatio) {
+    final isDense =
+        supportLines.length >= amountSupport * _balanceSupportRatio;
+    final isSparseRight = !isDense &&
+        supportLines.length >= 2 &&
+        secondMost.lo > amount.xHi;
+    if (!isDense && !isSparseRight) {
       return null;
     }
 
@@ -487,16 +640,20 @@ class PdfTableReconstructor {
     required _ColAnchor? balanceAnchor,
     required double charWidth,
   }) {
-    final rightBoundary =
-        balanceAnchor != null ? balanceAnchor.xLo : amountAnchor.xLo;
-
+    // Middle columns sit strictly BETWEEN date and amount. Balance can be
+    // on either side of amount, so we exclude its band explicitly — but
+    // we don't use it as a boundary, because the amount column itself
+    // would otherwise become a middle-column candidate.
     final lefts = <_FragmentInLine>[];
     final perLineCounts = <int, Set<int>>{};
     for (final i in dataLineIndices) {
       perLineCounts[i] = <int>{};
       for (final f in lines[i].fragments) {
         if (f.xCenter <= dateAnchor.xHi) continue;
-        if (f.xCenter >= rightBoundary) continue;
+        if (f.xCenter >= amountAnchor.xLo) continue;
+        if (balanceAnchor != null && _xInBand(f.xCenter, balanceAnchor)) {
+          continue;
+        }
         lefts.add(_FragmentInLine(lineIndex: i, fragment: f));
       }
     }
@@ -535,8 +692,35 @@ class PdfTableReconstructor {
         xHi: c.hi,
       ));
     }
-    accepted.sort((a, b) => a.xLeft.compareTo(b.xLeft));
-    return accepted;
+    if (accepted.isNotEmpty) {
+      accepted.sort((a, b) => a.xLeft.compareTo(b.xLeft));
+      return accepted;
+    }
+
+    // Fallback: when no per-column structure passes the support threshold
+    // — typically because some data lines are summary rows that don't have
+    // every column populated — anchor a single "description" column that
+    // spans the whole gap between date and amount (excluding any balance
+    // band that sits in there). This lets the cell-assigner sweep the
+    // free-floating description fragments out of the date column.
+    final linesWithMiddle = lefts.map((f) => f.lineIndex).toSet();
+    if (linesWithMiddle.length / dataLineIndices.length < 0.50) {
+      return const [];
+    }
+    final fallbackLefts = lefts.map((f) => f.fragment.left).toList();
+    final fallbackRights = lefts.map((f) => f.fragment.right).toList();
+    final spanLeft =
+        fallbackLefts.reduce((a, b) => a < b ? a : b) - charWidth * 0.5;
+    final spanRight =
+        fallbackRights.reduce((a, b) => a > b ? a : b) + charWidth * 0.5;
+    return [
+      _ColAnchor(
+        role: _ColRole.middle,
+        xLeft: _median(fallbackLefts),
+        xLo: spanLeft,
+        xHi: spanRight,
+      ),
+    ];
   }
 
   // ────────────────────────────────────────────────────────
@@ -546,10 +730,19 @@ class PdfTableReconstructor {
   static List<double> _columnBoundaries(List<_ColAnchor> anchors) {
     // Boundary i is the START of column i. Column i spans
     // [boundaries[i], boundaries[i+1]) — last column extends to +inf.
-    // Using anchor.xLeft minus a small margin (charWidth) lets a fragment
-    // whose left lands slightly before the anchor still join the right
-    // column. Margin is folded into the anchor's xLo, so use that.
-    return [for (final a in anchors) a.xLo];
+    //
+    // boundary[0] is anchor[0].xLo so fragments to the left of the first
+    // column still get bucketed into it. Subsequent boundaries are the
+    // MIDPOINTS between consecutive anchor xLeft positions. Midpoints
+    // matter because column header text is typically center-aligned over
+    // its column while numeric data is right-aligned; an xLo-only scheme
+    // makes a center-aligned "Saldo" header land in its left neighbour.
+    if (anchors.isEmpty) return const [];
+    final out = <double>[anchors.first.xLo];
+    for (var i = 1; i < anchors.length; i++) {
+      out.add((anchors[i - 1].xLeft + anchors[i].xLeft) / 2);
+    }
+    return out;
   }
 
   static List<String> _assignCells(_Line line, List<double> boundaries) {
@@ -589,6 +782,7 @@ class PdfTableReconstructor {
     required Set<int> dataLineSet,
     required _ColAnchor dateAnchor,
     required _ColAnchor amountAnchor,
+    required _ColAnchor? balanceAnchor,
     required double lineHeight,
   }) {
     final rows = <List<String>>[];
@@ -603,10 +797,21 @@ class PdfTableReconstructor {
       while (j < lines.length &&
           !dataLineSet.contains(j) &&
           lines[j].page == lines[i].page) {
-        final hasAmount = lines[j].fragments.any((f) =>
-            _xInBand(f.xCenter, amountAnchor) &&
-            _tryAnyLocaleAmount(f.text) != null);
-        if (hasAmount) break;
+        // A continuation line never carries a numeric in an anchored
+        // money column. The check covers both amount AND balance — a
+        // closing-position row ("POSIZIONE INDIVIDUALE AL 04/2026
+        // 51.413,52") sits below the last subtotal with its value in
+        // the balance band only, so without including balance the wrap
+        // would absorb it into the previous row.
+        final hasAnchoredAmount = lines[j].fragments.any((f) {
+          if (_tryAnyLocaleAmount(f.text) == null) return false;
+          if (_xInBand(f.xCenter, amountAnchor)) return true;
+          if (balanceAnchor != null && _xInBand(f.xCenter, balanceAnchor)) {
+            return true;
+          }
+          return false;
+        });
+        if (hasAnchoredAmount) break;
         final gap = lines[j - 1].medianY - lines[j].medianY;
         if (gap < 0 || gap > lineHeight * 1.6) break;
         // Continuation: append non-empty cells.
@@ -632,33 +837,87 @@ class PdfTableReconstructor {
   // Header detection
   // ────────────────────────────────────────────────────────
 
-  static List<String>? _detectHeader(
-    List<_Line> lines,
-    List<List<String>> lineCells,
-    int firstDataLineIndex,
-    List<_ColAnchor> anchors,
-  ) {
+  /// Find the line index of the table header above the first data line,
+  /// or null if no clean header row exists. A header line has 2+ text
+  /// fragments and contains no parseable date or amount (those would
+  /// indicate a data row, not a header). Walks UP from the first data
+  /// line; the first qualifying line wins.
+  static int? _findHeaderLine(List<_Line> lines, int firstDataLineIndex) {
     for (var i = firstDataLineIndex - 1; i >= 0; i--) {
       if (lines[i].page != lines[firstDataLineIndex].page) continue;
-      final cells = lineCells[i];
-      final nonEmpty = cells.where((c) => c.trim().isNotEmpty).toList();
+      final nonEmpty =
+          lines[i].fragments.where((f) => f.text.trim().isNotEmpty).toList();
       if (nonEmpty.length < 2) continue;
-      final hasDate = cells.any((c) => _looksLikeDate(c));
-      if (hasDate) continue;
-      final numericFraction = nonEmpty
-              .where((c) => _tryAnyLocaleAmount(c) != null)
-              .length /
-          nonEmpty.length;
-      if (numericFraction > 0.5) continue;
-      // Treat this line as the header. Pad / trim to anchor count.
-      final out = List<String>.generate(
-          anchors.length,
-          (k) => k < cells.length && cells[k].isNotEmpty
-              ? cells[k]
-              : 'Column ${k + 1}');
-      return out;
+      if (nonEmpty.any((f) => _looksLikeDate(f.text))) continue;
+      if (nonEmpty.any((f) => _tryAnyLocaleAmount(f.text) != null)) continue;
+      return i;
     }
     return null;
+  }
+
+  /// Augment a data-driven anchor list with synthetic anchors for header
+  /// words that don't have a data column underneath them.
+  ///
+  /// Each header word is snapped to its closest existing anchor by
+  /// xLeft. When two or more header words map to the same anchor, the
+  /// closest one keeps the anchor as its label and the other words get
+  /// new synthetic anchors at their own xLeft — that's how a column
+  /// like "Uscite" (debits, empty in this report) gets its own slot.
+  ///
+  /// Synthetic anchors carry the `_ColRole.middle` role since they're
+  /// neither date nor amount; downstream code only relies on xLeft / xLo
+  /// / xHi for layout, not the role tag.
+  static List<_ColAnchor> _augmentAnchorsWithHeader(
+    List<_ColAnchor> dataAnchors,
+    _Line headerLine,
+    double charWidth,
+  ) {
+    final headerFrags = headerLine.fragments
+        .where((f) => f.text.trim().isNotEmpty)
+        .toList();
+    if (headerFrags.isEmpty || dataAnchors.isEmpty) return dataAnchors;
+
+    // Group header words by their closest data anchor.
+    final byAnchor = <int, List<PdfFragment>>{};
+    for (final f in headerFrags) {
+      var bestIdx = 0;
+      var bestDist = (f.xCenter - dataAnchors[0].xLeft).abs();
+      for (var k = 1; k < dataAnchors.length; k++) {
+        final d = (f.xCenter - dataAnchors[k].xLeft).abs();
+        if (d < bestDist) {
+          bestIdx = k;
+          bestDist = d;
+        }
+      }
+      byAnchor.putIfAbsent(bestIdx, () => <PdfFragment>[]).add(f);
+    }
+
+    // For each anchor with N words, add N-1 synthetic anchors at the
+    // header words farthest from the original anchor's xLeft.
+    final synthetic = <_ColAnchor>[];
+    for (final entry in byAnchor.entries) {
+      final anchor = dataAnchors[entry.key];
+      final words = entry.value;
+      if (words.length < 2) continue;
+      // Closest word stays mapped to the original anchor.
+      final closest = words.reduce((a, b) =>
+          (a.xCenter - anchor.xLeft).abs() <
+                  (b.xCenter - anchor.xLeft).abs()
+              ? a
+              : b);
+      for (final w in words) {
+        if (identical(w, closest)) continue;
+        synthetic.add(_ColAnchor(
+          role: _ColRole.middle,
+          xLeft: w.xCenter,
+          xLo: w.left - charWidth,
+          xHi: w.right + charWidth,
+        ));
+      }
+    }
+    if (synthetic.isEmpty) return dataAnchors;
+    return [...dataAnchors, ...synthetic]
+      ..sort((a, b) => a.xLeft.compareTo(b.xLeft));
   }
 
   // ────────────────────────────────────────────────────────
@@ -673,6 +932,25 @@ class PdfTableReconstructor {
     if (s.isEmpty) return false;
     if (RegExp(r'^\d{10,13}$').hasMatch(s)) return false;
     return dateparse.tryParseDate(s) != null;
+  }
+
+  /// Lenient cell-level date detection. Splits on whitespace and tests
+  /// every consecutive 1- to 3-token window for a parseable date. This
+  /// matches a row that says "Totale Gennaio 2026" or "Date: 12/2024" —
+  /// the cell as a whole doesn't parse but contains a clear date.
+  /// Used only for row validation, never for fragment-level anchoring.
+  static bool _cellHasDate(String cell) {
+    final s = cell.trim();
+    if (s.isEmpty) return false;
+    if (_looksLikeDate(s)) return true;
+    final tokens = s.split(RegExp(r'\s+'));
+    for (var i = 0; i < tokens.length; i++) {
+      final maxJ = (i + 3 <= tokens.length) ? i + 3 : tokens.length;
+      for (var j = i; j < maxJ; j++) {
+        if (_looksLikeDate(tokens.sublist(i, j + 1).join(' '))) return true;
+      }
+    }
+    return false;
   }
 
   static double? _tryAnyLocaleAmount(String? raw) {
@@ -717,9 +995,8 @@ class PdfTableReconstructor {
   }
 
   static bool _lineHasDateInBand(_Line line, _ColAnchor anchor) {
-    for (final f in line.fragments) {
-      if (!_xInBand(f.xCenter, anchor)) continue;
-      if (_looksLikeDate(f.text)) return true;
+    for (final p in _findDatesInLine(line)) {
+      if (_xInBand(p.xCenter, anchor)) return true;
     }
     return false;
   }
@@ -797,6 +1074,15 @@ class _FragmentInLine {
   final int lineIndex;
   final PdfFragment fragment;
   const _FragmentInLine({required this.lineIndex, required this.fragment});
+}
+
+/// A parseable-date position on a line. May span multiple fragments
+/// (e.g. "Gennaio" + "2026") or be a single fragment ("01/2026").
+class _DatePos {
+  final double left;
+  final double right;
+  _DatePos({required this.left, required this.right});
+  double get xCenter => (left + right) / 2;
 }
 
 class _Cluster1D {
