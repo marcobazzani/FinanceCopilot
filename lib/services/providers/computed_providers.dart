@@ -268,7 +268,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     String? providerUrl;
     final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
     if (searchTerm != null && searchTerm.isNotEmpty) {
-      final urlKey = 'PROVIDER_URL_${searchTerm}_${asset.exchange ?? 'MIL'}';
+      final urlKey = 'PROVIDER_URL_${searchTerm}_${asset.exchange ?? 'Milan'}';
       final urlRow = await priceService.db.customSelect(
         'SELECT value FROM app_configs WHERE key = ?',
         variables: [Variable.withString(urlKey)],

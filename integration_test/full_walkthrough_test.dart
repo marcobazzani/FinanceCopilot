@@ -18,10 +18,12 @@ library;
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show allSeriesDataProvider;
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/asset_event_service.dart';
 import 'package:finance_copilot/services/buffer_service.dart';
@@ -30,7 +32,9 @@ import 'package:finance_copilot/services/import_config_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
 import 'package:finance_copilot/services/web_market_data_service.dart';
 import 'package:finance_copilot/services/isin_lookup_service.dart';
+import 'package:finance_copilot/services/market_price_service.dart' show isKnownExchange;
 import 'package:finance_copilot/services/pillar_service.dart';
+import 'package:finance_copilot/ui/screens/asset_detail_screen.dart';
 import 'package:finance_copilot/services/transaction_service.dart';
 
 import 'helpers/test_app.dart';
@@ -888,6 +892,92 @@ void main() {
         }
         await settle(tester);
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 8e: assets.exchange invariant — every imported asset's stored
+    // exchange must be either a canonical English name or a recognised
+    // synonym (so isKnownExchange returns true for all of them).
+    // ─────────────────────────────────────────────────────────────────────
+    _step('8e. assets.exchange invariant — all values are known');
+    final allAssetExchanges = await db
+        .customSelect(
+            "SELECT DISTINCT exchange FROM assets WHERE exchange IS NOT NULL AND exchange != ''")
+        .get();
+    final unknownExchanges = allAssetExchanges
+        .map((r) => r.read<String>('exchange'))
+        .where((ex) => !isKnownExchange(ex))
+        .toList();
+    expect(unknownExchanges, isEmpty,
+        reason:
+            'every wizard-imported asset.exchange must be canonical or a known synonym; '
+            'found unknown values: $unknownExchanges');
+    _step('   ✓ ${allAssetExchanges.length} distinct exchange values, all known');
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 8f: ETF asset-edit modal smoke — open the AssetDetailScreen for
+    // an ETF asset and tap the edit pencil. Verifies the
+    // DropdownButtonFormField in the edit modal can render the asset's
+    // current exchange (canonical OR legacy synonym) without throwing the
+    // "exactly one item with value X must be in items" assertion that
+    // killed v39 ETF rows.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('8f. ETF edit modal renders for current asset.exchange');
+    final etfRow = await db
+        .customSelect(
+            "SELECT name, exchange FROM assets "
+            "WHERE asset_type IN ('stockEtf','bondEtf','commEtf','goldEtc','monEtf') "
+            "AND exchange IS NOT NULL LIMIT 1")
+        .getSingleOrNull();
+    if (etfRow != null) {
+      final etfName = etfRow.read<String>('name');
+      _step('   target ETF: "$etfName" exchange=${etfRow.read<String>('exchange')}');
+      // Pump AssetDetailScreen directly for the picked ETF and tap the
+      // AppBar edit pencil (located by its localized tooltip so the find
+      // doesn't accidentally match the composition-panel edit IconButton
+      // which uses the same Icons.edit). Direct pump avoids the brittle
+      // sidebar→list-row→detail-screen navigation chain after step 8d.
+      final etfAsset = (await db.select(db.assets).get())
+          .firstWhere((a) => a.name == etfName);
+      final pushCtx = tester.element(find.byType(Navigator).first);
+      Navigator.of(pushCtx).push(
+        MaterialPageRoute(
+          builder: (_) => AssetDetailScreen(asset: etfAsset),
+        ),
+      );
+      await longSettle(tester);
+      // Edit pencil tooltip is "Edit Asset" (en) / "Modifica attività" (it).
+      final editPencil = find.byTooltip('Edit Asset').evaluate().isNotEmpty
+          ? find.byTooltip('Edit Asset')
+          : find.byTooltip('Modifica attività');
+      expect(editPencil.evaluate(), isNotEmpty,
+          reason: 'AssetDetailScreen AppBar must have an edit pencil');
+      await tester.tap(editPencil.first);
+      await longSettle(tester);
+      await longSettle(tester);
+      // _EditAssetDialog has 6 DropdownButtonFormFields. If the dialog
+      // throws on mount (the v40 regression we're guarding against), the
+      // tree contains zero. Even one is proof the modal opened cleanly.
+      // (Use byWidgetPredicate because byType is strict on generic types
+      // and DropdownButtonFormField<T> doesn't match the raw type.)
+      final dropdowns = find.byWidgetPredicate(
+        (w) => w is DropdownButtonFormField,
+      );
+      expect(dropdowns.evaluate().length, greaterThanOrEqualTo(1),
+          reason: 'edit modal must mount at least one '
+              'DropdownButtonFormField — the exchange / instrument /'
+              ' asset-class pickers all use this widget');
+      _step('   ✓ edit modal opened cleanly');
+      // Pop the dialog and the screen.
+      while (find.byType(BackButton).evaluate().isNotEmpty) {
+        final btn = find.byType(BackButton).first;
+        final w = tester.widget<BackButton>(btn);
+        if (w.onPressed == null) break;
+        await tester.tap(btn);
+        await settle(tester);
+      }
+    } else {
+      _step('   (no ETF asset found in DB — skipped)');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1862,36 +1952,43 @@ void main() {
         reason: 'asset slider list should render in the overview');
 
     _step('15D. Service-level assign(50%) round-trips through PillarService');
-    final activeAssets = await (db.select(db.assets)
-          ..where((a) => a.isActive.equals(true)))
-        .get();
-    // Pick the asset with the most market_prices rows AND non-zero
-    // quantity. The chart's Value-series chip (asserted at 15F) only
-    // renders when allData.assetMarket has non-empty spots for the
-    // assigned asset — which requires market_prices rows that overlap
-    // the asset's event window. Picking the heaviest-priced asset
-    // maximises that overlap and avoids network non-determinism flakes.
-    final priceCounts = Map<int, int>.fromEntries(
-      (await db
-              .customSelect(
-                  'SELECT asset_id, COUNT(*) AS c FROM market_prices GROUP BY asset_id')
-              .get())
-          .map((r) => MapEntry(r.read<int>('asset_id'), r.read<int>('c'))),
-    );
-    final candidates = <(int, double, int)>[]; // (id, qty, priceCount)
-    for (final a in activeAssets) {
-      final qty = await pillarService.totalQuantity(a.id);
-      if (qty <= 0) continue;
-      final pc = priceCounts[a.id] ?? 0;
-      if (pc == 0) continue;
-      candidates.add((a.id, qty, pc));
+    // Pick a target asset that allSeriesDataProvider actually surfaces in
+    // BOTH assetInvested and assetMarket with non-empty spots. The chart's
+    // legend chips (asserted at 15F) only render when those series exist
+    // — and the data provider drops any event whose FX rate isn't
+    // available, so an asset with sparse FX coverage can be silently
+    // excluded even with plenty of market_prices rows.
+    final ctxFor15D = tester.element(find.byType(MaterialApp).first);
+    final containerFor15D = ProviderScope.containerOf(ctxFor15D);
+    final allDataFor15D =
+        await containerFor15D.read(allSeriesDataProvider.future);
+    expect(allDataFor15D, isNotNull,
+        reason: 'allSeriesDataProvider must build for ACT XV chart assertions');
+    final marketReadyIds = allDataFor15D!.assetMarket
+        .where((s) =>
+            s.key.startsWith('asset_market:') && s.spots.isNotEmpty)
+        .map((s) => int.parse(s.key.split(':').last))
+        .toSet();
+    final investedReadyIds = allDataFor15D.assetInvested
+        .where((s) =>
+            s.key.startsWith('asset_invested:') && s.spots.isNotEmpty)
+        .map((s) => int.parse(s.key.split(':').last))
+        .toSet();
+    final eligibleIds =
+        marketReadyIds.intersection(investedReadyIds);
+    int? targetAssetId;
+    double? targetTotalQty;
+    for (final id in eligibleIds) {
+      final qty = await pillarService.totalQuantity(id);
+      if (qty > 0) {
+        targetAssetId = id;
+        targetTotalQty = qty;
+        break;
+      }
     }
-    candidates.sort((a, b) => b.$3.compareTo(a.$3)); // desc by priceCount
-    final picked = candidates.isEmpty ? null : candidates.first;
-    final targetAssetId = picked?.$1;
-    final targetTotalQty = picked?.$2;
     expect(targetAssetId, isNotNull,
-        reason: 'walkthrough must have at least one priced asset with positive quantity');
+        reason:
+            'walkthrough must have at least one asset with non-empty assetMarket+assetInvested series and qty>0');
     final halfQty = targetTotalQty! / 2;
     await pillarService.assign(
       pillarId: pillarId,
@@ -1909,8 +2006,8 @@ void main() {
     expect(
       () => pillarService.assign(
         pillarId: pillarId,
-        assetId: targetAssetId,
-        qty: targetTotalQty + 1,
+        assetId: targetAssetId!,
+        qty: targetTotalQty! + 1,
       ),
       throwsA(isA<PillarOverAssignedException>()),
     );

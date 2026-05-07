@@ -16,7 +16,6 @@ import '../../../services/web_market_data_service.dart';
 import '../../../services/isin_lookup_service.dart';
 import '../../../services/pdf_exceptions.dart';
 import '../../../l10n/app_strings.dart';
-import '../../../services/market_price_service.dart' show providerExchangeToCode;
 import '../../../services/providers/providers.dart';
 import '../../../utils/dialogs.dart';
 import '../../../utils/formatters.dart' as fmt;
