@@ -11,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -72,7 +72,7 @@ void main() {
 
   group('getPriceHistoryBatch matches getPriceHistory for each asset', () {
     test('assets with market prices', () async {
-      final service = InvestingComService(db);
+      final service = WebMarketDataService(db);
       final a1 = await createAsset('Asset A');
       final a2 = await createAsset('Asset B');
 
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('asset with NO market prices falls back to revalue events', () async {
-      final service = InvestingComService(db);
+      final service = WebMarketDataService(db);
       final assetId = await createAsset('Revalue Only');
 
       // No market prices -- only revalue events
@@ -129,7 +129,7 @@ void main() {
     });
 
     test('mix of assets with and without market prices', () async {
-      final service = InvestingComService(db);
+      final service = WebMarketDataService(db);
       final withPrices = await createAsset('Has Prices');
       final withRevalue = await createAsset('Revalue Only');
       final empty = await createAsset('No Data');

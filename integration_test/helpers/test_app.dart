@@ -96,7 +96,7 @@ Future<AppDatabase> pumpApp(
   }
   // useRealServices=true: leave marketPriceServiceProvider and
   // exchangeRateServiceProvider at their defaults so the real
-  // InvestingComService + investing-backed FX run with real HTTP.
+  // WebMarketDataService + investing-backed FX run with real HTTP.
 
   // Suppress non-logic Flutter errors in integration tests:
   // - KeyUpEvent: keyboard state leak between tests in same process

@@ -198,6 +198,12 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
 
   @override
   Widget build(BuildContext context) {
+    // External mutations to pillar_assets (other windows, service-level
+    // assigns, deletes) must reflow `_rows` — otherwise sliders + chart
+    // show stale fractions until the screen is reopened.
+    ref.listen(pillarAssetsProvider, (_, _) {
+      if (mounted && !_loading) _load();
+    });
     final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
     final marketValues = ref.watch(assetMarketValuesProvider).value ?? const <int, double>{};

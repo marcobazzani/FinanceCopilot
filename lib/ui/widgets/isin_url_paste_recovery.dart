@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/investing_com_service.dart';
+import '../../services/web_market_data_service.dart';
 import '../../services/providers/providers.dart';
 
 /// Shared empty-state recovery affordance shown when an ISIN/ticker lookup
@@ -10,7 +10,7 @@ import '../../services/providers/providers.dart';
 /// Renders an info banner explaining the situation and a TextField where the
 /// user can paste a page address they found via any external search engine.
 /// On a successful paste, [onResolved] is called with the resolved
-/// [InvestingSearchResult]; the caller then proceeds with its existing
+/// [ProviderSearchResult]; the caller then proceeds with its existing
 /// "I picked a result" flow.
 ///
 /// Layout follows Apple Human Interface Guidelines and Material 3 empty-state
@@ -30,7 +30,7 @@ class IsinUrlPasteRecovery extends ConsumerStatefulWidget {
   final String defaultExchange;
 
   /// Invoked after a successful resolution.
-  final void Function(InvestingSearchResult) onResolved;
+  final void Function(ProviderSearchResult) onResolved;
 
   /// Outer padding around the card content.
   final EdgeInsets padding;
@@ -72,7 +72,7 @@ class _IsinUrlPasteRecoveryState extends ConsumerState<IsinUrlPasteRecovery> {
     });
     try {
       final svc = ref.read(marketPriceServiceProvider);
-      if (svc is! InvestingComService) {
+      if (svc is! WebMarketDataService) {
         setState(() => _urlError = s.urlFetchFailed);
         return;
       }
@@ -148,7 +148,7 @@ class _IsinUrlPasteRecoveryState extends ConsumerState<IsinUrlPasteRecovery> {
               enableSuggestions: false,
               decoration: InputDecoration(
                 labelText: s.pasteInstrumentUrlLabel,
-                hintText: 'https://www.investing.com/...',
+                hintText: 'https://...',
                 prefixIcon: const Icon(Icons.link),
                 errorText: _urlError,
               ),

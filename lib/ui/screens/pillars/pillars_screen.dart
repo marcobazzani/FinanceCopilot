@@ -71,10 +71,10 @@ class PillarsScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.view_quilt_outlined, size: 64),
+                    Icon(Icons.view_quilt_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     const SizedBox(height: 16),
-                    Text(s.pillarsEmptyTitle, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 24),
+                    Text(s.pillarsEmptyTitle, textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
                     FilledButton.icon(
                       icon: const Icon(Icons.add),
                       label: Text(s.pillarsEmptyCta),

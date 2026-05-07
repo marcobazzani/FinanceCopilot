@@ -15,25 +15,25 @@ final importConfigServiceProvider = _dbService(ImportConfigService.new);
 
 final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
   final priceService = ref.watch(marketPriceServiceProvider);
-  return IsinLookupService(priceService as InvestingComService);
+  return IsinLookupService(priceService as WebMarketDataService);
 });
 
 final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
   final priceService = ref.watch(marketPriceServiceProvider);
-  final investing = priceService is InvestingComService ? priceService : null;
-  return ExchangeRateService(ref.watch(databaseProvider), investingService: investing);
+  final provider = priceService is WebMarketDataService ? priceService : null;
+  return ExchangeRateService(ref.watch(databaseProvider), providerService: provider);
 });
 
 final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
   final db = ref.watch(databaseProvider);
-  return InvestingComService(db);
+  return WebMarketDataService(db);
 });
 
 final compositionServiceProvider = Provider<CompositionService>((ref) {
-  final investing = ref.watch(marketPriceServiceProvider);
+  final priceService = ref.watch(marketPriceServiceProvider);
   return CompositionService(
     ref.watch(databaseProvider),
-    investingService: investing is InvestingComService ? investing : null,
+    providerService: priceService is WebMarketDataService ? priceService : null,
   );
 });
 

@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' hide Column;
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +7,7 @@ import '../../database/database.dart';
 import '../../services/account_service.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/providers/providers.dart';
+import '../../utils/dialogs.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'account_detail_screen.dart';
 import 'capex_screen.dart' show AdjustmentsView;
@@ -272,150 +272,8 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
     );
   }
 
-  Future<void> _showIntermediaryDialog(BuildContext context, {Intermediary? intermediary}) async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController(text: intermediary?.name ?? '');
-    final isEdit = intermediary != null;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isEdit ? s.editIntermediary : s.addIntermediary),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.intermediaryName),
-            autofocus: true,
-            textInputAction: TextInputAction.done,
-            onChanged: (_) => setDialogState(() {}),
-            onSubmitted: (_) async {
-              if (nameCtrl.text.trim().isEmpty) return;
-              final svc = ref.read(intermediaryServiceProvider);
-              if (isEdit) {
-                await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
-              } else {
-                await svc.create(name: nameCtrl.text.trim());
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () async {
-                      final svc = ref.read(intermediaryServiceProvider);
-                      if (isEdit) {
-                        await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
-                      } else {
-                        await svc.create(name: nameCtrl.text.trim());
-                      }
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
-                  : null,
-              child: Text(isEdit ? s.save : s.create),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDeleteIntermediary(BuildContext context, Intermediary intermediary) async {
-    final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteIntermediary),
-        content: Text(s.deleteIntermediaryConfirm(intermediary.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(intermediaryServiceProvider).delete(intermediary.id);
-    }
-  }
-
-  Future<void> _showManageIntermediariesDialog(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => Consumer(
-        builder: (ctx, ref, _) {
-          final intermediaries = ref.watch(intermediariesProvider).value ?? [];
-          return AlertDialog(
-            title: Text(s.intermediaries),
-            // Open the add/edit/delete sub-dialogs on top of this dialog
-            // (don't pop first) so the user sees the updated list when
-            // the sub-dialog closes. Fixed-size box with explicit
-            // dimensions avoids intrinsic-width recursion that AlertDialog
-            // triggers on shrink-wrapped lists.
-            content: SizedBox(
-              width: 320,
-              height: 400,
-              child: intermediaries.isEmpty
-                  ? Center(child: Text(s.unassigned, style: TextStyle(color: Colors.grey)))
-                  : ReorderableListView.builder(
-                      buildDefaultDragHandles: false,
-                      itemCount: intermediaries.length,
-                      onReorder: (oldIndex, newIndex) {
-                        if (newIndex > oldIndex) newIndex--;
-                        final reordered = List<Intermediary>.from(intermediaries);
-                        final item = reordered.removeAt(oldIndex);
-                        reordered.insert(newIndex, item);
-                        ref.read(intermediaryServiceProvider)
-                            .reorder(reordered.map((i) => i.id).toList());
-                      },
-                      itemBuilder: (ctx, i) {
-                        final inter = intermediaries[i];
-                        return ListTile(
-                          key: ValueKey(inter.id),
-                          leading: ReorderableDragStartListener(
-                            index: i,
-                            child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-                          ),
-                          title: Text(inter.name),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 18),
-                                onPressed: () =>
-                                    _showIntermediaryDialog(context, intermediary: inter),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, size: 18),
-                                onPressed: () =>
-                                    _confirmDeleteIntermediary(context, inter),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => _showIntermediaryDialog(context),
-                child: Text(s.addIntermediary),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(s.close),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+  Future<void> _showManageIntermediariesDialog(BuildContext context) =>
+      showManageIntermediariesDialog(context, ref);
 
   Future<void> _showCreateDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);

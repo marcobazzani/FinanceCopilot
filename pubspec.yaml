@@ -44,10 +44,9 @@ dependencies:
   # HTML parsing (DOM, not regex)
   html: ^0.15.4
 
-  # Google Sheets (price data via GOOGLEFINANCE, CSV export)
   url_launcher: ^6.3.1
 
-  # Headless WebView (Cloudflare cookie solving for Investing.com)
+  # Headless WebView (Cloudflare cookie solving for the market data provider)
   flutter_inappwebview: ^6.1.5
 
   # Google Drive sync

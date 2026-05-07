@@ -20,7 +20,7 @@ import '../income_service.dart';
 import '../exchange_rate_service.dart';
 import '../import_config_service.dart';
 import '../composition_service.dart';
-import '../investing_com_service.dart';
+import '../web_market_data_service.dart';
 import '../network_monitor.dart';
 import '../import_service.dart';
 import '../isin_lookup_service.dart';

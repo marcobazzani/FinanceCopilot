@@ -28,7 +28,7 @@ import 'package:finance_copilot/services/buffer_service.dart';
 import 'package:finance_copilot/services/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/import_config_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 import 'package:finance_copilot/services/isin_lookup_service.dart';
 import 'package:finance_copilot/services/pillar_service.dart';
 import 'package:finance_copilot/services/transaction_service.dart';
@@ -668,8 +668,8 @@ void main() {
     });
     // Pass real IsinLookupService so imported assets get ticker/exchange/name
     // populated from the ISIN provider — this is what the network sync needs.
-    final investingService = InvestingComService(db);
-    final isinLookup = IsinLookupService(investingService);
+    final providerService = WebMarketDataService(db);
+    final isinLookup = IsinLookupService(providerService);
     final assetResult = await importer.importAssetEventsGrouped(
       preview: listaTitoliPreview,
       mappings: const [
@@ -752,7 +752,7 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     // Step 8c: REAL NETWORK SYNC — tap the toolbar refresh button to
     // trigger syncPrices + syncCompositions + FX. This exercises:
-    //   • investing_com_service.dart  (price + composition fetch)
+    //   • web_market_data_service.dart  (price + composition fetch)
     //   • market_price_service.dart   (orchestrator + dedup)
     //   • composition_service.dart    (TER + composition extraction)
     //   • exchange_rate_service.dart  (USD/EUR FX fetch)
@@ -768,7 +768,7 @@ void main() {
     } else {
       // Fall back to direct service call so the network paths still run.
       await tester.runAsync(() async {
-        final priceSvc = InvestingComService(db);
+        final priceSvc = WebMarketDataService(db);
         await priceSvc.syncPrices(forceToday: true);
         await isinLookup.lookup('IE00B4L5Y983');
       });
@@ -1519,7 +1519,7 @@ void main() {
           reason: 'post-revalue buy must NOT shift the anchored close_price');
 
       // getPrice() now reads the materialised row directly.
-      final priceService = InvestingComService(db);
+      final priceService = WebMarketDataService(db);
       final livePrice = await priceService.getPrice(manualHolding.id, DateTime(2024, 6, 1));
       expect(livePrice, 120.0);
 
@@ -1626,7 +1626,7 @@ void main() {
       expect(prices, hasLength(6));
 
       // getPrice for any future date returns the latest close_price.
-      final priceService = InvestingComService(db);
+      final priceService = WebMarketDataService(db);
       final priceLatest = await priceService.getPrice(pensionId, DateTime(2026, 12, 31));
       expect(priceLatest, isNotNull);
       expect(priceLatest! - prices.last.closePrice, closeTo(0.0, 0.0001));
@@ -1865,19 +1865,33 @@ void main() {
     final activeAssets = await (db.select(db.assets)
           ..where((a) => a.isActive.equals(true)))
         .get();
-    // Pick the first asset with a non-zero quantity.
-    int? targetAssetId;
-    double? targetTotalQty;
+    // Pick the asset with the most market_prices rows AND non-zero
+    // quantity. The chart's Value-series chip (asserted at 15F) only
+    // renders when allData.assetMarket has non-empty spots for the
+    // assigned asset — which requires market_prices rows that overlap
+    // the asset's event window. Picking the heaviest-priced asset
+    // maximises that overlap and avoids network non-determinism flakes.
+    final priceCounts = Map<int, int>.fromEntries(
+      (await db
+              .customSelect(
+                  'SELECT asset_id, COUNT(*) AS c FROM market_prices GROUP BY asset_id')
+              .get())
+          .map((r) => MapEntry(r.read<int>('asset_id'), r.read<int>('c'))),
+    );
+    final candidates = <(int, double, int)>[]; // (id, qty, priceCount)
     for (final a in activeAssets) {
       final qty = await pillarService.totalQuantity(a.id);
-      if (qty > 0) {
-        targetAssetId = a.id;
-        targetTotalQty = qty;
-        break;
-      }
+      if (qty <= 0) continue;
+      final pc = priceCounts[a.id] ?? 0;
+      if (pc == 0) continue;
+      candidates.add((a.id, qty, pc));
     }
+    candidates.sort((a, b) => b.$3.compareTo(a.$3)); // desc by priceCount
+    final picked = candidates.isEmpty ? null : candidates.first;
+    final targetAssetId = picked?.$1;
+    final targetTotalQty = picked?.$2;
     expect(targetAssetId, isNotNull,
-        reason: 'walkthrough imported assets must have positive quantity');
+        reason: 'walkthrough must have at least one priced asset with positive quantity');
     final halfQty = targetTotalQty! / 2;
     await pillarService.assign(
       pillarId: pillarId,
@@ -1895,8 +1909,8 @@ void main() {
     expect(
       () => pillarService.assign(
         pillarId: pillarId,
-        assetId: targetAssetId!,
-        qty: targetTotalQty! + 1,
+        assetId: targetAssetId,
+        qty: targetTotalQty + 1,
       ),
       throwsA(isA<PillarOverAssignedException>()),
     );

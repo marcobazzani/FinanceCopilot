@@ -22,9 +22,9 @@ const supportedExchanges = <String, String>{
   'Tokyo Stock Exchange': 'TYO',
 };
 
-/// Reverse map: Investing.com exchange name → internal code.
-/// Derived from `_exchangeNames` in investing_com_service.dart.
-const investingExchangeToCode = <String, String>{
+/// Reverse map: provider exchange name → internal code.
+/// Derived from `_exchangeNames` in the market data provider service.
+const providerExchangeToCode = <String, String>{
   'Milano': 'MIL',
   'Milan': 'MIL',
   'NASDAQ': 'NMS',

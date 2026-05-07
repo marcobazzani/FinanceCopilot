@@ -1,13 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/investing_page_parser.dart';
+import 'package:finance_copilot/services/web_page_parser.dart';
 
 void main() {
-  group('parseInvestingPage', () {
+  group('parseProviderPage', () {
     test('extracts pair_id, name, symbol and exchange from bond page', () {
       final html = File('test/fixtures/instrument_page_be0000351602.html').readAsStringSync();
-      final result = parseInvestingPage(
+      final result = parseProviderPage(
         html,
         Uri.parse('https://www.investing.com/rates-bonds/be0000351602'),
       );
@@ -24,7 +24,7 @@ void main() {
 
     test('extracts ETF pair_id and metadata', () {
       final html = File('test/fixtures/instrument_page_ivv_etf.html').readAsStringSync();
-      final result = parseInvestingPage(
+      final result = parseProviderPage(
         html,
         Uri.parse('https://www.investing.com/etfs/ishares-core-s-p-500'),
       );
@@ -40,7 +40,7 @@ void main() {
 
     test('returns null for HTML without __NEXT_DATA__', () {
       const html = '<html><body><h1>Just a moment...</h1></body></html>';
-      expect(parseInvestingPage(html, Uri.parse('https://www.investing.com/x')), isNull);
+      expect(parseProviderPage(html, Uri.parse('https://www.investing.com/x')), isNull);
     });
 
     test('returns null when JSON has no recognized instrument store', () {
@@ -49,7 +49,7 @@ void main() {
         {"props":{"pageProps":{"state":{"newsStore":{"items":[]}}}}}
         </script>
       ''';
-      expect(parseInvestingPage(html, Uri.parse('https://www.investing.com/news/x')), isNull);
+      expect(parseProviderPage(html, Uri.parse('https://www.investing.com/news/x')), isNull);
     });
   });
 }

@@ -155,7 +155,7 @@ void main() {
     });
 
     test('falls back to stored rate when no investing service', () async {
-      // Service has no InvestingComService, so it falls back to DB
+      // Service has no WebMarketDataService, so it falls back to DB
       await insertRate('USD', DateTime.now(), 1.10);
 
       final rate = await service.getLiveRate('EUR', 'USD');

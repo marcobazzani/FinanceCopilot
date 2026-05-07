@@ -14,7 +14,7 @@ import '../utils/logger.dart';
 import 'exchange_rate_service.dart';
 import 'file_parser_service.dart';
 import 'isin_lookup_service.dart';
-import 'market_price_service.dart' show investingExchangeToCode;
+import 'market_price_service.dart' show providerExchangeToCode;
 
 final _log = getLogger('ImportService');
 
@@ -691,7 +691,7 @@ class ImportService {
         if (selected != null) {
           name = selected.name;
           ticker = selected.ticker;
-          exchange = investingExchangeToCode[selected.exchange] ?? selected.exchange;
+          exchange = providerExchangeToCode[selected.exchange] ?? selected.exchange;
           final (inst, cls) = selected.classification;
           instrumentType = inst;
           assetClassValue = cls;
@@ -700,7 +700,7 @@ class ImportService {
           final best = lookup.bestFor(null);
           name = best?.name ?? isin;
           ticker = best?.ticker;
-          exchange = best?.exchange != null ? (investingExchangeToCode[best!.exchange] ?? best.exchange) : null;
+          exchange = best?.exchange != null ? (providerExchangeToCode[best!.exchange] ?? best.exchange) : null;
           if (best != null) {
             final (inst, cls) = best.classification;
             instrumentType = inst;
