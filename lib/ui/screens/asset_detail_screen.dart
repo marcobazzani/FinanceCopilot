@@ -13,7 +13,7 @@ import '../../l10n/app_strings.dart';
 import '../../services/composition_service.dart';
 import '../../services/web_market_data_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../services/market_price_service.dart' show providerExchangeToCode, supportedExchanges;
+import '../../services/market_price_service.dart' show supportedExchanges;
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
@@ -998,7 +998,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     _tickerCtrl = TextEditingController(text: widget.asset.ticker ?? '');
     _isinCtrl = TextEditingController(text: widget.asset.isin ?? '');
     _terCtrl = TextEditingController(text: _fmtDouble(widget.asset.ter));
-    _selectedExchange = widget.asset.exchange ?? 'MIL';
+    _selectedExchange = widget.asset.exchange ?? 'Milan';
     _isActive = widget.asset.isActive;
     _instrumentType = widget.asset.instrumentType;
     _assetClass = widget.asset.assetClass;
@@ -1028,11 +1028,10 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   }
 
   void _selectResult(ProviderSearchResult result) {
-    final code = providerExchangeToCode[result.exchange];
     setState(() {
       _nameCtrl.text = result.description;
       _tickerCtrl.text = result.symbol;
-      _selectedExchange = code ?? _selectedExchange;
+      _selectedExchange = result.exchange;
       _searchMode = false;
     });
   }
@@ -1129,19 +1128,30 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               ),
               const SizedBox(height: 16),
             ],
-            if (widget.asset.valuationMethod != ValuationMethod.eventDriven) DropdownButtonFormField<String>(
-              initialValue: _selectedExchange,
-              decoration: InputDecoration(
-                labelText: s.stockExchange,
-                isDense: true,
-              ),
-              items: supportedExchanges.entries
-                  .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) setState(() => _selectedExchange = v);
-              },
-            ),
+            if (widget.asset.valuationMethod != ValuationMethod.eventDriven)
+              Builder(builder: (_) {
+                // Defensive: if the asset's stored exchange isn't one of the
+                // canonical names (legacy code, provider variant, future
+                // additions), include it as an extra option so the dropdown
+                // can still render and the user can re-pick a canonical one.
+                final values = {...supportedExchanges, _selectedExchange};
+                return DropdownButtonFormField<String>(
+                  initialValue: _selectedExchange,
+                  decoration: InputDecoration(
+                    labelText: s.stockExchange,
+                    isDense: true,
+                  ),
+                  items: values
+                      .map((name) => DropdownMenuItem(
+                            value: name,
+                            child: Text(name, style: const TextStyle(fontSize: 13)),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _selectedExchange = v);
+                  },
+                );
+              }),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -1297,7 +1307,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         child: AssetSearchSection(
           widgetRef: widget.ref,
           onSelect: _selectResult,
-          recoveryDefaultExchange: widget.asset.exchange ?? 'MIL',
+          recoveryDefaultExchange: widget.asset.exchange ?? 'Milan',
           recoveryCacheKeyBuilder: (q) => widget.asset.isin?.isNotEmpty == true
               ? widget.asset.isin!
               : (widget.asset.ticker?.isNotEmpty == true

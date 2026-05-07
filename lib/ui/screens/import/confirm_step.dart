@@ -82,9 +82,7 @@ extension _ConfirmStep on _ImportScreenState {
           child: IsinUrlPasteRecovery(
             userQuery: isin,
             cacheKey: isin,
-            defaultExchange: _defaultExchange != null
-                ? (providerExchangeToCode[_defaultExchange!] ?? 'MIL')
-                : 'MIL',
+            defaultExchange: _defaultExchange ?? 'Milan',
             onResolved: (result) {
               final option = IsinExchangeOption(
                 cid: result.cid,
