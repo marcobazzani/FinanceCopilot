@@ -110,12 +110,17 @@ extension _ColumnMapperStep on _ImportScreenState {
   /// spin up a fresh import target without leaving the wizard.
   Widget _buildSingleAssetPicker(AppStrings s) {
     final assetsAsync = ref.watch(assetsProvider);
-    final pricedAsync = ref.watch(assetIdsWithMarketPricesProvider);
     return assetsAsync.when(
       data: (assets) {
-        final priced = pricedAsync.maybeWhen(data: (s) => s, orElse: () => const <int>{});
-        // Strict "manual" filter: no market_prices = no external feed.
-        final manual = assets.where((a) => !priced.contains(a.id)).toList();
+        // Manual assets = event-driven valuation. The market_prices table
+        // is NOT a reliable signal here: pension/contribute imports write
+        // synthetic close_price snapshots derived from contributions, so
+        // a previously-imported pension asset has rows there even though
+        // it has no external feed. valuation_method is the source of
+        // truth ('eventDriven' vs 'marketPrice').
+        final manual = assets
+            .where((a) => a.valuationMethod == ValuationMethod.eventDriven)
+            .toList();
         return Wrap(
           spacing: 8,
           runSpacing: 8,

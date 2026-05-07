@@ -239,4 +239,47 @@ void main() {
       expect(() => parseDate('0/2025'), throwsFormatException);
     });
   });
+
+  group('MMMM YYYY (named month + year)', () {
+    // Same semantics as MM/YYYY: pension/quarterly statements often print
+    // the period column as a localized month label like "Gennaio 2026" or
+    // "January 2026". Resolve to last day of that month so revalues sort
+    // after that period's contributions.
+    test('"Gennaio 2026" (Italian) resolves to 2026-01-31', () {
+      final r = parseDate('Gennaio 2026');
+      expect(r.year, 2026);
+      expect(r.month, 1);
+      expect(r.day, 31);
+    });
+
+    test('"Febbraio 2024" resolves to 2024-02-29 (leap year)', () {
+      final r = parseDate('Febbraio 2024');
+      expect(r.year, 2024);
+      expect(r.month, 2);
+      expect(r.day, 29);
+    });
+
+    test('"Febbraio 2026" resolves to 2026-02-28 (non-leap)', () {
+      final r = parseDate('Febbraio 2026');
+      expect(r.month, 2);
+      expect(r.day, 28);
+    });
+
+    test('"January 2026" (English) resolves to 2026-01-31', () {
+      final r = parseDate('January 2026');
+      expect(r.year, 2026);
+      expect(r.month, 1);
+      expect(r.day, 31);
+    });
+
+    test('"jan 2026" (abbreviated, lowercase) resolves to 2026-01-31', () {
+      final r = parseDate('jan 2026');
+      expect(r.month, 1);
+      expect(r.day, 31);
+    });
+
+    test('rejects unknown month name "Foo 2026"', () {
+      expect(() => parseDate('Foo 2026'), throwsFormatException);
+    });
+  });
 }
