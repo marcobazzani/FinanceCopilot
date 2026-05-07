@@ -69,7 +69,7 @@ extension _ConfirmStep on _ImportScreenState {
 
   /// Show a modal hosting the shared URL-paste recovery widget for [isin].
   /// On a successful resolve we synthesise an [IsinExchangeOption] from the
-  /// returned [InvestingSearchResult] and inject it into the lookup map so
+  /// returned [ProviderSearchResult] and inject it into the lookup map so
   /// the row in the confirm screen now shows the resolved listing.
   Future<void> _openUrlPasteDialog(String isin) async {
     final s = ref.read(appStringsProvider);
@@ -83,7 +83,7 @@ extension _ConfirmStep on _ImportScreenState {
             userQuery: isin,
             cacheKey: isin,
             defaultExchange: _defaultExchange != null
-                ? (investingExchangeToCode[_defaultExchange!] ?? 'MIL')
+                ? (providerExchangeToCode[_defaultExchange!] ?? 'MIL')
                 : 'MIL',
             onResolved: (result) {
               final option = IsinExchangeOption(
@@ -145,7 +145,7 @@ extension _ConfirmStep on _ImportScreenState {
                         const SizedBox(height: 8),
                         Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
                         Text(s.rowCount(_preview?.totalRows ?? 0)),
-                        Text('Target: ${isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions}'),
+                        Text(s.targetLabel(isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions)),
                         const SizedBox(height: 8),
                         Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                         ..._mappings.entries

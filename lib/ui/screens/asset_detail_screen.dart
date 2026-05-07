@@ -11,9 +11,9 @@ import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/composition_service.dart';
-import '../../services/investing_com_service.dart';
+import '../../services/web_market_data_service.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../services/market_price_service.dart' show investingExchangeToCode, supportedExchanges;
+import '../../services/market_price_service.dart' show providerExchangeToCode, supportedExchanges;
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
@@ -286,9 +286,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
     final pillars = await ref.read(pillarsProvider.future);
     if (!context.mounted) return;
     if (pillars.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(s.pillarsEmptyTitle)),
-      );
+      showInfoSnack(context, s.pillarsEmptyTitle);
       return;
     }
     final picked = await showDialog<String>(
@@ -588,8 +586,8 @@ class _CompositionSection extends ConsumerWidget {
         sourceLabel = 'justETF';
       } else if (sourceUrl.contains('stockanalysis.com')) {
         sourceLabel = 'Stock Analysis';
-      } else if (sourceUrl.contains('investing.com')) {
-        sourceLabel = 'Investing.com';
+      } else if (sourceUrl.contains(kProviderHost)) {
+        sourceLabel = 'the market data provider';
       }
     }
 
@@ -1029,8 +1027,8 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     super.dispose();
   }
 
-  void _selectResult(InvestingSearchResult result) {
-    final code = investingExchangeToCode[result.exchange];
+  void _selectResult(ProviderSearchResult result) {
+    final code = providerExchangeToCode[result.exchange];
     setState(() {
       _nameCtrl.text = result.description;
       _tickerCtrl.text = result.symbol;

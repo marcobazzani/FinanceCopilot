@@ -10,7 +10,7 @@ import 'package:finance_copilot/database/tables.dart';
 
 import 'helpers/test_app.dart';
 
-/// These tests hit real APIs (Investing.com, justETF).
+/// These tests hit real APIs (the market data provider, justETF).
 /// Run with: flutter test integration_test/live_data_fetch_test.dart -d macos
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();

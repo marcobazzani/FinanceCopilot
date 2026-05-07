@@ -55,8 +55,8 @@ enum AssetClass {
   multiAsset,   // Misto — Multi-asset / balanced
 }
 
-/// Map investing.com type prefixes (lowercase, singular) to classification.
-const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
+/// Map provider type prefixes (lowercase, singular) to classification.
+const _providerTypeMap = <String, (InstrumentType, AssetClass)>{
   'etf':            (InstrumentType.etf,    AssetClass.equity),
   'etc':            (InstrumentType.etc,    AssetClass.commodities),
   'etn':            (InstrumentType.etf,    AssetClass.equity),
@@ -65,7 +65,7 @@ const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
   'bond':           (InstrumentType.bond,   AssetClass.fixedIncome),
   'fund':           (InstrumentType.fund,   AssetClass.multiAsset),
   'crypto':         (InstrumentType.crypto, AssetClass.crypto),
-  // Italian fallbacks (in case Investing.com returns localized types)
+  // Italian fallbacks (in case the provider returns localized types)
   'azione':         (InstrumentType.stock,  AssetClass.equity),
   'titolo':         (InstrumentType.stock,  AssetClass.equity),
   'obbligazione':   (InstrumentType.bond,   AssetClass.fixedIncome),
@@ -73,10 +73,10 @@ const _investingTypeMap = <String, (InstrumentType, AssetClass)>{
   'criptovaluta':   (InstrumentType.crypto, AssetClass.crypto),
 };
 
-/// Classify instrument type + asset class from an investing.com type string.
+/// Classify instrument type + asset class from a provider type string.
 /// [prefix] should be lowercase, singular (e.g. "etf", "stock", "bond").
-(InstrumentType, AssetClass) classifyFromInvestingType(String prefix) =>
-    _investingTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
+(InstrumentType, AssetClass) classifyFromProviderType(String prefix) =>
+    _providerTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
 
 /// Default asset class for a given instrument type.
 /// Used when external classification is unavailable.
@@ -109,15 +109,6 @@ enum IncomeType {
 }
 
 enum StepFrequency { weekly, monthly, quarterly, yearly }
-
-enum RegisteredEventType {
-  stipendio,
-  entrata,
-  incasso,
-  vendita,
-  donazione,
-  rimborso,
-}
 
 // Extraordinary Events — unified replacement for CAPEX + Income Adjustments.
 // Two-axis model: direction (inflow/outflow) × treatment (instant/spread).
@@ -211,7 +202,6 @@ class Assets extends Table {
   TextColumn get assetGroup => text().withDefault(const Constant(''))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get exchange => text().nullable()();
-  TextColumn get yahooTicker => text().nullable()();
   TextColumn get country => text().nullable()();
   TextColumn get region => text().nullable()();
   TextColumn get sector => text().nullable()();
@@ -310,16 +300,6 @@ class ExchangeRates extends Table {
 
   @override
   Set<Column> get primaryKey => {fromCurrency, toCurrency, date};
-}
-
-class RegisteredEvents extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  DateTimeColumn get date => dateTime()();
-  TextColumn get type => textEnum<RegisteredEventType>()();
-  TextColumn get description => text().withDefault(const Constant(''))();
-  RealColumn get amount => real()();
-  BoolColumn get isPersonal => boolean().withDefault(const Constant(true))();
-  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
 class HealthReimbursements extends Table {

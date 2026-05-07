@@ -432,19 +432,16 @@ class AppStrings {
   String get enterManually       => _it ? 'Inserisci manualmente'             : 'Enter manually';
 
   // ── Instrument-not-found recovery (URL paste) ─────────────────────────
-  // The literal "<query> investing.com" appears in instrumentNotFoundExplanation
-  // because that is the literal search query the user must type into a search
-  // engine — not a brand mention. The surrounding text refers to the source
-  // generically as "il fornitore di dati di mercato" / "the market data
-  // provider".
+  // The user-facing copy refers to the source generically as
+  // "il fornitore di dati di mercato" / "the market data provider".
   String get instrumentNotFoundHeadline => _it
       ? 'Strumento non trovato'
       : 'Instrument not found';
   String instrumentNotFoundExplanation(String query) {
     final q = query.trim().isEmpty ? (_it ? 'lo strumento' : 'the instrument') : query.trim();
     return _it
-        ? 'Cerca su Google, Bing o un altro motore di ricerca il termine "$q investing.com", apri il primo risultato sul sito del fornitore di dati di mercato e copia l\'indirizzo della pagina. Incollalo qui sotto.'
-        : 'Search Google, Bing or another search engine for "$q investing.com", open the first result on the market data provider\'s site and copy the page address. Paste it below.';
+        ? 'Cerca "$q" su un motore di ricerca, apri la pagina sul sito del fornitore di dati di mercato e copia l\'indirizzo della pagina. Incollalo qui sotto.'
+        : 'Search for "$q" on a search engine, open the page on the market data provider\'s site and copy the page address. Paste it below.';
   }
   String get pasteInstrumentUrlLabel => _it ? 'Indirizzo della pagina' : 'Page address';
   String get pasteUrlShort           => _it ? 'Incolla URL'             : 'Paste URL';
@@ -766,6 +763,7 @@ class AppStrings {
   String rowCount(int n)           => _it ? 'Righe: $n'                : 'Rows: $n';
   String get targetAssetEvents     => _it ? 'Eventi attività'          : 'Asset Events';
   String get targetTransactions    => _it ? 'Transazioni'              : 'Transactions';
+  String targetLabel(String t)     => _it ? 'Destinazione: $t'         : 'Target: $t';
   String get mappingsLabel         => _it ? 'Mappature:'               : 'Mappings:';
   String get assetsAndExchange     => _it ? 'Attività & Borsa:'        : 'Assets & Exchange:';
   String get lookingUpExchanges    => _it ? 'Ricerca borse...'         : 'Looking up exchanges...';

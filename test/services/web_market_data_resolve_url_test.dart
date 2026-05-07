@@ -5,7 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -50,7 +50,7 @@ void main() {
   group('resolveFromInstrumentUrl', () {
     test('happy path — bond URL returns ok and writes cache', () async {
       final captured = <Uri>[];
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher(
           {'https://www.investing.com/rates-bonds/be0000351602': bondHtml},
@@ -72,13 +72,13 @@ void main() {
       expect(ok.result.type.toLowerCase(), contains('bond'));
 
       expect(captured.single, Uri.parse('https://www.investing.com/rates-bonds/be0000351602'));
-      expect(await readCached(db, 'INVESTING_CID_BE0000351602_MIL'), '1181400');
-      expect(await readCached(db, 'INVESTING_URL_BE0000351602_MIL'), isNotNull);
+      expect(await readCached(db, 'PROVIDER_CID_BE0000351602_MIL'), '1181400');
+      expect(await readCached(db, 'PROVIDER_URL_BE0000351602_MIL'), isNotNull);
     });
 
     test('happy path — query string is stripped before fetch', () async {
       final captured = <Uri>[];
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher(
           {'https://www.investing.com/etfs/ishares-core-s-p-500': etfHtml},
@@ -99,7 +99,7 @@ void main() {
 
     test('happy path — -historical-data suffix is stripped before fetch', () async {
       final captured = <Uri>[];
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher(
           {'https://www.investing.com/rates-bonds/be0000351602': bondHtml},
@@ -119,7 +119,7 @@ void main() {
 
     test('rejection — wrong host returns UrlResolveWrongHost without fetching', () async {
       final captured = <Uri>[];
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher({}, capture: captured),
       );
@@ -132,12 +132,12 @@ void main() {
 
       expect(r, isA<UrlResolveWrongHost>());
       expect(captured, isEmpty);
-      expect(await readCached(db, 'INVESTING_CID_FOO_MIL'), isNull);
+      expect(await readCached(db, 'PROVIDER_CID_FOO_MIL'), isNull);
     });
 
     test('rejection — unsupported path category', () async {
       final captured = <Uri>[];
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher({}, capture: captured),
       );
@@ -153,7 +153,7 @@ void main() {
     });
 
     test('rejection — invalid format (non-http scheme)', () async {
-      final svc = InvestingComService(db, pageFetcher: failingFetcher());
+      final svc = WebMarketDataService(db, pageFetcher: failingFetcher());
       final r = await svc.resolveFromInstrumentUrlString(
         'ftp://www.investing.com/rates-bonds/foo',
         cacheKey: 'FOO',
@@ -163,18 +163,18 @@ void main() {
     });
 
     test('failure — fetcher returns null gives UrlResolveFetchFailed', () async {
-      final svc = InvestingComService(db, pageFetcher: failingFetcher());
+      final svc = WebMarketDataService(db, pageFetcher: failingFetcher());
       final r = await svc.resolveFromInstrumentUrlString(
         'https://www.investing.com/rates-bonds/be0000351602',
         cacheKey: 'BE0000351602',
         exchange: 'MIL',
       );
       expect(r, isA<UrlResolveFetchFailed>());
-      expect(await readCached(db, 'INVESTING_CID_BE0000351602_MIL'), isNull);
+      expect(await readCached(db, 'PROVIDER_CID_BE0000351602_MIL'), isNull);
     });
 
     test('failure — page without __NEXT_DATA__ gives UrlResolveParseFailed', () async {
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher({
           'https://www.investing.com/rates-bonds/foo': '<html><body>Just a moment...</body></html>',
@@ -189,7 +189,7 @@ void main() {
     });
 
     test('idempotent cache — repeated calls keep one row per key', () async {
-      final svc = InvestingComService(
+      final svc = WebMarketDataService(
         db,
         pageFetcher: staticFetcher(
           {'https://www.investing.com/rates-bonds/be0000351602': bondHtml},
@@ -206,7 +206,7 @@ void main() {
       }
 
       final rows = await db.customSelect(
-        "SELECT key FROM app_configs WHERE key LIKE 'INVESTING_%_BE0000351602_MIL'",
+        "SELECT key FROM app_configs WHERE key LIKE 'PROVIDER_%_BE0000351602_MIL'",
       ).get();
       // exactly two rows: the cid + the URL
       expect(rows.length, 2);

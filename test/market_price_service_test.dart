@@ -4,16 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;
-  late InvestingComService service;
+  late WebMarketDataService service;
   late int iid;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    service = InvestingComService(db);
+    service = WebMarketDataService(db);
     iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
   });
 
@@ -155,14 +155,14 @@ void main() {
       // returns no rows.
       final firstBuy = DateTime(2026, 5, 1);
       expect(
-        InvestingComService.initialSyncDefaultFrom(firstBuy),
+        WebMarketDataService.initialSyncDefaultFrom(firstBuy),
         DateTime(2026, 4, 17),
       );
     });
 
     test('falls back to 2020-01-01 when firstBuy is null', () {
       expect(
-        InvestingComService.initialSyncDefaultFrom(null),
+        WebMarketDataService.initialSyncDefaultFrom(null),
         DateTime(2020, 1, 1),
       );
     });

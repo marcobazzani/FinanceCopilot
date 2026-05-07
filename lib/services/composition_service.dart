@@ -11,26 +11,26 @@ import 'package:html/parser.dart' show parse;
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/logger.dart';
-import 'investing_com_service.dart';
+import 'web_market_data_service.dart';
 
 final _log = getLogger('CompositionService');
 
 /// Fetches asset composition/classification data from multiple public sources
 /// and stores it in the asset_compositions table.
 ///
-/// Sources:
-/// - ETFs/ETCs: justETF (country/sector/holdings breakdown + investment focus)
-/// - Individual stocks: stockanalysis.com (country, sector)
-/// - Mutual/pension funds: investing.com fund holdings page (sector, region, top holdings)
+/// Sources (delegated to dedicated provider services):
+/// - ETFs/ETCs: ETF profile provider (country/sector/holdings + focus)
+/// - Individual stocks: stock-analysis provider (country, sector)
+/// - Mutual/pension funds: market data provider's fund-holdings page
 /// - Fallback: derives classification from asset name/type
 class CompositionService {
   final AppDatabase _db;
   final Dio _dio;
-  final InvestingComService? _investingService;
+  final WebMarketDataService? _providerService;
 
-  CompositionService(this._db, {Dio? dio, InvestingComService? investingService})
+  CompositionService(this._db, {Dio? dio, WebMarketDataService? providerService})
       : _dio = dio ?? Dio(),
-        _investingService = investingService;
+        _providerService = providerService;
 
   static const _classToInstrument = {
     'Stock ETF': InstrumentType.etf,
@@ -189,9 +189,9 @@ class CompositionService {
   Future<List<_Entry>> _fetchForAsset(Asset asset) async {
     final isin = asset.isin ?? '';
 
-    // Morningstar fund IDs start with "0P" — use investing.com fund holdings
+    // Fund IDs starting with "0P" use the fund-holdings path on the market data provider.
     if (isin.startsWith('0P')) {
-      return _fetchFundFromInvestingCom(asset);
+      return _fetchFundFromProvider(asset);
     }
 
     // Standard ISINs (2-letter country + 10 chars) → try justETF first
@@ -213,11 +213,11 @@ class CompositionService {
       if (stockResult.isNotEmpty) return stockResult;
     }
 
-    // Try investing.com search as last resort
-    return _fetchFundFromInvestingCom(asset);
+    // Try the market data provider search as last resort
+    return _fetchFundFromProvider(asset);
   }
 
-  /// Quick TER-only fetch (justETF for ETFs, Investing.com for funds).
+  /// Quick TER-only fetch (ETF profile provider for ETFs, market data provider for funds).
   Future<void> _fetchTerOnly(Asset asset) async {
     // Try justETF first (for ETFs/ETCs)
     final isin = asset.isin!;
@@ -240,10 +240,10 @@ class CompositionService {
       }
     }
 
-    // Try Investing.com (for funds/pension)
+    // Try the market data provider (for funds/pension)
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
     try {
-      final searchUrl = 'https://api.investing.com/api/search/v2/search'
+      final searchUrl = '$kProviderApiBase/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
       final searchResp = await _dio.get(searchUrl, options: Options(
         headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
@@ -254,16 +254,16 @@ class CompositionService {
       final fundPath = quotes[0]['url'] as String?;
       if (fundPath == null || fundPath.isEmpty) return;
 
-      final fundHtml = await _fetchHtml('https://www.investing.com$fundPath');
+      final fundHtml = await _fetchHtml('$kProviderBase$fundPath');
       if (fundHtml == null) return;
-      final ter = parseTerFromInvestingCom(fundHtml);
+      final ter = parseTerFromProviderHtml(fundHtml);
       if (ter != null) {
         await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
             .write(AssetsCompanion(ter: Value(ter)));
-        _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (investing.com)');
+        _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (provider)');
       }
     } catch (e) {
-      _log.fine('_fetchTerOnly: ${asset.name} - investing.com failed: $e');
+      _log.fine('_fetchTerOnly: ${asset.name} - provider failed: $e');
     }
   }
 
@@ -439,16 +439,16 @@ class CompositionService {
     return entries.length > 3 ? entries : [];
   }
 
-  // ── Mutual/Pension Funds: investing.com ──────────────────
+  // ── Mutual/Pension Funds: provider ──────────────────
 
-  Future<List<_Entry>> _fetchFundFromInvestingCom(Asset asset) async {
-    // First, find the fund URL via investing.com search API
+  Future<List<_Entry>> _fetchFundFromProvider(Asset asset) async {
+    // First, find the fund URL via the provider search API
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
-    _log.fine('fetchFund: ${asset.name} - searching investing.com for "$searchTerm"');
+    _log.fine('fetchFund: ${asset.name} - searching the provider for "$searchTerm"');
 
     String? fundUrl;
     try {
-      final searchUrl = 'https://api.investing.com/api/search/v2/search'
+      final searchUrl = '$kProviderApiBase/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
       final searchResp = await _dio.get(searchUrl, options: Options(
         headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
@@ -465,16 +465,16 @@ class CompositionService {
 
     if (fundUrl == null || fundUrl.isEmpty) return [];
 
-    final baseFundUrl = 'https://www.investing.com${fundUrl.replaceAll(RegExp(r'/$'), '')}';
+    final baseFundUrl = '$kProviderBase${fundUrl.replaceAll(RegExp(r'/$'), '')}';
 
     // Fetch main fund page for expenses/TER
     final mainHtml = await _fetchHtml(baseFundUrl);
     if (mainHtml != null) {
-      final ter = parseTerFromInvestingCom(mainHtml);
+      final ter = parseTerFromProviderHtml(mainHtml);
       if (ter != null && ter != asset.ter) {
         await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
             .write(AssetsCompanion(ter: Value(ter)));
-        _log.info('fetchFund: ${asset.name} - updated TER to $ter% from investing.com');
+        _log.info('fetchFund: ${asset.name} - updated TER to $ter% from the provider');
       }
     }
 
@@ -489,13 +489,13 @@ class CompositionService {
     final entries = <_Entry>[];
 
     // Parse sector allocation from HTML table
-    entries.addAll(_parseInvestingComSectors(doc));
+    entries.addAll(_parseProviderSectors(doc));
 
     // Parse region allocation from Highcharts JSON (embedded in <script> tags)
-    entries.addAll(_parseInvestingComRegions(doc));
+    entries.addAll(_parseProviderRegions(doc));
 
     // Parse top holdings from HTML table
-    entries.addAll(_parseInvestingComHoldings(doc));
+    entries.addAll(_parseProviderHoldings(doc));
 
     if (entries.isEmpty) {
       entries.add(_Entry('holding', asset.name, 100));
@@ -507,8 +507,8 @@ class CompositionService {
     return entries;
   }
 
-  /// Parse sector allocation from investing.com fund holdings page.
-  List<_Entry> _parseInvestingComSectors(Document doc) {
+  /// Parse sector allocation from the provider's fund holdings page.
+  List<_Entry> _parseProviderSectors(Document doc) {
     final entries = <_Entry>[];
 
     final sectorSection = doc.querySelector('.js-sector');
@@ -528,7 +528,7 @@ class CompositionService {
 
   /// Parse region allocation from Highcharts JSON embedded in the page.
   /// Looks for: "renderTo":"regionAllocationPieChart1"..."data":[{"name":"...","y":...}]
-  List<_Entry> _parseInvestingComRegions(Document doc) {
+  List<_Entry> _parseProviderRegions(Document doc) {
     final entries = <_Entry>[];
 
     // Scope search to <script> tags to avoid false matches in other HTML
@@ -551,14 +551,14 @@ class CompositionService {
         }
       }
     } catch (e) {
-      _log.fine('parseInvestingComRegions: JSON parse error: $e');
+      _log.fine('parseProviderRegions: JSON parse error: $e');
     }
 
     return entries;
   }
 
-  /// Parse top holdings from investing.com fund holdings page.
-  List<_Entry> _parseInvestingComHoldings(Document doc) {
+  /// Parse top holdings from the provider's fund holdings page.
+  List<_Entry> _parseProviderHoldings(Document doc) {
     final entries = <_Entry>[];
 
     final rows = doc.querySelector('.genTbl')?.querySelectorAll('tr') ?? [];
@@ -577,9 +577,9 @@ class CompositionService {
     return entries;
   }
 
-  // ── TER parsing from Investing.com HTML ─────────────────
+  // ── TER parsing from the market data provider HTML ─────────────────
 
-  /// Extract TER/expense ratio from an Investing.com page HTML.
+  /// Extract TER/expense ratio from an the market data provider page HTML.
   ///
   /// Two known DOM patterns carry real TER data:
   ///  1. Fund pages: <span class="float_lang_base_1">Expenses</span>
@@ -588,7 +588,7 @@ class CompositionService {
   ///
   /// Returns null when neither pattern is found (bonds, stocks, etc.).
   @visibleForTesting
-  double? parseTerFromInvestingCom(String html) {
+  double? parseTerFromProviderHtml(String html) {
     // 1. DOM: <span class="float_lang_base_1">Expenses</span>
     //         <span class="float_lang_base_2 ...">X.XX%</span>
     final doc = parse(html);
@@ -642,11 +642,11 @@ class CompositionService {
       );
       return response.data as String;
     } on DioException catch (e) {
-      // On CF-protected pages (investing.com), fall back to WebView fetch
-      if (e.response?.statusCode == 403 && _investingService != null &&
-          url.contains('investing.com')) {
+      // On CF-protected provider pages, fall back to WebView fetch
+      if (e.response?.statusCode == 403 && _providerService != null &&
+          url.contains(kProviderHost)) {
         _log.fine('fetchHtml: Dio 403, trying WebView fetch for $url');
-        return await _investingService.fetchHtml(url);
+        return await _providerService.fetchHtml(url);
       }
       _log.warning('fetchHtml: $url - ${e.response?.statusCode ?? e.message}');
       return null;
