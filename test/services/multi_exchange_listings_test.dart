@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 import 'package:finance_copilot/ui/screens/assets_screen.dart';
 
-InvestingSearchResult _r({
+ProviderSearchResult _r({
   required int cid,
   required String description,
   required String exchange,
@@ -10,7 +10,7 @@ InvestingSearchResult _r({
   String flag = '',
   String type = '',
 }) =>
-    InvestingSearchResult(
+    ProviderSearchResult(
       cid: cid,
       description: description,
       symbol: symbol,

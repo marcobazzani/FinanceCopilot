@@ -266,7 +266,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     // Per-axis scale factors so a horizontal-dominant pinch widens X
     // without compressing Y, and vice versa. `d.scale` is the geometric
     // mean — using it would force aspect-ratio-locked zoom, which is
-    // not how iOS Stocks / Google Finance / TradingView behave.
+    // not how typical financial chart UIs behave.
     final xScale = widget.fullPinch ? d.horizontalScale : d.scale;
     final yScale = widget.fullPinch ? d.verticalScale : d.scale;
 

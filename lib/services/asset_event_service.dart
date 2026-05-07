@@ -152,7 +152,7 @@ class AssetEventService {
   ///
   /// [orphanDates] are dates that previously held a revalue but no longer do
   /// (revalue moved away or was deleted) — their stale market_prices row must
-  /// be removed so it doesn't pretend to be an investing.com price tick.
+  /// be removed so it doesn't pretend to be a market-data price tick.
   Future<void> resyncRevaluePricesForAsset(
     int assetId, {
     List<DateTime> orphanDates = const [],
@@ -167,7 +167,7 @@ class AssetEventService {
         .toList();
 
     // Step 1: delete market_prices rows at any current-revalue date AND any
-    // orphan date passed in by the caller. Investing.com rows on other
+    // orphan date passed in by the caller. Provider rows on other
     // dates are preserved.
     final datesToClear = <DateTime>{...revalueDates, ...orphanDates};
     if (datesToClear.isNotEmpty) {

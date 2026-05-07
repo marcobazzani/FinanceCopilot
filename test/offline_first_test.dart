@@ -6,17 +6,17 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/asset_event_service.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;
-  late InvestingComService priceService;
+  late WebMarketDataService priceService;
   late ExchangeRateService rateService;
   late int iid;
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    priceService = InvestingComService(db);
+    priceService = WebMarketDataService(db);
     rateService = ExchangeRateService(db);
     iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
   });
@@ -116,7 +116,7 @@ void main() {
       expect(rate, 1.08);
     });
 
-    test('getLiveRate falls back to stored rate without InvestingComService', () async {
+    test('getLiveRate falls back to stored rate without WebMarketDataService', () async {
       final today = DateTime.now();
       final storeDate = DateTime(today.year, today.month, today.day);
       await insertRate('EUR', 'USD', storeDate, 1.10);
@@ -190,16 +190,19 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 38 after Pillars (v36) + reference_portfolio drop (v37) + emoji drop (v38)', () async {
+    test('schema version is 39 after dropping yahoo_ticker + registered_events (v39)', () async {
       // v27..v35 — see git history for prior bumps. v36 added the Pillars
       // and PillarAssets tables (named buckets of asset units with an
       // optional target value). v37 dropped the originally-introduced
       // pillars.reference_portfolio column (no concrete reference-portfolio
       // catalog yet). v38 dropped pillars.emoji (freeform text was UX
-      // dead weight without a picker).
+      // dead weight without a picker). v39 dropped the never-read
+      // assets.yahoo_ticker column and the unused registered_events table,
+      // and renamed legacy app_configs cache keys from INVESTING_* to
+      // PROVIDER_*.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 38);
+      expect(version, 39);
     });
 
     test('dashboard_charts table is gone', () async {

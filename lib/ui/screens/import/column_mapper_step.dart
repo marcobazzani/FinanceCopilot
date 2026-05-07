@@ -101,7 +101,7 @@ extension _ColumnMapperStep on _ImportScreenState {
   /// "Import into single asset" toggle when target = assetEvent.
   ///
   /// Filter: excludes any asset that already has rows in `market_prices`
-  /// (i.e. is being priced by Investing). The single-asset import path is
+  /// (i.e. is being priced by the market data provider). The single-asset import path is
   /// for assets the user values themselves through events; assets with an
   /// external feed should use the ISIN-grouped path or simply rely on the
   /// market-price flow without an event-import at all.
@@ -171,11 +171,7 @@ extension _ColumnMapperStep on _ImportScreenState {
     final nameCtrl = TextEditingController();
     final intermediaries = await ref.read(intermediaryServiceProvider).getAll();
     if (intermediaries.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.noIntermediariesAvailable)),
-        );
-      }
+      if (mounted) showInfoSnack(context, s.noIntermediariesAvailable);
       return;
     }
     int? pickedIntermediary = _selectedIntermediaryId ?? intermediaries.first.id;
@@ -1170,8 +1166,8 @@ extension _ColumnMapperStep on _ImportScreenState {
       final amount = _tryResolveNumeric('amount', row);
       final qty = _tryResolveNumeric('quantity', row);
       final price = _tryResolveNumeric('price', row);
-      final rate = _tryResolveNumeric('exchangeRate', row) ?? 1.0;
-      if (amount != null && qty != null && price != null && rate != 0) {
+      final rate = _tryResolveNumeric('exchangeRate', row);
+      if (amount != null && qty != null && price != null && rate != null && rate != 0) {
         final fee = amount.abs() - qty * price / rate;
         results.add(fee.abs().toStringAsFixed(2));
       }

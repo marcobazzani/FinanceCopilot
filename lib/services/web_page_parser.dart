@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import '../utils/logger.dart';
-import 'investing_com_service.dart' show InvestingSearchResult;
+import 'web_market_data_service.dart' show ProviderSearchResult, kProviderHost;
 
-final _log = getLogger('InvestingPageParser');
+final _log = getLogger('WebPageParser');
 
 /// Why a [canonicaliseInstrumentUrl] call rejected its input.
 enum InstrumentUrlRejection { invalidFormat, wrongHost, unsupportedCategory }
@@ -54,8 +54,8 @@ const List<String> _kPageSuffixes = [
 /// Pre-validate and canonicalise a user-pasted instrument page address.
 ///
 /// Strips query/fragment and any sub-page suffix (e.g. `-historical-data`)
-/// from the last path segment, normalises the host to `www.investing.com`,
-/// and verifies the path starts with one of [kInstrumentUrlPrefixes].
+/// from the last path segment, normalises the host to the supported provider
+/// host, and verifies the path starts with one of [kInstrumentUrlPrefixes].
 InstrumentUrlOutcome canonicaliseInstrumentUrl(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) return const InstrumentUrlOutcome.rejected(InstrumentUrlRejection.invalidFormat);
@@ -70,7 +70,7 @@ InstrumentUrlOutcome canonicaliseInstrumentUrl(String raw) {
   }
 
   final host = parsed.host.toLowerCase();
-  if (!host.endsWith('investing.com')) {
+  if (!host.endsWith(kProviderHost.split('.').sublist(1).join('.'))) {
     return const InstrumentUrlOutcome.rejected(InstrumentUrlRejection.wrongHost);
   }
 
@@ -96,7 +96,7 @@ InstrumentUrlOutcome canonicaliseInstrumentUrl(String raw) {
 
   final canonical = Uri(
     scheme: 'https',
-    host: 'www.investing.com',
+    host: kProviderHost,
     path: canonicalPath,
   );
   return InstrumentUrlOutcome.ok(canonical);
@@ -107,7 +107,7 @@ InstrumentUrlOutcome canonicaliseInstrumentUrl(String raw) {
 ///
 /// Returns null if the page doesn't carry the embedded JSON state we rely on
 /// (Cloudflare interstitial, pages without `__NEXT_DATA__`, etc.).
-InvestingSearchResult? parseInvestingPage(String html, Uri pageUrl) {
+ProviderSearchResult? parseProviderPage(String html, Uri pageUrl) {
   final match = RegExp(
     r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
     dotAll: true,
@@ -141,7 +141,7 @@ InvestingSearchResult? parseInvestingPage(String html, Uri pageUrl) {
   final exchange = instrument['exchange'];
   final type = base['type']?.toString() ?? '';
 
-  return InvestingSearchResult(
+  return ProviderSearchResult(
     cid: cid,
     description: _firstNonEmpty([
       _strField(name, 'fullName'),
@@ -158,7 +158,7 @@ InvestingSearchResult? parseInvestingPage(String html, Uri pageUrl) {
 }
 
 /// Walk the [state] map looking for any `*Store` entry that contains an
-/// `instrument` object with `base.id` set. Investing.com's Next.js bundles use
+/// `instrument` object with `base.id` set. the market data provider's Next.js bundles use
 /// type-specific store names (`bondStore`, `etfStore`, `stockStore`,
 /// `fundStore`, ...) but the inner shape is consistent.
 Map<String, dynamic>? _findInstrument(Map<String, dynamic> state) {

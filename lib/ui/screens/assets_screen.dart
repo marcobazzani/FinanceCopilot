@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -9,10 +8,11 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/asset_service.dart';
-import '../../services/investing_com_service.dart';
-import '../../services/market_price_service.dart' show exchangeCodeToCurrency, investingExchangeToCode, supportedExchanges;
+import '../../services/web_market_data_service.dart';
+import '../../services/market_price_service.dart' show exchangeCodeToCurrency, providerExchangeToCode, supportedExchanges;
 import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
+import '../../utils/dialogs.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
@@ -224,147 +224,8 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     );
   }
 
-  Future<void> _showIntermediaryDialog(BuildContext context, {Intermediary? intermediary}) async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController(text: intermediary?.name ?? '');
-    final isEdit = intermediary != null;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isEdit ? s.editIntermediary : s.addIntermediary),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.intermediaryName),
-            autofocus: true,
-            onChanged: (_) => setDialogState(() {}),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () async {
-                      final svc = ref.read(intermediaryServiceProvider);
-                      if (isEdit) {
-                        await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
-                      } else {
-                        await svc.create(name: nameCtrl.text.trim());
-                      }
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
-                  : null,
-              child: Text(isEdit ? s.save : s.create),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDeleteIntermediary(BuildContext context, Intermediary intermediary) async {
-    final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteIntermediary),
-        content: Text(s.deleteIntermediaryConfirm(intermediary.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(intermediaryServiceProvider).delete(intermediary.id);
-    }
-  }
-
-  Future<void> _showManageIntermediariesDialog(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => Consumer(
-        builder: (ctx, ref, _) {
-          final intermediaries = ref.watch(intermediariesProvider).value ?? [];
-          return AlertDialog(
-            title: Text(s.intermediaries),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 350),
-              child: SizedBox(
-                height: 400,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: intermediaries.isEmpty
-                          ? Center(child: Text(s.selectIntermediaryEmpty, style: TextStyle(color: Colors.grey)))
-                          : ReorderableListView.builder(
-                              shrinkWrap: true,
-                              buildDefaultDragHandles: false,
-                              itemCount: intermediaries.length,
-                              onReorder: (oldIndex, newIndex) {
-                                if (newIndex > oldIndex) newIndex--;
-                                final reordered = List<Intermediary>.from(intermediaries);
-                                final item = reordered.removeAt(oldIndex);
-                                reordered.insert(newIndex, item);
-                                ref.read(intermediaryServiceProvider)
-                                    .reorder(reordered.map((i) => i.id).toList());
-                              },
-                              itemBuilder: (ctx, i) {
-                                final inter = intermediaries[i];
-                                return ListTile(
-                                  key: ValueKey(inter.id),
-                                  leading: ReorderableDragStartListener(
-                                    index: i,
-                                    child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-                                  ),
-                                  title: Text(inter.name),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, size: 18),
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          _showIntermediaryDialog(context, intermediary: inter);
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete, size: 18),
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          _confirmDeleteIntermediary(context, inter);
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showIntermediaryDialog(context);
-                },
-                child: Text(s.addIntermediary),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(s.close),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+  Future<void> _showManageIntermediariesDialog(BuildContext context) =>
+      showManageIntermediariesDialog(context, ref);
 }
 
 class _AssetTile extends StatelessWidget {
@@ -668,15 +529,15 @@ class _AssetTile extends StatelessWidget {
 /// instrument (same description) whose exchange we know how to map to an
 /// internal code. Falls back to `[picked]` when no siblings exist so the
 /// caller always has at least one listing to render.
-List<InvestingSearchResult> exchangeListingsFor(
-  List<InvestingSearchResult> results,
-  InvestingSearchResult picked,
+List<ProviderSearchResult> exchangeListingsFor(
+  List<ProviderSearchResult> results,
+  ProviderSearchResult picked,
 ) {
   final siblings = results
       .where((x) =>
           x.description.isNotEmpty &&
           x.description == picked.description &&
-          investingExchangeToCode[x.exchange] != null)
+          providerExchangeToCode[x.exchange] != null)
       .toList();
   return siblings.isNotEmpty ? siblings : [picked];
 }
@@ -697,20 +558,55 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   bool _manual = false;
   bool _unlocked = false;
 
+  /// Apply the dialog's shared overrides (ter, taxRate, valuationMethod,
+  /// assetType, isActive, includeInNetWorth — all gated on `_unlocked`)
+  /// to a single create call. Caller passes the per-flow fields (name,
+  /// intermediary, currency, optional ticker/isin/exchange).
+  Future<int> _createAsset({
+    required String name,
+    required int intermediaryId,
+    required String currency,
+    String? ticker,
+    String? isin,
+    String? exchange,
+  }) {
+    return widget.ref.read(assetServiceProvider).create(
+      name: name,
+      ticker: ticker,
+      isin: isin,
+      exchange: exchange,
+      currency: currency,
+      intermediaryId: intermediaryId,
+      instrumentType: _instrumentType,
+      assetClass: _assetClass,
+      valuationMethod: _unlocked && _valuationMethodOverride != null
+          ? _valuationMethodOverride!
+          : ValuationMethod.marketPrice,
+      assetType: _unlocked ? _assetType : AssetType.stockEtf,
+      ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
+      taxRate: _unlocked ? (() {
+        final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
+        return v == null ? null : v / 100;
+      })() : null,
+      isActive: _unlocked ? _isActive : null,
+      includeInNetWorth: _unlocked ? _includeInNetWorth : null,
+    );
+  }
+
   // Step 1: search state mirrored from AssetSearchSection so step 2 can
   // derive sibling exchange listings and capture the user's typed query
   // (used to persist a pasted ISIN as the asset's price-sync cache key).
   String _typedQuery = '';
-  List<InvestingSearchResult> _allResults = const [];
+  List<ProviderSearchResult> _allResults = const [];
 
   // Step 2: selected result
-  InvestingSearchResult? _selected;
+  ProviderSearchResult? _selected;
   String? _selectedExchange;
 
   /// Exchange listings discovered for the same instrument (same description).
   /// Drives the exchange dropdown so users can only pick exchanges where the
   /// instrument actually trades. Each entry has a distinct cid.
-  List<InvestingSearchResult> _listings = const [];
+  List<ProviderSearchResult> _listings = const [];
 
   // Manual entry
   final _manualNameCtrl = TextEditingController();
@@ -822,8 +718,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     ];
   }
 
-  void _selectResult(InvestingSearchResult result) {
-    final code = investingExchangeToCode[result.exchange];
+  void _selectResult(ProviderSearchResult result) {
+    final code = providerExchangeToCode[result.exchange];
     final (instrument, assetCls) = _classifyFromType(result.type);
     setState(() {
       _selected = result;
@@ -834,11 +730,11 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     });
   }
 
-  /// Derive instrument type + asset class from investing.com's typeName.
+  /// Derive instrument type + asset class from the provider's typeName.
   /// The `type` field looks like "Stocks - Milano" or "ETFs - Milano".
   static (InstrumentType, AssetClass) _classifyFromType(String type) {
     final prefix = type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
-    return classifyFromInvestingType(prefix);
+    return classifyFromProviderType(prefix);
   }
 
   static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
@@ -961,27 +857,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   // search term and price sync silently fails).
                   final typed = _typedQuery.trim().toUpperCase();
                   final isin = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$').hasMatch(typed) ? typed : null;
-                  await widget.ref.read(assetServiceProvider).create(
-                        name: r.description,
-                        ticker: r.symbol.isNotEmpty ? r.symbol : null,
-                        isin: isin,
-                        exchange: exchange,
-                        currency: currency,
-                        instrumentType: _instrumentType,
-                        assetClass: _assetClass,
-                        intermediaryId: _selectedIntermediaryId!,
-                        assetType: _unlocked ? _assetType : AssetType.stockEtf,
-                        valuationMethod: _unlocked && _valuationMethodOverride != null
-                            ? _valuationMethodOverride!
-                            : ValuationMethod.marketPrice,
-                        ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
-                        taxRate: _unlocked ? (() {
-                          final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
-                          return v == null ? null : v / 100;
-                        })() : null,
-                        isActive: _unlocked ? _isActive : null,
-                        includeInNetWorth: _unlocked ? _includeInNetWorth : null,
-                      );
+                  await _createAsset(
+                    name: r.description,
+                    intermediaryId: _selectedIntermediaryId!,
+                    currency: currency,
+                    ticker: r.symbol.isNotEmpty ? r.symbol : null,
+                    isin: isin,
+                    exchange: exchange,
+                  );
                   if (mounted) Navigator.pop(context);
                 }
               : null,
@@ -996,9 +879,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     // the user can only pick exchanges where the instrument actually trades.
     // Falls back to the global supportedExchanges list when no listings were
     // discovered (manual flow / unmappable exchange names).
-    final byCode = <String, (String, InvestingSearchResult)>{};
+    final byCode = <String, (String, ProviderSearchResult)>{};
     for (final l in _listings) {
-      final code = investingExchangeToCode[l.exchange];
+      final code = providerExchangeToCode[l.exchange];
       if (code == null) continue;
       byCode.putIfAbsent(code, () {
         // Use the supportedExchanges label when available so the wording stays
@@ -1182,24 +1065,11 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   final currency = (_unlocked && overrideCurrency.length == 3)
                       ? overrideCurrency
                       : baseCurrency;
-                  await widget.ref.read(assetServiceProvider).create(
-                        name: name,
-                        currency: currency,
-                        valuationMethod: _unlocked && _valuationMethodOverride != null
-                            ? _valuationMethodOverride!
-                            : ValuationMethod.marketPrice,
-                        instrumentType: _instrumentType,
-                        assetClass: _assetClass,
-                        intermediaryId: _selectedIntermediaryId!,
-                        assetType: _unlocked ? _assetType : AssetType.stockEtf,
-                        ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
-                        taxRate: _unlocked ? (() {
-                          final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
-                          return v == null ? null : v / 100;
-                        })() : null,
-                        isActive: _unlocked ? _isActive : null,
-                        includeInNetWorth: _unlocked ? _includeInNetWorth : null,
-                      );
+                  await _createAsset(
+                    name: name,
+                    intermediaryId: _selectedIntermediaryId!,
+                    currency: currency,
+                  );
                   if (mounted) Navigator.pop(context);
                 }
               : null,

@@ -28,7 +28,6 @@ final _log = getLogger('Database');
   BufferTransactions,
   MarketPrices,
   ExchangeRates,
-  RegisteredEvents,
   HealthReimbursements,
   AppConfigs,
   ImportConfigs,
@@ -55,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 38;
+  int get schemaVersion => 39;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -543,6 +542,33 @@ class AppDatabase extends _$AppDatabase {
               );
               _log.info('Migration 38: dropped pillars.emoji');
             }
+          }
+          if (from < 39) {
+            // Drop the never-read assets.yahoo_ticker column (carry-over from
+            // a long-removed provider integration), the unused
+            // registered_events table + RegisteredEventType enum, and rename
+            // legacy app_configs cache keys from INVESTING_* to PROVIDER_*.
+            if (await _hasColumn('assets', 'yahoo_ticker')) {
+              await customStatement('ALTER TABLE assets DROP COLUMN yahoo_ticker');
+            }
+            await customStatement('DROP TABLE IF EXISTS registered_events');
+            await customStatement(
+              "UPDATE app_configs SET key = 'PROVIDER_CID_' || SUBSTR(key, LENGTH('PROVIDER_CID_') + 1) "
+              "WHERE key LIKE 'PROVIDER_CID_%'",
+            );
+            await customStatement(
+              "UPDATE app_configs SET key = 'PROVIDER_URL_' || SUBSTR(key, LENGTH('PROVIDER_URL_') + 1) "
+              "WHERE key LIKE 'PROVIDER_URL_%'",
+            );
+            await customStatement(
+              "UPDATE app_configs SET key = 'PROVIDER_FX_CID_' || SUBSTR(key, LENGTH('PROVIDER_FX_CID_') + 1) "
+              "WHERE key LIKE 'PROVIDER_FX_CID_%'",
+            );
+            await customStatement(
+              "UPDATE app_configs SET description = REPLACE(description, 'Investing.com', 'provider') "
+              "WHERE description LIKE '%Investing.com%'",
+            );
+            _log.info('Migration 39: dropped yahoo_ticker, registered_events; renamed cache keys');
           }
         },
       );

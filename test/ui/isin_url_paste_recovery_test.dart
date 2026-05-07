@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/widgets/isin_url_paste_recovery.dart';
@@ -15,7 +15,7 @@ import 'package:finance_copilot/ui/widgets/isin_url_paste_recovery.dart';
 Widget _harness({
   required AppDatabase db,
   required Future<String?> Function(Uri) pageFetcher,
-  required void Function(InvestingSearchResult) onResolved,
+  required void Function(ProviderSearchResult) onResolved,
   String userQuery = 'BE0000351602',
   String cacheKey = 'BE0000351602',
   String defaultExchange = 'MIL',
@@ -24,7 +24,7 @@ Widget _harness({
     overrides: [
       databaseProvider.overrideWithValue(db),
       marketPriceServiceProvider.overrideWith((ref) =>
-          InvestingComService(db, pageFetcher: pageFetcher)),
+          WebMarketDataService(db, pageFetcher: pageFetcher)),
     ],
     child: MaterialApp(
       home: Scaffold(
@@ -91,7 +91,7 @@ void main() {
   });
 
   testWidgets('valid URL + happy fetcher → onResolved invoked exactly once', (tester) async {
-    final captured = <InvestingSearchResult>[];
+    final captured = <ProviderSearchResult>[];
     await tester.pumpWidget(_harness(
       db: db,
       pageFetcher: (_) async => bondHtml,
