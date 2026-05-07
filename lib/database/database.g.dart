@@ -3100,17 +3100,6 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _yahooTickerMeta = const VerificationMeta(
-    'yahooTicker',
-  );
-  @override
-  late final GeneratedColumn<String> yahooTicker = GeneratedColumn<String>(
-    'yahoo_ticker',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _countryMeta = const VerificationMeta(
     'country',
   );
@@ -3257,7 +3246,6 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     assetGroup,
     currency,
     exchange,
-    yahooTicker,
     country,
     region,
     sector,
@@ -3333,15 +3321,6 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
       context.handle(
         _exchangeMeta,
         exchange.isAcceptableOrUnknown(data['exchange']!, _exchangeMeta),
-      );
-    }
-    if (data.containsKey('yahoo_ticker')) {
-      context.handle(
-        _yahooTickerMeta,
-        yahooTicker.isAcceptableOrUnknown(
-          data['yahoo_ticker']!,
-          _yahooTickerMeta,
-        ),
       );
     }
     if (data.containsKey('country')) {
@@ -3472,10 +3451,6 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         DriftSqlType.string,
         data['${effectivePrefix}exchange'],
       ),
-      yahooTicker: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}yahoo_ticker'],
-      ),
       country: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}country'],
@@ -3560,7 +3535,6 @@ class Asset extends DataClass implements Insertable<Asset> {
   final String assetGroup;
   final String currency;
   final String? exchange;
-  final String? yahooTicker;
   final String? country;
   final String? region;
   final String? sector;
@@ -3585,7 +3559,6 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.assetGroup,
     required this.currency,
     this.exchange,
-    this.yahooTicker,
     this.country,
     this.region,
     this.sector,
@@ -3630,9 +3603,6 @@ class Asset extends DataClass implements Insertable<Asset> {
     map['currency'] = Variable<String>(currency);
     if (!nullToAbsent || exchange != null) {
       map['exchange'] = Variable<String>(exchange);
-    }
-    if (!nullToAbsent || yahooTicker != null) {
-      map['yahoo_ticker'] = Variable<String>(yahooTicker);
     }
     if (!nullToAbsent || country != null) {
       map['country'] = Variable<String>(country);
@@ -3682,9 +3652,6 @@ class Asset extends DataClass implements Insertable<Asset> {
       exchange: exchange == null && nullToAbsent
           ? const Value.absent()
           : Value(exchange),
-      yahooTicker: yahooTicker == null && nullToAbsent
-          ? const Value.absent()
-          : Value(yahooTicker),
       country: country == null && nullToAbsent
           ? const Value.absent()
           : Value(country),
@@ -3733,7 +3700,6 @@ class Asset extends DataClass implements Insertable<Asset> {
       assetGroup: serializer.fromJson<String>(json['assetGroup']),
       currency: serializer.fromJson<String>(json['currency']),
       exchange: serializer.fromJson<String?>(json['exchange']),
-      yahooTicker: serializer.fromJson<String?>(json['yahooTicker']),
       country: serializer.fromJson<String?>(json['country']),
       region: serializer.fromJson<String?>(json['region']),
       sector: serializer.fromJson<String?>(json['sector']),
@@ -3771,7 +3737,6 @@ class Asset extends DataClass implements Insertable<Asset> {
       'assetGroup': serializer.toJson<String>(assetGroup),
       'currency': serializer.toJson<String>(currency),
       'exchange': serializer.toJson<String?>(exchange),
-      'yahooTicker': serializer.toJson<String?>(yahooTicker),
       'country': serializer.toJson<String?>(country),
       'region': serializer.toJson<String?>(region),
       'sector': serializer.toJson<String?>(sector),
@@ -3801,7 +3766,6 @@ class Asset extends DataClass implements Insertable<Asset> {
     String? assetGroup,
     String? currency,
     Value<String?> exchange = const Value.absent(),
-    Value<String?> yahooTicker = const Value.absent(),
     Value<String?> country = const Value.absent(),
     Value<String?> region = const Value.absent(),
     Value<String?> sector = const Value.absent(),
@@ -3826,7 +3790,6 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetGroup: assetGroup ?? this.assetGroup,
     currency: currency ?? this.currency,
     exchange: exchange.present ? exchange.value : this.exchange,
-    yahooTicker: yahooTicker.present ? yahooTicker.value : this.yahooTicker,
     country: country.present ? country.value : this.country,
     region: region.present ? region.value : this.region,
     sector: sector.present ? sector.value : this.sector,
@@ -3861,9 +3824,6 @@ class Asset extends DataClass implements Insertable<Asset> {
           : this.assetGroup,
       currency: data.currency.present ? data.currency.value : this.currency,
       exchange: data.exchange.present ? data.exchange.value : this.exchange,
-      yahooTicker: data.yahooTicker.present
-          ? data.yahooTicker.value
-          : this.yahooTicker,
       country: data.country.present ? data.country.value : this.country,
       region: data.region.present ? data.region.value : this.region,
       sector: data.sector.present ? data.sector.value : this.sector,
@@ -3897,7 +3857,6 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
-          ..write('yahooTicker: $yahooTicker, ')
           ..write('country: $country, ')
           ..write('region: $region, ')
           ..write('sector: $sector, ')
@@ -3927,7 +3886,6 @@ class Asset extends DataClass implements Insertable<Asset> {
     assetGroup,
     currency,
     exchange,
-    yahooTicker,
     country,
     region,
     sector,
@@ -3956,7 +3914,6 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.assetGroup == this.assetGroup &&
           other.currency == this.currency &&
           other.exchange == this.exchange &&
-          other.yahooTicker == this.yahooTicker &&
           other.country == this.country &&
           other.region == this.region &&
           other.sector == this.sector &&
@@ -3983,7 +3940,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<String> assetGroup;
   final Value<String> currency;
   final Value<String?> exchange;
-  final Value<String?> yahooTicker;
   final Value<String?> country;
   final Value<String?> region;
   final Value<String?> sector;
@@ -4008,7 +3964,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
-    this.yahooTicker = const Value.absent(),
     this.country = const Value.absent(),
     this.region = const Value.absent(),
     this.sector = const Value.absent(),
@@ -4034,7 +3989,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.assetGroup = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchange = const Value.absent(),
-    this.yahooTicker = const Value.absent(),
     this.country = const Value.absent(),
     this.region = const Value.absent(),
     this.sector = const Value.absent(),
@@ -4063,7 +4017,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? assetGroup,
     Expression<String>? currency,
     Expression<String>? exchange,
-    Expression<String>? yahooTicker,
     Expression<String>? country,
     Expression<String>? region,
     Expression<String>? sector,
@@ -4089,7 +4042,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (assetGroup != null) 'asset_group': assetGroup,
       if (currency != null) 'currency': currency,
       if (exchange != null) 'exchange': exchange,
-      if (yahooTicker != null) 'yahoo_ticker': yahooTicker,
       if (country != null) 'country': country,
       if (region != null) 'region': region,
       if (sector != null) 'sector': sector,
@@ -4117,7 +4069,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<String>? assetGroup,
     Value<String>? currency,
     Value<String?>? exchange,
-    Value<String?>? yahooTicker,
     Value<String?>? country,
     Value<String?>? region,
     Value<String?>? sector,
@@ -4143,7 +4094,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       assetGroup: assetGroup ?? this.assetGroup,
       currency: currency ?? this.currency,
       exchange: exchange ?? this.exchange,
-      yahooTicker: yahooTicker ?? this.yahooTicker,
       country: country ?? this.country,
       region: region ?? this.region,
       sector: sector ?? this.sector,
@@ -4201,9 +4151,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     if (exchange.present) {
       map['exchange'] = Variable<String>(exchange.value);
     }
-    if (yahooTicker.present) {
-      map['yahoo_ticker'] = Variable<String>(yahooTicker.value);
-    }
     if (country.present) {
       map['country'] = Variable<String>(country.value);
     }
@@ -4259,7 +4206,6 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('assetGroup: $assetGroup, ')
           ..write('currency: $currency, ')
           ..write('exchange: $exchange, ')
-          ..write('yahooTicker: $yahooTicker, ')
           ..write('country: $country, ')
           ..write('region: $region, ')
           ..write('sector: $sector, ')
@@ -7739,460 +7685,6 @@ class ExchangeRatesCompanion extends UpdateCompanion<ExchangeRate> {
           ..write('date: $date, ')
           ..write('rate: $rate, ')
           ..write('rowid: $rowid')
-          ..write(')'))
-        .toString();
-  }
-}
-
-class $RegisteredEventsTable extends RegisteredEvents
-    with TableInfo<$RegisteredEventsTable, RegisteredEvent> {
-  @override
-  final GeneratedDatabase attachedDatabase;
-  final String? _alias;
-  $RegisteredEventsTable(this.attachedDatabase, [this._alias]);
-  static const VerificationMeta _idMeta = const VerificationMeta('id');
-  @override
-  late final GeneratedColumn<int> id = GeneratedColumn<int>(
-    'id',
-    aliasedName,
-    false,
-    hasAutoIncrement: true,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'PRIMARY KEY AUTOINCREMENT',
-    ),
-  );
-  static const VerificationMeta _dateMeta = const VerificationMeta('date');
-  @override
-  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
-    'date',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: true,
-  );
-  @override
-  late final GeneratedColumnWithTypeConverter<RegisteredEventType, String>
-  type = GeneratedColumn<String>(
-    'type',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  ).withConverter<RegisteredEventType>($RegisteredEventsTable.$convertertype);
-  static const VerificationMeta _descriptionMeta = const VerificationMeta(
-    'description',
-  );
-  @override
-  late final GeneratedColumn<String> description = GeneratedColumn<String>(
-    'description',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(''),
-  );
-  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
-  @override
-  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
-    'amount',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _isPersonalMeta = const VerificationMeta(
-    'isPersonal',
-  );
-  @override
-  late final GeneratedColumn<bool> isPersonal = GeneratedColumn<bool>(
-    'is_personal',
-    aliasedName,
-    false,
-    type: DriftSqlType.bool,
-    requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_personal" IN (0, 1))',
-    ),
-    defaultValue: const Constant(true),
-  );
-  static const VerificationMeta _createdAtMeta = const VerificationMeta(
-    'createdAt',
-  );
-  @override
-  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
-    'created_at',
-    aliasedName,
-    false,
-    type: DriftSqlType.dateTime,
-    requiredDuringInsert: false,
-    defaultValue: currentDateAndTime,
-  );
-  @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    date,
-    type,
-    description,
-    amount,
-    isPersonal,
-    createdAt,
-  ];
-  @override
-  String get aliasedName => _alias ?? actualTableName;
-  @override
-  String get actualTableName => $name;
-  static const String $name = 'registered_events';
-  @override
-  VerificationContext validateIntegrity(
-    Insertable<RegisteredEvent> instance, {
-    bool isInserting = false,
-  }) {
-    final context = VerificationContext();
-    final data = instance.toColumns(true);
-    if (data.containsKey('id')) {
-      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
-    }
-    if (data.containsKey('date')) {
-      context.handle(
-        _dateMeta,
-        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_dateMeta);
-    }
-    if (data.containsKey('description')) {
-      context.handle(
-        _descriptionMeta,
-        description.isAcceptableOrUnknown(
-          data['description']!,
-          _descriptionMeta,
-        ),
-      );
-    }
-    if (data.containsKey('amount')) {
-      context.handle(
-        _amountMeta,
-        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_amountMeta);
-    }
-    if (data.containsKey('is_personal')) {
-      context.handle(
-        _isPersonalMeta,
-        isPersonal.isAcceptableOrUnknown(data['is_personal']!, _isPersonalMeta),
-      );
-    }
-    if (data.containsKey('created_at')) {
-      context.handle(
-        _createdAtMeta,
-        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
-      );
-    }
-    return context;
-  }
-
-  @override
-  Set<GeneratedColumn> get $primaryKey => {id};
-  @override
-  RegisteredEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
-    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return RegisteredEvent(
-      id: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}id'],
-      )!,
-      date: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}date'],
-      )!,
-      type: $RegisteredEventsTable.$convertertype.fromSql(
-        attachedDatabase.typeMapping.read(
-          DriftSqlType.string,
-          data['${effectivePrefix}type'],
-        )!,
-      ),
-      description: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}description'],
-      )!,
-      amount: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}amount'],
-      )!,
-      isPersonal: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}is_personal'],
-      )!,
-      createdAt: attachedDatabase.typeMapping.read(
-        DriftSqlType.dateTime,
-        data['${effectivePrefix}created_at'],
-      )!,
-    );
-  }
-
-  @override
-  $RegisteredEventsTable createAlias(String alias) {
-    return $RegisteredEventsTable(attachedDatabase, alias);
-  }
-
-  static JsonTypeConverter2<RegisteredEventType, String, String>
-  $convertertype = const EnumNameConverter<RegisteredEventType>(
-    RegisteredEventType.values,
-  );
-}
-
-class RegisteredEvent extends DataClass implements Insertable<RegisteredEvent> {
-  final int id;
-  final DateTime date;
-  final RegisteredEventType type;
-  final String description;
-  final double amount;
-  final bool isPersonal;
-  final DateTime createdAt;
-  const RegisteredEvent({
-    required this.id,
-    required this.date,
-    required this.type,
-    required this.description,
-    required this.amount,
-    required this.isPersonal,
-    required this.createdAt,
-  });
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    map['id'] = Variable<int>(id);
-    map['date'] = Variable<DateTime>(date);
-    {
-      map['type'] = Variable<String>(
-        $RegisteredEventsTable.$convertertype.toSql(type),
-      );
-    }
-    map['description'] = Variable<String>(description);
-    map['amount'] = Variable<double>(amount);
-    map['is_personal'] = Variable<bool>(isPersonal);
-    map['created_at'] = Variable<DateTime>(createdAt);
-    return map;
-  }
-
-  RegisteredEventsCompanion toCompanion(bool nullToAbsent) {
-    return RegisteredEventsCompanion(
-      id: Value(id),
-      date: Value(date),
-      type: Value(type),
-      description: Value(description),
-      amount: Value(amount),
-      isPersonal: Value(isPersonal),
-      createdAt: Value(createdAt),
-    );
-  }
-
-  factory RegisteredEvent.fromJson(
-    Map<String, dynamic> json, {
-    ValueSerializer? serializer,
-  }) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return RegisteredEvent(
-      id: serializer.fromJson<int>(json['id']),
-      date: serializer.fromJson<DateTime>(json['date']),
-      type: $RegisteredEventsTable.$convertertype.fromJson(
-        serializer.fromJson<String>(json['type']),
-      ),
-      description: serializer.fromJson<String>(json['description']),
-      amount: serializer.fromJson<double>(json['amount']),
-      isPersonal: serializer.fromJson<bool>(json['isPersonal']),
-      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
-    );
-  }
-  @override
-  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
-    serializer ??= driftRuntimeOptions.defaultSerializer;
-    return <String, dynamic>{
-      'id': serializer.toJson<int>(id),
-      'date': serializer.toJson<DateTime>(date),
-      'type': serializer.toJson<String>(
-        $RegisteredEventsTable.$convertertype.toJson(type),
-      ),
-      'description': serializer.toJson<String>(description),
-      'amount': serializer.toJson<double>(amount),
-      'isPersonal': serializer.toJson<bool>(isPersonal),
-      'createdAt': serializer.toJson<DateTime>(createdAt),
-    };
-  }
-
-  RegisteredEvent copyWith({
-    int? id,
-    DateTime? date,
-    RegisteredEventType? type,
-    String? description,
-    double? amount,
-    bool? isPersonal,
-    DateTime? createdAt,
-  }) => RegisteredEvent(
-    id: id ?? this.id,
-    date: date ?? this.date,
-    type: type ?? this.type,
-    description: description ?? this.description,
-    amount: amount ?? this.amount,
-    isPersonal: isPersonal ?? this.isPersonal,
-    createdAt: createdAt ?? this.createdAt,
-  );
-  RegisteredEvent copyWithCompanion(RegisteredEventsCompanion data) {
-    return RegisteredEvent(
-      id: data.id.present ? data.id.value : this.id,
-      date: data.date.present ? data.date.value : this.date,
-      type: data.type.present ? data.type.value : this.type,
-      description: data.description.present
-          ? data.description.value
-          : this.description,
-      amount: data.amount.present ? data.amount.value : this.amount,
-      isPersonal: data.isPersonal.present
-          ? data.isPersonal.value
-          : this.isPersonal,
-      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
-    );
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('RegisteredEvent(')
-          ..write('id: $id, ')
-          ..write('date: $date, ')
-          ..write('type: $type, ')
-          ..write('description: $description, ')
-          ..write('amount: $amount, ')
-          ..write('isPersonal: $isPersonal, ')
-          ..write('createdAt: $createdAt')
-          ..write(')'))
-        .toString();
-  }
-
-  @override
-  int get hashCode =>
-      Object.hash(id, date, type, description, amount, isPersonal, createdAt);
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is RegisteredEvent &&
-          other.id == this.id &&
-          other.date == this.date &&
-          other.type == this.type &&
-          other.description == this.description &&
-          other.amount == this.amount &&
-          other.isPersonal == this.isPersonal &&
-          other.createdAt == this.createdAt);
-}
-
-class RegisteredEventsCompanion extends UpdateCompanion<RegisteredEvent> {
-  final Value<int> id;
-  final Value<DateTime> date;
-  final Value<RegisteredEventType> type;
-  final Value<String> description;
-  final Value<double> amount;
-  final Value<bool> isPersonal;
-  final Value<DateTime> createdAt;
-  const RegisteredEventsCompanion({
-    this.id = const Value.absent(),
-    this.date = const Value.absent(),
-    this.type = const Value.absent(),
-    this.description = const Value.absent(),
-    this.amount = const Value.absent(),
-    this.isPersonal = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  });
-  RegisteredEventsCompanion.insert({
-    this.id = const Value.absent(),
-    required DateTime date,
-    required RegisteredEventType type,
-    this.description = const Value.absent(),
-    required double amount,
-    this.isPersonal = const Value.absent(),
-    this.createdAt = const Value.absent(),
-  }) : date = Value(date),
-       type = Value(type),
-       amount = Value(amount);
-  static Insertable<RegisteredEvent> custom({
-    Expression<int>? id,
-    Expression<DateTime>? date,
-    Expression<String>? type,
-    Expression<String>? description,
-    Expression<double>? amount,
-    Expression<bool>? isPersonal,
-    Expression<DateTime>? createdAt,
-  }) {
-    return RawValuesInsertable({
-      if (id != null) 'id': id,
-      if (date != null) 'date': date,
-      if (type != null) 'type': type,
-      if (description != null) 'description': description,
-      if (amount != null) 'amount': amount,
-      if (isPersonal != null) 'is_personal': isPersonal,
-      if (createdAt != null) 'created_at': createdAt,
-    });
-  }
-
-  RegisteredEventsCompanion copyWith({
-    Value<int>? id,
-    Value<DateTime>? date,
-    Value<RegisteredEventType>? type,
-    Value<String>? description,
-    Value<double>? amount,
-    Value<bool>? isPersonal,
-    Value<DateTime>? createdAt,
-  }) {
-    return RegisteredEventsCompanion(
-      id: id ?? this.id,
-      date: date ?? this.date,
-      type: type ?? this.type,
-      description: description ?? this.description,
-      amount: amount ?? this.amount,
-      isPersonal: isPersonal ?? this.isPersonal,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
-
-  @override
-  Map<String, Expression> toColumns(bool nullToAbsent) {
-    final map = <String, Expression>{};
-    if (id.present) {
-      map['id'] = Variable<int>(id.value);
-    }
-    if (date.present) {
-      map['date'] = Variable<DateTime>(date.value);
-    }
-    if (type.present) {
-      map['type'] = Variable<String>(
-        $RegisteredEventsTable.$convertertype.toSql(type.value),
-      );
-    }
-    if (description.present) {
-      map['description'] = Variable<String>(description.value);
-    }
-    if (amount.present) {
-      map['amount'] = Variable<double>(amount.value);
-    }
-    if (isPersonal.present) {
-      map['is_personal'] = Variable<bool>(isPersonal.value);
-    }
-    if (createdAt.present) {
-      map['created_at'] = Variable<DateTime>(createdAt.value);
-    }
-    return map;
-  }
-
-  @override
-  String toString() {
-    return (StringBuffer('RegisteredEventsCompanion(')
-          ..write('id: $id, ')
-          ..write('date: $date, ')
-          ..write('type: $type, ')
-          ..write('description: $description, ')
-          ..write('amount: $amount, ')
-          ..write('isPersonal: $isPersonal, ')
-          ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
@@ -13037,9 +12529,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $BufferTransactionsTable(this);
   late final $MarketPricesTable marketPrices = $MarketPricesTable(this);
   late final $ExchangeRatesTable exchangeRates = $ExchangeRatesTable(this);
-  late final $RegisteredEventsTable registeredEvents = $RegisteredEventsTable(
-    this,
-  );
   late final $HealthReimbursementsTable healthReimbursements =
       $HealthReimbursementsTable(this);
   late final $AppConfigsTable appConfigs = $AppConfigsTable(this);
@@ -13070,7 +12559,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     bufferTransactions,
     marketPrices,
     exchangeRates,
-    registeredEvents,
     healthReimbursements,
     appConfigs,
     importConfigs,
@@ -15959,7 +15447,6 @@ typedef $$AssetsTableCreateCompanionBuilder =
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
-      Value<String?> yahooTicker,
       Value<String?> country,
       Value<String?> region,
       Value<String?> sector,
@@ -15986,7 +15473,6 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<String> assetGroup,
       Value<String> currency,
       Value<String?> exchange,
-      Value<String?> yahooTicker,
       Value<String?> country,
       Value<String?> region,
       Value<String?> sector,
@@ -16199,11 +15685,6 @@ class $$AssetsTableFilterComposer
 
   ColumnFilters<String> get exchange => $composableBuilder(
     column: $table.exchange,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get yahooTicker => $composableBuilder(
-    column: $table.yahooTicker,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16501,11 +15982,6 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get yahooTicker => $composableBuilder(
-    column: $table.yahooTicker,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get country => $composableBuilder(
     column: $table.country,
     builder: (column) => ColumnOrderings(column),
@@ -16636,11 +16112,6 @@ class $$AssetsTableAnnotationComposer
 
   GeneratedColumn<String> get exchange =>
       $composableBuilder(column: $table.exchange, builder: (column) => column);
-
-  GeneratedColumn<String> get yahooTicker => $composableBuilder(
-    column: $table.yahooTicker,
-    builder: (column) => column,
-  );
 
   GeneratedColumn<String> get country =>
       $composableBuilder(column: $table.country, builder: (column) => column);
@@ -16905,7 +16376,6 @@ class $$AssetsTableTableManager
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
-                Value<String?> yahooTicker = const Value.absent(),
                 Value<String?> country = const Value.absent(),
                 Value<String?> region = const Value.absent(),
                 Value<String?> sector = const Value.absent(),
@@ -16930,7 +16400,6 @@ class $$AssetsTableTableManager
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
-                yahooTicker: yahooTicker,
                 country: country,
                 region: region,
                 sector: sector,
@@ -16957,7 +16426,6 @@ class $$AssetsTableTableManager
                 Value<String> assetGroup = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<String?> exchange = const Value.absent(),
-                Value<String?> yahooTicker = const Value.absent(),
                 Value<String?> country = const Value.absent(),
                 Value<String?> region = const Value.absent(),
                 Value<String?> sector = const Value.absent(),
@@ -16982,7 +16450,6 @@ class $$AssetsTableTableManager
                 assetGroup: assetGroup,
                 currency: currency,
                 exchange: exchange,
-                yahooTicker: yahooTicker,
                 country: country,
                 region: region,
                 sector: sector,
@@ -19704,253 +19171,6 @@ typedef $$ExchangeRatesTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $ExchangeRatesTable, ExchangeRate>,
       ),
       ExchangeRate,
-      PrefetchHooks Function()
-    >;
-typedef $$RegisteredEventsTableCreateCompanionBuilder =
-    RegisteredEventsCompanion Function({
-      Value<int> id,
-      required DateTime date,
-      required RegisteredEventType type,
-      Value<String> description,
-      required double amount,
-      Value<bool> isPersonal,
-      Value<DateTime> createdAt,
-    });
-typedef $$RegisteredEventsTableUpdateCompanionBuilder =
-    RegisteredEventsCompanion Function({
-      Value<int> id,
-      Value<DateTime> date,
-      Value<RegisteredEventType> type,
-      Value<String> description,
-      Value<double> amount,
-      Value<bool> isPersonal,
-      Value<DateTime> createdAt,
-    });
-
-class $$RegisteredEventsTableFilterComposer
-    extends Composer<_$AppDatabase, $RegisteredEventsTable> {
-  $$RegisteredEventsTableFilterComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnFilters<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get date => $composableBuilder(
-    column: $table.date,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnWithTypeConverterFilters<
-    RegisteredEventType,
-    RegisteredEventType,
-    String
-  >
-  get type => $composableBuilder(
-    column: $table.type,
-    builder: (column) => ColumnWithTypeConverterFilters(column),
-  );
-
-  ColumnFilters<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get amount => $composableBuilder(
-    column: $table.amount,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<bool> get isPersonal => $composableBuilder(
-    column: $table.isPersonal,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnFilters(column),
-  );
-}
-
-class $$RegisteredEventsTableOrderingComposer
-    extends Composer<_$AppDatabase, $RegisteredEventsTable> {
-  $$RegisteredEventsTableOrderingComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  ColumnOrderings<int> get id => $composableBuilder(
-    column: $table.id,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get date => $composableBuilder(
-    column: $table.date,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get type => $composableBuilder(
-    column: $table.type,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get amount => $composableBuilder(
-    column: $table.amount,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<bool> get isPersonal => $composableBuilder(
-    column: $table.isPersonal,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
-    column: $table.createdAt,
-    builder: (column) => ColumnOrderings(column),
-  );
-}
-
-class $$RegisteredEventsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $RegisteredEventsTable> {
-  $$RegisteredEventsTableAnnotationComposer({
-    required super.$db,
-    required super.$table,
-    super.joinBuilder,
-    super.$addJoinBuilderToRootComposer,
-    super.$removeJoinBuilderFromRootComposer,
-  });
-  GeneratedColumn<int> get id =>
-      $composableBuilder(column: $table.id, builder: (column) => column);
-
-  GeneratedColumn<DateTime> get date =>
-      $composableBuilder(column: $table.date, builder: (column) => column);
-
-  GeneratedColumnWithTypeConverter<RegisteredEventType, String> get type =>
-      $composableBuilder(column: $table.type, builder: (column) => column);
-
-  GeneratedColumn<String> get description => $composableBuilder(
-    column: $table.description,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<double> get amount =>
-      $composableBuilder(column: $table.amount, builder: (column) => column);
-
-  GeneratedColumn<bool> get isPersonal => $composableBuilder(
-    column: $table.isPersonal,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<DateTime> get createdAt =>
-      $composableBuilder(column: $table.createdAt, builder: (column) => column);
-}
-
-class $$RegisteredEventsTableTableManager
-    extends
-        RootTableManager<
-          _$AppDatabase,
-          $RegisteredEventsTable,
-          RegisteredEvent,
-          $$RegisteredEventsTableFilterComposer,
-          $$RegisteredEventsTableOrderingComposer,
-          $$RegisteredEventsTableAnnotationComposer,
-          $$RegisteredEventsTableCreateCompanionBuilder,
-          $$RegisteredEventsTableUpdateCompanionBuilder,
-          (
-            RegisteredEvent,
-            BaseReferences<
-              _$AppDatabase,
-              $RegisteredEventsTable,
-              RegisteredEvent
-            >,
-          ),
-          RegisteredEvent,
-          PrefetchHooks Function()
-        > {
-  $$RegisteredEventsTableTableManager(
-    _$AppDatabase db,
-    $RegisteredEventsTable table,
-  ) : super(
-        TableManagerState(
-          db: db,
-          table: table,
-          createFilteringComposer: () =>
-              $$RegisteredEventsTableFilterComposer($db: db, $table: table),
-          createOrderingComposer: () =>
-              $$RegisteredEventsTableOrderingComposer($db: db, $table: table),
-          createComputedFieldComposer: () =>
-              $$RegisteredEventsTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                Value<DateTime> date = const Value.absent(),
-                Value<RegisteredEventType> type = const Value.absent(),
-                Value<String> description = const Value.absent(),
-                Value<double> amount = const Value.absent(),
-                Value<bool> isPersonal = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => RegisteredEventsCompanion(
-                id: id,
-                date: date,
-                type: type,
-                description: description,
-                amount: amount,
-                isPersonal: isPersonal,
-                createdAt: createdAt,
-              ),
-          createCompanionCallback:
-              ({
-                Value<int> id = const Value.absent(),
-                required DateTime date,
-                required RegisteredEventType type,
-                Value<String> description = const Value.absent(),
-                required double amount,
-                Value<bool> isPersonal = const Value.absent(),
-                Value<DateTime> createdAt = const Value.absent(),
-              }) => RegisteredEventsCompanion.insert(
-                id: id,
-                date: date,
-                type: type,
-                description: description,
-                amount: amount,
-                isPersonal: isPersonal,
-                createdAt: createdAt,
-              ),
-          withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
-              .toList(),
-          prefetchHooksCallback: null,
-        ),
-      );
-}
-
-typedef $$RegisteredEventsTableProcessedTableManager =
-    ProcessedTableManager<
-      _$AppDatabase,
-      $RegisteredEventsTable,
-      RegisteredEvent,
-      $$RegisteredEventsTableFilterComposer,
-      $$RegisteredEventsTableOrderingComposer,
-      $$RegisteredEventsTableAnnotationComposer,
-      $$RegisteredEventsTableCreateCompanionBuilder,
-      $$RegisteredEventsTableUpdateCompanionBuilder,
-      (
-        RegisteredEvent,
-        BaseReferences<_$AppDatabase, $RegisteredEventsTable, RegisteredEvent>,
-      ),
-      RegisteredEvent,
       PrefetchHooks Function()
     >;
 typedef $$HealthReimbursementsTableCreateCompanionBuilder =
@@ -23542,8 +22762,6 @@ class $AppDatabaseManager {
       $$MarketPricesTableTableManager(_db, _db.marketPrices);
   $$ExchangeRatesTableTableManager get exchangeRates =>
       $$ExchangeRatesTableTableManager(_db, _db.exchangeRates);
-  $$RegisteredEventsTableTableManager get registeredEvents =>
-      $$RegisteredEventsTableTableManager(_db, _db.registeredEvents);
   $$HealthReimbursementsTableTableManager get healthReimbursements =>
       $$HealthReimbursementsTableTableManager(_db, _db.healthReimbursements);
   $$AppConfigsTableTableManager get appConfigs =>

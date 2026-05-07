@@ -357,18 +357,18 @@ Date,Amount
       expect(asset.valuationMethod, ValuationMethod.marketPrice);
     });
 
-    test('imported assets store exchange code not Investing.com name', () async {
+    test('imported assets store exchange code not the market data provider name', () async {
       final preview = makeAssetPreview([
         ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
       ]);
-      // Provide a selected exchange with Investing.com name
+      // Provide a selected exchange with the market data provider name
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: mappings, baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
         selectedExchanges: {
           'IE00B4L5Y983': const IsinExchangeOption(
             cid: 46925, ticker: 'SWDA', name: 'iShares MSCI World',
-            exchange: 'London', // Investing.com name, not code
+            exchange: 'London', // the market data provider name, not code
           ),
         },
       );

@@ -175,9 +175,11 @@ class _AppShellState extends ConsumerState<AppShell> {
           );
         },
         retryNetwork: () async {
+          if (!mounted) return;
           final monitor = ref.read(networkMonitorProvider);
           monitor.reset();
           final nowOnline = await monitor.check();
+          if (!mounted) return;
           ref.read(networkOnlineProvider.notifier).state = nowOnline;
           if (nowOnline) _startBackgroundSync();
         },
@@ -419,8 +421,10 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   Future<void> _startBackgroundSync() async {
+    if (!mounted) return;
     final monitor = ref.read(networkMonitorProvider);
     final online = await monitor.check();
+    if (!mounted) return;
     ref.read(networkOnlineProvider.notifier).state = online;
     if (!online) {
       _log.info('Network offline - skipping background sync');
@@ -428,6 +432,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
 
     Future.microtask(() async {
+      if (!mounted) return;
       try {
         await Future.wait([
           _syncPrices(),
@@ -1175,11 +1180,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                       ),
                       onPressed: () async {
                         await ref.read(marketPriceServiceProvider).clearCache();
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            SnackBar(content: Text(s.settingsCacheCleared)),
-                          );
-                        }
+                        if (ctx.mounted) showInfoSnack(ctx, s.settingsCacheCleared);
                       },
                       child: Text(s.settingsClearButton),
                     ),

@@ -7,13 +7,21 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../database/database.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
-import 'investing_page_parser.dart';
+import 'web_page_parser.dart';
 import 'market_price_service.dart';
 
-final _log = getLogger('InvestingComService');
+final _log = getLogger('WebMarketDataService');
 
-/// Result from the Investing.com search API.
-class InvestingSearchResult {
+/// Provider host. Centralised so callers and tests don't sprinkle the
+/// literal across the codebase. The host is data — replacing it would
+/// change which provider we integrate with.
+const kProviderHost = 'www.investing.com';
+const kProviderApiHost = 'api.investing.com';
+const kProviderBase = 'https://$kProviderHost';
+const kProviderApiBase = 'https://$kProviderApiHost';
+
+/// Result from the market data provider search API.
+class ProviderSearchResult {
   final int cid;
   final String description;
   final String symbol;
@@ -22,7 +30,7 @@ class InvestingSearchResult {
   final String type;
   final String? url; // relative URL path, e.g. "/equities/amazon-com-inc"
 
-  const InvestingSearchResult({
+  const ProviderSearchResult({
     required this.cid,
     required this.description,
     required this.symbol,
@@ -33,13 +41,13 @@ class InvestingSearchResult {
   });
 }
 
-/// Outcome of [InvestingComService.resolveFromInstrumentUrl].
+/// Outcome of [WebMarketDataService.resolveFromInstrumentUrl].
 sealed class UrlResolveResult {
   const UrlResolveResult();
 }
 
 class UrlResolveOk extends UrlResolveResult {
-  final InvestingSearchResult result;
+  final ProviderSearchResult result;
   const UrlResolveOk(this.result);
 }
 
@@ -63,13 +71,13 @@ class UrlResolveParseFailed extends UrlResolveResult {
   const UrlResolveParseFailed();
 }
 
-/// Investing.com exchange name mapping.
+/// the market data provider exchange name mapping.
 /// Keys match internal exchange codes in `assets.exchange`.
-/// Investing.com exchange names (as returned by their search API).
+/// the market data provider exchange names (as returned by their search API).
 /// Multiple names per exchange code since the API uses Italian names.
 const _exchangeNames = <String, List<String>>{
   'MIL': ['Milano', 'Milan'],
-  'NYQ': ['NASDAQ', 'NYSE'],  // Investing.com lists AMZN as NASDAQ even though it's NYQ
+  'NYQ': ['NASDAQ', 'NYSE'],  // the market data provider lists AMZN as NASDAQ even though it's NYQ
   'NMS': ['NASDAQ'],
   'NYS': ['NYSE'],
   'ASE': ['AMEX'],
@@ -86,11 +94,11 @@ const _exchangeNames = <String, List<String>>{
   'TYO': ['Tokyo'],
 };
 
-/// Fetches historical prices from Investing.com.
+/// Fetches historical prices from the market data provider.
 ///
 /// Uses a headless WebView to solve Cloudflare challenges, then makes
 /// direct API calls with the obtained cookies via Dio.
-class InvestingComService extends MarketPriceService {
+class WebMarketDataService extends MarketPriceService {
   final Dio _dio;
   final Future<String?> Function(Uri)? _pageFetcher;
 
@@ -106,7 +114,7 @@ class InvestingComService extends MarketPriceService {
 
   /// [pageFetcher] is a test seam: when non-null, [resolveFromInstrumentUrl]
   /// uses it instead of the built-in Dio + WebView fetch path.
-  InvestingComService(
+  WebMarketDataService(
     super.db, {
     Dio? dio,
     Future<String?> Function(Uri)? pageFetcher,
@@ -134,7 +142,7 @@ class InvestingComService extends MarketPriceService {
       final cookieManager = CookieManager.instance();
       // Collect cookies from both www and api domains
       final merged = <String, String>{};
-      for (final domain in ['https://www.investing.com/', 'https://api.investing.com/']) {
+      for (final domain in ['$kProviderBase/', '$kProviderApiBase/']) {
         final cookies = await cookieManager.getCookies(url: WebUri(domain));
         for (final c in cookies) { merged[c.name] = c.value.toString(); }
       }
@@ -160,7 +168,7 @@ class InvestingComService extends MarketPriceService {
         final headers = Map<String, String>.from(_browserHeaders);
         if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
         if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
-        await _dio.get('https://api.investing.com/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
+        await _dio.get('$kProviderApiBase/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
             options: Options(headers: headers, validateStatus: (s) => s != null && s < 400));
         _log.info('Dio probe: OK - using Dio for API calls');
       } on DioException catch (e) {
@@ -187,8 +195,8 @@ class InvestingComService extends MarketPriceService {
     Timer? timeout;
     bool navigatedToApi = false;
     _webView = HeadlessInAppWebView(
-      // Start on api.investing.com so subsequent fetch() calls are same-origin.
-      initialUrlRequest: URLRequest(url: WebUri('https://api.investing.com/')),
+      // Start on the api host so subsequent fetch() calls are same-origin.
+      initialUrlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
       initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
       onLoadStop: (controller, url) async {
         if (completer.isCompleted) return;
@@ -200,11 +208,11 @@ class InvestingComService extends MarketPriceService {
         if (title != null && title.contains('Just a moment')) return;
 
         // If we landed on www (redirect), navigate to api for same-origin
-        if (urlStr.contains('www.investing.com') && !navigatedToApi) {
+        if (urlStr.contains(kProviderHost) && !navigatedToApi) {
           navigatedToApi = true;
-          _log.info('CF solved on www, navigating to api.investing.com for same-origin...');
+          _log.info('CF solved on www, navigating to api host for same-origin...');
           await controller.loadUrl(
-            urlRequest: URLRequest(url: WebUri('https://api.investing.com/')),
+            urlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
           );
           return;
         }
@@ -225,7 +233,7 @@ class InvestingComService extends MarketPriceService {
   }
 
   /// Fetch API data by running fetch() inside the WebView's JS context.
-  /// Same-origin since the WebView is loaded on api.investing.com.
+  /// Same-origin since the WebView is loaded on the api host.
   Future<Map<String, dynamic>?> _fetchViaJsFetch(String url, {String domainId = 'www'}) async {
     if (_webViewController == null) return null;
     try {
@@ -288,7 +296,7 @@ class InvestingComService extends MarketPriceService {
   }
 
   /// Fetch HTML via the WebView's JS context (bypasses CF for pages like
-  /// investing.com/equities/* that block plain Dio). Used by CompositionService.
+  /// the provider's equities pages that block plain Dio). Used by CompositionService.
   Future<String?> fetchHtml(String url) async {
     if (!_isWebViewReady) {
       final ok = await _ensureWebView();
@@ -316,8 +324,8 @@ class InvestingComService extends MarketPriceService {
   static const _browserHeaders = {
     'Accept': '*/*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Origin': 'https://www.investing.com',
-    'Referer': 'https://www.investing.com/',
+    'Origin': kProviderBase,
+    'Referer': '$kProviderBase/',
     'Domain-Id': 'www',
     'sec-ch-ua': '"Chromium";v="131", "Not-A.Brand";v="24"',
     'sec-ch-ua-mobile': '?0',
@@ -374,21 +382,21 @@ class InvestingComService extends MarketPriceService {
 
 
   // ──────────────────────────────────────────────
-  // Investing.com API: Search
+  // the market data provider API: Search
   // ──────────────────────────────────────────────
 
 
-  /// Search Investing.com for any query (name, ISIN, ticker, fund ID).
+  /// Search the market data provider for any query (name, ISIN, ticker, fund ID).
   /// Searches both international (www) and Italian (it) domains, merges results.
   /// Type names always come from the English (www) domain for consistent classification.
-  Future<List<InvestingSearchResult>> search(String query) async {
+  Future<List<ProviderSearchResult>> search(String query) async {
     final url =
-        'https://api.investing.com/api/search/v2/search?q=${Uri.encodeComponent(query)}';
+        '$kProviderApiBase/api/search/v2/search?q=${Uri.encodeComponent(query)}';
 
     _log.info('search: $query');
 
     // Search via _webViewFetch (Dio or JS depending on _dioBlocked)
-    final results = <int, InvestingSearchResult>{};
+    final results = <int, ProviderSearchResult>{};
     try {
       final wwwData = await _webViewFetch(url, domainId: 'www');
       final wwwQuotes = (wwwData?['quotes'] as List?) ?? [];
@@ -418,13 +426,13 @@ class InvestingComService extends MarketPriceService {
     return results.values.toList();
   }
 
-  /// Resolve a user-pasted instrument page URL into an [InvestingSearchResult]
+  /// Resolve a user-pasted instrument page URL into an [ProviderSearchResult]
   /// by fetching the page and parsing its embedded `__NEXT_DATA__` JSON.
   ///
   /// Used when the search API has an indexing gap (some bonds / niche
   /// instruments are reachable by URL but missing from the search corpus).
   /// Caches the resolved cid and URL under the existing
-  /// `INVESTING_CID_<cacheKey>_<exchange>` / `INVESTING_URL_<cacheKey>_<exchange>`
+  /// `PROVIDER_CID_<cacheKey>_<exchange>` / `PROVIDER_URL_<cacheKey>_<exchange>`
   /// keys so subsequent [_searchCid] calls hit cache.
   Future<UrlResolveResult> resolveFromInstrumentUrl(
     Uri url, {
@@ -469,24 +477,24 @@ class InvestingComService extends MarketPriceService {
       return const UrlResolveFetchFailed();
     }
 
-    final parsed = parseInvestingPage(html, canonical);
+    final parsed = parseProviderPage(html, canonical);
     if (parsed == null) {
       return const UrlResolveParseFailed();
     }
 
     // Cache cid + URL so future _searchCid calls short-circuit.
-    final cidKey = 'INVESTING_CID_${cacheKey}_$exchange';
-    final urlKey = 'INVESTING_URL_${cacheKey}_$exchange';
+    final cidKey = 'PROVIDER_CID_${cacheKey}_$exchange';
+    final urlKey = 'PROVIDER_URL_${cacheKey}_$exchange';
     await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
       key: cidKey,
       value: parsed.cid.toString(),
-      description: Value('Investing.com cid for $cacheKey on $exchange'),
+      description: Value('the market data provider cid for $cacheKey on $exchange'),
     ));
     if (parsed.url != null && parsed.url!.isNotEmpty) {
       await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
         key: urlKey,
         value: parsed.url!,
-        description: Value('Investing.com URL for $cacheKey'),
+        description: Value('the market data provider URL for $cacheKey'),
       ));
     }
     _log.info('resolveFromInstrumentUrl: $cacheKey on $exchange -> cid=${parsed.cid}');
@@ -526,10 +534,10 @@ class InvestingComService extends MarketPriceService {
     }
   }
 
-  static InvestingSearchResult _parseSearchResult(dynamic q) {
+  static ProviderSearchResult _parseSearchResult(dynamic q) {
     final exchange = (q['exchange'] as String?) ?? '';
     final typeName = (q['typeName'] as String?) ?? (q['type'] as String?) ?? '';
-    return InvestingSearchResult(
+    return ProviderSearchResult(
       cid: q['id'] as int,
       description: (q['description'] as String?) ?? '',
       symbol: (q['symbol'] as String?) ?? '',
@@ -540,13 +548,13 @@ class InvestingComService extends MarketPriceService {
     );
   }
 
-  /// Search for a ticker/ISIN on Investing.com, filtered by exchange.
-  /// Returns the Investing.com cid (instrument ID) or null.
+  /// Search for a ticker/ISIN on the market data provider, filtered by exchange.
+  /// Returns the market data provider cid (instrument ID) or null.
   /// When [searchTerm] is an ISIN (12 chars, starts with 2 letters),
   /// matches by exchange only (ISIN results have exchange-specific symbols).
   Future<int?> _searchCid(String searchTerm, String exchange) async {
     // Check cached cid first
-    final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
+    final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
     final cidRow = await db.customSelect(
       'SELECT value FROM app_configs WHERE key = ?',
       variables: [Variable.withString(cidKey)],
@@ -564,14 +572,14 @@ class InvestingComService extends MarketPriceService {
     final results = await search(searchTerm);
 
     // Cache helper
-    Future<int> cacheAndReturn(InvestingSearchResult r) async {
+    Future<int> cacheAndReturn(ProviderSearchResult r) async {
       await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-        key: cidKey, value: r.cid.toString(), description: Value('Investing.com cid for $searchTerm on ${exchangeNameList.first}'),
+        key: cidKey, value: r.cid.toString(), description: Value('the market data provider cid for $searchTerm on ${exchangeNameList.first}'),
       ));
       if (r.url != null && r.url!.isNotEmpty) {
-        final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
+        final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
         await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-          key: urlKey, value: r.url!, description: Value('Investing.com URL for $searchTerm'),
+          key: urlKey, value: r.url!, description: Value('the market data provider URL for $searchTerm'),
         ));
       }
       _log.info('searchCid: found $searchTerm -> cid=${r.cid} symbol=${r.symbol} (${r.exchange})');
@@ -607,7 +615,7 @@ class InvestingComService extends MarketPriceService {
   }
 
   // ──────────────────────────────────────────────
-  // Investing.com API: Live FX rate
+  // the market data provider API: Live FX rate
   // ──────────────────────────────────────────────
 
   /// Cache of FX pair cids: "EUR/USD" → cid
@@ -661,7 +669,7 @@ class InvestingComService extends MarketPriceService {
     final searchTerm = (isin?.isNotEmpty == true) ? isin! : (ticker ?? '');
     if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
 
-    final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
+    final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
     final cidRow = await db.customSelect(
       'SELECT value FROM app_configs WHERE key = ?',
       variables: [Variable.withString(cidKey)],
@@ -675,7 +683,7 @@ class InvestingComService extends MarketPriceService {
     final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
     final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final url = 'https://api.investing.com/api/financialdata/historical/$cid'
+    final url = '$kProviderApiBase/api/financialdata/historical/$cid'
         '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
     final data = await _webViewFetch(url);
@@ -714,7 +722,7 @@ class InvestingComService extends MarketPriceService {
     return getPrice(assetId, DateTime.now());
   }
 
-  /// Get the live exchange rate from [from] to [to] via Investing.com.
+  /// Get the live exchange rate from [from] to [to] via the market data provider.
   /// Searches for the currency pair, then fetches the latest price.
   Future<double?> getLiveFxRate(String from, String to) async {
     if (from == to) return 1.0;
@@ -779,7 +787,7 @@ class InvestingComService extends MarketPriceService {
       var cid = _fxCidCache[pairKey];
       if (cid == null) {
         // Also check DB cache
-        final cidKey = 'INVESTING_FX_CID_$pairKey';
+        final cidKey = 'PROVIDER_FX_CID_$pairKey';
         final cidRow = await db.customSelect(
           'SELECT value FROM app_configs WHERE key = ?',
           variables: [Variable.withString(cidKey)],
@@ -801,7 +809,7 @@ class InvestingComService extends MarketPriceService {
 
           // Cache in DB
           await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-            key: cidKey, value: cid.toString(), description: Value('Investing.com FX cid for $pairKey'),
+            key: cidKey, value: cid.toString(), description: Value('the market data provider FX cid for $pairKey'),
           ));
         }
         _fxCidCache[pairKey] = cid;
@@ -813,7 +821,7 @@ class InvestingComService extends MarketPriceService {
       final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
       final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-      final url = 'https://api.investing.com/api/financialdata/historical/$cid'
+      final url = '$kProviderApiBase/api/financialdata/historical/$cid'
           '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
       final data = await _webViewFetch(url);
@@ -846,7 +854,7 @@ class InvestingComService extends MarketPriceService {
     // Resolve CID (same pattern as _fetchFxRate)
     var cid = _fxCidCache[pairKey];
     if (cid == null) {
-      final cidKey = 'INVESTING_FX_CID_$pairKey';
+      final cidKey = 'PROVIDER_FX_CID_$pairKey';
       final cidRow = await db.customSelect(
         'SELECT value FROM app_configs WHERE key = ?',
         variables: [Variable.withString(cidKey)],
@@ -865,7 +873,7 @@ class InvestingComService extends MarketPriceService {
         }
         if (cid == null) return {};
         await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-          key: cidKey, value: cid.toString(), description: Value('Investing.com FX cid for $pairKey'),
+          key: cidKey, value: cid.toString(), description: Value('the market data provider FX cid for $pairKey'),
         ));
       }
       _fxCidCache[pairKey] = cid;
@@ -874,7 +882,7 @@ class InvestingComService extends MarketPriceService {
   }
 
   // ──────────────────────────────────────────────
-  // Investing.com API: Historical prices
+  // the market data provider API: Historical prices
   // ──────────────────────────────────────────────
 
   Future<Map<DateTime, double>> _fetchByCid(
@@ -886,7 +894,7 @@ class InvestingComService extends MarketPriceService {
     final toStr =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final url = 'https://api.investing.com/api/financialdata/historical/$cid'
+    final url = '$kProviderApiBase/api/financialdata/historical/$cid'
         '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
     _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
@@ -955,21 +963,21 @@ class InvestingComService extends MarketPriceService {
     return parts.join(' ');
   }
 
-  /// Backfill missing Investing.com URLs for assets that already have cached CIDs.
+  /// Backfill missing the market data provider URLs for assets that already have cached CIDs.
   Future<void> _backfillMissingUrls(List<Asset> assets) async {
     final missing = <(String, String, int)>[]; // (searchTerm, exchange, cachedCid)
     for (final asset in assets) {
       final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
       if (searchTerm == null || searchTerm.isEmpty) continue;
       final exchange = asset.exchange ?? 'MIL';
-      final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
+      final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
       final urlRow = await db.customSelect(
         'SELECT value FROM app_configs WHERE key = ?',
         variables: [Variable.withString(urlKey)],
       ).getSingleOrNull();
       if (urlRow != null) continue; // already has URL
 
-      final cidKey = 'INVESTING_CID_${searchTerm}_$exchange';
+      final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
       final cidRow = await db.customSelect(
         'SELECT value FROM app_configs WHERE key = ?',
         variables: [Variable.withString(cidKey)],
@@ -990,9 +998,9 @@ class InvestingComService extends MarketPriceService {
         final results = await search(searchTerm);
         for (final r in results) {
           if (r.cid == cid && r.url != null && r.url!.isNotEmpty) {
-            final urlKey = 'INVESTING_URL_${searchTerm}_$exchange';
+            final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
             await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-              key: urlKey, value: r.url!, description: Value('Investing.com URL for $searchTerm'),
+              key: urlKey, value: r.url!, description: Value('the market data provider URL for $searchTerm'),
             ));
             _log.info('backfillUrls: cached URL for $searchTerm -> ${r.url}');
             break;
@@ -1004,7 +1012,7 @@ class InvestingComService extends MarketPriceService {
     });
   }
 
-  /// Max concurrent HTTP requests to Investing.com to avoid rate-limiting.
+  /// Max concurrent HTTP requests to the market data provider to avoid rate-limiting.
   static const _maxConcurrency = 3;
 
   /// Buffer subtracted from firstBuy on initial sync. Covers a long weekend

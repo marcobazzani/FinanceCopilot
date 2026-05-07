@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/investing_com_service.dart';
+import '../../services/web_market_data_service.dart';
 import '../../services/providers/providers.dart';
 import 'isin_url_paste_recovery.dart';
 
@@ -17,12 +17,12 @@ import 'isin_url_paste_recovery.dart';
 /// [recoveryDefaultExchange]; otherwise a "no results" placeholder is shown.
 class AssetSearchSection extends StatefulWidget {
   final WidgetRef widgetRef;
-  final ValueChanged<InvestingSearchResult> onSelect;
+  final ValueChanged<ProviderSearchResult> onSelect;
   final String Function(String query)? recoveryCacheKeyBuilder;
   final String? recoveryDefaultExchange;
   /// Fires whenever the search returns a fresh list of results (including
   /// the empty-list case). Lets the caller derive sibling listings, etc.
-  final ValueChanged<List<InvestingSearchResult>>? onResultsChanged;
+  final ValueChanged<List<ProviderSearchResult>>? onResultsChanged;
   /// Fires on every search-field text change (debounced or not).
   final ValueChanged<String>? onQueryChanged;
   const AssetSearchSection({
@@ -42,7 +42,7 @@ class AssetSearchSection extends StatefulWidget {
 class _AssetSearchSectionState extends State<AssetSearchSection> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
-  List<InvestingSearchResult> _results = [];
+  List<ProviderSearchResult> _results = [];
   bool _searching = false;
 
   @override
@@ -65,7 +65,7 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
     }
     setState(() => _searching = true);
     _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final service = widget.widgetRef.read(marketPriceServiceProvider) as InvestingComService;
+      final service = widget.widgetRef.read(marketPriceServiceProvider) as WebMarketDataService;
       try {
         final results = await service.search(query.trim());
         if (mounted && _searchCtrl.text.trim() == query.trim()) {

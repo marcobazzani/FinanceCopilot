@@ -291,7 +291,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                               pricePct: basePct,
                               valueDiff: c.valueDiff,
                               amtFmt: amtFmt,
-                              url: c.investingUrl,
+                              url: c.providerUrl,
                               isPrivate: isPrivate,
                               marketOpen: c.marketOpen,
                               s: s,
