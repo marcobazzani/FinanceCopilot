@@ -153,7 +153,8 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/database/tables.dart` — All table definitions
 - `lib/database/providers.dart` — Database provider
 - `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
-- `lib/services/file_parser_service.dart` — CSV/Excel file parsing (isolate-based)
+- `lib/services/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
+- `lib/services/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
 - `lib/services/market_price_service.dart` — Abstract market price service
 - `lib/services/investing_com_service.dart` — Market price/search/composition provider (WebView + Dio)
 - `lib/services/composition_service.dart` — ETF/stock composition fetcher

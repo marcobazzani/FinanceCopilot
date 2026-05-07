@@ -14,6 +14,7 @@ import '../../../database/tables.dart';
 import '../../../services/import_service.dart';
 import '../../../services/investing_com_service.dart';
 import '../../../services/isin_lookup_service.dart';
+import '../../../services/pdf_exceptions.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/market_price_service.dart' show investingExchangeToCode;
 import '../../../services/providers/providers.dart';
@@ -288,7 +289,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     await _loadLastDirectory();
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['csv', 'xlsx', 'xls', 'tsv'],
+      allowedExtensions: ['csv', 'xlsx', 'xls', 'tsv', 'pdf'],
       initialDirectory: _lastDirectory,
     );
 
@@ -350,8 +351,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       await _loadSavedConfig(preview.columns);
     } catch (e, stack) {
       _log.severe('_loadFile: error reading file', e, stack);
+      final s = ref.read(appStringsProvider);
       setState(() {
-        _error = 'Error reading file: $e';
+        _error = switch (e) {
+          PdfNoTextLayerException() => s.pdfNoTextLayer,
+          PdfEncryptedException() => s.pdfEncrypted,
+          PdfUnreadableTextException() => s.pdfUnreadableText,
+          PdfTableNotDetectedException() => s.pdfTableNotDetected,
+          _ => 'Error reading file: $e',
+        };
         _parsing = false;
       });
     }

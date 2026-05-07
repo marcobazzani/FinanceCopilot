@@ -755,6 +755,18 @@ class AppStrings {
   String get fileEmpty             => _it ? 'Il file è vuoto o non ha righe dati.' : 'File is empty or has no data rows.';
   String fileEmptyAfterSkip(int n) => _it ? 'Il file è vuoto dopo aver saltato $n righe.' : 'File is empty after skipping $n rows.';
   String errorReparsingFile(Object e) => _it ? 'Errore nel riparsificare il file: $e' : 'Error re-parsing file: $e';
+  String get pdfNoTextLayer        => _it
+      ? 'Il PDF non contiene testo leggibile (probabilmente una scansione). Importa il CSV/XLSX della banca.'
+      : 'This PDF has no readable text (likely a scan). Import the bank\'s CSV/XLSX export instead.';
+  String get pdfEncrypted          => _it
+      ? 'Il PDF è protetto da password: rimuovi la password o esporta in CSV/XLSX.'
+      : 'PDF is password-protected. Remove the password or export to CSV/XLSX.';
+  String get pdfUnreadableText     => _it
+      ? 'Il testo del PDF è illeggibile (font incorporato senza tabella ToUnicode). Usa l\'export CSV/XLSX della banca.'
+      : 'PDF text is unreadable (embedded font without a ToUnicode map). Use the bank\'s CSV/XLSX export instead.';
+  String get pdfTableNotDetected   => _it
+      ? 'Non è stata trovata una tabella di transazioni nel PDF. Prova l\'export CSV/XLSX della banca.'
+      : 'Could not detect a transaction table in this PDF. Try the bank\'s CSV/XLSX export instead.';
   String get clipboardEmpty        => _it ? 'Appunti vuoti'            : 'Clipboard is empty';
   String get noDataRowsClipboard   => _it ? 'Nessuna riga dati negli appunti' : 'No data rows found in clipboard';
   String errorParsingClipboard(Object e) => _it ? 'Errore nel parsificare gli appunti: $e' : 'Error parsing clipboard: $e';
