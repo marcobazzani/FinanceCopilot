@@ -55,11 +55,26 @@ flutter test integration_test/all_tests.dart -d macos
     auto amount
 8c. **Toolbar refresh button → REAL network sync.** Wait 45s. Asserts
     `marketPrices` rows, ETF `ter` populated, FX rates fetched. Hits:
-    - `investing_com_service.dart` (price + composition)
+    - `web_market_data_service.dart` (price + composition)
     - `market_price_service.dart` (orchestration)
     - `composition_service.dart` (TER + composition)
     - `exchange_rate_service.dart` (FX)
     - `isin_lookup_service.dart` (already exercised at import)
+8d. **URL-paste recovery** — unindexed bond (BE0000351602) reachable by
+    URL but missing from search; verifies `IsinUrlPasteRecovery`
+    resolves the cid via the page parser
+8e. **assets.exchange invariant** — every imported asset's stored
+    exchange is either a canonical English provider name (`Milan`,
+    `London`, `NYSE`, …) or a recognised synonym (`Milano`, `Londra`,
+    …). Asserts `isKnownExchange(asset.exchange)` for every distinct
+    value. Pins the post-v40 design where the wizard stores the
+    provider's exchange name verbatim — no internal-code remap.
+8f. **ETF edit modal smoke** — open AssetDetailScreen for an ETF, tap
+    the edit pencil, verify the modal mounts (`DropdownButtonFormField`
+    initial value matches at least one item — the regression that
+    killed pre-v40 ETF rows when `assets.exchange` held the provider
+    name `'Milan'` while the dropdown items used the legacy code
+    `'MIL'`).
 
 ## ACT IV — Income
 

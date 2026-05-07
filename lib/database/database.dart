@@ -54,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 39;
+  int get schemaVersion => 40;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -545,30 +545,94 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 39) {
             // Drop the never-read assets.yahoo_ticker column (carry-over from
-            // a long-removed provider integration), the unused
-            // registered_events table + RegisteredEventType enum, and rename
-            // legacy app_configs cache keys from INVESTING_* to PROVIDER_*.
+            // a long-removed provider integration) and the unused
+            // registered_events table + RegisteredEventType enum.
+            // (Cache-key + asset.exchange normalisation deferred to v40 —
+            // v39's own UPDATE was clobbered by an earlier rename pass.)
             if (await _hasColumn('assets', 'yahoo_ticker')) {
               await customStatement('ALTER TABLE assets DROP COLUMN yahoo_ticker');
             }
             await customStatement('DROP TABLE IF EXISTS registered_events');
+            _log.info('Migration 39: dropped yahoo_ticker, registered_events');
+          }
+          if (from < 40) {
+            // (a) Rename legacy app_configs cache keys INVESTING_*→PROVIDER_*
+            //     using INSERT-OR-IGNORE then DELETE so we survive the
+            //     partial state v39 left behind (where some PROVIDER_* rows
+            //     already exist alongside their INVESTING_* counterparts).
+            //     The PROVIDER_* row wins; INVESTING_* gets cleaned up.
+            // (b) Heal stored description text that still mentions the
+            //     external provider by name (cosmetic, but eliminates a
+            //     grep hit on a fresh-from-old-DB install).
+            // (c) Normalise assets.exchange to canonical English provider
+            //     names (e.g. 'MIL'→'Milan', 'NYQ'→'NYSE'). Same heal
+            //     applied to PROVIDER_*_<exchange> cache-key suffixes so
+            //     the asset row and the cache key continue to agree.
             await customStatement(
-              "UPDATE app_configs SET key = 'PROVIDER_CID_' || SUBSTR(key, LENGTH('PROVIDER_CID_') + 1) "
-              "WHERE key LIKE 'PROVIDER_CID_%'",
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "SELECT 'PROVIDER_CID_' || SUBSTR(key, LENGTH('INVESTING_CID_') + 1), value, "
+              "       REPLACE(description, 'Investing.com', 'provider') "
+              "FROM app_configs WHERE key LIKE 'INVESTING_CID_%'",
             );
             await customStatement(
-              "UPDATE app_configs SET key = 'PROVIDER_URL_' || SUBSTR(key, LENGTH('PROVIDER_URL_') + 1) "
-              "WHERE key LIKE 'PROVIDER_URL_%'",
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "SELECT 'PROVIDER_URL_' || SUBSTR(key, LENGTH('INVESTING_URL_') + 1), value, "
+              "       REPLACE(description, 'Investing.com', 'provider') "
+              "FROM app_configs WHERE key LIKE 'INVESTING_URL_%'",
             );
             await customStatement(
-              "UPDATE app_configs SET key = 'PROVIDER_FX_CID_' || SUBSTR(key, LENGTH('PROVIDER_FX_CID_') + 1) "
-              "WHERE key LIKE 'PROVIDER_FX_CID_%'",
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "SELECT 'PROVIDER_FX_CID_' || SUBSTR(key, LENGTH('INVESTING_FX_CID_') + 1), value, "
+              "       REPLACE(description, 'Investing.com', 'provider') "
+              "FROM app_configs WHERE key LIKE 'INVESTING_FX_CID_%'",
             );
+            await customStatement("DELETE FROM app_configs WHERE key LIKE 'INVESTING_%'");
+
+            // (b) cosmetic heal of any remaining provider mentions in description
             await customStatement(
               "UPDATE app_configs SET description = REPLACE(description, 'Investing.com', 'provider') "
               "WHERE description LIKE '%Investing.com%'",
             );
-            _log.info('Migration 39: dropped yahoo_ticker, registered_events; renamed cache keys');
+
+            // (c) normalise asset.exchange + cache-key suffixes via the
+            //     legacy-alias map (codes + Italian variants → canonical
+            //     English name).
+            const aliases = {
+              'MIL': 'Milan', 'NYQ': 'NYSE', 'NMS': 'NASDAQ', 'NYS': 'NYSE',
+              'ASE': 'AMEX', 'XETRA': 'Xetra', 'FRA': 'Frankfurt',
+              'LON': 'London', 'AMS': 'Amsterdam', 'PAR': 'Paris',
+              'BRU': 'Brussels', 'LIS': 'Lisbon', 'SIX': 'Switzerland',
+              'TSE': 'Toronto', 'HKG': 'Hong Kong', 'TYO': 'Tokyo',
+              'Milano': 'Milan', 'Londra': 'London',
+              'Francoforte': 'Frankfurt', 'Parigi': 'Paris',
+              'Bruxelles': 'Brussels', 'Lisbona': 'Lisbon',
+              'Svizzera': 'Switzerland',
+            };
+            for (final entry in aliases.entries) {
+              final from_ = entry.key;
+              final to = entry.value;
+              await customStatement(
+                'UPDATE assets SET exchange = ? WHERE exchange = ?',
+                [to, from_],
+              );
+              // Cache-key suffix rename. Using INSERT OR IGNORE + DELETE
+              // again so a row with the canonical suffix wins if both forms
+              // happen to coexist.
+              for (final prefix in const ['PROVIDER_CID_', 'PROVIDER_URL_']) {
+                await customStatement(
+                  "INSERT OR IGNORE INTO app_configs (key, value, description) "
+                  "SELECT REPLACE(key, ?, ?), value, description "
+                  "FROM app_configs WHERE key LIKE ? AND key LIKE ?",
+                  ['_$from_', '_$to', '$prefix%', '%_$from_'],
+                );
+                await customStatement(
+                  "DELETE FROM app_configs WHERE key LIKE ? AND key LIKE ?",
+                  ['$prefix%', '%_$from_'],
+                );
+              }
+            }
+            _log.info('Migration 40: cache keys renamed INVESTING_*→PROVIDER_*; '
+                'asset.exchange + cache-key suffixes normalised to canonical names');
           }
         },
       );
