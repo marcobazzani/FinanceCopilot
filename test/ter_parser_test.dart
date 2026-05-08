@@ -11,7 +11,7 @@ void main() {
     service = CompositionService(db);
   });
 
-  group('parseTerFromInvestingCom', () {
+  group('parseTerFromProviderHtml', () {
     test('extracts TER from fund DOM (float_lang_base pattern)', () {
       const html = '''
         <div class="inlineblock">
@@ -19,7 +19,7 @@ void main() {
           <span class="float_lang_base_2 bold">0.84%</span>
         </div>
       ''';
-      expect(service.parseTerFromInvestingCom(html), 0.84);
+      expect(service.parseTerFromProviderHtml(html), 0.84);
     });
 
     test('extracts TER from fund DOM with comma decimal', () {
@@ -29,14 +29,14 @@ void main() {
           <span class="float_lang_base_2 bold">1,23%</span>
         </div>
       ''';
-      expect(service.parseTerFromInvestingCom(html), 1.23);
+      expect(service.parseTerFromProviderHtml(html), 1.23);
     });
 
     test('extracts TER from ETF JSON expenseRatio', () {
       const html = '''
         <script>{"keyMetrics":{"expenseRatio":0.2,"fundOfFunds":false}}</script>
       ''';
-      expect(service.parseTerFromInvestingCom(html), 0.2);
+      expect(service.parseTerFromProviderHtml(html), 0.2);
     });
 
     test('prefers DOM over JSON when both present', () {
@@ -47,7 +47,7 @@ void main() {
         </div>
         <script>{"expenseRatio":0.3}</script>
       ''';
-      expect(service.parseTerFromInvestingCom(html), 0.50);
+      expect(service.parseTerFromProviderHtml(html), 0.50);
     });
 
     test('returns null for bond page (no TER elements)', () {
@@ -65,7 +65,7 @@ void main() {
           </body>
         </html>
       ''';
-      expect(service.parseTerFromInvestingCom(html), isNull);
+      expect(service.parseTerFromProviderHtml(html), isNull);
     });
 
     test('returns null for stock page (no TER elements)', () {
@@ -75,11 +75,11 @@ void main() {
           <script>{"priceChanges":{"pct_1y":30.17}}</script>
         </body></html>
       ''';
-      expect(service.parseTerFromInvestingCom(html), isNull);
+      expect(service.parseTerFromProviderHtml(html), isNull);
     });
 
     test('returns null for empty HTML', () {
-      expect(service.parseTerFromInvestingCom(''), isNull);
+      expect(service.parseTerFromProviderHtml(''), isNull);
     });
 
     test('ignores Expenses in non-matching DOM classes', () {
@@ -87,7 +87,7 @@ void main() {
         <span class="some_other_class">Expenses</span>
         <span class="value">2.5%</span>
       ''';
-      expect(service.parseTerFromInvestingCom(html), isNull);
+      expect(service.parseTerFromProviderHtml(html), isNull);
     });
 
     test('rejects unreasonable TER values (>= 10%)', () {
@@ -97,7 +97,7 @@ void main() {
           <span class="float_lang_base_2 bold">15.00%</span>
         </div>
       ''';
-      expect(service.parseTerFromInvestingCom(html), isNull);
+      expect(service.parseTerFromProviderHtml(html), isNull);
     });
 
     test('handles N/A in Expenses field', () {
@@ -107,7 +107,7 @@ void main() {
           <span class="float_lang_base_2 bold">N/A</span>
         </div>
       ''';
-      expect(service.parseTerFromInvestingCom(html), isNull);
+      expect(service.parseTerFromProviderHtml(html), isNull);
     });
   });
 }

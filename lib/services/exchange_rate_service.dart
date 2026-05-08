@@ -1,19 +1,33 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../database/database.dart';
 import '../utils/formatters.dart' show formatYmd;
 import '../utils/logger.dart';
-import 'investing_com_service.dart';
+import 'web_market_data_service.dart';
+
+/// Tables touched by [ExchangeRateService.backfillHistoricalRates] when
+/// collecting "which currencies need historical FX data". Exposed so the
+/// non-regression test can run the exact SQL against the live schema —
+/// the prior version referenced `depreciation_schedules`, which had been
+/// dropped in a migration, and the silent SqliteException stalled FX
+/// backfill for every USD-denominated asset.
+@visibleForTesting
+const backfillCurrenciesSql =
+    'SELECT DISTINCT currency FROM assets '
+    'UNION SELECT DISTINCT currency FROM accounts '
+    'UNION SELECT DISTINCT currency FROM incomes '
+    'UNION SELECT DISTINCT currency FROM extraordinary_events';
 
 final _log = getLogger('ExchangeRateService');
 
 
 /// Caches exchange rates in the DB.
-/// Uses Investing.com for live and sync rates.
+/// Uses the market data provider for live and sync rates.
 /// Historical lookups read from the DB.
 class ExchangeRateService {
   final AppDatabase _db;
-  final InvestingComService? _investingService;
+  final WebMarketDataService? _providerService;
 
   /// Fixed set of target currencies to download (EUR is the base).
   static const targetCurrencies = [
@@ -24,19 +38,19 @@ class ExchangeRateService {
   /// All supported currencies (including EUR as base).
   static const allCurrencies = ['EUR', ...targetCurrencies];
 
-  ExchangeRateService(this._db, {InvestingComService? investingService})
-      : _investingService = investingService;
+  ExchangeRateService(this._db, {WebMarketDataService? providerService})
+      : _providerService = providerService;
 
   // ──────────────────────────────────────────────
   // Sync
   // ──────────────────────────────────────────────
 
-  /// Sync exchange rates via Investing.com.
+  /// Sync exchange rates via the market data provider.
   /// Stores the latest rate for each target currency as today's date.
   /// When [force] is true, re-fetches even if already up to date.
   Future<void> syncRates({bool force = false}) async {
-    if (_investingService == null) {
-      _log.warning('syncRates: no InvestingComService configured');
+    if (_providerService == null) {
+      _log.warning('syncRates: no WebMarketDataService configured');
       return;
     }
     // Backfill historical rates for any sparse currency pairs
@@ -55,13 +69,13 @@ class ExchangeRateService {
         return;
       }
 
-      _log.info('syncRates: fetching ${targetCurrencies.length} pairs via Investing.com');
+      _log.info('syncRates: fetching ${targetCurrencies.length} pairs from provider');
 
       final companions = <ExchangeRatesCompanion>[];
       for (final currency in targetCurrencies) {
-        final rate = await _investingService.getLiveFxRate('EUR', currency);
+        final rate = await _providerService.getLiveFxRate('EUR', currency);
         if (rate == null) {
-          _log.warning('syncRates: EUR/$currency - no rate from Investing.com');
+          _log.warning('syncRates: EUR/$currency - no rate from provider');
           continue;
         }
         _log.fine('syncRates: EUR/$currency = $rate');
@@ -82,18 +96,13 @@ class ExchangeRateService {
   }
 
   /// Backfill historical exchange rates for all currency pairs needed by the DB.
-  /// Always fetches EUR/X pairs from Investing.com (reliable quoting convention)
+  /// Always fetches EUR/X pairs from the provider (reliable quoting convention)
   /// and stores both directions. Cross-rates are computed from EUR pairs at lookup time.
   Future<void> backfillHistoricalRates() async {
-    if (_investingService == null) return;
+    if (_providerService == null) return;
 
     // Collect all distinct currencies used across the DB (including base currency)
-    final rows = await _db.customSelect(
-      'SELECT DISTINCT currency FROM assets '
-      'UNION SELECT DISTINCT currency FROM accounts '
-      'UNION SELECT DISTINCT currency FROM incomes '
-      'UNION SELECT DISTINCT currency FROM depreciation_schedules',
-    ).get();
+    final rows = await _db.customSelect(backfillCurrenciesSql).get();
     final currencies = rows.map((r) => r.read<String>('currency')).toSet()
       ..remove('EUR'); // EUR is always the "from" side
 
@@ -129,7 +138,7 @@ class ExchangeRateService {
 
       _log.info('backfillHistoricalRates: fetching EUR/$currency from ${formatYmd(since)}');
       try {
-        final rates = await _investingService.fetchHistoricalFxRates('EUR', currency, since);
+        final rates = await _providerService.fetchHistoricalFxRates('EUR', currency, since);
         if (rates.isEmpty) {
           _log.warning('backfillHistoricalRates: EUR/$currency - no data returned');
           continue;
@@ -214,12 +223,12 @@ class ExchangeRateService {
   // Live rate (today)
   // ──────────────────────────────────────────────
 
-  /// Get today's live rate via Investing.com. Falls back to stored DB rate.
+  /// Get today's live rate via the market data provider. Falls back to stored DB rate.
   Future<double?> getLiveRate(String from, String to) async {
     if (from == to) return 1.0;
 
-    if (_investingService != null) {
-      final rate = await _investingService.getLiveFxRate(from, to);
+    if (_providerService != null) {
+      final rate = await _providerService.getLiveFxRate(from, to);
       if (rate != null) return rate;
     }
 

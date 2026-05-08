@@ -48,7 +48,46 @@ class AppStrings {
   // ── App shell / navigation ──────────────────────────────
   String get navDashboard          => 'Dashboard';
   String get navAccounts           => _it ? 'Conti'             : 'Accounts';
+  String get allAccounts           => _it ? 'Tutti i conti'     : 'All accounts';
   String get navAssets             => _it ? 'Portafoglio'       : 'Assets';
+  String get navPillars            => _it ? 'Pilastri'          : 'Pillars';
+
+  // ── Pillars ────────────────────────────────────────────
+  String get pillarsTitle              => _it ? 'Pilastri'                 : 'Pillars';
+  String get pillarsEmptyTitle         => _it ? 'Nessun pilastro'          : 'No pillars yet';
+  String get pillarsEmptyCta           => _it ? 'Crea il tuo primo pilastro' : 'Create your first pillar';
+  String get pillarCreateTitle         => _it ? 'Nuovo pilastro'           : 'New pillar';
+  String get pillarEditTitle           => _it ? 'Modifica pilastro'        : 'Edit pillar';
+  String get pillarFieldName           => _it ? 'Nome'                     : 'Name';
+  String get pillarFieldTargetValue    => _it ? 'Valore obiettivo'         : 'Target value';
+  String get pillarFieldTargetCurrency => _it ? 'Valuta obiettivo'         : 'Target currency';
+  String get pillarUnassigned          => _it ? 'Non assegnato'            : 'Unassigned';
+  String get pillarObjective           => _it ? 'Obiettivo'                : 'Objective';
+  String get pillarHistoryTitle        => _it ? 'Storico'                  : 'History';
+  String get pillarAddAsset            => _it ? 'Aggiungi asset'           : 'Add asset';
+  String get pillarAssignToTitle       => _it ? 'Assegna a un pilastro'    : 'Assign to pillar';
+  String get pillarAssignedQty         => _it ? 'Quantità assegnata'       : 'Assigned quantity';
+  String get pillarAvailableQty        => _it ? 'Disponibile'              : 'Available';
+  String get pillarOverAssignedBadge   => _it ? 'Eccede le partecipazioni' : 'Exceeds holdings';
+  String get pillarClipAction          => _it ? 'Adatta'                   : 'Clip';
+  String get pillarOverAssignedError   => _it
+      ? 'Quantità superiore al disponibile'
+      : 'Quantity exceeds available units';
+  String get pillarDeleteConfirm       => _it
+      ? 'Eliminare questo pilastro? Le assegnazioni verranno rimosse.'
+      : 'Delete this pillar? Assignments will be removed.';
+  String get pillarTargetProgress      => _it ? 'Progresso'                : 'Progress';
+  String pillarValue(String formatted) => _it ? 'Valore: $formatted'  : 'Value: $formatted';
+  String pillarTarget(String formatted) => _it ? 'Obiettivo: $formatted' : 'Target: $formatted';
+  String pillarAssetCount(int n)        => _it ? '$n asset' : (n == 1 ? '1 asset' : '$n assets');
+  String get pillarEditAssetsTitle      => _it ? 'Modifica asset del pilastro' : 'Edit pillar assets';
+  String get pillarShowAllAssets        => _it ? 'Tutti gli asset'         : 'All assets';
+  String get pillarShowInPillarOnly     => _it ? 'Solo nel pilastro'       : 'In pillar only';
+  String get pillarSearchAssets         => _it ? 'Cerca asset…'            : 'Search assets…';
+  String pillarUnitsOf(String n, String total) =>
+      _it ? '$n di $total unità' : '$n of $total units';
+  String pillarMaxPercent(int p)        => _it ? 'max $p%' : 'max $p%';
+  String get pillarPickPillar           => _it ? 'Scegli pilastro'         : 'Pick pillar';
   String get navAdjustments        => _it ? 'Aggiustamenti'     : 'Adjustments';
   String get navIncome             => _it ? 'Entrate'           : 'Income';
   String get tooltipHideAmounts    => _it ? 'Nascondi importi'  : 'Hide amounts';
@@ -393,19 +432,16 @@ class AppStrings {
   String get enterManually       => _it ? 'Inserisci manualmente'             : 'Enter manually';
 
   // ── Instrument-not-found recovery (URL paste) ─────────────────────────
-  // The literal "<query> investing.com" appears in instrumentNotFoundExplanation
-  // because that is the literal search query the user must type into a search
-  // engine — not a brand mention. The surrounding text refers to the source
-  // generically as "il fornitore di dati di mercato" / "the market data
-  // provider".
+  // The user-facing copy refers to the source generically as
+  // "il fornitore di dati di mercato" / "the market data provider".
   String get instrumentNotFoundHeadline => _it
       ? 'Strumento non trovato'
       : 'Instrument not found';
   String instrumentNotFoundExplanation(String query) {
     final q = query.trim().isEmpty ? (_it ? 'lo strumento' : 'the instrument') : query.trim();
     return _it
-        ? 'Cerca su Google, Bing o un altro motore di ricerca il termine "$q investing.com", apri il primo risultato sul sito del fornitore di dati di mercato e copia l\'indirizzo della pagina. Incollalo qui sotto.'
-        : 'Search Google, Bing or another search engine for "$q investing.com", open the first result on the market data provider\'s site and copy the page address. Paste it below.';
+        ? 'Cerca "$q" su un motore di ricerca, apri la pagina sul sito del fornitore di dati di mercato e copia l\'indirizzo della pagina. Incollalo qui sotto.'
+        : 'Search for "$q" on a search engine, open the page on the market data provider\'s site and copy the page address. Paste it below.';
   }
   String get pasteInstrumentUrlLabel => _it ? 'Indirizzo della pagina' : 'Page address';
   String get pasteUrlShort           => _it ? 'Incolla URL'             : 'Paste URL';
@@ -465,9 +501,48 @@ class AppStrings {
   String get compositionSector      => _it ? 'Settore'           : 'Sector';
   String get compositionTopHoldings => _it ? 'Posizioni principali' : 'Top Holdings';
   String sourceLabel(String src)    => _it ? 'Fonte: $src'       : 'Source: $src';
+  String get sourceLabelGeneric     => _it ? 'Apri fonte'         : 'Open source';
   String wipeEventsBody(int n, String name) => _it
       ? 'Verranno eliminati tutti i $n eventi da "$name" ma l\'attività verrà mantenuta.\n\n'
       : 'This will delete all $n events from "$name" but keep the asset itself.\n\n';
+
+  // ── Asset Edit / Create — advanced (unlocked) fields ─────
+  String get assetUnlockEdit            => _it ? 'Sblocca tutti i campi'     : 'Unlock all fields';
+  String get assetLockEdit              => _it ? 'Blocca campi avanzati'     : 'Lock advanced fields';
+  String get assetTypeFieldLabel        => _it ? 'Tipo di asset'             : 'Asset type';
+  String get valuationMethodFieldLabel  => _it ? 'Metodo di valutazione'     : 'Valuation method';
+  String get taxRateOverrideLabel       => _it ? 'Aliquota fiscale (%)'      : 'Tax rate (%)';
+  String get includeInNetWorthLabel     => _it ? 'Includi nel patrimonio'    : 'Include in net worth';
+  String get currencyFieldLabel         => _it ? 'Valuta (3 lettere)'        : 'Currency (3 letters)';
+
+  // ── Composition editor ───────────────────────────────────
+  String get compositionEditTooltip     => _it ? 'Modifica composizione'     : 'Edit composition';
+  String get compositionRefreshTooltip  => _it ? 'Aggiorna dal mercato'      : 'Refresh from market';
+  String get compositionEntryName       => _it ? 'Nome'                      : 'Name';
+  String get compositionEntryWeight     => _it ? 'Peso (%)'                  : 'Weight (%)';
+  String get compositionAddRow          => _it ? 'Aggiungi riga'             : 'Add row';
+  String get compositionWeightWarning   =>
+      _it ? 'La somma dei pesi non è 100%' : 'Weights don\'t sum to 100%';
+  String assetTypeLabel(AssetType t) => {
+    AssetType.stock:       _it ? 'Azione'                  : 'Stock',
+    AssetType.stockEtf:    _it ? 'ETF azionario'           : 'Stock ETF',
+    AssetType.bondEtf:     _it ? 'ETF obbligazionario'     : 'Bond ETF',
+    AssetType.commEtf:     _it ? 'ETF materie prime'       : 'Commodity ETF',
+    AssetType.goldEtc:     _it ? 'ETC oro'                 : 'Gold ETC',
+    AssetType.monEtf:      _it ? 'ETF monetario'           : 'Money-market ETF',
+    AssetType.crypto:      _it ? 'Crypto'                  : 'Crypto',
+    AssetType.cash:        _it ? 'Liquidità'               : 'Cash',
+    AssetType.pension:     _it ? 'Fondo pensione'          : 'Pension',
+    AssetType.deposit:     _it ? 'Deposito'                : 'Deposit',
+    AssetType.realEstate:  _it ? 'Immobile'                : 'Real estate',
+    AssetType.alternative: _it ? 'Alternativo'             : 'Alternative',
+    AssetType.liability:   _it ? 'Passività'               : 'Liability',
+  }[t]!;
+  String valuationMethodLabel(ValuationMethod m) => {
+    ValuationMethod.marketPrice: _it ? 'Prezzo di mercato'  : 'Market price',
+    ValuationMethod.eventDriven: _it ? 'Manuale (eventi)'   : 'Event-driven (manual)',
+    ValuationMethod.balance:     _it ? 'Saldo'              : 'Balance',
+  }[m]!;
 
   // ── Asset Event Edit ─────────────────────────────────────
   String get editEventTitle      => _it ? 'Modifica evento'    : 'Edit Event';
@@ -587,15 +662,24 @@ class AppStrings {
   String get addIncomeTitle        => _it ? 'Aggiungi reddito'          : 'Add Income';
   String get editIncomeTitle       => _it ? 'Modifica reddito'          : 'Edit Income';
   String get incomeTypeLabel       => _it ? 'Tipo'                      : 'Type';
-  String get incomeTypeIncome      => _it ? 'Reddito'                   : 'Income';
-  String get incomeTypeRefund      => _it ? 'Rimborso'                  : 'Refund';
-  String get incomeTypeSalary      => _it ? 'Stipendio'                 : 'Salary';
-  String get incomeTypeDonation    => _it ? 'Donazione'                 : 'Donation';
-  String get incomeTypeCoupon      => _it ? 'Cedola'                    : 'Coupon';
-  String get incomeTypeOther       => _it ? 'Altro reddito'             : 'Other Income';
+  String get incomeTypeIncome              => _it ? 'Reddito'              : 'Income';
+  String get incomeTypeRefund              => _it ? 'Rimborso'             : 'Refund';
+  String get incomeTypePensionContribution => _it ? 'Contributo previdenziale' : 'Pension contribution';
   String get flagAsIncomeTooltip   => _it ? 'Segna come reddito'        : 'Flag as Income';
   String get flagAsIncomeTitle     => _it ? 'Segna come reddito'        : 'Flag as Income';
   String get incomeFlaggedSnack    => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
+  String get flagAsAdjustmentTooltip => _it ? 'Segna come rettifica'       : 'Mark as adjustment';
+  String get flagAsAdjustmentTitle   => _it ? 'Segna come rettifica'       : 'Mark as adjustment';
+  String get flagAsAdjustmentInflow  => _it ? 'Entrata di riferimento'     : 'Reference inflow';
+  String flagAsAdjustmentBody(String amount) => _it
+      ? 'Verrà aggiunta una rettifica di +$amount all\'entrata selezionata.'
+      : 'A +$amount adjustment will be added to the selected inflow.';
+  String get noInflowEventsAvailable => _it
+      ? 'Nessuna entrata straordinaria disponibile'
+      : 'No inflow events available';
+  String get adjustmentFlaggedSnack => _it
+      ? 'Rettifica registrata sull\'entrata'
+      : 'Adjustment recorded on inflow';
   String get invalidDateOrAmount   => _it ? 'Data o importo non valido' : 'Invalid date or amount';
   String get deleteIncomeTitle     => _it ? 'Elimina reddito?'          : 'Delete Income?';
   String deleteIncomeConfirm(String amt, String cur, String d) => _it
@@ -635,6 +719,7 @@ class AppStrings {
     'exchangeRate' => _it ? 'Tasso di cambio' : 'Exchange Rate',
     'commission' => _it ? 'Commissione' : 'Commission',
     'balanceAfter' => _it ? 'Saldo dopo' : 'Balance After',
+    'orderRef' => _it ? 'Riferimento ordine' : 'Order Reference',
     _ => field,
   };
 
@@ -668,6 +753,18 @@ class AppStrings {
   String get fileEmpty             => _it ? 'Il file è vuoto o non ha righe dati.' : 'File is empty or has no data rows.';
   String fileEmptyAfterSkip(int n) => _it ? 'Il file è vuoto dopo aver saltato $n righe.' : 'File is empty after skipping $n rows.';
   String errorReparsingFile(Object e) => _it ? 'Errore nel riparsificare il file: $e' : 'Error re-parsing file: $e';
+  String get pdfNoTextLayer        => _it
+      ? 'Il PDF non contiene testo leggibile (probabilmente una scansione). Importa il CSV/XLSX della banca.'
+      : 'This PDF has no readable text (likely a scan). Import the bank\'s CSV/XLSX export instead.';
+  String get pdfEncrypted          => _it
+      ? 'Il PDF è protetto da password: rimuovi la password o esporta in CSV/XLSX.'
+      : 'PDF is password-protected. Remove the password or export to CSV/XLSX.';
+  String get pdfUnreadableText     => _it
+      ? 'Il testo del PDF è illeggibile (font incorporato senza tabella ToUnicode). Usa l\'export CSV/XLSX della banca.'
+      : 'PDF text is unreadable (embedded font without a ToUnicode map). Use the bank\'s CSV/XLSX export instead.';
+  String get pdfTableNotDetected   => _it
+      ? 'Non è stata trovata una tabella di transazioni nel PDF. Prova l\'export CSV/XLSX della banca.'
+      : 'Could not detect a transaction table in this PDF. Try the bank\'s CSV/XLSX export instead.';
   String get clipboardEmpty        => _it ? 'Appunti vuoti'            : 'Clipboard is empty';
   String get noDataRowsClipboard   => _it ? 'Nessuna riga dati negli appunti' : 'No data rows found in clipboard';
   String errorParsingClipboard(Object e) => _it ? 'Errore nel parsificare gli appunti: $e' : 'Error parsing clipboard: $e';
@@ -679,6 +776,7 @@ class AppStrings {
   String rowCount(int n)           => _it ? 'Righe: $n'                : 'Rows: $n';
   String get targetAssetEvents     => _it ? 'Eventi attività'          : 'Asset Events';
   String get targetTransactions    => _it ? 'Transazioni'              : 'Transactions';
+  String targetLabel(String t)     => _it ? 'Destinazione: $t'         : 'Target: $t';
   String get mappingsLabel         => _it ? 'Mappature:'               : 'Mappings:';
   String get assetsAndExchange     => _it ? 'Attività & Borsa:'        : 'Assets & Exchange:';
   String get lookingUpExchanges    => _it ? 'Ricerca borse...'         : 'Looking up exchanges...';
@@ -738,11 +836,31 @@ class AppStrings {
   String get fromSign              => _it ? 'Dal segno (+/-)'          : 'From sign (+/-)';
   String get buyLabel              => _it ? 'Acquisto'                 : 'Buy';
   String get sellLabel             => _it ? 'Vendita'                  : 'Sell';
+  String get feeLabel              => _it ? 'Commissione'              : 'Fee';
+  String get revalueLabel          => _it ? 'Rivalutazione'            : 'Revalue';
+  String get pensionFundLabel      => _it ? 'Fondo pensione'           : 'Pension fund';
+  String get importIntoSingleAsset => _it ? 'Importa in un singolo asset' : 'Import into single asset';
+  String get importByIsin          => _it ? 'Raggruppa per ISIN'       : 'Group by ISIN';
+  String get pickAssetForImport    => _it ? 'Asset di destinazione'    : 'Target asset';
+  String get noAssetsAvailable     => _it ? 'Nessun asset disponibile' : 'No assets available';
+  String get singleAssetHelp       => _it
+      ? 'Tutte le righe vanno in un asset esistente; ISIN/quote/prezzo non richiesti'
+      : 'All rows go into one existing asset; no ISIN/quantity/price needed';
+  String get createEmptyAsset      => _it ? 'Nuovo asset'              : 'Create empty asset';
+  String get noIntermediariesAvailable => _it
+      ? 'Nessun intermediario; creane uno prima'
+      : 'No intermediaries; create one first';
   String get signBasedHelp         => _it
       ? 'Quantità o importo negativo = Vendita, positivo = Acquisto'
       : 'Negative quantity or amount = Sell, positive = Buy';
+  String get signBasedNegativeIsBuyLabel => _it
+      ? 'Acquisti con segno negativo (flusso di cassa)'
+      : 'Buys are negative (cash-flow convention)';
   String get computedLabel         => _it ? 'Calcolato'                : 'Computed';
-  String get buySellAllRequired    => _it ? 'Ogni valore deve essere assegnato a Acquisto o Vendita' : 'Every value must be assigned to Buy or Sell';
+  String get buySellAllRequired    => _it ? 'Ogni valore deve essere assegnato a Acquisto, Vendita o Commissione' : 'Every value must be assigned to Buy, Sell, or Fee';
+  String get orderRefHelp          => _it
+      ? 'Opzionale: con la colonna mappata, le commissioni vengono unite alla transazione corrispondente. Senza, vengono ignorate.'
+      : 'Optional: when mapped, fees are folded into the matching trade. Without it, fees are dropped.';
 
   // ── Allocation ───────────────────────────────────────────
   String get noMarketValues    => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';
@@ -754,7 +872,7 @@ class AppStrings {
 
   // ── Import wizard ──────────────────────────────────────────
   String get buySellDetection  => _it ? 'Rilevamento Acquisto / Vendita' : 'Buy / Sell Detection';
-  String get mapBuySell        => _it ? 'Mappa valori in Acquisto / Vendita:' : 'Map values to Buy / Sell:';
+  String get mapBuySell        => _it ? 'Mappa valori in Acquisto / Vendita / Commissione:' : 'Map values to Buy / Sell / Fee:';
   String get feeCommission     => _it ? 'Commissione'               : 'Fee / Commission';
   String get balanceColumn     => _it ? 'Colonna saldo:'            : 'Balance column:';
   String get amountRequired    => _it ? 'importo *'                 : 'amount *';

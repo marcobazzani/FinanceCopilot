@@ -11,26 +11,26 @@ import 'package:html/parser.dart' show parse;
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/logger.dart';
-import 'investing_com_service.dart';
+import 'web_market_data_service.dart';
 
 final _log = getLogger('CompositionService');
 
 /// Fetches asset composition/classification data from multiple public sources
 /// and stores it in the asset_compositions table.
 ///
-/// Sources:
-/// - ETFs/ETCs: justETF (country/sector/holdings breakdown + investment focus)
-/// - Individual stocks: stockanalysis.com (country, sector)
-/// - Mutual/pension funds: investing.com fund holdings page (sector, region, top holdings)
+/// Sources (delegated to dedicated provider services):
+/// - ETFs/ETCs: ETF profile provider (country/sector/holdings + focus)
+/// - Individual stocks: stock-analysis provider (country, sector)
+/// - Mutual/pension funds: market data provider's fund-holdings page
 /// - Fallback: derives classification from asset name/type
 class CompositionService {
   final AppDatabase _db;
   final Dio _dio;
-  final InvestingComService? _investingService;
+  final WebMarketDataService? _providerService;
 
-  CompositionService(this._db, {Dio? dio, InvestingComService? investingService})
+  CompositionService(this._db, {Dio? dio, WebMarketDataService? providerService})
       : _dio = dio ?? Dio(),
-        _investingService = investingService;
+        _providerService = providerService;
 
   static const _classToInstrument = {
     'Stock ETF': InstrumentType.etf,
@@ -69,21 +69,22 @@ class CompositionService {
       // Skip manual/eventDriven assets — composition is user-managed
       if (asset.valuationMethod == ValuationMethod.eventDriven) continue;
 
-      // Skip if we have recent data (< 7 days old)
+      // Skip if any composition rows already exist for this asset. Once
+      // populated (by sync OR by manual edit on the Composition panel),
+      // the data is treated as authoritative. To force a fresh fetch the
+      // user clicks "Refresh from market", which clears the rows and
+      // re-runs this method (see clearAndResync). Still fetch a missing
+      // TER though — that's a single field, not the multi-row breakdown.
       final existing = await (_db.select(_db.assetCompositions)
             ..where((c) => c.assetId.equals(asset.id))
             ..limit(1))
           .getSingleOrNull();
       if (existing != null) {
-        final age = DateTime.now().difference(existing.updatedAt);
-        if (age.inDays < 7) {
-          // Even if compositions are fresh, fetch TER if missing
-          if (asset.ter == null && asset.isin != null) {
-            await _fetchTerOnly(asset);
-          }
-          _log.fine('syncCompositions: ${asset.name} - fresh (${age.inDays}d), skipping');
-          continue;
+        if (asset.ter == null && asset.isin != null) {
+          await _fetchTerOnly(asset);
         }
+        _log.fine('syncCompositions: ${asset.name} - rows exist, skipping');
+        continue;
       }
 
       try {
@@ -143,41 +144,83 @@ class CompositionService {
     _log.info('syncCompositions: done');
   }
 
+  /// Replace every composition row for `(assetId, type)` with the given
+  /// entries. Pass an empty `entries` to clear the section. `type` is one
+  /// of: `'assetclass'`, `'country'`, `'sector'`, `'holding'`. Weights
+  /// are percentages (0..100); callers should normalize before passing.
+  /// Once any rows exist for an asset, [syncCompositions] skips it — so
+  /// user edits stick until the user calls [clearAndResync].
+  Future<void> setEntries(int assetId, String type, List<CompositionEntry> entries) async {
+    _log.info('setEntries: assetId=$assetId type=$type count=${entries.length}');
+    await _db.transaction(() async {
+      await (_db.delete(_db.assetCompositions)
+            ..where((c) => c.assetId.equals(assetId) & c.type.equals(type)))
+          .go();
+      if (entries.isNotEmpty) {
+        await _db.batch((batch) {
+          for (final e in entries) {
+            batch.insert(
+              _db.assetCompositions,
+              AssetCompositionsCompanion.insert(
+                assetId: assetId,
+                type: type,
+                name: e.name,
+                weight: e.weight,
+              ),
+            );
+          }
+        });
+      }
+    });
+  }
+
+  /// Wipe an asset's composition rows and re-run sync for it. Backs the
+  /// "Refresh from market" button on the Composition panel — it's the
+  /// only way to opt back into automatic fetching once rows exist.
+  Future<void> clearAndResync(int assetId) async {
+    _log.info('clearAndResync: assetId=$assetId');
+    await (_db.delete(_db.assetCompositions)
+          ..where((c) => c.assetId.equals(assetId)))
+        .go();
+    await syncCompositions();
+  }
+
   /// Route to the appropriate data source based on ISIN pattern and asset metadata.
   Future<List<_Entry>> _fetchForAsset(Asset asset) async {
     final isin = asset.isin ?? '';
 
-    // Morningstar fund IDs start with "0P" — use investing.com fund holdings
+    // Fund IDs starting with "0P" use the fund-holdings path on the market data provider.
     if (isin.startsWith('0P')) {
-      return _fetchFundFromInvestingCom(asset);
+      return _fetchFundFromProvider(asset);
     }
 
-    // Standard ISINs (2-letter country + 10 chars) → try justETF first
+    // Standard ISINs (2-letter country + 10 chars) → try the ETF profile
+    // provider first.
     if (isin.length == 12 && RegExp(r'^[A-Z]{2}').hasMatch(isin)) {
       final etfResult = await _fetchEtf(asset);
       if (etfResult.isNotEmpty) return etfResult;
 
-      // If justETF didn't find it (e.g. it's a stock, not an ETF),
-      // try stockanalysis.com using ticker
+      // If the ETF provider didn't find it (e.g. it's a stock, not an
+      // ETF), fall through to the stock-data provider via ticker.
       if (asset.ticker != null && asset.ticker!.isNotEmpty) {
         final stockResult = await _fetchStock(asset);
         if (stockResult.isNotEmpty) return stockResult;
       }
     }
 
-    // Has ticker but no ISIN or non-standard ISIN → try stockanalysis
+    // Has ticker but no ISIN or non-standard ISIN → try the stock-data provider.
     if (asset.ticker != null && asset.ticker!.isNotEmpty) {
       final stockResult = await _fetchStock(asset);
       if (stockResult.isNotEmpty) return stockResult;
     }
 
-    // Try investing.com search as last resort
-    return _fetchFundFromInvestingCom(asset);
+    // Try the market data provider search as last resort
+    return _fetchFundFromProvider(asset);
   }
 
-  /// Quick TER-only fetch (justETF for ETFs, Investing.com for funds).
+  /// Quick TER-only fetch (ETF profile provider for ETFs, market data provider for funds).
   Future<void> _fetchTerOnly(Asset asset) async {
-    // Try justETF first (for ETFs/ETCs)
+    // Try the ETF profile provider first (for ETFs/ETCs).
     final isin = asset.isin!;
     final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
     final html = await _fetchHtml(url);
@@ -191,17 +234,17 @@ class CompositionService {
           if (ter != null) {
             await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
                 .write(AssetsCompanion(ter: Value(ter)));
-            _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (justETF)');
+            _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (etf-provider)');
             return;
           }
         }
       }
     }
 
-    // Try Investing.com (for funds/pension)
+    // Try the market data provider (for funds/pension)
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
     try {
-      final searchUrl = 'https://api.investing.com/api/search/v2/search'
+      final searchUrl = '$kProviderApiBase/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
       final searchResp = await _dio.get(searchUrl, options: Options(
         headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
@@ -212,33 +255,34 @@ class CompositionService {
       final fundPath = quotes[0]['url'] as String?;
       if (fundPath == null || fundPath.isEmpty) return;
 
-      final fundHtml = await _fetchHtml('https://www.investing.com$fundPath');
+      final fundHtml = await _fetchHtml('$kProviderBase$fundPath');
       if (fundHtml == null) return;
-      final ter = parseTerFromInvestingCom(fundHtml);
+      final ter = parseTerFromProviderHtml(fundHtml);
       if (ter != null) {
         await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
             .write(AssetsCompanion(ter: Value(ter)));
-        _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (investing.com)');
+        _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (provider)');
       }
     } catch (e) {
-      _log.fine('_fetchTerOnly: ${asset.name} - investing.com failed: $e');
+      _log.fine('_fetchTerOnly: ${asset.name} - provider failed: $e');
     }
   }
 
-  // ── ETFs/ETCs: justETF ──────────────────────────────────
+  // ── ETFs/ETCs: ETF profile provider ─────────────────────
 
   Future<List<_Entry>> _fetchEtf(Asset asset) async {
     final isin = asset.isin!;
     final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
-    _log.fine('fetchEtf: ${asset.name} from justETF ($isin)');
+    _log.fine('fetchEtf: ${asset.name} from etf-provider ($isin)');
 
     final html = await _fetchHtml(url);
     if (html == null) return [];
 
-    // Check if justETF actually has this fund (redirect to search = not found)
+    // Provider returns a redirect-to-search page when the fund is not in
+    // its catalog. Detect via expected data-testid markers.
     if (!html.contains('data-testid="etf-basics_data_table"') &&
         !html.contains('data-testid="etf-holdings_')) {
-      _log.fine('fetchEtf: ${asset.name} - not found on justETF');
+      _log.fine('fetchEtf: ${asset.name} - not found on etf-provider');
       return [];
     }
 
@@ -246,9 +290,9 @@ class CompositionService {
     final entries = <_Entry>[];
 
     // Try to get structured composition (equity ETFs)
-    entries.addAll(_parseJustEtfSection(doc, 'countries'));
-    entries.addAll(_parseJustEtfSection(doc, 'sectors'));
-    entries.addAll(_parseJustEtfHoldings(doc));
+    entries.addAll(_parseEtfSection(doc, 'countries'));
+    entries.addAll(_parseEtfSection(doc, 'sectors'));
+    entries.addAll(_parseEtfHoldings(doc));
 
     // If no structured data (money market, commodity, gold, bond ETFs),
     // derive from the "Investment focus" field
@@ -282,7 +326,7 @@ class CompositionService {
     return entries;
   }
 
-  /// Parse the "Investment focus" field from justETF.
+  /// Parse the "Investment focus" field from the ETF profile provider.
   /// Format: "Equity, World" or "Money Market, EUR, Europe" or "Commodities, Broad market"
   List<_Entry> _parseInvestmentFocus(Document doc, Asset asset) {
     final entries = <_Entry>[];
@@ -332,7 +376,7 @@ class CompositionService {
     return entries;
   }
 
-  /// Detect the real asset class from justETF's Investment focus field.
+  /// Detect the real asset class from the provider's Investment focus field.
   /// Returns labels like "Stock ETF", "Bond ETF", "Commodity ETF", "Gold ETC", "Money Market ETF".
   String? _detectAssetClass(Document doc) {
     var focus = doc
@@ -368,14 +412,14 @@ class CompositionService {
     return geoTerms.any((t) => lower.contains(t));
   }
 
-  // ── Individual Stocks: stockanalysis.com ──────────────────
+  // ── Individual Stocks: stock-data provider ────────────────
 
   Future<List<_Entry>> _fetchStock(Asset asset) async {
     final ticker = asset.ticker;
     if (ticker == null || ticker.isEmpty) return [];
 
     final url = 'https://stockanalysis.com/stocks/${ticker.toLowerCase()}/company/';
-    _log.fine('fetchStock: ${asset.name} from stockanalysis.com ($ticker)');
+    _log.fine('fetchStock: ${asset.name} from stock-data provider ($ticker)');
 
     final html = await _fetchHtml(url);
     if (html == null) return [];
@@ -397,16 +441,16 @@ class CompositionService {
     return entries.length > 3 ? entries : [];
   }
 
-  // ── Mutual/Pension Funds: investing.com ──────────────────
+  // ── Mutual/Pension Funds: provider ──────────────────
 
-  Future<List<_Entry>> _fetchFundFromInvestingCom(Asset asset) async {
-    // First, find the fund URL via investing.com search API
+  Future<List<_Entry>> _fetchFundFromProvider(Asset asset) async {
+    // First, find the fund URL via the provider search API
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
-    _log.fine('fetchFund: ${asset.name} - searching investing.com for "$searchTerm"');
+    _log.fine('fetchFund: ${asset.name} - searching the provider for "$searchTerm"');
 
     String? fundUrl;
     try {
-      final searchUrl = 'https://api.investing.com/api/search/v2/search'
+      final searchUrl = '$kProviderApiBase/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
       final searchResp = await _dio.get(searchUrl, options: Options(
         headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
@@ -423,16 +467,16 @@ class CompositionService {
 
     if (fundUrl == null || fundUrl.isEmpty) return [];
 
-    final baseFundUrl = 'https://www.investing.com${fundUrl.replaceAll(RegExp(r'/$'), '')}';
+    final baseFundUrl = '$kProviderBase${fundUrl.replaceAll(RegExp(r'/$'), '')}';
 
     // Fetch main fund page for expenses/TER
     final mainHtml = await _fetchHtml(baseFundUrl);
     if (mainHtml != null) {
-      final ter = parseTerFromInvestingCom(mainHtml);
+      final ter = parseTerFromProviderHtml(mainHtml);
       if (ter != null && ter != asset.ter) {
         await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
             .write(AssetsCompanion(ter: Value(ter)));
-        _log.info('fetchFund: ${asset.name} - updated TER to $ter% from investing.com');
+        _log.info('fetchFund: ${asset.name} - updated TER to $ter% from the provider');
       }
     }
 
@@ -447,13 +491,13 @@ class CompositionService {
     final entries = <_Entry>[];
 
     // Parse sector allocation from HTML table
-    entries.addAll(_parseInvestingComSectors(doc));
+    entries.addAll(_parseProviderSectors(doc));
 
     // Parse region allocation from Highcharts JSON (embedded in <script> tags)
-    entries.addAll(_parseInvestingComRegions(doc));
+    entries.addAll(_parseProviderRegions(doc));
 
     // Parse top holdings from HTML table
-    entries.addAll(_parseInvestingComHoldings(doc));
+    entries.addAll(_parseProviderHoldings(doc));
 
     if (entries.isEmpty) {
       entries.add(_Entry('holding', asset.name, 100));
@@ -465,8 +509,8 @@ class CompositionService {
     return entries;
   }
 
-  /// Parse sector allocation from investing.com fund holdings page.
-  List<_Entry> _parseInvestingComSectors(Document doc) {
+  /// Parse sector allocation from the provider's fund holdings page.
+  List<_Entry> _parseProviderSectors(Document doc) {
     final entries = <_Entry>[];
 
     final sectorSection = doc.querySelector('.js-sector');
@@ -486,7 +530,7 @@ class CompositionService {
 
   /// Parse region allocation from Highcharts JSON embedded in the page.
   /// Looks for: "renderTo":"regionAllocationPieChart1"..."data":[{"name":"...","y":...}]
-  List<_Entry> _parseInvestingComRegions(Document doc) {
+  List<_Entry> _parseProviderRegions(Document doc) {
     final entries = <_Entry>[];
 
     // Scope search to <script> tags to avoid false matches in other HTML
@@ -509,14 +553,14 @@ class CompositionService {
         }
       }
     } catch (e) {
-      _log.fine('parseInvestingComRegions: JSON parse error: $e');
+      _log.fine('parseProviderRegions: JSON parse error: $e');
     }
 
     return entries;
   }
 
-  /// Parse top holdings from investing.com fund holdings page.
-  List<_Entry> _parseInvestingComHoldings(Document doc) {
+  /// Parse top holdings from the provider's fund holdings page.
+  List<_Entry> _parseProviderHoldings(Document doc) {
     final entries = <_Entry>[];
 
     final rows = doc.querySelector('.genTbl')?.querySelectorAll('tr') ?? [];
@@ -535,9 +579,9 @@ class CompositionService {
     return entries;
   }
 
-  // ── TER parsing from Investing.com HTML ─────────────────
+  // ── TER parsing from the market data provider HTML ─────────────────
 
-  /// Extract TER/expense ratio from an Investing.com page HTML.
+  /// Extract TER/expense ratio from an the market data provider page HTML.
   ///
   /// Two known DOM patterns carry real TER data:
   ///  1. Fund pages: <span class="float_lang_base_1">Expenses</span>
@@ -546,7 +590,7 @@ class CompositionService {
   ///
   /// Returns null when neither pattern is found (bonds, stocks, etc.).
   @visibleForTesting
-  double? parseTerFromInvestingCom(String html) {
+  double? parseTerFromProviderHtml(String html) {
     // 1. DOM: <span class="float_lang_base_1">Expenses</span>
     //         <span class="float_lang_base_2 ...">X.XX%</span>
     final doc = parse(html);
@@ -600,11 +644,11 @@ class CompositionService {
       );
       return response.data as String;
     } on DioException catch (e) {
-      // On CF-protected pages (investing.com), fall back to WebView fetch
-      if (e.response?.statusCode == 403 && _investingService != null &&
-          url.contains('investing.com')) {
+      // On CF-protected provider pages, fall back to WebView fetch
+      if (e.response?.statusCode == 403 && _providerService != null &&
+          url.contains(kProviderHost)) {
         _log.fine('fetchHtml: Dio 403, trying WebView fetch for $url');
-        return await _investingService.fetchHtml(url);
+        return await _providerService.fetchHtml(url);
       }
       _log.warning('fetchHtml: $url - ${e.response?.statusCode ?? e.message}');
       return null;
@@ -614,9 +658,9 @@ class CompositionService {
     }
   }
 
-  // ── justETF HTML parsers ──────────────────────────────────
+  // ── ETF provider HTML parsers ─────────────────────────────
 
-  List<_Entry> _parseJustEtfSection(Document doc, String section) {
+  List<_Entry> _parseEtfSection(Document doc, String section) {
     final type = section == 'countries' ? 'country' : 'sector';
     final entries = <_Entry>[];
 
@@ -635,7 +679,7 @@ class CompositionService {
     return entries;
   }
 
-  List<_Entry> _parseJustEtfHoldings(Document doc) {
+  List<_Entry> _parseEtfHoldings(Document doc) {
     final entries = <_Entry>[];
 
     final links = doc.querySelectorAll('[data-testid="tl_etf-holdings_top-holdings_link_name"]');
@@ -659,4 +703,11 @@ class _Entry {
   final String name;
   final double weight;
   const _Entry(this.type, this.name, this.weight);
+}
+
+/// Public input value type for [CompositionService.setEntries].
+class CompositionEntry {
+  final String name;
+  final double weight;
+  const CompositionEntry(this.name, this.weight);
 }

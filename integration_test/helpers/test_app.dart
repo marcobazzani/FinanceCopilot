@@ -96,7 +96,7 @@ Future<AppDatabase> pumpApp(
   }
   // useRealServices=true: leave marketPriceServiceProvider and
   // exchangeRateServiceProvider at their defaults so the real
-  // InvestingComService + investing-backed FX run with real HTTP.
+  // WebMarketDataService + investing-backed FX run with real HTTP.
 
   // Suppress non-logic Flutter errors in integration tests:
   // - KeyUpEvent: keyboard state leak between tests in same process
@@ -127,8 +127,13 @@ Future<AppDatabase> pumpApp(
 Future<FilePreview> parseFixture(AppDatabase db, String fixtureName, {int skipRows = 0}) async {
   final importer = ImportService(db);
   final data = await rootBundle.load('integration_test/fixtures/$fixtureName');
+  // Write into a stable subdir so the basename matches the original
+  // (parseFile uses the extension to pick a parser). Nested fixture
+  // names like "pension/ppp_import.tsv" must not write a directory
+  // path containing "pension/" inside the temp dir.
+  final basename = fixtureName.split('/').last;
   final tmpDir = await Directory.systemTemp.createTemp('fc_test_');
-  final tmpFile = File('${tmpDir.path}/$fixtureName');
+  final tmpFile = File('${tmpDir.path}/$basename');
   await tmpFile.writeAsBytes(data.buffer.asUint8List());
   try {
     final preview = await importer.parseFile(tmpFile.path, skipRows: skipRows);
@@ -136,6 +141,36 @@ Future<FilePreview> parseFixture(AppDatabase db, String fixtureName, {int skipRo
     // is deleted so service-driven imports see the full dataset.
     if (preview.rows.length < preview.totalRows) {
       return await importer.getFullRows(preview);
+    }
+    return preview;
+  } finally {
+    await tmpDir.delete(recursive: true);
+  }
+}
+
+/// Like [parseFixture] but for headerless TSV/CSV (synthetic columns
+/// "Column 1".."Column N"). Used by pension imports whose source TSV
+/// has no header row (the form3.sh shell script flattens PDF cells
+/// directly without a header).
+Future<FilePreview> parseFixtureNoHeader(
+  AppDatabase db,
+  String fixtureName, {
+  String? numberLocale,
+}) async {
+  final importer = ImportService(db);
+  final data = await rootBundle.load('integration_test/fixtures/$fixtureName');
+  final basename = fixtureName.split('/').last;
+  final tmpDir = await Directory.systemTemp.createTemp('fc_test_');
+  final tmpFile = File('${tmpDir.path}/$basename');
+  await tmpFile.writeAsBytes(data.buffer.asUint8List());
+  try {
+    final preview = await importer.parseFile(
+      tmpFile.path,
+      noHeader: true,
+      numberLocale: numberLocale,
+    );
+    if (preview.rows.length < preview.totalRows) {
+      return await importer.getFullRows(preview, numberLocale: numberLocale);
     }
     return preview;
   } finally {
@@ -523,10 +558,18 @@ Future<void> tapBuySellForValue(
   );
   expect(valueText, findsWidgets,
       reason: 'unique-value row "$value" not found for type-from-column');
-  final rowAnc = find.ancestor(of: valueText.first, matching: find.byType(Row));
-  expect(rowAnc, findsWidgets);
+  // Chip container is a Wrap (was Row before the pension-import merge —
+  // switched to Wrap to fit the 4th chip on narrow screens). Fall back to
+  // Row for older code paths so the helper stays robust if the layout
+  // changes again.
+  var container = find.ancestor(of: valueText.first, matching: find.byType(Wrap));
+  if (container.evaluate().isEmpty) {
+    container = find.ancestor(of: valueText.first, matching: find.byType(Row));
+  }
+  expect(container, findsWidgets,
+      reason: 'no Wrap or Row ancestor for unique-value "$value"');
   final chip = find.descendant(
-    of: rowAnc.first,
+    of: container.first,
     matching: find.widgetWithText(ChoiceChip, buy ? buyLabel : sellLabel),
   );
   expect(chip, findsWidgets,

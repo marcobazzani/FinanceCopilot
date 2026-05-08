@@ -2,6 +2,23 @@ part of 'providers.dart';
 
 // ── Derived / computed data providers ──
 
+/// Asset IDs that have at least one row in `market_prices`.
+///
+/// Source-of-truth for "this asset has external market data". Used by the
+/// import wizard's single-asset target picker, which excludes any asset
+/// already covered by the market data provider — those should flow value through the
+/// market-price path, not through manual contribute/revalue events. The
+/// query is cheap (covered by the market_prices PK index) and rebuilds
+/// only when rows are inserted/deleted.
+final assetIdsWithMarketPricesProvider = FutureProvider<Set<int>>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final rows = await db.customSelect(
+    'SELECT DISTINCT asset_id FROM market_prices',
+    readsFrom: {db.marketPrices},
+  ).get();
+  return rows.map((r) => r.read<int>('asset_id')).toSet();
+});
+
 /// Account stats with balances converted to base currency using live rates.
 final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
   final accounts = await ref.watch(accountsProvider.future);
@@ -163,7 +180,7 @@ class AssetDailyChange {
   final double todayFxRate;    // asset currency -> base currency (today)
   final double previousFxRate; // asset currency -> base currency (reference date)
   final String baseCurrency;
-  final String? investingUrl;   // Investing.com page URL
+  final String? providerUrl;   // the market data provider page URL
   final double priceDivisor;   // 100 for bonds (quoted per 100 nominal), 1 otherwise
   final bool marketOpen;       // true if today's date has a stored price
 
@@ -177,7 +194,7 @@ class AssetDailyChange {
     required this.todayFxRate,
     required this.previousFxRate,
     required this.baseCurrency,
-    this.investingUrl,
+    this.providerUrl,
     this.priceDivisor = 1.0,
     this.marketOpen = false,
   });
@@ -247,23 +264,23 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     }
     if (previousPrice == null) continue;
 
-    // Look up cached Investing.com URL for the link (same key logic as _searchCid)
-    String? investingUrl;
+    // Look up cached the market data provider URL for the link (same key logic as _searchCid)
+    String? providerUrl;
     final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
     if (searchTerm != null && searchTerm.isNotEmpty) {
-      final urlKey = 'INVESTING_URL_${searchTerm}_${asset.exchange ?? 'MIL'}';
+      final urlKey = 'PROVIDER_URL_${searchTerm}_${asset.exchange ?? 'Milan'}';
       final urlRow = await priceService.db.customSelect(
         'SELECT value FROM app_configs WHERE key = ?',
         variables: [Variable.withString(urlKey)],
       ).getSingleOrNull();
       if (urlRow != null) {
         final path = urlRow.read<String>('value');
-        investingUrl = path.startsWith('http') ? path : 'https://www.investing.com$path';
+        providerUrl = path.startsWith('http') ? path : '$kProviderBase$path';
       }
     }
 
     // Market is open if live price was fetched within the last 15 minutes
-    final isMarketOpen = priceService is InvestingComService &&
+    final isMarketOpen = priceService is WebMarketDataService &&
         priceService.isMarketOpen(asset.id);
 
     result.add(AssetDailyChange(
@@ -276,7 +293,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       todayFxRate: todayFx,
       previousFxRate: prevFx,
       baseCurrency: baseCurrency,
-      investingUrl: investingUrl,
+      providerUrl: providerUrl,
       priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
       marketOpen: isMarketOpen,
     ));

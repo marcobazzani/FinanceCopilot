@@ -55,11 +55,26 @@ flutter test integration_test/all_tests.dart -d macos
     auto amount
 8c. **Toolbar refresh button → REAL network sync.** Wait 45s. Asserts
     `marketPrices` rows, ETF `ter` populated, FX rates fetched. Hits:
-    - `investing_com_service.dart` (price + composition)
+    - `web_market_data_service.dart` (price + composition)
     - `market_price_service.dart` (orchestration)
     - `composition_service.dart` (TER + composition)
     - `exchange_rate_service.dart` (FX)
     - `isin_lookup_service.dart` (already exercised at import)
+8d. **URL-paste recovery** — unindexed bond (BE0000351602) reachable by
+    URL but missing from search; verifies `IsinUrlPasteRecovery`
+    resolves the cid via the page parser
+8e. **assets.exchange invariant** — every imported asset's stored
+    exchange is either a canonical English provider name (`Milan`,
+    `London`, `NYSE`, …) or a recognised synonym (`Milano`, `Londra`,
+    …). Asserts `isKnownExchange(asset.exchange)` for every distinct
+    value. Pins the post-v40 design where the wizard stores the
+    provider's exchange name verbatim — no internal-code remap.
+8f. **ETF edit modal smoke** — open AssetDetailScreen for an ETF, tap
+    the edit pencil, verify the modal mounts (`DropdownButtonFormField`
+    initial value matches at least one item — the regression that
+    killed pre-v40 ETF rows when `assets.exchange` held the provider
+    name `'Milan'` while the dropdown items used the legacy code
+    `'MIL'`).
 
 ## ACT IV — Income
 
@@ -122,10 +137,31 @@ Every direction × treatment × frequency × cardinal feature exercised:
       lazy ListView paints below-the-fold ExpansionTiles
       (`_YearlySummaryTable`, `_MonthlyGrid` × 2, `_YoYDiffTable`)
 
-## ACT XI — Cleanup
+## ACT XI — Pillars
+
+15A. **Pillars nav** — empty state shows "Create your first pillar"
+15B. **Create dialog** — name `Retirement` + target value `100000` →
+     persisted with locale-aware NumberFormat parser (no `5000.0` →
+     `50000` round-trip bug)
+15C. **Detail screen** — slider list renders one row per asset with
+     positive quantity, sorted by total asset market value desc;
+     ObjectiveCard at top, ChartCard below, sliders below that
+15D. **Service-level assign 50%** — `PillarService.assign()` round-trips
+     through to `qtyFor` / `unassignedQty` / `fractionsForPillar`;
+     SUM invariant holds (`SUM(pillar quantities) ≤ total holding`)
+15E. **Over-assign refused** — `PillarOverAssignedException` thrown when
+     `qty > available`
+15F. **ChartCard reuse** — Pillar history chart shows `Invested` (dashed)
+     + `Value` (filled) legend chips; `Total` chip is suppressed because
+     the chart passes `showTotal: false`
+15G. **Delete pillar** — explicit `delete_outline` icon in AppBar (no
+     3-dot overflow); confirmation dialog → cascade-deletes assignments
+     via `pillar_assets.pillar_id` FK
+
+## ACT XII — Cleanup
 
 16. **Cascade-delete sweep** — events, intermediaries, accounts, assets,
-    incomes; verify cascades
+    incomes, pillars; verify cascades
 
 ## Final invariant
 

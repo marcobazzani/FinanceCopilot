@@ -7,6 +7,7 @@ import '../../database/tables.dart';
 import '../../services/extraordinary_event_service.dart';
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -55,8 +56,10 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
 
         return Scaffold(
           body: eventsAsync.when(
-            data: (_) => ListView(
+            data: (_) => MobilePullToRefresh(
+              child: ListView(
               padding: const EdgeInsets.only(bottom: 80),
+              physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 const _InfoBox(),
                 if (events.isEmpty)
@@ -94,6 +97,7 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
                     if (i < events.length - 1) const Divider(height: 1),
                   ],
               ],
+            ),
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text(s.error(e))),

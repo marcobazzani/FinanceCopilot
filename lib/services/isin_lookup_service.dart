@@ -1,15 +1,15 @@
 import '../database/tables.dart';
 import '../utils/logger.dart';
-import 'investing_com_service.dart';
+import 'web_market_data_service.dart';
 
 final _log = getLogger('IsinLookupService');
 
-/// A single exchange listing for an ISIN (from Investing.com search).
+/// A single exchange listing for an ISIN (from the market data provider search).
 class IsinExchangeOption {
   final int cid;
   final String ticker;
   final String name;
-  final String exchange; // Investing.com exchange name (e.g. "Milano", "London")
+  final String exchange; // the market data provider exchange name (e.g. "Milano", "London")
   final String? url;
   final String typeName; // e.g. "Stocks", "ETFs", "ETCs", "Bonds"
 
@@ -22,10 +22,10 @@ class IsinExchangeOption {
     this.typeName = '',
   });
 
-  /// Derive instrument type + asset class from the investing.com typeName.
+  /// Derive instrument type + asset class from the provider's typeName.
   (InstrumentType, AssetClass) get classification {
     final prefix = typeName.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
-    return classifyFromInvestingType(prefix);
+    return classifyFromProviderType(prefix);
   }
 }
 
@@ -50,12 +50,12 @@ class IsinLookupResult {
   }
 }
 
-/// Resolves ISINs to exchange listings via Investing.com search API.
+/// Resolves ISINs to exchange listings via the market data provider search API.
 class IsinLookupService {
-  final InvestingComService _investing;
+  final WebMarketDataService _provider;
   final Map<String, IsinLookupResult> _cache = {};
 
-  IsinLookupService(this._investing);
+  IsinLookupService(this._provider);
 
   /// Look up all exchange listings for a single ISIN.
   Future<IsinLookupResult> lookup(String isin) async {
@@ -64,8 +64,8 @@ class IsinLookupService {
     if (_cache.containsKey(key)) return _cache[key]!;
 
     try {
-      _log.info('lookup: searching Investing.com for ISIN=$key');
-      final results = await _investing.search(key);
+      _log.info('lookup: searching the market data provider for ISIN=$key');
+      final results = await _provider.search(key);
 
       final options = results
           .where((r) => r.symbol.isNotEmpty)

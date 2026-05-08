@@ -2,7 +2,7 @@
 
 ## The Problem
 
-FinanceCopilot fetches market prices from Investing.com's API (`api.investing.com/api/financialdata/historical/`). This API is protected by Cloudflare. On macOS, the app worked perfectly. On Windows, every API call returned **403 Forbidden**.
+FinanceCopilot fetches market prices from the market data provider's API (`api.investing.com/api/financialdata/historical/`). This API is protected by Cloudflare. On macOS, the app worked perfectly. On Windows, every API call returned **403 Forbidden**.
 
 ## Phase 1: Initial Assumption — Cookie Extraction Bug
 

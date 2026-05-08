@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../database/database.dart';
 import '../database/tables.dart';
+import 'asset_event_service.dart';
 import '../utils/amount_parser.dart' as amt;
 import '../utils/date_parser.dart' as date_parse;
 import '../utils/formatters.dart' show formatYmd;
@@ -13,7 +14,6 @@ import '../utils/logger.dart';
 import 'exchange_rate_service.dart';
 import 'file_parser_service.dart';
 import 'isin_lookup_service.dart';
-import 'market_price_service.dart' show investingExchangeToCode;
 
 final _log = getLogger('ImportService');
 
@@ -83,6 +83,12 @@ class ImportResult {
   final int deletedRows;
   final int errorRows;
   final List<String> errors;
+  /// External fee rows (asset imports) whose `(isin, orderRef)` key matched
+  /// no parent Buy/Sell. The fee amount was discarded; the count is
+  /// surfaced so the user can investigate. Always 0 for transaction imports.
+  final int unmatchedFees;
+  /// External fee rows successfully folded into a parent's `commission`.
+  final int attachedFees;
 
   const ImportResult({
     required this.totalRows,
@@ -90,6 +96,8 @@ class ImportResult {
     this.deletedRows = 0,
     required this.errorRows,
     this.errors = const [],
+    this.unmatchedFees = 0,
+    this.attachedFees = 0,
   });
 }
 
@@ -147,12 +155,19 @@ class AssetEventImportPreview {
   final int errorRows;
   final List<String> errors;
   final Map<String, AssetPreviewSummary> assetSummary;
+  /// External fee rows that would be folded into a parent's commission
+  /// during the real import.
+  final int attachedFees;
+  /// External fee rows that did not match any parent Buy/Sell.
+  final int unmatchedFees;
 
   const AssetEventImportPreview({
     required this.parsedRows,
     required this.errorRows,
     this.errors = const [],
     required this.assetSummary,
+    this.attachedFees = 0,
+    this.unmatchedFees = 0,
   });
 }
 
@@ -504,6 +519,22 @@ class ImportService {
     IsinLookupService? isinLookup,
     Set<String>? buyValues,
     Set<String>? sellValues,
+    /// Type-column values that mark a row as an *external fee* (e.g.
+    /// "Commissioni" / "Bollo" in Directa-style exports). When the
+    /// `orderRef` field is also mapped, fee rows are joined to their parent
+    /// Buy/Sell on `(isin, orderRef)` and folded into the parent's
+    /// `commission`. When `orderRef` is unmapped (or its cell is empty),
+    /// the fee row is dropped silently — no DB write, no error.
+    Set<String>? feeValues,
+    /// Sign-based detection (when no type column is mapped): when true, a
+    /// negative cash-flow amount is treated as a BUY (Directa-style:
+    /// negative = money out = bought). Default false keeps the historical
+    /// behavior (negative = sell).
+    bool negativeIsBuy = false,
+    /// Wizard-tagged values for `revalue` and `contribute` event types.
+    /// Take priority over built-in aliases. See `_parseEventType`.
+    Set<String>? revalueValues,
+    Set<String>? contributeValues,
     /// ISIN → selected exchange option (from UI picker). If null, uses first result.
     Map<String, IsinExchangeOption>? selectedExchanges,
     /// ISINs to skip during import (unchecked by user in exchange picker).
@@ -521,6 +552,13 @@ class ImportService {
     String? numberLocaleOverride,
     /// App's configured locale (e.g. `it_IT`). Final fallback.
     String? appLocale,
+    /// Single-asset mode: when set, every parsed row routes to this asset
+    /// and the `isin` column mapping becomes optional. Used for pension
+    /// imports (PPP, Riester, UK SIPP) where the user pre-creates the
+    /// asset and feeds it events without per-row ISINs. ISIN-grouped
+    /// mode (the existing path) remains the default for multi-sub-fund
+    /// statements like 401(k) / Group RRSP.
+    int? targetAssetId,
   }) async {
     await _setLocaleForIntermediary(
       intermediaryId: intermediaryId,
@@ -533,12 +571,17 @@ class ImportService {
     final amountMapping = mappingByField['amount'];
     final isinMapping = mappingByField['isin'];
 
-    if (isinMapping == null) {
-      _log.severe('importAssetEventsGrouped: missing required mappings');
+    // Either the wizard maps an ISIN column (multi-sub-fund / per-row
+    // ISIN — the existing 401(k)/Group RRSP path) OR the caller passes
+    // `targetAssetId` to route everything to one pre-existing asset
+    // (the pension / Riester / UK SIPP path). Reject the call when
+    // neither is present.
+    if (isinMapping == null && targetAssetId == null) {
+      _log.severe('importAssetEventsGrouped: neither ISIN mapping nor targetAssetId provided');
       return AssetImportResult(
         result: const ImportResult(
           totalRows: 0, importedRows: 0, errorRows: 0,
-          errors: ['ISIN column is required'],
+          errors: ['ISIN column is required (or pass targetAssetId for single-asset import)'],
         ),
         assetsByIsin: {},
       );
@@ -552,42 +595,81 @@ class ImportService {
     final exchangeRateMapping = mappingByField['exchangeRate'];
     final commMapping = mappingByField['commission'];
     final descMapping = mappingByField['description'];
+    final orderRefMapping = mappingByField['orderRef'];
 
     var imported = 0;
     var errorCount = 0;
+    var attachedFees = 0;
+    var unmatchedFees = 0;
     final errors = <String>[];
 
-    // First pass: collect unique ISINs and find/create assets
-    final isinToRows = <String, List<int>>{};
-    for (var i = 0; i < preview.rows.length; i++) {
-      final row = preview.rows[i];
-      final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
-      if (isin.isEmpty) {
-        errorCount++;
-        errors.add('Skipped line ${i + 1}: empty ISIN');
-        continue;
+    // Pre-pass: collect external fee rows by (isin, orderRef) so the main
+    // loop can fold them into the parent Buy/Sell's commission. When
+    // orderRefMapping is null, fee rows are dropped silently — matching
+    // the prior Skip behavior. When the type column isn't mapped or
+    // feeValues is empty, this pre-pass is a no-op. Disabled in
+    // single-asset mode (no per-row ISIN to key against).
+    final externalFeeByKey = <String, double>{};
+    final externalFeeUsed = <String, bool>{};
+    if (targetAssetId == null && typeMapping != null && feeValues != null && feeValues.isNotEmpty) {
+      for (final row in preview.rows) {
+        final typeStr = _resolveMapping(typeMapping, row) ?? '';
+        final normalized = typeStr.trim().toUpperCase().replaceAll(' ', '_');
+        final isFee = feeValues.any((v) => v.toUpperCase() == normalized);
+        if (!isFee) continue;
+        if (orderRefMapping == null) continue; // drop silently
+        final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+        if (orderRef.isEmpty) continue; // drop silently
+        final isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
+        if (isin.isEmpty) continue;
+        final amountStr = amountMapping == null ? '' : (_resolveMapping(amountMapping, row) ?? '');
+        final amt = _tryParseAmount(amountStr);
+        if (amt == null) continue;
+        final key = '$isin|$orderRef';
+        externalFeeByKey[key] = (externalFeeByKey[key] ?? 0) + amt.abs();
+        externalFeeUsed[key] = false;
       }
-      if (excludedIsins != null && excludedIsins.contains(isin)) {
-        continue;
-      }
-      isinToRows.putIfAbsent(isin, () => []).add(i);
     }
 
-    _log.info('importAssetEventsGrouped: found ${isinToRows.length} unique ISINs');
+    // First pass: collect unique ISINs and find/create assets.
+    // Skipped entirely in single-asset (`targetAssetId`) mode — every
+    // row routes to the pre-existing asset, no per-row ISIN to inspect.
+    final isinToRows = <String, List<int>>{};
+    if (targetAssetId == null) {
+      for (var i = 0; i < preview.rows.length; i++) {
+        final row = preview.rows[i];
+        final isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
+        if (isin.isEmpty) {
+          errorCount++;
+          errors.add('Skipped line ${i + 1}: empty ISIN');
+          continue;
+        }
+        if (excludedIsins != null && excludedIsins.contains(isin)) {
+          continue;
+        }
+        isinToRows.putIfAbsent(isin, () => []).add(i);
+      }
+      _log.info('importAssetEventsGrouped: found ${isinToRows.length} unique ISINs');
+    } else {
+      _log.info('importAssetEventsGrouped: single-asset mode, targetAssetId=$targetAssetId');
+    }
 
     // Find or create asset for each ISIN. Scope the lookup to this
     // intermediary so the same ISIN held at two brokers produces two
     // independent asset rows (one per broker, each with its own events).
+    // In single-asset mode, this loop is empty (isinToRows is empty).
     final assetsByIsin = <String, int>{};
     final existingByIsin = <String, int>{};
-    final existingRows = await _db.customSelect(
-      "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != '' "
-      "AND intermediary_id = ?",
-      variables: [Variable.withInt(intermediaryId)],
-      readsFrom: {_db.assets},
-    ).get();
-    for (final row in existingRows) {
-      existingByIsin[row.read<String>('isin').toUpperCase()] = row.read<int>('id');
+    if (targetAssetId == null) {
+      final existingRows = await _db.customSelect(
+        "SELECT id, isin FROM assets WHERE isin IS NOT NULL AND isin != '' "
+        "AND intermediary_id = ?",
+        variables: [Variable.withInt(intermediaryId)],
+        readsFrom: {_db.assets},
+      ).get();
+      for (final row in existingRows) {
+        existingByIsin[row.read<String>('isin').toUpperCase()] = row.read<int>('id');
+      }
     }
 
     // Resolve new ISINs — use selected exchanges from UI if provided
@@ -608,7 +690,7 @@ class ImportService {
         if (selected != null) {
           name = selected.name;
           ticker = selected.ticker;
-          exchange = investingExchangeToCode[selected.exchange] ?? selected.exchange;
+          exchange = selected.exchange;
           final (inst, cls) = selected.classification;
           instrumentType = inst;
           assetClassValue = cls;
@@ -617,7 +699,7 @@ class ImportService {
           final best = lookup.bestFor(null);
           name = best?.name ?? isin;
           ticker = best?.ticker;
-          exchange = best?.exchange != null ? (investingExchangeToCode[best!.exchange] ?? best.exchange) : null;
+          exchange = best?.exchange;
           if (best != null) {
             final (inst, cls) = best.classification;
             instrumentType = inst;
@@ -659,12 +741,36 @@ class ImportService {
 
     // Second pass: build event companions
     final companions = <AssetEventsCompanion>[];
+    // Parallel income companions for pension contributions — one per
+    // event row that A3 auto-fills (cash-only buy on an eventDriven
+    // asset). Routed to the Income ledger so the user can audit
+    // employer/state/voluntary cashflows; excluded from income totals
+    // by `WHERE type NOT IN ('refund','pensionContribution')`.
+    final incomeCompanions = <IncomesCompanion>[];
     const progressInterval = 100;
+
+    // Look up the target asset once for single-asset mode, so we can
+    // honor its valuationMethod when applying the contribute auto-fill
+    // (A3 — qty=amount, price=1.0 fallback for cash-only event-driven
+    // assets).
+    Asset? targetAsset;
+    if (targetAssetId != null) {
+      targetAsset = await (_db.select(_db.assets)
+            ..where((a) => a.id.equals(targetAssetId)))
+          .getSingleOrNull();
+    }
 
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
-      final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
-      final assetId = assetsByIsin[isin];
+      final String isin;
+      final int? assetId;
+      if (targetAssetId != null) {
+        isin = '';
+        assetId = targetAssetId;
+      } else {
+        isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
+        assetId = assetsByIsin[isin];
+      }
       if (assetId == null) {
         if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
         continue; // already counted as error in first pass
@@ -706,28 +812,81 @@ class ImportService {
         final EventType eventType;
         if (typeMapping != null) {
           final typeStr = _resolveMapping(typeMapping, row) ?? 'BUY';
-          eventType = _parseEventType(typeStr, buyValues: buyValues, sellValues: sellValues);
+          final parsed = _parseEventType(
+            typeStr,
+            buyValues: buyValues,
+            sellValues: sellValues,
+            feeValues: feeValues,
+            revalueValues: revalueValues,
+            contributeValues: contributeValues,
+          );
+          if (parsed == null) {
+            // Fee row — already collected in the pre-pass. Skip from main
+            // event creation; matching/attaching happens below per parent.
+            continue;
+          }
+          eventType = parsed;
+        } else if (negativeIsBuy) {
+          // Cash-flow convention: only the amount sign matters. Quantity is
+          // typically positive in these exports (e.g. Directa).
+          eventType = amount < 0 ? EventType.buy : EventType.sell;
         } else {
+          // Historical convention: a negative quantity OR a negative amount
+          // indicates a sell.
           final isNeg = (qty != null && qty < 0) || amount < 0;
           eventType = isNeg ? EventType.sell : EventType.buy;
         }
 
-        // Fee: from column or computed as |amount| - qty * price / rate.
-        // When an exchange-rate column is mapped but its cell is empty / 0 /
-        // unparseable, we cannot derive a commission — leave it null rather
-        // than fabricate one from a 1.0 fallback (which silently treats two
-        // currencies as equivalent and has produced wrong commissions).
+        // A3 — Pension cash-only fallback: when the source has no
+        // quantity/price columns AND this is a buy on an event-driven
+        // asset, synthesize quantity=amount, price=1.0 so the resync's
+        // qty-at-revalue anchor works (resyncRevaluePricesForAsset sums
+        // buy.quantity into qty). When the user maps explicit
+        // quantity/price columns (401(k), Group RRSP, planes de
+        // pensiones), those win — no synthesis. Narrowly conditional so
+        // it never overrides real data.
+        double? effectiveQty = qty;
+        double? effectivePrice = price;
+        if (eventType == EventType.buy &&
+            qtyMapping == null &&
+            priceMapping == null &&
+            targetAsset?.valuationMethod == ValuationMethod.eventDriven) {
+          effectiveQty = amount;
+          effectivePrice = 1.0;
+        }
+
+        // External-row fee takes precedence over inline/computed:
+        // when a Commissioni row matched this trade's (isin, orderRef),
+        // those paths are ignored. They're independent in the wizard
+        // but mutually exclusive per row — no broker emits both.
         double? commission;
-        if (computeFee && qty != null && price != null) {
-          if (exchangeRateMapping == null) {
-            // No rate column mapped → assume same currency, no division.
-            commission = (amount.abs() - qty.abs() * price).abs();
-          } else if (rate != null && rate > 0) {
-            commission = (amount.abs() - qty.abs() * price / rate).abs();
+        String? extKey;
+        if (orderRefMapping != null && externalFeeByKey.isNotEmpty) {
+          final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+          if (orderRef.isNotEmpty) {
+            final candidate = '$isin|$orderRef';
+            if (externalFeeByKey.containsKey(candidate) &&
+                externalFeeUsed[candidate] != true) {
+              commission = externalFeeByKey[candidate];
+              extKey = candidate;
+            }
           }
-          // else: rate column was mapped but value is missing/zero → null.
-        } else if (commMapping != null) {
-          commission = _tryParseAmount(_resolveMapping(commMapping, row));
+        }
+        if (commission == null) {
+          // Fall through to the existing inline paths.
+          if (computeFee && qty != null && price != null) {
+            if (exchangeRateMapping == null) {
+              commission = (amount.abs() - qty.abs() * price).abs();
+            } else if (rate != null && rate > 0) {
+              commission = (amount.abs() - qty.abs() * price / rate).abs();
+            }
+          } else if (commMapping != null) {
+            commission = _tryParseAmount(_resolveMapping(commMapping, row));
+          }
+        }
+        if (extKey != null) {
+          externalFeeUsed[extKey] = true;
+          attachedFees++;
         }
 
         companions.add(AssetEventsCompanion.insert(
@@ -736,14 +895,32 @@ class ImportService {
           valueDate: valueDate,
           type: eventType,
           amount: amount,
-          quantity: Value(qty),
-          price: Value(price),
+          quantity: Value(effectiveQty),
+          price: Value(effectivePrice),
           currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
           exchangeRate: Value(rate),
           commission: Value(commission),
           notes: Value(descMapping != null ? _resolveMapping(descMapping, row) : null),
           rawMetadata: Value(jsonEncode(rawMetadata)),
         ));
+        // Pension-contribution mirror: same condition as A3 auto-fill.
+        // When the cash-only synthesis triggered, this row represents a
+        // contribution to a pension fund — replicate it as an Income
+        // entry so the Accounts → Income tab shows the cashflow.
+        if (eventType == EventType.buy &&
+            qtyMapping == null &&
+            priceMapping == null &&
+            targetAsset?.valuationMethod == ValuationMethod.eventDriven &&
+            targetAssetId != null) {
+          incomeCompanions.add(IncomesCompanion.insert(
+            date: date,
+            valueDate: valueDate,
+            amount: amount,
+            type: const Value(IncomeType.pensionContribution),
+            currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
+            assetId: Value(targetAssetId),
+          ));
+        }
         imported++;
       } catch (e, stack) {
         errorCount++;
@@ -781,34 +958,91 @@ class ImportService {
     }
 
     if (isSpot) {
-      // Spot import: every asset belongs to one intermediary, so the wipe
-      // scope is the full set of events under that intermediary.
-      totalDeleted = await _db.customUpdate(
-        'DELETE FROM asset_events WHERE asset_id IN '
-        '(SELECT id FROM assets WHERE intermediary_id = ?)',
-        variables: [Variable.withInt(intermediaryId)],
-        updates: {_db.assetEvents},
-      );
-      _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
+      // Spot import: scope wipe to the assets we just touched. In
+      // ISIN-grouped mode that's everything under this intermediary
+      // (existing behavior). In single-asset mode (`targetAssetId`)
+      // it's that one asset only — re-importing a pension statement
+      // must NOT wipe events on unrelated assets that happen to share
+      // the intermediary.
+      if (targetAssetId != null) {
+        totalDeleted = await _db.customUpdate(
+          'DELETE FROM asset_events WHERE asset_id = ?',
+          variables: [Variable.withInt(targetAssetId)],
+          updates: {_db.assetEvents},
+        );
+        _log.info('importAssetEventsGrouped: spot wipe targetAssetId $targetAssetId - deleted $totalDeleted events');
+      } else {
+        totalDeleted = await _db.customUpdate(
+          'DELETE FROM asset_events WHERE asset_id IN '
+          '(SELECT id FROM assets WHERE intermediary_id = ?)',
+          variables: [Variable.withInt(intermediaryId)],
+          updates: {_db.assetEvents},
+        );
+        _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
+      }
     } else {
-      // Transaction import: date-based wipe-and-replace, scoped to the
+      // Transaction import: date-based wipe-and-replace. Scope to the
+      // single asset in single-asset mode; otherwise to the
       // intermediary's assets.
       final globalOldest = companions.map((c) => c.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
       final globalCutoff = DateTime(globalOldest.year, globalOldest.month, globalOldest.day);
       final cutoffEpoch = globalCutoff.millisecondsSinceEpoch ~/ 1000;
-      totalDeleted = await _db.customUpdate(
-        'DELETE FROM asset_events WHERE asset_id IN '
-        '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
-        variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
-        updates: {_db.assetEvents},
-      );
-      _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
+      if (targetAssetId != null) {
+        totalDeleted = await _db.customUpdate(
+          'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
+          variables: [Variable.withInt(targetAssetId), Variable.withInt(cutoffEpoch)],
+          updates: {_db.assetEvents},
+        );
+        _log.info('importAssetEventsGrouped: targetAssetId $targetAssetId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
+      } else {
+        totalDeleted = await _db.customUpdate(
+          'DELETE FROM asset_events WHERE asset_id IN '
+          '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
+          variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
+          updates: {_db.assetEvents},
+        );
+        _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
+      }
     }
 
     _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
     await _db.batch((batch) {
       batch.insertAll(_db.assetEvents, companions);
     });
+
+    // Mirror pension-contribution income rows. Wipe any prior rows
+    // attached to this asset (idempotent re-imports); then bulk-insert
+    // the new ones. Scoped by `(asset_id, type='pensionContribution')`
+    // so unrelated income entries on the same intermediary stay intact.
+    if (incomeCompanions.isNotEmpty && targetAssetId != null) {
+      final wiped = await _db.customUpdate(
+        "DELETE FROM incomes WHERE asset_id = ? AND type = 'pensionContribution'",
+        variables: [Variable.withInt(targetAssetId)],
+        updates: {_db.incomes},
+      );
+      await _db.batch((batch) {
+        batch.insertAll(_db.incomes, incomeCompanions);
+      });
+      _log.info('importAssetEventsGrouped: pension-contribution income rows: wiped=$wiped, inserted=${incomeCompanions.length}');
+    }
+
+    // Materialize revalue events into `market_prices` for every touched
+    // asset. The batch insert above bypasses AssetEventService.create's
+    // post-CRUD resync, so without this loop a freshly-imported pension
+    // statement leaves manual assets with zero market_prices rows — the
+    // single-asset chart provider returns null in that state and no
+    // graph renders. See asset_event_service.resyncRevaluePricesForAsset.
+    final eventService = AssetEventService(_db);
+    final assetIdsToResync = <int>{
+      ...byAsset.keys,
+      ?targetAssetId,
+    };
+    for (final aid in assetIdsToResync) {
+      await eventService.resyncRevaluePricesForAsset(aid);
+    }
+    if (assetIdsToResync.isNotEmpty) {
+      _log.info('importAssetEventsGrouped: resynced market_prices for ${assetIdsToResync.length} asset(s)');
+    }
 
     // Fill missing exchange rates from historical data
     if (rateService != null) {
@@ -829,14 +1063,22 @@ class ImportService {
       if (filled > 0) _log.info('importAssetEventsGrouped: filled $filled missing exchange rates');
     }
 
-    _log.info('importAssetEventsGrouped: done - imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}');
+    // Tally external fee rows that found no matching parent in this batch.
+    for (final used in externalFeeUsed.values) {
+      if (!used) unmatchedFees++;
+    }
+    if (unmatchedFees > 0) {
+      _log.warning('importAssetEventsGrouped: $unmatchedFees external fee row(s) had no matching parent (isin, orderRef)');
+    }
+    _log.info('importAssetEventsGrouped: done - imported=$imported, deleted=$totalDeleted, errors=$errorCount, assets=${assetsByIsin.length}, attachedFees=$attachedFees, unmatchedFees=$unmatchedFees');
     return AssetImportResult(
       result: ImportResult(
         totalRows: preview.totalRows,
         importedRows: imported,
-
         errorRows: errorCount,
         errors: errors,
+        attachedFees: attachedFees,
+        unmatchedFees: unmatchedFees,
       ),
       assetsByIsin: assetsByIsin,
     );
@@ -1056,12 +1298,21 @@ class ImportService {
     required List<ColumnMapping> mappings,
     Set<String>? buyValues,
     Set<String>? sellValues,
+    Set<String>? feeValues,
+    bool negativeIsBuy = false,
+    Set<String>? revalueValues,
+    Set<String>? contributeValues,
     Set<String>? excludedIsins,
     Map<String, IsinExchangeOption>? selectedExchanges,
     /// Locale used for parsing during preview only — NOT persisted.
     /// Caller resolves to whatever the wizard selection is right now.
     String? numberLocale,
     String? appLocale,
+    /// Single-asset mode mirror of `importAssetEventsGrouped` — when set,
+    /// the ISIN column is optional and the per-asset summary is keyed by
+    /// a synthetic placeholder so the wizard's preview block can still
+    /// render row counts.
+    int? targetAssetId,
   }) async {
     _activeLocale = amt.resolveImportLocale(
       saved: numberLocale,
@@ -1071,20 +1322,30 @@ class ImportService {
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final isinMapping = mappingByField['isin'];
 
-    if (isinMapping == null) {
+    // Either ISIN-grouped (existing) or single-asset target — same gate
+    // as importAssetEventsGrouped.
+    if (isinMapping == null && targetAssetId == null) {
       return const AssetEventImportPreview(
         parsedRows: 0, errorRows: 0, assetSummary: {},
-        errors: ['ISIN column is required'],
+        errors: ['ISIN column is required (or pass targetAssetId for single-asset import)'],
       );
     }
+
+    // Synthetic key used as the asset-summary bucket in single-asset mode.
+    // Real ISIN-mode keys come straight from the row; this key never
+    // collides with a real ISIN because it isn't 12 chars uppercase.
+    final singleAssetKey = '_target_$targetAssetId';
 
     final typeMapping = mappingByField['type'];
     final qtyMapping = mappingByField['quantity'];
     final amountMapping = mappingByField['amount'];
     final currencyMapping = mappingByField['currency'];
+    final orderRefMapping = mappingByField['orderRef'];
 
     var parsed = 0;
     var errorCount = 0;
+    var attachedFees = 0;
+    var unmatchedFees = 0;
     final errors = <String>[];
 
     // Accumulate per-ISIN: buyCount, sellCount, netQty
@@ -1093,16 +1354,40 @@ class ImportService {
     final netQtyByIsin = <String, double>{};
     final currencyByIsin = <String, String>{};
 
+    // Pre-pass: tally external fee rows by (isin, orderRef) so the main
+    // loop can mark them as attached when their parent appears. Mirrors
+    // the live-import pre-pass exactly.
+    final feeKeysSeen = <String, bool>{}; // key → "matched in main pass?"
+    if (isinMapping != null && typeMapping != null && feeValues != null && feeValues.isNotEmpty) {
+      for (final row in preview.rows) {
+        final typeStr = _resolveMapping(typeMapping, row) ?? '';
+        final normalized = typeStr.trim().toUpperCase().replaceAll(' ', '_');
+        final isFee = feeValues.any((v) => v.toUpperCase() == normalized);
+        if (!isFee) continue;
+        if (orderRefMapping == null) continue;
+        final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+        if (orderRef.isEmpty) continue;
+        final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
+        if (isin.isEmpty) continue;
+        feeKeysSeen.putIfAbsent('$isin|$orderRef', () => false);
+      }
+    }
+
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
       try {
-        final isin = (_resolveMapping(isinMapping, row) ?? '').trim().toUpperCase();
-        if (isin.isEmpty) {
-          errorCount++;
-          if (errors.length < 5) errors.add('Line ${i + 1}: empty ISIN');
-          continue;
+        final String isin;
+        if (targetAssetId != null) {
+          isin = singleAssetKey;
+        } else {
+          isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
+          if (isin.isEmpty) {
+            errorCount++;
+            if (errors.length < 5) errors.add('Line ${i + 1}: empty ISIN');
+            continue;
+          }
+          if (excludedIsins != null && excludedIsins.contains(isin)) continue;
         }
-        if (excludedIsins != null && excludedIsins.contains(isin)) continue;
 
         final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
         final amount = amountMapping != null ? _tryParseAmount(_resolveMapping(amountMapping, row)) : null;
@@ -1111,7 +1396,18 @@ class ImportService {
         final EventType eventType;
         if (typeMapping != null) {
           final typeStr = _resolveMapping(typeMapping, row) ?? 'BUY';
-          eventType = _parseEventType(typeStr, buyValues: buyValues, sellValues: sellValues);
+          final parsed = _parseEventType(
+            typeStr,
+            buyValues: buyValues,
+            sellValues: sellValues,
+            feeValues: feeValues,
+            revalueValues: revalueValues,
+            contributeValues: contributeValues,
+          );
+          if (parsed == null) continue; // fee row — counted in pre-pass
+          eventType = parsed;
+        } else if (negativeIsBuy) {
+          eventType = (amount != null && amount < 0) ? EventType.buy : EventType.sell;
         } else {
           final isNeg = (qty != null && qty < 0) || (amount != null && amount < 0);
           eventType = isNeg ? EventType.sell : EventType.buy;
@@ -1127,11 +1423,27 @@ class ImportService {
           currencyByIsin[isin] = (_resolveMapping(currencyMapping, row) ?? '').trim();
         }
 
+        // Mark a matching external fee row as "attached" so the unmatched
+        // tally below is accurate.
+        if (orderRefMapping != null && feeKeysSeen.isNotEmpty) {
+          final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
+          if (orderRef.isNotEmpty) {
+            final key = '$isin|$orderRef';
+            if (feeKeysSeen.containsKey(key) && feeKeysSeen[key] == false) {
+              feeKeysSeen[key] = true;
+              attachedFees++;
+            }
+          }
+        }
+
         parsed++;
       } catch (e) {
         errorCount++;
         if (errors.length < 5) errors.add('Line ${i + 1}: $e');
       }
+    }
+    for (final used in feeKeysSeen.values) {
+      if (!used) unmatchedFees++;
     }
 
     // Look up existing asset names for known ISINs
@@ -1157,12 +1469,14 @@ class ImportService {
       );
     }
 
-    _log.info('previewAssetEventImport: parsed=$parsed, errors=$errorCount, assets=${summary.length}');
+    _log.info('previewAssetEventImport: parsed=$parsed, errors=$errorCount, assets=${summary.length}, attachedFees=$attachedFees, unmatchedFees=$unmatchedFees');
     return AssetEventImportPreview(
       parsedRows: parsed,
       errorRows: errorCount,
       errors: errors,
       assetSummary: summary,
+      attachedFees: attachedFees,
+      unmatchedFees: unmatchedFees,
     );
   }
 
@@ -1293,23 +1607,55 @@ class ImportService {
     }
   }
 
-  EventType _parseEventType(String s, {Set<String>? buyValues, Set<String>? sellValues}) {
+  /// Returns `null` when the row is an external fee row (the type value
+  /// matched [feeValues] — e.g. "Commissioni" / "Bollo" in cash-flow-style
+  /// broker exports). Fee rows are handled by the caller's two-pass loop
+  /// (matched by orderRef and folded into the parent's commission, or
+  /// dropped when no match). Throws when the type value is genuinely
+  /// unrecognized.
+  EventType? _parseEventType(
+    String s, {
+    Set<String>? buyValues,
+    Set<String>? sellValues,
+    Set<String>? feeValues,
+    Set<String>? revalueValues,
+    /// Kept for wizard-API compatibility — these values map to
+    /// `EventType.buy`. Pension contributions are accounting-equivalent
+    /// to a discounted-NAV purchase: same effect on cost basis and
+    /// qty-at-revalue. Collapsing them to `buy` keeps the event model
+    /// lean (3 types) and avoids two SQL paths everywhere.
+    Set<String>? contributeValues,
+  }) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
-    // Custom user-defined mappings take priority
+    // Custom user-defined mappings take priority — wizard chip tags win
+    // over built-in aliases so users can override surprising defaults.
+    if (feeValues != null && feeValues.any((v) => v.toUpperCase() == normalized)) return null;
     if (buyValues != null && buyValues.any((v) => v.toUpperCase() == normalized)) return EventType.buy;
     if (sellValues != null && sellValues.any((v) => v.toUpperCase() == normalized)) return EventType.sell;
+    if (revalueValues != null && revalueValues.any((v) => v.toUpperCase() == normalized)) return EventType.revalue;
+    if (contributeValues != null && contributeValues.any((v) => v.toUpperCase() == normalized)) return EventType.buy;
     // Direct enum match
     final direct = EventType.values.where((e) => e.name.toUpperCase() == normalized).firstOrNull;
     if (direct != null) return direct;
-    // Common aliases
+    // Common aliases per language / source format. Pension-statement
+    // dialect (TOTALEP, POSIZIONE, CONTRIBUTO, BEITRAG, COTISATION) is
+    // included so common formats classify correctly without the user
+    // having to tag every label via the wizard chips.
     const sellAliases = {'SELL', 'VENDITA', 'VENDI', 'S', 'V', 'VERKAUF', 'VENTE'};
-    const buyAliases = {'BUY', 'ACQUISTO', 'COMPRA', 'B', 'A', 'KAUF', 'ACHAT'};
+    const buyAliases = {
+      'BUY', 'ACQUISTO', 'COMPRA', 'B', 'A', 'KAUF', 'ACHAT',
+      // Contribute-flavored words collapse to buy.
+      'CONTRIBUTE', 'CONTRIBUTO', 'CONTRIBUTION', 'BEITRAG', 'COTISATION',
+    };
+    const revalueAliases = {'REVALUE', 'REVAL', 'POSITION', 'POSIZIONE', 'TOTALEP', 'TOTALE_PERIODO', 'BALANCE', 'SALDO'};
     if (sellAliases.contains(normalized)) return EventType.sell;
     if (buyAliases.contains(normalized)) return EventType.buy;
+    if (revalueAliases.contains(normalized)) return EventType.revalue;
     // Unknown type — fail loudly so the user knows to either add a custom
-    // buyValues/sellValues mapping or omit the type column. The previous
-    // silent fallback to BUY turned dividends/taxes/transfers into phantom
-    // buys and inflated the asset's cost basis.
+    // buyValues/sellValues/revalueValues mapping via the wizard, or omit
+    // the type column. The previous silent fallback to BUY turned
+    // dividends/taxes/transfers into phantom buys and inflated the
+    // asset's cost basis.
     throw FormatException('Unknown event type "$s" (normalized: "$normalized")');
   }
 
