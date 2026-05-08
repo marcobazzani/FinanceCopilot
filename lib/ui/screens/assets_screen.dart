@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -373,9 +372,8 @@ class _AssetTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   // Quantity reveals position size — blur the whole
                   // price×quantity line in privacy mode.
-                  Consumer(builder: (context, ref, _) {
-                    final isPrivate = ref.watch(privacyModeProvider);
-                    final line = Text.rich(
+                  PrivacyBlur(
+                    child: Text.rich(
                       TextSpan(
                         children: [
                           if (marketValue != null) ...[
@@ -399,13 +397,8 @@ class _AssetTile extends StatelessWidget {
                           ),
                         ],
                       ),
-                    );
-                    if (!isPrivate) return line;
-                    return ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                      child: line,
-                    );
-                  }),
+                    ),
+                  ),
                 ],
                 if (!asset.isActive) ...[
                   const SizedBox(height: 2),

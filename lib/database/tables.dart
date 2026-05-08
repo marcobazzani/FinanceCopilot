@@ -356,7 +356,8 @@ class ImportConfigs extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-/// ETF composition breakdown (country/sector/holding weights from justETF).
+/// ETF composition breakdown (country / sector / holding weights from the
+/// composition provider).
 class AssetCompositions extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get assetId => integer().references(Assets, #id)();
