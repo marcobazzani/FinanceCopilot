@@ -53,7 +53,8 @@ final unassignedFractionProvider =
   return out;
 });
 
-/// Asset composition breakdowns (country/sector/holding weights from justETF).
+/// Asset composition breakdowns (country / sector / holding weights from
+/// the composition provider).
 final assetCompositionsProvider = StreamProvider<Map<int, List<AssetComposition>>>((ref) {
   final db = ref.watch(databaseProvider);
   return (db.select(db.assetCompositions)).watch().map((rows) {

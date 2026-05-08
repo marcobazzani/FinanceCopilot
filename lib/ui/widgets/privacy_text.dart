@@ -3,6 +3,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/providers/providers.dart';
 
+/// Standard blur sigma applied across the app whenever privacy mode is on.
+/// Centralised so every leaf has identical visual treatment.
+const double kPrivacyBlurSigma = 6;
+
+/// Conditionally blurs an arbitrary [child] when privacy mode is active.
+/// Use directly when wrapping non-text content (rich text, rows, table
+/// cells, …); for plain strings prefer [PrivacyText] which keeps the call
+/// site one-liner.
+class PrivacyBlur extends ConsumerWidget {
+  final Widget child;
+
+  const PrivacyBlur({required this.child, super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPrivate = ref.watch(privacyModeProvider);
+    if (!isPrivate) return child;
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(
+        sigmaX: kPrivacyBlurSigma,
+        sigmaY: kPrivacyBlurSigma,
+      ),
+      child: child,
+    );
+  }
+}
+
 class PrivacyText extends ConsumerWidget {
   final String text;
   final TextStyle? style;
@@ -23,7 +50,10 @@ class PrivacyText extends ConsumerWidget {
         overflow: overflow);
     if (!isPrivate) return child;
     return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+      imageFilter: ImageFilter.blur(
+        sigmaX: kPrivacyBlurSigma,
+        sigmaY: kPrivacyBlurSigma,
+      ),
       child: child,
     );
   }

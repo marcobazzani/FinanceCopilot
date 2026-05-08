@@ -123,14 +123,10 @@ class ChartCard extends ConsumerWidget {
                 child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
               ),
               if (chart.sourceChartIds == null)
-                isPrivate
-                    ? ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                        child: Text(currFmt.format(currentTotal),
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-                      )
-                    : Text(currFmt.format(currentTotal),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                PrivacyText(
+                  currFmt.format(currentTotal),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                ),
               const SizedBox(width: 4),
               // Hide components toggle (not for combined charts — they only show contributors)
               if (chart.sourceChartIds == null)

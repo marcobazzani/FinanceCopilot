@@ -194,20 +194,21 @@ class CompositionService {
       return _fetchFundFromProvider(asset);
     }
 
-    // Standard ISINs (2-letter country + 10 chars) → try justETF first
+    // Standard ISINs (2-letter country + 10 chars) → try the ETF profile
+    // provider first.
     if (isin.length == 12 && RegExp(r'^[A-Z]{2}').hasMatch(isin)) {
       final etfResult = await _fetchEtf(asset);
       if (etfResult.isNotEmpty) return etfResult;
 
-      // If justETF didn't find it (e.g. it's a stock, not an ETF),
-      // try stockanalysis.com using ticker
+      // If the ETF provider didn't find it (e.g. it's a stock, not an
+      // ETF), fall through to the stock-data provider via ticker.
       if (asset.ticker != null && asset.ticker!.isNotEmpty) {
         final stockResult = await _fetchStock(asset);
         if (stockResult.isNotEmpty) return stockResult;
       }
     }
 
-    // Has ticker but no ISIN or non-standard ISIN → try stockanalysis
+    // Has ticker but no ISIN or non-standard ISIN → try the stock-data provider.
     if (asset.ticker != null && asset.ticker!.isNotEmpty) {
       final stockResult = await _fetchStock(asset);
       if (stockResult.isNotEmpty) return stockResult;
@@ -219,7 +220,7 @@ class CompositionService {
 
   /// Quick TER-only fetch (ETF profile provider for ETFs, market data provider for funds).
   Future<void> _fetchTerOnly(Asset asset) async {
-    // Try justETF first (for ETFs/ETCs)
+    // Try the ETF profile provider first (for ETFs/ETCs).
     final isin = asset.isin!;
     final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
     final html = await _fetchHtml(url);
@@ -233,7 +234,7 @@ class CompositionService {
           if (ter != null) {
             await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
                 .write(AssetsCompanion(ter: Value(ter)));
-            _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (justETF)');
+            _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (etf-provider)');
             return;
           }
         }
@@ -267,20 +268,21 @@ class CompositionService {
     }
   }
 
-  // ── ETFs/ETCs: justETF ──────────────────────────────────
+  // ── ETFs/ETCs: ETF profile provider ─────────────────────
 
   Future<List<_Entry>> _fetchEtf(Asset asset) async {
     final isin = asset.isin!;
     final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
-    _log.fine('fetchEtf: ${asset.name} from justETF ($isin)');
+    _log.fine('fetchEtf: ${asset.name} from etf-provider ($isin)');
 
     final html = await _fetchHtml(url);
     if (html == null) return [];
 
-    // Check if justETF actually has this fund (redirect to search = not found)
+    // Provider returns a redirect-to-search page when the fund is not in
+    // its catalog. Detect via expected data-testid markers.
     if (!html.contains('data-testid="etf-basics_data_table"') &&
         !html.contains('data-testid="etf-holdings_')) {
-      _log.fine('fetchEtf: ${asset.name} - not found on justETF');
+      _log.fine('fetchEtf: ${asset.name} - not found on etf-provider');
       return [];
     }
 
@@ -288,9 +290,9 @@ class CompositionService {
     final entries = <_Entry>[];
 
     // Try to get structured composition (equity ETFs)
-    entries.addAll(_parseJustEtfSection(doc, 'countries'));
-    entries.addAll(_parseJustEtfSection(doc, 'sectors'));
-    entries.addAll(_parseJustEtfHoldings(doc));
+    entries.addAll(_parseEtfSection(doc, 'countries'));
+    entries.addAll(_parseEtfSection(doc, 'sectors'));
+    entries.addAll(_parseEtfHoldings(doc));
 
     // If no structured data (money market, commodity, gold, bond ETFs),
     // derive from the "Investment focus" field
@@ -324,7 +326,7 @@ class CompositionService {
     return entries;
   }
 
-  /// Parse the "Investment focus" field from justETF.
+  /// Parse the "Investment focus" field from the ETF profile provider.
   /// Format: "Equity, World" or "Money Market, EUR, Europe" or "Commodities, Broad market"
   List<_Entry> _parseInvestmentFocus(Document doc, Asset asset) {
     final entries = <_Entry>[];
@@ -374,7 +376,7 @@ class CompositionService {
     return entries;
   }
 
-  /// Detect the real asset class from justETF's Investment focus field.
+  /// Detect the real asset class from the provider's Investment focus field.
   /// Returns labels like "Stock ETF", "Bond ETF", "Commodity ETF", "Gold ETC", "Money Market ETF".
   String? _detectAssetClass(Document doc) {
     var focus = doc
@@ -410,14 +412,14 @@ class CompositionService {
     return geoTerms.any((t) => lower.contains(t));
   }
 
-  // ── Individual Stocks: stockanalysis.com ──────────────────
+  // ── Individual Stocks: stock-data provider ────────────────
 
   Future<List<_Entry>> _fetchStock(Asset asset) async {
     final ticker = asset.ticker;
     if (ticker == null || ticker.isEmpty) return [];
 
     final url = 'https://stockanalysis.com/stocks/${ticker.toLowerCase()}/company/';
-    _log.fine('fetchStock: ${asset.name} from stockanalysis.com ($ticker)');
+    _log.fine('fetchStock: ${asset.name} from stock-data provider ($ticker)');
 
     final html = await _fetchHtml(url);
     if (html == null) return [];
@@ -656,9 +658,9 @@ class CompositionService {
     }
   }
 
-  // ── justETF HTML parsers ──────────────────────────────────
+  // ── ETF provider HTML parsers ─────────────────────────────
 
-  List<_Entry> _parseJustEtfSection(Document doc, String section) {
+  List<_Entry> _parseEtfSection(Document doc, String section) {
     final type = section == 'countries' ? 'country' : 'sector';
     final entries = <_Entry>[];
 
@@ -677,7 +679,7 @@ class CompositionService {
     return entries;
   }
 
-  List<_Entry> _parseJustEtfHoldings(Document doc) {
+  List<_Entry> _parseEtfHoldings(Document doc) {
     final entries = <_Entry>[];
 
     final links = doc.querySelectorAll('[data-testid="tl_etf-holdings_top-holdings_link_name"]');
