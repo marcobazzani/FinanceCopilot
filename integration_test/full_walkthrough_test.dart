@@ -23,6 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show allSeriesDataProvider;
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/asset_event_service.dart';
@@ -428,8 +429,14 @@ void main() {
         await settle(tester);
       }
     }
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
+    // Pop visible BackButtons. Bounded loop + hitTestable() filter avoids
+    // infinite tapping on disabled/offstage BackButtons left behind by
+    // routes mid-transition (seen on macOS where an offstage AppBar
+    // BackButton at offset >viewport.width was matched by `.first`).
+    for (var i = 0; i < 5; i++) {
+      final back = find.byType(BackButton).hitTestable();
+      if (back.evaluate().isEmpty) break;
+      await tester.tap(back.first);
       await settle(tester);
     }
 
@@ -443,7 +450,16 @@ void main() {
     await longSettle(tester);
     await tester.tap(find.text('Revolut').first);
     await longSettle(tester);
-    await tester.tap(find.byIcon(Icons.add).first);
+    // Target the AppBar "Add Transaction" button by its tooltip — using
+    // `find.byIcon(Icons.add).first` is fragile because the assets/pillars
+    // FABs and accounts-empty-state CTA all use Icons.add too, and after
+    // a navigation glitch `.first` could resolve to one of those.
+    final s = AppStrings.en;
+    final addTx = find.byTooltip(s.tooltipAddTransaction).hitTestable();
+    expect(addTx, findsOneWidget,
+        reason: 'AccountDetailScreen should show "Add Transaction" button — '
+            'navigation to Revolut detail likely failed.');
+    await tester.tap(addTx);
     await longSettle(tester);
 
     // TransactionEditScreen is open. The form has 6 TextFormFields in
