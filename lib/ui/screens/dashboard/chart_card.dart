@@ -265,6 +265,9 @@ class ChartCard extends ConsumerWidget {
                         baseCurrency: allData.baseCurrency,
                         locale: locale,
                         onZoom: onZoom,
+                        rightReserved: drawnSeries.any((s) => s.rightAxis)
+                            ? kChartRightReservedDual
+                            : 0,
                         zoomedY: zoomMinY != null || zoomMaxY != null,
                         child: UnifiedChart(
                           firstDate: allData.firstDate,
@@ -279,7 +282,6 @@ class ChartCard extends ConsumerWidget {
                           zoomMinY: zoomMinY,
                           zoomMaxY: zoomMaxY,
                           isPrivate: isPrivate,
-                          zoomedX: zoomMinX != null || zoomMaxX != null,
                         ),
                       ),
                     );

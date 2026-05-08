@@ -51,8 +51,8 @@
 - Before every commit, run ALL of these and verify green:
   1. `dart fix --apply && dart analyze lib/ test/ integration_test/` -- zero warnings/infos allowed
   2. `flutter test` -- all unit tests must pass
-  3. `flutter test integration_test/all_tests.dart -d macos` -- all integration tests must pass
-  4. `flutter test integration_test/live_data_fetch_test.dart -d macos` -- live data fetch test must pass
+  3. `flutter test integration_test/all_tests.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- all integration tests must pass. ALWAYS pass `_test.db`; integration tests delete that DB file, and using `finance_copilot_dev.db` will wipe local dev data.
+  4. `flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- live data fetch test must pass
   5. NEVER commit with known failing tests. NEVER skip any test suite.
 
 ## Releasing a new version

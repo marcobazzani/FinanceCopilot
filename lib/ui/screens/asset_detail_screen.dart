@@ -24,6 +24,7 @@ import '../widgets/global_app_bar_actions.dart';
 import 'dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
 import '../widgets/asset_search.dart';
 import '../widgets/mobile_pull_to_refresh.dart';
+import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -185,13 +186,14 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                       title: Row(
                         children: [
                           Text(ev.type.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: typeColor)),
+                          // Quantity and price reveal position size — censor in privacy mode.
                           if (ev.quantity != null) ...[
                             const SizedBox(width: 8),
-                            Text('qty: ${ev.quantity!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            PrivacyText('qty: ${ev.quantity!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                           ],
                           if (ev.price != null) ...[
                             const SizedBox(width: 8),
-                            Text('@ ${ev.price!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            PrivacyText('@ ${ev.price!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                           ],
                         ],
                       ),
@@ -200,7 +202,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
+                          PrivacyText(
                             '${ev.amount >= 0 ? '+' : ''}${amtFmt.format(ev.amount)}',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
@@ -209,7 +211,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                             ),
                           ),
                           if (showConverted && convertedAmounts.containsKey(ev.id))
-                            Text(
+                            PrivacyText(
                               '≈ ${baseFmt.format(convertedAmounts[ev.id]!)}',
                               style: const TextStyle(fontSize: 11, color: Colors.grey),
                             ),
@@ -514,7 +516,6 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                         zoomMinY: _zoomMinY,
                         zoomMaxY: _zoomMaxY,
                         isPrivate: isPrivate,
-                        zoomedX: _zoomMinX != null || _zoomMaxX != null,
                       ),
                     ),
                     if (hasZoom)
@@ -580,15 +581,12 @@ class _CompositionSection extends ConsumerWidget {
     };
     const typeOrder = ['assetclass', 'country', 'sector', 'holding'];
 
+    // The label is intentionally generic: per the provider-name policy,
+    // we never name external data providers in user-facing UI. The link
+    // still resolves to the original source.
     String? sourceLabel;
     if (sourceUrl != null) {
-      if (sourceUrl.contains('justetf.com')) {
-        sourceLabel = 'justETF';
-      } else if (sourceUrl.contains('stockanalysis.com')) {
-        sourceLabel = 'Stock Analysis';
-      } else if (sourceUrl.contains(kProviderHost)) {
-        sourceLabel = 'the market data provider';
-      }
+      sourceLabel = ss.sourceLabelGeneric;
     }
 
     return Card(
@@ -696,7 +694,7 @@ class _CompositionSection extends ConsumerWidget {
                           size: 14, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 6),
                       Text(
-                        ss.sourceLabel(sourceLabel),
+                        sourceLabel,
                         style: TextStyle(
                           fontSize: 12,
                           color: Theme.of(context).colorScheme.primary,

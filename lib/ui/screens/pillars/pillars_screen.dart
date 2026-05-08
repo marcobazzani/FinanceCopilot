@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../database/database.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/global_app_bar_actions.dart';
+import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
 import 'pillar_create_dialog.dart';
 import 'pillar_detail_screen.dart';
@@ -171,12 +172,12 @@ class _PillarCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
+            PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
             if (pillar.targetValue != null && pillar.targetValue! > 0) ...[
               const SizedBox(height: 6),
               LinearProgressIndicator(value: progress),
               const SizedBox(height: 4),
-              Text(
+              PrivacyText(
                 '${(progress! * 100).toStringAsFixed(0)}% · ${s.pillarTarget(fmtCur.format(pillar.targetValue))}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -213,7 +214,7 @@ class _UnassignedCard extends ConsumerWidget {
       child: ListTile(
         leading: const Icon(Icons.help_outline, size: 28),
         title: Text(s.pillarUnassigned),
-        subtitle: Text('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
+        subtitle: PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
       ),
     );
   }
