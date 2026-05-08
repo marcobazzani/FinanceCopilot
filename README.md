@@ -40,6 +40,10 @@ Geographic, sector, asset class, instrument type, currency, and top-holdings don
 |---|---|
 | ![Allocation](docs/screenshots/allocation.png) | ![Allocation (mobile)](docs/screenshots/allocation_mobile.png) |
 
+Below the fold: currency exposure, top holdings, **concentration risk** (Top 1 / 3 / 5 share, Herfindahl index), and a per-asset **investment costs** table with weighted-average TER.
+
+![Allocation — concentration & costs](docs/screenshots/allocation_metrics.png)
+
 ### Assets
 All holdings grouped by intermediary, with ticker, ISIN, event count, and per-asset performance. Swipe-to-delete and bulk-edit selection.
 
@@ -55,11 +59,17 @@ Full event history (buy / sell / revalue), composition breakdown (asset class / 
 | ![Asset Detail](docs/screenshots/asset_detail.png) | ![Asset Detail (mobile)](docs/screenshots/asset_detail_mobile.png) |
 
 ### Pillars
-Group assets and accounts into goal-oriented buckets (e.g. Lombard support, FIRE, Offspring) with their own value, target, and progress bar. Each pillar drills down into its own composition, history chart, and allocation cap per asset.
+Group assets and accounts into goal-oriented buckets (e.g. Lombard support, FIRE, Offspring) with their own value, target, and progress bar.
 
 | Desktop | Mobile |
 |---|---|
 | ![Pillars](docs/screenshots/pillars.png) | ![Pillars (mobile)](docs/screenshots/pillars_mobile.png) |
+
+Each pillar drills into its own objective, history chart, and per-asset allocation slider — set how much of every holding contributes to the bucket, with a free residual that auto-balances against the other pillars.
+
+| Desktop | Mobile |
+|---|---|
+| ![Pillar Detail](docs/screenshots/pillar_detail.png) | ![Pillar Detail (mobile)](docs/screenshots/pillar_detail_mobile.png) |
 
 ### Import
 Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.

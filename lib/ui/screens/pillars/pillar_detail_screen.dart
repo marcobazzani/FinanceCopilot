@@ -9,6 +9,7 @@ import '../../../models/dashboard_chart.dart';
 import '../../../services/pillar_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/global_app_bar_actions.dart';
+import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
 import '../dashboard/dashboard_screen.dart'
     show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider, buildTotalSpots;
@@ -551,7 +552,7 @@ class _AssetSliderRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Text(
+              PrivacyText(
                 '${amf.format(assetMarketValue)} $baseCurrency',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -603,7 +604,7 @@ class _AssetSliderRow extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 4, top: 0),
-            child: Text(
+            child: PrivacyText(
               '${s.pillarUnitsOf(qf.format(row.current), qf.format(row.total))} · ${amf.format(sliceValue)} $baseCurrency · ${s.pillarMaxPercent(maxPct.round())}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -643,10 +644,10 @@ class _ObjectiveCard extends ConsumerWidget {
           children: [
             Text(s.pillarObjective, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            Text(s.pillarValue('${fmt.amountFormat(locale).format(value)} $baseCurrency')),
+            PrivacyText(s.pillarValue('${fmt.amountFormat(locale).format(value)} $baseCurrency')),
             if (hasTarget) ...[
               const SizedBox(height: 4),
-              Text(s.pillarTarget('${fmt.amountFormat(locale).format(pillar.targetValue)} ${pillar.targetCurrency}')),
+              PrivacyText(s.pillarTarget('${fmt.amountFormat(locale).format(pillar.targetValue)} ${pillar.targetCurrency}')),
               const SizedBox(height: 8),
               LinearProgressIndicator(
                 value: (value / pillar.targetValue!).clamp(0.0, 1.0),
