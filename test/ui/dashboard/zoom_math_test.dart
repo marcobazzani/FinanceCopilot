@@ -100,6 +100,129 @@ void main() {
     });
   });
 
+  group('pixelToChartX', () {
+    // Drawing area: leftReserved=80, drawWidth=820 => spans pixels 80..900
+    // for a widget 980 wide with no right axis.
+    test('pixel at left edge maps to xMin', () {
+      expect(
+        pixelToChartX(
+          px: 80,
+          drawWidth: 820,
+          leftReserved: 80,
+          xMin: 100,
+          xMax: 200,
+        ),
+        closeTo(100, 1e-9),
+      );
+    });
+
+    test('pixel at right edge of drawing area maps to xMax', () {
+      expect(
+        pixelToChartX(
+          px: 900,
+          drawWidth: 820,
+          leftReserved: 80,
+          xMin: 100,
+          xMax: 200,
+        ),
+        closeTo(200, 1e-9),
+      );
+    });
+
+    test('center pixel maps to midpoint', () {
+      expect(
+        pixelToChartX(
+          px: 490, // 80 + 410
+          drawWidth: 820,
+          leftReserved: 80,
+          xMin: 0,
+          xMax: 100,
+        ),
+        closeTo(50, 1e-9),
+      );
+    });
+
+    test('right-axis dual chart: drawing area shrinks by rightReserved', () {
+      // Widget 980 wide, leftReserved=80, rightReserved=68 => drawWidth=832,
+      // chart spans pixels 80..912. The right edge of the drawing area is
+      // 912, NOT 980 — clicking at 912 must read as xMax, not overshoot.
+      expect(
+        pixelToChartX(
+          px: 912,
+          drawWidth: 832,
+          leftReserved: 80,
+          xMin: 0,
+          xMax: 365,
+        ),
+        closeTo(365, 1e-9),
+      );
+    });
+
+    test('zero drawWidth degrades safely to xMin', () {
+      expect(
+        pixelToChartX(
+          px: 100,
+          drawWidth: 0,
+          leftReserved: 80,
+          xMin: 7,
+          xMax: 99,
+        ),
+        7,
+      );
+    });
+  });
+
+  group('pixelToChartY', () {
+    // drawHeight=300 (e.g. widget height 348 minus bottomReserved 48).
+    test('pixel 0 (top of widget) maps to yMax', () {
+      expect(
+        pixelToChartY(
+          py: 0,
+          drawHeight: 300,
+          yMin: 1000,
+          yMax: 5000,
+        ),
+        closeTo(5000, 1e-9),
+      );
+    });
+
+    test('pixel at bottom of drawing area maps to yMin', () {
+      expect(
+        pixelToChartY(
+          py: 300,
+          drawHeight: 300,
+          yMin: 1000,
+          yMax: 5000,
+        ),
+        closeTo(1000, 1e-9),
+      );
+    });
+
+    test('center pixel maps to midpoint', () {
+      expect(
+        pixelToChartY(
+          py: 150,
+          drawHeight: 300,
+          yMin: 0,
+          yMax: 100,
+        ),
+        closeTo(50, 1e-9),
+      );
+    });
+
+    test('zero drawHeight degrades safely to yMin', () {
+      expect(
+        pixelToChartY(
+          py: 50,
+          drawHeight: 0,
+          yMin: -42,
+          yMax: 99,
+        ),
+        -42,
+      );
+    });
+  });
+
   group('computeZoomedYRange', () {
     test('zooming 2x at centered focal halves the range and stays centered', () {
       final r = computeZoomedYRange(

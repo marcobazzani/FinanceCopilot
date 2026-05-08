@@ -5,14 +5,13 @@
 /// so that future changes cannot silently diverge (e.g. missing fallback
 /// paths, different date handling, different aggregation precision).
 library;
-import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -49,21 +48,22 @@ void main() {
     }
   }
 
+  // Goes through AssetEventService.create so revalue events are
+  // materialised into market_prices rows the way they are in production.
   Future<void> insertEvent(int assetId, {
     required DateTime date,
     required EventType type,
     required double amount,
     double? quantity,
   }) async {
-    await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+    await AssetEventService(db).create(
       assetId: assetId,
       date: date,
-      valueDate: date,
       type: type,
       amount: amount,
-      quantity: Value(quantity),
-      currency: Value('EUR'),
-    ));
+      quantity: quantity,
+      currency: 'EUR',
+    );
   }
 
   // ═══════════════════════════════════════════════════
@@ -72,7 +72,7 @@ void main() {
 
   group('getPriceHistoryBatch matches getPriceHistory for each asset', () {
     test('assets with market prices', () async {
-      final service = InvestingComService(db);
+      final service = WebMarketDataService(db);
       final a1 = await createAsset('Asset A');
       final a2 = await createAsset('Asset B');
 
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('asset with NO market prices falls back to revalue events', () async {
-      final service = InvestingComService(db);
+      final service = WebMarketDataService(db);
       final assetId = await createAsset('Revalue Only');
 
       // No market prices -- only revalue events
@@ -129,7 +129,7 @@ void main() {
     });
 
     test('mix of assets with and without market prices', () async {
-      final service = InvestingComService(db);
+      final service = WebMarketDataService(db);
       final withPrices = await createAsset('Has Prices');
       final withRevalue = await createAsset('Revalue Only');
       final empty = await createAsset('No Data');

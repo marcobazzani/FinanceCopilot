@@ -357,24 +357,26 @@ Date,Amount
       expect(asset.valuationMethod, ValuationMethod.marketPrice);
     });
 
-    test('imported assets store exchange code not Investing.com name', () async {
+    test('imported assets store the provider exchange name as-is (no remap)', () async {
       final preview = makeAssetPreview([
         ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
       ]);
-      // Provide a selected exchange with Investing.com name
+      // Provide a selected exchange with the market data provider name
       final result = await importer.importAssetEventsGrouped(
         preview: preview, mappings: mappings, baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
         selectedExchanges: {
           'IE00B4L5Y983': const IsinExchangeOption(
             cid: 46925, ticker: 'SWDA', name: 'iShares MSCI World',
-            exchange: 'London', // Investing.com name, not code
+            exchange: 'London',
           ),
         },
       );
       final assetId = result.assetsByIsin['IE00B4L5Y983']!;
       final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
-      expect(asset.exchange, 'LON'); // Should be converted to code
+      // Per the canonical-name design: store what the provider gave us,
+      // no code-conversion. Cache keys + search filter use the same string.
+      expect(asset.exchange, 'London');
     });
 
     test('excludedIsins skips assets during import', () async {
@@ -1431,6 +1433,224 @@ Date,Balance
       final events = await db.select(db.assetEvents).get();
       expect(events, hasLength(1));
       expect(events.first.type, EventType.buy);
+    });
+
+    test('feeValues with orderRef attaches matching fee rows to parent buy/sell', () async {
+      // Two NOVO NORDISK trades sharing different order references; each
+      // has its own Commissioni row to be folded into the parent's
+      // commission. End state: one event per trade, no phantom rows.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'amount', 'orderRef'],
+        rows: const [
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
+           'quantity': '30', 'amount': '-1033.2', 'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
+           'quantity': '0',  'amount': '-9.5',    'orderRef': 'A1'},
+          {'date': '2026-02-04', 'isin': 'DK0062498333', 'type': 'Commissioni',
+           'quantity': '0',  'amount': '-9.5',    'orderRef': 'A2'},
+          {'date': '2026-02-04', 'isin': 'DK0062498333', 'type': 'Acquisto',
+           'quantity': '10', 'amount': '-340.0',  'orderRef': 'A2'},
+        ],
+        totalRows: 4,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date',     targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin',     targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type',     targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount',   targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'orderRef', targetField: 'orderRef'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        buyValues:  {'Acquisto'},
+        sellValues: {'Vendita'},
+        feeValues:  {'Commissioni'},
+      );
+      expect(result.result.importedRows, 2,
+          reason: 'two buys; the two fee rows are folded into commission');
+      expect(result.result.attachedFees, 2);
+      expect(result.result.unmatchedFees, 0);
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(2));
+      expect(events.map((e) => e.commission).whereType<double>().toSet(), {9.5});
+      expect(events.every((e) => e.type == EventType.buy), isTrue,
+          reason: 'type column wins; negative amount must NOT flip to sell');
+    });
+
+    test('orphan fee row (no matching parent) is counted, not imported', () async {
+      // A1 has a parent; A99 is an orphan — its 1.0 fee should not surface
+      // anywhere in the DB but the count must reach the result.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'amount', 'orderRef'],
+        rows: const [
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
+           'quantity': '30', 'amount': '-1033.2', 'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
+           'quantity': '0',  'amount': '-9.5',    'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
+           'quantity': '0',  'amount': '-1.0',    'orderRef': 'A99'},
+        ],
+        totalRows: 3,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date',     targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin',     targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type',     targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount',   targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'orderRef', targetField: 'orderRef'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        buyValues:  {'Acquisto'},
+        feeValues:  {'Commissioni'},
+      );
+      expect(result.result.importedRows, 1);
+      expect(result.result.attachedFees, 1);
+      expect(result.result.unmatchedFees, 1);
+      final events = await db.select(db.assetEvents).get();
+      expect(events.single.commission, 9.5);
+    });
+
+    test('feeValues without orderRef mapping silently drops fee rows', () async {
+      // No orderRef column mapped → fees can't be matched; they must drop
+      // without erroring (matches the just-shipped Skip behavior). Buys
+      // still import normally.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'amount'],
+        rows: const [
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
+           'quantity': '30', 'amount': '-1033.2'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
+           'quantity': '0',  'amount': '-9.5'},
+        ],
+        totalRows: 2,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date',     targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin',     targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type',     targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount',   targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        buyValues:  {'Acquisto'},
+        feeValues:  {'Commissioni'},
+      );
+      expect(result.result.importedRows, 1);
+      expect(result.result.errorRows, 0);
+      expect(result.result.attachedFees, 0);
+      expect(result.result.unmatchedFees, 0);
+      final events = await db.select(db.assetEvents).get();
+      expect(events, hasLength(1));
+      expect(events.single.commission, isNull,
+          reason: 'no inline commission column either');
+    });
+
+    test('external fee wins over inline commission column on the same parent', () async {
+      // The same parent (orderRef=A1) carries both an inline `commission`
+      // value (3.5) AND a matching external Commissioni row (9.5). External
+      // takes precedence; inline is ignored.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'amount', 'commission', 'orderRef'],
+        rows: const [
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
+           'quantity': '30', 'amount': '-1033.2', 'commission': '3.5',  'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
+           'quantity': '0',  'amount': '-9.5',     'commission': '',      'orderRef': 'A1'},
+        ],
+        totalRows: 2,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date',       targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin',       targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type',       targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity',   targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount',     targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'commission', targetField: 'commission'),
+          ColumnMapping(sourceColumn: 'orderRef',   targetField: 'orderRef'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        buyValues:  {'Acquisto'},
+        feeValues:  {'Commissioni'},
+      );
+      expect(result.result.importedRows, 1);
+      final events = await db.select(db.assetEvents).get();
+      expect(events.single.commission, 9.5,
+          reason: 'external Commissioni row (9.5) wins over inline commission column (3.5)');
+    });
+
+    test('negativeIsBuy flips sign-based detection for cash-flow exports', () async {
+      // No type column mapped → falls through to sign-based detection.
+      // Directa convention (and most cash-flow broker exports): the AMOUNT
+      // sign tracks cash flow (negative = money out = bought, positive =
+      // money in = sold). Quantity is always positive.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'quantity', 'amount'],
+        rows: const [
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'quantity': '30', 'amount': '-1033.2'},
+          {'date': '2026-02-16', 'isin': 'IE00BHZRQZ17', 'quantity': '2',  'amount': '-74.45'},
+          {'date': '2026-02-10', 'isin': 'DK0062498333', 'quantity': '40', 'amount': '1882.6'},
+        ],
+        totalRows: 3,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        negativeIsBuy: true,
+      );
+      expect(result.result.importedRows, 3);
+      final events = await db.select(db.assetEvents).get();
+      final buys = events.where((e) => e.type == EventType.buy).length;
+      final sells = events.where((e) => e.type == EventType.sell).length;
+      expect(buys, 2, reason: 'negative amounts are buys under cash-flow convention');
+      expect(sells, 1, reason: 'positive amount is a sell — qty sign is ignored');
+    });
+
+    test('default sign-based detection is unchanged (negative = sell)', () async {
+      // Same fixture as above, without negativeIsBuy. Confirms we did not
+      // accidentally flip the historical default.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'quantity', 'amount'],
+        rows: const [
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'quantity': '30', 'amount': '-1033.2'},
+          {'date': '2026-02-10', 'isin': 'IE00BHZRQZ17', 'quantity': '2',  'amount': '74.45'},
+        ],
+        totalRows: 2,
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+      );
+      expect(result.result.importedRows, 2);
+      final events = await db.select(db.assetEvents).get();
+      expect(events.where((e) => e.type == EventType.sell).length, 1);
+      expect(events.where((e) => e.type == EventType.buy).length, 1);
     });
   });
 

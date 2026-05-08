@@ -183,8 +183,10 @@ class _FinancialHealthTab extends ConsumerWidget {
             : overallScore >= 37 ? Rating.sufficiente
             : Rating.scarso;
 
-        return SingleChildScrollView(
+        return MobilePullToRefresh(
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -231,6 +233,7 @@ class _FinancialHealthTab extends ConsumerWidget {
               ],
             ],
           ),
+        ),
         );
       },
     );

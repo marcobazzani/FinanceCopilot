@@ -1,0 +1,23 @@
+date,bucket,fund_isin,units,unit_price,amount,description
+2024-01-15,employee_pretax,US9229087690,12.345,40.50,500.00,Vanguard Total Stock Index VTSAX
+2024-01-15,employer_match,US9229087690,6.173,40.50,250.00,Vanguard Total Stock Index VTSAX
+2024-01-15,employee_pretax,US9229087443,8.130,30.75,250.00,Vanguard Total Bond VBTLX
+2024-01-31,employee_pretax,US9229087690,12.422,40.25,500.00,Vanguard Total Stock Index VTSAX
+2024-01-31,employer_match,US9229087690,6.211,40.25,250.00,Vanguard Total Stock Index VTSAX
+2024-01-31,employee_pretax,US9229087443,8.197,30.50,250.00,Vanguard Total Bond VBTLX
+2024-02-15,employee_roth,US9229087690,12.578,39.75,500.00,Vanguard Total Stock Index VTSAX
+2024-02-15,employer_nonelective,US9229087690,2.516,39.75,100.00,Vanguard Total Stock Index VTSAX
+2024-02-15,employee_pretax,US9229087443,8.264,30.25,250.00,Vanguard Total Bond VBTLX
+2024-02-29,employee_pretax,US9229087690,12.500,40.00,500.00,Vanguard Total Stock Index VTSAX
+2024-02-29,employer_match,US9229087690,6.250,40.00,250.00,Vanguard Total Stock Index VTSAX
+2024-02-29,employee_pretax,US9229087443,8.197,30.50,250.00,Vanguard Total Bond VBTLX
+2024-03-15,employee_pretax,US9229087690,12.121,41.25,500.00,Vanguard Total Stock Index VTSAX
+2024-03-15,employer_match,US9229087690,6.061,41.25,250.00,Vanguard Total Stock Index VTSAX
+2024-03-15,rollover,US922908769C,200.000,15.00,3000.00,VFINC Catch-Up Sleeve
+2024-03-15,employee_pretax,US9229087443,8.130,30.75,250.00,Vanguard Total Bond VBTLX
+2024-03-31,employee_pretax,US9229087690,12.048,41.50,500.00,Vanguard Total Stock Index VTSAX
+2024-03-31,employer_match,US9229087690,6.024,41.50,250.00,Vanguard Total Stock Index VTSAX
+2024-03-31,employee_pretax,US9229087443,8.130,30.75,250.00,Vanguard Total Bond VBTLX
+2024-03-31,position_snapshot,US9229087690,,,3850.00,Q1 statement balance VTSAX
+2024-03-31,position_snapshot,US9229087443,,,1525.00,Q1 statement balance VBTLX
+2024-03-31,position_snapshot,US922908769C,,,3000.00,Q1 statement balance VFINC

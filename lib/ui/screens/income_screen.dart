@@ -12,6 +12,7 @@ import '../../l10n/app_strings.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'import/import_screen.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -39,45 +40,33 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
   String _typeLabel(AppStrings s, IncomeType type) {
     return switch (type) {
-      IncomeType.income   => s.incomeTypeIncome,
-      IncomeType.refund   => s.incomeTypeRefund,
-      IncomeType.salary   => s.incomeTypeSalary,
-      IncomeType.donation => s.incomeTypeDonation,
-      IncomeType.coupon   => s.incomeTypeCoupon,
-      IncomeType.other    => s.incomeTypeOther,
+      IncomeType.income              => s.incomeTypeIncome,
+      IncomeType.refund              => s.incomeTypeRefund,
+      IncomeType.pensionContribution => s.incomeTypePensionContribution,
     };
   }
 
   IconData _typeIcon(IncomeType type) {
     return switch (type) {
-      IncomeType.income   => Icons.payments,
-      IncomeType.refund   => Icons.replay,
-      IncomeType.salary   => Icons.work,
-      IncomeType.donation => Icons.volunteer_activism,
-      IncomeType.coupon   => Icons.savings,
-      IncomeType.other    => Icons.attach_money,
+      IncomeType.income              => Icons.payments,
+      IncomeType.refund              => Icons.replay,
+      IncomeType.pensionContribution => Icons.savings,
     };
   }
 
   Color _typeColor(BuildContext context, IncomeType type) {
     return switch (type) {
-      IncomeType.income   => Theme.of(context).colorScheme.primaryContainer,
-      IncomeType.refund   => Colors.orange.shade100,
-      IncomeType.salary   => Colors.blue.shade100,
-      IncomeType.donation => Colors.purple.shade100,
-      IncomeType.coupon   => Colors.green.shade100,
-      IncomeType.other    => Colors.grey.shade200,
+      IncomeType.income              => Theme.of(context).colorScheme.primaryContainer,
+      IncomeType.refund              => Colors.orange.shade100,
+      IncomeType.pensionContribution => Colors.green.shade100,
     };
   }
 
   Color _typeIconColor(BuildContext context, IncomeType type) {
     return switch (type) {
-      IncomeType.income   => Theme.of(context).colorScheme.onPrimaryContainer,
-      IncomeType.refund   => Colors.orange.shade800,
-      IncomeType.salary   => Colors.blue.shade800,
-      IncomeType.donation => Colors.purple.shade800,
-      IncomeType.coupon   => Colors.green.shade800,
-      IncomeType.other    => Colors.grey.shade700,
+      IncomeType.income              => Theme.of(context).colorScheme.onPrimaryContainer,
+      IncomeType.refund              => Colors.orange.shade800,
+      IncomeType.pensionContribution => Colors.green.shade800,
     };
   }
 
@@ -117,14 +106,10 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       final IncomeType type;
       if (typeStr.contains('rimborso') || typeStr.contains('refund')) {
         type = IncomeType.refund;
-      } else if (typeStr.contains('stipendio') || typeStr.contains('salary')) {
-        type = IncomeType.salary;
-      } else if (typeStr.contains('donazione') || typeStr.contains('donation')) {
-        type = IncomeType.donation;
-      } else if (typeStr.contains('cedola') || typeStr.contains('coupon')) {
-        type = IncomeType.coupon;
-      } else if (typeStr.contains('altro') || typeStr.contains('other')) {
-        type = IncomeType.other;
+      } else if (typeStr.contains('previdenza') ||
+          typeStr.contains('contributo') ||
+          typeStr.contains('pension')) {
+        type = IncomeType.pensionContribution;
       } else {
         type = IncomeType.income;
       }
@@ -200,8 +185,10 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                   );
                 }
 
-                return ListView.separated(
+                return MobilePullToRefresh(
+                  child: ListView.separated(
                   itemCount: incomes.length,
+                  physics: const AlwaysScrollableScrollPhysics(),
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final income = incomes[i];
@@ -229,6 +216,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                       ),
                     );
                   },
+                ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),

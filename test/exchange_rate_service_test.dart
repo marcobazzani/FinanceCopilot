@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
 
 void main() {
@@ -154,7 +155,7 @@ void main() {
     });
 
     test('falls back to stored rate when no investing service', () async {
-      // Service has no InvestingComService, so it falls back to DB
+      // Service has no WebMarketDataService, so it falls back to DB
       await insertRate('USD', DateTime.now(), 1.10);
 
       final rate = await service.getLiveRate('EUR', 'USD');
@@ -354,6 +355,60 @@ void main() {
       for (final c in ExchangeRateService.targetCurrencies) {
         expect(ExchangeRateService.allCurrencies, contains(c));
       }
+    });
+  });
+
+  group('backfillHistoricalRates schema contract (NRT)', () {
+    // Non-regression test for the silent FX backfill failure caused by
+    // referencing the dropped `depreciation_schedules` table. Pre-fix
+    // this SQL threw SqliteException(1): "no such table:
+    // depreciation_schedules", the catch block swallowed it, and every
+    // USD-denominated asset's chart history quietly stopped rendering.
+    //
+    // The test pins the live SQL exposed via [backfillCurrenciesSql] and
+    // runs it against the current schema. If anyone ever re-adds a
+    // dropped-table reference, this fails before reaching prod.
+    test('backfillCurrenciesSql runs against the current schema', () async {
+      // Just executes — we don't care about results, only that no SQL
+      // exception is thrown by the schema-vs-query mismatch.
+      await db.customSelect(backfillCurrenciesSql).get();
+    });
+
+    test('backfillCurrenciesSql discovers per-table currencies', () async {
+      // Seed one currency per UNION arm so the query has to hit every
+      // table to return the full set. If any arm ever gets dropped
+      // silently, the discovered set shrinks and the assertion fails.
+      final iid = await db.into(db.intermediaries).insert(
+            IntermediariesCompanion.insert(name: 'Default'),
+          );
+      await db.into(db.assets).insert(AssetsCompanion.insert(
+            name: 'Stock', assetType: AssetType.stockEtf,
+            valuationMethod: ValuationMethod.marketPrice,
+            intermediaryId: iid,
+            currency: const Value('USD'),
+          ));
+      await db.into(db.accounts).insert(AccountsCompanion.insert(
+            name: 'Acct',
+            currency: const Value('GBP'),
+          ));
+      await db.into(db.incomes).insert(IncomesCompanion.insert(
+            date: DateTime(2024, 1, 1),
+            valueDate: DateTime(2024, 1, 1),
+            amount: 1000,
+            currency: const Value('CHF'),
+          ));
+      await db.into(db.extraordinaryEvents).insert(ExtraordinaryEventsCompanion.insert(
+            name: 'Bonus',
+            direction: EventDirection.inflow,
+            treatment: EventTreatment.instant,
+            totalAmount: 5000,
+            currency: const Value('JPY'),
+            eventDate: DateTime(2024, 1, 1),
+          ));
+
+      final rows = await db.customSelect(backfillCurrenciesSql).get();
+      final found = rows.map((r) => r.read<String>('currency')).toSet();
+      expect(found, containsAll({'USD', 'GBP', 'CHF', 'JPY'}));
     });
   });
 }

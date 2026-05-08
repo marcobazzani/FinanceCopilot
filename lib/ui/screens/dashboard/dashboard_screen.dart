@@ -29,8 +29,10 @@ import '../../../services/exchange_rate_service.dart';
 import '../../../services/financial_health_service.dart';
 import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
+import '../../widgets/mobile_pull_to_refresh.dart';
 import 'eoy_projection.dart';
 import 'fullscreen_chart_screen.dart';
 
@@ -130,29 +132,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final language = langCode.startsWith('it') ? 'it_IT' : 'en_US';
     final s = ref.watch(appStringsProvider);
 
-    return Column(
+    return Scaffold(
+      appBar: AppBar(
+        actions: globalAppBarActions(context, ref),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: s.dashTabHealth),
+            Tab(text: s.dashTabHistory),
+            Tab(text: s.dashTabCashFlow),
+            Tab(text: s.dashTabAssetsOverview),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          TabBar(
-            controller: _tabController,
-            tabs: [
-              Tab(text: s.dashTabHealth),
-              Tab(text: s.dashTabHistory),
-              Tab(text: s.dashTabCashFlow),
-              Tab(text: s.dashTabAssetsOverview),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                const _FinancialHealthTab(),
-                _buildChartsTab(allDataAsync, locale, language, context, s),
-                _buildCashFlowTab(allDataAsync, locale, language, context, s),
-                const AllocationTab(),
-              ],
-            ),
-          ),
+          const _FinancialHealthTab(),
+          _buildChartsTab(allDataAsync, locale, language, context, s),
+          _buildCashFlowTab(allDataAsync, locale, language, context, s),
+          const AllocationTab(),
         ],
+      ),
     );
   }
 
@@ -206,8 +207,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
 
         return Stack(
           children: [
-            ListView.builder(
+            MobilePullToRefresh(
+              child: ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 40, 96),
+          physics: const AlwaysScrollableScrollPhysics(),
           itemCount: charts.length,
           itemBuilder: (context, index) {
             final chart = charts[index];
@@ -278,7 +281,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             // inner chart card renders without them to avoid duplication.
             final isInsideExpansionTile = collapsedChartIds.contains(chart.id);
 
-            final chartCard = _ChartCard(
+            final chartCard = ChartCard(
               chart: chart,
               series: filteredSeries,
               allData: allData,
@@ -376,6 +379,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             );
           },
         ),
+            ),
             if (debugChartsEnabled) Positioned(
               right: 16,
               bottom: 16,
@@ -819,7 +823,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     return result;
   }
 
-  /// Static version of smart total spots for use outside _ChartCard.
+  /// Static version of smart total spots for use outside ChartCard.
   static List<FlSpot> _buildSmartTotalSpotsStatic(List<ChartSeries> visible) {
     final visibleInvestedIds = <int>{};
     final visibleMarketIds = <int>{};

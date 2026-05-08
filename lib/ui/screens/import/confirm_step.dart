@@ -69,7 +69,7 @@ extension _ConfirmStep on _ImportScreenState {
 
   /// Show a modal hosting the shared URL-paste recovery widget for [isin].
   /// On a successful resolve we synthesise an [IsinExchangeOption] from the
-  /// returned [InvestingSearchResult] and inject it into the lookup map so
+  /// returned [ProviderSearchResult] and inject it into the lookup map so
   /// the row in the confirm screen now shows the resolved listing.
   Future<void> _openUrlPasteDialog(String isin) async {
     final s = ref.read(appStringsProvider);
@@ -82,9 +82,7 @@ extension _ConfirmStep on _ImportScreenState {
           child: IsinUrlPasteRecovery(
             userQuery: isin,
             cacheKey: isin,
-            defaultExchange: _defaultExchange != null
-                ? (investingExchangeToCode[_defaultExchange!] ?? 'MIL')
-                : 'MIL',
+            defaultExchange: _defaultExchange ?? 'Milan',
             onResolved: (result) {
               final option = IsinExchangeOption(
                 cid: result.cid,
@@ -145,7 +143,7 @@ extension _ConfirmStep on _ImportScreenState {
                         const SizedBox(height: 8),
                         Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
                         Text(s.rowCount(_preview?.totalRows ?? 0)),
-                        Text('Target: ${isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions}'),
+                        Text(s.targetLabel(isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions)),
                         const SizedBox(height: 8),
                         Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                         ..._mappings.entries
@@ -614,6 +612,9 @@ extension _ConfirmStep on _ImportScreenState {
           isinLookup: isinLookup,
           buyValues: _buyValues.isNotEmpty ? _buyValues : null,
           sellValues: _sellValues.isNotEmpty ? _sellValues : null,
+          feeValues: _feeValues.isNotEmpty ? _feeValues : null,
+          negativeIsBuy: _typeMode == 'sign' && _negativeIsBuy,
+          revalueValues: _revalueValues.isNotEmpty ? _revalueValues : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
@@ -621,6 +622,7 @@ extension _ConfirmStep on _ImportScreenState {
           intermediaryId: _selectedIntermediaryId!, // gated by _canImport
           numberLocaleOverride: _selectedNumberLocale,
           appLocale: appLocale,
+          targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
         );
         result = assetResult.result;
       }

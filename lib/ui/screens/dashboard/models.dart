@@ -94,22 +94,31 @@ class AllSeriesData {
 
 class _MonthBucket {
   final int year, month;
-  final double income, navChange;
-  double get expenses    => income - navChange;
-  double get savings     => navChange;
-  double get savingsRate => income > 0 ? navChange / income : 0;
+  final double income, navChange, pensionContrib;
+  // Pension contributions inflate navChange without ever touching the
+  // user's wallet (employer/state/severance redirect). Subtract them
+  // so savings/expenses reflect personal cashflow only. Refunds are
+  // intentionally NOT subtracted: they DO land in the user's bank, so
+  // their NAV impact is real personal savings — only the income-side
+  // classification is excluded.
+  double get personalNavChange => navChange - pensionContrib;
+  double get expenses    => income - personalNavChange;
+  double get savings     => personalNavChange;
+  double get savingsRate => income > 0 ? personalNavChange / income : 0;
   const _MonthBucket({required this.year, required this.month,
-                      required this.income, required this.navChange});
+                      required this.income, required this.navChange,
+                      this.pensionContrib = 0});
 }
 
 class _YearBucket {
   final int year, days;
-  final double income, navChange;
+  final double income, navChange, pensionContrib;
   final List<_MonthBucket> months;
 
-  double get expenses        => income - navChange;
-  double get savings         => navChange;
-  double get savingsRate     => income > 0 ? navChange / income : 0;
+  double get personalNavChange => navChange - pensionContrib;
+  double get expenses        => income - personalNavChange;
+  double get savings         => personalNavChange;
+  double get savingsRate     => income > 0 ? personalNavChange / income : 0;
   double get dailyIncome     => days > 0 ? income / days : 0;
   double get dailyExpenses   => days > 0 ? expenses / days : 0;
   double get monthlyIncome   => days > 0 ? income / days * 30.4 : 0;
@@ -117,15 +126,26 @@ class _YearBucket {
 
   const _YearBucket({required this.year, required this.days,
                      required this.income, required this.navChange,
-                     required this.months});
+                     required this.months, this.pensionContrib = 0});
 }
 
 class _IncomeExpenseData {
   final List<_YearBucket> years;
   final String baseCurrency;
   final DateTime firstDate;
-  const _IncomeExpenseData({required this.years, required this.baseCurrency,
-                            required this.firstDate});
+  /// Cumulative pension contributions in base currency, as a series of
+  /// (dayOffsetFromFirstDate, cumulativeAmount) spots. Empty when the
+  /// user has no pension imports. Cashflow_tab subtracts this from
+  /// savingSpots to compute "personal saving" velocity — pension money
+  /// inflates fund NAV but never lands in the user's bank account, so
+  /// it shouldn't drive saving/expense velocity metrics.
+  final List<FlSpot> pensionContribCumulativeSpots;
+  const _IncomeExpenseData({
+    required this.years,
+    required this.baseCurrency,
+    required this.firstDate,
+    this.pensionContribCumulativeSpots = const [],
+  });
 }
 
 final _chartColors = [

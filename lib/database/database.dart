@@ -28,7 +28,6 @@ final _log = getLogger('Database');
   BufferTransactions,
   MarketPrices,
   ExchangeRates,
-  RegisteredEvents,
   HealthReimbursements,
   AppConfigs,
   ImportConfigs,
@@ -36,6 +35,8 @@ final _log = getLogger('Database');
   AssetCompositions,
   ExtraordinaryEvents,
   ExtraordinaryEventEntries,
+  Pillars,
+  PillarAssets,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -53,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 32;
+  int get schemaVersion => 40;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -464,6 +465,175 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('DROP TABLE IF EXISTS dashboard_charts');
             _log.info('Migration 32: dropped dashboard_charts table');
           }
+          if (from < 33) {
+            // Backfill: every existing revalue event becomes a market_prices
+            // row, so manual assets render in every dashboard, allocation,
+            // health KPI, and chart consumer the same way priced assets do.
+            // close_price = revalue.amount / qty_at_value_date so a later
+            // buy/sell can't retroactively shift the implied per-unit price.
+            // Must stay in sync with resyncRevaluePricesForAsset in
+            // asset_event_service.dart.
+            await customStatement(
+              "INSERT OR REPLACE INTO market_prices (asset_id, date, close_price, currency) "
+              "SELECT e.asset_id, e.value_date, e.amount / qty.q, "
+              "       COALESCE((SELECT a.currency FROM assets a WHERE a.id = e.asset_id), 'EUR') "
+              "FROM asset_events e "
+              "JOIN ("
+              "  SELECT rev.id, "
+              "         (SELECT SUM(CASE WHEN sub.type = 'buy' THEN COALESCE(sub.quantity, 0) "
+              "                          WHEN sub.type = 'sell' THEN -COALESCE(sub.quantity, 0) "
+              "                          ELSE 0 END) "
+              "          FROM asset_events sub "
+              "          WHERE sub.asset_id = rev.asset_id "
+              "          AND sub.value_date <= rev.value_date) AS q "
+              "  FROM asset_events rev "
+              "  WHERE rev.type = 'revalue'"
+              ") qty ON qty.id = e.id "
+              "WHERE e.type = 'revalue' AND qty.q > 0",
+            );
+            _log.info('Migration 33: backfilled market_prices from revalue events');
+          }
+          if (from < 34) {
+            // Add `asset_id` column to incomes so pension-contribution
+            // rows can be linked back to their source pension fund. The
+            // column is nullable; existing rows leave it NULL.
+            if (!await _hasColumn('incomes', 'asset_id')) {
+              await customStatement(
+                'ALTER TABLE incomes ADD COLUMN asset_id INTEGER REFERENCES assets(id)',
+              );
+              _log.info('Migration 34: added asset_id column to incomes');
+            }
+          }
+          if (from < 35) {
+            // valuationMethod was wrongly defaulted to eventDriven for every
+            // newly-created asset. Promote any asset with a ticker or ISIN
+            // (i.e., a public price source exists) to marketPrice. Assets
+            // with neither — genuinely manual revaluation funds — stay as is.
+            await customStatement(
+              "UPDATE assets SET valuation_method='marketPrice' "
+              "WHERE valuation_method='eventDriven' "
+              "AND ((ticker IS NOT NULL AND ticker <> '') "
+              "  OR (isin IS NOT NULL AND isin <> ''))",
+            );
+            _log.info('Migration 35: promoted eventDriven assets with public source to marketPrice');
+          }
+          if (from < 36) {
+            if (!await _tableExists('pillars')) {
+              await m.createTable(pillars);
+            }
+            if (!await _tableExists('pillar_assets')) {
+              await m.createTable(pillarAssets);
+            }
+            await _createIndexes();
+            _log.info('Migration 36: created pillars + pillar_assets');
+          }
+          if (from < 37) {
+            if (await _hasColumn('pillars', 'reference_portfolio')) {
+              await customStatement(
+                'ALTER TABLE pillars DROP COLUMN reference_portfolio',
+              );
+              _log.info('Migration 37: dropped pillars.reference_portfolio');
+            }
+          }
+          if (from < 38) {
+            if (await _hasColumn('pillars', 'emoji')) {
+              await customStatement(
+                'ALTER TABLE pillars DROP COLUMN emoji',
+              );
+              _log.info('Migration 38: dropped pillars.emoji');
+            }
+          }
+          if (from < 39) {
+            // Drop the never-read assets.yahoo_ticker column (carry-over from
+            // a long-removed provider integration) and the unused
+            // registered_events table + RegisteredEventType enum.
+            // (Cache-key + asset.exchange normalisation deferred to v40 —
+            // v39's own UPDATE was clobbered by an earlier rename pass.)
+            if (await _hasColumn('assets', 'yahoo_ticker')) {
+              await customStatement('ALTER TABLE assets DROP COLUMN yahoo_ticker');
+            }
+            await customStatement('DROP TABLE IF EXISTS registered_events');
+            _log.info('Migration 39: dropped yahoo_ticker, registered_events');
+          }
+          if (from < 40) {
+            // (a) Rename legacy app_configs cache keys INVESTING_*→PROVIDER_*
+            //     using INSERT-OR-IGNORE then DELETE so we survive the
+            //     partial state v39 left behind (where some PROVIDER_* rows
+            //     already exist alongside their INVESTING_* counterparts).
+            //     The PROVIDER_* row wins; INVESTING_* gets cleaned up.
+            // (b) Heal stored description text that still mentions the
+            //     external provider by name (cosmetic, but eliminates a
+            //     grep hit on a fresh-from-old-DB install).
+            // (c) Normalise assets.exchange to canonical English provider
+            //     names (e.g. 'MIL'→'Milan', 'NYQ'→'NYSE'). Same heal
+            //     applied to PROVIDER_*_<exchange> cache-key suffixes so
+            //     the asset row and the cache key continue to agree.
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "SELECT 'PROVIDER_CID_' || SUBSTR(key, LENGTH('INVESTING_CID_') + 1), value, "
+              "       REPLACE(description, 'Investing.com', 'provider') "
+              "FROM app_configs WHERE key LIKE 'INVESTING_CID_%'",
+            );
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "SELECT 'PROVIDER_URL_' || SUBSTR(key, LENGTH('INVESTING_URL_') + 1), value, "
+              "       REPLACE(description, 'Investing.com', 'provider') "
+              "FROM app_configs WHERE key LIKE 'INVESTING_URL_%'",
+            );
+            await customStatement(
+              "INSERT OR IGNORE INTO app_configs (key, value, description) "
+              "SELECT 'PROVIDER_FX_CID_' || SUBSTR(key, LENGTH('INVESTING_FX_CID_') + 1), value, "
+              "       REPLACE(description, 'Investing.com', 'provider') "
+              "FROM app_configs WHERE key LIKE 'INVESTING_FX_CID_%'",
+            );
+            await customStatement("DELETE FROM app_configs WHERE key LIKE 'INVESTING_%'");
+
+            // (b) cosmetic heal of any remaining provider mentions in description
+            await customStatement(
+              "UPDATE app_configs SET description = REPLACE(description, 'Investing.com', 'provider') "
+              "WHERE description LIKE '%Investing.com%'",
+            );
+
+            // (c) normalise asset.exchange + cache-key suffixes via the
+            //     legacy-alias map (codes + Italian variants → canonical
+            //     English name).
+            const aliases = {
+              'MIL': 'Milan', 'NYQ': 'NYSE', 'NMS': 'NASDAQ', 'NYS': 'NYSE',
+              'ASE': 'AMEX', 'XETRA': 'Xetra', 'FRA': 'Frankfurt',
+              'LON': 'London', 'AMS': 'Amsterdam', 'PAR': 'Paris',
+              'BRU': 'Brussels', 'LIS': 'Lisbon', 'SIX': 'Switzerland',
+              'TSE': 'Toronto', 'HKG': 'Hong Kong', 'TYO': 'Tokyo',
+              'Milano': 'Milan', 'Londra': 'London',
+              'Francoforte': 'Frankfurt', 'Parigi': 'Paris',
+              'Bruxelles': 'Brussels', 'Lisbona': 'Lisbon',
+              'Svizzera': 'Switzerland',
+            };
+            for (final entry in aliases.entries) {
+              final from_ = entry.key;
+              final to = entry.value;
+              await customStatement(
+                'UPDATE assets SET exchange = ? WHERE exchange = ?',
+                [to, from_],
+              );
+              // Cache-key suffix rename. Using INSERT OR IGNORE + DELETE
+              // again so a row with the canonical suffix wins if both forms
+              // happen to coexist.
+              for (final prefix in const ['PROVIDER_CID_', 'PROVIDER_URL_']) {
+                await customStatement(
+                  "INSERT OR IGNORE INTO app_configs (key, value, description) "
+                  "SELECT REPLACE(key, ?, ?), value, description "
+                  "FROM app_configs WHERE key LIKE ? AND key LIKE ?",
+                  ['_$from_', '_$to', '$prefix%', '%_$from_'],
+                );
+                await customStatement(
+                  "DELETE FROM app_configs WHERE key LIKE ? AND key LIKE ?",
+                  ['$prefix%', '%_$from_'],
+                );
+              }
+            }
+            _log.info('Migration 40: cache keys renamed INVESTING_*→PROVIDER_*; '
+                'asset.exchange + cache-key suffixes normalised to canonical names');
+          }
         },
       );
 
@@ -504,6 +674,10 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_buffer_transactions_buffer_id '
       'ON buffer_transactions(buffer_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_pillar_assets_asset '
+      'ON pillar_assets(asset_id)',
     );
   }
 

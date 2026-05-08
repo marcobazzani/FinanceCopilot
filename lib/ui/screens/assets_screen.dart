@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -9,14 +8,17 @@ import 'package:intl/intl.dart';
 import '../../database/database.dart';
 import '../../database/tables.dart';
 import '../../services/asset_service.dart';
-import '../../services/investing_com_service.dart';
-import '../../services/market_price_service.dart' show exchangeCodeToCurrency, investingExchangeToCode, supportedExchanges;
+import '../../services/web_market_data_service.dart';
+import '../../services/market_price_service.dart' show exchangeCurrency, isKnownExchange, supportedExchanges;
 import '../../services/providers/providers.dart';
 import '../../l10n/app_strings.dart';
+import '../../utils/dialogs.dart';
 import '../../utils/formatters.dart' as fmt;
 import 'asset_detail_screen.dart';
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import '../widgets/asset_search.dart';
+import '../widgets/global_app_bar_actions.dart';
+import '../widgets/mobile_pull_to_refresh.dart';
 import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
@@ -67,6 +69,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         ];
         _selection.setOrderedIds(allAssetIds);
         return Scaffold(
+      appBar: AppBar(actions: globalAppBarActions(context, ref)),
       body: assetsAsync.when(
         data: (assets) {
           if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
@@ -99,19 +102,22 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
             (grouped[asset.intermediaryId] ??= []).add(asset);
           }
 
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 80),
-            children: [
-              for (final i in intermediaries)
-                if (grouped[i.id]?.isNotEmpty ?? false)
-                  _buildGroup(
-                    context, s, i.id, i,
-                    grouped[i.id] ?? [],
-                    stats, convertedStats, marketValues, noMarketData,
-                    baseCurrency, locale,
-                    intermediaries,
-                  ),
-            ],
+          return MobilePullToRefresh(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 80),
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                for (final i in intermediaries)
+                  if (grouped[i.id]?.isNotEmpty ?? false)
+                    _buildGroup(
+                      context, s, i.id, i,
+                      grouped[i.id] ?? [],
+                      stats, convertedStats, marketValues, noMarketData,
+                      baseCurrency, locale,
+                      intermediaries,
+                    ),
+              ],
+            ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -218,147 +224,8 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     );
   }
 
-  Future<void> _showIntermediaryDialog(BuildContext context, {Intermediary? intermediary}) async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController(text: intermediary?.name ?? '');
-    final isEdit = intermediary != null;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isEdit ? s.editIntermediary : s.addIntermediary),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.intermediaryName),
-            autofocus: true,
-            onChanged: (_) => setDialogState(() {}),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () async {
-                      final svc = ref.read(intermediaryServiceProvider);
-                      if (isEdit) {
-                        await svc.update(intermediary.id, IntermediariesCompanion(name: Value(nameCtrl.text.trim())));
-                      } else {
-                        await svc.create(name: nameCtrl.text.trim());
-                      }
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
-                  : null,
-              child: Text(isEdit ? s.save : s.create),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDeleteIntermediary(BuildContext context, Intermediary intermediary) async {
-    final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.deleteIntermediary),
-        content: Text(s.deleteIntermediaryConfirm(intermediary.name)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await ref.read(intermediaryServiceProvider).delete(intermediary.id);
-    }
-  }
-
-  Future<void> _showManageIntermediariesDialog(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => Consumer(
-        builder: (ctx, ref, _) {
-          final intermediaries = ref.watch(intermediariesProvider).value ?? [];
-          return AlertDialog(
-            title: Text(s.intermediaries),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 350),
-              child: SizedBox(
-                height: 400,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: intermediaries.isEmpty
-                          ? Center(child: Text(s.selectIntermediaryEmpty, style: TextStyle(color: Colors.grey)))
-                          : ReorderableListView.builder(
-                              shrinkWrap: true,
-                              buildDefaultDragHandles: false,
-                              itemCount: intermediaries.length,
-                              onReorder: (oldIndex, newIndex) {
-                                if (newIndex > oldIndex) newIndex--;
-                                final reordered = List<Intermediary>.from(intermediaries);
-                                final item = reordered.removeAt(oldIndex);
-                                reordered.insert(newIndex, item);
-                                ref.read(intermediaryServiceProvider)
-                                    .reorder(reordered.map((i) => i.id).toList());
-                              },
-                              itemBuilder: (ctx, i) {
-                                final inter = intermediaries[i];
-                                return ListTile(
-                                  key: ValueKey(inter.id),
-                                  leading: ReorderableDragStartListener(
-                                    index: i,
-                                    child: const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
-                                  ),
-                                  title: Text(inter.name),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, size: 18),
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          _showIntermediaryDialog(context, intermediary: inter);
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete, size: 18),
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          _confirmDeleteIntermediary(context, inter);
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showIntermediaryDialog(context);
-                },
-                child: Text(s.addIntermediary),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(s.close),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
+  Future<void> _showManageIntermediariesDialog(BuildContext context) =>
+      showManageIntermediariesDialog(context, ref);
 }
 
 class _AssetTile extends StatelessWidget {
@@ -503,29 +370,33 @@ class _AssetTile extends StatelessWidget {
                   ),
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        if (marketValue != null) ...[
+                  // Quantity reveals position size — blur the whole
+                  // price×quantity line in privacy mode.
+                  PrivacyBlur(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          if (marketValue != null) ...[
+                            TextSpan(
+                              text: amtFormat.format(marketValue! / stats!.totalQuantity),
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                            ),
+                            if (asset.currency != baseCurrency)
+                              TextSpan(
+                                text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
+                                style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
+                              ),
+                            TextSpan(
+                              text: '  ×  ',
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
+                            ),
+                          ],
                           TextSpan(
-                            text: amtFormat.format(marketValue! / stats!.totalQuantity),
+                            text: qtyFormat.format(stats!.totalQuantity),
                             style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
                           ),
-                          if (asset.currency != baseCurrency)
-                            TextSpan(
-                              text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
-                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
-                            ),
-                          TextSpan(
-                            text: '  ×  ',
-                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
-                          ),
                         ],
-                        TextSpan(
-                          text: qtyFormat.format(stats!.totalQuantity),
-                          style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -662,15 +533,15 @@ class _AssetTile extends StatelessWidget {
 /// instrument (same description) whose exchange we know how to map to an
 /// internal code. Falls back to `[picked]` when no siblings exist so the
 /// caller always has at least one listing to render.
-List<InvestingSearchResult> exchangeListingsFor(
-  List<InvestingSearchResult> results,
-  InvestingSearchResult picked,
+List<ProviderSearchResult> exchangeListingsFor(
+  List<ProviderSearchResult> results,
+  ProviderSearchResult picked,
 ) {
   final siblings = results
       .where((x) =>
           x.description.isNotEmpty &&
           x.description == picked.description &&
-          investingExchangeToCode[x.exchange] != null)
+          isKnownExchange(x.exchange))
       .toList();
   return siblings.isNotEmpty ? siblings : [picked];
 }
@@ -689,21 +560,57 @@ class _CreateAssetDialog extends StatefulWidget {
 
 class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   bool _manual = false;
+  bool _unlocked = false;
+
+  /// Apply the dialog's shared overrides (ter, taxRate, valuationMethod,
+  /// assetType, isActive, includeInNetWorth — all gated on `_unlocked`)
+  /// to a single create call. Caller passes the per-flow fields (name,
+  /// intermediary, currency, optional ticker/isin/exchange).
+  Future<int> _createAsset({
+    required String name,
+    required int intermediaryId,
+    required String currency,
+    String? ticker,
+    String? isin,
+    String? exchange,
+  }) {
+    return widget.ref.read(assetServiceProvider).create(
+      name: name,
+      ticker: ticker,
+      isin: isin,
+      exchange: exchange,
+      currency: currency,
+      intermediaryId: intermediaryId,
+      instrumentType: _instrumentType,
+      assetClass: _assetClass,
+      valuationMethod: _unlocked && _valuationMethodOverride != null
+          ? _valuationMethodOverride!
+          : ValuationMethod.marketPrice,
+      assetType: _unlocked ? _assetType : AssetType.stockEtf,
+      ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
+      taxRate: _unlocked ? (() {
+        final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
+        return v == null ? null : v / 100;
+      })() : null,
+      isActive: _unlocked ? _isActive : null,
+      includeInNetWorth: _unlocked ? _includeInNetWorth : null,
+    );
+  }
 
   // Step 1: search state mirrored from AssetSearchSection so step 2 can
   // derive sibling exchange listings and capture the user's typed query
   // (used to persist a pasted ISIN as the asset's price-sync cache key).
   String _typedQuery = '';
-  List<InvestingSearchResult> _allResults = const [];
+  List<ProviderSearchResult> _allResults = const [];
 
   // Step 2: selected result
-  InvestingSearchResult? _selected;
+  ProviderSearchResult? _selected;
   String? _selectedExchange;
 
   /// Exchange listings discovered for the same instrument (same description).
   /// Drives the exchange dropdown so users can only pick exchanges where the
   /// instrument actually trades. Each entry has a distinct cid.
-  List<InvestingSearchResult> _listings = const [];
+  List<ProviderSearchResult> _listings = const [];
 
   // Manual entry
   final _manualNameCtrl = TextEditingController();
@@ -711,29 +618,126 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   AssetClass? _assetClass;
   int? _selectedIntermediaryId;
 
+  // Advanced (unlocked) entry — header attributes only. Composition
+  // (geographic / sector / asset class breakdown) is edited inline on the
+  // Composition panel of the asset detail screen.
+  AssetType _assetType = AssetType.stockEtf;
+  ValuationMethod? _valuationMethodOverride;
+  final _currencyCtrl = TextEditingController();
+  final _terCtrl = TextEditingController();
+  final _taxRateCtrl = TextEditingController();
+  bool _includeInNetWorth = true;
+  bool _isActive = true;
+
+  String get _locale =>
+      widget.ref.read(appLocaleProvider).value ?? Platform.localeName;
+
   @override
   void dispose() {
     _manualNameCtrl.dispose();
+    _currencyCtrl.dispose();
+    _terCtrl.dispose();
+    _taxRateCtrl.dispose();
     super.dispose();
   }
 
-  void _selectResult(InvestingSearchResult result) {
-    final code = investingExchangeToCode[result.exchange];
+  Widget _buildLockToggle(AppStrings s) => IconButton(
+        icon: Icon(_unlocked ? Icons.lock_open : Icons.lock_outline, size: 20),
+        tooltip: _unlocked ? s.assetLockEdit : s.assetUnlockEdit,
+        onPressed: () => setState(() => _unlocked = !_unlocked),
+      );
+
+  List<Widget> _buildAdvancedFields(AppStrings s, {required bool showValuation}) {
+    return [
+      const Divider(height: 24),
+      DropdownButtonFormField<AssetType>(
+        initialValue: _assetType,
+        decoration: InputDecoration(labelText: s.assetTypeFieldLabel, isDense: true),
+        items: AssetType.values
+            .map((t) => DropdownMenuItem(value: t, child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13))))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) setState(() => _assetType = v);
+        },
+      ),
+      if (showValuation) ...[
+        const SizedBox(height: 12),
+        DropdownButtonFormField<ValuationMethod>(
+          initialValue: _valuationMethodOverride,
+          decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
+          items: ValuationMethod.values
+              .map((m) => DropdownMenuItem(value: m, child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13))))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _valuationMethodOverride = v);
+          },
+        ),
+      ],
+      const SizedBox(height: 12),
+      TextField(
+        controller: _currencyCtrl,
+        decoration: InputDecoration(
+          labelText: s.currencyFieldLabel,
+          isDense: true,
+          counterText: '',
+        ),
+        textCapitalization: TextCapitalization.characters,
+        maxLength: 3,
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _terCtrl,
+        decoration: InputDecoration(
+          labelText: '${s.healthTer} (%)',
+          // Locale-aware hint: "0,22" in it_IT, "0.22" in en_US.
+          hintText: NumberFormat.decimalPattern(_locale).format(0.22),
+          isDense: true,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      ),
+      const SizedBox(height: 12),
+      TextField(
+        controller: _taxRateCtrl,
+        decoration: InputDecoration(
+          labelText: s.taxRateOverrideLabel,
+          // Accepts percentage (26 → stored as 0.26 by create call).
+          hintText: '26',
+          isDense: true,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      ),
+      const SizedBox(height: 8),
+      SwitchListTile(
+        title: Text(s.active),
+        value: _isActive,
+        onChanged: (v) => setState(() => _isActive = v),
+        contentPadding: EdgeInsets.zero,
+      ),
+      SwitchListTile(
+        title: Text(s.includeInNetWorthLabel),
+        value: _includeInNetWorth,
+        onChanged: (v) => setState(() => _includeInNetWorth = v),
+        contentPadding: EdgeInsets.zero,
+      ),
+    ];
+  }
+
+  void _selectResult(ProviderSearchResult result) {
     final (instrument, assetCls) = _classifyFromType(result.type);
     setState(() {
       _selected = result;
-      _selectedExchange = code ?? 'MIL';
+      _selectedExchange = result.exchange;
       _instrumentType = instrument;
       _assetClass = assetCls;
       _listings = exchangeListingsFor(_allResults, result);
     });
   }
 
-  /// Derive instrument type + asset class from investing.com's typeName.
+  /// Derive instrument type + asset class from the provider's typeName.
   /// The `type` field looks like "Stocks - Milano" or "ETFs - Milano".
   static (InstrumentType, AssetClass) _classifyFromType(String type) {
     final prefix = type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
-    return classifyFromInvestingType(prefix);
+    return classifyFromProviderType(prefix);
   }
 
   static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
@@ -762,7 +766,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         child: AssetSearchSection(
           widgetRef: widget.ref,
           onSelect: _selectResult,
-          recoveryDefaultExchange: _selectedExchange ?? 'MIL',
+          recoveryDefaultExchange: _selectedExchange ?? 'Milan',
           recoveryCacheKeyBuilder: (q) =>
               _isinShaped(q) ? q.toUpperCase() : q,
           onQueryChanged: (q) => _typedQuery = q,
@@ -783,8 +787,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     final s = widget.ref.read(appStringsProvider);
     final r = _selected!;
     return AlertDialog(
-      title: Text(s.createAssetTitle),
-      content: Column(
+      title: Row(
+        children: [
+          Expanded(child: Text(s.createAssetTitle)),
+          _buildLockToggle(s),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -828,7 +838,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           ),
           const SizedBox(height: 16),
           _buildIntermediaryPicker(s),
+          if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
         ],
+      ),
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
@@ -836,24 +848,26 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           onPressed: _selectedIntermediaryId != null
               ? () async {
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-                  final exchange = _selectedExchange ?? 'MIL';
-                  final currency = exchangeCodeToCurrency[exchange] ?? baseCurrency;
+                  final exchange = _selectedExchange ?? 'Milan';
+                  final defaultCurrency = exchangeCurrency[exchange] ?? baseCurrency;
+                  final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
+                  final currency = (_unlocked && overrideCurrency.length == 3)
+                      ? overrideCurrency
+                      : defaultCurrency;
                   // If the user searched by an ISIN-shaped string, persist it
                   // so price sync can use it as the cache key (otherwise the
                   // ticker — e.g. a bond's "BE000035160=MI" — is not a valid
                   // search term and price sync silently fails).
                   final typed = _typedQuery.trim().toUpperCase();
                   final isin = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$').hasMatch(typed) ? typed : null;
-                  await widget.ref.read(assetServiceProvider).create(
-                        name: r.description,
-                        ticker: r.symbol.isNotEmpty ? r.symbol : null,
-                        isin: isin,
-                        exchange: exchange,
-                        currency: currency,
-                        instrumentType: _instrumentType,
-                        assetClass: _assetClass,
-                        intermediaryId: _selectedIntermediaryId!,
-                      );
+                  await _createAsset(
+                    name: r.description,
+                    intermediaryId: _selectedIntermediaryId!,
+                    currency: currency,
+                    ticker: r.symbol.isNotEmpty ? r.symbol : null,
+                    isin: isin,
+                    exchange: exchange,
+                  );
                   if (mounted) Navigator.pop(context);
                 }
               : null,
@@ -864,30 +878,24 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   }
 
   Widget _buildExchangeDropdown(AppStrings s) {
-    // Build (code → label, listing) entries from the discovered listings so
-    // the user can only pick exchanges where the instrument actually trades.
-    // Falls back to the global supportedExchanges list when no listings were
-    // discovered (manual flow / unmappable exchange names).
-    final byCode = <String, (String, InvestingSearchResult)>{};
+    // Discovered listings drive the dropdown so the user can only pick
+    // exchanges where the instrument actually trades. Falls back to the
+    // global supportedExchanges list when no listings were discovered.
+    final byName = <String, ProviderSearchResult>{};
     for (final l in _listings) {
-      final code = investingExchangeToCode[l.exchange];
-      if (code == null) continue;
-      byCode.putIfAbsent(code, () {
-        // Use the supportedExchanges label when available so the wording stays
-        // consistent across the app; otherwise show the raw provider name.
-        final label = supportedExchanges.entries
-            .firstWhere((e) => e.value == code, orElse: () => MapEntry(l.exchange, code))
-            .key;
-        return (label, l);
-      });
+      if (!isKnownExchange(l.exchange)) continue;
+      byName.putIfAbsent(l.exchange, () => l);
     }
 
-    if (byCode.isEmpty) {
+    if (byName.isEmpty) {
+      final initial = supportedExchanges.contains(_selectedExchange)
+          ? _selectedExchange
+          : supportedExchanges.first;
       return DropdownButtonFormField<String>(
-        initialValue: _selectedExchange,
+        initialValue: initial,
         decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
-        items: supportedExchanges.entries
-            .map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 13))))
+        items: supportedExchanges
+            .map((name) => DropdownMenuItem(value: name, child: Text(name, style: const TextStyle(fontSize: 13))))
             .toList(),
         onChanged: (v) {
           if (v != null) setState(() => _selectedExchange = v);
@@ -895,31 +903,31 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       );
     }
 
-    if (byCode.length == 1) {
-      final entry = byCode.entries.first;
+    if (byName.length == 1) {
+      final entry = byName.entries.first;
       return InputDecorator(
         decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
-        child: Text(entry.value.$1, style: const TextStyle(fontSize: 13)),
+        child: Text(entry.key, style: const TextStyle(fontSize: 13)),
       );
     }
 
-    final initial = byCode.containsKey(_selectedExchange) ? _selectedExchange : byCode.keys.first;
+    final initial = byName.containsKey(_selectedExchange) ? _selectedExchange : byName.keys.first;
     return DropdownButtonFormField<String>(
       initialValue: initial,
       decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
-      items: byCode.entries
+      items: byName.entries
           .map((e) => DropdownMenuItem(
                 value: e.key,
-                child: Text(e.value.$1, style: const TextStyle(fontSize: 13)),
+                child: Text(e.key, style: const TextStyle(fontSize: 13)),
               ))
           .toList(),
       onChanged: (v) {
         if (v == null) return;
-        final pair = byCode[v];
+        final pair = byName[v];
         if (pair == null) return;
         setState(() {
           _selectedExchange = v;
-          _selected = pair.$2; // swap to the listing that matches the chosen exchange
+          _selected = pair; // swap to the listing that matches the chosen exchange
         });
       },
     );
@@ -989,8 +997,14 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   Widget _buildManualDialog() {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
-      title: Text(s.newAssetManualTitle),
-      content: Column(
+      title: Row(
+        children: [
+          Expanded(child: Text(s.newAssetManualTitle)),
+          _buildLockToggle(s),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
@@ -1033,7 +1047,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           ),
           const SizedBox(height: 16),
           _buildIntermediaryPicker(s),
+          if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
         ],
+      ),
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
@@ -1042,14 +1058,15 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               ? () async {
                   final name = _manualNameCtrl.text.trim();
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-                  await widget.ref.read(assetServiceProvider).create(
-                        name: name,
-                        currency: baseCurrency,
-                        valuationMethod: ValuationMethod.eventDriven,
-                        instrumentType: _instrumentType,
-                        assetClass: _assetClass,
-                        intermediaryId: _selectedIntermediaryId!,
-                      );
+                  final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
+                  final currency = (_unlocked && overrideCurrency.length == 3)
+                      ? overrideCurrency
+                      : baseCurrency;
+                  await _createAsset(
+                    name: name,
+                    intermediaryId: _selectedIntermediaryId!,
+                    currency: currency,
+                  );
                   if (mounted) Navigator.pop(context);
                 }
               : null,

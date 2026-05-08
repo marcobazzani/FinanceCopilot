@@ -36,6 +36,7 @@ dependencies:
       url: https://github.com/justkawal/excel.git
       ref: main
   file_picker: ^11.0.2
+  pdfrx: ^1.0.94
 
   # HTTP (market data)
   dio: ^5.8.0
@@ -43,10 +44,9 @@ dependencies:
   # HTML parsing (DOM, not regex)
   html: ^0.15.4
 
-  # Google Sheets (price data via GOOGLEFINANCE, CSV export)
   url_launcher: ^6.3.1
 
-  # Headless WebView (Cloudflare cookie solving for Investing.com)
+  # Headless WebView (Cloudflare cookie solving for the market data provider)
   flutter_inappwebview: ^6.1.5
 
   # Google Drive sync
@@ -93,3 +93,4 @@ flutter:
     - assets/default_charts.json
     # Test fixtures — bundled for integration tests (negligible size in release)
     - integration_test/fixtures/
+    - integration_test/fixtures/pension/

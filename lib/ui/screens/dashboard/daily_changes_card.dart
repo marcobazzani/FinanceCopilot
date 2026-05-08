@@ -110,7 +110,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     ref.watch(_priceChangeNumberProvider);
     ref.watch(_priceChangeUnitProvider);
     final s = ref.watch(appStringsProvider);
-    final isPrivate = ref.watch(privacyModeProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
@@ -291,8 +290,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                               pricePct: basePct,
                               valueDiff: c.valueDiff,
                               amtFmt: amtFmt,
-                              url: c.investingUrl,
-                              isPrivate: isPrivate,
+                              url: c.providerUrl,
                               marketOpen: c.marketOpen,
                               s: s,
                             ),
@@ -304,7 +302,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                                 assetValueDiff: c.priceDiff * c.quantity / c.priceDivisor,
                                 assetCurrency: c.currency,
                                 amtFmt: amtFmt,
-                                isPrivate: isPrivate,
                               ),
                           ],
                         ),
@@ -319,7 +316,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       valueDiff: totalDiff,
                       amtFmt: amtFmt,
                       bold: true,
-                      isPrivate: isPrivate,
                     ),
                   ],
                 );
@@ -343,7 +339,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required NumberFormat amtFmt,
     bool bold = false,
     String? url,
-    required bool isPrivate,
     bool? marketOpen,
     AppStrings? s,
   }) {
@@ -351,10 +346,6 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     final color = valueDiff == 0 ? Colors.grey : (isPositive ? Colors.green : Colors.red);
     final arrow = valueDiff == 0 ? '' : (isPositive ? '\u25B2 ' : '\u25BC ');
     final weight = bold ? FontWeight.w700 : FontWeight.w400;
-
-    Widget maybeBlur(Widget child) => isPrivate
-        ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
-        : child;
 
     return Row(
       children: [
@@ -422,11 +413,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         ),
         Expanded(
           flex: 3,
-          child: maybeBlur(Text(
-            '$arrow${amtFmt.format(valueDiff.abs())}',
-            style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
-            textAlign: TextAlign.right,
-          )),
+          child: PrivacyBlur(
+            child: Text(
+              '$arrow${amtFmt.format(valueDiff.abs())}',
+              style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight),
+              textAlign: TextAlign.right,
+            ),
+          ),
         ),
       ],
     );
@@ -442,17 +435,12 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required double assetValueDiff,
     required String assetCurrency,
     required NumberFormat amtFmt,
-    required bool isPrivate,
   }) {
     final pctColor = _bracketColor(assetPricePct);
     final diffColor = _bracketColor(assetValueDiff);
     final priceStr = amtFmt.format(assetPrice);
     final pctStr = '${assetPricePct >= 0 ? '+' : ''}${assetPricePct.toStringAsFixed(2)}%';
     final diffStr = '${assetValueDiff >= 0 ? '+' : ''}${amtFmt.format(assetValueDiff)}';
-
-    Widget maybeBlur(Widget child) => isPrivate
-        ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6), child: child)
-        : child;
 
     final subStyle = TextStyle(fontSize: 9, color: Colors.grey.shade500);
 
@@ -477,7 +465,9 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
           Expanded(
             flex: 3,
-            child: maybeBlur(Text(diffStr, style: subStyle.copyWith(color: diffColor), textAlign: TextAlign.right)),
+            child: PrivacyBlur(
+              child: Text(diffStr, style: subStyle.copyWith(color: diffColor), textAlign: TextAlign.right),
+            ),
           ),
         ],
       ),

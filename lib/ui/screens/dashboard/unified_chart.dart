@@ -27,8 +27,51 @@ class DashedLinePainter extends CustomPainter {
 }
 
 // ════════════════════════════════════════════════════
+// Chart layout constants
+// ════════════════════════════════════════════════════
+// Single source of truth for `SideTitles.reservedSize`. The drag/zoom
+// wrapper uses these to map pointer pixels to chart coordinates, so
+// any change here MUST be matched in the chart's `titlesData`. They
+// must equal the value passed to `SideTitles.reservedSize` for the
+// matching axis — fl_chart reserves exactly this many pixels for axis
+// labels, and the chart drawing area is what's left over.
+const double kChartLeftReserved = 80;
+const double kChartBottomReserved = 48;
+const double kChartRightReservedDual = 68;
+
+// ════════════════════════════════════════════════════
 // Zoom math helpers (file-local, unit-tested)
 // ════════════════════════════════════════════════════
+
+/// Convert a pointer pixel X (in widget-local coords) to chart X.
+/// `drawWidth` is the width of the chart drawing area (widget width
+/// minus left- and right-axis reserved space).
+double pixelToChartX({
+  required double px,
+  required double drawWidth,
+  required double leftReserved,
+  required double xMin,
+  required double xMax,
+}) {
+  if (drawWidth <= 0) return xMin;
+  final fraction = (px - leftReserved) / drawWidth;
+  return xMin + fraction * (xMax - xMin);
+}
+
+/// Convert a pointer pixel Y to chart Y. Y is inverted: pixel 0 (top)
+/// maps to `yMax`, pixel `drawHeight` (bottom of drawing area) maps to
+/// `yMin`. `drawHeight` is the widget height minus the bottom-axis
+/// reserved space.
+double pixelToChartY({
+  required double py,
+  required double drawHeight,
+  required double yMin,
+  required double yMax,
+}) {
+  if (drawHeight <= 0) return yMin;
+  final fraction = 1.0 - (py / drawHeight);
+  return yMin + fraction * (yMax - yMin);
+}
 
 /// Compute a new X window after zooming and/or panning, anchored at the
 /// focal pixel. Result is clamped to `[0, totalDays]`. When the resulting
@@ -99,8 +142,16 @@ class DragZoomWrapper extends StatefulWidget {
   final double yMin;
   final double yMax;
   final double totalDays;
-  final double leftReserved = 60;
-  final double bottomReserved = 28;
+  // These MUST match the corresponding `SideTitles.reservedSize` in
+  // [UnifiedChart]. fl_chart reserves these pixels for axis labels;
+  // the drawing area is what's left over. Using mismatched values
+  // makes pointer→chart math drift (off-by-N pixels per click).
+  final double leftReserved = kChartLeftReserved;
+  final double bottomReserved = kChartBottomReserved;
+  /// Pixels reserved on the right edge for a right-axis ruler. Pass
+  /// [kChartRightReservedDual] when the wrapped chart has any
+  /// right-axis series; otherwise leave at 0.
+  final double rightReserved;
   final DateTime firstDate;
   final String baseCurrency;
   final String locale;
@@ -127,6 +178,7 @@ class DragZoomWrapper extends StatefulWidget {
     required this.baseCurrency,
     required this.locale,
     required this.onZoom,
+    this.rightReserved = 0,
     this.zoomedY = false,
     this.fullPinch = false,
   });
@@ -150,16 +202,20 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   double? _scaleStartMaxY;
   double? _scaleStartFocalChartY;
 
-  double _pixelToChartX(double px, double chartWidth) {
-    final fraction = (px - widget.leftReserved) / chartWidth;
-    return widget.xMin + fraction * (widget.xMax - widget.xMin);
-  }
+  double _pixelToChartX(double px, double drawWidth) => pixelToChartX(
+        px: px,
+        drawWidth: drawWidth,
+        leftReserved: widget.leftReserved,
+        xMin: widget.xMin,
+        xMax: widget.xMax,
+      );
 
-  double _pixelToChartY(double py, double chartHeight) {
-    // Y is inverted: top of widget = max Y, bottom of chart area = min Y
-    final fraction = 1.0 - (py / chartHeight);
-    return widget.yMin + fraction * (widget.yMax - widget.yMin);
-  }
+  double _pixelToChartY(double py, double drawHeight) => pixelToChartY(
+        py: py,
+        drawHeight: drawHeight,
+        yMin: widget.yMin,
+        yMax: widget.yMax,
+      );
 
   bool get _isZoomedY => widget.zoomedY;
 
@@ -266,7 +322,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     // Per-axis scale factors so a horizontal-dominant pinch widens X
     // without compressing Y, and vice versa. `d.scale` is the geometric
     // mean — using it would force aspect-ratio-locked zoom, which is
-    // not how iOS Stocks / Google Finance / TradingView behave.
+    // not how typical financial chart UIs behave.
     final xScale = widget.fullPinch ? d.horizontalScale : d.scale;
     final yScale = widget.fullPinch ? d.verticalScale : d.scale;
 
@@ -317,7 +373,8 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final chartWidth = constraints.maxWidth - widget.leftReserved;
+        final chartWidth =
+            constraints.maxWidth - widget.leftReserved - widget.rightReserved;
         final chartHeight = constraints.maxHeight - widget.bottomReserved;
         final dateFmt = fmt.fullDateFormat(widget.locale);
         final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: 0);
@@ -473,10 +530,6 @@ class UnifiedChart extends StatelessWidget {
   final double? zoomMinY;
   final double? zoomMaxY;
   final bool isPrivate;
-  /// True when the X axis is currently zoomed in. Disables fl_chart's built-in
-  /// tap/drag tooltip handling so our parent ScaleGestureRecognizer can claim
-  /// single-finger pan on touch devices.
-  final bool zoomedX;
   /// True for the immersive full-screen view, where zoom updates fire at
   /// pointer-frequency and the 150ms LineChart tween becomes the
   /// bottleneck. Skipping the tween makes pinch feel native.
@@ -495,7 +548,6 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMinY,
     this.zoomMaxY,
     this.isPrivate = false,
-    this.zoomedX = false,
     this.liveZoom = false,
   });
 
@@ -614,7 +666,7 @@ class UnifiedChart extends StatelessWidget {
           rightTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: hasDualAxis,
-              reservedSize: hasDualAxis ? 68 : 0,
+              reservedSize: hasDualAxis ? kChartRightReservedDual : 0,
               interval: yRange > 0 ? yRange / 4 : 100,
               getTitlesWidget: (scaledY, meta) {
                 final actualY = unscaleRight(scaledY);
@@ -626,7 +678,7 @@ class UnifiedChart extends StatelessWidget {
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 48,
+              reservedSize: kChartBottomReserved,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
                 final date = firstDate.add(Duration(days: value.toInt()));
@@ -642,7 +694,7 @@ class UnifiedChart extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 80,
+              reservedSize: kChartLeftReserved,
               interval: yRange > 0 ? yRange / 4 : 100,
               getTitlesWidget: (value, meta) {
                 final label = isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(value);
@@ -658,18 +710,19 @@ class UnifiedChart extends StatelessWidget {
         borderData: FlBorderData(show: false),
         lineTouchData: LineTouchData(
           enabled: !isPrivate,
-          // On touch platforms, fl_chart's built-in recognizer wins the
-          // gesture arena on touch-down and would block our parent
+          // On touch platforms, fl_chart's built-in recognizer wins
+          // the gesture arena on touch-down and would block our parent
           // ScaleGestureRecognizer from ever seeing pinch / pan — even
           // before the chart is zoomed. Disable it entirely on mobile
           // (we lose drag-tooltip on mobile in exchange for working
           // pinch + pan; tap-tooltip can be re-added later via a
-          // separate TapGestureRecognizer). On desktop we still want
-          // the hover/tap tooltip, and our mouse drag is captured by
-          // the parent Listener so there's no conflict.
+          // separate TapGestureRecognizer). On desktop our mouse drag
+          // is captured by the parent Listener (translucent hit-test
+          // with PointerDown gating) so there's no conflict — keep
+          // hover tooltips on even while zoomed.
           handleBuiltInTouches: switch (defaultTargetPlatform) {
             TargetPlatform.iOS || TargetPlatform.android => false,
-            _ => !zoomedX,
+            _ => true,
           },
           touchTooltipData: LineTouchTooltipData(
             fitInsideHorizontally: true,

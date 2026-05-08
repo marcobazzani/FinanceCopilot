@@ -18,17 +18,24 @@ library;
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show allSeriesDataProvider;
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/asset_event_service.dart';
 import 'package:finance_copilot/services/buffer_service.dart';
 import 'package:finance_copilot/services/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/import_config_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
-import 'package:finance_copilot/services/investing_com_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 import 'package:finance_copilot/services/isin_lookup_service.dart';
+import 'package:finance_copilot/services/market_price_service.dart' show isKnownExchange;
+import 'package:finance_copilot/services/pillar_service.dart';
+import 'package:finance_copilot/ui/screens/asset_detail_screen.dart';
 import 'package:finance_copilot/services/transaction_service.dart';
 
 import 'helpers/test_app.dart';
@@ -422,8 +429,14 @@ void main() {
         await settle(tester);
       }
     }
-    while (find.byType(BackButton).evaluate().isNotEmpty) {
-      await tester.tap(find.byType(BackButton).first);
+    // Pop visible BackButtons. Bounded loop + hitTestable() filter avoids
+    // infinite tapping on disabled/offstage BackButtons left behind by
+    // routes mid-transition (seen on macOS where an offstage AppBar
+    // BackButton at offset >viewport.width was matched by `.first`).
+    for (var i = 0; i < 5; i++) {
+      final back = find.byType(BackButton).hitTestable();
+      if (back.evaluate().isEmpty) break;
+      await tester.tap(back.first);
       await settle(tester);
     }
 
@@ -437,7 +450,16 @@ void main() {
     await longSettle(tester);
     await tester.tap(find.text('Revolut').first);
     await longSettle(tester);
-    await tester.tap(find.byIcon(Icons.add).first);
+    // Target the AppBar "Add Transaction" button by its tooltip — using
+    // `find.byIcon(Icons.add).first` is fragile because the assets/pillars
+    // FABs and accounts-empty-state CTA all use Icons.add too, and after
+    // a navigation glitch `.first` could resolve to one of those.
+    final s = AppStrings.en;
+    final addTx = find.byTooltip(s.tooltipAddTransaction).hitTestable();
+    expect(addTx, findsOneWidget,
+        reason: 'AccountDetailScreen should show "Add Transaction" button — '
+            'navigation to Revolut detail likely failed.');
+    await tester.tap(addTx);
     await longSettle(tester);
 
     // TransactionEditScreen is open. The form has 6 TextFormFields in
@@ -666,8 +688,8 @@ void main() {
     });
     // Pass real IsinLookupService so imported assets get ticker/exchange/name
     // populated from the ISIN provider — this is what the network sync needs.
-    final investingService = InvestingComService(db);
-    final isinLookup = IsinLookupService(investingService);
+    final providerService = WebMarketDataService(db);
+    final isinLookup = IsinLookupService(providerService);
     final assetResult = await importer.importAssetEventsGrouped(
       preview: listaTitoliPreview,
       mappings: const [
@@ -750,7 +772,7 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     // Step 8c: REAL NETWORK SYNC — tap the toolbar refresh button to
     // trigger syncPrices + syncCompositions + FX. This exercises:
-    //   • investing_com_service.dart  (price + composition fetch)
+    //   • web_market_data_service.dart  (price + composition fetch)
     //   • market_price_service.dart   (orchestrator + dedup)
     //   • composition_service.dart    (TER + composition extraction)
     //   • exchange_rate_service.dart  (USD/EUR FX fetch)
@@ -766,7 +788,7 @@ void main() {
     } else {
       // Fall back to direct service call so the network paths still run.
       await tester.runAsync(() async {
-        final priceSvc = InvestingComService(db);
+        final priceSvc = WebMarketDataService(db);
         await priceSvc.syncPrices(forceToday: true);
         await isinLookup.lookup('IE00B4L5Y983');
       });
@@ -886,6 +908,92 @@ void main() {
         }
         await settle(tester);
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 8e: assets.exchange invariant — every imported asset's stored
+    // exchange must be either a canonical English name or a recognised
+    // synonym (so isKnownExchange returns true for all of them).
+    // ─────────────────────────────────────────────────────────────────────
+    _step('8e. assets.exchange invariant — all values are known');
+    final allAssetExchanges = await db
+        .customSelect(
+            "SELECT DISTINCT exchange FROM assets WHERE exchange IS NOT NULL AND exchange != ''")
+        .get();
+    final unknownExchanges = allAssetExchanges
+        .map((r) => r.read<String>('exchange'))
+        .where((ex) => !isKnownExchange(ex))
+        .toList();
+    expect(unknownExchanges, isEmpty,
+        reason:
+            'every wizard-imported asset.exchange must be canonical or a known synonym; '
+            'found unknown values: $unknownExchanges');
+    _step('   ✓ ${allAssetExchanges.length} distinct exchange values, all known');
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Step 8f: ETF asset-edit modal smoke — open the AssetDetailScreen for
+    // an ETF asset and tap the edit pencil. Verifies the
+    // DropdownButtonFormField in the edit modal can render the asset's
+    // current exchange (canonical OR legacy synonym) without throwing the
+    // "exactly one item with value X must be in items" assertion that
+    // killed v39 ETF rows.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('8f. ETF edit modal renders for current asset.exchange');
+    final etfRow = await db
+        .customSelect(
+            "SELECT name, exchange FROM assets "
+            "WHERE asset_type IN ('stockEtf','bondEtf','commEtf','goldEtc','monEtf') "
+            "AND exchange IS NOT NULL LIMIT 1")
+        .getSingleOrNull();
+    if (etfRow != null) {
+      final etfName = etfRow.read<String>('name');
+      _step('   target ETF: "$etfName" exchange=${etfRow.read<String>('exchange')}');
+      // Pump AssetDetailScreen directly for the picked ETF and tap the
+      // AppBar edit pencil (located by its localized tooltip so the find
+      // doesn't accidentally match the composition-panel edit IconButton
+      // which uses the same Icons.edit). Direct pump avoids the brittle
+      // sidebar→list-row→detail-screen navigation chain after step 8d.
+      final etfAsset = (await db.select(db.assets).get())
+          .firstWhere((a) => a.name == etfName);
+      final pushCtx = tester.element(find.byType(Navigator).first);
+      Navigator.of(pushCtx).push(
+        MaterialPageRoute(
+          builder: (_) => AssetDetailScreen(asset: etfAsset),
+        ),
+      );
+      await longSettle(tester);
+      // Edit pencil tooltip is "Edit Asset" (en) / "Modifica attività" (it).
+      final editPencil = find.byTooltip('Edit Asset').evaluate().isNotEmpty
+          ? find.byTooltip('Edit Asset')
+          : find.byTooltip('Modifica attività');
+      expect(editPencil.evaluate(), isNotEmpty,
+          reason: 'AssetDetailScreen AppBar must have an edit pencil');
+      await tester.tap(editPencil.first);
+      await longSettle(tester);
+      await longSettle(tester);
+      // _EditAssetDialog has 6 DropdownButtonFormFields. If the dialog
+      // throws on mount (the v40 regression we're guarding against), the
+      // tree contains zero. Even one is proof the modal opened cleanly.
+      // (Use byWidgetPredicate because byType is strict on generic types
+      // and DropdownButtonFormField<T> doesn't match the raw type.)
+      final dropdowns = find.byWidgetPredicate(
+        (w) => w is DropdownButtonFormField,
+      );
+      expect(dropdowns.evaluate().length, greaterThanOrEqualTo(1),
+          reason: 'edit modal must mount at least one '
+              'DropdownButtonFormField — the exchange / instrument /'
+              ' asset-class pickers all use this widget');
+      _step('   ✓ edit modal opened cleanly');
+      // Pop the dialog and the screen.
+      while (find.byType(BackButton).evaluate().isNotEmpty) {
+        final btn = find.byType(BackButton).first;
+        final w = tester.widget<BackButton>(btn);
+        if (w.onPressed == null) break;
+        await tester.tap(btn);
+        await settle(tester);
+      }
+    } else {
+      _step('   (no ETF asset found in DB — skipped)');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1455,6 +1563,249 @@ void main() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // 11B. Revalue → market_prices materialisation.
+    //
+    // A revalue on a manual asset must produce a market_prices row anchored
+    // to the qty-at-revalue-date so the asset shows up everywhere priced
+    // assets do (dashboards, allocation, charts) and so a later buy can't
+    // retroactively shift the implied per-unit price.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11B. Manual asset revalue → market_prices anchoring');
+    final manualHolding = await (db.select(db.assets)
+          ..where((a) => a.name.equals('My Custom Holding')))
+        .getSingleOrNull();
+    if (manualHolding == null) {
+      _step('   ⚠ skipping (manual asset not present from 11A)');
+    } else {
+      final eventService = AssetEventService(db);
+      // Buy 10 units @ 100 EUR on day 1.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      // Revalue total to 1200 EUR on day 10 → expected close_price = 120.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 10),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+
+      var prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .get();
+      expect(prices, hasLength(1),
+          reason: 'revalue must materialise exactly one market_prices row');
+      expect(prices.first.date, DateTime(2024, 1, 10));
+      expect(prices.first.closePrice, 120.0,
+          reason: '1200 / qty(10) = 120 per unit');
+
+      // Add a later buy of 5 units. The revalue's close_price must NOT
+      // shift — it stays anchored to qty(=10) at value_date 2024-01-10.
+      await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 20),
+        type: EventType.buy,
+        amount: 600.0,
+        quantity: 5.0,
+        price: 120.0,
+        currency: 'EUR',
+      );
+      prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(prices.first.closePrice, 120.0,
+          reason: 'post-revalue buy must NOT shift the anchored close_price');
+
+      // getPrice() now reads the materialised row directly.
+      final priceService = WebMarketDataService(db);
+      final livePrice = await priceService.getPrice(manualHolding.id, DateTime(2024, 6, 1));
+      expect(livePrice, 120.0);
+
+      // Pre-revalue buy added retroactively must recompute the row
+      // (qty-at-revalue becomes 12 → close_price = 1200/12 = 100).
+      final laterBuyId = await eventService.create(
+        assetId: manualHolding.id,
+        date: DateTime(2024, 1, 5),
+        type: EventType.buy,
+        amount: 200.0,
+        quantity: 2.0,
+        currency: 'EUR',
+      );
+      var afterAdd = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(afterAdd.first.closePrice, 100.0,
+          reason: 'pre-revalue buy must reduce the anchored close_price');
+
+      // Removing the pre-revalue buy must put close_price back to 120.
+      await eventService.delete(laterBuyId);
+      afterAdd = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(manualHolding.id)))
+          .get();
+      expect(afterAdd.first.closePrice, 120.0,
+          reason: 'deleting the pre-revalue buy must restore the anchor');
+      _step('   ✓ revalue materialised, anchored to qty-at-date, robust to '
+          'pre/post-revalue buys');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11C. Pension import (cashflow-only event-driven asset)
+    //
+    // Mirrors what the user does for their Fondo Cometa PPP: create a
+    // pension asset with valuationMethod=eventDriven, then import a
+    // single TSV containing monthly contributions and yearly position
+    // snapshots into that one asset (targetAssetId mode, no per-row
+    // ISIN). Asserts every consumer sees the right value:
+    //   - getLatestRevalueAmount = 49555.72 (Feb-2026)
+    //   - market_prices materialised at all 6 anchor dates
+    //   - getPrice returns the latest close_price for any future date
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11C. Pension import (PPP) → single asset, contribute + revalue');
+    {
+      final anyIntermediary = (await db.select(db.intermediaries).get()).first;
+      final pensionAsset = AssetsCompanion.insert(
+        name: 'Fondo Cometa (Test)',
+        assetType: AssetType.pension,
+        instrumentType: const Value(InstrumentType.pension),
+        assetClass: const Value(AssetClass.multiAsset),
+        valuationMethod: ValuationMethod.eventDriven,
+        currency: const Value('EUR'),
+        intermediaryId: anyIntermediary.id,
+      );
+      final pensionId = await db.into(db.assets).insert(pensionAsset);
+
+      final importer = ImportService(db);
+      final preview = await parseFixtureNoHeader(
+        db,
+        'pension/ppp_import.tsv',
+        numberLocale: 'it_IT',
+      );
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Column 4', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Column 2', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'Column 5', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'Column 1', targetField: 'description'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: anyIntermediary.id,
+        targetAssetId: pensionId,
+        contributeValues: const {'C/TFR', 'C/Azienda', 'C/Iscritto'},
+        revalueValues: const {'TOTALEP'},
+        numberLocaleOverride: 'it_IT',
+      );
+      expect(result.result.errorRows, 0,
+          reason: 'PPP import errors: ${result.result.errors}');
+
+      // The import does batched inserts, so the resync isn't triggered
+      // automatically; run it once to materialize market_prices.
+      final eventService = AssetEventService(db);
+      await eventService.resyncRevaluePricesForAsset(pensionId);
+
+      // Truth from PPP_FULL: latest revalue = 49555.72.
+      final latest = await eventService.getLatestRevalueAmount(pensionId);
+      expect(latest, isNotNull);
+      expect(latest!, closeTo(49555.72, 0.01));
+
+      // Cost basis (Σ contributes) ≈ 47222.43 from PPP_FULL.
+      final totals = await db.customSelect(
+        "SELECT SUM(amount) AS total FROM asset_events "
+        "WHERE asset_id = ? AND type IN ('buy','contribute')",
+        variables: [Variable.withInt(pensionId)],
+      ).getSingle();
+      expect(totals.read<double>('total'), closeTo(47222.43, 0.01));
+
+      // 6 anchor revalue dates each with a market_prices row.
+      final prices = await (db.select(db.marketPrices)
+            ..where((p) => p.assetId.equals(pensionId))
+            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+          .get();
+      expect(prices, hasLength(6));
+
+      // getPrice for any future date returns the latest close_price.
+      final priceService = WebMarketDataService(db);
+      final priceLatest = await priceService.getPrice(pensionId, DateTime(2026, 12, 31));
+      expect(priceLatest, isNotNull);
+      expect(priceLatest! - prices.last.closePrice, closeTo(0.0, 0.0001));
+
+      _step('   ✓ PPP imported (111 rows, 6 revalues, €47222.43 invested → '
+          '€49555.72 position)');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 11D. 401(k)-style multi-sub-fund import
+    //
+    // The same importer works for unit-denominated, multi-sub-fund
+    // statements via the existing ISIN-grouped path. Each sub-fund
+    // becomes its own asset; explicit qty/price column mappings win
+    // over the A3 cash-only auto-fill.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('11D. 401(k) multi-sub-fund import (3 ISINs → 3 assets)');
+    {
+      final anyIntermediary = (await db.select(db.intermediaries).get()).first;
+      final importer = ImportService(db);
+      final assetsBefore = (await db.select(db.assets).get()).length;
+
+      final fullPreview = await parseFixture(db, 'pension/us_401k_sample.csv');
+      final result = await importer.importAssetEventsGrouped(
+        preview: fullPreview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'bucket', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'fund_isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'units', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'unit_price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'USD',
+        intermediaryId: anyIntermediary.id,
+        contributeValues: const {
+          'employee_pretax', 'employee_roth', 'employer_match',
+          'employer_nonelective', 'rollover',
+        },
+        revalueValues: const {'position_snapshot'},
+        numberLocaleOverride: 'en_US',
+      );
+      expect(result.result.errorRows, 0,
+          reason: '401(k) import errors: ${result.result.errors}');
+
+      final assetsAfter = await db.select(db.assets).get();
+      expect(assetsAfter.length - assetsBefore, 3,
+          reason: '3 unique ISINs → 3 new assets');
+
+      // Every contribute on a 401(k) sub-fund carries the explicit NAV
+      // from the CSV (auto-fill must NOT have synthesized 1.0). Scope
+      // by ISIN since 11C's PPP contributes also exist in this DB and
+      // they DO carry price=1.0 by design.
+      final fund401kIds = assetsAfter
+          .where((a) => a.isin != null && a.isin!.startsWith('US922908'))
+          .map((a) => a.id)
+          .toList();
+      expect(fund401kIds, hasLength(3));
+      final contribs = await (db.select(db.assetEvents)
+            ..where((e) =>
+                e.type.equalsValue(EventType.buy) &
+                e.assetId.isIn(fund401kIds)))
+          .get();
+      expect(contribs, isNotEmpty);
+      for (final c in contribs) {
+        expect(c.price, isNotNull);
+        expect(c.price!, greaterThan(1.0),
+            reason: 'real NAVs are >1; price=1.0 means auto-fill misfired');
+      }
+      _step('   ✓ 401(k) imported (3 sub-funds, units×NAV preserved)');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // ACT VII — Account recalc dialog flow
     // (account_detail_screen.dart was 31.6%)
     // ─────────────────────────────────────────────────────────────────────
@@ -1575,6 +1926,137 @@ void main() {
         }
       }
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ACT X — Pillars (pillars_screen.dart, pillar_detail_screen.dart,
+    // pillar_create_dialog.dart, pillar_service.dart, pillar_scope.dart,
+    // uuid_v7.dart, plus the ChartCard reuse path).
+    // Bucket asset units into named goals, exercise the slider editor, and
+    // verify the pillar slice round-trips through the service.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('15A. Pillars nav → empty state');
+    final pillarService = PillarService(db);
+    expect(await pillarService.getAll(), isEmpty);
+    await tester.tap(find.text('Pillars').first);
+    await longSettle(tester);
+    expect(find.text('Create your first pillar'), findsOneWidget,
+        reason: 'empty-state CTA visible on a fresh Pillars tab');
+
+    _step('15B. Open create dialog → name "Retirement", target 100000 EUR');
+    await tester.tap(find.byType(FloatingActionButton).first);
+    await longSettle(tester);
+    // Dialog has Name + Target value fields. The first TextField is Name.
+    final dialogFields = find.byType(TextField);
+    expect(dialogFields, findsNWidgets(2));
+    await tester.enterText(dialogFields.at(0), 'Retirement');
+    await tester.enterText(dialogFields.at(1), '100000');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await longSettle(tester);
+    final pillars = await pillarService.getAll();
+    expect(pillars, hasLength(1));
+    expect(pillars.first.name, 'Retirement');
+    expect(pillars.first.targetValue, 100000);
+    final pillarId = pillars.first.id;
+    _step('   ✓ pillar created id=$pillarId');
+
+    _step('15C. Tap pillar card → detail screen with slider list');
+    await tester.tap(find.text('Retirement').first);
+    await longSettle(tester);
+    // The detail body renders one Slider per asset that has units > 0.
+    final sliders = find.byType(Slider);
+    expect(sliders, findsAtLeast(1),
+        reason: 'asset slider list should render in the overview');
+
+    _step('15D. Service-level assign(50%) round-trips through PillarService');
+    // Pick a target asset that allSeriesDataProvider actually surfaces in
+    // BOTH assetInvested and assetMarket with non-empty spots. The chart's
+    // legend chips (asserted at 15F) only render when those series exist
+    // — and the data provider drops any event whose FX rate isn't
+    // available, so an asset with sparse FX coverage can be silently
+    // excluded even with plenty of market_prices rows.
+    final ctxFor15D = tester.element(find.byType(MaterialApp).first);
+    final containerFor15D = ProviderScope.containerOf(ctxFor15D);
+    final allDataFor15D =
+        await containerFor15D.read(allSeriesDataProvider.future);
+    expect(allDataFor15D, isNotNull,
+        reason: 'allSeriesDataProvider must build for ACT XV chart assertions');
+    final marketReadyIds = allDataFor15D!.assetMarket
+        .where((s) =>
+            s.key.startsWith('asset_market:') && s.spots.isNotEmpty)
+        .map((s) => int.parse(s.key.split(':').last))
+        .toSet();
+    final investedReadyIds = allDataFor15D.assetInvested
+        .where((s) =>
+            s.key.startsWith('asset_invested:') && s.spots.isNotEmpty)
+        .map((s) => int.parse(s.key.split(':').last))
+        .toSet();
+    final eligibleIds =
+        marketReadyIds.intersection(investedReadyIds);
+    int? targetAssetId;
+    double? targetTotalQty;
+    for (final id in eligibleIds) {
+      final qty = await pillarService.totalQuantity(id);
+      if (qty > 0) {
+        targetAssetId = id;
+        targetTotalQty = qty;
+        break;
+      }
+    }
+    expect(targetAssetId, isNotNull,
+        reason:
+            'walkthrough must have at least one asset with non-empty assetMarket+assetInvested series and qty>0');
+    final halfQty = targetTotalQty! / 2;
+    await pillarService.assign(
+      pillarId: pillarId,
+      assetId: targetAssetId!,
+      qty: halfQty,
+    );
+    expect(await pillarService.qtyFor(pillarId, targetAssetId), halfQty);
+    expect(await pillarService.unassignedQty(targetAssetId),
+        closeTo(targetTotalQty - halfQty, 1e-9));
+    final fracs = await pillarService.fractionsForPillar(pillarId);
+    expect(fracs[targetAssetId], closeTo(0.5, 1e-9));
+    _step('   ✓ asset $targetAssetId @ 50%; SUM invariant holds');
+
+    _step('15E. Over-assign refused: PillarOverAssignedException');
+    expect(
+      () => pillarService.assign(
+        pillarId: pillarId,
+        assetId: targetAssetId!,
+        qty: targetTotalQty! + 1,
+      ),
+      throwsA(isA<PillarOverAssignedException>()),
+    );
+
+    _step('15F. ChartCard renders in Pillar detail (Invested + Value, no Total)');
+    // Settle so allSeriesDataProvider builds and the chart paints. We use
+    // runAsync because the provider chain involves several awaited stream
+    // microtasks.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 2)));
+    await longSettle(tester);
+    // Two legend chips: "Invested" + "Value". Total should NOT appear
+    // because the pillar chart passes showTotal: false.
+    expect(find.text('Invested'), findsAtLeast(1));
+    expect(find.text('Value'), findsAtLeast(1));
+
+    _step('15G. Back to list, delete pillar via toolbar trash icon');
+    final backBtn = find.byType(BackButton);
+    if (backBtn.evaluate().isNotEmpty) {
+      await tester.tap(backBtn.first);
+      await longSettle(tester);
+    }
+    // Re-enter detail to test delete.
+    await tester.tap(find.text('Retirement').first);
+    await longSettle(tester);
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await longSettle(tester);
+    if (find.widgetWithText(FilledButton, 'Delete').evaluate().isNotEmpty) {
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete').last);
+      await longSettle(tester);
+    }
+    expect(await pillarService.getAll(), isEmpty,
+        reason: 'pillar delete cascades pillar_assets rows');
+    _step('   ✓ pillar deleted, assignment removed via FK cascade');
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 12: cascade-delete sweep.
