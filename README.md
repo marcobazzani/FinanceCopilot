@@ -1,117 +1,101 @@
 # FinanceCopilot
 
-A personal wealth management app built with Flutter. Track your entire financial picture — bank accounts, investments, ETFs, bonds, commodities, pension funds — in one place with automatic price sync and no cloud dependency.
+Your personal finance copilot. Track every account, asset, and cash flow in one place — fully offline, fully yours.
 
-Runs on **macOS**, **Windows**, and **Android**. All data stays local in SQLite.
+Built with Flutter for **macOS**, **Windows**, and **Android**. All data lives in a local SQLite file. Optional Google Drive sync if you want it across devices; nothing leaves your machine if you don't.
+
+![History](docs/screenshots/dashboard.png)
+
+## Why
+
+Most personal-finance apps either lock you to a specific bank, ship your transactions to a cloud provider, or stop at simple budgeting. FinanceCopilot covers the full picture — bank accounts, ETFs, stocks, bonds, pension funds, crypto, real estate adjustments — and pulls market data on its own. No subscriptions, no servers, no telemetry.
 
 ## Screenshots
 
 ### Financial Health
-KPI scoring across Liquidity, Wealth, and Diversification categories with overall health gauge. Each indicator has an info button showing the formula with actual values.
+KPI scoring across **Liquidity**, **Wealth**, and **Performance & Diversification**, with a single overall gauge. Each indicator opens a popover with the formula and the actual numbers behind it.
 
-![Health](docs/screenshots/health.png)
+| Desktop | Mobile |
+|---|---|
+| ![Health](docs/screenshots/health.png) | ![Health (mobile)](docs/screenshots/health_mobile.png) |
 
 ### History & Price Changes
-Price changes table with period selector (1D/1W/1M/3M/6M/1Y/YTD/All), combined Totals chart, and drill-down per asset/account.
+Period-selectable price-change table (1D/1W/1M/3M/6M/1Y/YTD/All) plus the Totals breakdown (assets, savings, invested, cash, portfolio) with vs‑ATH deltas and drill-down per row.
 
-![Dashboard](docs/screenshots/dashboard.png)
+| Desktop | Mobile |
+|---|---|
+| ![History](docs/screenshots/dashboard.png) | ![History (mobile)](docs/screenshots/dashboard_mobile.png) |
 
 ### Cash Flow
-Saving vs moving average with diff overlay, expenses tracking, and YoY comparison charts.
+Saving vs moving-average chart, expenses vs MA & cash, and velocity. Configurable MA window per chart.
 
-![Cash Flow](docs/screenshots/cashflow.png)
+| Desktop | Mobile |
+|---|---|
+| ![Cash Flow](docs/screenshots/cashflow.png) | ![Cash Flow (mobile)](docs/screenshots/cashflow_mobile.png) |
 
-### Portfolio Allocation
-Geographic, sector, asset class, and instrument type donut charts. Composition data fetched and aggregated automatically.
+### Allocation
+Geographic, sector, asset class, instrument type, currency, and top-holdings donuts. Composition resolved automatically for ETFs and stocks; click any slice to drill into the contributing assets.
 
-![Allocation](docs/screenshots/allocation.png)
+| Desktop | Mobile |
+|---|---|
+| ![Allocation](docs/screenshots/allocation.png) | ![Allocation (mobile)](docs/screenshots/allocation_mobile.png) |
 
 ### Assets
-All your holdings grouped by intermediary, with live prices, event counts, and performance indicators.
+All holdings grouped by intermediary, with ticker, ISIN, event count, and per-asset performance. Swipe-to-delete and bulk-edit selection.
 
-![Assets](docs/screenshots/assets.png)
+| Desktop | Mobile |
+|---|---|
+| ![Assets](docs/screenshots/assets.png) | ![Assets (mobile)](docs/screenshots/assets_mobile.png) |
 
 ### Asset Detail
-Per-asset view with ticker, ISIN, exchange, and full event history (buy, sell, revalue). Composition breakdown by geography, sector, and top holdings.
+Full event history (buy / sell / revalue), composition breakdown (asset class / geographic / sector / top holdings), and price chart. Bond pricing handles per-100 quoting; ETFs auto-fetch TER and holdings.
 
-![Asset Detail](docs/screenshots/asset_detail.png)
+| Desktop | Mobile |
+|---|---|
+| ![Asset Detail](docs/screenshots/asset_detail.png) | ![Asset Detail (mobile)](docs/screenshots/asset_detail_mobile.png) |
+
+### Pillars
+Group assets and accounts into goal-oriented buckets (e.g. Lombard support, FIRE, Offspring) with their own value, target, and progress bar. Each pillar drills down into its own composition, history chart, and allocation cap per asset.
+
+| Desktop | Mobile |
+|---|---|
+| ![Pillars](docs/screenshots/pillars.png) | ![Pillars (mobile)](docs/screenshots/pillars_mobile.png) |
 
 ### Import
-Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exchange picker with per-asset exclude checkbox.
+Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.
 
 ![Import](docs/screenshots/import.png)
 
-## Features
+## What it does
 
-### Net Worth Dashboard
-- **Financial Health tab** with KPI scoring: Liquidity (Net Worth Ratio, Expense Coverage, Savings Rate), Wealth (Investment Weight, Liquid Asset Ratio, Income-to-Wealth), Performance & Diversification (Price Changes, HHI, TER)
-- **History tab** combining all accounts, assets, and adjustments into one chart
-- **Cash Flow tab** with income vs expenses, YoY changes, and EOY prediction
-- **Assets Overview** with allocation donuts, top holdings, concentration risk, and investment costs
-- **Price Changes table** with 1D/1W/1M/3M/6M/1Y/YTD/All performance per asset
-- Toggle privacy mode to blur all amounts
-
-### Portfolio Allocation
-- **6 donut charts**: Geographic, Sector, Asset Class, Instrument Type, Currency, Top Holdings
-- Drill-down on any slice to see which assets contribute
-- **Concentration risk**: Top 1/3/5 percentages and Herfindahl-Hirschman Index (HHI)
-- **Investment costs**: Weighted average TER with per-asset cost breakdown
-- Composition data auto-fetched for ETFs and stocks
-
-### Asset Tracking
-- Stocks, ETFs, ETCs, bonds, pension funds — all in one model
-- Buy, sell, and revalue events with full audit trail
-- Market prices sync automatically
-- **ISIN-first search** — resolves any ISIN to the correct exchange listing
-- Bond pricing handles per-nominal quoting (/100)
-- Auto-classification by instrument type and asset class
+### Wealth tracking
+- Bank accounts, brokers, and wallets — unlimited, with balances derived from imported transactions (auditable history, no manual reconciliation)
+- Stocks, ETFs, ETCs, bonds, pension funds, commodities — one unified asset model with buy/sell/revalue events and per-event exchange rate
+- ISIN-first resolution; multi-exchange listings handled correctly
 - TER and composition auto-fetched for ETFs
 
-### Account Management
-- Unlimited bank accounts, brokers, wallets
-- Balances derived from imported transactions — fully auditable history
-- Group accounts and assets by **Intermediary** (broker/institution)
+### Dashboards
+- **Financial Health** — KPI scoring with Liquidity, Wealth, and Performance & Diversification categories (Net Worth Ratio, Expense Coverage, Savings Rate, Investment Weight, Liquid Asset Ratio, Income-to-Wealth, HHI, weighted TER, …)
+- **History** — combined chart, top movers, smart Totals
+- **Cash Flow** — saving / spending / velocity with configurable MA windows
+- **Allocation** — six donuts + drill-down + concentration metrics (Top 1/3/5, HHI)
+- **Privacy mode** — single-toggle blur on every amount, price, quantity, and target across the app
 
-### Smart Adjustments
-- **Spread Expenses** — Amortise a large purchase over time (e.g. spread a car over 36 months)
-- **Donations / Inheritance** — Track and adjust for lump-sum income events
+### Import
+- CSV, XLSX, clipboard
+- Saved column-mapping configs per account
+- ISIN exchange picker with auto-lookup
+- Tested against Fineco, Directa, N26, Revolut, Interactive Brokers, and arbitrary custom formats
+- Handles 3-decimal XLSX numerics, locale decimal separators, and multi-column amount math
 
-### CSV & Excel Import
-- Import from any bank or broker (CSV, XLSX, clipboard)
-- Flexible column mapping with saved configs per account
-- ISIN-based exchange picker with auto-lookup
-- **Exclude checkbox** per ISIN to skip unwanted assets
-- Supports: Fineco, Directa, N26, Revolut, Interactive Brokers, and any custom format
-- Multi-column amounts, balance-diff mode, formula builder, status filtering
-- Import transactions, asset events, or income records
-- Correct XLSX numeric parsing (handles 3-decimal values like 260.437)
-
-### Multi-Currency
-- 13 currencies: EUR, USD, GBP, CHF, JPY, SEK, NOK, DKK, PLN, CZK, HUF, CAD, AUD
-- FX rates synced automatically with historical backfill
-- Everything converts to your chosen base currency automatically
-- Per-event exchange rate tracking for accurate cost basis
-
-### Income Tracking
-- Track income sources with type classification
-- Rolling 12-month income for Income-to-Wealth ratio
-- YoY income changes with end-of-year prediction
-- Monthly expense tracking for health KPI calculations
+### Multi-currency
+- 13 currencies (EUR, USD, GBP, CHF, JPY, SEK, NOK, DKK, PLN, CZK, HUF, CAD, AUD)
+- Daily FX rates with historical backfill
+- Everything reconciles to the chosen base currency, with per-event rate tracking for cost basis
 
 ### Bilingual
-- Full Italian and English support (auto-detected from system locale)
-- All UI strings, chart labels, KPI descriptions, and ratings localized
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | Flutter / Dart |
-| Platforms | macOS, Windows, Android |
-| State management | Riverpod (reactive streams) |
-| Database | Drift (SQLite) |
-| Charts | fl_chart |
-| Import | csv, excel, file_picker |
+- Full English and Italian (auto-detected from system locale; switchable in settings)
+- Every UI string, KPI label, and rating localized
 
 ## Install
 
@@ -119,24 +103,19 @@ Flexible column mapping for any bank or broker CSV/Excel export. ISIN-based exch
 
 ```bash
 brew tap marcobazzani/financecopilot
-brew install --cask financecopilot
+brew install --cask financecopilot          # stable
+brew install --cask financecopilot-nightly  # latest develop
 ```
 
-For the nightly build (latest from `develop`):
+### Direct download
 
-```bash
-brew install --cask financecopilot-nightly
-```
+Pre-built binaries for macOS, Windows, and Android on the [Releases](https://github.com/marcobazzani/FinanceCopilot/releases) page. The [nightly build](https://github.com/marcobazzani/FinanceCopilot/releases/tag/latest) tracks `develop`.
 
-### Download
+> macOS and Windows binaries are not code-signed. On macOS you may need to allow the app via **System Settings → Privacy & Security** the first time. Endpoint security tools that re-sign binaries on extraction (CrowdStrike, SentinelOne, …) will break Homebrew install — use the DMG instead.
 
-Pre-built binaries for macOS, Windows, and Android are available on the [Releases](https://github.com/marcobazzani/FinanceCopilot/releases) page. The [Nightly Build](https://github.com/marcobazzani/FinanceCopilot/releases/tag/latest) is updated automatically on every push to `develop`.
+## Build from source
 
-> **Note:** macOS and Windows binaries are **not code-signed or notarized**. On macOS, you may need to allow the app in **System Settings > Privacy & Security** after the first launch attempt. Homebrew installation will not work on machines with endpoint security software (e.g. CrowdStrike, SentinelOne) that strips unsigned binaries during extraction — use the DMG download directly instead.
-
-### Build from Source
-
-Prerequisites: Flutter SDK ^3.8.1, Xcode (macOS) or Visual Studio (Windows)
+Prerequisites: Flutter SDK ^3.8.1, Xcode (macOS), or Visual Studio with Desktop C++ workload (Windows).
 
 ```bash
 flutter pub get
@@ -144,37 +123,51 @@ dart run build_runner build --delete-conflicting-outputs
 
 # macOS
 flutter build macos --release
-open build/macos/Build/Products/Release/FinanceCopilot.app
 
 # Windows
 flutter build windows --release
+
+# Android APK
+flutter build apk --release
 ```
 
-### Run Tests
+## Run tests
 
 ```bash
-# Unit tests (356 tests, ~10s)
+# Unit tests (~720, ~15s)
 flutter test
 
-# Integration tests (29 tests, ~2m, requires macOS)
-flutter test integration_test/all_tests.dart -d macos
+# Integration tests (5 suites, ~3m, requires a running desktop device)
+flutter test integration_test/all_tests.dart -d macos \
+  --dart-define=DB_FILE_NAME=finance_copilot_test.db
 
-# Live data test (12 assets, real market data, ~50s)
-flutter test integration_test/live_data_fetch_test.dart -d macos
+# Live market-data smoke test (~1m, requires network)
+flutter test integration_test/live_data_fetch_test.dart -d macos \
+  --dart-define=DB_FILE_NAME=finance_copilot_test.db
 ```
 
 ## Architecture
 
-- **Offline-first** — All data lives locally in SQLite. Market data and composition are cached after sync.
-- **Reactive** — Riverpod stream providers watch the database and rebuild the UI automatically on any change.
-- **Self-contained** — The app bundle has no runtime dependencies. No Python, no external processes.
-- **ISIN-first** — All asset resolution prefers ISIN over ticker for reliable multi-exchange matching.
+- **Offline-first** — all data lives locally in SQLite; market data and composition are cached after each sync
+- **Reactive** — Riverpod stream providers watch the database and rebuild the UI on every change
+- **Self-contained** — no Python, no external processes, no runtime services; the bundled binary is everything
+- **ISIN-first** — every asset operation prefers ISIN over ticker for reliable cross-exchange matching
+- **Date semantics** — `valueDate` (when the money actually moved) drives display, ordering, charts, and balance computation; `operationDate` is only used for import dedup
 
-## Privacy & Terms
+| Layer | Stack |
+|-------|-------|
+| Framework | Flutter / Dart |
+| Platforms | macOS, Windows, Android |
+| State | Riverpod |
+| DB | Drift (SQLite) |
+| Charts | fl_chart |
+| Import | csv, excel, file_picker, pdfrx |
+
+## Privacy & terms
 
 - [Privacy Policy](docs/privacy.md)
 - [Terms of Service](docs/terms.md)
 
 ## License
 
-MIT
+MIT.

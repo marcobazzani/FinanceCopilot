@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -370,31 +371,41 @@ class _AssetTile extends StatelessWidget {
                   ),
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        if (marketValue != null) ...[
+                  // Quantity reveals position size — blur the whole
+                  // price×quantity line in privacy mode.
+                  Consumer(builder: (context, ref, _) {
+                    final isPrivate = ref.watch(privacyModeProvider);
+                    final line = Text.rich(
+                      TextSpan(
+                        children: [
+                          if (marketValue != null) ...[
+                            TextSpan(
+                              text: amtFormat.format(marketValue! / stats!.totalQuantity),
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                            ),
+                            if (asset.currency != baseCurrency)
+                              TextSpan(
+                                text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
+                                style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
+                              ),
+                            TextSpan(
+                              text: '  ×  ',
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
+                            ),
+                          ],
                           TextSpan(
-                            text: amtFormat.format(marketValue! / stats!.totalQuantity),
+                            text: qtyFormat.format(stats!.totalQuantity),
                             style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
                           ),
-                          if (asset.currency != baseCurrency)
-                            TextSpan(
-                              text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
-                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
-                            ),
-                          TextSpan(
-                            text: '  ×  ',
-                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
-                          ),
                         ],
-                        TextSpan(
-                          text: qtyFormat.format(stats!.totalQuantity),
-                          style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                    if (!isPrivate) return line;
+                    return ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                      child: line,
+                    );
+                  }),
                 ],
                 if (!asset.isActive) ...[
                   const SizedBox(height: 2),

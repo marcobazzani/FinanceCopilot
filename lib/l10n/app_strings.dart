@@ -501,6 +501,7 @@ class AppStrings {
   String get compositionSector      => _it ? 'Settore'           : 'Sector';
   String get compositionTopHoldings => _it ? 'Posizioni principali' : 'Top Holdings';
   String sourceLabel(String src)    => _it ? 'Fonte: $src'       : 'Source: $src';
+  String get sourceLabelGeneric     => _it ? 'Apri fonte'         : 'Open source';
   String wipeEventsBody(int n, String name) => _it
       ? 'Verranno eliminati tutti i $n eventi da "$name" ma l\'attività verrà mantenuta.\n\n'
       : 'This will delete all $n events from "$name" but keep the asset itself.\n\n';
