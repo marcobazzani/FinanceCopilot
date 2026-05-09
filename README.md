@@ -6,6 +6,25 @@ Built with Flutter for **macOS**, **Windows**, and **Android**. All data lives i
 
 ![History](docs/screenshots/dashboard.png)
 
+## How does it compare?
+
+|                          | FinanceCopilot | Mint / Monarch | YNAB | Actual Budget | Firefly III | Maybe Finance | GnuCash |
+|--------------------------|:--------------:|:--------------:|:----:|:-------------:|:-----------:|:-------------:|:-------:|
+| Runs fully offline       |       Yes      |       No       |  No  |      Yes      |   Self-host |    Self-host  |   Yes   |
+| No subscription          |       Yes      |       No       |  No  |      Yes      |     Yes     |      Yes      |   Yes   |
+| No server to host        |       Yes      |       n/a      |  n/a |      Yes      |      No     |       No      |   Yes   |
+| Bank accounts + cash     |       Yes      |       Yes      |  Yes |      Yes      |     Yes     |      Yes      |   Yes   |
+| Stocks / ETFs / bonds    |       Yes      |     Limited    |   No |       No      |   Limited   |      Yes      | Limited |
+| ETF composition + TER    |       Yes      |       No       |  No  |       No      |      No     |    Limited    |    No   |
+| ISIN-first matching      |       Yes      |       No       |  No  |       No      |      No     |       No      |    No   |
+| Multi-currency + FX hist |    13 + daily  |     Limited    |   No |     Limited   |     Yes     |      Yes      |   Yes   |
+| EU broker imports tested |       Yes      |       No       |  No  |     Manual    |    Manual   |    Limited    |  Manual |
+| Mobile + desktop         |       Both     |    Web/Mobile  | Both |    Web only   |   Web only  |    Web only   | Desktop |
+| MIT license              |       Yes      |       No       |  No  |      MIT      |    AGPL     |     AGPL      |   GPL   |
+
+If FinanceCopilot is missing a feature you actually use, [open an issue](https://github.com/marcobazzani/FinanceCopilot/issues) — happy to discuss.
+
+
 ## Why
 
 Most personal-finance apps either lock you to a specific bank, ship your transactions to a cloud provider, or stop at simple budgeting. FinanceCopilot covers the full picture — bank accounts, ETFs, stocks, bonds, pension funds, crypto, real estate adjustments — and pulls market data on its own. No subscriptions, no servers, no telemetry.
