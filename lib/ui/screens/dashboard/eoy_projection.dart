@@ -88,6 +88,55 @@ EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = fa
 const _monthAbbrs = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 String monthAbbr(int month) => _monthAbbrs[(month - 1).clamp(0, 11)];
 
+/// Smoothed annual expense estimate for forward-looking KPIs (e.g. FIRE).
+///
+/// The current calendar year is rarely consolidated, so its YTD total skews
+/// any annualised metric. This helper averages the EoY projection for the
+/// current year (scaled from the same period of [prev]) with [prev]'s full
+/// total. Falls back to [prev]'s total when projection is unavailable, and
+/// returns `null` when no usable signal exists.
+///
+/// Returned breakdown reports the components used so callers can show them
+/// in info dialogs.
+class SmoothedAnnualExpenses {
+  /// Final smoothed estimate.
+  final double value;
+  /// EoY projection for [current], or `null` when not computable.
+  final double? projectedCurrent;
+  /// Full-year total for [prev], or `null` when [prev] was missing/zero.
+  final double? prevTotal;
+  /// How many months of [current] data fed the projection (for display).
+  final int? projectionMonths;
+
+  const SmoothedAnnualExpenses({
+    required this.value,
+    this.projectedCurrent,
+    this.prevTotal,
+    this.projectionMonths,
+  });
+}
+
+SmoothedAnnualExpenses? estimateSmoothedAnnualExpenses({
+  required EoyYear current,
+  EoyYear? prev,
+}) {
+  if (prev != null) {
+    final eoy = computeEoyDetails(current, prev, expenses: true);
+    if (eoy != null && prev.expenses > 0) {
+      return SmoothedAnnualExpenses(
+        value: (eoy.value + prev.expenses) / 2,
+        projectedCurrent: eoy.value,
+        prevTotal: prev.expenses,
+        projectionMonths: eoy.months,
+      );
+    }
+    if (prev.expenses > 0) {
+      return SmoothedAnnualExpenses(value: prev.expenses, prevTotal: prev.expenses);
+    }
+  }
+  return null;
+}
+
 /// Build the multi-line EoY explanation rendered in the Savings Rate KPI
 /// info dialog. Returns `null` when neither income nor expenses can be
 /// projected.

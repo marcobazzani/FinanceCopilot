@@ -13,6 +13,7 @@ import '../../utils/formatters.dart' as fmt;
 import 'dashboard/dashboard_screen.dart' show currencySymbol;
 import 'event_edit_screen.dart';
 import '../widgets/global_app_bar_actions.dart';
+import '../widgets/privacy_text.dart';
 
 class EventDetailScreen extends ConsumerWidget {
   final int eventId;
@@ -105,12 +106,17 @@ class _DetailBody extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _infoRow(s.totalLabel, '${amtFmt.format(event.totalAmount)} $sym'),
-                  _infoRow(s.eventDateLabel, dateFmt.format(event.eventDate)),
+                  _infoRow(
+                    s.totalLabel,
+                    PrivacyText('${amtFmt.format(event.totalAmount)} $sym'),
+                  ),
+                  _infoRow(s.eventDateLabel, Text(dateFmt.format(event.eventDate))),
                   if (isSpread && event.spreadStart != null && event.spreadEnd != null)
                     _infoRow(
                       s.spreadLabel,
-                      '${dateFmt.format(event.spreadStart!)} → ${dateFmt.format(event.spreadEnd!)}',
+                      Text(
+                        '${dateFmt.format(event.spreadStart!)} → ${dateFmt.format(event.spreadEnd!)}',
+                      ),
                     ),
                   if (event.notes != null && event.notes!.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -217,14 +223,14 @@ class _DetailBody extends ConsumerWidget {
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _infoRow(String label, Widget value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(width: 110, child: Text(label, style: TextStyle(color: Colors.grey.shade600))),
-          Expanded(child: Text(value)),
+          Expanded(child: value),
         ],
       ),
     );
@@ -388,7 +394,7 @@ class _TimelineTile extends StatelessWidget {
           backgroundColor: Colors.green.shade100,
           child: Icon(Icons.call_received, size: 16, color: Colors.green.shade800),
         ),
-        title: Text('${amtFmt.format(r.amount.abs())} $sym'),
+        title: PrivacyText('${amtFmt.format(r.amount.abs())} $sym'),
         subtitle: Text('${dateFmt.format(r.valueDate)}${r.description.isNotEmpty ? ' · ${r.description}' : ''}'),
         trailing: onDelete != null
             ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete)
@@ -406,7 +412,7 @@ class _TimelineTile extends StatelessWidget {
         backgroundColor: color,
         child: Icon(icon, size: 16, color: theme.colorScheme.onTertiaryContainer),
       ),
-      title: Text('${amtFmt.format(e.amount.abs())} $sym'),
+      title: PrivacyText('${amtFmt.format(e.amount.abs())} $sym'),
       subtitle: Text(
         '${dateFmt.format(e.date)}${e.description.isNotEmpty ? ' · ${e.description}' : ''}',
       ),

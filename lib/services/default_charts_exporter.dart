@@ -52,6 +52,12 @@ class DefaultChartsExporter {
       },
       'all_gain':
           {for (final a in activeAssets) 'asset_gain:${a.id}'},
+      'all_net':
+          {for (final a in activeAssets) 'asset_net:${a.id}'},
+      'all_net_liquid': {
+        for (final a in activeAssets)
+          if (!_illiquidTypes.contains(a.instrumentType)) 'asset_net:${a.id}'
+      },
       'outflow_value':
           {for (final e in outflows) 'adjustment_value:${e.id}'},
       'outflow_events':
@@ -86,7 +92,7 @@ class DefaultChartsExporter {
     for (final chart in charts) {
       final entry = <String, dynamic>{};
       // Distinguish role-tagged charts ("cash"/"saving"/...) from generic.
-      const roleTypes = {'cash', 'saving', 'portfolio', 'liquid_investments'};
+      const roleTypes = {'cash', 'saving', 'portfolio', 'liquid_investments', 'net_asset_value'};
       if (roleTypes.contains(chart.widgetType)) {
         entry['role'] = chart.widgetType;
       } else {

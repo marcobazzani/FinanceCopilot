@@ -477,4 +477,83 @@ void main() {
     test('boundary 1500 is buono', () => expect(rateHhi(1500), Rating.buono));
     test('boundary 2500 is scarso', () => expect(rateHhi(2500), Rating.scarso));
   });
+
+  group('computeFire', () {
+    test('insufficientData when annualExpenses <= 0', () {
+      final r = computeFire(netWorth: 100000, annualExpenses: 0, swrPct: 2.75);
+      expect(r.insufficientData, true);
+      expect(r.rating, Rating.na);
+    });
+
+    test('insufficientData when swrPct <= 0', () {
+      final r = computeFire(netWorth: 100000, annualExpenses: 30000, swrPct: 0);
+      expect(r.insufficientData, true);
+      expect(r.rating, Rating.na);
+    });
+
+    test('FI number = annualExpenses / (swr/100)', () {
+      final r = computeFire(netWorth: 0, annualExpenses: 30000, swrPct: 2.75);
+      // 30000 / 0.0275 = 1,090,909.09…
+      expect(r.fiNumber, closeTo(1090909.09, 0.5));
+    });
+
+    test('progress 0% when netWorth = 0', () {
+      final r = computeFire(netWorth: 0, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, 0);
+      expect(r.rating, Rating.scarso);
+    });
+
+    test('progress capped at 0 when netWorth is negative', () {
+      final r = computeFire(netWorth: -1000, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, 0);
+    });
+
+    test('progress 100% when netWorth = FI number -> ottimo', () {
+      final fi = 30000 / 0.0275;
+      final r = computeFire(netWorth: fi, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(100, 0.001));
+      expect(r.rating, Rating.ottimo);
+    });
+
+    test('progress 200% > 100 stays at ottimo', () {
+      final fi = 30000 / 0.0275;
+      final r = computeFire(netWorth: fi * 2, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(200, 0.001));
+      expect(r.rating, Rating.ottimo);
+    });
+
+    test('progress 50% -> buono boundary', () {
+      final fi = 30000 / 0.0275;
+      final r = computeFire(netWorth: fi * 0.5, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(50, 0.001));
+      expect(r.rating, Rating.buono);
+    });
+
+    test('progress 25% -> sufficiente boundary', () {
+      final fi = 30000 / 0.0275;
+      final r = computeFire(netWorth: fi * 0.25, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(25, 0.001));
+      expect(r.rating, Rating.sufficiente);
+    });
+
+    test('progress 24.9% -> scarso (just below sufficiente)', () {
+      final fi = 30000 / 0.0275;
+      final r = computeFire(netWorth: fi * 0.249, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.rating, Rating.scarso);
+    });
+
+    test('default SWR constant is 2.75%', () {
+      expect(kDefaultFireSwrPct, 2.75);
+    });
+
+    test('rateFire boundaries: 100->ottimo, 50->buono, 25->sufficiente, 0->scarso', () {
+      expect(rateFire(100), Rating.ottimo);
+      expect(rateFire(99.99), Rating.buono);
+      expect(rateFire(50), Rating.buono);
+      expect(rateFire(49.99), Rating.sufficiente);
+      expect(rateFire(25), Rating.sufficiente);
+      expect(rateFire(24.99), Rating.scarso);
+      expect(rateFire(0), Rating.scarso);
+    });
+  });
 }

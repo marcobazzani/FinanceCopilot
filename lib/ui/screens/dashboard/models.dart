@@ -29,6 +29,7 @@ class AllSeriesData {
   final List<ChartSeries> assetInvested; // key: "asset_invested:<id>"
   final List<ChartSeries> assetMarket;   // key: "asset_market:<id>"
   final List<ChartSeries> assetGain;     // key: "asset_gain:<id>"  (market - invested)
+  final List<ChartSeries> assetNet;      // key: "asset_net:<id>"   (invested + max(0,gain)*(1-tax))
   final List<ChartSeries> adjustments;          // key: "adjustment_value/events:<id>"  — outflow events
   final List<ChartSeries> incomeAdjustments;    // key: "income_adj_value/events:<id>"  — non-ephemeral inflow events
   final List<ChartSeries> ephemeralInflows;     // key: "ephemeral_inflow_value/events:<id>" — line-of-credit inflows
@@ -40,6 +41,7 @@ class AllSeriesData {
     required this.assetInvested,
     required this.assetMarket,
     required this.assetGain,
+    required this.assetNet,
     required this.adjustments,
     required this.incomeAdjustments,
     required this.ephemeralInflows,
@@ -51,6 +53,7 @@ class AllSeriesData {
         ...assetInvested,
         ...assetMarket,
         ...assetGain,
+        ...assetNet,
         ...adjustments,
         ...incomeAdjustments,
         ...ephemeralInflows,
