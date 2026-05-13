@@ -59,11 +59,13 @@ class ChartCard extends ConsumerWidget {
   });
 
   /// Build total spots with smart asset handling:
-  /// If both invested and market are visible for the same asset, only sum market.
+  /// - If `asset_net:<id>` is visible it supersedes invested/market for that
+  ///   asset (avoid double-counting).
+  /// - Else if both invested and market are visible, only sum market.
   List<FlSpot> _buildSmartTotalSpots(List<ChartSeries> visible) {
-    // Find asset IDs that have both invested AND market visible
     final visibleInvestedIds = <int>{};
     final visibleMarketIds = <int>{};
+    final visibleNetIds = <int>{};
     for (final s in visible) {
       final parts = s.key.split(':');
       if (parts.length != 2) continue;
@@ -71,9 +73,13 @@ class ChartCard extends ConsumerWidget {
       if (id == null) continue;
       if (parts[0] == 'asset_invested') visibleInvestedIds.add(id);
       if (parts[0] == 'asset_market') visibleMarketIds.add(id);
+      if (parts[0] == 'asset_net') visibleNetIds.add(id);
     }
-    // Exclude invested series where market is also visible
     final excludeFromTotal = <String>{};
+    for (final id in visibleNetIds) {
+      excludeFromTotal.add('asset_invested:$id');
+      excludeFromTotal.add('asset_market:$id');
+    }
     for (final id in visibleInvestedIds) {
       if (visibleMarketIds.contains(id)) {
         excludeFromTotal.add('asset_invested:$id');

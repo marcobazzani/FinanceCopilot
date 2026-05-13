@@ -57,3 +57,26 @@ final baseCurrencyProvider = StreamProvider<String>((ref) {
       .watchSingleOrNull()
       .map((row) => row?.value ?? 'EUR');
 });
+
+/// Default capital-gains tax rate (fraction, 0.26 = 26%). Reactive from
+/// AppConfigs; defaults to [kDefaultTaxRate] when unset or invalid.
+/// Per-asset `taxRate` overrides this on a position-by-position basis.
+final defaultTaxRateProvider = StreamProvider<double>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('TAX_RATE')))
+      .watchSingleOrNull()
+      .map((row) {
+    final v = double.tryParse(row?.value ?? '');
+    if (v == null) return kDefaultTaxRate;
+    return v.clamp(0.0, 1.0);
+  });
+});
+
+/// Safe Withdrawal Rate (%) for the FIRE indicator. Reactive from AppConfigs;
+/// defaults to [kDefaultFireSwrPct] when unset or invalid.
+final fireSwrProvider = StreamProvider<double>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('FIRE_SWR')))
+      .watchSingleOrNull()
+      .map((row) => double.tryParse(row?.value ?? '') ?? kDefaultFireSwrPct);
+});

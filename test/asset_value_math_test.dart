@@ -54,4 +54,71 @@ void main() {
       expect(value, -1000.0);
     });
   });
+
+  group('computeAssetNetValue', () {
+    test('positive gain: net = invested + gain * (1 - tax)', () {
+      // invested=10000, market=12000, gain=2000, tax=0.26
+      // net = 10000 + 2000 * 0.74 = 11480
+      expect(
+        computeAssetNetValue(invested: 10000, market: 12000, taxRate: 0.26),
+        closeTo(11480, 1e-9),
+      );
+    });
+
+    test('zero gain: net = market = invested', () {
+      expect(
+        computeAssetNetValue(invested: 10000, market: 10000, taxRate: 0.26),
+        10000,
+      );
+    });
+
+    test('negative gain (loss): net = market — no phantom tax credit', () {
+      // Loss must NOT be inflated by (1-tax). Net equals market value.
+      expect(
+        computeAssetNetValue(invested: 10000, market: 8000, taxRate: 0.26),
+        8000,
+      );
+    });
+
+    test('taxRate = 0: net equals market on positive gains', () {
+      expect(
+        computeAssetNetValue(invested: 10000, market: 12000, taxRate: 0),
+        12000,
+      );
+    });
+
+    test('taxRate = 1: net equals invested on positive gains', () {
+      // 100% tax claws back the entire gain.
+      expect(
+        computeAssetNetValue(invested: 10000, market: 12000, taxRate: 1.0),
+        10000,
+      );
+    });
+
+    test('taxRate clamps below 0', () {
+      expect(
+        computeAssetNetValue(invested: 10000, market: 12000, taxRate: -0.5),
+        12000,
+      );
+    });
+
+    test('taxRate clamps above 1', () {
+      expect(
+        computeAssetNetValue(invested: 10000, market: 12000, taxRate: 5.0),
+        10000,
+      );
+    });
+
+    test('default tax rate constant is 0.26 (Italian retail)', () {
+      expect(kDefaultTaxRate, 0.26);
+    });
+
+    test('zero invested with positive market: gain = market, net = market * (1-tax)', () {
+      // Edge: free shares (grant) — invested is 0, all of market is gain.
+      expect(
+        computeAssetNetValue(invested: 0, market: 1000, taxRate: 0.26),
+        closeTo(740, 1e-9),
+      );
+    });
+  });
 }

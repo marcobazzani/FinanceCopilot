@@ -207,3 +207,63 @@ double computeHhi(Map<String, double> holdingValues) {
 /// Rate an HHI value.
 Rating rateHhi(double hhi) =>
     hhi < 1500 ? Rating.ottimo : hhi < 2500 ? Rating.buono : Rating.scarso;
+
+// ── FIRE (Financial Independence, Retire Early) ──
+
+/// Default Safe Withdrawal Rate (%), used when no user override is set.
+const double kDefaultFireSwrPct = 2.75;
+
+/// Result of a FIRE computation.
+class FireResult {
+  /// Required portfolio for FI: annualExpenses / (swrPct / 100).
+  final double fiNumber;
+  /// Progress towards FI as a percentage (>= 0). 100 means FI reached.
+  final double progressPct;
+  /// Rating for the progress.
+  final Rating rating;
+  /// True when the inputs were insufficient (e.g. no expenses) so the
+  /// caller should mark the KPI as N/A.
+  final bool insufficientData;
+
+  const FireResult({
+    required this.fiNumber,
+    required this.progressPct,
+    required this.rating,
+    required this.insufficientData,
+  });
+}
+
+/// Compute FIRE progress from current net worth, annual expenses and SWR%.
+///
+/// Returns insufficientData=true when [annualExpenses] <= 0 or [swrPct] <= 0,
+/// because the FI number is undefined.
+FireResult computeFire({
+  required double netWorth,
+  required double annualExpenses,
+  required double swrPct,
+}) {
+  if (annualExpenses <= 0 || swrPct <= 0) {
+    return const FireResult(
+      fiNumber: 0,
+      progressPct: 0,
+      rating: Rating.na,
+      insufficientData: true,
+    );
+  }
+  final fiNumber = annualExpenses / (swrPct / 100);
+  final progress = fiNumber > 0 ? (netWorth / fiNumber * 100) : 0.0;
+  return FireResult(
+    fiNumber: fiNumber,
+    progressPct: progress < 0 ? 0 : progress,
+    rating: rateFire(progress),
+    insufficientData: false,
+  );
+}
+
+/// Rate FIRE progress %. >=100 means goal reached.
+Rating rateFire(double progressPct) {
+  if (progressPct >= 100) return Rating.ottimo;
+  if (progressPct >= 50) return Rating.buono;
+  if (progressPct >= 25) return Rating.sufficiente;
+  return Rating.scarso;
+}

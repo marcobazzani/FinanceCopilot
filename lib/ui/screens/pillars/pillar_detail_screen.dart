@@ -453,6 +453,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
       assetInvested: const [],
       assetMarket: const [],
       assetGain: const [],
+      assetNet: const [],
       adjustments: const [],
       incomeAdjustments: const [],
       ephemeralInflows: const [],

@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:drift/drift.dart' show OrderingTerm, Variable;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../utils/asset_value_math.dart';
 import '../../../utils/chart_math.dart' as chart_math;
 import '../../../utils/formatters.dart' as fmt;
 
@@ -824,9 +825,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   /// Static version of smart total spots for use outside ChartCard.
+  /// See `_ChartCardState._buildSmartTotalSpots` for the dedup rules.
   static List<FlSpot> _buildSmartTotalSpotsStatic(List<ChartSeries> visible) {
     final visibleInvestedIds = <int>{};
     final visibleMarketIds = <int>{};
+    final visibleNetIds = <int>{};
     for (final s in visible) {
       final parts = s.key.split(':');
       if (parts.length != 2) continue;
@@ -834,8 +837,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       if (id == null) continue;
       if (parts[0] == 'asset_invested') visibleInvestedIds.add(id);
       if (parts[0] == 'asset_market') visibleMarketIds.add(id);
+      if (parts[0] == 'asset_net') visibleNetIds.add(id);
     }
     final excludeFromTotal = <String>{};
+    for (final id in visibleNetIds) {
+      excludeFromTotal.add('asset_invested:$id');
+      excludeFromTotal.add('asset_market:$id');
+    }
     for (final id in visibleInvestedIds) {
       if (visibleMarketIds.contains(id)) {
         excludeFromTotal.add('asset_invested:$id');
@@ -945,6 +953,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       'portfolio'          => _buildSmartTotalSpotsStatic(allData.assetMarket),
       'liquid_investments' =>
         _buildSmartTotalSpotsStatic(_liquidAssetMarket(allData, activeAssets)),
+      'net_asset_value'    => _buildSmartTotalSpotsStatic([
+        ...allData.accounts,
+        ...allData.assetNet,
+        ...allData.adjustments,
+      ]),
       _                    => const <FlSpot>[],
     };
   }

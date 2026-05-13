@@ -162,4 +162,61 @@ void main() {
       expect(span, isNull);
     });
   });
+
+  group('estimateSmoothedAnnualExpenses', () {
+    test('returns null when prev is null', () {
+      final r = estimateSmoothedAnnualExpenses(current: buildCurrent(), prev: null);
+      expect(r, isNull);
+    });
+
+    test('returns null when prev has zero expenses and projection fails', () {
+      final emptyPrev = EoyYear(
+        year: 2025, income: 0, expenses: 0,
+        months: List.generate(12, (i) => EoyMonth(month: i + 1, income: 0, expenses: 0)),
+      );
+      final r = estimateSmoothedAnnualExpenses(current: buildCurrent(), prev: emptyPrev);
+      expect(r, isNull);
+    });
+
+    test('falls back to prev total when current has no expenses', () {
+      final emptyCurrent = EoyYear(
+        year: 2026, income: 0, expenses: 0,
+        months: const [EoyMonth(month: 1, income: 0, expenses: 0)],
+      );
+      final r = estimateSmoothedAnnualExpenses(current: emptyCurrent, prev: buildPrev());
+      expect(r, isNotNull);
+      expect(r!.value, 24000);
+      expect(r.projectedCurrent, isNull);
+      expect(r.prevTotal, 24000);
+    });
+
+    test('averages EoY projection with prev full-year total', () {
+      // Prev: 24000 expenses across 12 months evenly (2000/mo).
+      // Current: 5 months at 2200 each = 11000.
+      // prevSame (Jan-May) = 5 * 2000 = 10000.
+      // Projection = prevTotal * currentTotal / prevSame
+      //            = 24000 * 11000 / 10000 = 26400.
+      // Smoothed = (26400 + 24000) / 2 = 25200.
+      final r = estimateSmoothedAnnualExpenses(
+        current: buildCurrent(),
+        prev: buildPrev(),
+      );
+      expect(r, isNotNull);
+      expect(r!.value, closeTo(25200, 0.001));
+      expect(r.projectedCurrent, closeTo(26400, 0.001));
+      expect(r.prevTotal, 24000);
+      expect(r.projectionMonths, 5);
+    });
+
+    test('smoothed value sits between projected and prev total', () {
+      final r = estimateSmoothedAnnualExpenses(
+        current: buildCurrent(),
+        prev: buildPrev(),
+      )!;
+      final lo = r.prevTotal!;
+      final hi = r.projectedCurrent!;
+      expect(r.value, greaterThanOrEqualTo(lo < hi ? lo : hi));
+      expect(r.value, lessThanOrEqualTo(lo > hi ? lo : hi));
+    });
+  });
 }
