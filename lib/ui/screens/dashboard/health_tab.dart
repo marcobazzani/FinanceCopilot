@@ -562,7 +562,7 @@ class _KpiCardState extends State<_KpiCard> {
                                   : SelectableText(kpi.formula, style: baseStyle),
                             ),
                           ),
-                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.s.close))],
                         ),
                       );
                     },
@@ -674,7 +674,7 @@ Future<void> _showFireDialog({
     builder: (ctx) {
       return StatefulBuilder(
         builder: (ctx, setSt) {
-          final parsed = double.tryParse(controller.text.replaceAll(',', '.'));
+          final parsed = fmt.parseFlexibleNumber(controller.text);
           final effectiveSwr = (parsed != null && parsed > 0) ? parsed : currentSwr;
           final preview = computeFire(
             netWorth: netWorth,
@@ -709,7 +709,7 @@ Future<void> _showFireDialog({
                           border: const OutlineInputBorder(),
                         ),
                         validator: (v) {
-                          final n = double.tryParse((v ?? '').replaceAll(',', '.'));
+                          final n = fmt.parseFlexibleNumber(v ?? '');
                           if (n == null || n <= 0) return s.fireSwrInvalid;
                           return null;
                         },
@@ -773,7 +773,7 @@ Future<void> _showFireDialog({
               FilledButton(
                 onPressed: () async {
                   if (formKey.currentState?.validate() != true) return;
-                  final n = double.parse(controller.text.replaceAll(',', '.'));
+                  final n = fmt.parseFlexibleNumber(controller.text)!;
                   final db = ref.read(databaseProvider);
                   await db.into(db.appConfigs).insertOnConflictUpdate(
                     AppConfigsCompanion.insert(key: 'FIRE_SWR', value: n.toString()),
