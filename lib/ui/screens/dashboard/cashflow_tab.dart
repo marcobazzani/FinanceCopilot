@@ -62,10 +62,11 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
   _ChartZoom _zoomFor(int id) => _zooms.putIfAbsent(id, () => _ChartZoom());
 
   Widget _maField(TextEditingController ctl, ValueChanged<int> onChanged) {
+    final s = ref.read(appStringsProvider);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('MA:', style: TextStyle(fontSize: 12)),
+        Text(s.chartMaShort, style: const TextStyle(fontSize: 12)),
         const SizedBox(width: 4),
         SizedBox(
           width: 60,
