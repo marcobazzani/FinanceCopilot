@@ -81,33 +81,44 @@ void main() {
     return r.assetsByIsin.values.single;
   }
 
-  /// Hand-summed stats helper. Each item is (qty, price). Buys are
-  /// positive qty; sells are positive qty too (the SQL aggregates buy.qty −
-  /// sell.qty, so the sign is implicit in the event.type). totalInvested
-  /// is computed from buys only — sells don't contribute, per
-  /// `_statsQuery` in asset_service.dart.
+  /// Hand-summed stats helper. Each item is (qty, price). Buys and sells are
+  /// stored with positive qty; the SQL aggregates buy.qty − sell.qty, so the
+  /// sign comes from event.type. totalInvested is the weighted-average buy
+  /// price times remaining quantity — sells don't subtract their proceeds,
+  /// they reduce the qty whose cost we still track (cost-basis-after-sells
+  /// fix). Returns 0 for fully-closed positions.
   ({double netQty, double totalInvested}) expected({
     required List<(double qty, double price)> buys,
     required List<(double qty, double price)> sells,
   }) {
     final buyQty = buys.fold<double>(0, (s, e) => s + e.$1);
     final sellQty = sells.fold<double>(0, (s, e) => s + e.$1);
-    final invested = buys.fold<double>(0, (s, e) => s + e.$1 * e.$2);
-    return (netQty: buyQty - sellQty, totalInvested: invested);
+    final buyAmount = buys.fold<double>(0, (s, e) => s + e.$1 * e.$2);
+    final netQty = buyQty - sellQty;
+    final invested = (buyQty <= 0 || netQty <= 0) ? 0.0 : (buyAmount / buyQty) * netQty;
+    return (netQty: netQty, totalInvested: invested);
   }
 
   test('E. 5 batches buy/sell/buy/sell/buy — position crosses zero then re-opens',
       () async {
-    // Per-batch quantities (and per-share prices in EUR):
-    //   B1 buys:  5×20 @ 10  → +100  invested 1000
-    //   B2 sells: 3×20 @ 12  →  -60  invested unchanged
-    //   B3 buys:  4×20 @ 11  →  +80  invested +880 → 1880
-    //   B4 sells: 6×20 @ 13  → -120  invested unchanged
-    //   B5 buys:  2×20 @ 14  →  +40  invested +560 → 2440
+    // Per-batch quantities and per-share prices in EUR:
+    //   B1 buys:  5×20 @ 10  → +100
+    //   B2 sells: 3×20 @ 12  →  -60
+    //   B3 buys:  4×20 @ 11  →  +80
+    //   B4 sells: 6×20 @ 13  → -120
+    //   B5 buys:  2×20 @ 14  →  +40
     //
     // Running net qty: 100 → 40 → 120 → 0 → 40.
-    // Final net qty MUST be 40 (mid-stream zero must not zero-out history).
-    // totalInvested counts buys only: 1000 + 880 + 560 = 2440.
+    // Mid-stream zero must NOT zero-out history; final net qty MUST be 40.
+    //
+    // totalInvested now tracks the cost basis of the *currently held*
+    // shares (weighted-avg buy price × remaining qty), so each batch
+    // recomputes:
+    //   After B1: avg = 1000/100 = 10        → 10  × 100 = 1000.00
+    //   After B2: avg = 1000/100 = 10        → 10  × 40  =  400.00
+    //   After B3: avg = 1880/180 ≈ 10.4444   → ×120     ≈ 1253.33
+    //   After B4: net qty = 0                → 0
+    //   After B5: avg = 2440/220 ≈ 11.0909   → ×40      ≈  443.64
 
     final assetId = await importBatch('b1.csv', '''
 2024-01-05,IE0000HOLDXX,buy,20,10.00,200.00
@@ -117,10 +128,9 @@ void main() {
 2024-01-25,IE0000HOLDXX,buy,20,10.00,200.00
 ''');
 
-    // After B1: 100 shares, invested 1000.
     var stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 100, reason: 'after B1: 5×20');
-    expect(stats.totalInvested, 1000);
+    expect(stats.totalInvested, 1000.0);
     expect(stats.eventCount, 5);
 
     await importBatch('b2.csv', '''
@@ -129,12 +139,11 @@ void main() {
 2024-02-25,IE0000HOLDXX,sell,20,12.00,-240.00
 ''');
 
-    // After B2: 100 - 60 = 40 shares; invested unchanged at 1000.
     stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 40,
         reason: 'after B2 the 5 B1 buys must still be on file');
-    expect(stats.totalInvested, 1000,
-        reason: 'sells do not contribute to totalInvested');
+    expect(stats.totalInvested, 400.0,
+        reason: 'avg 10/share × 40 remaining shares');
     expect(stats.eventCount, 8);
 
     await importBatch('b3.csv', '''
@@ -144,10 +153,10 @@ void main() {
 2024-03-20,IE0000HOLDXX,buy,20,11.00,220.00
 ''');
 
-    // After B3: 40 + 80 = 120; invested 1000 + 880 = 1880.
     stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 120);
-    expect(stats.totalInvested, 1880);
+    expect(stats.totalInvested, closeTo(1253.33, 0.01),
+        reason: 'avg (1880/180) × 120 remaining');
     expect(stats.eventCount, 12);
 
     await importBatch('b4.csv', '''
@@ -159,13 +168,13 @@ void main() {
 2024-04-15,IE0000HOLDXX,sell,20,13.00,-260.00
 ''');
 
-    // After B4: 120 - 120 = 0; invested unchanged at 1880.
-    // *** Critical assertion: qty=0 mid-stream must not zero out prior buys.
+    // *** Critical assertion: qty=0 mid-stream must not zero out prior buys'
+    // raw history (they still count for the next batch's weighted-avg).
     stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 0,
         reason: 'after B4: 12 buys × 20 = 240 = 12 sells × 20');
-    expect(stats.totalInvested, 1880,
-        reason: 'invested still reflects every buy, even when net qty = 0');
+    expect(stats.totalInvested, 0,
+        reason: 'closed position has no remaining cost basis');
     expect(stats.eventCount, 18);
 
     await importBatch('b5.csv', '''
@@ -173,12 +182,13 @@ void main() {
 2024-05-15,IE0000HOLDXX,buy,20,14.00,280.00
 ''');
 
-    // After B5: 0 + 40 = 40; invested 1880 + 560 = 2440.
+    // B5 re-opens the position. Weighted-avg uses the FULL buy history
+    // (B1+B3+B5), not just B5 — same convention retail brokerages use.
     stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 40,
         reason: 'B5 must add fresh shares without wiping any of B1..B4');
-    expect(stats.totalInvested, 2440,
-        reason: '1000 + 880 + 560 (sells excluded)');
+    expect(stats.totalInvested, closeTo(443.636, 0.01),
+        reason: 'avg (2440/220) × 40 — pure weighted-avg, no reset on re-open');
     expect(stats.eventCount, 20);
 
     final hand = expected(
@@ -193,7 +203,7 @@ void main() {
       ],
     );
     expect(stats.totalQuantity, hand.netQty);
-    expect(stats.totalInvested, hand.totalInvested);
+    expect(stats.totalInvested, closeTo(hand.totalInvested, 0.01));
 
     // Final asset value via the same math `assetMarketValuesProvider` uses.
     const lastPrice = 15.0;
@@ -241,8 +251,8 @@ void main() {
     final stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 0,
         reason: '(100 + 60) − (30 + 50 + 80) = 0');
-    expect(stats.totalInvested, 1720,
-        reason: 'buys only: 1000 + 720');
+    expect(stats.totalInvested, 0,
+        reason: 'closed position: no remaining shares → no cost basis');
     expect(stats.eventCount, 5);
 
     // Closed position carries no value even with a current market price.
