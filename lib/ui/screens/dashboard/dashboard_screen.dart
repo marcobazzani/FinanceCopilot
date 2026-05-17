@@ -30,6 +30,7 @@ import '../../../services/exchange_rate_service.dart';
 import '../../../services/financial_health_service.dart';
 import '../../../services/allocation_computation_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../widgets/ath_celebration_overlay.dart';
 import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../allocation_tab.dart';
@@ -101,14 +102,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   static const _minChartHeight = 200.0;
   static const _maxChartHeight = 900.0;
 
+  /// Drives the ATH celebration overlay. Created once per Dashboard mount
+  /// so its confetti controllers and overlay entry have a clean lifetime.
+  late final AthCelebrationController _athController;
+
+  /// Index of the History tab in the [TabBarView] below. Used by the
+  /// history-tab-seen gate so the auto-fire ATH overlay only triggers
+  /// once the user has actually navigated to the History tab.
+  static const int _historyTabIndex = 1;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _athController = AthCelebrationController();
+    // History-tab gate: flip the provider once the user lands on the
+    // History tab. The listener fires per animation tick; gate on
+    // `!indexIsChanging` so we only flip when the swipe has settled.
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      if (_tabController.index != _historyTabIndex) return;
+      final notifier = ref.read(historyTabSeenThisSessionProvider.notifier);
+      if (!notifier.state) notifier.state = true;
+    });
   }
 
   @override
   void dispose() {
+    _athController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -241,6 +262,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                       allData: allData,
                       locale: locale,
                       chartRows: chartRows,
+                      athController: _athController,
                     ),
                   ],
                 ),

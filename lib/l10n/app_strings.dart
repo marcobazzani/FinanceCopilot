@@ -990,6 +990,9 @@ class AppStrings {
     AssetClass.multiAsset:  assetClassMultiAsset,
   }[c]!;
 
+  // ── ATH celebration ────────────────────────────────────────
+  String get athCelebrationTitle   => _it ? 'Nuovo Massimo Storico!'    : 'New All-Time High!';
+
   // ── Intermediaries ─────────────────────────────────────────
   String get vsATH                 => _it ? 'vs Max'                    : 'vs ATH';
   String get value                 => _it ? 'Valore'                    : 'Value';
