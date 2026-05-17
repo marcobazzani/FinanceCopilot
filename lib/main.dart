@@ -22,6 +22,7 @@ import 'services/db_transfer_service.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
+import 'utils/formatters.dart' as fmt;
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
@@ -1175,8 +1176,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                       suffixText: '%',
                     ),
                     validator: (v) {
-                      final n = double.tryParse(
-                          (v ?? '').replaceAll(',', '.'));
+                      final n = fmt.parseFlexibleNumber(v ?? '');
                       if (n == null || n < 0 || n > 100) {
                         return s.settingsTaxRateInvalid;
                       }
@@ -1296,8 +1296,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             FilledButton(
               onPressed: () async {
                 if (taxFormKey.currentState?.validate() != true) return;
-                final taxPct = double.parse(
-                    taxRateCtrl.text.replaceAll(',', '.'));
+                final taxPct = fmt.parseFlexibleNumber(taxRateCtrl.text)!;
                 final taxFraction = (taxPct / 100).clamp(0.0, 1.0);
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),

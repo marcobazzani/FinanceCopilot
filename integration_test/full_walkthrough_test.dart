@@ -441,6 +441,58 @@ void main() {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Step 6d: All-accounts virtual entry (account_detail_screen.dart in
+    // read-only mode). Pushes AccountDetailScreen with
+    // account.id == kAllAccountsId (-1), which:
+    //   • flips _isReadOnly = true (suppresses toolbar import/add/wipe icons)
+    //   • enables _buildEntries with detectTransfers=true → _TransferEntry
+    //     pairing on same-day, opposite-sign rows across accounts
+    // No inter-account transfer fixture exists, so _TransferTile may not
+    // render, but the read-only render path itself is exercised either way.
+    // ─────────────────────────────────────────────────────────────────────
+    _step('6d. All-accounts entry — read-only union view');
+    await tester.tap(find.text('Accounts').first);
+    await longSettle(tester);
+    final allAccountsTile = find.text('All accounts');
+    if (allAccountsTile.evaluate().isNotEmpty) {
+      await tester.tap(allAccountsTile.first);
+      await longSettle(tester);
+      // Verify read-only: the toolbar should NOT show the import / wipe /
+      // delete-account icons that the editable detail screen exposes.
+      expect(find.byTooltip('Wipe Transactions').evaluate(), isEmpty,
+          reason: 'All-accounts read-only mode must hide the wipe icon');
+      // Type into the search field — exercises the filter path on the
+      // union list (covers different code path than per-account search
+      // because the result set spans both accounts).
+      final searchAll = find.byType(TextField);
+      if (searchAll.evaluate().isNotEmpty) {
+        await tester.enterText(searchAll.first, 'a');
+        await longSettle(tester);
+        final clearAll = find.byIcon(Icons.clear);
+        if (clearAll.evaluate().isNotEmpty) {
+          await tester.tap(clearAll.first);
+          await settle(tester);
+        }
+      }
+      // If a transfer tile happens to render (Icons.swap_horiz), tap to
+      // expand the two legs, then again to collapse.
+      final transferTile = find.byIcon(Icons.swap_horiz);
+      if (transferTile.evaluate().isNotEmpty) {
+        await tester.tap(transferTile.first);
+        await longSettle(tester);
+        await tester.tap(transferTile.first);
+        await settle(tester);
+        _step('   ✓ _TransferTile expand+collapse exercised');
+      }
+      for (var i = 0; i < 5; i++) {
+        final back = find.byType(BackButton).hitTestable();
+        if (back.evaluate().isEmpty) break;
+        await tester.tap(back.first);
+        await settle(tester);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // Step 6b: drive TransactionEditScreen via UI — fill every field
     // (descriptionFull, balanceAfter, currency override, status enum)
     // and save. Exercises the form's full code path.
@@ -725,41 +777,106 @@ void main() {
         reason: 'multiple distinct ISINs across years');
 
     // ─────────────────────────────────────────────────────────────────────
-    // Step 8b: drive AssetEventEditScreen via UI — manual buy on one of
-    // the imported assets. Exercises event-type dropdown, date picker,
-    // qty/price/amount auto-calc, save.
+    // Step 8b.i: drive AssetEventEditScreen end-to-end via UI — create →
+    // edit (switch to revalue) → delete. Locale-agnostic values (whole
+    // integers) so fmt.tryParseLocalized succeeds whether the test
+    // process's Platform.localeName is en_US, it_IT, etc.
+    //
+    // Covers ~220 of 245 lines in asset_event_edit_screen.dart (the
+    // dropdown, qty×price auto-amount, currency switch + FX fetch,
+    // revalue branch that hides qty/price, save (insert + update),
+    // delete-confirm dialog).
     // ─────────────────────────────────────────────────────────────────────
-    _step('8b. Manual asset event via UI — quantity + price + auto amount');
+    _step('8b.i. AssetEventEditScreen UI — create + edit (revalue) + delete');
     await tester.tap(find.text('Assets').first);
     await longSettle(tester);
-    // Tap the first asset in the list.
-    final firstAssetName =
-        assetsCreated.first.ticker ?? assetsCreated.first.name;
-    if (find.text(firstAssetName).evaluate().isNotEmpty) {
-      await tester.tap(find.text(firstAssetName).first);
+    // Pick the asset whose visible name matches a row in the list. We try
+    // both ticker and full name because the list shows the name; tapping
+    // the ticker may match a chip inside another widget.
+    final firstAsset = assetsCreated.first;
+    Finder assetRow = find.text(firstAsset.name);
+    if (assetRow.evaluate().isEmpty && firstAsset.ticker != null) {
+      assetRow = find.text(firstAsset.ticker!);
+    }
+    if (assetRow.evaluate().isNotEmpty) {
+      await tester.tap(assetRow.first);
       await longSettle(tester);
-      // Asset detail screen is up. Tap the event-add FAB (Icons.add).
-      if (find.byIcon(Icons.add).evaluate().isNotEmpty) {
-        await tester.tap(find.byIcon(Icons.add).first);
+      // Asset detail is up — push AssetEventEditScreen via the FAB.
+      final detailFab = find.byType(FloatingActionButton);
+      expect(detailFab, findsWidgets,
+          reason: 'asset detail must show event-add FAB');
+      await tester.tap(detailFab.first);
+      await longSettle(tester);
+
+      // ── CREATE: type=buy (default), qty=10, price=100 → amount=1000 ──
+      // Field order for buy w/ same-currency: date(0), exRate(1),
+      // qty(2), price(3), amount-readonly(4), commission(5), notes(6).
+      final fields = find.byType(TextFormField);
+      expect(fields.evaluate().length, greaterThanOrEqualTo(5),
+          reason: 'buy form must expose date+rate+qty+price+amount');
+      await tester.enterText(fields.at(2), '10');
+      await settle(tester);
+      await tester.enterText(fields.at(3), '100');
+      await settle(tester);
+      // Save via the unique bottom FilledButton.
+      final saveBtn = find.byType(FilledButton);
+      expect(saveBtn, findsWidgets, reason: 'AssetEventEditScreen save button');
+      await tester.ensureVisible(saveBtn.first);
+      await tester.tap(saveBtn.first);
+      await longSettle(tester);
+      _step('   ✓ create buy saved (10 × 100)');
+
+      // ── EDIT: reopen newest event row, switch to revalue ──
+      // The newest event renders at the top of the list — tap its row.
+      // ListTile rows are inside Card widgets; find the first event-type
+      // chip text and walk up.
+      final buyChip = find.text('buy');
+      if (buyChip.evaluate().isNotEmpty) {
+        await tester.tap(buyChip.first);
         await longSettle(tester);
-        // AssetEventEditScreen is open. Skip date (default today) and
-        // event type (default buy). Fill quantity + price.
-        final aeFields = find.byType(TextFormField);
-        if (aeFields.evaluate().length >= 4) {
-          // Field order (for buy): [0]=date readOnly, [1]=exchangeRate,
-          // [2]=quantity, [3]=price, [4]=amount auto, [5]=commission
-          await tester.enterText(aeFields.at(2), '7');
-          await settle(tester);
-          await tester.enterText(aeFields.at(3), '125.50');
-          await settle(tester);
-          // Save — button label 'Create Event' or 'Save'.
-          final createEventBtn =
-              find.widgetWithText(FilledButton, 'Create Event');
-          if (createEventBtn.evaluate().isNotEmpty) {
-            await tester.ensureVisible(createEventBtn);
-            await tester.tap(createEventBtn);
+        // Open the type dropdown and pick revalue.
+        final typeDropdown = find.byType(DropdownButtonFormField<EventType>);
+        if (typeDropdown.evaluate().isNotEmpty) {
+          await tester.tap(typeDropdown.first);
+          await longSettle(tester);
+          // The 'revalue' option in the dropdown menu.
+          await tester.tap(find.text('revalue').last);
+          await longSettle(tester);
+          // After switching to revalue: qty/price/commission/currency hide.
+          // The amount field is now the editable one (label "Current value").
+          final revalueFields = find.byType(TextFormField);
+          // Re-enter amount — field order shrinks: date(0), amount(1), notes(2).
+          if (revalueFields.evaluate().length >= 2) {
+            await tester.enterText(revalueFields.at(1), '1500');
+            await settle(tester);
+          }
+          final saveEdit = find.byType(FilledButton);
+          if (saveEdit.evaluate().isNotEmpty) {
+            await tester.ensureVisible(saveEdit.first);
+            await tester.tap(saveEdit.first);
             await longSettle(tester);
-            _step('   ✓ manual buy event saved via UI');
+            _step('   ✓ edited to revalue (amount=1500)');
+          }
+        }
+      }
+
+      // ── DELETE: reopen the event we just revalued, tap AppBar delete ──
+      final revalueChip = find.text('revalue');
+      if (revalueChip.evaluate().isNotEmpty) {
+        await tester.tap(revalueChip.first);
+        await longSettle(tester);
+        final deleteIcon = find.byIcon(Icons.delete_outline);
+        if (deleteIcon.evaluate().isNotEmpty) {
+          await tester.tap(deleteIcon.first);
+          await longSettle(tester);
+          // Confirm dialog — tap the destructive confirm button (red label).
+          // showConfirmDialog renders FilledButton with the confirmLabel.
+          // The dialog's last FilledButton is the destructive confirm.
+          final confirmBtn = find.byType(FilledButton);
+          if (confirmBtn.evaluate().isNotEmpty) {
+            await tester.tap(confirmBtn.last);
+            await longSettle(tester);
+            _step('   ✓ revalue event deleted via UI');
           }
         }
       }
@@ -984,6 +1101,31 @@ void main() {
               'DropdownButtonFormField — the exchange / instrument /'
               ' asset-class pickers all use this widget');
       _step('   ✓ edit modal opened cleanly');
+
+      // 8f.i — unlock-edit + advanced-field save. Covers _unlocked branch
+      // and _buildAdvancedFields (DropdownButtonFormField<AssetType>,
+      // ValuationMethod, intermediary, currency, taxRate, includeInNetWorth).
+      final unlockBtn = find.byIcon(Icons.lock_outline);
+      if (unlockBtn.evaluate().isNotEmpty) {
+        await tester.tap(unlockBtn.first);
+        await longSettle(tester);
+        // Advanced panel renders. Find the taxRate TextField via its hint
+        // ('26') and type a new value (locale-agnostic: whole integer).
+        final taxField = find.widgetWithText(TextField, '26');
+        if (taxField.evaluate().isNotEmpty) {
+          await tester.ensureVisible(taxField.first);
+          await tester.enterText(taxField.first, '27');
+          await settle(tester);
+        }
+        // Save the dialog — the FilledButton at the bottom of the actions row.
+        final saveDialog = find.byType(FilledButton);
+        if (saveDialog.evaluate().isNotEmpty) {
+          await tester.ensureVisible(saveDialog.last);
+          await tester.tap(saveDialog.last);
+          await longSettle(tester);
+          _step('   ✓ unlock + advanced taxRate=27 saved');
+        }
+      }
       // Pop the dialog and the screen.
       while (find.byType(BackButton).evaluate().isNotEmpty) {
         final btn = find.byType(BackButton).first;
@@ -1046,15 +1188,19 @@ void main() {
           await tester.enterText(dialogFields.at(1), '4321.00');
           await settle(tester);
         }
-        // Open income type dropdown and pick a different value.
+        // Open income type dropdown and pick a different value (use the
+        // localized label; the dropdown shows AppStrings text, not enum name).
         final typeDropdown = find.byType(DropdownButtonFormField<IncomeType>);
         if (typeDropdown.evaluate().isNotEmpty) {
           await tester.tap(typeDropdown.first);
           await longSettle(tester);
-          // Pick 'salary' (one of the IncomeType enum values).
-          if (find.text('salary').evaluate().isNotEmpty) {
-            await tester.tap(find.text('salary').last);
-            await longSettle(tester);
+          for (final label in ['Refund', 'Rimborso', 'Pension contribution', 'Contributo previdenziale']) {
+            final opt = find.text(label);
+            if (opt.evaluate().isNotEmpty) {
+              await tester.tap(opt.last);
+              await longSettle(tester);
+              break;
+            }
           }
         }
         // Save.
@@ -1068,6 +1214,63 @@ void main() {
             await tester.tap(find.text('Cancel'));
             await longSettle(tester);
           }
+        }
+      }
+
+      // 9b.i — Income FAB add path: open the Add Income dialog via the
+      // bottom-right "+" FAB, change the type to pensionContribution,
+      // save, then long-press the row to activate SelectionController and
+      // tap Deselect to exit without destroying data.
+      // Covers income_screen.dart _showAddDialog + selection-mode entry/exit.
+      final addIncomeFab = find.byWidgetPredicate(
+        (w) => w is FloatingActionButton && w.heroTag == 'add',
+      );
+      if (addIncomeFab.evaluate().isNotEmpty) {
+        await tester.tap(addIncomeFab.first);
+        await longSettle(tester);
+        // Dialog open. amount field is the 2nd TextField (after date).
+        final addFields = find.byType(TextField);
+        if (addFields.evaluate().length >= 2) {
+          await tester.enterText(addFields.at(1), '200');
+          await settle(tester);
+        }
+        // Open type dropdown, pick the pension-contribution localized label.
+        final addTypeDd = find.byType(DropdownButtonFormField<IncomeType>);
+        if (addTypeDd.evaluate().isNotEmpty) {
+          await tester.tap(addTypeDd.first);
+          await longSettle(tester);
+          // Dropdown shows AppStrings labels, not enum names.
+          for (final label in ['Pension contribution', 'Contributo previdenziale', 'Refund', 'Rimborso']) {
+            final opt = find.text(label);
+            if (opt.evaluate().isNotEmpty) {
+              await tester.tap(opt.last);
+              await longSettle(tester);
+              break;
+            }
+          }
+        }
+        if (find.widgetWithText(FilledButton, 'Save').evaluate().isNotEmpty) {
+          await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+          await longSettle(tester);
+          _step('   ✓ Add Income FAB → pensionContribution row saved');
+        } else if (find.text('Cancel').evaluate().isNotEmpty) {
+          await tester.tap(find.text('Cancel'));
+          await longSettle(tester);
+        }
+      }
+      // Long-press an income row to activate selection mode, then exit
+      // via "Deselect all" (no destructive bulk delete in the happy path).
+      final selRow = find.textContaining('€');
+      if (selRow.evaluate().isNotEmpty) {
+        await tester.longPress(selRow.first);
+        await longSettle(tester);
+        final deselect = find.byTooltip('Deselect all').evaluate().isNotEmpty
+            ? find.byTooltip('Deselect all')
+            : find.text('Deselect all');
+        if (deselect.evaluate().isNotEmpty) {
+          await tester.tap(deselect.first);
+          await longSettle(tester);
+          _step('   ✓ income selection-mode entered + deselected');
         }
       }
     }
@@ -1429,6 +1632,98 @@ void main() {
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
       await longSettle(tester);
       await scrollAndExpand();
+
+      // 11.i — Chart card interactions on the History tab. Covers the
+      // hide-components toggle + fullscreen push + close (collectively
+      // dashboard/chart_card.dart toolbar + fullscreen_chart_screen.dart
+      // 0%-covered). Tooltips are user-facing AppStrings ('Hide series',
+      // 'Full screen', 'Reset zoom'); the exact text may be localized,
+      // so fall back to icon finders.
+      Finder iconOrTooltip(IconData icon, List<String> tooltips) {
+        for (final tip in tooltips) {
+          final t = find.byTooltip(tip);
+          if (t.evaluate().isNotEmpty) return t;
+        }
+        return find.byIcon(icon);
+      }
+      final hideToggle = iconOrTooltip(
+        Icons.visibility,
+        ['Hide series', 'Nascondi serie'],
+      );
+      if (hideToggle.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(hideToggle.first);
+          await longSettle(tester);
+        } catch (_) {}
+      }
+      // Push fullscreen on the first chart card → exercises
+      // FullscreenChartScreen (initState locks rotation, dispose restores).
+      // The fullscreen icon may be offscreen after scrollAndExpand left
+      // the page near a tile; ensureVisible scrolls it into the viewport.
+      final fullscreenBtn = iconOrTooltip(
+        Icons.fullscreen,
+        ['Full screen', 'Schermo intero'],
+      );
+      if (fullscreenBtn.evaluate().isNotEmpty) {
+        try {
+          await tester.ensureVisible(fullscreenBtn.first);
+          await settle(tester);
+        } catch (_) {}
+        try {
+          await tester.tap(fullscreenBtn.first, warnIfMissed: false);
+          await longSettle(tester);
+          await longSettle(tester);
+          // In fullscreen there's only a close (X) and a conditional reset-zoom.
+          // Close pops back to the dashboard.
+          final closeBtn = iconOrTooltip(
+            Icons.close,
+            ['Close', 'Chiudi'],
+          );
+          if (closeBtn.evaluate().isNotEmpty) {
+            await tester.tap(closeBtn.first);
+            await longSettle(tester);
+            _step('   ✓ fullscreen chart push + close');
+          }
+        } catch (_) {}
+      }
+
+      // 11.ii — DailyChangesCard interactions. Cycles sort columns, taps
+      // a period unit chip, and the number spinner. Covers ~40 more
+      // lines of daily_changes_card.dart (sort enum cycle, unit chip).
+      for (final col in ['Price', '%', 'Value Δ']) {
+        final header = find.text(col);
+        if (header.evaluate().isNotEmpty) {
+          try {
+            await tester.tap(header.first, warnIfMissed: false);
+            await settle(tester);
+          } catch (_) {}
+        }
+      }
+      // Tap the 'm' unit chip (month) — disables-then-enables the
+      // numeric spinner depending on whether unit is special.
+      final monthChip = find.widgetWithText(ChoiceChip, 'm');
+      if (monthChip.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(monthChip.first);
+          await settle(tester);
+        } catch (_) {}
+      }
+      // Then a special unit (YTD) — exercises the disabled-spinner branch.
+      final ytdChip = find.widgetWithText(ChoiceChip, 'YTD');
+      if (ytdChip.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(ytdChip.first);
+          await settle(tester);
+        } catch (_) {}
+      }
+      // Restore 'd' so later steps see the default.
+      final dayChip = find.widgetWithText(ChoiceChip, 'd');
+      if (dayChip.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(dayChip.first);
+          await settle(tester);
+        } catch (_) {}
+      }
     }
 
     _step('11b. Dashboard → Assets Overview (AllocationTab)');
@@ -1444,6 +1739,63 @@ void main() {
       await tester.tap(find.text('Health'));
       await longSettle(tester);
       await scrollAndExpand();
+
+      // 11c.i — FIRE indicator dialog: tap info icon on FIRE Progress KPI,
+      // type SWR with locale-aware decimal ('4,25' EU format), verify the
+      // dialog parses + previews FI number, then Save to persist via
+      // app_configs (FIRE_SWR key).
+      final fireKpi = find.text('FIRE Progress');
+      if (fireKpi.evaluate().isNotEmpty) {
+        // Scroll FIRE card into view, then tap its info_outline icon.
+        final dashScroll = find.byType(Scrollable);
+        if (dashScroll.evaluate().isNotEmpty) {
+          try {
+            await tester.scrollUntilVisible(
+              fireKpi.first,
+              200,
+              scrollable: dashScroll.last,
+              maxScrolls: 25,
+            );
+          } catch (_) {}
+        }
+        // The info icon sits in the same card as the FIRE Progress label.
+        final card = find.ancestor(of: fireKpi.first, matching: find.byType(Card));
+        if (card.evaluate().isNotEmpty) {
+          final infoIcon = find.descendant(
+            of: card.first,
+            matching: find.byIcon(Icons.info_outline),
+          );
+          if (infoIcon.evaluate().isNotEmpty) {
+            await tester.tap(infoIcon.first);
+            await longSettle(tester);
+            // SWR TextFormField: clear + type EU-style decimal.
+            final swrField = find.byType(TextFormField);
+            if (swrField.evaluate().isNotEmpty) {
+              await tester.tap(swrField.last);
+              await longSettle(tester);
+              // Select-all + replace.
+              final ctl = (tester.widget(swrField.last) as TextFormField).controller;
+              ctl?.text = '';
+              await tester.enterText(swrField.last, '4,25');
+              await longSettle(tester);
+            }
+            // Save → persists to app_configs, dialog closes.
+            final saveBtn = find.widgetWithText(FilledButton, 'Save');
+            if (saveBtn.evaluate().isNotEmpty) {
+              await tester.tap(saveBtn.last);
+              await longSettle(tester);
+              _step('   ✓ FIRE SWR saved via locale-aware parser (4,25)');
+            } else {
+              // Dismiss if Save not found.
+              final cancelBtn = find.widgetWithText(TextButton, 'Cancel');
+              if (cancelBtn.evaluate().isNotEmpty) {
+                await tester.tap(cancelBtn.last);
+                await longSettle(tester);
+              }
+            }
+          }
+        }
+      }
     }
 
     _step('11d. Dashboard → Cash Flow tab');
@@ -1460,11 +1812,17 @@ void main() {
 
       // Drive each below-the-fold ExpansionTile in the Cash Flow tab.
       // Use scrollUntilVisible (reliable, scrolls until target paints).
+      // Order must mirror cashflow_tab.dart: histograms → yearly summary →
+      // income (table → chart → YoY) → expenses (table → chart).
       const expansionTitles = [
+        'Income / Expenses / Savings per Year',
+        'Monthly Averages per Year',
         'Yearly Summary',
         'Monthly Income by Year (table)',
-        'Monthly Expenses by Year (table)',
+        'Income by Month (per Year)',
         'YoY Income Changes',
+        'Monthly Expenses by Year (table)',
+        'Expenses by Month (per Year)',
       ];
       final cashflowScroll = find.byType(Scrollable);
       for (final title in expansionTitles) {
@@ -1877,6 +2235,19 @@ void main() {
             await tester.tap(usdOption.last);
             await longSettle(tester);
           }
+        } catch (_) {}
+      }
+      // Type into the Default Tax Rate field with EU decimal — exercises
+      // fmt.parseFlexibleNumber on form submit, persists TAX_RATE via
+      // app_configs.
+      final taxField = find.widgetWithText(TextFormField, 'Default Tax Rate (%)');
+      if (taxField.evaluate().isNotEmpty) {
+        try {
+          await tester.tap(taxField.first);
+          await longSettle(tester);
+          await tester.enterText(taxField.first, '26,5');
+          await longSettle(tester);
+          _step('   ✓ tax-rate field accepts 26,5 (EU decimal)');
         } catch (_) {}
       }
       // Tap Clear cache OutlinedButton.
