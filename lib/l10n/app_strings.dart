@@ -1007,6 +1007,7 @@ class AppStrings {
   String get selectIntermediaryEmpty => _it ? 'Nessun intermediario. Creane uno per procedere.' : 'No intermediary yet. Create one to continue.';
   String get close                 => _it ? 'Chiudi'                    : 'Close';
   String get fullscreen            => _it ? 'Schermo intero'             : 'Full screen';
+  String get chartMaShort          => _it ? 'MM:'                        : 'MA:';
 
   // ── Multi-select ─────────────────────────────────────────
   String nSelected(int n)          => _it ? '$n selezionati'            : '$n selected';

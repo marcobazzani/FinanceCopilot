@@ -62,10 +62,11 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
   _ChartZoom _zoomFor(int id) => _zooms.putIfAbsent(id, () => _ChartZoom());
 
   Widget _maField(TextEditingController ctl, ValueChanged<int> onChanged) {
+    final s = ref.read(appStringsProvider);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('MA:', style: TextStyle(fontSize: 12)),
+        Text(s.chartMaShort, style: const TextStyle(fontSize: 12)),
         const SizedBox(width: 4),
         SizedBox(
           width: 60,
@@ -224,43 +225,43 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
           () {
             final s = ref.watch(appStringsProvider);
             return Column(children: [
-              // Chart 4 equivalent: yearly totals bar chart (Expenses + Savings per year)
+              // Yearly totals bar chart (Expenses + Savings per year)
               ExpansionTile(
                 title: Text(s.chartYearlyBarTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                 initiallyExpanded: true,
                 children: [_YearlyBarChart(data: ieData, locale: locale, language: widget.language)],
               ),
-              // Chart 2 equivalent: monthly averages bar chart per year
+              // Monthly averages bar chart per year
               ExpansionTile(
                 title: Text(s.chartMonthlyAvgTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyAvgBarChart(data: ieData, locale: locale, language: widget.language)],
+                children: [_YearlyBarChart(data: ieData, locale: locale, language: widget.language, monthly: true)],
               ),
-              // Chart 3 equivalent: monthly income by year (x=months, one line per year)
-              ExpansionTile(
-                title: Text(s.chartMonthlyIncomeTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'income')],
-              ),
-              // Chart 5 equivalent: monthly expenses by year (x=months, recent years)
-              ExpansionTile(
-                title: Text(s.chartMonthlyExpensesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
-              ),
-              // Tables
+              // Yearly summary table
               ExpansionTile(
                 title: Text(s.chartYearlySummaryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                 children: [_YearlySummaryTable(data: ieData, locale: locale)],
               ),
+              // Income: table → histogram → YoY changes
               ExpansionTile(
                 title: Text(s.chartMonthlyIncTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                 children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'income')],
               ),
               ExpansionTile(
-                title: Text(s.chartMonthlyExpTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
-                children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
+                title: Text(s.chartMonthlyIncomeTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'income', histogram: true)],
               ),
               ExpansionTile(
                 title: Text(s.chartYoYTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
                 children: [_YoYDiffTable(data: ieData, locale: locale, language: widget.language)],
+              ),
+              // Expenses: monthly grid + line chart
+              ExpansionTile(
+                title: Text(s.chartMonthlyExpTableTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                children: [_MonthlyGrid(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
+              ),
+              ExpansionTile(
+                title: Text(s.chartMonthlyExpensesTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                children: [_MonthlyByYearLineChart(data: ieData, locale: locale, language: widget.language, field: 'expenses')],
               ),
               const SizedBox(height: 24),
             ]);
