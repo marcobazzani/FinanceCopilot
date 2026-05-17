@@ -93,10 +93,15 @@ void main() {
     expect(stats.totalQuantity, isNot(598),
         reason: 'reporter saw 598 (399 + 199) when sells are double-negated');
 
-    // Sanity: totalInvested counts buys only (sells excluded), uses ABS so
-    // sign convention doesn't matter for this field.
-    expect(stats.totalInvested, 4288,
-        reason: 'buys only: 2000 + 1100 + 1188');
+    // Cost basis of the remaining 200 shares is the weighted-average buy
+    // price × remaining qty — the sale at 13/14 EUR/share doesn't subtract
+    // its proceeds from invested, it reduces the qty whose cost we track.
+    //   total buy amount = 2000 + 1100 + 1188 = 4288
+    //   total buy qty    = 200 + 100 + 99    = 399
+    //   avg cost / share = 4288 / 399        ≈ 10.7469
+    //   invested         = 10.7469 × 200     ≈ 2149.37
+    expect(stats.totalInvested, closeTo(2149.37, 0.01),
+        reason: 'weighted-avg cost basis of remaining 200 shares');
   });
 
   test('sells with NEGATIVE amount + POSITIVE qty + type — already correct',
@@ -136,6 +141,56 @@ void main() {
     final assetId = result.assetsByIsin['IT0000POSQTY']!;
     final stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 200);
-    expect(stats.totalInvested, 4288);
+    // Same weighted-avg cost basis as the negative-qty case above: this
+    // shape is just a different storage convention for the identical
+    // economic position, so the displayed cost basis must match.
+    expect(stats.totalInvested, closeTo(2149.37, 0.01));
+  });
+
+  test('"From sign (+/-)" detection: no type column, qty negative on sells',
+      () async {
+    // Mirror the wizard's "From sign" detection — no `type` column mapped,
+    // event type inferred from the qty/amount sign in import_service.dart
+    // (`negativeIsBuy = false`). Source uses negative qty for sells. With
+    // the qty.abs() fix at write time, this path produces the same canonical
+    // rows as the "From column" path, so the same 200-share / 2149.37-EUR
+    // expectation holds.
+    final file = File('${tempDir.path}/sign_mode.csv');
+    file.writeAsStringSync('''date,isin,quantity,price,amount
+2024-01-15,IT0000SIGNMD,200,10.00,2000.00
+2024-02-15,IT0000SIGNMD,100,11.00,1100.00
+2024-03-15,IT0000SIGNMD,99,12.00,1188.00
+2024-04-15,IT0000SIGNMD,-100,13.00,-1300.00
+2024-05-15,IT0000SIGNMD,-99,14.00,-1386.00
+''');
+
+    final capped = await importer.parseFile(file.path);
+    final preview = await importer.getFullRows(capped);
+    final result = await importer.importAssetEventsGrouped(
+      preview: preview,
+      mappings: const [
+        ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+        // intentionally NO 'type' mapping — exercises sign-based inference
+        ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+        ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+        ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+      ],
+      baseCurrency: 'EUR',
+      intermediaryId: intermediaryId,
+    );
+    expect(result.result.errorRows, 0,
+        reason: 'errors: ${result.result.errors}');
+    expect(result.result.importedRows, 5);
+
+    final assetId = result.assetsByIsin['IT0000SIGNMD']!;
+    final stats = (await assetService.getStatsForAll())[assetId]!;
+
+    // Verify the SQL aggregated sells correctly (would have been 598 if the
+    // qty.abs() write + ABS() SQL pair were missing).
+    expect(stats.totalQuantity, 200,
+        reason: 'sign-mode inference + qty.abs() must yield correct net');
+    expect(stats.totalInvested, closeTo(2149.37, 0.01),
+        reason: 'weighted-avg cost basis of remaining 200 shares');
   });
 }

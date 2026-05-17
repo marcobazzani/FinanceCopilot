@@ -69,7 +69,11 @@ void main() {
       price: 1.0,
       currency: 'EUR',
     );
-    // Sell: must be excluded from total_invested
+    // Sell: 5 units. After the cost-basis-after-sells fix, totalInvested
+    // is weighted-avg × remaining qty (not the gross buy sum):
+    //   buy totals  = 300 EUR / 210 units → 1.42857 EUR/unit
+    //   remaining   = 10 + 200 − 5 = 205 units
+    //   invested    = 1.42857 × 205 ≈ 292.857
     await eventService.create(
       assetId: assetId,
       date: DateTime(2024, 3, 15),
@@ -82,7 +86,8 @@ void main() {
 
     final stats = await assetService.getStatsForAll();
     expect(stats[assetId], isNotNull);
-    expect(stats[assetId]!.totalInvested, 300.00); // 100 buy + 200 contribute
+    expect(stats[assetId]!.totalInvested, closeTo(292.857, 0.01),
+        reason: 'weighted-avg cost basis of remaining 205 units');
     expect(stats[assetId]!.eventCount, 3);
   });
 
