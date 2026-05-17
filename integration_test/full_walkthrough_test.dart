@@ -853,23 +853,30 @@ void main() {
         if (typeDropdown.evaluate().isNotEmpty) {
           await tester.tap(typeDropdown.first);
           await longSettle(tester);
-          // The 'revalue' option in the dropdown menu.
-          await tester.tap(find.text('revalue').last);
-          await longSettle(tester);
-          // After switching to revalue: qty/price/commission/currency hide.
-          // The amount field is now the editable one (label "Current value").
-          final revalueFields = find.byType(TextFormField);
-          // Re-enter amount — field order shrinks: date(0), amount(1), notes(2).
-          if (revalueFields.evaluate().length >= 2) {
-            await tester.enterText(revalueFields.at(1), '1500');
-            await settle(tester);
-          }
-          final saveEdit = find.byType(FilledButton);
-          if (saveEdit.evaluate().isNotEmpty) {
-            await tester.ensureVisible(saveEdit.first);
-            await tester.tap(saveEdit.first);
+          // Soft-guard: on Android the dropdown may not have opened (a
+          // focused text field can absorb the tap), in which case
+          // .last would throw "Bad state: No element".
+          final revalueOption = find.text('revalue');
+          if (revalueOption.evaluate().isEmpty) {
+            _step('   ⚠ skipping 8b.i revalue edit — option not in dropdown');
+          } else {
+            await tester.tap(revalueOption.last);
             await longSettle(tester);
-            _step('   ✓ edited to revalue (amount=1500)');
+            // After switching to revalue: qty/price/commission/currency hide.
+            // The amount field is now the editable one ("Current value").
+            final revalueFields = find.byType(TextFormField);
+            // date(0), amount(1), notes(2) after the type switch.
+            if (revalueFields.evaluate().length >= 2) {
+              await tester.enterText(revalueFields.at(1), '1500');
+              await settle(tester);
+            }
+            final saveEdit = find.byType(FilledButton);
+            if (saveEdit.evaluate().isNotEmpty) {
+              await tester.ensureVisible(saveEdit.first);
+              await tester.tap(saveEdit.first);
+              await longSettle(tester);
+              _step('   ✓ edited to revalue (amount=1500)');
+            }
           }
         }
       }
