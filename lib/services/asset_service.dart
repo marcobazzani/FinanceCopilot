@@ -120,12 +120,17 @@ class AssetService {
 
   // first/last date use value_date per CLAUDE.md (canonical "money moved"
   // date for display). operation_date is only for import dedup.
+  //
+  // ABS(quantity): event.type encodes direction; the source row's sign on
+  // quantity is irrelevant. Some broker exports (Directa, Fineco, IB-style)
+  // store sells with negative quantity. Without ABS, `-COALESCE(-199, 0)`
+  // adds +199 instead of subtracting 199. See issue #77.
   static const _statsQuery =
       'SELECT asset_id, COUNT(*) AS cnt, '
       'MIN(value_date) AS first_date, MAX(value_date) AS last_date, '
       "SUM(CASE WHEN type = 'buy' THEN ABS(amount) ELSE 0 END) AS total_invested, "
-      "SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-      "         WHEN type = 'sell' THEN -COALESCE(quantity, 0) "
+      "SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
+      "         WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) "
       '         ELSE 0 END) AS total_qty '
       'FROM asset_events GROUP BY asset_id';
 

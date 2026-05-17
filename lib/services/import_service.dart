@@ -889,13 +889,17 @@ class ImportService {
           attachedFees++;
         }
 
+        // Normalize qty to its absolute value. event.type carries direction;
+        // some broker exports (Directa, Fineco, IB) store sells with negative
+        // quantity, which would double-negate in the stats aggregation. See
+        // issue #77.
         companions.add(AssetEventsCompanion.insert(
           assetId: assetId,
           date: date,
           valueDate: valueDate,
           type: eventType,
           amount: amount,
-          quantity: Value(effectiveQty),
+          quantity: Value(effectiveQty?.abs()),
           price: Value(effectivePrice),
           currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
           exchangeRate: Value(rate),
