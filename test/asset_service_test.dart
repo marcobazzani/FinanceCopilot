@@ -307,7 +307,12 @@ void main() {
           reason: 'lastDate must be the latest valueDate, ignoring operationDate');
     });
 
-    test('sell events reduce totalQuantity', () async {
+    test('sell events reduce totalQuantity and shrink cost basis proportionally',
+        () async {
+      // 10 shares bought for 1000 (= 100/share weighted-avg), 3 sold.
+      // Remaining cost basis is 7 × 100 = 700, NOT the all-time 1000.
+      // Sale proceeds (300) don't flow into totalInvested — that's a
+      // realised cash event, separate from unrealised-position cost.
       final assetId = await service.create(name: 'BuySell', currency: 'EUR', intermediaryId: iid);
 
       await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
@@ -330,8 +335,68 @@ void main() {
       final stats = await service.getStatsForAll();
       final s = stats[assetId]!;
       expect(s.eventCount, 2);
-      expect(s.totalInvested, 1000.0); // only buy counts
+      expect(s.totalInvested, 700.0,
+          reason: 'weighted-avg 100/share × 7 remaining shares');
       expect(s.totalQuantity, 7.0); // 10 - 3
+    });
+
+    test('fully closed position has zero cost basis', () async {
+      // Once every share is sold, totalInvested must collapse to 0 —
+      // there's no remaining position to hold an unrealised gain against.
+      final assetId = await service.create(name: 'Closed', currency: 'EUR', intermediaryId: iid);
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: const Value(10.0),
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 6, 1),
+        type: EventType.sell,
+        amount: 1200.0,
+        quantity: const Value(10.0),
+      ));
+      final stats = await service.getStatsForAll();
+      final s = stats[assetId]!;
+      expect(s.totalQuantity, 0);
+      expect(s.totalInvested, 0,
+          reason: 'closed position carries no unrealised cost basis');
+    });
+
+    test('cash-only events fall back to gross buy sum', () async {
+      // No per-share quantity on buys (e.g. pension cash deposits before
+      // the A3 auto-fill applies, or manual entries). Weighted-avg cannot
+      // be computed; the gross deposit total is the only meaningful figure.
+      final assetId = await service.create(
+        name: 'Cash-only',
+        currency: 'EUR',
+        intermediaryId: iid,
+        valuationMethod: ValuationMethod.eventDriven,
+      );
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 500.0,
+      ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+        assetId: assetId,
+        date: DateTime(2024, 2, 1),
+        valueDate: DateTime(2024, 2, 1),
+        type: EventType.buy,
+        amount: 300.0,
+      ));
+      final stats = await service.getStatsForAll();
+      final s = stats[assetId]!;
+      expect(s.totalQuantity, 0,
+          reason: 'no qty data → totalQty stays at 0');
+      expect(s.totalInvested, 800.0,
+          reason: 'gross sum of buy amounts, used as fallback');
     });
 
     test('revalue events do not affect quantity or invested', () async {

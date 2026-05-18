@@ -24,7 +24,6 @@ class _MonthlyGrid extends ConsumerWidget {
     final years = data.years;
     final yearLabels = years.map((y) => y.year).toList();
 
-    // avg column: average per year for each month
     final borderSide = BorderSide(color: theme.dividerColor, width: 0.5);
     final headerBorder = TableBorder(
       horizontalInside: borderSide,
@@ -51,7 +50,6 @@ class _MonthlyGrid extends ConsumerWidget {
               _th(s.colMonth),
               for (final y in yearLabels)
                 _th('$y${y == now.year ? "*" : ""}'),
-              _th(s.colAvg),
             ],
           ),
           // Month rows
@@ -69,11 +67,6 @@ class _MonthlyGrid extends ConsumerWidget {
                   );
                 }),
               ],
-              Builder(builder: (ctx) {
-                final vals = years.map((y) => value(y, m)).where((v) => !v.isNaN).toList();
-                final avg = vals.isEmpty ? null : vals.reduce((a, b) => a + b) / vals.length;
-                return _tdPrivacy(avg == null ? '\u2014' : '${amtFmt.format(avg)} $sym');
-              }),
             ]),
           ],
           // Total row
@@ -88,11 +81,6 @@ class _MonthlyGrid extends ConsumerWidget {
                     dimmed: y.year == now.year, bold: true);
                 }),
               ],
-              Builder(builder: (ctx) {
-                final vals = years.map((y) => field == 'income' ? y.income : y.expenses).toList();
-                final avg = vals.isEmpty ? null : vals.reduce((a, b) => a + b) / vals.length;
-                return _tdPrivacy(avg == null ? '\u2014' : '${amtFmt.format(avg)} $sym', bold: true);
-              }),
             ],
           ),
         ],

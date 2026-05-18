@@ -66,6 +66,9 @@ dependencies:
   logging: ^1.3.0
   receive_sharing_intent: ^1.8.1
 
+  # ATH celebration overlay particles (no native plugins, pure Dart)
+  confetti: ^0.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

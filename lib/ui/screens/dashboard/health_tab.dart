@@ -21,6 +21,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final allDataAsync = ref.watch(allSeriesDataProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
+    final swrPct = ref.watch(fireSwrProvider).value ?? kDefaultFireSwrPct;
 
     // Price changes for Today, YTD, All — use midnight dates to match History tab
     final now = DateTime.now();
@@ -28,8 +29,6 @@ class _FinancialHealthTab extends ConsumerWidget {
     final todayChanges = ref.watch(assetDailyChangesProvider(today.subtract(const Duration(days: 1))));
     final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, 1, 1)));
     final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
-    final isPrivate = ref.watch(privacyModeProvider);
-
     final pctFmt = NumberFormat('0.00', locale);
 
     // Wait for all required data before rendering — avoids flicker with zeros
@@ -60,6 +59,10 @@ class _FinancialHealthTab extends ConsumerWidget {
         final liquidInvestments = allData == null
             ? 0.0
             : _DashboardScreenState.valueForRole('liquid_investments', userCharts, allData, activeAssets);
+        // After-tax Net Asset Value — drives the FIRE indicator.
+        final netAssetValue = allData == null
+            ? 0.0
+            : _DashboardScreenState.valueForRole('net_asset_value', userCharts, allData, activeAssets);
 
         // Current year for savings/expenses. Rolling 12m for income-to-wealth.
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
@@ -90,6 +93,87 @@ class _FinancialHealthTab extends ConsumerWidget {
           annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
           s: s, locale: locale,
         );
+
+        // ── FIRE KPI: appended to the Wealth category ──
+        //
+        // Base = Net Asset Value (after-tax) — driven by the configured
+        // `net_asset_value` role chart or its synthesized fallback.
+        // The current calendar year is not consolidated, so use a smoothed
+        // expense estimate = avg(EoY projection, full last year). When no
+        // prior year is available the KPI is marked N/A — using YTD-only
+        // would understate expenses and overstate FIRE progress.
+        final amtFmt = fmt.amountFormat(locale);
+        final netWorth = netAssetValue;
+        SmoothedAnnualExpenses? smoothed;
+        if (ieData != null && ieData.years.isNotEmpty) {
+          final cur = ieData.years.last;
+          final prev = ieData.years.length >= 2
+              ? ieData.years[ieData.years.length - 2]
+              : null;
+          smoothed = estimateSmoothedAnnualExpenses(
+            current: _toEoyYear(cur),
+            prev: prev == null ? null : _toEoyYear(prev),
+          );
+        }
+        final fireExpenses = smoothed?.value ?? 0;
+        final fire = computeFire(
+          netWorth: netWorth,
+          annualExpenses: fireExpenses,
+          swrPct: swrPct,
+        );
+        final swrFmt = NumberFormat('0.00', locale);
+        String fireFormula() {
+          if (fire.insufficientData) return 'SWR = ${swrFmt.format(swrPct)}%';
+          final lines = <String>[
+            '${s.fireExpensesEstimateLabel}: ${amtFmt.format(fireExpenses)}',
+          ];
+          if (smoothed!.projectedCurrent != null && smoothed.prevTotal != null) {
+            lines.add(
+              '  = (${s.fireProjectedCurrent}: '
+              '${amtFmt.format(smoothed.projectedCurrent!)} + '
+              '${s.fireLastYearTotal}: ${amtFmt.format(smoothed.prevTotal!)}) / 2',
+            );
+          } else if (smoothed.prevTotal != null) {
+            lines.add('  = ${s.fireLastYearTotal}: ${amtFmt.format(smoothed.prevTotal!)}');
+          }
+          lines.add('');
+          lines.add(
+            '${s.fireNumberLabel} = ${s.fireExpensesEstimateLabel} / SWR\n'
+            '${amtFmt.format(fireExpenses)} / ${swrFmt.format(swrPct)}% '
+            '= ${amtFmt.format(fire.fiNumber)}',
+          );
+          lines.add(
+            '${s.fireProgressLabel}: ${amtFmt.format(netWorth)} / '
+            '${amtFmt.format(fire.fiNumber)} '
+            '= ${swrFmt.format(fire.progressPct)}%',
+          );
+          return lines.join('\n');
+        }
+        final fireKpi = HealthKpi(
+          name: s.kpiFireProgress,
+          value: fire.insufficientData ? null : fire.progressPct,
+          rating: fire.rating,
+          description: fire.insufficientData
+              ? s.kpiFireInsufficientData()
+              : s.kpiFireDesc(
+                  fire.rating == Rating.ottimo ? 'ottimo'
+                  : fire.rating == Rating.buono ? 'buono'
+                  : fire.rating == Rating.sufficiente ? 'sufficiente'
+                  : 'scarso',
+                ),
+          formula: fireFormula(),
+        );
+        categories = [
+          for (final cat in categories)
+            if (cat.name == s.healthCatWealth)
+              KpiCategory(
+                name: cat.name,
+                kpis: [...cat.kpis, fireKpi],
+                overallRating: categoryRating([...cat.kpis, fireKpi]),
+              )
+            else
+              cat,
+        ];
 
         // Augment the Savings Rate KPI's info dialog with an EoY projection
         // (formerly shown as the "EOY~" row in the Yearly Summary table).
@@ -196,7 +280,6 @@ class _FinancialHealthTab extends ConsumerWidget {
                 overallRating: overallRating,
                 categories: allCategories,
                 s: s,
-                isPrivate: isPrivate,
               ),
               const SizedBox(height: 24),
 
@@ -211,7 +294,23 @@ class _FinancialHealthTab extends ConsumerWidget {
                 const SizedBox(height: 8),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final cards = cat.kpis.map((kpi) => _KpiCard(kpi: kpi, pctFmt: pctFmt, s: s, isPrivate: isPrivate)).toList();
+                    final cards = cat.kpis.map((kpi) => _KpiCard(
+                      kpi: kpi,
+                      pctFmt: pctFmt,
+                      s: s,
+                      onInfoTap: kpi.name == s.kpiFireProgress
+                          ? () => _showFireDialog(
+                                context: context,
+                                ref: ref,
+                                s: s,
+                                locale: locale,
+                                netWorth: netWorth,
+                                annualExpenses: fireExpenses,
+                                smoothed: smoothed,
+                                currentSwr: swrPct,
+                              )
+                          : null,
+                    )).toList();
                     if (constraints.maxWidth < 680) {
                       return Column(
                         children: cards.map((card) => Padding(
@@ -247,11 +346,10 @@ class _SummarySection extends StatelessWidget {
   final Rating overallRating;
   final List<KpiCategory> categories;
   final AppStrings s;
-  final bool isPrivate;
 
   const _SummarySection({
     required this.score, required this.overallRating,
-    required this.categories, required this.s, required this.isPrivate,
+    required this.categories, required this.s,
   });
 
   @override
@@ -273,7 +371,7 @@ class _SummarySection extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        isPrivate ? '••' : score.round().toString(),
+                        score.round().toString(),
                         style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: overallRating.color),
                       ),
                       Text(overallRating.label(s), style: TextStyle(fontSize: 12, color: overallRating.color)),
@@ -361,9 +459,16 @@ class _KpiCard extends StatefulWidget {
   final HealthKpi kpi;
   final NumberFormat pctFmt;
   final AppStrings s;
-  final bool isPrivate;
+  /// Optional override for the info icon tap. When set, the default
+  /// formula dialog is bypassed.
+  final VoidCallback? onInfoTap;
 
-  const _KpiCard({required this.kpi, required this.pctFmt, required this.s, required this.isPrivate});
+  const _KpiCard({
+    required this.kpi,
+    required this.pctFmt,
+    required this.s,
+    this.onInfoTap,
+  });
 
   @override
   State<_KpiCard> createState() => _KpiCardState();
@@ -394,7 +499,7 @@ class _KpiCardState extends State<_KpiCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: PrivacyText(
+                  child: Text(
                     valueText,
                     style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
@@ -430,9 +535,13 @@ class _KpiCardState extends State<_KpiCard> {
                   ),
                 ),
                 const Spacer(),
-                if (kpi.formula.isNotEmpty || kpi.formulaRich != null)
+                if (kpi.formula.isNotEmpty || kpi.formulaRich != null || widget.onInfoTap != null)
                   InkWell(
                     onTap: () {
+                      if (widget.onInfoTap != null) {
+                        widget.onInfoTap!();
+                        return;
+                      }
                       final baseStyle = TextStyle(
                         fontSize: 12,
                         height: 1.5,
@@ -453,7 +562,7 @@ class _KpiCardState extends State<_KpiCard> {
                                   : SelectableText(kpi.formula, style: baseStyle),
                             ),
                           ),
-                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.s.close))],
                         ),
                       );
                     },
@@ -544,3 +653,166 @@ class _GaugePainter extends CustomPainter {
   bool shouldRepaint(covariant _GaugePainter old) => old.position != position;
 }
 
+// ── FIRE info + SWR editor dialog ──
+
+Future<void> _showFireDialog({
+  required BuildContext context,
+  required WidgetRef ref,
+  required AppStrings s,
+  required String locale,
+  required double netWorth,
+  required double annualExpenses,
+  required SmoothedAnnualExpenses? smoothed,
+  required double currentSwr,
+}) async {
+  final swrFmt = NumberFormat('0.00', locale);
+  final amtFmt = fmt.amountFormat(locale);
+  final controller = TextEditingController(text: swrFmt.format(currentSwr));
+  final formKey = GlobalKey<FormState>();
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setSt) {
+          final parsed = fmt.parseFlexibleNumber(controller.text);
+          final effectiveSwr = (parsed != null && parsed > 0) ? parsed : currentSwr;
+          final preview = computeFire(
+            netWorth: netWorth,
+            annualExpenses: annualExpenses,
+            swrPct: effectiveSwr,
+          );
+          final theme = Theme.of(ctx);
+          return AlertDialog(
+            title: Text(s.fireDialogTitle, style: const TextStyle(fontSize: 14)),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(s.fireDialogIntro,
+                        style: TextStyle(fontSize: 12, height: 1.5,
+                            color: theme.colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 16),
+                    Form(
+                      key: formKey,
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                      child: TextFormField(
+                        controller: controller,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: s.fireSwrLabel,
+                          hintText: s.fireSwrHint,
+                          suffixText: '%',
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                        ),
+                        validator: (v) {
+                          final n = fmt.parseFlexibleNumber(v ?? '');
+                          if (n == null || n <= 0) return s.fireSwrInvalid;
+                          return null;
+                        },
+                        onChanged: (_) => setSt(() {}),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (!preview.insufficientData) ...[
+                      _FireDialogRow(
+                        label: s.fireExpensesEstimateLabel,
+                        value: amtFmt.format(annualExpenses),
+                      ),
+                      if (smoothed != null && smoothed.projectedCurrent != null) ...[
+                        const SizedBox(height: 2),
+                        _FireDialogRow(
+                          label: '  ${s.fireProjectedCurrent}'
+                              '${smoothed.projectionMonths != null ? ' (${smoothed.projectionMonths}m)' : ''}',
+                          value: amtFmt.format(smoothed.projectedCurrent!),
+                          subtle: true,
+                        ),
+                      ],
+                      if (smoothed != null && smoothed.prevTotal != null) ...[
+                        const SizedBox(height: 2),
+                        _FireDialogRow(
+                          label: '  ${s.fireLastYearTotal}',
+                          value: amtFmt.format(smoothed.prevTotal!),
+                          subtle: true,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      _FireDialogRow(label: s.fireNumberLabel, value: amtFmt.format(preview.fiNumber)),
+                      const SizedBox(height: 4),
+                      _FireDialogRow(
+                        label: s.fireProgressLabel,
+                        value: '${swrFmt.format(preview.progressPct)}%',
+                      ),
+                    ] else
+                      Text(s.kpiFireInsufficientData(),
+                          style: TextStyle(fontSize: 12,
+                              color: theme.colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  controller.text = swrFmt.format(kDefaultFireSwrPct);
+                  setSt(() {});
+                  final db = ref.read(databaseProvider);
+                  await db.into(db.appConfigs).insertOnConflictUpdate(
+                    AppConfigsCompanion.insert(
+                      key: 'FIRE_SWR',
+                      value: kDefaultFireSwrPct.toString(),
+                    ),
+                  );
+                },
+                child: Text(s.fireResetDefault),
+              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+              FilledButton(
+                onPressed: () async {
+                  if (formKey.currentState?.validate() != true) return;
+                  final n = fmt.parseFlexibleNumber(controller.text)!;
+                  final db = ref.read(databaseProvider);
+                  await db.into(db.appConfigs).insertOnConflictUpdate(
+                    AppConfigsCompanion.insert(key: 'FIRE_SWR', value: n.toString()),
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Text(s.save),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+class _FireDialogRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool subtle;
+  const _FireDialogRow({required this.label, required this.value, this.subtle = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final valStyle = subtle
+        ? TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)
+        : const TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(label,
+              style: TextStyle(
+                fontSize: subtle ? 11 : 12,
+                color: theme.colorScheme.onSurfaceVariant,
+              )),
+        ),
+        Text(value, style: valStyle),
+      ],
+    );
+  }
+}

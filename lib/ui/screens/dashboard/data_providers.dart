@@ -7,6 +7,7 @@ part of 'dashboard_screen.dart';
 final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   final db = ref.watch(databaseProvider);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final defaultTaxRate = await ref.watch(defaultTaxRateProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
   final marketPriceService = ref.watch(marketPriceServiceProvider);
 
@@ -357,6 +358,38 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     ));
   }
 
+  // ── Build asset net series (invested + max(0,gain) * (1 - τ)) ──
+  // τ = per-asset taxRate if set, otherwise the global default. Used for
+  // the optional "Net" chart series toggled in the chart editor.
+  final assetNetSeries = <ChartSeries>[];
+  for (final asset in activeAssets) {
+    final invMatch = assetInvestedSeries.where((s) => s.key == 'asset_invested:${asset.id}');
+    final mktMatch = assetMarketSeries.where((s) => s.key == 'asset_market:${asset.id}');
+    if (invMatch.isEmpty || mktMatch.isEmpty) continue;
+    final invSpots = invMatch.first.spots;
+    final mktSpots = mktMatch.first.spots;
+    final invLookup = <double, double>{};
+    for (final s in invSpots) {
+      invLookup[s.x] = s.y;
+    }
+    final tau = asset.taxRate ?? defaultTaxRate;
+    final netSpots = <FlSpot>[];
+    double lastInv = 0;
+    for (final mkt in mktSpots) {
+      if (invLookup.containsKey(mkt.x)) lastInv = invLookup[mkt.x]!;
+      netSpots.add(FlSpot(
+        mkt.x,
+        computeAssetNetValue(invested: lastInv, market: mkt.y, taxRate: tau),
+      ));
+    }
+    assetNetSeries.add(ChartSeries(
+      key: 'asset_net:${asset.id}',
+      name: asset.ticker ?? asset.name,
+      color: mktMatch.first.color,
+      spots: netSpots,
+    ));
+  }
+
   // ════════════════════════════════════════════════
   // 3. EXTRAORDINARY EVENTS — unified CAPEX + IncomeAdj series
   //
@@ -511,6 +544,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     assetInvested: assetInvestedSeries,
     assetMarket: assetMarketSeries,
     assetGain: assetGainSeries,
+    assetNet: assetNetSeries,
     adjustments: adjustmentSeries,
     incomeAdjustments: incomeAdjSeries,
     ephemeralInflows: ephemeralInflowSeries,

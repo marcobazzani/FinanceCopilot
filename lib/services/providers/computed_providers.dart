@@ -44,7 +44,13 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
 });
 
 /// Asset stats with totalInvested converted to base currency.
-/// Sums per-event conversions using each event's stored rate for accuracy.
+///
+/// Same semantic as [AssetStats.totalInvested] — weighted-average cost basis
+/// of currently-held shares — but computed in the user's base currency. For
+/// foreign-currency assets each buy is converted at its own historical FX
+/// rate (so a position bought when EUR/USD was very different from today
+/// keeps the contemporaneous cost), then the weighted-avg base-currency
+/// cost is multiplied by the remaining quantity.
 final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
@@ -70,38 +76,63 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
     }
   }
 
-  // Foreign-currency assets: batch-fetch events, then convert per-event
+  // Foreign-currency assets: convert each buy at its own FX rate, then
+  // apply the weighted-avg × remaining-qty formula in base currency.
   if (foreignAssetIds.isNotEmpty) {
     final allEvents = await eventService.getByAssets(foreignAssetIds);
     for (final asset in assets) {
       final events = allEvents[asset.id];
       if (events == null || events.isEmpty) continue;
-      var total = 0.0;
+
+      var buyAmountBase = 0.0;
+      var buyQty = 0.0;
       var unresolved = false;
-      for (final ev in events) {
-        if (ev.currency == baseCurrency) {
-          total += ev.amount;
-        } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
-          total += ev.amount / ev.exchangeRate!;
-        } else {
-          final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
-          if (rate != null && rate > 0) {
-            total += ev.amount / rate;
-            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
-                .write(AssetEventsCompanion(exchangeRate: Value(rate)));
-          } else {
-            // Live fallback. If even that has no rate, the asset's total
-            // would be partial — don't expose a wrong number, mark as null.
-            final live = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
-            if (live == null) {
-              unresolved = true;
-              break;
-            }
-            total += live;
-          }
+
+      // Convert one event amount from event.currency → baseCurrency, using
+      // the same fallback ladder as before (stored rate → historical rate →
+      // live rate). Returns null when no rate is available — the asset's
+      // total cannot be trusted, mark unresolved.
+      Future<double?> convertToBase(double amount, AssetEvent ev) async {
+        if (ev.currency == baseCurrency) return amount;
+        if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
+          return amount / ev.exchangeRate!;
         }
+        final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+        if (rate != null && rate > 0) {
+          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
+              .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          return amount / rate;
+        }
+        return rateService.convertLive(amount, ev.currency, baseCurrency);
       }
-      result[asset.id] = unresolved ? null : total;
+
+      for (final ev in events) {
+        if (ev.type != EventType.buy) continue;
+        final amtBase = await convertToBase(ev.amount.abs(), ev);
+        if (amtBase == null) {
+          unresolved = true;
+          break;
+        }
+        buyAmountBase += amtBase;
+        buyQty += (ev.quantity ?? 0).abs();
+      }
+
+      if (unresolved) {
+        result[asset.id] = null;
+        continue;
+      }
+
+      final remainingQty = stats[asset.id]?.totalQuantity ?? 0;
+      double invested;
+      if (buyQty <= 0) {
+        // Cash-only events (no per-share qty) — gross fallback in base.
+        invested = buyAmountBase;
+      } else if (remainingQty <= 0) {
+        invested = 0;
+      } else {
+        invested = (buyAmountBase / buyQty) * remainingQty;
+      }
+      result[asset.id] = invested;
     }
   }
   return result;

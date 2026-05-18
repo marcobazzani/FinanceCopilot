@@ -34,6 +34,7 @@ AllSeriesData _fixture() {
     ],
     assetMarket: const [],
     assetGain: const [],
+    assetNet: const [],
     adjustments: [
       ChartSeries(
         key: 'adjustment:1',
@@ -165,6 +166,7 @@ void main() {
         assetInvested: const [],
         assetMarket: const [],
         assetGain: const [],
+        assetNet: const [],
         adjustments: const [],
         incomeAdjustments: const [],
         ephemeralInflows: [
@@ -193,6 +195,7 @@ void main() {
         assetInvested: const [],
         assetMarket: const [],
         assetGain: const [],
+        assetNet: const [],
         adjustments: const [],
         incomeAdjustments: const [],
         ephemeralInflows: const [],

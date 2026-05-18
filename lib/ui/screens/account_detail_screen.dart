@@ -12,8 +12,10 @@ import '../../utils/formatters.dart' as fmt;
 import '../../utils/logger.dart';
 import 'import/import_screen.dart';
 import 'transaction_edit_screen.dart';
+import '../../l10n/app_strings.dart';
 import '../widgets/global_app_bar_actions.dart';
 import '../widgets/mobile_pull_to_refresh.dart';
+import '../widgets/privacy_text.dart';
 import '../widgets/selection/selectable_item.dart';
 import '../widgets/selection/selection_action_bar.dart';
 import '../widgets/selection/selection_controller.dart';
@@ -190,138 +192,101 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                 }
 
                 final dayHeaderFmt = fmt.fullDateFormat(locale);
+                final monthHeaderFmt = fmt.monthYearFormat(locale);
                 int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+                int monthKey(DateTime d) => d.year * 12 + (d.month - 1);
+
+                // In All-accounts mode, detect inter-account transfers:
+                // same day, same currency, equal & opposite amounts, on
+                // different accounts. The two legs collapse into one row and
+                // are excluded from income/expense totals.
+                final entries = _buildEntries(
+                  filtered: filtered,
+                  detectTransfers: _isReadOnly,
+                  dayKey: dayKey,
+                );
+
+                // Pre-compute per-day/per-month income/expense totals, grouped
+                // by currency so mixed-currency views can show one line per
+                // currency. Transfer legs are skipped.
+                final Map<int, Map<String, ({double income, double expense})>>
+                    dayTotals = {};
+                final Map<int, Map<String, ({double income, double expense})>>
+                    monthTotals = {};
+                void accumulate(
+                  Map<int, Map<String, ({double income, double expense})>> bucket,
+                  int k,
+                  String ccy,
+                  double amt,
+                ) {
+                  final byCcy = bucket.putIfAbsent(k, () => {});
+                  final cur = byCcy[ccy] ?? (income: 0.0, expense: 0.0);
+                  byCcy[ccy] = amt >= 0
+                      ? (income: cur.income + amt, expense: cur.expense)
+                      : (income: cur.income, expense: cur.expense + amt);
+                }
+                for (final e in entries) {
+                  if (e is _TxEntry) {
+                    accumulate(dayTotals, dayKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
+                    accumulate(monthTotals, monthKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
+                  }
+                }
                 return MobilePullToRefresh(
                   child: ListView.builder(
-                  itemCount: filtered.length,
+                  itemCount: entries.length,
                   physics: const AlwaysScrollableScrollPhysics(),
                   itemBuilder: (ctx, i) {
-                    final tx = filtered[i];
-                    final isPositive = tx.amount >= 0;
-                    final showHeader = i == 0 ||
-                        dayKey(filtered[i - 1].valueDate) != dayKey(tx.valueDate);
-                    final rowAmtFmt = _isReadOnly
-                        ? fmt.currencyFormat(locale, tx.currency)
-                        : amtFmt;
-                    final tile = ListTile(
-                      dense: true,
-                      leading: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: isPositive
-                            ? Colors.green.withValues(alpha: 0.1)
-                            : Colors.red.withValues(alpha: 0.1),
-                        child: Icon(
-                          isPositive ? Icons.arrow_downward : Icons.arrow_upward,
-                          size: 16,
-                          color: isPositive ? Colors.green : Colors.red,
-                        ),
-                      ),
-                      title: Text(
-                        tx.description.isNotEmpty ? tx.description : s.noDescription,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      subtitle: _isReadOnly
-                          ? Row(
-                              children: [
-                                Text(dateFmt.format(tx.valueDate),
-                                    style: const TextStyle(fontSize: 12)),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .secondaryContainer,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      accountNameById[tx.accountId] ??
-                                          '#${tx.accountId}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSecondaryContainer,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Text(dateFmt.format(tx.valueDate),
-                              style: const TextStyle(fontSize: 12)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${isPositive ? '+' : ''}${rowAmtFmt.format(tx.amount)}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
-                              fontSize: 14,
-                            ),
-                          ),
-                          if (!_isReadOnly) ...[
-                            const SizedBox(width: 4),
-                            PopupMenuButton<String>(
-                              iconSize: 18,
-                              padding: EdgeInsets.zero,
-                              tooltip: isPositive
-                                  ? s.flagAsIncomeTooltip
-                                  : s.flagAsAdjustmentTooltip,
-                              itemBuilder: (_) => [
-                                if (isPositive)
-                                  PopupMenuItem(
-                                    value: 'flag_income',
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.label_important_outline, size: 18),
-                                        const SizedBox(width: 8),
-                                        Text(s.flagAsIncomeTooltip),
-                                      ],
-                                    ),
-                                  )
-                                else
-                                  PopupMenuItem(
-                                    value: 'flag_adjustment',
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.compare_arrows, size: 18),
-                                        const SizedBox(width: 8),
-                                        Text(s.flagAsAdjustmentTooltip),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                              onSelected: (v) {
-                                if (v == 'flag_income') _flagAsIncome(tx);
-                                if (v == 'flag_adjustment') _flagAsAdjustment(tx);
-                              },
-                            ),
-                          ],
-                        ],
-                      ),
-                      onTap: _isReadOnly ? null : () => _openTransaction(tx),
-                    );
-                    final body = _isReadOnly
-                        ? tile
-                        : SelectableItem<int>(
-                            controller: _selection,
-                            id: tx.id,
-                            child: tile,
-                          );
+                    final entry = entries[i];
+                    final prevDate = i > 0 ? entries[i - 1].valueDate : null;
+                    final showDayHeader = prevDate == null ||
+                        dayKey(prevDate) != dayKey(entry.valueDate);
+                    final showMonthHeader = prevDate == null ||
+                        monthKey(prevDate) != monthKey(entry.valueDate);
+
+                    Widget body;
+                    Widget buildSingleTxTile(Transaction tx) {
+                      final isPositive = tx.amount >= 0;
+                      final rowAmtFmt = _isReadOnly
+                          ? fmt.currencyFormat(locale, tx.currency)
+                          : amtFmt;
+                      return _buildTxTile(
+                        context: ctx,
+                        tx: tx,
+                        isPositive: isPositive,
+                        rowAmtFmt: rowAmtFmt,
+                        dateFmt: dateFmt,
+                        accountNameById: accountNameById,
+                        s: s,
+                      );
+                    }
+
+                    if (entry is _TransferEntry) {
+                      body = _TransferTile(
+                        entry: entry,
+                        accountNameById: accountNameById,
+                        locale: locale,
+                        s: s,
+                        legTileBuilder: buildSingleTxTile,
+                      );
+                    } else {
+                      body = buildSingleTxTile((entry as _TxEntry).tx);
+                    }
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (showHeader)
-                          _DayHeader(
-                            label: dayHeaderFmt.format(tx.valueDate),
+                        if (showMonthHeader)
+                          _PeriodHeader(
+                            label: monthHeaderFmt.format(entry.valueDate),
+                            totals: monthTotals[monthKey(entry.valueDate)] ?? const {},
+                            locale: locale,
+                            isMonth: true,
+                          ),
+                        if (showDayHeader)
+                          _PeriodHeader(
+                            label: dayHeaderFmt.format(entry.valueDate),
+                            totals: dayTotals[dayKey(entry.valueDate)] ?? const {},
+                            locale: locale,
+                            isMonth: false,
                           )
                         else
                           const Divider(height: 1),
@@ -372,7 +337,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('${transactions.length} ${s.transactions}', style: const TextStyle(fontSize: 13)),
-                    Text(
+                    PrivacyText(
                       balance != null
                           ? '${s.balance}: ${balance >= 0 ? '+' : ''}${amtFmt.format(balance)}'
                           : '${transactions.length} ${s.records}',
@@ -401,6 +366,198 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
         );
       },
     );
+  }
+
+  /// Detects inter-account transfers in [filtered] (same day, same currency,
+  /// equal & opposite amounts, different accounts) and returns a list of
+  /// display entries where each transfer collapses its two legs into a single
+  /// [_TransferEntry]. Non-transfer txs become [_TxEntry]s. Original order is
+  /// preserved; transfers slot in at the position of whichever leg came first.
+  List<_Entry> _buildEntries({
+    required List<Transaction> filtered,
+    required bool detectTransfers,
+    required int Function(DateTime) dayKey,
+  }) {
+    if (!detectTransfers || filtered.length < 2) {
+      return [for (final t in filtered) _TxEntry(t)];
+    }
+
+    final txById = <int, Transaction>{for (final t in filtered) t.id: t};
+    final transferOfTx = <int, _TransferEntry>{};
+
+    // Bucket by (day, currency, |amount in cents|).
+    final buckets = <String, ({List<Transaction> pos, List<Transaction> neg})>{};
+    for (final t in filtered) {
+      if (t.amount == 0) continue;
+      final cents = (t.amount.abs() * 100).round();
+      final k = '${dayKey(t.valueDate)}|${t.currency}|$cents';
+      final bucket = buckets[k] ?? (pos: <Transaction>[], neg: <Transaction>[]);
+      if (t.amount > 0) {
+        bucket.pos.add(t);
+      } else {
+        bucket.neg.add(t);
+      }
+      buckets[k] = bucket;
+    }
+    for (final bucket in buckets.values) {
+      final pos = bucket.pos;
+      final neg = bucket.neg;
+      if (pos.isEmpty || neg.isEmpty) continue;
+      // Greedy pair: each positive consumes the first available negative
+      // belonging to a different account.
+      final consumedNeg = <int>{};
+      for (final p in pos) {
+        Transaction? match;
+        for (final n in neg) {
+          if (consumedNeg.contains(n.id)) continue;
+          if (n.accountId == p.accountId) continue;
+          match = n;
+          break;
+        }
+        if (match == null) continue;
+        consumedNeg.add(match.id);
+        final pair = _TransferEntry(inflow: p, outflow: match);
+        transferOfTx[p.id] = pair;
+        transferOfTx[match.id] = pair;
+      }
+    }
+
+    final result = <_Entry>[];
+    final emitted = <_TransferEntry>{};
+    for (final t in filtered) {
+      final pair = transferOfTx[t.id];
+      if (pair != null) {
+        if (emitted.add(pair)) result.add(pair);
+      } else {
+        result.add(_TxEntry(t));
+      }
+    }
+    // Silence the unused warning for txById in release builds.
+    assert(txById.isNotEmpty);
+    return result;
+  }
+
+  Widget _buildTxTile({
+    required BuildContext context,
+    required Transaction tx,
+    required bool isPositive,
+    required dynamic rowAmtFmt,
+    required dynamic dateFmt,
+    required Map<int, String> accountNameById,
+    required AppStrings s,
+  }) {
+    final tile = ListTile(
+      dense: true,
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: isPositive
+            ? Colors.green.withValues(alpha: 0.1)
+            : Colors.red.withValues(alpha: 0.1),
+        child: Icon(
+          isPositive ? Icons.arrow_downward : Icons.arrow_upward,
+          size: 16,
+          color: isPositive ? Colors.green : Colors.red,
+        ),
+      ),
+      title: Text(
+        tx.description.isNotEmpty ? tx.description : s.noDescription,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 14),
+      ),
+      subtitle: _isReadOnly
+          ? Row(
+              children: [
+                Text(dateFmt.format(tx.valueDate),
+                    style: const TextStyle(fontSize: 12)),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .secondaryContainer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      accountNameById[tx.accountId] ?? '#${tx.accountId}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSecondaryContainer,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Text(dateFmt.format(tx.valueDate),
+              style: const TextStyle(fontSize: 12)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PrivacyText(
+            '${isPositive ? '+' : ''}${rowAmtFmt.format(tx.amount)}',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
+              fontSize: 14,
+            ),
+          ),
+          if (!_isReadOnly) ...[
+            const SizedBox(width: 4),
+            PopupMenuButton<String>(
+              iconSize: 18,
+              padding: EdgeInsets.zero,
+              tooltip: isPositive
+                  ? s.flagAsIncomeTooltip
+                  : s.flagAsAdjustmentTooltip,
+              itemBuilder: (_) => [
+                if (isPositive)
+                  PopupMenuItem(
+                    value: 'flag_income',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.label_important_outline, size: 18),
+                        const SizedBox(width: 8),
+                        Text(s.flagAsIncomeTooltip),
+                      ],
+                    ),
+                  )
+                else
+                  PopupMenuItem(
+                    value: 'flag_adjustment',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.compare_arrows, size: 18),
+                        const SizedBox(width: 8),
+                        Text(s.flagAsAdjustmentTooltip),
+                      ],
+                    ),
+                  ),
+              ],
+              onSelected: (v) {
+                if (v == 'flag_income') _flagAsIncome(tx);
+                if (v == 'flag_adjustment') _flagAsAdjustment(tx);
+              },
+            ),
+          ],
+        ],
+      ),
+      onTap: _isReadOnly ? null : () => _openTransaction(tx),
+    );
+    return _isReadOnly
+        ? tile
+        : SelectableItem<int>(
+            controller: _selection,
+            id: tx.id,
+            child: tile,
+          );
   }
 
   void _openTransaction(Transaction tx) {
@@ -881,24 +1038,252 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 }
 
-class _DayHeader extends StatelessWidget {
-  final String label;
-  const _DayHeader({required this.label});
+/// A row in the All-accounts list. Either a single transaction or an
+/// inter-account transfer that collapses two opposing legs into one row.
+sealed class _Entry {
+  DateTime get valueDate;
+}
+
+class _TxEntry extends _Entry {
+  final Transaction tx;
+  _TxEntry(this.tx);
+  @override
+  DateTime get valueDate => tx.valueDate;
+}
+
+class _TransferEntry extends _Entry {
+  final Transaction inflow; // amount > 0
+  final Transaction outflow; // amount < 0
+  _TransferEntry({required this.inflow, required this.outflow});
+  @override
+  DateTime get valueDate => outflow.valueDate;
+  String get currency => inflow.currency;
+  double get absAmount => inflow.amount.abs();
+}
+
+class _TransferTile extends StatefulWidget {
+  final _TransferEntry entry;
+  final Map<int, String> accountNameById;
+  final String locale;
+  final AppStrings s;
+  /// Builds the row for a single leg of the transfer using the same widget as
+  /// regular transactions, so the expanded view is visually identical to the
+  /// rest of the list.
+  final Widget Function(Transaction) legTileBuilder;
+  const _TransferTile({
+    required this.entry,
+    required this.accountNameById,
+    required this.locale,
+    required this.s,
+    required this.legTileBuilder,
+  });
+
+  @override
+  State<_TransferTile> createState() => _TransferTileState();
+}
+
+class _TransferTileState extends State<_TransferTile> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final entry = widget.entry;
+    final s = widget.s;
+    final amtFmt = fmt.currencyFormat(widget.locale, entry.currency);
+    final dateFmt = fmt.shortDateFormat(widget.locale);
+    final fromName = widget.accountNameById[entry.outflow.accountId] ??
+        '#${entry.outflow.accountId}';
+    final toName = widget.accountNameById[entry.inflow.accountId] ??
+        '#${entry.inflow.accountId}';
+    final blue = scheme.primary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          dense: true,
+          leading: CircleAvatar(
+            radius: 16,
+            backgroundColor: blue.withValues(alpha: 0.12),
+            child: Icon(Icons.swap_horiz, size: 16, color: blue),
+          ),
+          title: Text(
+            s.transferLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          subtitle: Row(
+            children: [
+              Text(dateFmt.format(entry.valueDate),
+                  style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  s.transferFromTo(fromName, toName),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PrivacyText(
+                amtFmt.format(entry.absAmount),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: blue,
+                  fontSize: 14,
+                ),
+              ),
+              Icon(
+                _expanded ? Icons.expand_less : Icons.expand_more,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+          onTap: () => setState(() => _expanded = !_expanded),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: _expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      widget.legTileBuilder(entry.outflow),
+                      const Divider(height: 1),
+                      widget.legTileBuilder(entry.inflow),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
+
+class _PeriodHeader extends StatelessWidget {
+  final String label;
+  final Map<String, ({double income, double expense})> totals;
+  final String locale;
+  final bool isMonth;
+  const _PeriodHeader({
+    required this.label,
+    required this.totals,
+    required this.locale,
+    required this.isMonth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Sort currencies for stable display; primary first by total absolute flow.
+    final entries = totals.entries.toList()
+      ..sort((a, b) {
+        final fa = a.value.income - a.value.expense; // expense is negative
+        final fb = b.value.income - b.value.expense;
+        return fb.abs().compareTo(fa.abs());
+      });
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: scheme.surfaceContainerHighest,
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
+      padding: EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: isMonth ? 8 : 6,
+      ),
+      color: isMonth
+          ? scheme.surfaceContainerHigh
+          : scheme.surfaceContainerHighest,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: isMonth ? FontWeight.w700 : FontWeight.w600,
+                    fontSize: isMonth ? 13 : null,
+                  ),
             ),
+          ),
+          if (entries.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final e in entries)
+                  _TotalsChip(
+                    income: e.value.income,
+                    expense: e.value.expense,
+                    currency: e.key,
+                    locale: locale,
+                  ),
+              ],
+            ),
+        ],
       ),
     );
+  }
+}
+
+class _TotalsChip extends StatelessWidget {
+  final double income;
+  final double expense;
+  final String currency;
+  final String locale;
+  const _TotalsChip({
+    required this.income,
+    required this.expense,
+    required this.currency,
+    required this.locale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final f = fmt.currencyFormat(locale, currency);
+    final net = income + expense; // expense is negative
+    if (income == 0 && expense == 0) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    const numStyle = TextStyle(fontSize: 11, fontWeight: FontWeight.w600);
+    final parts = <Widget>[];
+    if (income > 0) {
+      parts.add(PrivacyText(
+        '+${f.format(income)}',
+        style: numStyle.copyWith(color: Colors.green.shade700),
+      ));
+    }
+    if (expense < 0) {
+      if (parts.isNotEmpty) parts.add(const SizedBox(width: 6));
+      parts.add(PrivacyText(
+        f.format(expense),
+        style: numStyle.copyWith(color: Colors.red.shade700),
+      ));
+    }
+    // Consolidated net — always shown so each row carries a definitive total.
+    if (parts.isNotEmpty) parts.add(const SizedBox(width: 8));
+    parts.add(PrivacyText(
+      '= ${net >= 0 ? '+' : ''}${f.format(net)}',
+      style: numStyle.copyWith(
+        color: net >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+        fontWeight: FontWeight.w700,
+        decoration: TextDecoration.underline,
+        decorationColor: scheme.onSurfaceVariant.withValues(alpha: 0.35),
+      ),
+    ));
+    return Row(mainAxisSize: MainAxisSize.min, children: parts);
   }
 }
