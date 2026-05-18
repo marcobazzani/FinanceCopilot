@@ -221,20 +221,20 @@ class _AthOverlayBody extends StatelessWidget {
       animation: controller,
       builder: (ctx, _) {
         return Positioned.fill(
+          // Easter-egg overlay is purely decorative: clicks pass straight
+          // through to the dashboard underneath so the user can keep
+          // navigating while the celebration plays out (auto-dismisses
+          // after _cardLifetime per card). No way to abort early — that's
+          // the point of the show.
           child: IgnorePointer(
-            ignoring: false,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              // Tap anywhere dismisses all currently-shown cards.
-              onTap: controller.dismissAll,
-              child: Stack(
-                children: [
-                  _buildStarburstLayer(),
-                  _buildConfettiLayer(),
-                  _FireworksLayer(fireGen: controller.fireGen),
-                  _buildCartelLayer(context),
-                ],
-              ),
+            ignoring: true,
+            child: Stack(
+              children: [
+                _buildStarburstLayer(),
+                _buildConfettiLayer(),
+                _FireworksLayer(fireGen: controller.fireGen),
+                _buildCartelLayer(context),
+              ],
             ),
           ),
         );
