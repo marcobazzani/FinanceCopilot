@@ -221,13 +221,13 @@ class _AthOverlayBody extends StatelessWidget {
       animation: controller,
       builder: (ctx, _) {
         return Positioned.fill(
-          // Easter-egg overlay is purely decorative: clicks pass straight
-          // through to the dashboard underneath so the user can keep
-          // navigating while the celebration plays out (auto-dismisses
-          // after _cardLifetime per card). No way to abort early — that's
-          // the point of the show.
-          child: IgnorePointer(
-            ignoring: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            // Tap anywhere dismisses the cartel early. Without this the
+            // full-screen overlay (even with IgnorePointer) caused macOS
+            // release builds to ship a black canvas after the very first
+            // fire — see be4ecaf reverted in 9b6fc5e..be4ecaf range.
+            onTap: controller.dismissAll,
             child: Stack(
               children: [
                 _buildStarburstLayer(),
