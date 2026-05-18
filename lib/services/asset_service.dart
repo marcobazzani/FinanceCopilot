@@ -11,8 +11,23 @@ class AssetStats {
   final int eventCount;
   final DateTime? firstDate;
   final DateTime? lastDate;
-  final double totalInvested; // sum of buy amounts (absolute)
-  final double totalQuantity; // net quantity (buys - sells)
+
+  /// Cost basis of the currently-held position, in the asset's currency.
+  ///
+  /// Computed as weighted-average buy price × remaining quantity, so a sell
+  /// reduces invested proportionally to the cost of the shares disposed of —
+  /// not by the sale proceeds. This is the value the dashboard uses for the
+  /// "delta vs prezzo di carico" (unrealized gain) display: a position that
+  /// has been partially sold shows the unrealized gain on what's left, not
+  /// a phantom loss against the all-time cash deployed.
+  ///
+  /// Falls back to `SUM(buy.amount)` (gross cumulative buys) when buy events
+  /// have no per-share quantity (pension contributions in cash-only mode,
+  /// or any buy with `quantity IS NULL`) — those have no per-share price to
+  /// weight against, so the gross sum is the only meaningful figure.
+  final double totalInvested;
+
+  final double totalQuantity; // net quantity (buys - sells), always ≥ 0
 
   const AssetStats({
     required this.eventCount,
@@ -120,22 +135,59 @@ class AssetService {
 
   // first/last date use value_date per CLAUDE.md (canonical "money moved"
   // date for display). operation_date is only for import dedup.
+  //
+  // ABS(quantity): event.type encodes direction; the source row's sign on
+  // quantity is irrelevant. Some broker exports (Directa, Fineco, IB-style)
+  // store sells with negative quantity. Without ABS, `-COALESCE(-199, 0)`
+  // adds +199 instead of subtracting 199. See issue #77.
+  //
+  // total_invested is computed at the Dart layer (not in SQL) so that
+  // the weighted-average × remaining-qty cost basis can fall back to
+  // the gross buy sum when no per-share quantity is available — see
+  // [_rowToStats] for the branching. The SQL exposes the three raw
+  // aggregates needed for the calculation.
   static const _statsQuery =
       'SELECT asset_id, COUNT(*) AS cnt, '
       'MIN(value_date) AS first_date, MAX(value_date) AS last_date, '
-      "SUM(CASE WHEN type = 'buy' THEN ABS(amount) ELSE 0 END) AS total_invested, "
-      "SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-      "         WHEN type = 'sell' THEN -COALESCE(quantity, 0) "
+      "SUM(CASE WHEN type = 'buy' THEN ABS(amount) ELSE 0 END) AS total_buy_amount, "
+      "SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) ELSE 0 END) AS total_buy_qty, "
+      "SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
+      "         WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) "
       '         ELSE 0 END) AS total_qty '
       'FROM asset_events GROUP BY asset_id';
 
-  static AssetStats _rowToStats(QueryRow row) => AssetStats(
-        eventCount: row.read<int>('cnt'),
-        firstDate: row.readNullable<DateTime>('first_date'),
-        lastDate: row.readNullable<DateTime>('last_date'),
-        totalInvested: row.read<double>('total_invested'),
-        totalQuantity: row.read<double>('total_qty'),
-      );
+  static AssetStats _rowToStats(QueryRow row) {
+    final totalBuyAmount = row.read<double>('total_buy_amount');
+    final totalBuyQty = row.read<double>('total_buy_qty');
+    final remainingQty = row.read<double>('total_qty');
+
+    // Weighted-average cost basis of the currently-held shares.
+    // Three branches, each with a distinct intuition:
+    //  - No per-share qty on any buy → cash-only event (pension contribute
+    //    via A3 fallback, manual entries without qty). Weighted-avg can't
+    //    be computed; report the gross buy sum, which matches the user's
+    //    expectation for those assets ("how much I deposited").
+    //  - Position is fully closed (remainingQty ≤ 0). No cost basis to
+    //    report — the unrealized P&L on a zero position is zero.
+    //  - Normal case: weighted-avg buy price × shares still held.
+    final double totalInvested;
+    if (totalBuyQty <= 0) {
+      totalInvested = totalBuyAmount;
+    } else if (remainingQty <= 0) {
+      totalInvested = 0;
+    } else {
+      final avgCost = totalBuyAmount / totalBuyQty;
+      totalInvested = avgCost * remainingQty;
+    }
+
+    return AssetStats(
+      eventCount: row.read<int>('cnt'),
+      firstDate: row.readNullable<DateTime>('first_date'),
+      lastDate: row.readNullable<DateTime>('last_date'),
+      totalInvested: totalInvested,
+      totalQuantity: remainingQty,
+    );
+  }
 
   /// Get aggregated stats for all assets from their events.
   Future<Map<int, AssetStats>> getStatsForAll() async {

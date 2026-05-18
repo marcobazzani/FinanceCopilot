@@ -22,12 +22,14 @@ import 'services/db_transfer_service.dart';
 import 'services/exchange_rate_service.dart';
 import 'services/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
+import 'utils/formatters.dart' as fmt;
 
 import 'ui/screens/accounts_screen.dart';
 import 'ui/screens/assets_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/pillars/pillars_screen.dart';
+import 'utils/asset_value_math.dart';
 import 'utils/bug_reporter.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -1107,12 +1109,19 @@ class _AppShellState extends ConsumerState<AppShell> {
     final db = ref.read(databaseProvider);
     final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
     final currentLocale = ref.read(appLocaleProvider).value ?? '';
+    final currentTaxRate = ref.read(defaultTaxRateProvider).value ?? kDefaultTaxRate;
 
     var selectedCurrency = baseCurrency;
     var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
         ? currentLocale
         : '';
     var selectedLanguage = ref.read(portableLanguageProvider);
+    final taxRateCtrl = TextEditingController(
+      text: (currentTaxRate * 100).toStringAsFixed(
+        (currentTaxRate * 100) == (currentTaxRate * 100).truncateToDouble() ? 0 : 2,
+      ),
+    );
+    final taxFormKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
@@ -1152,6 +1161,28 @@ class _AppShellState extends ConsumerState<AppShell> {
                     DropdownMenuItem(value: 'it', child: Text('Italiano')),
                   ],
                   onChanged: (v) => setDialogState(() => selectedLanguage = v!),
+                ),
+                const SizedBox(height: 12),
+                Form(
+                  key: taxFormKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  child: TextFormField(
+                    controller: taxRateCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: s.settingsDefaultTaxRate,
+                      helperText: s.settingsDefaultTaxRateHelp,
+                      suffixText: '%',
+                    ),
+                    validator: (v) {
+                      final n = fmt.parseFlexibleNumber(v ?? '');
+                      if (n == null || n < 0 || n > 100) {
+                        return s.settingsTaxRateInvalid;
+                      }
+                      return null;
+                    },
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Divider(),
@@ -1264,15 +1295,21 @@ class _AppShellState extends ConsumerState<AppShell> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: () async {
+                if (taxFormKey.currentState?.validate() != true) return;
+                final taxPct = fmt.parseFlexibleNumber(taxRateCtrl.text)!;
+                final taxFraction = (taxPct / 100).clamp(0.0, 1.0);
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),
                 );
                 await db.into(db.appConfigs).insertOnConflictUpdate(
                   AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
                 );
+                await db.into(db.appConfigs).insertOnConflictUpdate(
+                  AppConfigsCompanion.insert(key: 'TAX_RATE', value: taxFraction.toString()),
+                );
                 await AppSettings.setLanguage(selectedLanguage);
                 ref.read(portableLanguageProvider.notifier).state = selectedLanguage;
-                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale, lang=$selectedLanguage');
+                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale, lang=$selectedLanguage, tax=$taxFraction');
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text(s.save),

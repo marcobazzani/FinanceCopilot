@@ -52,13 +52,15 @@ class AssetEventService {
     String? notes,
   }) async {
     _log.info('create: assetId=$assetId, date=$date, type=${type.name}');
+    // event.type carries direction — normalize qty to abs() so the stats
+    // aggregation never double-negates a signed sell quantity. See #77.
     final id = await _db.into(_db.assetEvents).insert(AssetEventsCompanion.insert(
       assetId: assetId,
       date: date,
       valueDate: date,
       type: type,
       amount: amount,
-      quantity: Value(quantity),
+      quantity: Value(quantity?.abs()),
       price: Value(price),
       currency: Value(currency),
       exchangeRate: Value(exchangeRate),
@@ -204,9 +206,11 @@ class AssetEventService {
       // quantity=amount, price=1.0 (see import_service.dart A3
       // auto-fill), so they're naturally counted here without a special
       // case.
+      // ABS(quantity): event.type encodes direction. See issue #77 — broker
+      // exports with negative sell quantity would otherwise be added.
       final qtyRow = await _db.customSelect(
-        "SELECT SUM(CASE WHEN type = 'buy' THEN COALESCE(quantity, 0) "
-        "WHEN type = 'sell' THEN -COALESCE(quantity, 0) ELSE 0 END) AS qty "
+        "SELECT SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
+        "WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) ELSE 0 END) AS qty "
         "FROM asset_events WHERE asset_id = ? AND value_date <= ?",
         variables: [Variable.withInt(assetId), Variable.withInt(rDate.millisecondsSinceEpoch ~/ 1000)],
       ).getSingleOrNull();

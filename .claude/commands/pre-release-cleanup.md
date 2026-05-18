@@ -1,5 +1,5 @@
 ---
-description: Long-running pre-release sweep — branch/DB sanity, UI consistency, dedup, silent-default eradication, locale enforcement, date semantics, LoC reduction, dead code, provider-name leak check, bug hunt loop. Run before every major release.
+description: Long-running pre-release sweep — branch/DB sanity, UI consistency, dedup, silent-default eradication, locale enforcement, date semantics, LoC reduction, Dart best-practices audit, dead code, provider-name leak check, bug hunt loop. Run before every major release.
 ---
 
 Mission: harden the codebase before a major release. Long-running and exhaustive — keep iterating until a full pass produces zero findings in every phase. Behavior must be preserved unless a phase explicitly fixes a bug (in which case a failing test must exist first). Read CLAUDE.md in full before starting.
@@ -67,7 +67,34 @@ Forbidden:
 - Renaming public APIs without grep-verifying every caller.
 - Refactors without a pinning test (per CLAUDE.md).
 
-## Phase 7 — Dead code sweep
+## Phase 7 — Dart best-practices audit
+Run code against Dart/Flutter idioms. Each finding fixed must keep all four suites green. Avoid blanket refactors — fix the cluster, re-run tests, move on.
+
+1. **Tooling baseline**:
+   - `dart fix --apply` and `dart format .` produce zero residual diffs.
+   - `analysis_options.yaml` includes `flutter_lints` AND `package:lints/recommended.yaml` (or stricter). No `// ignore:` line lacks an inline justification comment.
+2. **Null-safety hygiene**:
+   - Grep `\\![\\s\\.\\[\\(]` in `lib/` — every bang operator on a nullable must justify why null is impossible; otherwise rewrite with `?.`, `??`, `case ... when`, or an explicit guard.
+   - No `late` without a comment explaining the init contract; replace with `?` + null-check when feasible.
+3. **Const correctness**: every `StatelessWidget` constructor with only compile-time-constant fields must be `const`. Widget literals at call sites must be `const` when all args are constant. Dart analyzer's `prefer_const_constructors` and `prefer_const_literals_to_create_immutables` must be on and clean.
+4. **Final / var discipline**: locals never reassigned should be `final`. Top-level/class fields never reassigned should be `final` or `const`.
+5. **Type clarity**: zero `dynamic` in production code unless interfacing with `Object?` from JSON or platform channels (and then immediately narrowed). No untyped `Map`/`List` literals — always `Map<K,V>` / `List<T>`. Replace stringly-typed flags with enums.
+6. **Logging**: zero `print(` in `lib/` — route through the project logger. `debugPrint` only in dev-only paths.
+7. **Async hygiene**:
+   - Every `Future`-returning call is `await`ed or wrapped in `unawaited(...)`.
+   - No `async` function without an `await` inside.
+   - Independent awaits in loops → `Future.wait`.
+   - No `Timer`/`Future.delayed` longer than 10s in product code (per CLAUDE.md).
+8. **Resource hygiene**: every `TextEditingController`, `ScrollController`, `AnimationController`, `FocusNode`, `StreamSubscription`, `Timer`, and `OverlayEntry` is disposed in `dispose()` / `onDispose`. Riverpod providers use `ref.onDispose` for non-AutoDispose-managed resources.
+9. **Cast safety**: prefer `is`-checks + smart promotion over `as` casts. Remaining `as` must be on values where the type is provably correct (document it).
+10. **Widget hygiene**:
+    - Stable keys on every dynamically-built list child.
+    - Builders never trigger setState during build.
+    - No `BuildContext` use across an async gap without a `mounted` check.
+11. **Equality & hashing**: every value type that overrides `==` also overrides `hashCode` (and vice versa). Prefer `Equatable` or generated equality only where it earns its keep.
+12. **Lint diffs**: after fixes, `dart analyze` is clean and the diff is reviewed for accidental behavior change. Add a pinning test for anything non-trivial (per CLAUDE.md).
+
+## Phase 8 — Dead code sweep
 "Unused" is a CLAIM that must be verified by grep across `lib/`, `test/`, `integration_test/`, `tool/`, l10n keys, AND `pubspec.yaml` assets.
 Hunt and delete:
 - Functions/classes/widgets/files with zero references.
@@ -79,10 +106,10 @@ Hunt and delete:
 - Commented-out code blocks.
 NEVER add `// removed` markers or backwards-compat shims.
 
-## Phase 8 — External provider name leak check
+## Phase 9 — External provider name leak check
 `grep -rEn -i "investing|yahoo|google\\.finance|<other provider names>" README* CHANGELOG* lib/ test/ integration_test/ tool/ .github/ ios/ android/ macos/ windows/ linux/ web/` — must return zero hits. Replace any with generic terms ("market data provider", "composition data"). Also check screenshots' alt text and OG metadata.
 
-## Phase 9 — Bug hunt loop (until exhausted)
+## Phase 10 — Bug hunt loop (until exhausted)
 Loop until a full pass yields no new findings:
 1. Re-read recent diffs from this session.
 2. Run analyzer + all four test suites; investigate every warning/info.
@@ -101,14 +128,14 @@ Loop until a full pass yields no new findings:
    b. Fix the code, NOT the test.
    c. Re-run all four suites — must be green.
 
-## Phase 10 — Overreach review
+## Phase 11 — Overreach review
 Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For every new file, abstraction, parameter, or class:
 - Is there a current call site that strictly needs it? If no → inline or revert.
 - Does it duplicate something Phase 2 missed? If yes → collapse.
 - Is it more complex than the simplest thing that works? If yes → simplify.
 "keep it simple", "fit my requests in the current app" — these are non-negotiable.
 
-## Phase 11 — Verify & report
+## Phase 12 — Verify & report
 - Run all four suites — must be green.
 - Compute LoC delta vs baseline.
 - Print a final report:
@@ -116,6 +143,7 @@ Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For ever
   - Dead symbols / enums / providers / l10n keys / assets deleted (counts + names)
   - Locale violations fixed (count + locations)
   - Duplications collapsed (count + canonical target)
+  - Dart best-practice fixes (count + categories: null-bangs, missing-const, dynamic, print, async, dispose, casts)
   - Bugs fixed (with reproducing test names)
   - Provider-name leaks removed (count)
   - UI inconsistencies reconciled (count + screens)
@@ -136,13 +164,14 @@ Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For ever
 - Never sleep > 10s in any command. Long tasks → background + poll.
 
 ## Stopping condition
-A full pass through all 11 phases yields:
+A full pass through all 12 phases yields:
 - Zero UI inconsistencies left to reconcile,
 - Zero duplications left to collapse,
 - Zero silent defaults in money paths,
 - Zero locale violations,
 - Zero date-semantics confusion,
 - Zero further LoC reductions that preserve clarity AND behavior,
+- Zero Dart best-practice violations (bangs, missing-const, dynamic, print, async, dispose, casts),
 - Zero dead symbols,
 - Zero provider-name leaks,
 - Zero new bugs,

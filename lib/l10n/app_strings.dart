@@ -99,6 +99,11 @@ class AppStrings {
   // ── Settings ────────────────────────────────────────────
   String get settingsTitle              => _it ? 'Impostazioni'               : 'Settings';
   String get settingsCurrency           => _it ? 'Valuta predefinita'         : 'Default Currency';
+  String get settingsDefaultTaxRate     => _it ? 'Aliquota fiscale predefinita (%)' : 'Default Tax Rate (%)';
+  String get settingsDefaultTaxRateHelp => _it
+      ? 'Usata per le plusvalenze quando l\'asset non ha un\'aliquota propria.'
+      : 'Used for capital gains when the asset has no per-asset rate.';
+  String get settingsTaxRateInvalid     => _it ? 'Inserisci un numero tra 0 e 100' : 'Enter a value between 0 and 100';
   String get settingsNumberFormat       => _it ? 'Formato numeri/date'        : 'Number/Date Format';
   String get settingsLanguage           => _it ? 'Lingua interfaccia'         : 'Interface Language';
   String get settingsClearCache         => _it ? 'Cancella dati in cache'     : 'Clear cached data';
@@ -215,6 +220,7 @@ class AppStrings {
   String get kpiInvestmentWeight   => _it ? 'Peso del capitale investito'      : 'Investment Weight';
   String get kpiLiquidAssetRatio   => _it ? 'Indice di liquidabilità patrimoniale' : 'Liquid Asset Ratio';
   String get kpiIncomeToWealth     => _it ? 'Tasso disproporzione entrate/patrimonio' : 'Income-to-Wealth Ratio';
+  String get kpiFireProgress       => _it ? 'Progresso FIRE'                          : 'FIRE Progress';
 
   // KPI descriptions by rating
   String kpiLiquidityDesc(String rating) => _it
@@ -248,6 +254,37 @@ class AppStrings {
       : (rating == 'ottimo' || rating == 'buono'
         ? 'Most of your wealth is quickly convertible to cash: unexpected expenses are manageable.'
         : 'A significant portion of your wealth is not easily convertible to cash.');
+  String kpiFireDesc(String rating) => _it
+      ? (rating == 'ottimo'
+          ? 'Hai raggiunto l\'indipendenza finanziaria: il tuo patrimonio sostiene le spese annuali al tasso di prelievo scelto.'
+          : rating == 'buono'
+            ? 'Sei oltre la metà del percorso verso l\'indipendenza finanziaria.'
+            : rating == 'sufficiente'
+              ? 'Hai costruito una base. Continua ad accumulare per avvicinarti al traguardo.'
+              : 'Sei agli inizi del percorso verso l\'indipendenza finanziaria.')
+      : (rating == 'ottimo'
+          ? 'You have reached financial independence: your net worth covers your annual expenses at the chosen withdrawal rate.'
+          : rating == 'buono'
+            ? 'You are past the half-way mark towards financial independence.'
+            : rating == 'sufficiente'
+              ? 'You have built a base. Keep accumulating to close the gap.'
+              : 'You are at the beginning of the path to financial independence.');
+  String kpiFireInsufficientData() => _it
+      ? 'Servono spese annuali registrate per stimare il numero FIRE.'
+      : 'Annual expenses are required to estimate the FIRE number.';
+  String get fireDialogTitle => _it ? 'Indicatore FIRE'                       : 'FIRE Indicator';
+  String get fireDialogIntro => _it
+      ? 'FIRE = Financial Independence, Retire Early. Il numero FIRE è il patrimonio necessario per coprire le tue spese annuali prelevando ogni anno una percentuale (SWR — Safe Withdrawal Rate).'
+      : 'FIRE = Financial Independence, Retire Early. The FIRE number is the wealth required to cover your annual expenses by withdrawing a percentage each year (SWR — Safe Withdrawal Rate).';
+  String get fireSwrLabel    => _it ? 'Tasso di prelievo sicuro (SWR)'        : 'Safe Withdrawal Rate (SWR)';
+  String get fireSwrHint     => _it ? 'es. 2,75 = prelievo del 2,75% l\'anno' : 'e.g. 2.75 = 2.75% per year';
+  String get fireNumberLabel => _it ? 'Numero FIRE'                            : 'FIRE Number';
+  String get fireProgressLabel => _it ? 'Progresso'                            : 'Progress';
+  String get fireResetDefault  => _it ? 'Ripristina predefinito'              : 'Reset default';
+  String get fireSwrInvalid    => _it ? 'Inserisci un numero positivo'         : 'Enter a positive number';
+  String get fireExpensesEstimateLabel => _it ? 'Spese annue stimate'          : 'Estimated annual expenses';
+  String get fireProjectedCurrent      => _it ? 'Proiezione anno corrente'     : 'Current-year projection';
+  String get fireLastYearTotal         => _it ? 'Anno precedente'              : 'Previous year';
   String kpiIncomeWealthDesc(String rating) => _it
       ? (rating == 'ottimo' || rating == 'buono'
         ? 'Le tue entrate sono proporzionate al tuo patrimonio.'
@@ -283,6 +320,10 @@ class AppStrings {
   String get chartAssetInvested    => _it ? 'Investito'             : 'Invested';
   String get chartAssetMarket      => _it ? 'Mercato'               : 'Market';
   String get chartAssetGain        => _it ? 'Guadagno'              : 'Gain';
+  String get chartAssetNet         => _it ? 'Netto'                 : 'Net';
+  String get chartAssetNetTooltip  => _it
+      ? 'Valore netto dopo imposte: Investito + max(0, Guadagno) × (1 − aliquota). Le perdite non vengono tassate.'
+      : 'After-tax net value: Invested + max(0, Gain) × (1 − tax rate). Losses are not taxed.';
   String get chartAdjValue         => _it ? 'Valore'                : 'Value';
   String get chartAdjEvents        => _it ? 'Eventi'                : 'Events';
   String get chartSelectAll        => _it ? 'Seleziona tutto'       : 'Select All';
@@ -404,6 +445,8 @@ class AppStrings {
       : 'No transactions yet.\nImport a file to add transactions.';
   String get noMatchingTransactions  => _it ? 'Nessuna transazione corrispondente.' : 'No matching transactions.';
   String get noDescription           => _it ? '(nessuna descrizione)'  : '(no description)';
+  String get transferLabel           => _it ? 'Trasferimento'          : 'Transfer';
+  String transferFromTo(String from, String to) => _it ? 'da $from a $to' : '$from to $to';
   String get balance                 => _it ? 'Saldo'                  : 'Balance';
   String get records                 => _it ? 'record'                 : 'records';
   String get balanceFromColumnHelp   => _it
@@ -947,6 +990,9 @@ class AppStrings {
     AssetClass.multiAsset:  assetClassMultiAsset,
   }[c]!;
 
+  // ── ATH celebration ────────────────────────────────────────
+  String get athCelebrationTitle   => _it ? 'Nuovo Massimo Storico!'    : 'New All-Time High!';
+
   // ── Intermediaries ─────────────────────────────────────────
   String get vsATH                 => _it ? 'vs Max'                    : 'vs ATH';
   String get value                 => _it ? 'Valore'                    : 'Value';
@@ -964,6 +1010,7 @@ class AppStrings {
   String get selectIntermediaryEmpty => _it ? 'Nessun intermediario. Creane uno per procedere.' : 'No intermediary yet. Create one to continue.';
   String get close                 => _it ? 'Chiudi'                    : 'Close';
   String get fullscreen            => _it ? 'Schermo intero'             : 'Full screen';
+  String get chartMaShort          => _it ? 'MM:'                        : 'MA:';
 
   // ── Multi-select ─────────────────────────────────────────
   String nSelected(int n)          => _it ? '$n selezionati'            : '$n selected';

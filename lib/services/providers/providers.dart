@@ -24,6 +24,7 @@ import '../web_market_data_service.dart';
 import '../network_monitor.dart';
 import '../import_service.dart';
 import '../isin_lookup_service.dart';
+import '../financial_health_service.dart';
 import '../market_price_service.dart';
 import '../intermediary_service.dart';
 import '../pillar_scope.dart';

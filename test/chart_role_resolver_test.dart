@@ -56,6 +56,7 @@ AllSeriesData _allData() {
       ),
     ],
     assetGain: const [],
+    assetNet: const [],
     adjustments: [
       ChartSeries(
         key: 'adjustment_value:1',

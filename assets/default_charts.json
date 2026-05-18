@@ -8,7 +8,7 @@
     {
       "widgetType": "chart",
       "title": "Totals",
-      "sourceChartIds": "[\"Portfolio\",\"Cash\",\"Invested\",\"Saving\",\"Total Assets\"]"
+      "sourceChartIds": "[\"Total Assets\",\"Saving\",\"Invested\",\"Cash\",\"Portfolio\",\"Net Asset Value\"]"
     },
     {
       "widgetType": "chart",
@@ -58,6 +58,16 @@
       "title": "Portfolio",
       "categories": [
         "all_market"
+      ]
+    },
+    {
+      "role": "net_asset_value",
+      "title": "Net Asset Value",
+      "categories": [
+        "all_net",
+        "all_accounts",
+        "outflow_value",
+        "outflow_events"
       ]
     },
     {

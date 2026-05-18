@@ -13,6 +13,19 @@ final priceRefreshCounter = StateProvider<int>((ref) => 0);
 /// Privacy mode: blur all monetary amounts for screenshot sharing.
 final privacyModeProvider = StateProvider<bool>((ref) => false);
 
+/// Labels (chart titles) that have already triggered the ATH celebration
+/// overlay during this app session. Used to prevent the dashboard rebuild
+/// from re-firing the celebration every time a new frame is laid out for
+/// the History tab. Resets on app restart.
+final athFiredThisSessionProvider = StateProvider<Set<String>>((_) => <String>{});
+
+/// True once the user has opened the Dashboard's History tab in this app
+/// session. The ATH auto-fire is gated on this flag so the celebration
+/// doesn't surprise the user at startup if their portfolio happens to be
+/// at a new high. The 6-tap easter-egg path ignores this gate — it always
+/// fires on demand.
+final historyTabSeenThisSessionProvider = StateProvider<bool>((_) => false);
+
 /// Whether the user-triggered price/rate/composition sync is currently
 /// running. Drives the spinner on the global Refresh icon from any screen.
 final isManualSyncingProvider = StateProvider<bool>((ref) => false);
@@ -56,4 +69,27 @@ final baseCurrencyProvider = StreamProvider<String>((ref) {
   return (db.select(db.appConfigs)..where((c) => c.key.equals('BASE_CURRENCY')))
       .watchSingleOrNull()
       .map((row) => row?.value ?? 'EUR');
+});
+
+/// Default capital-gains tax rate (fraction, 0.26 = 26%). Reactive from
+/// AppConfigs; defaults to [kDefaultTaxRate] when unset or invalid.
+/// Per-asset `taxRate` overrides this on a position-by-position basis.
+final defaultTaxRateProvider = StreamProvider<double>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('TAX_RATE')))
+      .watchSingleOrNull()
+      .map((row) {
+    final v = double.tryParse(row?.value ?? '');
+    if (v == null) return kDefaultTaxRate;
+    return v.clamp(0.0, 1.0);
+  });
+});
+
+/// Safe Withdrawal Rate (%) for the FIRE indicator. Reactive from AppConfigs;
+/// defaults to [kDefaultFireSwrPct] when unset or invalid.
+final fireSwrProvider = StreamProvider<double>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('FIRE_SWR')))
+      .watchSingleOrNull()
+      .map((row) => double.tryParse(row?.value ?? '') ?? kDefaultFireSwrPct);
 });

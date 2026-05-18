@@ -88,7 +88,7 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
     final d = widget.allData;
 
     final assetIds = <int>{};
-    for (final ser in [...d.assetInvested, ...d.assetMarket, ...d.assetGain]) {
+    for (final ser in [...d.assetInvested, ...d.assetMarket, ...d.assetGain, ...d.assetNet]) {
       final parts = ser.key.split(':');
       if (parts.length == 2) {
         final id = int.tryParse(parts[1]);
@@ -236,7 +236,7 @@ class _AssetsGrid extends StatelessWidget {
     required this.s,
   });
 
-  static const double _colWidth = 64;
+  static const double _colWidth = 58;
 
   bool _has(int id, String type) {
     final key = '$type:$id';
@@ -244,13 +244,14 @@ class _AssetsGrid extends StatelessWidget {
       'asset_invested' => allData.assetInvested,
       'asset_market' => allData.assetMarket,
       'asset_gain' => allData.assetGain,
+      'asset_net' => allData.assetNet,
       _ => const <ChartSeries>[],
     };
     return source.any((ser) => ser.key == key);
   }
 
   String _name(int id) {
-    for (final src in [allData.assetMarket, allData.assetInvested, allData.assetGain]) {
+    for (final src in [allData.assetMarket, allData.assetInvested, allData.assetGain, allData.assetNet]) {
       final hit = src.where((ser) {
         final parts = ser.key.split(':');
         return parts.length == 2 && int.tryParse(parts[1]) == id;
@@ -277,6 +278,7 @@ class _AssetsGrid extends StatelessWidget {
       ..._columnKeys('asset_invested'),
       ..._columnKeys('asset_market'),
       ..._columnKeys('asset_gain'),
+      ..._columnKeys('asset_net'),
     };
     final allSelected = allKeys.isNotEmpty && allKeys.every(selected.contains);
 
@@ -313,6 +315,13 @@ class _AssetsGrid extends StatelessWidget {
                 allSelected: _columnAllSelected('asset_gain'),
                 onTap: () => onToggleGroup(_columnKeys('asset_gain')),
               ),
+              _ColumnHeader(
+                label: s.chartAssetNet,
+                width: _colWidth,
+                tooltip: s.chartAssetNetTooltip,
+                allSelected: _columnAllSelected('asset_net'),
+                onTap: () => onToggleGroup(_columnKeys('asset_net')),
+              ),
             ],
           ),
         ),
@@ -325,6 +334,7 @@ class _AssetsGrid extends StatelessWidget {
             hasInvested: _has(id, 'asset_invested'),
             hasMarket: _has(id, 'asset_market'),
             hasGain: _has(id, 'asset_gain'),
+            hasNet: _has(id, 'asset_net'),
             selected: selected,
             onToggle: onToggle,
             colWidth: _colWidth,
@@ -339,18 +349,20 @@ class _ColumnHeader extends StatelessWidget {
   final double width;
   final bool allSelected;
   final VoidCallback onTap;
+  final String? tooltip;
 
   const _ColumnHeader({
     required this.label,
     required this.width,
     required this.allSelected,
     required this.onTap,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SizedBox(
+    final inner = SizedBox(
       width: width,
       child: InkWell(
         onTap: onTap,
@@ -378,6 +390,7 @@ class _ColumnHeader extends StatelessWidget {
         ),
       ),
     );
+    return tooltip == null ? inner : Tooltip(message: tooltip!, child: inner);
   }
 }
 
@@ -387,6 +400,7 @@ class _AssetRow extends StatelessWidget {
   final bool hasInvested;
   final bool hasMarket;
   final bool hasGain;
+  final bool hasNet;
   final Set<String> selected;
   final ValueChanged<String> onToggle;
   final double colWidth;
@@ -397,6 +411,7 @@ class _AssetRow extends StatelessWidget {
     required this.hasInvested,
     required this.hasMarket,
     required this.hasGain,
+    required this.hasNet,
     required this.selected,
     required this.onToggle,
     required this.colWidth,
@@ -429,6 +444,7 @@ class _AssetRow extends StatelessWidget {
           _cell(hasInvested, 'asset_invested:$id'),
           _cell(hasMarket, 'asset_market:$id'),
           _cell(hasGain, 'asset_gain:$id'),
+          _cell(hasNet, 'asset_net:$id'),
         ],
       ),
     );

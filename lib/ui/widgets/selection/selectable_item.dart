@@ -42,15 +42,24 @@ class SelectableItem<T> extends StatelessWidget {
           onTap: active ? () => controller.toggle(id) : null,
           child: Stack(
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                color: selected
-                    ? Theme.of(ctx).colorScheme.primaryContainer.withValues(alpha: 0.4)
-                    : Colors.transparent,
-                child: IgnorePointer(
-                  ignoring: active,
-                  child: child,
+              // Selection tint lives on its own layer — NOT wrapping the
+              // child. A coloured Container wrapping the child inserts a
+              // DecoratedBox between the child's ListTile and its Material
+              // ancestor, which trips the framework's "ListTile background
+              // may be invisible" assertion. Painting the tint as a
+              // sibling Positioned.fill keeps the animation without ever
+              // shadowing the ListTile's ink.
+              Positioned.fill(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  color: selected
+                      ? Theme.of(ctx).colorScheme.primaryContainer.withValues(alpha: 0.4)
+                      : Colors.transparent,
                 ),
+              ),
+              IgnorePointer(
+                ignoring: active,
+                child: child,
               ),
               if (selected)
                 const Positioned(

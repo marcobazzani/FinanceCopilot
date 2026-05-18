@@ -21,6 +21,8 @@ export '../models/dashboard_chart.dart';
 /// | all_market                   | every active `asset_market:<id>`                         |
 /// | all_market_liquid            | `asset_market:<id>` for non-illiquid instrument types    |
 /// | all_gain                     | every active `asset_gain:<id>`                           |
+/// | all_net                      | every active `asset_net:<id>`                            |
+/// | all_net_liquid               | `asset_net:<id>` for non-illiquid instrument types       |
 /// | outflow_value                | every outflow event's `adjustment_value:<id>`            |
 /// | outflow_events               | every outflow event's `adjustment_events:<id>`           |
 /// | non_ephemeral_inflow_value   | every non-ephemeral inflow's `income_adj_value:<id>`     |
@@ -145,6 +147,11 @@ class DefaultChartsLoader {
           .map((a) => conf('asset_market', a.id))
           .toList(),
       'all_gain' => activeAssets.map((a) => conf('asset_gain', a.id)).toList(),
+      'all_net' => activeAssets.map((a) => conf('asset_net', a.id)).toList(),
+      'all_net_liquid' => activeAssets
+          .where((a) => !_illiquidTypes.contains(a.instrumentType))
+          .map((a) => conf('asset_net', a.id))
+          .toList(),
       'outflow_value' => outflows.map((e) => conf('adjustment_value', e.id)).toList(),
       'outflow_events' => outflows.map((e) => conf('adjustment_events', e.id)).toList(),
       'non_ephemeral_inflow_value' => inflows
