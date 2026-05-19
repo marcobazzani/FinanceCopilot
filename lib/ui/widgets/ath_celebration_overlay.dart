@@ -221,13 +221,11 @@ class _AthOverlayBody extends StatelessWidget {
       animation: controller,
       builder: (ctx, _) {
         return Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            // Tap anywhere dismisses the cartel early. Without this the
-            // full-screen overlay (even with IgnorePointer) caused macOS
-            // release builds to ship a black canvas after the very first
-            // fire — see be4ecaf reverted in 9b6fc5e..be4ecaf range.
-            onTap: controller.dismissAll,
+          // Purely decorative — clicks pass straight through to the
+          // dashboard so the celebration never interrupts what the user
+          // is doing. The cards auto-dismiss after _cardLifetime each.
+          child: IgnorePointer(
+            ignoring: true,
             child: Stack(
               children: [
                 _buildStarburstLayer(),
