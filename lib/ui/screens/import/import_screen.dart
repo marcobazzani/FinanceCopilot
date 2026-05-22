@@ -23,6 +23,9 @@ import '../../../utils/logger.dart';
 import '../../widgets/isin_url_paste_recovery.dart';
 
 part 'column_mapper_step.dart';
+part 'mapping_content.dart';
+part 'mode_sections.dart';
+part 'amount_formula.dart';
 part 'confirm_step.dart';
 part 'quick_confirm_step.dart';
 part 'result_step.dart';
