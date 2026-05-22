@@ -173,7 +173,7 @@ Future<FilePreview> _parsePdfMain(
     final fragments = <PdfFragment>[];
     for (var i = 0; i < document.pages.length; i++) {
       final page = document.pages[i];
-      final text = await page.loadText();
+      final text = await page.loadStructuredText();
       for (final f in text.fragments) {
         if (f.text.trim().isEmpty) continue;
         fragments.add(PdfFragment(

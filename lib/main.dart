@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:pdfrx/pdfrx.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
@@ -38,6 +39,9 @@ final _log = getLogger('Main');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // pdfrx 2.x requires explicit initialization before the document API
+  // (PdfDocument.openData) is used outside of a pdfrx widget.
+  await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
   await initLogging();
   await initializeDateFormatting();
   // Print key paths to stdout for easy access
