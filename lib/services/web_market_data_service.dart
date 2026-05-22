@@ -102,6 +102,10 @@ class WebMarketDataService extends MarketPriceService {
   final Dio _dio;
   final Future<String?> Function(Uri)? _pageFetcher;
 
+  /// Test seam: when non-null, [_ensureWebView] calls this instead of the
+  /// real headless-WebView Cloudflare solve.
+  final Future<bool> Function()? _solveOverride;
+
   /// Persistent headless WebView for CF-protected API calls.
   HeadlessInAppWebView? _webView;
   InAppWebViewController? _webViewController;
@@ -114,12 +118,15 @@ class WebMarketDataService extends MarketPriceService {
 
   /// [pageFetcher] is a test seam: when non-null, [resolveFromInstrumentUrl]
   /// uses it instead of the built-in Dio + WebView fetch path.
+  /// [solveHeadless] is a test seam for the Cloudflare solve step.
   WebMarketDataService(
     super.db, {
     Dio? dio,
     Future<String?> Function(Uri)? pageFetcher,
+    Future<bool> Function()? solveHeadless,
   })  : _dio = dio ?? Dio(),
-        _pageFetcher = pageFetcher;
+        _pageFetcher = pageFetcher,
+        _solveOverride = solveHeadless;
 
   // ──────────────────────────────────────────────
   // Headless WebView: solve CF + make API calls in same browser context
@@ -160,28 +167,42 @@ class WebMarketDataService extends MarketPriceService {
   Future<bool> _ensureWebView() async {
     if (_isWebViewReady) return true;
     if (_cfSolving != null) return _cfSolving!.future;
-    _cfSolving = Completer<bool>();
-    final result = await _solveHeadless();
-    // Probe Dio once so all subsequent calls know whether to use Dio or JS
-    if (result && !_dioBlocked) {
-      try {
-        final headers = Map<String, String>.from(_browserHeaders);
-        if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
-        if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
-        await _dio.get('$kProviderApiBase/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
-            options: Options(headers: headers, validateStatus: (s) => s != null && s < 400));
-        _log.info('Dio probe: OK - using Dio for API calls');
-      } on DioException catch (e) {
-        if (e.response?.statusCode == 403) {
-          _dioBlocked = true;
-          _log.info('Dio probe: 403 - all fetches will use WebView JS');
-        }
-      } catch (_) {}
+    final solving = Completer<bool>();
+    _cfSolving = solving;
+    var result = false;
+    try {
+      result = await (_solveOverride ?? _solveHeadless)();
+      // Probe Dio once so all subsequent calls know whether to use Dio or JS
+      if (result && !_dioBlocked) {
+        try {
+          final headers = Map<String, String>.from(_browserHeaders);
+          if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
+          if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
+          await _dio.get('$kProviderApiBase/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
+              options: Options(headers: headers, validateStatus: (s) => s != null && s < 400));
+          _log.info('Dio probe: OK - using Dio for API calls');
+        } on DioException catch (e) {
+          if (e.response?.statusCode == 403) {
+            _dioBlocked = true;
+            _log.info('Dio probe: 403 - all fetches will use WebView JS');
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      // A failed CF solve must not leave the mutex completer dangling —
+      // that would hang every subsequent _ensureWebView call forever.
+      _log.warning('_ensureWebView: CF solve failed: $e');
+      result = false;
+    } finally {
+      solving.complete(result);
+      _cfSolving = null;
     }
-    _cfSolving?.complete(result);
-    _cfSolving = null;
     return result;
   }
+
+  /// Test seam: exercises [_ensureWebView] directly so the CF-solve mutex
+  /// lifecycle can be verified without a real headless WebView.
+  Future<bool> ensureWebViewForTest() => _ensureWebView();
 
   Future<bool> _solveHeadless() async {
     _log.info('Solving CF via headless WebView...');

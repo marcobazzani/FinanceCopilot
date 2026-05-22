@@ -362,6 +362,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         };
         _parsing = false;
       });
+    } finally {
+      // Safety net: every early-return path in the try above (cancelled
+      // sheet picker, empty file) must not leave the screen stuck on the
+      // parsing spinner.
+      if (mounted && _parsing) setState(() => _parsing = false);
     }
   }
 

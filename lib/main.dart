@@ -417,7 +417,8 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// Wire up sync service callbacks needed for the explicit
   /// Backup/Restore-from-Drive operations.
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
-    sync.copyFromAttached = (tmpPath) => _mergeRemoteDb(tmpPath);
+    sync.copyFromAttached =
+        (tmpPath) => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath);
     sync.onDbReplaced = () {
       if (mounted) {
         _log.info('DB replaced by sync, reloading...');
@@ -449,78 +450,6 @@ class _AppShellState extends ConsumerState<AppShell> {
         _log.warning('Background sync error: $e');
       }
     });
-  }
-
-  /// Merge the contents of a downloaded remote DB file into the currently
-  /// open drift instance. Called from GoogleDriveSyncService._download via
-  /// the `copyFromAttached` callback.
-  ///
-  /// Uses SQLite `ATTACH DATABASE` to expose the remote file as `src`, then
-  /// for every user table in `src`: DELETE FROM main + INSERT FROM SELECT.
-  /// Everything runs inside a single drift transaction — either the whole
-  /// merge succeeds or it rolls back leaving local data untouched.
-  ///
-  /// This avoids the Windows file-lock problem (no close, no file swap) and
-  /// the drift-close concurrent-modification bug entirely.
-  Future<void> _mergeRemoteDb(String tmpPath) async {
-    final db = ref.read(databaseProvider);
-    // Escape single quotes in the path for SQL string literal safety.
-    final sqlPath = tmpPath.replaceAll("'", "''");
-    await db.customStatement("ATTACH DATABASE '$sqlPath' AS src");
-    try {
-      // Discover user tables in the source DB. Exclude SQLite's schema table
-      // and Android's auto-generated metadata table, but we DO want
-      // `sqlite_sequence` so AUTOINCREMENT counters stay in sync — otherwise
-      // the next insert locally could reuse an ID already present in the
-      // data we just copied.
-      final rows = await db.customSelect(
-        "SELECT name FROM src.sqlite_master "
-        "WHERE type='table' "
-        "AND name NOT LIKE 'sqlite_stat%' "
-        "AND name NOT IN ('sqlite_master', 'sqlite_temp_master', 'android_metadata')",
-      ).get();
-      final tables = rows.map((r) => r.read<String>('name')).toList();
-      _log.info('_mergeRemoteDb: copying ${tables.length} tables from $tmpPath');
-
-      await db.transaction(() async {
-        // FK constraints would fire during intermediate states while we wipe
-        // and repopulate tables. Disable them for the duration of the copy —
-        // we trust the remote DB is internally consistent.
-        await db.customStatement('PRAGMA defer_foreign_keys = ON');
-        for (final table in tables) {
-          try {
-            // Use column intersection so schema differences (extra columns in
-            // either the source or target) don't cause INSERT failures.
-            final srcCols = (await db.customSelect('PRAGMA src.table_info("$table")').get())
-                .map((r) => r.read<String>('name'))
-                .toSet();
-            final dstCols = (await db.customSelect('PRAGMA main.table_info("$table")').get())
-                .map((r) => r.read<String>('name'))
-                .toSet();
-            final common = srcCols.intersection(dstCols);
-            if (common.isEmpty) {
-              _log.warning('_mergeRemoteDb: no common columns for $table, skipping');
-              continue;
-            }
-            final cols = common.map((c) => '"$c"').join(', ');
-            await db.customStatement('DELETE FROM main."$table"');
-            await db.customStatement(
-              'INSERT INTO main."$table" ($cols) SELECT $cols FROM src."$table"',
-            );
-          } catch (e) {
-            _log.warning('_mergeRemoteDb: failed to copy table $table: $e');
-            rethrow;
-          }
-        }
-      });
-      _log.info('_mergeRemoteDb: merge committed');
-    } finally {
-      try {
-        await db.customStatement('DETACH DATABASE src');
-      } catch (e) {
-        _log.warning('_mergeRemoteDb: DETACH failed (harmless): $e');
-      }
-    }
   }
 
   /// Full manual refresh: pull from Google Drive, then refresh market data.
