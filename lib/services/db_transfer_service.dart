@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../database/database.dart';
 import '../database/db_file_name.dart';
 import '../utils/logger.dart';
 
@@ -45,11 +46,13 @@ class DbTransferService {
     }
   }
 
-  /// Import a user-selected DB file, replacing the internal DB.
+  /// Pick a user-selected DB file and merge it into the currently-open DB.
+  ///
+  /// Uses SQLite ATTACH via [AppDatabase.mergeFromAttachedDb] instead of
+  /// replacing the database file. This keeps the import safe while Drift has
+  /// active stream subscribers and avoids Windows file-lock failures.
   /// Returns the import source path on success, null if cancelled.
-  /// The caller must close the current DB before calling this,
-  /// and reload the DB provider after.
-  static Future<String?> importDb() async {
+  static Future<String?> importDb(AppDatabase db) async {
     final picked = await FilePicker.pickFiles(
       dialogTitle: 'Import Database',
       type: FileType.custom,
@@ -60,17 +63,20 @@ class DbTransferService {
     final sourcePath = picked.files.single.path;
     if (sourcePath == null) return null;
 
-    final targetPath = await dbPath;
+    return importDbFromPath(db, sourcePath);
+  }
 
+  /// Merge a database file into [db] without replacing the open SQLite file.
+  static Future<String> importDbFromPath(
+    AppDatabase db,
+    String sourcePath,
+  ) async {
     try {
-      // Overwrite internal DB with the selected file
-      final target = File(targetPath);
-      if (await target.exists()) await target.delete();
-      await File(sourcePath).copy(targetPath);
-      _log.info('importDb: imported from $sourcePath');
+      await db.mergeFromAttachedDb(sourcePath);
+      _log.info('importDb: merged from $sourcePath');
       return sourcePath;
     } catch (e) {
-      _log.severe('importDb: failed to copy: $e');
+      _log.severe('importDb: failed to merge: $e');
       rethrow;
     }
   }

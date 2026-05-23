@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/db_transfer_service.dart';
 
 void main() {
   late Directory tmpDir;
@@ -30,8 +31,9 @@ void main() {
     // A "remote" backup DB at the current schema version, with one row.
     final remotePath = '${tmpDir.path}/remote.db';
     final remoteDb = AppDatabase.forTesting(NativeDatabase(File(remotePath)));
-    await remoteDb.into(remoteDb.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker From Backup'));
+    await remoteDb
+        .into(remoteDb.intermediaries)
+        .insert(IntermediariesCompanion.insert(name: 'Broker From Backup'));
     await remoteDb.close();
 
     final localDb = AppDatabase.forTesting(NativeDatabase.memory());
@@ -43,31 +45,79 @@ void main() {
     expect(merged.map((i) => i.name), contains('Broker From Backup'));
   });
 
-  test('refuses a backup whose schema version differs — local data survives',
-      () async {
-    // A real backup DB, then tamper its drift schema version to simulate a
-    // backup taken by a different app version.
-    final remotePath = '${tmpDir.path}/old_remote.db';
-    final remoteDb = AppDatabase.forTesting(NativeDatabase(File(remotePath)));
-    await remoteDb.into(remoteDb.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Backup Broker'));
-    await remoteDb.close();
-    final raw = sqlite3.open(remotePath);
-    raw.execute('PRAGMA user_version = 1');
-    raw.dispose();
+  test(
+    'refuses a backup whose schema version differs — local data survives',
+    () async {
+      // A real backup DB, then tamper its drift schema version to simulate a
+      // backup taken by a different app version.
+      final remotePath = '${tmpDir.path}/old_remote.db';
+      final remoteDb = AppDatabase.forTesting(NativeDatabase(File(remotePath)));
+      await remoteDb
+          .into(remoteDb.intermediaries)
+          .insert(IntermediariesCompanion.insert(name: 'Backup Broker'));
+      await remoteDb.close();
+      final raw = sqlite3.open(remotePath);
+      raw.execute('PRAGMA user_version = 1');
+      raw.dispose();
 
-    final localDb = AppDatabase.forTesting(NativeDatabase.memory());
-    addTearDown(localDb.close);
-    await localDb.into(localDb.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Local Broker'));
+      final localDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(localDb.close);
+      await localDb
+          .into(localDb.intermediaries)
+          .insert(IntermediariesCompanion.insert(name: 'Local Broker'));
 
-    await expectLater(
-      localDb.mergeFromAttachedDb(remotePath),
-      throwsA(isA<SchemaVersionMismatchException>()),
-    );
+      await expectLater(
+        localDb.mergeFromAttachedDb(remotePath),
+        throwsA(isA<SchemaVersionMismatchException>()),
+      );
 
-    // The gate must fire before any DELETE — local data untouched.
-    final survivors = await localDb.select(localDb.intermediaries).get();
-    expect(survivors.map((i) => i.name), ['Local Broker']);
-  });
+      // The gate must fire before any DELETE — local data untouched.
+      final survivors = await localDb.select(localDb.intermediaries).get();
+      expect(survivors.map((i) => i.name), ['Local Broker']);
+    },
+  );
+
+  test(
+    'local DB import merges via ATTACH without replacing the open DB file',
+    () async {
+      final importPath = '${tmpDir.path}/import.db';
+      final importDb = AppDatabase.forTesting(NativeDatabase(File(importPath)));
+      await importDb
+          .into(importDb.intermediaries)
+          .insert(IntermediariesCompanion.insert(name: 'Imported Broker'));
+      await importDb.close();
+
+      final localPath = '${tmpDir.path}/local.db';
+      final localFile = File(localPath);
+      final localDb = AppDatabase.forTesting(NativeDatabase(localFile));
+      addTearDown(localDb.close);
+      await localDb
+          .into(localDb.intermediaries)
+          .insert(IntermediariesCompanion.insert(name: 'Local Broker'));
+
+      final emissions = <List<String>>[];
+      final sub = localDb.select(localDb.intermediaries).watch().listen((rows) {
+        emissions.add(rows.map((i) => i.name).toList());
+      });
+      addTearDown(sub.cancel);
+      await Future<void>.delayed(Duration.zero);
+
+      final source = await DbTransferService.importDbFromPath(
+        localDb,
+        importPath,
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(source, importPath);
+      final merged = await localDb.select(localDb.intermediaries).get();
+      expect(merged.map((i) => i.name), ['Imported Broker']);
+      expect(
+        emissions,
+        contains(equals(['Imported Broker'])),
+        reason:
+            'active Drift watchers should survive the import; direct file '
+            'replacement would leave them attached to the old connection',
+      );
+    },
+  );
 }

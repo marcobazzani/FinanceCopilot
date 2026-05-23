@@ -188,9 +188,11 @@ extension _AppShellDriveDbOps on _AppShellState {
       }
     }
 
-    // Close current DB, import, reload
+    // Merge into the open DB via ATTACH. This avoids replacing the SQLite
+    // file while Drift still has active stream subscribers, which is fragile
+    // on Windows and can leave stale handles.
     if (!context.mounted) return;
-    final path = await DbTransferService.importDb();
+    final path = await DbTransferService.importDb(db);
     if (path == null) return;
 
     ref.read(dbReloadTrigger.notifier).state++;

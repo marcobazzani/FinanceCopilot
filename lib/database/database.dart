@@ -800,6 +800,10 @@ class AppDatabase extends _$AppDatabase {
           }
         }
       });
+      notifyUpdates({
+        for (final table in tables)
+          if (table != 'sqlite_sequence') TableUpdate(table),
+      });
       _log.info('mergeFromAttachedDb: merge committed');
     } finally {
       try {

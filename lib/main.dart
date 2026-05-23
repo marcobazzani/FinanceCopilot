@@ -527,7 +527,9 @@ class _AppShellState extends ConsumerState<AppShell> {
                         icon: const Icon(Icons.file_upload),
                         label: Text(s.landingImportDb),
                         onPressed: () async {
-                          final path = await DbTransferService.importDb();
+                          final path = await DbTransferService.importDb(
+                            ref.read(databaseProvider),
+                          );
                           if (path != null && mounted) {
                             ref.read(dbReloadTrigger.notifier).state++;
                             setState(() => _showLanding = false);
