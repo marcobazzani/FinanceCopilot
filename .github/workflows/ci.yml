@@ -49,11 +49,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             device: macos
           - os: windows-latest
             device: windows
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -76,11 +77,13 @@ jobs:
         run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Run integration tests
+        timeout-minutes: 25
         run: flutter test integration_test/all_tests.dart -d ${{ matrix.device }} --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 
       - name: Run live data fetch test
         if: matrix.device == 'macos'
         continue-on-error: true
+        timeout-minutes: 10
         run: flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 
   integration-test-android:
