@@ -11,7 +11,8 @@ final accountsProvider = StreamProvider<List<Account>>((ref) {
 });
 
 final accountStatsProvider = StreamProvider<Map<int, AccountStats>>((ref) {
-  return ref.watch(accountServiceProvider).watchStatsForAll();
+  final through = ref.watch(waybackDateProvider);
+  return ref.watch(accountServiceProvider).watchStatsForAll(through: through);
 });
 
 final assetsProvider = StreamProvider<List<Asset>>((ref) {
@@ -67,23 +68,31 @@ final assetCompositionsProvider = StreamProvider<Map<int, List<AssetComposition>
 });
 
 final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
-  return ref.watch(assetServiceProvider).watchStatsForAll();
+  final through = ref.watch(waybackDateProvider);
+  return ref.watch(assetServiceProvider).watchStatsForAll(through: through);
 });
 
 /// Transactions for a specific account (pass accountId as family parameter).
 final accountTransactionsProvider = StreamProvider.family<List<Transaction>, int>((ref, accountId) {
-  return ref.watch(transactionServiceProvider).watchByAccount(accountId);
+  final through = ref.watch(waybackDateProvider);
+  return ref
+      .watch(transactionServiceProvider)
+      .watchByAccount(accountId, through: through);
 });
 
 /// All transactions across every account — feeds the read-only virtual
 /// "All accounts" entry.
 final allTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
-  return ref.watch(transactionServiceProvider).watchAll();
+  final through = ref.watch(waybackDateProvider);
+  return ref.watch(transactionServiceProvider).watchAll(through: through);
 });
 
 /// Asset events for a specific asset (pass assetId as family parameter).
 final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, assetId) {
-  return ref.watch(assetEventServiceProvider).watchByAsset(assetId);
+  final through = ref.watch(waybackDateProvider);
+  return ref
+      .watch(assetEventServiceProvider)
+      .watchByAsset(assetId, through: through);
 });
 
 /// Loads `assets/default_charts.json` and expands the categories against
@@ -135,13 +144,19 @@ final chartsDirtyProvider = Provider<bool>((ref) {
 // ── Buffer transactions (reimbursements; shared across events) ──
 
 final bufferTransactionsProvider = StreamProvider.family<List<BufferTransaction>, int>((ref, bufferId) {
-  return ref.watch(bufferServiceProvider).watchByBuffer(bufferId);
+  final through = ref.watch(waybackDateProvider);
+  return ref
+      .watch(bufferServiceProvider)
+      .watchByBuffer(bufferId, through: through);
 });
 
 // ── Extraordinary events stream providers ──
 
 final extraordinaryEventsProvider = StreamProvider<List<ExtraordinaryEvent>>((ref) {
-  return ref.watch(extraordinaryEventServiceProvider).watchAll();
+  final through = ref.watch(waybackDateProvider);
+  return ref
+      .watch(extraordinaryEventServiceProvider)
+      .watchAll(through: through);
 });
 
 final extraordinaryEventProvider = StreamProvider.family<ExtraordinaryEvent, int>((ref, id) {
@@ -149,15 +164,22 @@ final extraordinaryEventProvider = StreamProvider.family<ExtraordinaryEvent, int
 });
 
 final extraordinaryEventEntriesProvider = StreamProvider.family<List<ExtraordinaryEventEntry>, int>((ref, eventId) {
-  return ref.watch(extraordinaryEventServiceProvider).watchEntries(eventId);
+  final through = ref.watch(waybackDateProvider);
+  return ref
+      .watch(extraordinaryEventServiceProvider)
+      .watchEntries(eventId, through: through);
 });
 
 final extraordinaryEventStatsProvider = StreamProvider<Map<int, ExtraordinaryEventStats>>((ref) {
-  return ref.watch(extraordinaryEventServiceProvider).watchStatsForAll();
+  final through = ref.watch(waybackDateProvider);
+  return ref
+      .watch(extraordinaryEventServiceProvider)
+      .watchStatsForAll(through: through);
 });
 
 // ── Income stream providers ──
 
 final incomesProvider = StreamProvider<List<Income>>((ref) {
-  return ref.watch(incomeServiceProvider).watchAll();
+  final through = ref.watch(waybackDateProvider);
+  return ref.watch(incomeServiceProvider).watchAll(through: through);
 });

@@ -24,8 +24,7 @@ class _FinancialHealthTab extends ConsumerWidget {
     final swrPct = ref.watch(fireSwrProvider).value ?? kDefaultFireSwrPct;
 
     // Price changes for Today, YTD, All — use midnight dates to match History tab
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = ref.watch(currentDateProvider);
     final todayChanges = ref.watch(assetDailyChangesProvider(today.subtract(const Duration(days: 1))));
     final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, 1, 1)));
     final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
@@ -74,8 +73,7 @@ class _FinancialHealthTab extends ConsumerWidget {
           annualSavings = currentYear.savings;
           monthlyExpenses = currentYear.monthlyExpenses > 0 ? currentYear.monthlyExpenses : 0;
           // Rolling 12 months income for income-to-wealth ratio
-          final now = DateTime.now();
-          final cutoff = DateTime(now.year - 1, now.month, now.day);
+          final cutoff = DateTime(today.year - 1, today.month, today.day);
           for (final year in ieData.years) {
             for (final month in year.months) {
               if (DateTime(month.year, month.month).isAfter(cutoff)) {

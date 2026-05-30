@@ -146,7 +146,7 @@ class AssetService {
   // the gross buy sum when no per-share quantity is available — see
   // [_rowToStats] for the branching. The SQL exposes the three raw
   // aggregates needed for the calculation.
-  static const _statsQuery =
+  static String _statsSql({required bool bounded}) =>
       'SELECT asset_id, COUNT(*) AS cnt, '
       'MIN(value_date) AS first_date, MAX(value_date) AS last_date, '
       "SUM(CASE WHEN type = 'buy' THEN ABS(amount) ELSE 0 END) AS total_buy_amount, "
@@ -154,7 +154,9 @@ class AssetService {
       "SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
       "         WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) "
       '         ELSE 0 END) AS total_qty '
-      'FROM asset_events GROUP BY asset_id';
+      'FROM asset_events '
+      '${bounded ? 'WHERE value_date < ? ' : ''}'
+      'GROUP BY asset_id';
 
   static AssetStats _rowToStats(QueryRow row) {
     final totalBuyAmount = row.read<double>('total_buy_amount');
@@ -190,19 +192,33 @@ class AssetService {
   }
 
   /// Get aggregated stats for all assets from their events.
-  Future<Map<int, AssetStats>> getStatsForAll() async {
+  Future<Map<int, AssetStats>> getStatsForAll({DateTime? through}) async {
     final rows = await _db.customSelect(
-      _statsQuery, readsFrom: {_db.assetEvents},
+      _statsSql(bounded: through != null),
+      variables: _throughVars(through),
+      readsFrom: {_db.assetEvents},
     ).get();
     return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
   }
 
   /// Stream of aggregated stats for all assets, updates on event changes.
-  Stream<Map<int, AssetStats>> watchStatsForAll() {
+  Stream<Map<int, AssetStats>> watchStatsForAll({DateTime? through}) {
     return _db.customSelect(
-      _statsQuery, readsFrom: {_db.assetEvents},
+      _statsSql(bounded: through != null),
+      variables: _throughVars(through),
+      readsFrom: {_db.assetEvents},
     ).watch().map((rows) {
       return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
     });
+  }
+
+  static List<Variable<int>> _throughVars(DateTime? through) {
+    if (through == null) return const [];
+    final endExclusive = DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
+    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 }

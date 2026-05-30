@@ -55,7 +55,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
     final amtFmt   = fmt.amountFormat(widget.locale);
     final sym      = currencySymbol(widget.data.baseCurrency);
     final years    = widget.data.years;
-    final now      = DateTime.now();
+    final now      = ref.watch(currentDateProvider);
     if (years.isEmpty) return const SizedBox.shrink();
 
     final colorIncome   = Colors.green.shade400;

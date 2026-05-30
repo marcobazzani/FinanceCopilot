@@ -144,6 +144,46 @@ void main() {
     });
   });
 
+  group('through date filtering', () {
+    test(
+      'getByAsset includes the full selected valueDate and keeps raw rows',
+      () async {
+        final assetId = await createAsset('Wayback');
+        await db
+            .into(db.assetEvents)
+            .insert(
+              AssetEventsCompanion.insert(
+                assetId: assetId,
+                date: DateTime(2024, 6, 1),
+                valueDate: DateTime(2024, 2, 29, 12),
+                type: EventType.buy,
+                amount: 100,
+              ),
+            );
+        await db
+            .into(db.assetEvents)
+            .insert(
+              AssetEventsCompanion.insert(
+                assetId: assetId,
+                date: DateTime(2024, 1, 1),
+                valueDate: DateTime(2024, 3, 1),
+                type: EventType.buy,
+                amount: 200,
+              ),
+            );
+
+        final events = await service.getByAsset(
+          assetId,
+          through: DateTime(2024, 2, 29),
+        );
+        expect(events.map((e) => e.amount), [100]);
+
+        final rawRows = await db.select(db.assetEvents).get();
+        expect(rawRows, hasLength(2));
+      },
+    );
+  });
+
   group('update', () {
     test('update amount', () async {
       final assetId = await createAsset('Upd');
@@ -343,6 +383,38 @@ void main() {
       final result = await service.getLatestRevalueAmount(99999);
       expect(result, isNull);
     });
+
+    test('through date uses valueDate for latest revalue', () async {
+      final assetId = await createAsset('WaybackRevalue');
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 6, 1),
+              valueDate: DateTime(2024, 1, 1),
+              type: EventType.revalue,
+              amount: 3000,
+            ),
+          );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 6, 1),
+              type: EventType.revalue,
+              amount: 4000,
+            ),
+          );
+
+      final result = await service.getLatestRevalueAmount(
+        assetId,
+        through: DateTime(2024, 3, 31),
+      );
+      expect(result, 3000);
+    });
   });
 
   group('getByAssets', () {
@@ -409,6 +481,41 @@ void main() {
       expect(result.containsKey(asset2), isFalse);
       expect(result.containsKey(asset3), isTrue);
     });
+
+    test('applies through date by valueDate', () async {
+      final asset1 = await createAsset('A1');
+      final asset2 = await createAsset('A2');
+
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: asset1,
+              date: DateTime(2024, 6, 1),
+              valueDate: DateTime(2024, 2, 29),
+              type: EventType.buy,
+              amount: 100,
+            ),
+          );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: asset2,
+              date: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 3, 1),
+              type: EventType.buy,
+              amount: 200,
+            ),
+          );
+
+      final result = await service.getByAssets(
+        [asset1, asset2],
+        through: DateTime(2024, 2, 29),
+      );
+      expect(result.keys, {asset1});
+      expect(result[asset1]!.single.amount, 100);
+    });
   });
 
   group('getAverageBuyPrice', () {
@@ -437,6 +544,42 @@ void main() {
     test('returns null for non-existent asset', () async {
       final result = await service.getAverageBuyPrice(99999);
       expect(result, isNull);
+    });
+
+    test('through date excludes future valueDate buys', () async {
+      final assetId = await createAsset('Bond');
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 6, 1),
+              valueDate: DateTime(2024, 1, 1),
+              type: EventType.buy,
+              amount: 1000,
+              quantity: const Value(10),
+              price: const Value(100),
+            ),
+          );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 6, 1),
+              type: EventType.buy,
+              amount: 2000,
+              quantity: const Value(10),
+              price: const Value(200),
+            ),
+          );
+
+      final result = await service.getAverageBuyPrice(
+        assetId,
+        through: DateTime(2024, 3, 31),
+      );
+      expect(result, 100);
     });
   });
 }

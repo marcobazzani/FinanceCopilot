@@ -11,27 +11,42 @@ class AssetEventService {
 
   AssetEventService(this._db);
 
-  Stream<List<AssetEvent>> watchByAsset(int assetId) {
-    return (_db.select(_db.assetEvents)
-          ..where((e) => e.assetId.equals(assetId))
-          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)]))
-        .watch();
+  Stream<List<AssetEvent>> watchByAsset(int assetId, {DateTime? through}) {
+    final query = _db.select(_db.assetEvents)
+      ..where((e) => e.assetId.equals(assetId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
+    return query.watch();
   }
 
-  Future<List<AssetEvent>> getByAsset(int assetId) {
-    return (_db.select(_db.assetEvents)
-          ..where((e) => e.assetId.equals(assetId))
-          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)]))
-        .get();
+  Future<List<AssetEvent>> getByAsset(int assetId, {DateTime? through}) {
+    final query = _db.select(_db.assetEvents)
+      ..where((e) => e.assetId.equals(assetId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
+    return query.get();
   }
 
   /// Fetch events for multiple assets in a single query, grouped by asset ID.
-  Future<Map<int, List<AssetEvent>>> getByAssets(List<int> assetIds) async {
+  Future<Map<int, List<AssetEvent>>> getByAssets(
+    List<int> assetIds, {
+    DateTime? through,
+  }) async {
     if (assetIds.isEmpty) return {};
-    final events = await (_db.select(_db.assetEvents)
-          ..where((e) => e.assetId.isIn(assetIds))
-          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)]))
-        .get();
+    final query = _db.select(_db.assetEvents)
+      ..where((e) => e.assetId.isIn(assetIds));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
+    final events = await query.get();
     final result = <int, List<AssetEvent>>{};
     for (final event in events) {
       result.putIfAbsent(event.assetId, () => []).add(event);
@@ -236,13 +251,15 @@ class AssetEventService {
 
   /// Weighted average buy price: total_cost / total_qty for buy events.
   /// Returns null if no qualifying events exist.
-  Future<double?> getAverageBuyPrice(int assetId) async {
+  Future<double?> getAverageBuyPrice(int assetId, {DateTime? through}) async {
+    final bounded = through != null;
     final row = await _db.customSelect(
       "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
       "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
       "FROM asset_events WHERE asset_id = ? AND type = 'buy' "
-      "AND quantity IS NOT NULL AND price IS NOT NULL",
-      variables: [Variable.withInt(assetId)],
+      "AND quantity IS NOT NULL AND price IS NOT NULL "
+      "${bounded ? 'AND value_date < ? ' : ''}",
+      variables: [Variable.withInt(assetId), ..._throughVars(through)],
     ).getSingleOrNull();
     final totalCost = row?.readNullable<double>('total_cost') ?? 0;
     final totalQty = row?.readNullable<double>('total_qty') ?? 0;
@@ -251,12 +268,32 @@ class AssetEventService {
 
   /// Latest revalue amount for an asset (used as manual market value fallback).
   /// Returns null if no revalue events exist.
-  Future<double?> getLatestRevalueAmount(int assetId) async {
+  Future<double?> getLatestRevalueAmount(
+    int assetId, {
+    DateTime? through,
+  }) async {
+    final bounded = through != null;
     final row = await _db.customSelect(
       "SELECT amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' "
-      "ORDER BY date DESC LIMIT 1",
-      variables: [Variable.withInt(assetId)],
+      "${bounded ? 'AND value_date < ? ' : ''}"
+      "ORDER BY value_date DESC, id DESC LIMIT 1",
+      variables: [Variable.withInt(assetId), ..._throughVars(through)],
     ).getSingleOrNull();
     return row?.readNullable<double>('amount');
+  }
+
+  static DateTime? _throughEndExclusive(DateTime? through) {
+    if (through == null) return null;
+    return DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
+  }
+
+  static List<Variable<int>> _throughVars(DateTime? through) {
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive == null) return const [];
+    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 }

@@ -16,7 +16,7 @@ class _YearlySummaryTable extends ConsumerWidget {
     final pctFmt = NumberFormat('0.0%');
     final theme  = Theme.of(context);
     final sym    = currencySymbol(data.baseCurrency);
-    final now    = DateTime.now();
+    final now    = ref.watch(currentDateProvider);
 
     final years = data.years.reversed.toList();
 

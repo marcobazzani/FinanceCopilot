@@ -25,6 +25,8 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
   final stats = await ref.watch(accountStatsProvider.future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  final waybackDate = ref.watch(waybackDateProvider);
+  final currentDate = ref.watch(currentDateProvider);
 
   final result = <int, double?>{};
   for (final account in accounts) {
@@ -35,9 +37,13 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
     } else {
       // Null when no rate is available — surface as null in the map rather
       // than fabricate a wrong value.
-      result[account.id] = await rateService.convertLive(
-        stat.balance!, account.currency, baseCurrency,
-      );
+      result[account.id] = waybackDate == null
+          ? await rateService.convertLive(
+              stat.balance!, account.currency, baseCurrency,
+            )
+          : await rateService.convertAmount(
+              stat.balance!, account.currency, baseCurrency, currentDate,
+            );
     }
   }
   return result;
@@ -58,6 +64,7 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
   final eventService = ref.watch(assetEventServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
   final db = ref.watch(databaseProvider);
+  final waybackDate = ref.watch(waybackDateProvider);
 
   final result = <int, double?>{};
 
@@ -79,7 +86,7 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
   // Foreign-currency assets: convert each buy at its own FX rate, then
   // apply the weighted-avg × remaining-qty formula in base currency.
   if (foreignAssetIds.isNotEmpty) {
-    final allEvents = await eventService.getByAssets(foreignAssetIds);
+    final allEvents = await eventService.getByAssets(foreignAssetIds, through: waybackDate);
     for (final asset in assets) {
       final events = allEvents[asset.id];
       if (events == null || events.isEmpty) continue;
@@ -97,12 +104,15 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
         if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
           return amount / ev.exchangeRate!;
         }
-        final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+        final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
         if (rate != null && rate > 0) {
-          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
-              .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          if (waybackDate == null) {
+            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
+                .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          }
           return amount / rate;
         }
+        if (waybackDate != null) return null;
         return rateService.convertLive(amount, ev.currency, baseCurrency);
       }
 
@@ -146,9 +156,10 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   final priceService = ref.watch(marketPriceServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
   ref.watch(priceRefreshCounter); // rebuild after price sync
+  final waybackDate = ref.watch(waybackDateProvider);
+  final today = ref.watch(currentDateProvider);
 
   final result = <int, double>{};
-  final now = DateTime.now();
   _log.info('assetMarketValues: ${assets.length} assets, ${stats.length} stats, base=$baseCurrency');
   for (final asset in assets) {
     // Inactive assets are excluded — same convention as
@@ -157,7 +168,7 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     final stat = stats[asset.id];
     if (stat == null || stat.totalQuantity == 0) continue;
     // Use stored DB price (background sync keeps it fresh)
-    final price = await priceService.getPrice(asset.id, now);
+    final price = await priceService.getPrice(asset.id, today);
     if (price == null) {
       _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no price');
       continue;
@@ -166,7 +177,9 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
     if (asset.currency == baseCurrency) {
       fxRate = 1.0;
     } else {
-      fxRate = await rateService.getLiveRate(asset.currency, baseCurrency);
+      fxRate = waybackDate == null
+          ? await rateService.getLiveRate(asset.currency, baseCurrency)
+          : await rateService.getRate(asset.currency, baseCurrency, today);
       if (fxRate == null) {
         _log.warning('assetMarketValues: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, skipping');
         continue;
@@ -248,9 +261,9 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final priceService = ref.watch(marketPriceServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
+  final waybackDate = ref.watch(waybackDateProvider);
 
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+  final today = ref.watch(currentDateProvider);
 
   final result = <AssetDailyChange>[];
   for (final asset in assets) {
@@ -268,15 +281,17 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double todayFx = 1.0;
     double prevFx = 1.0;
     if (asset.currency != baseCurrency) {
-      final liveFx = await rateService.getLiveRate(asset.currency, baseCurrency);
-      if (liveFx == null) {
+      final currentFx = waybackDate == null
+          ? await rateService.getLiveRate(asset.currency, baseCurrency)
+          : await rateService.getRate(asset.currency, baseCurrency, today);
+      if (currentFx == null) {
         // No live FX -> we cannot value this asset in base currency. Drop it
         // from the change list rather than silently report a 1:1 conversion,
         // which would inflate the visible price-change for foreign assets.
         _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate, skipping');
         continue;
       }
-      todayFx = liveFx;
+      todayFx = currentFx;
       prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
     }
 
@@ -284,7 +299,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     double? previousPrice;
     final beforeFirstBuy = stat.firstDate != null && referenceDate.isBefore(stat.firstDate!);
     if (beforeFirstBuy) {
-      final avgPrice = await ref.read(assetEventServiceProvider).getAverageBuyPrice(asset.id);
+      final avgPrice = await ref.read(assetEventServiceProvider).getAverageBuyPrice(asset.id, through: waybackDate);
       if (avgPrice != null) {
         previousPrice = avgPrice;
         // For cost-basis, use today's FX for both sides (we're comparing price, not FX)
@@ -311,7 +326,8 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     }
 
     // Market is open if live price was fetched within the last 15 minutes
-    final isMarketOpen = priceService is WebMarketDataService &&
+    final isMarketOpen = waybackDate == null &&
+        priceService is WebMarketDataService &&
         priceService.isMarketOpen(asset.id);
 
     result.add(AssetDailyChange(
@@ -339,6 +355,7 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
   final db = ref.watch(databaseProvider);
+  final waybackDate = ref.watch(waybackDateProvider);
 
   final result = <int, double>{};
   for (final ev in events) {
@@ -348,16 +365,20 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
       // Stored rate is BASE/ASSET, so divide to get base currency amount
       result[ev.id] = ev.amount / ev.exchangeRate!;
     } else {
-      final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
+      final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
       if (rate != null && rate > 0) {
         result[ev.id] = ev.amount / rate;
-        await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
-            .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+        if (waybackDate == null) {
+          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
+              .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+        }
       } else {
         // Live fallback. Skip the event if no rate is available — the UI
         // gates on containsKey, so the converted line is simply hidden.
-        final live = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
-        if (live != null) result[ev.id] = live;
+        if (waybackDate == null) {
+          final live = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
+          if (live != null) result[ev.id] = live;
+        }
       }
     }
   }

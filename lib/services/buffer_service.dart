@@ -47,18 +47,32 @@ class BufferService {
 
   // ── BufferTransaction CRUD ──
 
-  Stream<List<BufferTransaction>> watchByBuffer(int bufferId) {
-    return (_db.select(_db.bufferTransactions)
-          ..where((t) => t.bufferId.equals(bufferId))
-          ..orderBy([(t) => OrderingTerm.desc(t.valueDate)]))
-        .watch();
+  Stream<List<BufferTransaction>> watchByBuffer(
+    int bufferId, {
+    DateTime? through,
+  }) {
+    final query = _db.select(_db.bufferTransactions)
+      ..where((t) => t.bufferId.equals(bufferId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(t) => OrderingTerm.desc(t.valueDate)]);
+    return query.watch();
   }
 
-  Future<List<BufferTransaction>> getByBuffer(int bufferId) {
-    return (_db.select(_db.bufferTransactions)
-          ..where((t) => t.bufferId.equals(bufferId))
-          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
-        .get();
+  Future<List<BufferTransaction>> getByBuffer(
+    int bufferId, {
+    DateTime? through,
+  }) {
+    final query = _db.select(_db.bufferTransactions)
+      ..where((t) => t.bufferId.equals(bufferId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(t) => OrderingTerm.asc(t.valueDate)]);
+    return query.get();
   }
 
   Future<int> createTransaction({
@@ -98,11 +112,29 @@ class BufferService {
     return (_db.delete(_db.bufferTransactions)..where((t) => t.id.equals(id))).go();
   }
 
-  Future<double> computeBalance(int bufferId) async {
+  Future<double> computeBalance(int bufferId, {DateTime? through}) async {
+    final bounded = through != null;
     final row = await _db.customSelect(
-      'SELECT COALESCE(SUM(amount), 0.0) AS total FROM buffer_transactions WHERE buffer_id = ?',
-      variables: [Variable.withInt(bufferId)],
+      'SELECT COALESCE(SUM(amount), 0.0) AS total '
+      'FROM buffer_transactions WHERE buffer_id = ? '
+      "${bounded ? 'AND value_date < ?' : ''}",
+      variables: [Variable.withInt(bufferId), ..._throughVars(through)],
     ).getSingle();
     return row.read<double>('total');
+  }
+
+  static DateTime? _throughEndExclusive(DateTime? through) {
+    if (through == null) return null;
+    return DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
+  }
+
+  static List<Variable<int>> _throughVars(DateTime? through) {
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive == null) return const [];
+    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 }

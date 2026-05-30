@@ -57,6 +57,36 @@ void main() {
       expect(all[2].amount, 1000);
     });
 
+    test(
+      'getAll through date filters by valueDate without deleting data',
+      () async {
+        await db
+            .into(db.incomes)
+            .insert(
+              IncomesCompanion.insert(
+                date: DateTime(2024, 6, 1),
+                valueDate: DateTime(2024, 2, 29, 12),
+                amount: 1000,
+              ),
+            );
+        await db
+            .into(db.incomes)
+            .insert(
+              IncomesCompanion.insert(
+                date: DateTime(2024, 1, 1),
+                valueDate: DateTime(2024, 3, 1),
+                amount: 2000,
+              ),
+            );
+
+        final all = await service.getAll(through: DateTime(2024, 2, 29));
+        expect(all.map((i) => i.amount), [1000]);
+
+        final rawRows = await db.select(db.incomes).get();
+        expect(rawRows, hasLength(2));
+      },
+    );
+
     test('update fields', () async {
       final id = await service.create(
         date: DateTime(2024, 1, 1),

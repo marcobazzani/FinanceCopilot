@@ -225,6 +225,34 @@ void main() {
       expect(s.balance, 50.0);
     });
 
+    test('through date limits count and balance without deleting data', () async {
+      final accountId = await service.create(name: 'Wayback', currency: 'EUR');
+
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+            accountId: accountId,
+            operationDate: DateTime(2024, 1, 10),
+            valueDate: DateTime(2024, 1, 10),
+            amount: 100.0,
+            balanceAfter: const Value(100.0),
+          ));
+      await db.into(db.transactions).insert(TransactionsCompanion.insert(
+            accountId: accountId,
+            operationDate: DateTime(2024, 3, 15),
+            valueDate: DateTime(2024, 3, 15),
+            amount: -50.0,
+            balanceAfter: const Value(50.0),
+          ));
+
+      final stats = await service.getStatsForAll(through: DateTime(2024, 2, 29));
+      final s = stats[accountId]!;
+      expect(s.count, 1);
+      expect(s.lastDate, DateTime(2024, 1, 10));
+      expect(s.balance, 100.0);
+
+      final allRows = await db.select(db.transactions).get();
+      expect(allRows.length, 2);
+    });
+
     test('stats for multiple accounts', () async {
       final id1 = await service.create(name: 'Acc1', currency: 'EUR');
       final id2 = await service.create(name: 'Acc2', currency: 'EUR');

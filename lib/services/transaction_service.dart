@@ -14,14 +14,18 @@ class TransactionService {
 
   TransactionService(this._db);
 
-  Stream<List<Transaction>> watchByAccount(int accountId) {
-    return (_db.select(_db.transactions)
-          ..where((t) => t.accountId.equals(accountId))
-          ..orderBy([
-            (t) => OrderingTerm.desc(t.valueDate),
-            (t) => OrderingTerm.desc(t.id),
-          ]))
-        .watch();
+  Stream<List<Transaction>> watchByAccount(int accountId, {DateTime? through}) {
+    final query = _db.select(_db.transactions)
+      ..where((t) => t.accountId.equals(accountId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([
+      (t) => OrderingTerm.desc(t.valueDate),
+      (t) => OrderingTerm.desc(t.id),
+    ]);
+    return query.watch();
   }
 
   /// All transactions across all *existing* accounts. Used by the virtual
@@ -29,7 +33,7 @@ class TransactionService {
   /// longer matches a row in `accounts` (e.g. left over from past imports
   /// into now-deleted accounts) are excluded — they would otherwise render
   /// as nameless `#<id>` rows that look like duplicates.
-  Stream<List<Transaction>> watchAll() {
+  Stream<List<Transaction>> watchAll({DateTime? through}) {
     final query = _db.select(_db.transactions).join([
       innerJoin(_db.accounts, _db.accounts.id.equalsExp(_db.transactions.accountId)),
     ])
@@ -37,19 +41,27 @@ class TransactionService {
         OrderingTerm.desc(_db.transactions.valueDate),
         OrderingTerm.desc(_db.transactions.id),
       ]);
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where(_db.transactions.valueDate.isSmallerThanValue(endExclusive));
+    }
     return query.watch().map(
           (rows) => rows.map((r) => r.readTable(_db.transactions)).toList(),
         );
   }
 
-  Future<List<Transaction>> getByAccount(int accountId) {
-    return (_db.select(_db.transactions)
-          ..where((t) => t.accountId.equals(accountId))
-          ..orderBy([
-            (t) => OrderingTerm.desc(t.valueDate),
-            (t) => OrderingTerm.desc(t.id),
-          ]))
-        .get();
+  Future<List<Transaction>> getByAccount(int accountId, {DateTime? through}) {
+    final query = _db.select(_db.transactions)
+      ..where((t) => t.accountId.equals(accountId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([
+      (t) => OrderingTerm.desc(t.valueDate),
+      (t) => OrderingTerm.desc(t.id),
+    ]);
+    return query.get();
   }
 
   Future<int> create({
@@ -218,5 +230,14 @@ class TransactionService {
     }
     _log.info('recalculateBalances: account=$accountId, mode=$balanceMode, updated=${updates.length}/${sorted.length}');
     return updates.length;
+  }
+
+  static DateTime? _throughEndExclusive(DateTime? through) {
+    if (through == null) return null;
+    return DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
   }
 }

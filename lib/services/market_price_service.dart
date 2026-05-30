@@ -264,10 +264,15 @@ abstract class MarketPriceService {
   /// here automatically. Falls back to the last buy event's price for assets
   /// that have neither market_prices rows nor revalues.
   Future<double?> getPrice(int assetId, DateTime date) async {
-    final epochSec = date.millisecondsSinceEpoch ~/ 1000;
+    final endExclusive = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).add(const Duration(days: 1));
+    final epochSec = endExclusive.millisecondsSinceEpoch ~/ 1000;
     final row = await db.customSelect(
       'SELECT close_price FROM market_prices '
-      'WHERE asset_id = ? AND date <= ? ORDER BY date DESC LIMIT 1',
+      'WHERE asset_id = ? AND date < ? ORDER BY date DESC LIMIT 1',
       variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
     ).getSingleOrNull();
     if (row != null) return row.readNullable<double>('close_price');
@@ -275,8 +280,8 @@ abstract class MarketPriceService {
     // revalues materialised yet.
     final buyRow = await db.customSelect(
       "SELECT price FROM asset_events "
-      "WHERE asset_id = ? AND type = 'buy' AND price IS NOT NULL AND date <= ? "
-      "ORDER BY date DESC LIMIT 1",
+      "WHERE asset_id = ? AND type = 'buy' AND price IS NOT NULL AND value_date < ? "
+      "ORDER BY value_date DESC, id DESC LIMIT 1",
       variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
     ).getSingleOrNull();
     return buyRow?.readNullable<double>('price');
