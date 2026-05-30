@@ -194,3 +194,33 @@ List<FlSpot> buildTotalSpots(List<List<FlSpot>> allSpots) {
     return FlSpot(x, total);
   }).toList();
 }
+
+List<FlSpot> extendSingleSpotCarryForward(List<FlSpot> spots, {
+  required DateTime firstDate,
+  required int endDayKey,
+}) {
+  if (spots.length != 1) return spots;
+  final endDate = DateTime.fromMillisecondsSinceEpoch(endDayKey * 1000);
+  final endX = endDate.difference(firstDate).inDays.toDouble();
+  if (endX <= spots.single.x) return spots;
+  return [spots.single, FlSpot(endX, spots.single.y)];
+}
+
+bool isOutflowAdjustmentSeriesKey(String key) =>
+    key.startsWith('adjustment:') ||
+    key.startsWith('adjustment_value:') ||
+    key.startsWith('adjustment_events:');
+
+bool isIncomeAdjustmentSeriesKey(String key) =>
+    key.startsWith('income_adj:') ||
+    key.startsWith('income_adj_value:') ||
+    key.startsWith('income_adj_events:');
+
+bool isEphemeralInflowSeriesKey(String key) =>
+    key.startsWith('ephemeral_inflow_value:') ||
+    key.startsWith('ephemeral_inflow_events:');
+
+bool isAdjustmentSeriesKey(String key) =>
+    isOutflowAdjustmentSeriesKey(key) ||
+    isIncomeAdjustmentSeriesKey(key) ||
+    isEphemeralInflowSeriesKey(key);

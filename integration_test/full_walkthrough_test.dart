@@ -42,6 +42,33 @@ import 'helpers/test_app.dart';
 
 void _step(String msg) => debugPrint('▶ $msg');
 
+Future<void> _createAccountThroughDialog(
+  WidgetTester tester,
+  AppDatabase db,
+  String name,
+) async {
+  await tester.tap(find.byType(FloatingActionButton).last);
+  await longSettle(tester);
+
+  final dialog = find.byType(AlertDialog);
+  expect(dialog, findsOneWidget);
+  await tester.enterText(
+    find.descendant(of: dialog, matching: find.byType(TextField)),
+    name,
+  );
+  await settle(tester);
+  await tester.tap(find.descendant(
+    of: dialog,
+    matching: find.widgetWithText(FilledButton, 'Create'),
+  ));
+  await longSettle(tester);
+
+  final account = await (db.select(db.accounts)
+        ..where((a) => a.name.equals(name)))
+      .getSingleOrNull();
+  expect(account, isNotNull);
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -114,20 +141,10 @@ void main() {
     // Step 3: create accounts via FAB (UI).
     // ─────────────────────────────────────────────────────────────────────
     _step('3. Create account Fineco');
-    await tester.tap(find.byType(FloatingActionButton).last);
-    await longSettle(tester);
-    await tester.enterText(find.byType(TextField), 'Fineco');
-    await settle(tester);
-    await tester.tap(find.text('Create'));
-    await longSettle(tester);
+    await _createAccountThroughDialog(tester, db, 'Fineco');
 
     _step('3b. Create account Revolut');
-    await tester.tap(find.byType(FloatingActionButton).last);
-    await longSettle(tester);
-    await tester.enterText(find.byType(TextField), 'Revolut');
-    await settle(tester);
-    await tester.tap(find.text('Create'));
-    await longSettle(tester);
+    await _createAccountThroughDialog(tester, db, 'Revolut');
 
     final accounts = await db.select(db.accounts).get();
     expect(accounts, hasLength(2));

@@ -131,4 +131,55 @@ void main() {
       expect(result[2].y, 350);
     });
   });
+
+  group('extendSingleSpotCarryForward', () {
+    test('adds a same-value endpoint when a series has one spot before the chart end', () {
+      final firstDate = DateTime(2024, 1, 1);
+      final endDayKey = toDayKey(DateTime(2024, 1, 11));
+      final result = extendSingleSpotCarryForward(
+        const [FlSpot(2, 100)],
+        firstDate: firstDate,
+        endDayKey: endDayKey,
+      );
+
+      expect(result, const [FlSpot(2, 100), FlSpot(10, 100)]);
+    });
+
+    test('leaves multi-point and chart-end single-point series unchanged', () {
+      final firstDate = DateTime(2024, 1, 1);
+      final endDayKey = toDayKey(DateTime(2024, 1, 3));
+      const multi = [FlSpot(1, 100), FlSpot(2, 200)];
+      const atEnd = [FlSpot(2, 100)];
+
+      expect(extendSingleSpotCarryForward(multi, firstDate: firstDate, endDayKey: endDayKey), multi);
+      expect(extendSingleSpotCarryForward(atEnd, firstDate: firstDate, endDayKey: endDayKey), atEnd);
+    });
+  });
+
+  group('adjustment series key classifiers', () {
+    test('outflow adjustment keys include legacy and split forms', () {
+      expect(isOutflowAdjustmentSeriesKey('adjustment:1'), isTrue);
+      expect(isOutflowAdjustmentSeriesKey('adjustment_value:1'), isTrue);
+      expect(isOutflowAdjustmentSeriesKey('adjustment_events:1'), isTrue);
+      expect(isOutflowAdjustmentSeriesKey('income_adj_value:1'), isFalse);
+    });
+
+    test('income adjustment keys include legacy and split forms', () {
+      expect(isIncomeAdjustmentSeriesKey('income_adj:2'), isTrue);
+      expect(isIncomeAdjustmentSeriesKey('income_adj_value:2'), isTrue);
+      expect(isIncomeAdjustmentSeriesKey('income_adj_events:2'), isTrue);
+      expect(isIncomeAdjustmentSeriesKey('ephemeral_inflow_value:2'), isFalse);
+    });
+
+    test('ephemeral inflow keys are separately classified as adjustments', () {
+      expect(isEphemeralInflowSeriesKey('ephemeral_inflow_value:3'), isTrue);
+      expect(isEphemeralInflowSeriesKey('ephemeral_inflow_events:3'), isTrue);
+      expect(isEphemeralInflowSeriesKey('adjustment_value:3'), isFalse);
+
+      expect(isAdjustmentSeriesKey('adjustment_events:1'), isTrue);
+      expect(isAdjustmentSeriesKey('income_adj_events:2'), isTrue);
+      expect(isAdjustmentSeriesKey('ephemeral_inflow_events:3'), isTrue);
+      expect(isAdjustmentSeriesKey('account:1'), isFalse);
+    });
+  });
 }

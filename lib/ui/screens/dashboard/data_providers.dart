@@ -493,8 +493,17 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       }
     }
 
-    final valueSpots = await buildSpots(valueMap, event.currency);
-    final eventSpots = await buildSpots(eventsMap, event.currency);
+    final chartEndDayKey = sortedDays.last;
+    final valueSpots = extendSingleSpotCarryForward(
+      await buildSpots(valueMap, event.currency),
+      firstDate: firstDate,
+      endDayKey: chartEndDayKey,
+    );
+    final eventSpots = extendSingleSpotCarryForward(
+      await buildSpots(eventsMap, event.currency),
+      firstDate: firstDate,
+      endDayKey: chartEndDayKey,
+    );
 
     // Ephemeral inflows live in their own bucket; non-ephemeral inflows
     // stay in incomeAdjSeries; outflows always in adjustmentSeries.
@@ -707,4 +716,3 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     pensionContribCumulativeSpots: pensionContribSpots,
   );
 });
-

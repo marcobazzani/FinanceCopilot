@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../database/database.dart';
@@ -101,6 +102,7 @@ const _exchangeSynonyms = <String, List<String>>{
 class WebMarketDataService extends MarketPriceService {
   final Dio _dio;
   final Future<String?> Function(Uri)? _pageFetcher;
+  final Future<Map<String, dynamic>?> Function(String url, String domainId)? _jsFetchOverride;
 
   /// Test seam: when non-null, [_ensureWebView] calls this instead of the
   /// real headless-WebView Cloudflare solve.
@@ -124,9 +126,12 @@ class WebMarketDataService extends MarketPriceService {
     Dio? dio,
     Future<String?> Function(Uri)? pageFetcher,
     Future<bool> Function()? solveHeadless,
+    @visibleForTesting
+    Future<Map<String, dynamic>?> Function(String url, String domainId)? jsFetchOverride,
   })  : _dio = dio ?? Dio(),
         _pageFetcher = pageFetcher,
-        _solveOverride = solveHeadless;
+        _solveOverride = solveHeadless,
+        _jsFetchOverride = jsFetchOverride;
 
   // ──────────────────────────────────────────────
   // Headless WebView: solve CF + make API calls in same browser context
@@ -256,6 +261,9 @@ class WebMarketDataService extends MarketPriceService {
   /// Fetch API data by running fetch() inside the WebView's JS context.
   /// Same-origin since the WebView is loaded on the api host.
   Future<Map<String, dynamic>?> _fetchViaJsFetch(String url, {String domainId = 'www'}) async {
+    if (_jsFetchOverride != null) {
+      return _jsFetchOverride(url, domainId);
+    }
     if (_webViewController == null) return null;
     try {
       final js = '''
@@ -372,6 +380,16 @@ class WebMarketDataService extends MarketPriceService {
       return await _fetchViaJsFetch(url, domainId: domainId);
     }
 
+    return _fetchWithDioThenJs(url, domainId: domainId);
+  }
+
+  @visibleForTesting
+  Future<Map<String, dynamic>?> fetchWithDioThenJsForTest(
+    String url, {
+    String domainId = 'www',
+  }) => _fetchWithDioThenJs(url, domainId: domainId);
+
+  Future<Map<String, dynamic>?> _fetchWithDioThenJs(String url, {String domainId = 'www'}) async {
     try {
       final headers = Map<String, String>.from(_browserHeaders);
       headers['User-Agent'] = _cfUserAgent.isNotEmpty ? _cfUserAgent
@@ -385,16 +403,20 @@ class WebMarketDataService extends MarketPriceService {
         headers: headers,
       ));
       final data = response.data;
-      if (data is String) return null;
-      return data as Map<String, dynamic>;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      _log.info('_webViewFetch: Dio returned non-JSON response, switching to JS fetch');
+      _dioBlocked = true;
+      return await _fetchViaJsFetch(url, domainId: domainId);
     } on DioException catch (e) {
       if (e.response?.statusCode == 403) {
         _dioBlocked = true;
         _log.info('_webViewFetch: Dio 403, switching to JS fetch');
         return await _fetchViaJsFetch(url, domainId: domainId);
       }
-      _log.fine('_webViewFetch: ${e.response?.statusCode}');
-      return null;
+      _log.info('_webViewFetch: Dio ${e.response?.statusCode}, switching to JS fetch');
+      _dioBlocked = true;
+      return await _fetchViaJsFetch(url, domainId: domainId);
     } catch (e) {
       _log.fine('_webViewFetch: failed - $e');
       return null;

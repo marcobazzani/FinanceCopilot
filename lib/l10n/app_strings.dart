@@ -357,6 +357,7 @@ class AppStrings {
   String get legendAccounts      => _it ? 'Conti'              : 'Accounts';
   String get legendSpreadAdj     => _it ? 'Agg. dilaz.'        : 'Spread Adj.';
   String get legendIncomeAdj     => _it ? 'Agg. reddito'       : 'Income Adj.';
+  String get legendEphemeralInflow => _it ? 'Fidi'             : 'Credit Lines';
   String get legendTotal         => _it ? 'Totale'             : 'Total';
   String get showComponents      => _it ? 'Mostra componenti'  : 'Show components';
   String get hideComponents      => _it ? 'Nascondi componenti': 'Hide components';
