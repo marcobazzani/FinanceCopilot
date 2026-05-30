@@ -10,7 +10,7 @@
 include: package:flutter_lints/flutter.yaml
 
 formatter:
-  page_width: 180
+  page_width: 145
   trailing_commas: preserve
 
 linter:
