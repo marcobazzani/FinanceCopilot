@@ -34,7 +34,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   late AssetType _assetType;
   late ValuationMethod _valuationMethod;
   late int _intermediaryId;
-  late bool _includeInNetWorth;
+  late bool _includeInSavings;
 
   /// Cached app locale used for formatting initial values and parsing
   /// what the user types. Captured once in [initState] so a setState
@@ -67,7 +67,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     _assetType = widget.asset.assetType;
     _valuationMethod = widget.asset.valuationMethod;
     _intermediaryId = widget.asset.intermediaryId;
-    _includeInNetWorth = widget.asset.includeInNetWorth;
+    _includeInSavings = widget.asset.includeInSavings;
   }
 
   @override
@@ -124,7 +124,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               return v == null ? null : v / 100;
             }())
           : const Value.absent(),
-      includeInNetWorth: _unlocked ? Value(_includeInNetWorth) : const Value.absent(),
+      includeInSavings: _unlocked ? Value(_includeInSavings) : const Value.absent(),
     );
     await widget.ref.read(assetServiceProvider).update(widget.asset.id, companion);
     if (mounted) Navigator.pop(context);
@@ -344,9 +344,9 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       ),
       const SizedBox(height: 8),
       SwitchListTile(
-        title: Text(s.includeInNetWorthLabel),
-        value: _includeInNetWorth,
-        onChanged: (v) => setState(() => _includeInNetWorth = v),
+        title: Text(s.includeInSavingsLabel),
+        value: _includeInSavings,
+        onChanged: (v) => setState(() => _includeInSavings = v),
         contentPadding: EdgeInsets.zero,
       ),
     ];

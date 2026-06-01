@@ -77,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 41;
+  int get schemaVersion => 42;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -672,6 +672,15 @@ class AppDatabase extends _$AppDatabase {
             }
             await _createIndexes();
             _log.info('Migration 41: created portfolio models and linked pillars');
+          }
+          if (from < 42) {
+            if (!await _hasColumn('assets', 'include_in_savings') &&
+                await _hasColumn('assets', 'include_in_net_worth')) {
+              await customStatement(
+                'ALTER TABLE assets RENAME COLUMN include_in_net_worth TO include_in_savings',
+              );
+            }
+            _log.info('Migration 42: renamed assets.include_in_net_worth to include_in_savings');
           }
         },
       );

@@ -14,7 +14,7 @@ import 'package:finance_copilot/services/asset_service.dart';
 ///   valuationMethod → composition sync gate, detail-screen UI
 ///   intermediaryId → assets-list grouping
 ///   taxRate        → asset_detail header badge
-///   includeInNetWorth → net-worth aggregation
+///   includeInSavings → savings-chart grouping
 ///
 /// Composition (Asset Class / Geographic / Sector / Top Holdings) is
 /// edited inline on the Composition panel via `AssetCompositions`, not
@@ -64,7 +64,7 @@ void main() {
         intermediaryId: Value(iid2),
         currency: const Value('USD'),
         taxRate: const Value(0.125),
-        includeInNetWorth: const Value(false),
+        includeInSavings: const Value(false),
       ),
     );
     expect(result, isTrue);
@@ -83,7 +83,7 @@ void main() {
     expect(out.intermediaryId, iid2);
     expect(out.currency, 'USD');
     expect(out.taxRate, 0.125);
-    expect(out.includeInNetWorth, isFalse);
+    expect(out.includeInSavings, isFalse);
   });
 
   test('locked path: writing only the original 8 fields leaves advanced fields unchanged', () async {
@@ -92,7 +92,7 @@ void main() {
       currency: 'EUR',
       intermediaryId: iid1,
       assetType: AssetType.pension,
-      includeInNetWorth: false,
+      includeInSavings: false,
     );
 
     // Locked-path save: the dialog only writes the original 8 fields.
@@ -121,7 +121,7 @@ void main() {
     expect(out.ter, 0.18);
     // Advanced fields untouched by locked path.
     expect(out.assetType, AssetType.pension);
-    expect(out.includeInNetWorth, isFalse);
+    expect(out.includeInSavings, isFalse);
     expect(out.intermediaryId, iid1);
     expect(out.currency, 'EUR');
   });
@@ -135,14 +135,14 @@ void main() {
       ter: 0.0,
       taxRate: 0.26,
       isActive: true,
-      includeInNetWorth: true,
+      includeInSavings: true,
     );
 
     final out = await service.getById(id);
     expect(out.assetType, AssetType.crypto);
     expect(out.ter, 0.0);
     expect(out.taxRate, 0.26);
-    expect(out.includeInNetWorth, isTrue);
+    expect(out.includeInSavings, isTrue);
   });
 
   test('create defaults preserve original behavior when advanced params omitted', () async {
@@ -158,6 +158,6 @@ void main() {
     expect(out.assetType, AssetType.stockEtf);
     expect(out.valuationMethod, ValuationMethod.marketPrice);
     expect(out.isActive, isTrue);
-    expect(out.includeInNetWorth, isTrue);
+    expect(out.includeInSavings, isTrue);
   });
 }

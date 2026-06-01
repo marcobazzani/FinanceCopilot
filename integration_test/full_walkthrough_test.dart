@@ -1145,7 +1145,7 @@ void main() {
 
       // 8f.i — unlock-edit + advanced-field save. Covers _unlocked branch
       // and _buildAdvancedFields (DropdownButtonFormField<AssetType>,
-      // ValuationMethod, intermediary, currency, taxRate, includeInNetWorth).
+      // ValuationMethod, intermediary, currency, taxRate, includeInSavings).
       final unlockBtn = find.byIcon(Icons.lock_outline);
       if (unlockBtn.evaluate().isNotEmpty) {
         await tester.tap(unlockBtn.first);

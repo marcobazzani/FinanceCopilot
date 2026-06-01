@@ -72,7 +72,7 @@ class AssetService {
     AssetType assetType = AssetType.stockEtf,
     double? ter,
     bool? isActive,
-    bool? includeInNetWorth,
+    bool? includeInSavings,
   }) {
     _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange, '
         'intermediary=$intermediaryId, valuation=${valuationMethod.name}, '
@@ -92,7 +92,7 @@ class AssetService {
       assetClass: assetClass != null ? Value(assetClass) : const Value.absent(),
       ter: Value(ter),
       isActive: isActive != null ? Value(isActive) : const Value.absent(),
-      includeInNetWorth: includeInNetWorth != null ? Value(includeInNetWorth) : const Value.absent(),
+      includeInSavings: includeInSavings != null ? Value(includeInSavings) : const Value.absent(),
     ));
   }
 

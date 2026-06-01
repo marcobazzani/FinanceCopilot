@@ -28,7 +28,7 @@ Asset _makeAsset({
     sector: sector,
     valuationMethod: ValuationMethod.marketPrice,
     isActive: true,
-    includeInNetWorth: true,
+    includeInSavings: true,
     sortOrder: 0,
     createdAt: now,
     updatedAt: now,

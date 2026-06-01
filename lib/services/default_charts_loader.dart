@@ -19,10 +19,14 @@ export '../models/dashboard_chart.dart';
 /// | all_accounts                 | every active `account:<id>`                              |
 /// | all_invested                 | every active `asset_invested:<id>`                       |
 /// | all_market                   | every active `asset_market:<id>`                         |
+/// | all_market_saving            | `asset_market:<id>` for assets with includeInSavings     |
 /// | all_market_liquid            | `asset_market:<id>` for non-illiquid instrument types    |
 /// | all_gain                     | every active `asset_gain:<id>`                           |
+/// | all_gain_saving              | `asset_gain:<id>` for assets with includeInSavings       |
 /// | all_net                      | every active `asset_net:<id>`                            |
+/// | all_net_saving               | `asset_net:<id>` for assets with includeInSavings        |
 /// | all_net_liquid               | `asset_net:<id>` for non-illiquid instrument types       |
+/// | all_invested_saving          | `asset_invested:<id>` for assets with includeInSavings   |
 /// | outflow_value                | every outflow event's `adjustment_value:<id>`            |
 /// | outflow_events               | every outflow event's `adjustment_events:<id>`           |
 /// | non_ephemeral_inflow_value   | every non-ephemeral inflow's `income_adj_value:<id>`     |
@@ -141,13 +145,29 @@ class DefaultChartsLoader {
     return switch (category) {
       'all_accounts' => activeAccounts.map((a) => conf('account', a.id)).toList(),
       'all_invested' => activeAssets.map((a) => conf('asset_invested', a.id)).toList(),
+      'all_invested_saving' => activeAssets
+          .where((a) => a.includeInSavings)
+          .map((a) => conf('asset_invested', a.id))
+          .toList(),
       'all_market' => activeAssets.map((a) => conf('asset_market', a.id)).toList(),
+      'all_market_saving' => activeAssets
+          .where((a) => a.includeInSavings)
+          .map((a) => conf('asset_market', a.id))
+          .toList(),
       'all_market_liquid' => activeAssets
           .where((a) => !_illiquidTypes.contains(a.instrumentType))
           .map((a) => conf('asset_market', a.id))
           .toList(),
       'all_gain' => activeAssets.map((a) => conf('asset_gain', a.id)).toList(),
+      'all_gain_saving' => activeAssets
+          .where((a) => a.includeInSavings)
+          .map((a) => conf('asset_gain', a.id))
+          .toList(),
       'all_net' => activeAssets.map((a) => conf('asset_net', a.id)).toList(),
+      'all_net_saving' => activeAssets
+          .where((a) => a.includeInSavings)
+          .map((a) => conf('asset_net', a.id))
+          .toList(),
       'all_net_liquid' => activeAssets
           .where((a) => !_illiquidTypes.contains(a.instrumentType))
           .map((a) => conf('asset_net', a.id))

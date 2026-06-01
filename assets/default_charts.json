@@ -24,7 +24,7 @@
       "role": "saving",
       "title": "Saving",
       "categories": [
-        "all_invested",
+        "all_invested_saving",
         "all_accounts",
         "outflow_value",
         "outflow_events",

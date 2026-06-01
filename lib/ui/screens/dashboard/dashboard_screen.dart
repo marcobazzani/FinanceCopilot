@@ -72,6 +72,13 @@ class ChartRoles {
     List<Asset> activeAssets,
   ) => _DashboardScreenState.spotsForRole(role, charts, allData, activeAssets);
 
+  static Set<int> assetIdsForRoleTotal(
+    String role,
+    List<DashboardChart> charts,
+    AllSeriesData allData,
+    List<Asset> activeAssets,
+  ) => _DashboardScreenState.assetIdsForRoleTotal(role, charts, allData, activeAssets);
+
   static double valueForRole(
     String role,
     List<DashboardChart> charts,
@@ -849,6 +856,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   /// Static version of smart total spots for use outside ChartCard.
   /// See `_ChartCardState._buildSmartTotalSpots` for the dedup rules.
   static List<FlSpot> _buildSmartTotalSpotsStatic(List<ChartSeries> visible) {
+    final spotsForTotal = _seriesContributingToSmartTotal(visible)
+        .map((s) => s.spots)
+        .toList();
+    return buildTotalSpots(spotsForTotal);
+  }
+
+  static List<ChartSeries> _seriesContributingToSmartTotal(List<ChartSeries> visible) {
     final visibleInvestedIds = <int>{};
     final visibleMarketIds = <int>{};
     final visibleNetIds = <int>{};
@@ -871,11 +885,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         excludeFromTotal.add('asset_invested:$id');
       }
     }
-    final spotsForTotal = visible
+    return visible
         .where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis)
-        .map((s) => s.spots)
         .toList();
-    return buildTotalSpots(spotsForTotal);
   }
 
 
@@ -952,6 +964,52 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     }).toList();
   }
 
+  static List<ChartSeries> _savingsAssetInvested(
+    AllSeriesData allData,
+    List<Asset> activeAssets,
+  ) {
+    final savingsIds = {
+      for (final a in activeAssets)
+        if (a.includeInSavings) a.id,
+    };
+    return allData.assetInvested.where((ser) {
+      final parts = ser.key.split(':');
+      if (parts.length != 2) return false;
+      final id = int.tryParse(parts[1]);
+      return id != null && savingsIds.contains(id);
+    }).toList();
+  }
+
+  static List<ChartSeries> _seriesForRole(
+    String role,
+    List<DashboardChart> charts,
+    AllSeriesData allData,
+    List<Asset> activeAssets,
+  ) {
+    final chart = charts.where((c) => c.widgetType == role).firstOrNull;
+    if (chart != null) {
+      final series = _filterSeries(allData, _parseSeriesJson(chart.seriesJson));
+      if (series.isNotEmpty) return series;
+    }
+    return switch (role) {
+      'cash'               => allData.cashSeries,
+      'saving'             => [
+        ...allData.accounts,
+        ..._savingsAssetInvested(allData, activeAssets),
+        ...allData.adjustments,
+        ...allData.incomeAdjustments,
+      ],
+      'portfolio'          => allData.assetMarket,
+      'liquid_investments' => _liquidAssetMarket(allData, activeAssets),
+      'net_asset_value'    => [
+        ...allData.accounts,
+        ...allData.assetNet,
+        ...allData.adjustments,
+      ],
+      _                    => const <ChartSeries>[],
+    };
+  }
+
   /// Role resolver: latest cumulative total for the user's chart of this
   /// role, or the hard-coded fallback composition if the chart is missing
   /// or unresolvable. Keeps Cash Flow + Health working even when the user
@@ -961,27 +1019,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     List<DashboardChart> charts,
     AllSeriesData allData,
     List<Asset> activeAssets,
+  ) => _buildSmartTotalSpotsStatic(_seriesForRole(role, charts, allData, activeAssets));
+
+  static Set<int> assetIdsForRoleTotal(
+    String role,
+    List<DashboardChart> charts,
+    AllSeriesData allData,
+    List<Asset> activeAssets,
   ) {
-    final chart = charts.where((c) => c.widgetType == role).firstOrNull;
-    if (chart != null) {
-      final series = _filterSeries(allData, _parseSeriesJson(chart.seriesJson));
-      if (series.isNotEmpty) {
-        return _buildSmartTotalSpotsStatic(series);
-      }
+    const assetTotalTypes = {'asset_invested', 'asset_market', 'asset_net'};
+    final ids = <int>{};
+    for (final series in _seriesContributingToSmartTotal(_seriesForRole(role, charts, allData, activeAssets))) {
+      final parts = series.key.split(':');
+      if (parts.length != 2 || !assetTotalTypes.contains(parts[0])) continue;
+      final id = int.tryParse(parts[1]);
+      if (id != null) ids.add(id);
     }
-    return switch (role) {
-      'cash'               => allData.cashSpots,
-      'saving'             => allData.savingSpots,
-      'portfolio'          => _buildSmartTotalSpotsStatic(allData.assetMarket),
-      'liquid_investments' =>
-        _buildSmartTotalSpotsStatic(_liquidAssetMarket(allData, activeAssets)),
-      'net_asset_value'    => _buildSmartTotalSpotsStatic([
-        ...allData.accounts,
-        ...allData.assetNet,
-        ...allData.adjustments,
-      ]),
-      _                    => const <FlSpot>[],
-    };
+    return ids;
   }
 
   /// Scalar latest value for a role — Health KPIs want the current number.

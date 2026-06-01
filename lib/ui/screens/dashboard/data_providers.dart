@@ -662,6 +662,23 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
   }
 
+  // 2. Build total saving series — resolved from the user's configured
+  // Saving chart when present (option B), else hard-coded composition.
+  final userCharts = ref.watch(dashboardChartsProvider);
+  final activeAssets = await ref.watch(activeAssetsProvider.future);
+  final savingSpots = _DashboardScreenState.spotsForRole(
+    'saving',
+    userCharts,
+    allSeriesData,
+    activeAssets,
+  );
+  final savingAssetIds = _DashboardScreenState.assetIdsForRoleTotal(
+    'saving',
+    userCharts,
+    allSeriesData,
+    activeAssets,
+  );
+
   // Pension contributions are external money (employer/state/severance
   // redirect) — they inflate the pension fund's NAV without ever
   // landing in the user's bank account. Refunds, by contrast, DO land
@@ -670,10 +687,18 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // case where both the income side AND the savings side need to
   // subtract, otherwise saving/expense velocity reads as if the user
   // saved €X each month they didn't actually save.
-  final pensionRows = await db.customSelect(
-    "SELECT value_date AS date, amount, currency FROM incomes "
+  //
+  // Only subtract contribution rows whose asset is actually included in
+  // the resolved Saving total. If a pension fund is excluded from Saving,
+  // subtracting its mirrored income rows here would double-exclude it.
+  final rawPensionRows = await db.customSelect(
+    "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
     "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
   ).get();
+  final pensionRows = rawPensionRows.where((row) {
+    final assetId = row.readNullable<int>('asset_id');
+    return assetId != null && savingAssetIds.contains(assetId);
+  }).toList();
   final pensionContribByMonth = <(int, int), double>{};
   for (final row in pensionRows) {
     final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
@@ -685,17 +710,6 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     final key = (dt.year, dt.month);
     pensionContribByMonth[key] = (pensionContribByMonth[key] ?? 0) + amount * rate;
   }
-
-  // 2. Build total saving series — resolved from the user's configured
-  // Saving chart when present (option B), else hard-coded composition.
-  final userCharts = ref.watch(dashboardChartsProvider);
-  final activeAssets = await ref.watch(activeAssetsProvider.future);
-  final savingSpots = _DashboardScreenState.spotsForRole(
-    'saving',
-    userCharts,
-    allSeriesData,
-    activeAssets,
-  );
 
   double lookupNAV(DateTime date) {
     final x = date.difference(allSeriesData.firstDate).inDays.toDouble();

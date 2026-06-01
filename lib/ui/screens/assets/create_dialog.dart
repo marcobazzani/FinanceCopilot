@@ -13,7 +13,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   bool _unlocked = false;
 
   /// Apply the dialog's shared overrides (ter, taxRate, valuationMethod,
-  /// assetType, isActive, includeInNetWorth — all gated on `_unlocked`)
+  /// assetType, isActive, includeInSavings — all gated on `_unlocked`)
   /// to a single create call. Caller passes the per-flow fields (name,
   /// intermediary, currency, optional ticker/isin/exchange).
   Future<int> _createAsset({
@@ -43,7 +43,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         return v == null ? null : v / 100;
       })() : null,
       isActive: _unlocked ? _isActive : null,
-      includeInNetWorth: _unlocked ? _includeInNetWorth : null,
+      includeInSavings: _unlocked ? _includeInSavings : null,
     );
   }
 
@@ -76,7 +76,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   final _currencyCtrl = TextEditingController();
   final _terCtrl = TextEditingController();
   final _taxRateCtrl = TextEditingController();
-  bool _includeInNetWorth = true;
+  bool _includeInSavings = true;
   bool _isActive = true;
 
   String get _locale =>
@@ -164,9 +164,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         contentPadding: EdgeInsets.zero,
       ),
       SwitchListTile(
-        title: Text(s.includeInNetWorthLabel),
-        value: _includeInNetWorth,
-        onChanged: (v) => setState(() => _includeInNetWorth = v),
+        title: Text(s.includeInSavingsLabel),
+        value: _includeInSavings,
+        onChanged: (v) => setState(() => _includeInSavings = v),
         contentPadding: EdgeInsets.zero,
       ),
     ];

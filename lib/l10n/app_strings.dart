@@ -628,7 +628,7 @@ class AppStrings {
   String get assetTypeFieldLabel        => _it ? 'Tipo di asset'             : 'Asset type';
   String get valuationMethodFieldLabel  => _it ? 'Metodo di valutazione'     : 'Valuation method';
   String get taxRateOverrideLabel       => _it ? 'Aliquota fiscale (%)'      : 'Tax rate (%)';
-  String get includeInNetWorthLabel     => _it ? 'Includi nel patrimonio'    : 'Include in net worth';
+  String get includeInSavingsLabel      => _it ? 'Includi nei risparmi'      : 'Include in savings';
   String get currencyFieldLabel         => _it ? 'Valuta (3 lettere)'        : 'Currency (3 letters)';
 
   // ── Composition editor ───────────────────────────────────
