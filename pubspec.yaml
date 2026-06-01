@@ -93,6 +93,23 @@ flutter:
   assets:
     - assets/app_icon.png
     - assets/default_charts.json
+    - PortfolioModels/
+    - PortfolioModels/2021/20-equity/
+    - PortfolioModels/2021/40-equity/
+    - PortfolioModels/2021/60-equity/
+    - PortfolioModels/2021/80-equity/
+    - PortfolioModels/2024/0-equity/
+    - PortfolioModels/2024/20-equity/
+    - PortfolioModels/2024/40-equity/
+    - PortfolioModels/2024/60-equity/
+    - PortfolioModels/2024/80-equity/
+    - PortfolioModels/2024/100-equity/
+    - PortfolioModels/2026/0-equity/
+    - PortfolioModels/2026/20-equity/
+    - PortfolioModels/2026/40-equity/
+    - PortfolioModels/2026/60-equity/
+    - PortfolioModels/2026/80-equity/
+    - PortfolioModels/2026/100-equity/
     # Test fixtures — bundled for integration tests (negligible size in release)
     - integration_test/fixtures/
     - integration_test/fixtures/pension/

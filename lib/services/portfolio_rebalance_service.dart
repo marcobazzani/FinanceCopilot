@@ -1,0 +1,913 @@
+import 'dart:math' as math;
+
+import 'package:drift/drift.dart';
+
+import '../database/database.dart';
+import '../database/tables.dart';
+import '../utils/logger.dart';
+import 'asset_event_service.dart';
+import 'exchange_rate_service.dart';
+import 'portfolio_model_service.dart';
+
+final _log = getLogger('PortfolioRebalanceService');
+
+enum PortfolioRebalanceMode { sellAndBuy, buyOnly }
+
+enum PortfolioRebalanceScopeKind { currentPillar, allAssociatedPillars }
+
+enum PortfolioRebalanceUnresolvedReason {
+  missingModel,
+  missingCurrentQuantity,
+  missingMarketPrice,
+  missingFxRate,
+  missingCostBasisFx,
+  missingIsin,
+  unmatchedModelItem,
+}
+
+class PortfolioRebalanceScope {
+  final PortfolioRebalanceScopeKind kind;
+  final String? pillarId;
+
+  const PortfolioRebalanceScope._(this.kind, this.pillarId);
+  const PortfolioRebalanceScope.currentPillar(String pillarId) : this._(PortfolioRebalanceScopeKind.currentPillar, pillarId);
+  const PortfolioRebalanceScope.allAssociatedPillars() : this._(PortfolioRebalanceScopeKind.allAssociatedPillars, null);
+}
+
+class PortfolioRebalanceUnresolved {
+  final String? pillarId;
+  final String? pillarName;
+  final int? assetId;
+  final String? assetName;
+  final String? isin;
+  final PortfolioRebalanceUnresolvedReason reason;
+
+  const PortfolioRebalanceUnresolved({
+    required this.reason,
+    this.pillarId,
+    this.pillarName,
+    this.assetId,
+    this.assetName,
+    this.isin,
+  });
+}
+
+class PortfolioRebalanceDraftRow {
+  final String pillarId;
+  final String pillarName;
+  final int? assetId;
+  final String assetName;
+  final String? isin;
+  final EventType type;
+  final double amount;
+  final double baseAmount;
+  final double estimatedQuantity;
+  final double price;
+  final String currency;
+  final double fxRate;
+  final double estimatedTax;
+  final double currentBaseValue;
+  final double projectedBaseValue;
+  final bool isPlaceholder;
+  final String notes;
+
+  const PortfolioRebalanceDraftRow({
+    required this.pillarId,
+    required this.pillarName,
+    required this.assetId,
+    required this.assetName,
+    required this.isin,
+    required this.type,
+    required this.amount,
+    required this.baseAmount,
+    required this.estimatedQuantity,
+    required this.price,
+    required this.currency,
+    required this.fxRate,
+    required this.estimatedTax,
+    required this.currentBaseValue,
+    required this.projectedBaseValue,
+    this.isPlaceholder = false,
+    required this.notes,
+  });
+}
+
+class PortfolioRebalanceDraft {
+  final PortfolioRebalanceMode mode;
+  final PortfolioRebalanceScope scope;
+  final String baseCurrency;
+  final List<PortfolioRebalanceDraftRow> rows;
+  final List<PortfolioRebalanceUnresolved> unresolved;
+  final double availableCashBase;
+  final double targetBuyBase;
+  final double executedBuyBase;
+  final double buyShortfallBase;
+  final double leftoverCashBase;
+  final double currentPortfolioValueBase;
+  final double projectedPortfolioValueBase;
+
+  const PortfolioRebalanceDraft({
+    required this.mode,
+    required this.scope,
+    required this.baseCurrency,
+    required this.rows,
+    required this.unresolved,
+    required this.availableCashBase,
+    required this.targetBuyBase,
+    required this.executedBuyBase,
+    required this.buyShortfallBase,
+    required this.leftoverCashBase,
+    required this.currentPortfolioValueBase,
+    required this.projectedPortfolioValueBase,
+  });
+
+  bool get hasTrades => rows.isNotEmpty;
+  bool get hasExecutableTrades => rows.any((row) => !row.isPlaceholder);
+  double get estimatedTax => rows.fold<double>(0, (sum, row) => sum + row.estimatedTax);
+}
+
+class _TargetPlaceholder {
+  final Pillar pillar;
+  final PortfolioModelItem target;
+
+  const _TargetPlaceholder({
+    required this.pillar,
+    required this.target,
+  });
+}
+
+class _Position {
+  final Pillar pillar;
+  final Asset asset;
+  final double totalQuantity;
+  final double pillarQuantity;
+  final double price;
+  final double fxRate;
+  final double currentValueBase;
+  final double investedValueBase;
+
+  const _Position({
+    required this.pillar,
+    required this.asset,
+    required this.totalQuantity,
+    required this.pillarQuantity,
+    required this.price,
+    required this.fxRate,
+    required this.currentValueBase,
+    required this.investedValueBase,
+  });
+
+  String? get isin {
+    final value = asset.isin?.trim();
+    if (value == null || value.isEmpty) return null;
+    return normaliseIsin(value);
+  }
+
+  double get bondDivisor => asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+  double get unitBaseValue => price / bondDivisor * fxRate;
+}
+
+class _PositionGroup {
+  final String isin;
+  final PortfolioModelItem target;
+  final List<_Position> positions;
+  final _TargetPlaceholder? placeholder;
+
+  const _PositionGroup({
+    required this.isin,
+    required this.target,
+    required this.positions,
+    this.placeholder,
+  });
+
+  double get currentValueBase => positions.fold<double>(0, (sum, p) => sum + p.currentValueBase);
+  double get unitBaseValue {
+    if (placeholder != null) return double.infinity;
+    if (positions.isEmpty) return 0;
+    return positions.first.unitBaseValue;
+  }
+}
+
+class _BuyNeed {
+  final _PositionGroup group;
+  final double desiredBase;
+
+  const _BuyNeed({
+    required this.group,
+    required this.desiredBase,
+  });
+}
+
+class _SellResult {
+  final List<PortfolioRebalanceDraftRow> rows;
+  final double grossBase;
+  final double taxBase;
+
+  const _SellResult({
+    required this.rows,
+    required this.grossBase,
+    required this.taxBase,
+  });
+
+  double get netBase => grossBase - taxBase;
+}
+
+class PortfolioRebalanceService {
+  final AppDatabase _db;
+  late final ExchangeRateService _rates = ExchangeRateService(_db);
+  late final PortfolioModelService _models = PortfolioModelService(_db);
+
+  PortfolioRebalanceService(this._db);
+
+  Future<PortfolioRebalanceDraft> buildDraft({
+    required PortfolioRebalanceScope scope,
+    required PortfolioRebalanceMode mode,
+    double contributionAmount = 0,
+    DateTime? asOf,
+  }) async {
+    if (mode == PortfolioRebalanceMode.buyOnly && contributionAmount < 0) {
+      throw ArgumentError('contributionAmount must be >= 0');
+    }
+    final date = _dateOnly(asOf ?? DateTime.now());
+    final baseCurrency = await _baseCurrency();
+    final defaultTaxRate = await _defaultTaxRate();
+    final pillars = await _pillarsForScope(scope);
+    final allRows = <PortfolioRebalanceDraftRow>[];
+    final allUnresolved = <PortfolioRebalanceUnresolved>[];
+    var availableCashBase = 0.0;
+    var targetBuyBase = 0.0;
+    var executedBuyBase = 0.0;
+    var buyShortfallBase = 0.0;
+    var leftoverCashBase = 0.0;
+    var currentPortfolioValueBase = 0.0;
+    var projectedPortfolioValueBase = 0.0;
+
+    for (final pillar in pillars) {
+      final result = await _buildPillarDraft(
+        pillar: pillar,
+        mode: mode,
+        contributionAmount: scope.kind == PortfolioRebalanceScopeKind.currentPillar ? contributionAmount : 0,
+        asOf: date,
+        baseCurrency: baseCurrency,
+        defaultTaxRate: defaultTaxRate,
+      );
+      allRows.addAll(result.rows);
+      allUnresolved.addAll(result.unresolved);
+      availableCashBase += result.availableCashBase;
+      targetBuyBase += result.targetBuyBase;
+      executedBuyBase += result.executedBuyBase;
+      buyShortfallBase += result.buyShortfallBase;
+      leftoverCashBase += result.leftoverCashBase;
+      currentPortfolioValueBase += result.currentPortfolioValueBase;
+      projectedPortfolioValueBase += result.projectedPortfolioValueBase;
+    }
+
+    return PortfolioRebalanceDraft(
+      mode: mode,
+      scope: scope,
+      baseCurrency: baseCurrency,
+      rows: allRows,
+      unresolved: allUnresolved,
+      availableCashBase: availableCashBase,
+      targetBuyBase: targetBuyBase,
+      executedBuyBase: executedBuyBase,
+      buyShortfallBase: buyShortfallBase,
+      leftoverCashBase: leftoverCashBase,
+      currentPortfolioValueBase: currentPortfolioValueBase,
+      projectedPortfolioValueBase: projectedPortfolioValueBase,
+    );
+  }
+
+  Future<List<int>> applyDraft(
+    PortfolioRebalanceDraft draft,
+    AssetEventService eventService, {
+    DateTime? date,
+  }) async {
+    final appliedAt = _dateOnly(date ?? DateTime.now());
+    final ids = <int>[];
+    for (final row in draft.rows) {
+      if (row.isPlaceholder || row.assetId == null) continue;
+      ids.add(
+        await eventService.create(
+          assetId: row.assetId!,
+          date: appliedAt,
+          type: row.type,
+          amount: row.amount,
+          quantity: row.estimatedQuantity,
+          price: row.price,
+          currency: row.currency,
+          notes: row.notes,
+        ),
+      );
+    }
+    _log.info('applyDraft: inserted ${ids.length} asset events');
+    return ids;
+  }
+
+  Future<({
+    List<PortfolioRebalanceDraftRow> rows,
+    List<PortfolioRebalanceUnresolved> unresolved,
+    double availableCashBase,
+    double targetBuyBase,
+    double executedBuyBase,
+    double buyShortfallBase,
+    double leftoverCashBase,
+    double grossSellBase,
+    double currentPortfolioValueBase,
+    double projectedPortfolioValueBase,
+  })> _buildPillarDraft({
+    required Pillar pillar,
+    required PortfolioRebalanceMode mode,
+    required double contributionAmount,
+    required DateTime asOf,
+    required String baseCurrency,
+    required double defaultTaxRate,
+  }) async {
+    final modelId = pillar.portfolioModelId;
+    if (modelId == null || modelId.isEmpty) {
+      return (
+        rows: const <PortfolioRebalanceDraftRow>[],
+        unresolved: [
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            reason: PortfolioRebalanceUnresolvedReason.missingModel,
+          ),
+        ],
+        availableCashBase: 0.0,
+        targetBuyBase: 0.0,
+        executedBuyBase: 0.0,
+        buyShortfallBase: 0.0,
+        leftoverCashBase: 0.0,
+        grossSellBase: 0.0,
+        currentPortfolioValueBase: 0.0,
+        projectedPortfolioValueBase: 0.0,
+      );
+    }
+    final model = await _models.getWithItems(modelId);
+    if (model == null) {
+      return (
+        rows: const <PortfolioRebalanceDraftRow>[],
+        unresolved: [
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            reason: PortfolioRebalanceUnresolvedReason.missingModel,
+          ),
+        ],
+        availableCashBase: 0.0,
+        targetBuyBase: 0.0,
+        executedBuyBase: 0.0,
+        buyShortfallBase: 0.0,
+        leftoverCashBase: 0.0,
+        grossSellBase: 0.0,
+        currentPortfolioValueBase: 0.0,
+        projectedPortfolioValueBase: 0.0,
+      );
+    }
+
+    final unresolved = <PortfolioRebalanceUnresolved>[];
+    final positions = await _positionsForPillar(
+      pillar,
+      asOf: asOf,
+      baseCurrency: baseCurrency,
+      unresolved: unresolved,
+    );
+    final resolvedValue = positions.fold<double>(0, (sum, p) => sum + p.currentValueBase);
+    if (resolvedValue <= 0 && contributionAmount <= 0) {
+      return (
+        rows: const <PortfolioRebalanceDraftRow>[],
+        unresolved: unresolved,
+        availableCashBase: 0.0,
+        targetBuyBase: 0.0,
+        executedBuyBase: 0.0,
+        buyShortfallBase: 0.0,
+        leftoverCashBase: 0.0,
+        grossSellBase: 0.0,
+        currentPortfolioValueBase: resolvedValue,
+        projectedPortfolioValueBase: resolvedValue,
+      );
+    }
+
+    final targetsByIsin = {
+      for (final item in model.items) normaliseIsin(item.isin): item,
+    };
+    final positionsByIsin = <String, List<_Position>>{};
+    final extraPositions = <_Position>[];
+    for (final position in positions) {
+      final isin = position.isin;
+      if (isin == null) {
+        unresolved.add(
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            assetId: position.asset.id,
+            assetName: position.asset.name,
+            reason: PortfolioRebalanceUnresolvedReason.missingIsin,
+          ),
+        );
+        extraPositions.add(position);
+      } else if (targetsByIsin.containsKey(isin)) {
+        positionsByIsin.putIfAbsent(isin, () => []).add(position);
+      } else {
+        extraPositions.add(position);
+      }
+    }
+
+    final groups = <String, _PositionGroup>{};
+    for (final entry in targetsByIsin.entries) {
+      final targetPositions = positionsByIsin[entry.key] ?? const <_Position>[];
+      if (targetPositions.isEmpty) {
+        final synthetic = await _syntheticPositionForTargetIsin(
+          pillar: pillar,
+          isin: entry.key,
+          asOf: asOf,
+          baseCurrency: baseCurrency,
+          unresolved: unresolved,
+        );
+        if (synthetic == null) {
+          groups[entry.key] = _PositionGroup(
+            isin: entry.key,
+            target: entry.value,
+            positions: const [],
+            placeholder: _TargetPlaceholder(
+              pillar: pillar,
+              target: entry.value,
+            ),
+          );
+          continue;
+        }
+        groups[entry.key] = _PositionGroup(
+          isin: entry.key,
+          target: entry.value,
+          positions: [synthetic],
+        );
+        continue;
+      }
+      groups[entry.key] = _PositionGroup(
+        isin: entry.key,
+        target: entry.value,
+        positions: targetPositions,
+      );
+    }
+
+    final rows = <PortfolioRebalanceDraftRow>[];
+    final buyNeeds = <_BuyNeed>[];
+    var availableCashBase = mode == PortfolioRebalanceMode.buyOnly ? contributionAmount : 0.0;
+    var targetBuyBase = 0.0;
+    var grossSellBase = 0.0;
+
+    if (mode == PortfolioRebalanceMode.sellAndBuy) {
+      for (final position in extraPositions) {
+        final sellResult = _sellRowsForPositions(
+          positions: [position],
+          sellBaseAmount: position.currentValueBase,
+          defaultTaxRate: defaultTaxRate,
+        );
+        rows.addAll(sellResult.rows);
+        availableCashBase += sellResult.netBase;
+        grossSellBase += sellResult.grossBase;
+      }
+    }
+
+    final targetPortfolioValue = mode == PortfolioRebalanceMode.buyOnly ? resolvedValue + contributionAmount : resolvedValue;
+    for (final group in groups.values) {
+      final targetBase = targetPortfolioValue * group.target.targetWeight / 100.0;
+      final delta = group.currentValueBase - targetBase;
+      if (mode == PortfolioRebalanceMode.sellAndBuy && delta > 0.01) {
+        final sellResult = _sellRowsForPositions(
+          positions: group.positions,
+          sellBaseAmount: delta,
+          defaultTaxRate: defaultTaxRate,
+        );
+        rows.addAll(sellResult.rows);
+        availableCashBase += sellResult.netBase;
+        grossSellBase += sellResult.grossBase;
+      } else if (-delta > 0.01) {
+        targetBuyBase += -delta;
+        if (group.placeholder != null) {
+          rows.add(_placeholderBuyRow(group, targetBase));
+        } else {
+          buyNeeds.add(_BuyNeed(group: group, desiredBase: -delta));
+        }
+      }
+    }
+
+    final totalNeed = buyNeeds.fold<double>(0, (sum, need) => sum + need.desiredBase);
+    final buyQuantities = <_PositionGroup, int>{};
+    var remainingCashBase = availableCashBase;
+    var executedBuyBase = 0.0;
+    if (remainingCashBase > 0.01 && totalNeed > 0) {
+      while (true) {
+        _BuyNeed? bestNeed;
+        double bestAfterError = double.infinity;
+        double bestUnitBase = double.infinity;
+        double bestRemainingNeed = -1;
+
+        for (final need in buyNeeds) {
+          final unitBase = need.group.unitBaseValue;
+          if (unitBase <= 0 || unitBase > remainingCashBase + 1e-9) continue;
+          final allocatedQuantity = buyQuantities[need.group] ?? 0;
+          final allocatedBase = allocatedQuantity * unitBase;
+          final remainingNeed = need.desiredBase - allocatedBase;
+          if (remainingNeed <= 0.01) continue;
+          final afterError = (remainingNeed - unitBase).abs();
+          if (bestNeed == null ||
+              afterError < bestAfterError - 1e-12 ||
+              ((afterError - bestAfterError).abs() <= 1e-12 &&
+                  (unitBase < bestUnitBase - 1e-12 ||
+                      ((unitBase - bestUnitBase).abs() <= 1e-12 && remainingNeed > bestRemainingNeed + 1e-12)))) {
+            bestNeed = need;
+            bestAfterError = afterError;
+            bestUnitBase = unitBase;
+            bestRemainingNeed = remainingNeed;
+          }
+        }
+
+        if (bestNeed == null) break;
+        buyQuantities[bestNeed.group] = (buyQuantities[bestNeed.group] ?? 0) + 1;
+        remainingCashBase -= bestNeed.group.unitBaseValue;
+        if (remainingCashBase <= 0.01) break;
+      }
+    }
+
+    for (final entry in buyQuantities.entries) {
+      final buyRows = _buyRowsForGroup(
+        entry.key,
+        entry.value,
+      );
+      rows.addAll(buyRows);
+      executedBuyBase += buyRows.fold<double>(0, (sum, row) => sum + row.baseAmount);
+    }
+
+    final projectedPortfolioValueBase = resolvedValue + executedBuyBase - grossSellBase;
+
+    return (
+      rows: rows,
+      unresolved: unresolved,
+      availableCashBase: availableCashBase,
+      targetBuyBase: targetBuyBase,
+      executedBuyBase: executedBuyBase,
+      buyShortfallBase: math.max(0.0, targetBuyBase - executedBuyBase),
+      leftoverCashBase: math.max(0.0, remainingCashBase),
+      grossSellBase: grossSellBase,
+      currentPortfolioValueBase: resolvedValue,
+      projectedPortfolioValueBase: projectedPortfolioValueBase,
+    );
+  }
+
+  PortfolioRebalanceDraftRow _placeholderBuyRow(_PositionGroup group, double desiredBase) {
+    final placeholder = group.placeholder!;
+    final description = placeholder.target.description.trim();
+    return PortfolioRebalanceDraftRow(
+      pillarId: placeholder.pillar.id,
+      pillarName: placeholder.pillar.name,
+      assetId: null,
+      assetName: description.isNotEmpty ? description : group.isin,
+      isin: group.isin,
+      type: EventType.buy,
+      amount: desiredBase,
+      baseAmount: desiredBase,
+      estimatedQuantity: 0,
+      price: 0,
+      currency: '',
+      fxRate: 0,
+      estimatedTax: 0,
+      currentBaseValue: 0,
+      projectedBaseValue: desiredBase,
+      isPlaceholder: true,
+      notes: 'Portfolio rebalance placeholder',
+    );
+  }
+
+  Future<_Position?> _syntheticPositionForTargetIsin({
+    required Pillar pillar,
+    required String isin,
+    required DateTime asOf,
+    required String baseCurrency,
+    required List<PortfolioRebalanceUnresolved> unresolved,
+  }) async {
+    final assetRow = await _db.customSelect(
+      "SELECT * FROM assets WHERE UPPER(TRIM(COALESCE(isin, ''))) = ? LIMIT 1",
+      variables: [Variable<String>(normaliseIsin(isin))],
+      readsFrom: {_db.assets},
+    ).get();
+    final asset = assetRow.isEmpty ? null : _db.assets.map(assetRow.first.data);
+    if (asset == null) return null;
+    final price = await _latestMarketPrice(asset.id, asOf);
+    if (price == null) {
+      unresolved.add(
+        PortfolioRebalanceUnresolved(
+          pillarId: pillar.id,
+          pillarName: pillar.name,
+          assetId: asset.id,
+          assetName: asset.name,
+          isin: asset.isin,
+          reason: PortfolioRebalanceUnresolvedReason.missingMarketPrice,
+        ),
+      );
+      return null;
+    }
+    final fxRate = asset.currency == baseCurrency ? 1.0 : await _rates.getRate(asset.currency, baseCurrency, asOf);
+    if (fxRate == null || fxRate <= 0) {
+      unresolved.add(
+        PortfolioRebalanceUnresolved(
+          pillarId: pillar.id,
+          pillarName: pillar.name,
+          assetId: asset.id,
+          assetName: asset.name,
+          isin: asset.isin,
+          reason: PortfolioRebalanceUnresolvedReason.missingFxRate,
+        ),
+      );
+      return null;
+    }
+    return _Position(
+      pillar: pillar,
+      asset: asset,
+      totalQuantity: 0,
+      pillarQuantity: 0,
+      price: price,
+      fxRate: fxRate,
+      currentValueBase: 0,
+      investedValueBase: 0,
+    );
+  }
+
+  _SellResult _sellRowsForPositions({
+    required List<_Position> positions,
+    required double sellBaseAmount,
+    required double defaultTaxRate,
+  }) {
+    final totalValue = positions.fold<double>(0, (sum, p) => sum + p.currentValueBase);
+    if (totalValue <= 0 || sellBaseAmount <= 0) return const _SellResult(rows: [], grossBase: 0, taxBase: 0);
+    final cappedSell = math.min(sellBaseAmount, totalValue);
+    final unitBase = positions.first.unitBaseValue;
+    if (unitBase <= 0) return const _SellResult(rows: [], grossBase: 0, taxBase: 0);
+    final exactQuantity = cappedSell / unitBase;
+    final wholeQuantity = (exactQuantity + 1e-9).floor();
+    if (wholeQuantity <= 0) return const _SellResult(rows: [], grossBase: 0, taxBase: 0);
+    final rows = <PortfolioRebalanceDraftRow>[];
+    var grossBase = 0.0;
+    var taxBase = 0.0;
+    final remainders = <({double remainder, _Position position, int quantity})>[];
+    var allocatedQuantity = 0;
+    for (final position in positions) {
+      final exactQuantityForPosition = wholeQuantity * position.currentValueBase / totalValue;
+      final quantity = (exactQuantityForPosition + 1e-9).floor();
+      allocatedQuantity += quantity;
+      remainders.add((remainder: exactQuantityForPosition - quantity, position: position, quantity: quantity));
+    }
+    var remaining = wholeQuantity - allocatedQuantity;
+    remainders.sort((a, b) => b.remainder.compareTo(a.remainder));
+    for (var i = 0; i < remaining && i < remainders.length; i++) {
+      final entry = remainders[i];
+      remainders[i] = (remainder: entry.remainder, position: entry.position, quantity: entry.quantity + 1);
+    }
+    for (final entry in remainders) {
+      final quantity = entry.quantity.toDouble();
+      if (quantity <= 0) continue;
+      final position = entry.position;
+      final baseAmount = quantity * unitBase;
+      final taxRate = (position.asset.taxRate ?? defaultTaxRate).clamp(0.0, 1.0);
+      final positiveGain = math.max(position.currentValueBase - position.investedValueBase, 0.0);
+      final gainRatio = position.currentValueBase <= 0 ? 0.0 : positiveGain / position.currentValueBase;
+      final estimatedTax = baseAmount * gainRatio * taxRate;
+      final amount = baseAmount / position.fxRate;
+      final projectedBaseValue = math.max(position.currentValueBase - baseAmount, 0.0);
+      grossBase += baseAmount;
+      taxBase += estimatedTax;
+      rows.add(
+        PortfolioRebalanceDraftRow(
+          pillarId: position.pillar.id,
+          pillarName: position.pillar.name,
+          assetId: position.asset.id,
+          assetName: position.asset.name,
+          isin: position.asset.isin,
+          type: EventType.sell,
+          amount: amount,
+          baseAmount: baseAmount,
+          estimatedQuantity: quantity,
+          price: position.price,
+          currency: position.asset.currency,
+          fxRate: position.fxRate,
+          estimatedTax: estimatedTax,
+          currentBaseValue: position.currentValueBase,
+          projectedBaseValue: projectedBaseValue,
+          notes: 'Portfolio rebalance draft',
+        ),
+      );
+    }
+    return _SellResult(rows: rows, grossBase: grossBase, taxBase: taxBase);
+  }
+
+  List<PortfolioRebalanceDraftRow> _buyRowsForGroup(
+    _PositionGroup group,
+    int quantity,
+  ) {
+    final position = group.positions.first;
+    final unitBase = group.unitBaseValue;
+    if (unitBase <= 0) return const [];
+    if (quantity <= 0) return const [];
+    final actualBaseAmount = quantity * unitBase;
+    return [
+      PortfolioRebalanceDraftRow(
+        pillarId: position.pillar.id,
+        pillarName: position.pillar.name,
+        assetId: position.asset.id,
+        assetName: position.asset.name,
+        isin: position.asset.isin,
+        type: EventType.buy,
+        amount: actualBaseAmount / position.fxRate,
+        baseAmount: actualBaseAmount,
+        estimatedQuantity: quantity.toDouble(),
+        price: position.price,
+        currency: position.asset.currency,
+        fxRate: position.fxRate,
+        estimatedTax: 0,
+        currentBaseValue: position.currentValueBase,
+        projectedBaseValue: position.currentValueBase + actualBaseAmount,
+        notes: 'Portfolio rebalance draft',
+      ),
+    ];
+  }
+
+  Future<List<_Position>> _positionsForPillar(
+    Pillar pillar, {
+    required DateTime asOf,
+    required String baseCurrency,
+    required List<PortfolioRebalanceUnresolved> unresolved,
+  }) async {
+    final assignments = await (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillar.id))).get();
+    final positions = <_Position>[];
+    for (final assignment in assignments) {
+      final asset = await (_db.select(_db.assets)..where((a) => a.id.equals(assignment.assetId))).getSingleOrNull();
+      if (asset == null) continue;
+      final totalQty = await _totalQuantity(asset.id, asOf: asOf);
+      if (totalQty <= 0) {
+        unresolved.add(
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            assetId: asset.id,
+            assetName: asset.name,
+            reason: PortfolioRebalanceUnresolvedReason.missingCurrentQuantity,
+          ),
+        );
+        continue;
+      }
+      final price = await _latestMarketPrice(asset.id, asOf);
+      if (price == null) {
+        unresolved.add(
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            assetId: asset.id,
+            assetName: asset.name,
+            isin: asset.isin,
+            reason: PortfolioRebalanceUnresolvedReason.missingMarketPrice,
+          ),
+        );
+        continue;
+      }
+      final fxRate = asset.currency == baseCurrency ? 1.0 : await _rates.getRate(asset.currency, baseCurrency, asOf);
+      if (fxRate == null || fxRate <= 0) {
+        unresolved.add(
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            assetId: asset.id,
+            assetName: asset.name,
+            isin: asset.isin,
+            reason: PortfolioRebalanceUnresolvedReason.missingFxRate,
+          ),
+        );
+        continue;
+      }
+      final investedBase = await _investedBase(asset, totalQty, baseCurrency, asOf);
+      if (investedBase == null) {
+        unresolved.add(
+          PortfolioRebalanceUnresolved(
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            assetId: asset.id,
+            assetName: asset.name,
+            isin: asset.isin,
+            reason: PortfolioRebalanceUnresolvedReason.missingCostBasisFx,
+          ),
+        );
+        continue;
+      }
+      final bondDivisor = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+      final currentValueBase = assignment.quantity * price / bondDivisor * fxRate;
+      positions.add(
+        _Position(
+          pillar: pillar,
+          asset: asset,
+          totalQuantity: totalQty,
+          pillarQuantity: assignment.quantity,
+          price: price,
+          fxRate: fxRate,
+          currentValueBase: currentValueBase,
+          investedValueBase: investedBase * (assignment.quantity / totalQty),
+        ),
+      );
+    }
+    return positions;
+  }
+
+  Future<double> _totalQuantity(int assetId, {required DateTime asOf}) async {
+    final endExclusive = asOf.add(const Duration(days: 1));
+    final row = await _db
+        .customSelect(
+          'SELECT COALESCE(SUM(CASE WHEN type = ? THEN ABS(COALESCE(quantity, 0)) '
+          'WHEN type = ? THEN -ABS(COALESCE(quantity, 0)) ELSE 0 END), 0) AS qty '
+          'FROM asset_events WHERE asset_id = ? AND quantity IS NOT NULL AND value_date < ?',
+          variables: [
+            Variable.withString(EventType.buy.name),
+            Variable.withString(EventType.sell.name),
+            Variable.withInt(assetId),
+            Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000),
+          ],
+          readsFrom: {_db.assetEvents},
+        )
+        .getSingle();
+    return row.read<double>('qty');
+  }
+
+  Future<double?> _latestMarketPrice(int assetId, DateTime asOf) async {
+    final endExclusive = asOf.add(const Duration(days: 1));
+    final row = await _db
+        .customSelect(
+          'SELECT close_price FROM market_prices WHERE asset_id = ? AND date < ? ORDER BY date DESC LIMIT 1',
+          variables: [
+            Variable.withInt(assetId),
+            Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000),
+          ],
+          readsFrom: {_db.marketPrices},
+        )
+        .getSingleOrNull();
+    return row?.readNullable<double>('close_price');
+  }
+
+  Future<double?> _investedBase(
+    Asset asset,
+    double currentQuantity,
+    String baseCurrency,
+    DateTime asOf,
+  ) async {
+    final endExclusive = asOf.add(const Duration(days: 1));
+    final events =
+        await (_db.select(_db.assetEvents)..where(
+              (e) => e.assetId.equals(asset.id) & e.type.equalsValue(EventType.buy) & e.valueDate.isSmallerThanValue(endExclusive),
+            ))
+            .get();
+    var buyBase = 0.0;
+    var buyQty = 0.0;
+    for (final event in events) {
+      final amount = await _eventAmountBase(event, baseCurrency);
+      if (amount == null) return null;
+      buyBase += amount.abs();
+      buyQty += event.quantity?.abs() ?? 0;
+    }
+    if (buyQty <= 0) return buyBase;
+    if (currentQuantity <= 0) return 0;
+    return buyBase / buyQty * currentQuantity;
+  }
+
+  Future<double?> _eventAmountBase(AssetEvent event, String baseCurrency) async {
+    final amount = event.amount.abs();
+    if (event.currency == baseCurrency) return amount;
+    final stored = event.exchangeRate;
+    if (stored != null && stored > 0) return amount / stored;
+    final baseToEvent = await _rates.getRate(baseCurrency, event.currency, event.valueDate);
+    if (baseToEvent != null && baseToEvent > 0) return amount / baseToEvent;
+    final eventToBase = await _rates.getRate(event.currency, baseCurrency, event.valueDate);
+    if (eventToBase != null && eventToBase > 0) return amount * eventToBase;
+    return null;
+  }
+
+  Future<List<Pillar>> _pillarsForScope(PortfolioRebalanceScope scope) {
+    switch (scope.kind) {
+      case PortfolioRebalanceScopeKind.currentPillar:
+        final pillarId = scope.pillarId;
+        if (pillarId == null) return Future.value(const <Pillar>[]);
+        return (_db.select(_db.pillars)..where((p) => p.id.equals(pillarId))).get();
+      case PortfolioRebalanceScopeKind.allAssociatedPillars:
+        return (_db.select(_db.pillars)..where((p) => p.portfolioModelId.isNotNull())).get();
+    }
+  }
+
+  Future<String> _baseCurrency() async {
+    final row = await (_db.select(_db.appConfigs)..where((c) => c.key.equals('BASE_CURRENCY'))).getSingleOrNull();
+    return row?.value ?? 'EUR';
+  }
+
+  Future<double> _defaultTaxRate() async {
+    final row = await (_db.select(_db.appConfigs)..where((c) => c.key.equals('TAX_RATE'))).getSingleOrNull();
+    final parsed = double.tryParse(row?.value ?? '');
+    return (parsed ?? 0.26).clamp(0.0, 1.0);
+  }
+
+  DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+}

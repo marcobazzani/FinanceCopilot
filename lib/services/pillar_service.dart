@@ -36,6 +36,7 @@ class PillarService {
     required String name,
     double? targetValue,
     String targetCurrency = 'EUR',
+    String? portfolioModelId,
   }) async {
     final id = UuidV7.generate();
     final maxSort = await (_db.selectOnly(_db.pillars)
@@ -47,6 +48,7 @@ class PillarService {
           name: name,
           targetValue: Value(targetValue),
           targetCurrency: Value(targetCurrency),
+          portfolioModelId: Value(portfolioModelId),
           sortOrder: Value((maxSort ?? -1) + 1),
         ));
     _log.info('create pillar id=$id name=$name');
@@ -58,7 +60,9 @@ class PillarService {
     String? name,
     double? targetValue,
     String? targetCurrency,
+    String? portfolioModelId,
     bool clearTargetValue = false,
+    bool clearPortfolioModel = false,
   }) async {
     final companion = PillarsCompanion(
       name: name == null ? const Value.absent() : Value(name),
@@ -68,6 +72,9 @@ class PillarService {
       targetCurrency: targetCurrency == null
           ? const Value.absent()
           : Value(targetCurrency),
+      portfolioModelId: clearPortfolioModel
+          ? const Value(null)
+          : (portfolioModelId == null ? const Value.absent() : Value(portfolioModelId)),
       updatedAt: Value(DateTime.now()),
     );
     await (_db.update(_db.pillars)..where((p) => p.id.equals(id)))

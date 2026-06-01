@@ -56,6 +56,8 @@ class SchemaVersionMismatchException implements Exception {
   AssetCompositions,
   ExtraordinaryEvents,
   ExtraordinaryEventEntries,
+  PortfolioModels,
+  PortfolioModelItems,
   Pillars,
   PillarAssets,
 ])
@@ -75,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 40;
+  int get schemaVersion => 41;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -655,6 +657,22 @@ class AppDatabase extends _$AppDatabase {
             _log.info('Migration 40: cache keys renamed INVESTING_*→PROVIDER_*; '
                 'asset.exchange + cache-key suffixes normalised to canonical names');
           }
+          if (from < 41) {
+            if (!await _tableExists('portfolio_models')) {
+              await m.createTable(portfolioModels);
+            }
+            if (!await _tableExists('portfolio_model_items')) {
+              await m.createTable(portfolioModelItems);
+            }
+            if (!await _hasColumn('pillars', 'portfolio_model_id')) {
+              await customStatement(
+                'ALTER TABLE pillars ADD COLUMN portfolio_model_id TEXT '
+                'REFERENCES portfolio_models(id) ON DELETE SET NULL',
+              );
+            }
+            await _createIndexes();
+            _log.info('Migration 41: created portfolio models and linked pillars');
+          }
         },
       );
 
@@ -699,6 +717,14 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_pillar_assets_asset '
       'ON pillar_assets(asset_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_portfolio_model_items_model '
+      'ON portfolio_model_items(model_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_pillars_portfolio_model '
+      'ON pillars(portfolio_model_id)',
     );
   }
 

@@ -35,6 +35,9 @@ import 'package:finance_copilot/services/web_market_data_service.dart';
 import 'package:finance_copilot/services/isin_lookup_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart' show isKnownExchange;
 import 'package:finance_copilot/services/pillar_service.dart';
+import 'package:finance_copilot/services/portfolio_model_service.dart';
+import 'package:finance_copilot/services/portfolio_rebalance_service.dart';
+import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/asset_detail_screen.dart';
 import 'package:finance_copilot/services/transaction_service.dart';
 
@@ -2350,6 +2353,12 @@ void main() {
     await longSettle(tester);
     expect(find.text('Create your first pillar'), findsOneWidget,
         reason: 'empty-state CTA visible on a fresh Pillars tab');
+    await tester.tap(find.widgetWithText(Tab, 'Portfolio Models'));
+    await longSettle(tester);
+    expect(find.text('Built-in'), findsAtLeast(1),
+        reason: 'Portfolio Models tab should seed and show built-in models');
+    await tester.tap(find.widgetWithText(Tab, 'Pillars'));
+    await longSettle(tester);
 
     _step('15B. Open create dialog → name "Retirement", target 100000 EUR');
     await tester.tap(find.byType(FloatingActionButton).first);
@@ -2427,6 +2436,89 @@ void main() {
     expect(fracs[targetAssetId], closeTo(0.5, 1e-9));
     _step('   ✓ asset $targetAssetId @ 50%; SUM invariant holds');
 
+    _step('15D.ii. Portfolio models preload + custom model association');
+    final portfolioModelService = PortfolioModelService(db);
+    expect(await portfolioModelService.seedBuiltInModels(), 32);
+    expect(
+      (await portfolioModelService.getAll()).where((m) => m.isBuiltIn),
+      hasLength(32),
+      reason: 'built-in portfolio model catalog is preloaded once',
+    );
+    var targetAsset = await (db.select(db.assets)..where((a) => a.id.equals(targetAssetId!))).getSingle();
+    if ((targetAsset.isin ?? '').isEmpty) {
+      await (db.update(db.assets)..where((a) => a.id.equals(targetAssetId!))).write(
+        const AssetsCompanion(isin: Value('IE00B4L5Y983')),
+      );
+      targetAsset = await (db.select(db.assets)..where((a) => a.id.equals(targetAssetId!))).getSingle();
+    }
+    final customModelId = await portfolioModelService.createCustomModel(
+      name: 'Walkthrough Model',
+      items: [
+        PortfolioModelInputItem(
+          isin: targetAsset.isin!,
+          targetWeight: 100,
+          description: targetAsset.name,
+        ),
+      ],
+    );
+    await pillarService.update(pillarId, portfolioModelId: customModelId);
+    final marketValuesFor15D =
+        await containerFor15D.read(assetMarketValuesProvider.future);
+    final divergence = await portfolioModelService.computeDivergenceForPillar(
+      pillarId: pillarId,
+      marketValuesByAssetId: marketValuesFor15D,
+    );
+    expect(divergence, isNotNull);
+    expect(divergence!.rows.single.isUnmatched, isFalse);
+    _step('   ✓ custom model linked to pillar and divergence computed');
+
+    _step('15D.iii. Rebalance drafts are preview-only until applied');
+    final rebalanceService = PortfolioRebalanceService(db);
+    final sellBuyDraft = await rebalanceService.buildDraft(
+      scope: PortfolioRebalanceScope.currentPillar(pillarId),
+      mode: PortfolioRebalanceMode.sellAndBuy,
+    );
+    expect(sellBuyDraft.estimatedTax, greaterThanOrEqualTo(0));
+    final buyOnlyDraft = await rebalanceService.buildDraft(
+      scope: PortfolioRebalanceScope.currentPillar(pillarId),
+      mode: PortfolioRebalanceMode.buyOnly,
+      contributionAmount: 10,
+    );
+    final eventsBeforeDraft = await (db.select(db.assetEvents)
+          ..where((e) => e.assetId.equals(targetAssetId!)))
+        .get();
+    if (buyOnlyDraft.rows.isNotEmpty) {
+      await rebalanceService.applyDraft(
+        PortfolioRebalanceDraft(
+          mode: buyOnlyDraft.mode,
+          scope: buyOnlyDraft.scope,
+          baseCurrency: buyOnlyDraft.baseCurrency,
+          rows: buyOnlyDraft.rows.take(1).toList(),
+          unresolved: buyOnlyDraft.unresolved,
+          availableCashBase: buyOnlyDraft.availableCashBase,
+          targetBuyBase: buyOnlyDraft.targetBuyBase,
+          executedBuyBase: buyOnlyDraft.executedBuyBase,
+          buyShortfallBase: buyOnlyDraft.buyShortfallBase,
+          leftoverCashBase: buyOnlyDraft.leftoverCashBase,
+        ),
+        AssetEventService(db),
+        date: DateTime(2026, 1, 15),
+      );
+      final eventsAfterDraft = await (db.select(db.assetEvents)
+            ..where((e) => e.assetId.equals(targetAssetId!)))
+          .get();
+      expect(eventsAfterDraft.length, eventsBeforeDraft.length + 1);
+      _step('   ✓ buy-only draft applied after explicit service call');
+    } else {
+      expect(
+        await (db.select(db.assetEvents)
+              ..where((e) => e.assetId.equals(targetAssetId!)))
+            .get(),
+        hasLength(eventsBeforeDraft.length),
+      );
+      _step('   ✓ no draft rows generated; no events inserted');
+    }
+
     _step('15E. Over-assign refused: PillarOverAssignedException');
     expect(
       () => pillarService.assign(
@@ -2465,6 +2557,9 @@ void main() {
     }
     expect(await pillarService.getAll(), isEmpty,
         reason: 'pillar delete cascades pillar_assets rows');
+    await portfolioModelService.deleteCustomModel(customModelId);
+    expect(await portfolioModelService.getById(customModelId), isNull,
+        reason: 'custom portfolio models are removable after pillar association is gone');
     _step('   ✓ pillar deleted, assignment removed via FK cascade');
 
     // ─────────────────────────────────────────────────────────────────────

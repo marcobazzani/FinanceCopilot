@@ -31,15 +31,23 @@ final pillarAssetsProvider = StreamProvider<List<PillarAsset>>((ref) {
   return ref.watch(pillarServiceProvider).watchAllAssignments();
 });
 
+final portfolioModelsProvider = StreamProvider<List<PortfolioModel>>((ref) async* {
+  final service = ref.watch(portfolioModelServiceProvider);
+  await service.seedBuiltInModels();
+  yield* service.watchAll();
+});
+
+final portfolioModelItemsProvider = StreamProvider.family<List<PortfolioModelItem>, String>((ref, modelId) {
+  return ref.watch(portfolioModelServiceProvider).watchItems(modelId);
+});
+
 /// For one pillar: assetId → fraction of that asset's total holding.
-final pillarFractionProvider =
-    FutureProvider.family<Map<int, double>, String>((ref, pillarId) async {
+final pillarFractionProvider = FutureProvider.family<Map<int, double>, String>((ref, pillarId) async {
   ref.watch(pillarAssetsProvider);
   return ref.read(pillarServiceProvider).fractionsForPillar(pillarId);
 });
 
-final unassignedFractionProvider =
-    FutureProvider<Map<int, double>>((ref) async {
+final unassignedFractionProvider = FutureProvider<Map<int, double>>((ref) async {
   ref.watch(pillarAssetsProvider);
   final assets = await ref.watch(activeAssetsProvider.future);
   final svc = ref.read(pillarServiceProvider);
@@ -75,9 +83,7 @@ final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
 /// Transactions for a specific account (pass accountId as family parameter).
 final accountTransactionsProvider = StreamProvider.family<List<Transaction>, int>((ref, accountId) {
   final through = ref.watch(waybackDateProvider);
-  return ref
-      .watch(transactionServiceProvider)
-      .watchByAccount(accountId, through: through);
+  return ref.watch(transactionServiceProvider).watchByAccount(accountId, through: through);
 });
 
 /// All transactions across every account — feeds the read-only virtual
@@ -90,9 +96,7 @@ final allTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
 /// Asset events for a specific asset (pass assetId as family parameter).
 final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, assetId) {
   final through = ref.watch(waybackDateProvider);
-  return ref
-      .watch(assetEventServiceProvider)
-      .watchByAsset(assetId, through: through);
+  return ref.watch(assetEventServiceProvider).watchByAsset(assetId, through: through);
 });
 
 /// Loads `assets/default_charts.json` and expands the categories against
@@ -114,14 +118,14 @@ final defaultChartsLoadedProvider = FutureProvider<List<DashboardChart>>((ref) a
 /// true. Listens to `defaultChartsLoadedProvider`; when the JSON load
 /// emits, the notifier resets to a fresh state with that list as both
 /// `charts` and `pristine`. User edits go on top until the next reload.
-final editableChartsProvider =
-    StateNotifierProvider<EditableChartsNotifier, EditableChartsState>((ref) {
-  final loaded = ref.watch(defaultChartsLoadedProvider).value ??
-      const <DashboardChart>[];
-  return EditableChartsNotifier(EditableChartsState(
-    charts: List.of(loaded),
-    pristine: List.of(loaded),
-  ));
+final editableChartsProvider = StateNotifierProvider<EditableChartsNotifier, EditableChartsState>((ref) {
+  final loaded = ref.watch(defaultChartsLoadedProvider).value ?? const <DashboardChart>[];
+  return EditableChartsNotifier(
+    EditableChartsState(
+      charts: List.of(loaded),
+      pristine: List.of(loaded),
+    ),
+  );
 });
 
 /// Dashboard charts source — debug mode reads the editor notifier, release
@@ -130,8 +134,7 @@ final dashboardChartsProvider = Provider<List<DashboardChart>>((ref) {
   if (debugChartsEnabled) {
     return ref.watch(editableChartsProvider).charts;
   }
-  return ref.watch(defaultChartsLoadedProvider).value ??
-      const <DashboardChart>[];
+  return ref.watch(defaultChartsLoadedProvider).value ?? const <DashboardChart>[];
 });
 
 /// True when the editor's working set differs from the pristine JSON
@@ -145,18 +148,14 @@ final chartsDirtyProvider = Provider<bool>((ref) {
 
 final bufferTransactionsProvider = StreamProvider.family<List<BufferTransaction>, int>((ref, bufferId) {
   final through = ref.watch(waybackDateProvider);
-  return ref
-      .watch(bufferServiceProvider)
-      .watchByBuffer(bufferId, through: through);
+  return ref.watch(bufferServiceProvider).watchByBuffer(bufferId, through: through);
 });
 
 // ── Extraordinary events stream providers ──
 
 final extraordinaryEventsProvider = StreamProvider<List<ExtraordinaryEvent>>((ref) {
   final through = ref.watch(waybackDateProvider);
-  return ref
-      .watch(extraordinaryEventServiceProvider)
-      .watchAll(through: through);
+  return ref.watch(extraordinaryEventServiceProvider).watchAll(through: through);
 });
 
 final extraordinaryEventProvider = StreamProvider.family<ExtraordinaryEvent, int>((ref, id) {
@@ -165,16 +164,12 @@ final extraordinaryEventProvider = StreamProvider.family<ExtraordinaryEvent, int
 
 final extraordinaryEventEntriesProvider = StreamProvider.family<List<ExtraordinaryEventEntry>, int>((ref, eventId) {
   final through = ref.watch(waybackDateProvider);
-  return ref
-      .watch(extraordinaryEventServiceProvider)
-      .watchEntries(eventId, through: through);
+  return ref.watch(extraordinaryEventServiceProvider).watchEntries(eventId, through: through);
 });
 
 final extraordinaryEventStatsProvider = StreamProvider<Map<int, ExtraordinaryEventStats>>((ref) {
   final through = ref.watch(waybackDateProvider);
-  return ref
-      .watch(extraordinaryEventServiceProvider)
-      .watchStatsForAll(through: through);
+  return ref.watch(extraordinaryEventServiceProvider).watchStatsForAll(through: through);
 });
 
 // ── Income stream providers ──
