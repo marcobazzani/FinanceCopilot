@@ -48,11 +48,19 @@ Future<void> main() async {
   await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
   await initLogging();
   await initializeDateFormatting();
+  final portableLanguage = await AppSettings.loadLanguageForStartup();
   // Print key paths to stdout for easy access
   // ignore: avoid_print
   print('LOG: $logFilePath');
   _log.info('FinanceCopilot v$appVersionDisplay starting up');
-  runApp(const ProviderScope(child: FinanceCopilotApp()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        portableLanguageProvider.overrideWith((ref) => portableLanguage),
+      ],
+      child: const FinanceCopilotApp(),
+    ),
+  );
 }
 
 class FinanceCopilotApp extends ConsumerWidget {

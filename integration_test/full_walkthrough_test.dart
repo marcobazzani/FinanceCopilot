@@ -2500,6 +2500,8 @@ void main() {
           executedBuyBase: buyOnlyDraft.executedBuyBase,
           buyShortfallBase: buyOnlyDraft.buyShortfallBase,
           leftoverCashBase: buyOnlyDraft.leftoverCashBase,
+          currentPortfolioValueBase: buyOnlyDraft.currentPortfolioValueBase,
+          projectedPortfolioValueBase: buyOnlyDraft.projectedPortfolioValueBase,
         ),
         AssetEventService(db),
         date: DateTime(2026, 1, 15),

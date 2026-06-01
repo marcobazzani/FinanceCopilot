@@ -3,13 +3,23 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 
 /// Global app settings stored in Application Support directory
 /// (portable between platforms, accessible before DB is opened).
 class AppSettings {
   static Directory? _resolvedConfigDir;
+  @visibleForTesting
+  static Directory? testConfigDir;
+  @visibleForTesting
+  static void resetForTesting() {
+    _resolvedConfigDir = null;
+    _cache = null;
+    testConfigDir = null;
+  }
 
   static Future<Directory> _getConfigDir() async {
+    if (testConfigDir != null) return testConfigDir!;
     if (_resolvedConfigDir != null) return _resolvedConfigDir!;
     _resolvedConfigDir = await getApplicationSupportDirectory();
     return _resolvedConfigDir!;
@@ -64,5 +74,14 @@ class AppSettings {
   /// Set the UI language.
   static Future<void> setLanguage(String lang) async {
     await set('language', lang);
+  }
+
+  /// Load the persisted UI language for app startup.
+  ///
+  /// The stored setting is normalized to the app's supported codes so boot
+  /// does not depend on stale or malformed data.
+  static Future<String> loadLanguageForStartup() async {
+    final lang = await getLanguage();
+    return lang.startsWith('it') ? 'it' : 'en';
   }
 }
