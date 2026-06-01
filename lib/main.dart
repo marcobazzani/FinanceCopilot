@@ -40,19 +40,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initLogging();
   await initializeDateFormatting();
-  final portableLanguage = await AppSettings.loadLanguageForStartup();
   // Print key paths to stdout for easy access
   // ignore: avoid_print
   print('LOG: $logFilePath');
   _log.info('FinanceCopilot v$appVersionDisplay starting up');
-  runApp(
-    ProviderScope(
-      overrides: [
-        portableLanguageProvider.overrideWith((ref) => portableLanguage),
-      ],
-      child: const FinanceCopilotApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: FinanceCopilotApp()));
 }
 
 class FinanceCopilotApp extends ConsumerWidget {
@@ -339,9 +331,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           label: s.settingsSyncSignIn,
           onPressed: () async {
             final ok = await sync.signIn();
-            if (ok) {
-              _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
-            }
+            if (ok) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
           },
         ),
       ));
@@ -1221,9 +1211,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                       ),
                       onPressed: () async {
                         await ref.read(marketPriceServiceProvider).clearCache();
-                        if (ctx.mounted) {
-                          showInfoSnack(ctx, s.settingsCacheCleared);
-                        }
+                        if (ctx.mounted) showInfoSnack(ctx, s.settingsCacheCleared);
                       },
                       child: Text(s.settingsClearButton),
                     ),
