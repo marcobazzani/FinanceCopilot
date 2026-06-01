@@ -651,6 +651,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   ).get();
 
   final incomeByMonth = <(int, int), double>{};
+  final monthsWithIncomeData = <(int, int)>{};
   for (final row in rows) {
     final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
     if (!includeDayKey(toDayKey(dt))) continue;
@@ -660,6 +661,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     if (rate == null) continue; // no rate -> exclude rather than mis-sum
     final key = (dt.year, dt.month);
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
+    monthsWithIncomeData.add(key);
   }
 
   // 2. Build total saving series — resolved from the user's configured
@@ -755,6 +757,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         income: mIncome,
         navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
         pensionContrib: mPensionContrib,
+        hasIncomeData: monthsWithIncomeData.contains((y, m)),
       ));
     }
 

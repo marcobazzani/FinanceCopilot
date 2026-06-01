@@ -173,8 +173,8 @@ void main() {
     });
   });
 
-  test('migrates v40 databases to v41 portfolio model schema', () async {
-    final dir = await Directory.systemTemp.createTemp('fc_v41_migration_');
+  test('migrates v40 databases through the current schema', () async {
+    final dir = await Directory.systemTemp.createTemp('fc_schema_migration_');
     final path = p.join(dir.path, 'migration.db');
     final db = AppDatabase.forTesting(NativeDatabase(File(path)));
     await db.select(db.accounts).get();
@@ -194,7 +194,7 @@ void main() {
 
     final migrated = AppDatabase.forTesting(NativeDatabase(File(path)));
     final version = (await migrated.customSelect('PRAGMA user_version').get()).first.read<int>('user_version');
-    expect(version, 41);
+    expect(version, 42);
     final modelTables = await migrated
         .customSelect(
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio_models', 'portfolio_model_items')",

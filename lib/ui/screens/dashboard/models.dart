@@ -98,6 +98,7 @@ class AllSeriesData {
 class _MonthBucket {
   final int year, month;
   final double income, navChange, pensionContrib;
+  final bool hasIncomeData;
   // Pension contributions inflate navChange without ever touching the
   // user's wallet (employer/state/severance redirect). Subtract them
   // so savings/expenses reflect personal cashflow only. Refunds are
@@ -110,7 +111,7 @@ class _MonthBucket {
   double get savingsRate => income > 0 ? personalNavChange / income : 0;
   const _MonthBucket({required this.year, required this.month,
                       required this.income, required this.navChange,
-                      this.pensionContrib = 0});
+                      this.pensionContrib = 0, this.hasIncomeData = false});
 }
 
 class _YearBucket {

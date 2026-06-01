@@ -37,6 +37,7 @@ import '../allocation_tab.dart';
 import '../../widgets/mobile_pull_to_refresh.dart';
 import 'eoy_projection.dart';
 import 'fullscreen_chart_screen.dart';
+import 'income_yoy.dart';
 
 part 'models.dart';
 part 'rate_resolver.dart';
