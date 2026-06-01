@@ -126,6 +126,7 @@ class _YearBucket {
   double get dailyExpenses   => days > 0 ? expenses / days : 0;
   double get monthlyIncome   => days > 0 ? income / days * 30.4 : 0;
   double get monthlyExpenses => days > 0 ? expenses / days * 30.4 : 0;
+  double get monthlySavings  => days > 0 ? savings / days * 30.4 : 0;
 
   const _YearBucket({required this.year, required this.days,
                      required this.income, required this.navChange,
