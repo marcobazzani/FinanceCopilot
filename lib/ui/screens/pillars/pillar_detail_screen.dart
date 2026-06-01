@@ -13,10 +13,11 @@ import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
 import '../dashboard/dashboard_screen.dart' show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider, buildTotalSpots;
+import '../allocation_tab.dart';
 import 'pillar_create_dialog.dart';
 import 'rebalance_preview_dialog.dart';
 
-class PillarDetailScreen extends ConsumerWidget {
+class PillarDetailScreen extends ConsumerStatefulWidget {
   final String pillarId;
   final int? focusAssetId;
   const PillarDetailScreen({
@@ -26,7 +27,26 @@ class PillarDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PillarDetailScreen> createState() => _PillarDetailScreenState();
+}
+
+class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final pillarsAsync = ref.watch(pillarsProvider);
     return Scaffold(
@@ -35,10 +55,17 @@ class PillarDetailScreen extends ConsumerWidget {
           loading: () => const Text('…'),
           error: (e, _) => Text('$e'),
           data: (pillars) {
-            final p = pillars.where((x) => x.id == pillarId).firstOrNull;
+            final p = pillars.where((x) => x.id == widget.pillarId).firstOrNull;
             if (p == null) return const Text('—');
             return Text(p.name);
           },
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: s.overview),
+            Tab(text: s.dashTabAssetsOverview),
+          ],
         ),
         actions: globalAppBarActions(
           context,
@@ -51,7 +78,7 @@ class PillarDetailScreen extends ConsumerWidget {
                 await showDialog(
                   context: context,
                   builder: (_) => RebalancePreviewDialog(
-                    pillarId: pillarId,
+                    pillarId: widget.pillarId,
                     initialScopeKind: PortfolioRebalanceScopeKind.currentPillar,
                   ),
                 );
@@ -61,7 +88,7 @@ class PillarDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.edit),
               tooltip: s.edit,
               onPressed: () async {
-                final p = (pillarsAsync.value ?? const []).where((x) => x.id == pillarId).firstOrNull;
+                final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;
                 if (p == null) return;
                 await showDialog(
                   context: context,
@@ -73,7 +100,7 @@ class PillarDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.delete_outline, color: Colors.red),
               tooltip: s.delete,
               onPressed: () async {
-                final p = (pillarsAsync.value ?? const []).where((x) => x.id == pillarId).firstOrNull;
+                final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;
                 if (p == null) return;
                 final confirm = await showDialog<bool>(
                   context: context,
@@ -95,7 +122,41 @@ class PillarDetailScreen extends ConsumerWidget {
           ],
         ),
       ),
-      body: _OverviewView(pillarId: pillarId, focusAssetId: focusAssetId),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _OverviewView(pillarId: widget.pillarId, focusAssetId: widget.focusAssetId),
+          _PillarAssetsOverviewTab(pillarId: widget.pillarId),
+        ],
+      ),
+    );
+  }
+}
+
+class _PillarAssetsOverviewTab extends ConsumerWidget {
+  final String pillarId;
+
+  const _PillarAssetsOverviewTab({required this.pillarId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final dataAsync = ref.watch(pillarAllocationDataProvider(pillarId));
+    final compositionsAsync = ref.watch(assetCompositionsProvider);
+
+    return dataAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text(s.error(e))),
+      data: (data) => compositionsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text(s.error(e))),
+        data: (compositions) => AllocationOverviewBody(
+          assets: data.assets,
+          marketValues: data.marketValues,
+          baseCurrency: data.baseCurrency,
+          compositions: compositions,
+        ),
+      ),
     );
   }
 }

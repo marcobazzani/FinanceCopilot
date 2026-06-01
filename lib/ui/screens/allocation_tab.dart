@@ -74,101 +74,145 @@ class AllocationTab extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(s.error(e))),
         data: (marketValues) {
-          final compositions = compositionsAsync.value ?? {};
           final baseCurrency = baseCurrencyAsync.value ?? 'EUR';
-          final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
-          final total = marketValues.values.fold(0.0, (a, b) => a + b);
-
-          if (total == 0) {
-            return Center(
-              child: Text(s.noMarketValues,
-                  style: const TextStyle(color: Colors.grey)),
-            );
-          }
-
-          // Weighted breakdowns
-          final byCountry = alloc.weightedBreakdown(
-            assets, marketValues, compositions, 'country',
-            (a) => a.country ?? s.unclassified,
+          return AllocationOverviewBody(
+            assets: assets.where((a) => a.isActive).toList(),
+            marketValues: marketValues,
+            baseCurrency: baseCurrency,
+            compositions: compositionsAsync.value ?? const {},
           );
-          final bySector = alloc.weightedBreakdown(
-            assets, marketValues, compositions, 'sector',
-            (a) => a.sector ?? s.unclassified,
-          );
-          final byHolding = alloc.weightedBreakdown(
-            assets, marketValues, compositions, 'holding',
-            (a) => a.name,
-          );
-          final byType = alloc.groupByField(
-            assets, marketValues, (a) => s.assetClassLabel(a.assetClass),
-          );
-          final byInstrument = alloc.groupByField(
-            assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
-          );
-          final byCurrency = alloc.groupByField(assets, marketValues, (a) => a.currency);
-
-          // Drill-down data for clickable charts
-          final countryDrill = alloc.drillDownData(
-            assets, marketValues, compositions, 'country',
-            (a) => a.country ?? s.unclassified,
-          );
-          final sectorDrill = alloc.drillDownData(
-            assets, marketValues, compositions, 'sector',
-            (a) => a.sector ?? s.unclassified,
-          );
-          final typeDrill = alloc.drillDownByField(
-            assets, marketValues, (a) => s.assetClassLabel(a.assetClass),
-          );
-          final instrumentDrill = alloc.drillDownByField(
-            assets, marketValues, (a) => s.instrumentTypeLabel(a.instrumentType),
-          );
-
-          final holdingEntries = byHolding.entries.toList();
-          // Concentration uses actual portfolio positions, not ETF look-through
-          final byPosition = alloc.groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
-          final positionEntries = byPosition.entries.toList();
-
-          final cards = <Widget>[
-            _ChartCard(title: s.allocGeographic, child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill)),
-            _ChartCard(title: s.allocSector, child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill)),
-            _ChartCard(title: s.allocAssetClass, child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill)),
-            _ChartCard(title: s.allocInstrument, child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill)),
-            _ChartCard(title: s.allocCurrency, child: _DonutChart(data: byCurrency, total: total)),
-            _ChartCard(title: s.allocTopHoldings, child: _TopHoldingsInteractive(allHoldings: holdingEntries, total: total, baseCurrency: baseCurrency, locale: locale)),
-            _ConcentrationCard(holdings: positionEntries, total: total, baseCurrency: baseCurrency, locale: locale),
-            _InvestmentCostsCard(assets: assets.where((a) => a.isActive).toList(), marketValues: marketValues, baseCurrency: baseCurrency, locale: locale),
-          ];
-
-          return LayoutBuilder(builder: (ctx, constraints) {
-            const cardMin = 400.0;
-            const gap = 16.0;
-            final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
-
-            final rows = <Widget>[];
-            for (var i = 0; i < cards.length; i += cols) {
-              final rowCards = cards.sublist(i, min(i + cols, cards.length));
-              rows.add(Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var j = 0; j < cols; j++) ...[
-                    if (j > 0) const SizedBox(width: gap),
-                    Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
-                  ],
-                ],
-              ));
-              if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
-            }
-            return MobilePullToRefresh(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(children: rows),
-              ),
-            );
-          });
         },
       ),
     );
+  }
+}
+
+class AllocationOverviewBody extends ConsumerWidget {
+  final List<Asset> assets;
+  final Map<int, double> marketValues;
+  final String baseCurrency;
+  final Map<int, List<AssetComposition>> compositions;
+
+  const AllocationOverviewBody({
+    super.key,
+    required this.assets,
+    required this.marketValues,
+    required this.baseCurrency,
+    required this.compositions,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
+    final total = marketValues.values.fold(0.0, (a, b) => a + b);
+
+    if (total == 0) {
+      return Center(
+        child: Text(s.noMarketValues, style: const TextStyle(color: Colors.grey)),
+      );
+    }
+
+    final byCountry = alloc.weightedBreakdown(
+      assets,
+      marketValues,
+      compositions,
+      'country',
+      (a) => a.country ?? s.unclassified,
+    );
+    final bySector = alloc.weightedBreakdown(
+      assets,
+      marketValues,
+      compositions,
+      'sector',
+      (a) => a.sector ?? s.unclassified,
+    );
+    final byHolding = alloc.weightedBreakdown(
+      assets,
+      marketValues,
+      compositions,
+      'holding',
+      (a) => a.name,
+    );
+    final byType = alloc.groupByField(
+      assets,
+      marketValues,
+      (a) => s.assetClassLabel(a.assetClass),
+    );
+    final byInstrument = alloc.groupByField(
+      assets,
+      marketValues,
+      (a) => s.instrumentTypeLabel(a.instrumentType),
+    );
+    final byCurrency = alloc.groupByField(assets, marketValues, (a) => a.currency);
+
+    final countryDrill = alloc.drillDownData(
+      assets,
+      marketValues,
+      compositions,
+      'country',
+      (a) => a.country ?? s.unclassified,
+    );
+    final sectorDrill = alloc.drillDownData(
+      assets,
+      marketValues,
+      compositions,
+      'sector',
+      (a) => a.sector ?? s.unclassified,
+    );
+    final typeDrill = alloc.drillDownByField(
+      assets,
+      marketValues,
+      (a) => s.assetClassLabel(a.assetClass),
+    );
+    final instrumentDrill = alloc.drillDownByField(
+      assets,
+      marketValues,
+      (a) => s.instrumentTypeLabel(a.instrumentType),
+    );
+
+    final holdingEntries = byHolding.entries.toList();
+    final byPosition = alloc.groupByField(assets, marketValues, (a) => a.ticker ?? a.name);
+    final positionEntries = byPosition.entries.toList();
+
+    final cards = <Widget>[
+      _ChartCard(title: s.allocGeographic, child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill)),
+      _ChartCard(title: s.allocSector, child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill)),
+      _ChartCard(title: s.allocAssetClass, child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill)),
+      _ChartCard(title: s.allocInstrument, child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill)),
+      _ChartCard(title: s.allocCurrency, child: _DonutChart(data: byCurrency, total: total)),
+      _ChartCard(title: s.allocTopHoldings, child: _TopHoldingsInteractive(allHoldings: holdingEntries, total: total, baseCurrency: baseCurrency, locale: locale)),
+      _ConcentrationCard(holdings: positionEntries, total: total, baseCurrency: baseCurrency, locale: locale),
+      _InvestmentCostsCard(assets: assets, marketValues: marketValues, baseCurrency: baseCurrency, locale: locale),
+    ];
+
+    return LayoutBuilder(builder: (ctx, constraints) {
+      const cardMin = 400.0;
+      const gap = 16.0;
+      final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
+
+      final rows = <Widget>[];
+      for (var i = 0; i < cards.length; i += cols) {
+        final rowCards = cards.sublist(i, min(i + cols, cards.length));
+        rows.add(Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var j = 0; j < cols; j++) ...[
+              if (j > 0) const SizedBox(width: gap),
+              Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
+            ],
+          ],
+        ));
+        if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
+      }
+      return MobilePullToRefresh(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(children: rows),
+        ),
+      );
+    });
   }
 }
 

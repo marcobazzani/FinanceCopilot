@@ -44,6 +44,7 @@ class AppStrings {
   String error(Object e)   => 'Error: $e';
   String get invalid       => _it ? 'Non valido'          : 'Invalid';
   String get invalidNumber => _it ? 'Numero non valido'   : 'Invalid number';
+  String get overview      => _it ? 'Panoramica'          : 'Overview';
 
   // ── App shell / navigation ──────────────────────────────
   String get navDashboard          => 'Dashboard';

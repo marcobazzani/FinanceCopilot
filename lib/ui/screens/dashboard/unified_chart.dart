@@ -607,8 +607,9 @@ class UnifiedChart extends StatelessWidget {
     if (showTotal) {
       lineBars.add(LineChartBarData(
         spots: totalSpots,
-        isCurved: false,
-        isStepLineChart: true,
+        isCurved: true,
+        preventCurveOverShooting: true,
+        curveSmoothness: 0.15,
         color: isDark ? Colors.white : theme.colorScheme.primary,
         barWidth: 2.5,
         dotData: const FlDotData(show: false),
@@ -626,9 +627,9 @@ class UnifiedChart extends StatelessWidget {
           : s.spots;
       lineBars.add(LineChartBarData(
         spots: spots,
-        isCurved: false,
-        isStepLineChart: isAdjustmentSeriesKey(s.key),
+        isCurved: true,
         preventCurveOverShooting: true,
+        curveSmoothness: 0.15,
         color: s.color,
         barWidth: s.rightAxis ? 1.5 : (s.isDashed ? 1.5 : 2),
         dotData: const FlDotData(show: false),

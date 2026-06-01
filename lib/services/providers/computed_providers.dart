@@ -2,6 +2,18 @@ part of 'providers.dart';
 
 // ── Derived / computed data providers ──
 
+class PillarAllocationData {
+  final List<Asset> assets;
+  final Map<int, double> marketValues;
+  final String baseCurrency;
+
+  const PillarAllocationData({
+    required this.assets,
+    required this.marketValues,
+    required this.baseCurrency,
+  });
+}
+
 /// Asset IDs that have at least one row in `market_prices`.
 ///
 /// Source-of-truth for "this asset has external market data". Used by the
@@ -197,6 +209,31 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
   _log.info('assetMarketValues: ${result.length} assets with values');
   return result;
 });
+
+final pillarAllocationDataProvider = FutureProvider.family<PillarAllocationData, String>((ref, pillarId) async {
+  final assets = await ref.watch(activeAssetsProvider.future);
+  final marketValues = await ref.watch(assetMarketValuesProvider.future);
+  final fractions = await ref.watch(pillarFractionProvider(pillarId).future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+
+  final scopedAssets = <Asset>[];
+  final scopedMarketValues = <int, double>{};
+
+  for (final asset in assets) {
+    final fraction = fractions[asset.id];
+    if (fraction == null || fraction <= 0) continue;
+    final fullValue = marketValues[asset.id] ?? 0.0;
+    scopedAssets.add(asset);
+    scopedMarketValues[asset.id] = fullValue * fraction;
+  }
+
+  return PillarAllocationData(
+    assets: scopedAssets,
+    marketValues: scopedMarketValues,
+    baseCurrency: baseCurrency,
+  );
+});
+
 
 /// IDs of active, marketPrice-valued assets that have no rows in
 /// `market_prices`. The asset's displayed value falls back to the buy or
