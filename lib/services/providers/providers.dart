@@ -29,9 +29,12 @@ import '../market_price_service.dart';
 import '../intermediary_service.dart';
 import '../pillar_scope.dart';
 import '../pillar_service.dart';
+import '../portfolio_model_service.dart';
+import '../portfolio_rebalance_service.dart';
 import '../transaction_service.dart';
 import '../../utils/asset_value_math.dart';
 import '../../utils/logger.dart';
+import '../../utils/visualization_clock.dart';
 
 part 'app_state_providers.dart';
 part 'service_providers.dart';

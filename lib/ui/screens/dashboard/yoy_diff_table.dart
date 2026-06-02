@@ -36,7 +36,12 @@ class _YoYDiffTable extends ConsumerWidget {
       final p = prev.months.where((m) => m.month == month).firstOrNull;
       final c = cur.months.where((m) => m.month == month).firstOrNull;
       if (p == null || c == null) return null;
-      return c.income - p.income;
+      return incomeYoYDiff(
+        previousIncome: p.income,
+        previousHasIncomeData: p.hasIncomeData,
+        currentIncome: c.income,
+        currentHasIncomeData: c.hasIncomeData,
+      );
     }
 
     final borderSide = BorderSide(color: theme.dividerColor, width: 0.5);
@@ -97,13 +102,19 @@ class _YoYDiffTable extends ConsumerWidget {
               for (final p in pairs) ...[
                 Builder(builder: (ctx) {
                   final maxM = p.$2.months.length;
-                  double sum = 0;
-                  bool valid = false;
-                  for (int m = 1; m <= maxM; m++) {
-                    final d = diff(p.$1, p.$2, m);
-                    if (d != null) { sum += d; valid = true; }
-                  }
-                  return diffCell(valid ? sum : null);
+                  return diffCell(incomeYoYTotal([
+                    for (int m = 1; m <= maxM; m++)
+                      () {
+                        final prevMonth = p.$1.months.where((mb) => mb.month == m).firstOrNull;
+                        final curMonth = p.$2.months.where((mb) => mb.month == m).firstOrNull;
+                        return (
+                          previousIncome: prevMonth?.income ?? 0,
+                          previousHasIncomeData: prevMonth?.hasIncomeData ?? false,
+                          currentIncome: curMonth?.income ?? 0,
+                          currentHasIncomeData: curMonth?.hasIncomeData ?? false,
+                        );
+                      }(),
+                  ]));
                 }),
               ],
             ],

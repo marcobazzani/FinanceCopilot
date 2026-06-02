@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:pdfrx/pdfrx.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
@@ -34,10 +35,17 @@ import 'utils/bug_reporter.dart';
 import 'utils/logger.dart';
 import 'version.dart';
 
+part 'app_shell/share_intent.dart';
+part 'app_shell/drive_db_ops.dart';
+part 'app_shell/settings_dialog.dart';
+
 final _log = getLogger('Main');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // pdfrx 2.x requires explicit initialization before the document API
+  // (PdfDocument.openData) is used outside of a pdfrx widget.
+  await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
   await initLogging();
   await initializeDateFormatting();
   final portableLanguage = await AppSettings.loadLanguageForStartup();
@@ -217,112 +225,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
   }
 
-  void _initShareIntent() {
-    // Handle file shared while app was closed
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-      _handleSharedFiles(files);
-    });
-    // Handle file shared while app is running
-    _shareIntentSub = ReceiveSharingIntent.instance.getMediaStream().listen(_handleSharedFiles);
-  }
-
-  void _handleSharedFiles(List<SharedMediaFile> files) {
-    if (files.isEmpty) return;
-    final path = files.first.path;
-    final ext = path.toLowerCase().split('.').last;
-    if (!{'csv', 'xlsx', 'xls', 'tsv'}.contains(ext)) {
-      _log.warning('Shared file ignored (unsupported type): $path');
-      return;
-    }
-    _log.info('Received shared file: $path');
-    if (mounted) _showShareImportDialog(path);
-  }
-
-  Future<void> _showShareImportDialog(String filePath) async {
-    final s = ref.read(appStringsProvider);
-    final accounts = ref.read(accountsProvider).value ?? [];
-    var target = ImportTarget.transaction;
-    int? accountId = accounts.isNotEmpty ? accounts.first.id : null;
-
-    final result = await showModalBottomSheet<(ImportTarget, int?)>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(s.importTitle, style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text(filePath.split('/').last, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-              const SizedBox(height: 20),
-              Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              SegmentedButton<ImportTarget>(
-                segments: [
-                  ButtonSegment(value: ImportTarget.transaction, icon: const Icon(Icons.receipt_long, size: 18), label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.assetEvent, icon: const Icon(Icons.trending_up, size: 18), label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.income, icon: const Icon(Icons.payments, size: 18), label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12))),
-                ],
-                selected: {target},
-                onSelectionChanged: (v) => setSheetState(() => target = v.first),
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                showSelectedIcon: false,
-              ),
-              if (target == ImportTarget.transaction && accounts.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(s.selectAccount, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<int>(
-                  initialValue: accountId,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  items: accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
-                  onChanged: (v) => setSheetState(() => accountId = v),
-                ),
-              ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(ctx, (target, target == ImportTarget.transaction ? accountId : null)),
-                  child: Text(s.next),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    if (result == null || !mounted) return;
-    final (selectedTarget, selectedAccountId) = result;
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ImportScreen(
-        initialFilePath: filePath,
-        preselectedTarget: selectedTarget,
-        preselectedAccountId: selectedAccountId,
-      )),
-    );
-  }
-
-  @override
-  void dispose() {
-    _shareIntentSub?.cancel();
-    super.dispose();
-  }
-
-  /// Restore the Drive sign-in session silently (if possible) so the manual
-  /// Backup/Restore buttons in Import/Export can call Drive without an
-  /// interactive prompt every time. We do NOT auto-pull or auto-push — all
-  /// Drive operations are explicit user actions; see _backupToDrive /
-  /// _restoreFromDrive in the Import/Export dialog.
   Future<void> _initDriveSync() async {
     final sync = ref.read(googleDriveSyncProvider);
     _wireSyncCallbacks(sync);
@@ -339,13 +241,17 @@ class _AppShellState extends ConsumerState<AppShell> {
           label: s.settingsSyncSignIn,
           onPressed: () async {
             final ok = await sync.signIn();
-            if (ok) {
-              _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
-            }
+            if (ok) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
           },
         ),
       ));
     }
+  }
+
+  @override
+  void dispose() {
+    _shareIntentSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkEmptyDb() async {
@@ -423,7 +329,8 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// Wire up sync service callbacks needed for the explicit
   /// Backup/Restore-from-Drive operations.
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
-    sync.copyFromAttached = (tmpPath) => _mergeRemoteDb(tmpPath);
+    sync.copyFromAttached =
+        (tmpPath) => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath);
     sync.onDbReplaced = () {
       if (mounted) {
         _log.info('DB replaced by sync, reloading...');
@@ -455,78 +362,6 @@ class _AppShellState extends ConsumerState<AppShell> {
         _log.warning('Background sync error: $e');
       }
     });
-  }
-
-  /// Merge the contents of a downloaded remote DB file into the currently
-  /// open drift instance. Called from GoogleDriveSyncService._download via
-  /// the `copyFromAttached` callback.
-  ///
-  /// Uses SQLite `ATTACH DATABASE` to expose the remote file as `src`, then
-  /// for every user table in `src`: DELETE FROM main + INSERT FROM SELECT.
-  /// Everything runs inside a single drift transaction — either the whole
-  /// merge succeeds or it rolls back leaving local data untouched.
-  ///
-  /// This avoids the Windows file-lock problem (no close, no file swap) and
-  /// the drift-close concurrent-modification bug entirely.
-  Future<void> _mergeRemoteDb(String tmpPath) async {
-    final db = ref.read(databaseProvider);
-    // Escape single quotes in the path for SQL string literal safety.
-    final sqlPath = tmpPath.replaceAll("'", "''");
-    await db.customStatement("ATTACH DATABASE '$sqlPath' AS src");
-    try {
-      // Discover user tables in the source DB. Exclude SQLite's schema table
-      // and Android's auto-generated metadata table, but we DO want
-      // `sqlite_sequence` so AUTOINCREMENT counters stay in sync — otherwise
-      // the next insert locally could reuse an ID already present in the
-      // data we just copied.
-      final rows = await db.customSelect(
-        "SELECT name FROM src.sqlite_master "
-        "WHERE type='table' "
-        "AND name NOT LIKE 'sqlite_stat%' "
-        "AND name NOT IN ('sqlite_master', 'sqlite_temp_master', 'android_metadata')",
-      ).get();
-      final tables = rows.map((r) => r.read<String>('name')).toList();
-      _log.info('_mergeRemoteDb: copying ${tables.length} tables from $tmpPath');
-
-      await db.transaction(() async {
-        // FK constraints would fire during intermediate states while we wipe
-        // and repopulate tables. Disable them for the duration of the copy —
-        // we trust the remote DB is internally consistent.
-        await db.customStatement('PRAGMA defer_foreign_keys = ON');
-        for (final table in tables) {
-          try {
-            // Use column intersection so schema differences (extra columns in
-            // either the source or target) don't cause INSERT failures.
-            final srcCols = (await db.customSelect('PRAGMA src.table_info("$table")').get())
-                .map((r) => r.read<String>('name'))
-                .toSet();
-            final dstCols = (await db.customSelect('PRAGMA main.table_info("$table")').get())
-                .map((r) => r.read<String>('name'))
-                .toSet();
-            final common = srcCols.intersection(dstCols);
-            if (common.isEmpty) {
-              _log.warning('_mergeRemoteDb: no common columns for $table, skipping');
-              continue;
-            }
-            final cols = common.map((c) => '"$c"').join(', ');
-            await db.customStatement('DELETE FROM main."$table"');
-            await db.customStatement(
-              'INSERT INTO main."$table" ($cols) SELECT $cols FROM src."$table"',
-            );
-          } catch (e) {
-            _log.warning('_mergeRemoteDb: failed to copy table $table: $e');
-            rethrow;
-          }
-        }
-      });
-      _log.info('_mergeRemoteDb: merge committed');
-    } finally {
-      try {
-        await db.customStatement('DETACH DATABASE src');
-      } catch (e) {
-        _log.warning('_mergeRemoteDb: DETACH failed (harmless): $e');
-      }
-    }
   }
 
   /// Full manual refresh: pull from Google Drive, then refresh market data.
@@ -700,7 +535,9 @@ class _AppShellState extends ConsumerState<AppShell> {
                         icon: const Icon(Icons.file_upload),
                         label: Text(s.landingImportDb),
                         onPressed: () async {
-                          final path = await DbTransferService.importDb();
+                          final path = await DbTransferService.importDb(
+                            ref.read(databaseProvider),
+                          );
                           if (path != null && mounted) {
                             ref.read(dbReloadTrigger.notifier).state++;
                             setState(() => _showLanding = false);
@@ -852,483 +689,18 @@ class _AppShellState extends ConsumerState<AppShell> {
     ));
   }
 
-  static const _localeOptions = [
-    ('', 'System Default'),
-    ('it_IT', 'Italiano (IT)'),
-    ('en_US', 'English (US)'),
-    ('en_GB', 'English (GB)'),
-    ('de_DE', 'Deutsch (DE)'),
-    ('fr_FR', 'Français (FR)'),
-    ('es_ES', 'Español (ES)'),
-  ];
-
-
-  Future<void> _showImportExportDialog(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final sync = ref.read(googleDriveSyncProvider);
-    final isSignedIn = sync.isSignedIn;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.importExportTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.file_download),
-              title: Text(s.settingsExportDb),
-              subtitle: Text(s.importExportExportHint),
-              onTap: () => Navigator.pop(ctx, 'export'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.file_upload),
-              title: Text(s.settingsImportDb),
-              subtitle: Text(s.importExportImportHint),
-              onTap: () => Navigator.pop(ctx, 'import'),
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.cloud_upload),
-              title: Text(s.importExportBackupDrive),
-              subtitle: Text(isSignedIn ? s.importExportBackupDriveHint : s.importExportSignInFirst),
-              enabled: isSignedIn,
-              onTap: isSignedIn ? () => Navigator.pop(ctx, 'backup') : null,
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_download),
-              title: Text(s.importExportRestoreDrive),
-              subtitle: Text(isSignedIn ? s.importExportRestoreDriveHint : s.importExportSignInFirst),
-              enabled: isSignedIn,
-              onTap: isSignedIn ? () => Navigator.pop(ctx, 'restore') : null,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-        ],
-      ),
-    );
-    if (action == null || !context.mounted) return;
-    if (action == 'export') {
-      final path = await DbTransferService.exportDb();
-      if (path != null && context.mounted) {
-        showInfoSnack(context, s.settingsExportSuccess);
-      }
-    } else if (action == 'import') {
-      await _importDb(context);
-    } else if (action == 'backup') {
-      await _backupToDrive(context);
-    } else if (action == 'restore') {
-      await _restoreFromDrive(context);
-    }
-  }
-
-  String _formatRemoteInfo(AppStrings s, DriveFileInfo info) {
-    final size = _formatBytes(info.size);
-    final date = '${info.modifiedTime.toLocal()}'.split('.').first;
-    return s.importExportRemoteInfo(size, date, info.deviceName);
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
-  }
-
-  Future<void> _backupToDrive(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final sync = ref.read(googleDriveSyncProvider);
-
-    // Pre-flight: show the user what will be overwritten on Drive.
-    final existing = await sync.getRemoteInfo();
-    if (!context.mounted) return;
-    final remoteInfo = existing != null ? _formatRemoteInfo(s, existing) : null;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.importExportBackupConfirmTitle),
-        content: Text(s.importExportBackupConfirmBody(remoteInfo)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.importExportBackupDrive),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    try {
-      await sync.backupToDrive();
-      if (!context.mounted) return;
-      showInfoSnack(context, s.importExportBackupSuccess);
-    } catch (e) {
-      _log.warning('backupToDrive failed: $e');
-      if (!context.mounted) return;
-      showInfoSnack(context, '${s.importExportBackupFailed}: $e');
-    }
-  }
-
-  Future<void> _restoreFromDrive(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final sync = ref.read(googleDriveSyncProvider);
-
-    // Pre-flight: show the user what will be pulled from Drive.
-    final existing = await sync.getRemoteInfo();
-    if (!context.mounted) return;
-    if (existing == null) {
-      showInfoSnack(context, s.importExportRestoreEmpty);
-      return;
-    }
-    final remoteInfo = _formatRemoteInfo(s, existing);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.importExportRestoreConfirmTitle),
-        content: Text(s.importExportRestoreConfirmBody(remoteInfo)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.importExportRestoreDrive),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    try {
-      _wireSyncCallbacks(sync);
-      final restored = await sync.restoreFromDrive();
-      if (!context.mounted) return;
-      if (restored == null) {
-        showInfoSnack(context, s.importExportRestoreEmpty);
-        return;
-      }
-      ref.read(dbReloadTrigger.notifier).state++;
-      showInfoSnack(context, s.importExportRestoreSuccess);
-    } catch (e) {
-      _log.warning('restoreFromDrive failed: $e');
-      if (!context.mounted) return;
-      showInfoSnack(context, '${s.importExportRestoreFailed}: $e');
-    }
-  }
-
-  Future<void> _importDb(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final db = ref.read(databaseProvider);
-
-    if (await _dbHasUserData(db)) {
-      if (!context.mounted) return;
-      final action = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(s.settingsImportWarningTitle),
-          content: Text(s.settingsImportWarningBody),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            OutlinedButton(
-              onPressed: () => Navigator.pop(ctx, 'export'),
-              child: Text(s.settingsExportFirst),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () => Navigator.pop(ctx, 'replace'),
-              child: Text(s.settingsReplaceAnyway),
-            ),
-          ],
-        ),
-      );
-      if (action == null) return;
-      if (action == 'export') {
-        final exported = await DbTransferService.exportDb();
-        if (exported == null) return; // cancelled
-      }
-    }
-
-    // Close current DB, import, reload
-    if (!context.mounted) return;
-    final path = await DbTransferService.importDb();
-    if (path == null) return;
-
-    ref.read(dbReloadTrigger.notifier).state++;
-    if (context.mounted) {
-      showInfoSnack(context, s.settingsImportSuccess);
-    }
-  }
-
-  Future<void> _wipeDb(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-
-    // Force export first
-    final exported = await DbTransferService.exportDb();
-    if (exported == null) {
-      // User cancelled the export — abort wipe
-      if (context.mounted) {
-        showInfoSnack(context, s.settingsWipeCancelled);
-      }
-      return;
-    }
-
-    if (!context.mounted) return;
-
-    // Confirm wipe
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(children: [
-          Icon(Icons.warning, color: Theme.of(ctx).colorScheme.error),
-          const SizedBox(width: 8),
-          Text(s.settingsWipeConfirmTitle),
-        ]),
-        content: Text(s.settingsWipeConfirmBody),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.settingsWipeConfirm),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    // Delete the DB file and reload
-    try {
-      final path = await DbTransferService.dbPath;
-      final file = File(path);
-      if (file.existsSync()) file.deleteSync();
-      ref.read(dbReloadTrigger.notifier).state++;
-      if (context.mounted) {
-        Navigator.pop(context); // close settings
-        setState(() => _showLanding = true);
-      }
-    } catch (e) {
-      _log.severe('Wipe DB failed: $e');
-    }
-  }
-
-  Future<void> _showSettingsDialog(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final db = ref.read(databaseProvider);
-    final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
-    final currentLocale = ref.read(appLocaleProvider).value ?? '';
-    final currentTaxRate = ref.read(defaultTaxRateProvider).value ?? kDefaultTaxRate;
-
-    var selectedCurrency = baseCurrency;
-    var selectedLocale = _localeOptions.any((o) => o.$1 == currentLocale)
-        ? currentLocale
-        : '';
-    var selectedLanguage = ref.read(portableLanguageProvider);
-    final taxRateCtrl = TextEditingController(
-      text: (currentTaxRate * 100).toStringAsFixed(
-        (currentTaxRate * 100) == (currentTaxRate * 100).truncateToDouble() ? 0 : 2,
-      ),
-    );
-    final taxFormKey = GlobalKey<FormState>();
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.settingsTitle),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                DropdownButtonFormField<String>(
-                  initialValue: selectedCurrency,
-                  decoration: InputDecoration(labelText: s.settingsCurrency),
-                  items: ExchangeRateService.allCurrencies
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
-                  onChanged: (v) => setDialogState(() => selectedCurrency = v!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedLocale,
-                  decoration: InputDecoration(labelText: s.settingsNumberFormat),
-                  items: _localeOptions
-                      .map((o) => DropdownMenuItem(value: o.$1, child: Text(o.$2)))
-                      .toList(),
-                  onChanged: (v) => setDialogState(() => selectedLocale = v!),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedLanguage,
-                  decoration: InputDecoration(labelText: s.settingsLanguage),
-                  items: const [
-                    DropdownMenuItem(value: 'en', child: Text('English')),
-                    DropdownMenuItem(value: 'it', child: Text('Italiano')),
-                  ],
-                  onChanged: (v) => setDialogState(() => selectedLanguage = v!),
-                ),
-                const SizedBox(height: 12),
-                Form(
-                  key: taxFormKey,
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
-                  child: TextFormField(
-                    controller: taxRateCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      labelText: s.settingsDefaultTaxRate,
-                      helperText: s.settingsDefaultTaxRateHelp,
-                      suffixText: '%',
-                    ),
-                    validator: (v) {
-                      final n = fmt.parseFlexibleNumber(v ?? '');
-                      if (n == null || n < 0 || n > 100) {
-                        return s.settingsTaxRateInvalid;
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Divider(),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(s.settingsClearCache,
-                              style: Theme.of(ctx).textTheme.bodyMedium),
-                          Text(
-                            s.settingsClearCacheSubtitle,
-                            style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Theme.of(ctx).colorScheme.error,
-                        side: BorderSide(color: Theme.of(ctx).colorScheme.error),
-                      ),
-                      onPressed: () async {
-                        await ref.read(marketPriceServiceProvider).clearCache();
-                        if (ctx.mounted) {
-                          showInfoSnack(ctx, s.settingsCacheCleared);
-                        }
-                      },
-                      child: Text(s.settingsClearButton),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 4),
-                Text(s.settingsGoogleDrive, style: Theme.of(ctx).textTheme.titleSmall),
-                const SizedBox(height: 8),
-                Builder(builder: (_) {
-                  final sync = ref.read(googleDriveSyncProvider);
-                  if (sync.isSignedIn) {
-                    return Row(
-                      children: [
-                        const Icon(Icons.cloud_done, color: Colors.green, size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(s.settingsSyncSignedIn(sync.userEmail ?? ''),
-                            style: Theme.of(ctx).textTheme.bodySmall),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            await sync.signOut();
-                            setDialogState(() {});
-                          },
-                          child: Text(s.settingsSyncSignOut),
-                        ),
-                      ],
-                    );
-                  } else {
-                    return OutlinedButton.icon(
-                      icon: const Icon(Icons.cloud_outlined, size: 18),
-                      label: Text(s.settingsSyncSignIn),
-                      onPressed: () async {
-                        final ok = await sync.signIn();
-                        if (ok) {
-                          // Just sign in. Backup/Restore are explicit user
-                          // actions in the Import/Export dialog.
-                          _wireSyncCallbacks(sync);
-                          setDialogState(() {});
-                        }
-                      },
-                    );
-                  }
-                }),
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(s.settingsWipeDb,
-                              style: Theme.of(ctx).textTheme.bodyMedium),
-                          Text(s.settingsWipeDbSubtitle,
-                            style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(ctx).colorScheme.error,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Theme.of(ctx).colorScheme.error,
-                        side: BorderSide(color: Theme.of(ctx).colorScheme.error),
-                      ),
-                      onPressed: () => _wipeDb(ctx),
-                      child: Text(s.settingsWipeButton),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: () async {
-                if (taxFormKey.currentState?.validate() != true) return;
-                final taxPct = fmt.parseFlexibleNumber(taxRateCtrl.text)!;
-                final taxFraction = (taxPct / 100).clamp(0.0, 1.0);
-                await db.into(db.appConfigs).insertOnConflictUpdate(
-                  AppConfigsCompanion.insert(key: 'BASE_CURRENCY', value: selectedCurrency),
-                );
-                await db.into(db.appConfigs).insertOnConflictUpdate(
-                  AppConfigsCompanion.insert(key: 'LOCALE', value: selectedLocale),
-                );
-                await db.into(db.appConfigs).insertOnConflictUpdate(
-                  AppConfigsCompanion.insert(key: 'TAX_RATE', value: taxFraction.toString()),
-                );
-                await AppSettings.setLanguage(selectedLanguage);
-                ref.read(portableLanguageProvider.notifier).state = selectedLanguage;
-                _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale, lang=$selectedLanguage, tax=$taxFraction');
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: Text(s.save),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
+
+/// Locale dropdown options for the settings dialog. Top-level so the
+/// extension-based settings_dialog.dart part can access it without a class
+/// qualifier (Dart extensions can't reach unqualified static members of the
+/// extended type).
+const _localeOptions = [
+  ('', 'System Default'),
+  ('it_IT', 'Italiano (IT)'),
+  ('en_US', 'English (US)'),
+  ('en_GB', 'English (GB)'),
+  ('de_DE', 'Deutsch (DE)'),
+  ('fr_FR', 'Français (FR)'),
+  ('es_ES', 'Español (ES)'),
+];

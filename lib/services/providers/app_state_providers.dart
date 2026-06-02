@@ -13,6 +13,17 @@ final priceRefreshCounter = StateProvider<int>((ref) => 0);
 /// Privacy mode: blur all monetary amounts for screenshot sharing.
 final privacyModeProvider = StateProvider<bool>((ref) => false);
 
+/// Visualization-only date override. When non-null, read-only views behave as
+/// if this were the current date. Real wall-clock concerns such as logs, cache
+/// TTLs, OAuth, sync timing, and audit timestamps must still use DateTime.now().
+final waybackDateProvider = StateProvider<DateTime?>((ref) => null);
+
+/// Current date for user-facing read/display logic.
+final currentDateProvider = Provider<DateTime>((ref) {
+  final override = ref.watch(waybackDateProvider);
+  return dateOnly(override ?? DateTime.now());
+});
+
 /// Labels (chart titles) that have already triggered the ATH celebration
 /// overlay during this app session. Used to prevent the dashboard rebuild
 /// from re-firing the celebration every time a new frame is laid out for

@@ -18,10 +18,24 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   ref.watch(assetStatsProvider);
   ref.watch(extraordinaryEventsProvider);
   ref.watch(priceRefreshCounter);
+  final currentDate = ref.watch(currentDateProvider);
+  final waybackDate = ref.watch(waybackDateProvider);
+  final cutoffDayKey = waybackDate == null ? null : toDayKey(currentDate);
+  final cutoffEndDate = waybackDate == null
+      ? null
+      : DateTime(
+          currentDate.year,
+          currentDate.month,
+          currentDate.day,
+        ).add(const Duration(days: 1));
+  final cutoffEndExclusive = waybackDate == null
+      ? null
+      : cutoffEndDate!.millisecondsSinceEpoch ~/ 1000;
+  bool includeDayKey(int dayKey) => cutoffDayKey == null || dayKey <= cutoffDayKey;
 
   final allDayKeys = <int>{};
-  // Include today so charts extend to the current day with live data
-  allDayKeys.add(toDayKey(DateTime.now()));
+  // Include the visual current date so charts extend to the selected "today".
+  allDayKeys.add(toDayKey(currentDate));
   final rates = _RateResolver(rateService, baseCurrency);
   var colorIdx = 0;
 
@@ -52,6 +66,8 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       final balance = row.read<double>('balance_after');
       final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
       final dayKey = toDayKey(dt);
+      if (!includeDayKey(dayKey)) continue;
+
       perAccount.putIfAbsent(accountId, () => {});
       perAccount[accountId]![dayKey] = balance;
       allDayKeys.add(dayKey);
@@ -74,16 +90,20 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   if (assetIds.isNotEmpty) {
     final assetPlaceholders = assetIds.map((_) => '?').join(',');
     final evRows = await db.customSelect(
-      'SELECT asset_id, date, type, amount, quantity, currency, exchange_rate, commission '
+      'SELECT asset_id, value_date, type, amount, quantity, currency, exchange_rate, commission '
       'FROM asset_events '
       'WHERE asset_id IN ($assetPlaceholders) '
-      'ORDER BY date ASC',
-      variables: assetIds.map((id) => Variable.withInt(id)).toList(),
+      "${cutoffEndExclusive != null ? 'AND value_date < ? ' : ''}"
+      'ORDER BY value_date ASC',
+      variables: [
+        ...assetIds.map((id) => Variable.withInt(id)),
+        if (cutoffEndExclusive != null) Variable.withInt(cutoffEndExclusive),
+      ],
     ).get();
 
     for (final row in evRows) {
       final assetId = row.read<int>('asset_id');
-      final epochSec = row.read<int>('date');
+      final epochSec = row.read<int>('value_date');
       final type = row.read<String>('type');
       final amount = row.read<double>('amount');
       final commission = row.readNullable<double>('commission') ?? 0;
@@ -102,6 +122,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
       final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
       final dayKey = toDayKey(dt);
+      if (!includeDayKey(dayKey)) continue;
 
       final netAmount = amount - commission;
       final baseAmount = await convertToBase(
@@ -125,6 +146,64 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     }
   }
 
+  // ════════════════════════════════════════════════
+  // 3. EXTRAORDINARY EVENTS — preload and contribute their dates to the
+  // global chart domain before series are built.
+  // ════════════════════════════════════════════════
+  final activeEventsQuery = db.select(db.extraordinaryEvents)
+    ..where((e) => e.isActive.equals(true));
+  final activeEvents = (await activeEventsQuery.get())
+      .where(
+        (event) =>
+            cutoffEndDate == null || event.eventDate.isBefore(cutoffEndDate),
+      )
+      .toList();
+
+  final allEventEntries = <int, List<ExtraordinaryEventEntry>>{};
+  if (activeEvents.isNotEmpty) {
+    final entriesQuery = db.select(db.extraordinaryEventEntries)
+      ..where((e) => e.eventId.isIn(activeEvents.map((e) => e.id).toList()));
+    entriesQuery.orderBy([(e) => OrderingTerm.asc(e.date)]);
+    final rows = (await entriesQuery.get())
+        .where(
+          (entry) =>
+              cutoffEndDate == null || entry.date.isBefore(cutoffEndDate),
+        )
+        .toList();
+    for (final entry in rows) {
+      allEventEntries.putIfAbsent(entry.eventId, () => []).add(entry);
+      final dayKey = toDayKey(entry.date);
+      if (includeDayKey(dayKey)) allDayKeys.add(dayKey);
+    }
+  }
+
+  final allReimbursements = <int, List<BufferTransaction>>{};
+  final bufferIds = activeEvents
+      .where((e) => e.bufferId != null)
+      .map((e) => e.bufferId!)
+      .toList();
+  if (bufferIds.isNotEmpty) {
+    final reimbQuery = db.select(db.bufferTransactions)
+      ..where((t) => t.bufferId.isIn(bufferIds))
+      ..where((t) => t.isReimbursement.equals(true));
+    final reimbRows = (await reimbQuery.get())
+        .where(
+          (txn) =>
+              cutoffEndDate == null || txn.valueDate.isBefore(cutoffEndDate),
+        )
+        .toList();
+    for (final txn in reimbRows) {
+      allReimbursements.putIfAbsent(txn.bufferId, () => []).add(txn);
+      final dayKey = toDayKey(txn.valueDate);
+      if (includeDayKey(dayKey)) allDayKeys.add(dayKey);
+    }
+  }
+
+  for (final event in activeEvents) {
+    final dayKey = toDayKey(event.eventDate);
+    if (includeDayKey(dayKey)) allDayKeys.add(dayKey);
+  }
+
   // Add market price dates so sortedDays is dense for FX-adjusted ATH
   if (assetIds.isNotEmpty) {
     final pricePlaceholders = assetIds.map((_) => '?').join(',');
@@ -133,12 +212,18 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       variables: assetIds.map((id) => Variable.withInt(id)).toList(),
     ).get();
     for (final row in priceDateRows) {
-      allDayKeys.add(row.read<int>('date'));
+      final dayKey = row.read<int>('date');
+      if (includeDayKey(dayKey)) allDayKeys.add(dayKey);
     }
   }
 
   // Need actual data beyond just today's placeholder
-  if (allDayKeys.length <= 1 && perAccount.isEmpty && perAssetDeltas.isEmpty) return null;
+  if (allDayKeys.length <= 1 &&
+      perAccount.isEmpty &&
+      perAssetDeltas.isEmpty &&
+      activeEvents.isEmpty) {
+    return null;
+  }
 
   final sortedDays = allDayKeys.toList()..sort();
   final firstDate = DateTime.fromMillisecondsSinceEpoch(sortedDays.first * 1000);
@@ -395,44 +480,12 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   //
   // Anchor on eventDate: +totalAmount for outflow, -totalAmount for inflow.
   // Entries carry pre-signed deltas and are summed as-is.
-  // Reimbursements (spread+buffer) subtract |amount| on their operation date.
+  // Reimbursements (spread+buffer) subtract |amount| on their value date.
   //
   // Series are partitioned into adjustments (outflow) and incomeAdjustments
   // (inflow) so downstream savings/cash composition in cashflow_tab.dart
   // stays compatible without further changes.
   // ════════════════════════════════════════════════
-  final activeEvents = await (db.select(db.extraordinaryEvents)
-        ..where((e) => e.isActive.equals(true)))
-      .get();
-
-  // Batch-fetch entries for all active events.
-  final allEventEntries = <int, List<ExtraordinaryEventEntry>>{};
-  if (activeEvents.isNotEmpty) {
-    final rows = await (db.select(db.extraordinaryEventEntries)
-          ..where((e) => e.eventId.isIn(activeEvents.map((e) => e.id).toList()))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
-    for (final entry in rows) {
-      allEventEntries.putIfAbsent(entry.eventId, () => []).add(entry);
-    }
-  }
-
-  // Batch-fetch reimbursements from linked buffers (spread treatment only).
-  final allReimbursements = <int, List<BufferTransaction>>{};
-  final bufferIds = activeEvents
-      .where((e) => e.bufferId != null)
-      .map((e) => e.bufferId!)
-      .toList();
-  if (bufferIds.isNotEmpty) {
-    final reimbRows = await (db.select(db.bufferTransactions)
-          ..where((t) => t.bufferId.isIn(bufferIds))
-          ..where((t) => t.isReimbursement.equals(true)))
-        .get();
-    for (final txn in reimbRows) {
-      allReimbursements.putIfAbsent(txn.bufferId, () => []).add(txn);
-    }
-  }
-
   final adjustmentSeries = <ChartSeries>[];
   final incomeAdjSeries = <ChartSeries>[];
   final ephemeralInflowSeries = <ChartSeries>[];
@@ -472,14 +525,17 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     // Split each event into two independently-toggleable series so the
     // chart editor can offer "Value" (the anchor at eventDate) and
     // "Events" (entries + reimbursements over time) as separate picks.
+    final eventDayKey = toDayKey(event.eventDate);
     final valueMap = <int, double>{
-      toDayKey(event.eventDate): anchorSign * event.totalAmount,
+      if (includeDayKey(eventDayKey))
+        eventDayKey: anchorSign * event.totalAmount,
     };
-    allDayKeys.add(toDayKey(event.eventDate));
+    if (includeDayKey(eventDayKey)) allDayKeys.add(eventDayKey);
 
     final eventsMap = <int, double>{};
     for (final entry in entries) {
       final dayKey = toDayKey(entry.date);
+      if (!includeDayKey(dayKey)) continue;
       eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) + entry.amount;
       allDayKeys.add(dayKey);
     }
@@ -488,13 +544,23 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         // valueDate per CLAUDE.md — chart day-keys use the canonical
         // "money moved" date, never operation_date.
         final dayKey = toDayKey(r.valueDate);
+        if (!includeDayKey(dayKey)) continue;
         eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) - r.amount.abs();
         allDayKeys.add(dayKey);
       }
     }
 
-    final valueSpots = await buildSpots(valueMap, event.currency);
-    final eventSpots = await buildSpots(eventsMap, event.currency);
+    final chartEndDayKey = sortedDays.last;
+    final valueSpots = extendSingleSpotCarryForward(
+      await buildSpots(valueMap, event.currency),
+      firstDate: firstDate,
+      endDayKey: chartEndDayKey,
+    );
+    final eventSpots = extendSingleSpotCarryForward(
+      await buildSpots(eventsMap, event.currency),
+      firstDate: firstDate,
+      endDayKey: chartEndDayKey,
+    );
 
     // Ephemeral inflows live in their own bucket; non-ephemeral inflows
     // stay in incomeAdjSeries; outflows always in adjustmentSeries.
@@ -564,6 +630,11 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
   ref.watch(incomesProvider); // reactive
+  final currentDate = ref.watch(currentDateProvider);
+  final cutoffDayKey = ref.watch(waybackDateProvider) == null
+      ? null
+      : toDayKey(currentDate);
+  bool includeDayKey(int dayKey) => cutoffDayKey == null || dayKey <= cutoffDayKey;
 
   final rates = _RateResolver(rateService, baseCurrency);
 
@@ -580,37 +651,17 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   ).get();
 
   final incomeByMonth = <(int, int), double>{};
+  final monthsWithIncomeData = <(int, int)>{};
   for (final row in rows) {
     final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    if (!includeDayKey(toDayKey(dt))) continue;
     final amount = row.read<double>('amount');
     final currency = row.read<String>('currency');
     final rate = await rates.getRate(currency, toDayKey(dt));
     if (rate == null) continue; // no rate -> exclude rather than mis-sum
     final key = (dt.year, dt.month);
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
-  }
-
-  // Pension contributions are external money (employer/state/severance
-  // redirect) — they inflate the pension fund's NAV without ever
-  // landing in the user's bank account. Refunds, by contrast, DO land
-  // in the bank, so their NAV impact is real personal savings — only
-  // their income classification is excluded above. Pension is the rare
-  // case where both the income side AND the savings side need to
-  // subtract, otherwise saving/expense velocity reads as if the user
-  // saved €X each month they didn't actually save.
-  final pensionRows = await db.customSelect(
-    "SELECT value_date AS date, amount, currency FROM incomes "
-    "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
-  ).get();
-  final pensionContribByMonth = <(int, int), double>{};
-  for (final row in pensionRows) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
-    final amount = row.read<double>('amount');
-    final currency = row.read<String>('currency');
-    final rate = await rates.getRate(currency, toDayKey(dt));
-    if (rate == null) continue;
-    final key = (dt.year, dt.month);
-    pensionContribByMonth[key] = (pensionContribByMonth[key] ?? 0) + amount * rate;
+    monthsWithIncomeData.add(key);
   }
 
   // 2. Build total saving series — resolved from the user's configured
@@ -623,6 +674,44 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     allSeriesData,
     activeAssets,
   );
+  final savingAssetIds = _DashboardScreenState.assetIdsForRoleTotal(
+    'saving',
+    userCharts,
+    allSeriesData,
+    activeAssets,
+  );
+
+  // Pension contributions are external money (employer/state/severance
+  // redirect) — they inflate the pension fund's NAV without ever
+  // landing in the user's bank account. Refunds, by contrast, DO land
+  // in the bank, so their NAV impact is real personal savings — only
+  // their income classification is excluded above. Pension is the rare
+  // case where both the income side AND the savings side need to
+  // subtract, otherwise saving/expense velocity reads as if the user
+  // saved €X each month they didn't actually save.
+  //
+  // Only subtract contribution rows whose asset is actually included in
+  // the resolved Saving total. If a pension fund is excluded from Saving,
+  // subtracting its mirrored income rows here would double-exclude it.
+  final rawPensionRows = await db.customSelect(
+    "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
+    "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
+  ).get();
+  final pensionRows = rawPensionRows.where((row) {
+    final assetId = row.readNullable<int>('asset_id');
+    return assetId != null && savingAssetIds.contains(assetId);
+  }).toList();
+  final pensionContribByMonth = <(int, int), double>{};
+  for (final row in pensionRows) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    if (!includeDayKey(toDayKey(dt))) continue;
+    final amount = row.read<double>('amount');
+    final currency = row.read<String>('currency');
+    final rate = await rates.getRate(currency, toDayKey(dt));
+    if (rate == null) continue;
+    final key = (dt.year, dt.month);
+    pensionContribByMonth[key] = (pensionContribByMonth[key] ?? 0) + amount * rate;
+  }
 
   double lookupNAV(DateTime date) {
     final x = date.difference(allSeriesData.firstDate).inDays.toDouble();
@@ -634,7 +723,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   }
 
   // 3. Build monthly + yearly buckets
-  final now = DateTime.now();
+  final now = currentDate;
   final years = <_YearBucket>[];
 
   for (int y = allSeriesData.firstDate.year; y <= now.year; y++) {
@@ -668,6 +757,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         income: mIncome,
         navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
         pensionContrib: mPensionContrib,
+        hasIncomeData: monthsWithIncomeData.contains((y, m)),
       ));
     }
 
@@ -691,6 +781,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   double cumulative = 0;
   for (final row in sortedPension) {
     final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    if (!includeDayKey(toDayKey(dt))) continue;
     final amount = row.read<double>('amount');
     final currency = row.read<String>('currency');
     final rate = await rates.getRate(currency, toDayKey(dt));
@@ -707,4 +798,3 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     pensionContribCumulativeSpots: pensionContribSpots,
   );
 });
-

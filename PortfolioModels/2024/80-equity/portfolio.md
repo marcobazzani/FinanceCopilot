@@ -1,0 +1,15 @@
+# Portfolio 2024 - 80% Equity
+
+ID: `portfolio_2024_080_ptf`
+
+| ISIN | Ideal Weight | Description |
+|------|--------------|-------------|
+| FR0010754200 | 5.00% | Amundi ETF Govies 0-6 Months Euro Investment Grade UCITS ETF DR |
+| IE00B53H0131 | 5.00% | UBS CMCI Composite SF UCITS ETF (USD) A-acc |
+| IE00B579F325 | 5.00% | Invesco Physical Gold ETC |
+| IE00BFMXXD54 | 48.00% | Vanguard S&P 500 UCITS ETF Acc |
+| IE00BKM4GZ66 | 12.00% | iShares Core MSCI EM IMI UCITS ETF USD (Acc) |
+| LU0908500753 | 20.00% | Amundi Stoxx Europe 600 UCITS ETF Acc |
+| LU1287023185 | 2.50% | Amundi Euro Government Bond 7-10Y (DR) UCITS ETF Acc |
+| LU1407887915 | 2.50% | Amundi US Treasury 7-10Y UCITS ETF Acc |
+

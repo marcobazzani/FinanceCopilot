@@ -98,6 +98,7 @@ class AllSeriesData {
 class _MonthBucket {
   final int year, month;
   final double income, navChange, pensionContrib;
+  final bool hasIncomeData;
   // Pension contributions inflate navChange without ever touching the
   // user's wallet (employer/state/severance redirect). Subtract them
   // so savings/expenses reflect personal cashflow only. Refunds are
@@ -110,7 +111,7 @@ class _MonthBucket {
   double get savingsRate => income > 0 ? personalNavChange / income : 0;
   const _MonthBucket({required this.year, required this.month,
                       required this.income, required this.navChange,
-                      this.pensionContrib = 0});
+                      this.pensionContrib = 0, this.hasIncomeData = false});
 }
 
 class _YearBucket {
@@ -126,6 +127,7 @@ class _YearBucket {
   double get dailyExpenses   => days > 0 ? expenses / days : 0;
   double get monthlyIncome   => days > 0 ? income / days * 30.4 : 0;
   double get monthlyExpenses => days > 0 ? expenses / days * 30.4 : 0;
+  double get monthlySavings  => days > 0 ? savings / days * 30.4 : 0;
 
   const _YearBucket({required this.year, required this.days,
                      required this.income, required this.navChange,
@@ -194,3 +196,33 @@ List<FlSpot> buildTotalSpots(List<List<FlSpot>> allSpots) {
     return FlSpot(x, total);
   }).toList();
 }
+
+List<FlSpot> extendSingleSpotCarryForward(List<FlSpot> spots, {
+  required DateTime firstDate,
+  required int endDayKey,
+}) {
+  if (spots.length != 1) return spots;
+  final endDate = DateTime.fromMillisecondsSinceEpoch(endDayKey * 1000);
+  final endX = endDate.difference(firstDate).inDays.toDouble();
+  if (endX <= spots.single.x) return spots;
+  return [spots.single, FlSpot(endX, spots.single.y)];
+}
+
+bool isOutflowAdjustmentSeriesKey(String key) =>
+    key.startsWith('adjustment:') ||
+    key.startsWith('adjustment_value:') ||
+    key.startsWith('adjustment_events:');
+
+bool isIncomeAdjustmentSeriesKey(String key) =>
+    key.startsWith('income_adj:') ||
+    key.startsWith('income_adj_value:') ||
+    key.startsWith('income_adj_events:');
+
+bool isEphemeralInflowSeriesKey(String key) =>
+    key.startsWith('ephemeral_inflow_value:') ||
+    key.startsWith('ephemeral_inflow_events:');
+
+bool isAdjustmentSeriesKey(String key) =>
+    isOutflowAdjustmentSeriesKey(key) ||
+    isIncomeAdjustmentSeriesKey(key) ||
+    isEphemeralInflowSeriesKey(key);

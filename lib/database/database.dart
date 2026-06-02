@@ -15,6 +15,27 @@ part 'database.g.dart';
 
 final _log = getLogger('Database');
 
+/// Thrown when [AppDatabase.mergeFromAttachedDb] is asked to merge a backup
+/// whose drift schema version does not match this app's. A column-intersection
+/// copy across schema versions would silently drop or mis-fill columns, so the
+/// merge is refused outright.
+class SchemaVersionMismatchException implements Exception {
+  const SchemaVersionMismatchException({
+    required this.localVersion,
+    required this.remoteVersion,
+  });
+
+  /// This app's drift schema version.
+  final int localVersion;
+
+  /// The backup file's drift schema version.
+  final int remoteVersion;
+
+  @override
+  String toString() => 'SchemaVersionMismatchException(local: $localVersion, '
+      'remote: $remoteVersion)';
+}
+
 @DriftDatabase(tables: [
   Intermediaries,
   Accounts,
@@ -35,6 +56,8 @@ final _log = getLogger('Database');
   AssetCompositions,
   ExtraordinaryEvents,
   ExtraordinaryEventEntries,
+  PortfolioModels,
+  PortfolioModelItems,
   Pillars,
   PillarAssets,
 ])
@@ -54,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 40;
+  int get schemaVersion => 43;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -634,6 +657,44 @@ class AppDatabase extends _$AppDatabase {
             _log.info('Migration 40: cache keys renamed INVESTING_*→PROVIDER_*; '
                 'asset.exchange + cache-key suffixes normalised to canonical names');
           }
+          if (from < 41) {
+            if (!await _tableExists('portfolio_models')) {
+              await m.createTable(portfolioModels);
+            }
+            if (!await _tableExists('portfolio_model_items')) {
+              await m.createTable(portfolioModelItems);
+            }
+            if (!await _hasColumn('pillars', 'portfolio_model_id')) {
+              await customStatement(
+                'ALTER TABLE pillars ADD COLUMN portfolio_model_id TEXT '
+                'REFERENCES portfolio_models(id) ON DELETE SET NULL',
+              );
+            }
+            await _createIndexes();
+            _log.info('Migration 41: created portfolio models and linked pillars');
+          }
+          if (from < 42) {
+            if (!await _hasColumn('assets', 'include_in_savings') &&
+                await _hasColumn('assets', 'include_in_net_worth')) {
+              await customStatement(
+                'ALTER TABLE assets RENAME COLUMN include_in_net_worth TO include_in_savings',
+              );
+            }
+            _log.info('Migration 42: renamed assets.include_in_net_worth to include_in_savings');
+          }
+          if (from < 43) {
+            if (!await _hasColumn('portfolio_model_items', 'preferred_ticker')) {
+              await customStatement(
+                'ALTER TABLE portfolio_model_items ADD COLUMN preferred_ticker TEXT',
+              );
+            }
+            if (!await _hasColumn('portfolio_model_items', 'preferred_exchange')) {
+              await customStatement(
+                'ALTER TABLE portfolio_model_items ADD COLUMN preferred_exchange TEXT',
+              );
+            }
+            _log.info('Migration 43: added preferred listing metadata to portfolio model items');
+          }
         },
       );
 
@@ -679,6 +740,14 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_pillar_assets_asset '
       'ON pillar_assets(asset_id)',
     );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_portfolio_model_items_model '
+      'ON portfolio_model_items(model_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_pillars_portfolio_model '
+      'ON pillars(portfolio_model_id)',
+    );
   }
 
   /// Seed default AppConfig values from MoneyHistory Graph row 3455.
@@ -702,6 +771,94 @@ class AppDatabase extends _$AppDatabase {
         value: entry.value.$1,
         description: Value(entry.value.$2),
       ));
+    }
+  }
+
+  /// Merge the contents of an external SQLite backup file at [tmpPath] into
+  /// this database via `ATTACH DATABASE`.
+  ///
+  /// For every user table in the backup: DELETE FROM main + INSERT FROM
+  /// SELECT (column intersection). The whole copy runs in one transaction —
+  /// it either fully succeeds or rolls back leaving local data untouched.
+  /// This avoids the Windows file-lock problem (no close, no file swap).
+  ///
+  /// Throws [SchemaVersionMismatchException] when the backup's drift schema
+  /// version differs from this app's — a column-intersection copy across
+  /// schema versions would silently drop or mis-fill columns.
+  Future<void> mergeFromAttachedDb(String tmpPath) async {
+    // Escape single quotes in the path for SQL string literal safety.
+    final sqlPath = tmpPath.replaceAll("'", "''");
+    await customStatement("ATTACH DATABASE '$sqlPath' AS src");
+    try {
+      // Schema-version gate: a backup from a different app version has a
+      // different table shape; copying it by column intersection would
+      // silently drop or mis-fill columns. Refuse instead of corrupting.
+      final remoteVersion =
+          (await customSelect('PRAGMA src.user_version').getSingle())
+              .read<int>('user_version');
+      if (remoteVersion != schemaVersion) {
+        throw SchemaVersionMismatchException(
+          localVersion: schemaVersion,
+          remoteVersion: remoteVersion,
+        );
+      }
+
+      // Discover user tables in the source DB. Exclude SQLite's schema table
+      // and Android's auto-generated metadata table, but we DO want
+      // `sqlite_sequence` so AUTOINCREMENT counters stay in sync — otherwise
+      // the next insert locally could reuse an ID already present in the
+      // data we just copied.
+      final rows = await customSelect(
+        "SELECT name FROM src.sqlite_master "
+        "WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_stat%' "
+        "AND name NOT IN ('sqlite_master', 'sqlite_temp_master', 'android_metadata')",
+      ).get();
+      final tables = rows.map((r) => r.read<String>('name')).toList();
+      _log.info('mergeFromAttachedDb: copying ${tables.length} tables from $tmpPath');
+
+      await transaction(() async {
+        // FK constraints would fire during intermediate states while we wipe
+        // and repopulate tables. Disable them for the duration of the copy —
+        // we trust the remote DB is internally consistent.
+        await customStatement('PRAGMA defer_foreign_keys = ON');
+        for (final table in tables) {
+          try {
+            // Use column intersection so schema differences (extra columns in
+            // either the source or target) don't cause INSERT failures.
+            final srcCols = (await customSelect('PRAGMA src.table_info("$table")').get())
+                .map((r) => r.read<String>('name'))
+                .toSet();
+            final dstCols = (await customSelect('PRAGMA main.table_info("$table")').get())
+                .map((r) => r.read<String>('name'))
+                .toSet();
+            final common = srcCols.intersection(dstCols);
+            if (common.isEmpty) {
+              _log.warning('mergeFromAttachedDb: no common columns for $table, skipping');
+              continue;
+            }
+            final cols = common.map((c) => '"$c"').join(', ');
+            await customStatement('DELETE FROM main."$table"');
+            await customStatement(
+              'INSERT INTO main."$table" ($cols) SELECT $cols FROM src."$table"',
+            );
+          } catch (e) {
+            _log.warning('mergeFromAttachedDb: failed to copy table $table: $e');
+            rethrow;
+          }
+        }
+      });
+      notifyUpdates({
+        for (final table in tables)
+          if (table != 'sqlite_sequence') TableUpdate(table),
+      });
+      _log.info('mergeFromAttachedDb: merge committed');
+    } finally {
+      try {
+        await customStatement('DETACH DATABASE src');
+      } catch (e) {
+        _log.warning('mergeFromAttachedDb: DETACH failed (harmless): $e');
+      }
     }
   }
 

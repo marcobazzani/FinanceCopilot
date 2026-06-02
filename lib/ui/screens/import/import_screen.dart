@@ -23,6 +23,9 @@ import '../../../utils/logger.dart';
 import '../../widgets/isin_url_paste_recovery.dart';
 
 part 'column_mapper_step.dart';
+part 'mapping_content.dart';
+part 'mode_sections.dart';
+part 'amount_formula.dart';
 part 'confirm_step.dart';
 part 'quick_confirm_step.dart';
 part 'result_step.dart';
@@ -362,6 +365,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         };
         _parsing = false;
       });
+    } finally {
+      // Safety net: every early-return path in the try above (cancelled
+      // sheet picker, empty file) must not leave the screen stuck on the
+      // parsing spinner.
+      if (mounted && _parsing) setState(() => _parsing = false);
     }
   }
 

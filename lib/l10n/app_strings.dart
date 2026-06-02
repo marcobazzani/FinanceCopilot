@@ -44,6 +44,7 @@ class AppStrings {
   String error(Object e)   => 'Error: $e';
   String get invalid       => _it ? 'Non valido'          : 'Invalid';
   String get invalidNumber => _it ? 'Numero non valido'   : 'Invalid number';
+  String get overview      => _it ? 'Panoramica'          : 'Overview';
 
   // ── App shell / navigation ──────────────────────────────
   String get navDashboard          => 'Dashboard';
@@ -88,10 +89,87 @@ class AppStrings {
       _it ? '$n di $total unità' : '$n of $total units';
   String pillarMaxPercent(int p)        => _it ? 'max $p%' : 'max $p%';
   String get pillarPickPillar           => _it ? 'Scegli pilastro'         : 'Pick pillar';
+  String get pillarTabPillars           => _it ? 'Pilastri'                : 'Pillars';
+  String get pillarTabPortfolioModels   => _it ? 'Modelli'                 : 'Portfolio Models';
+  String get portfolioModelsTitle       => _it ? 'Modelli di portafoglio'  : 'Portfolio Models';
+  String get portfolioModelsBuiltIn     => _it ? 'Predefiniti'             : 'Built-in';
+  String get portfolioModelsCustom      => _it ? 'Personalizzati'          : 'Custom';
+  String get portfolioModelsEmpty       => _it ? 'Nessun modello'          : 'No models yet';
+  String get portfolioModelCreateTitle  => _it ? 'Nuovo modello'           : 'New portfolio model';
+  String get portfolioModelEditTitle    => _it ? 'Modifica modello'        : 'Edit portfolio model';
+  String get portfolioModelField        => _it ? 'Modello portafoglio'     : 'Portfolio model';
+  String get portfolioModelNone         => _it ? 'Nessun modello'          : 'No model';
+  String get portfolioModelFull         => _it ? 'Completo'                : 'Full';
+  String get portfolioModelMini         => _it ? 'Mini'                    : 'Mini';
+  String get portfolioModelCustom       => _it ? 'Personalizzato'          : 'Custom';
+  String portfolioModelYear(int year)   => _it ? 'Anno $year'              : 'Year $year';
+  String portfolioModelEquity(int pct)  => _it ? '$pct% azionario'         : '$pct% equity';
+  String get portfolioModelIsin         => 'ISIN';
+  String get portfolioModelWeight       => _it ? 'Peso (%)'                : 'Weight (%)';
+  String get portfolioModelDescription  => _it ? 'Descrizione'             : 'Description';
+  String get portfolioModelAddRow       => _it ? 'Aggiungi riga'           : 'Add row';
+  String get portfolioModelSearchResolveFailed => _it
+      ? 'Impossibile ricavare un ISIN valido dallo strumento selezionato.'
+      : 'Could not resolve a valid ISIN for the selected instrument.';
+  String get portfolioModelDeleteConfirm => _it
+      ? 'Eliminare questo modello personalizzato? Le associazioni ai pilastri verranno rimosse.'
+      : 'Delete this custom model? Pillar associations will be removed.';
+  String portfolioModelWeightTotal(String value) => _it ? 'Totale: $value%' : 'Total: $value%';
+  String get portfolioModelReadOnly     => _it ? 'Modello predefinito non modificabile' : 'Built-in model is read-only';
+  String get portfolioDivergenceTitle   => _it ? 'Divergenza dal modello'  : 'Model divergence';
+  String get portfolioDivergenceTarget  => _it ? 'Obiettivo'               : 'Target';
+  String get portfolioDivergenceCurrent => _it ? 'Attuale'                 : 'Current';
+  String get portfolioDivergenceDelta   => _it ? 'Scostamento'             : 'Divergence';
+  String get portfolioUnmatchedRows     => _it ? 'Righe modello non abbinate' : 'Unmatched model rows';
+  String get portfolioExtraHoldings     => _it ? 'Posizioni extra'         : 'Extra holdings';
+  String get portfolioUnresolvedRows    => _it ? 'Non risolti'             : 'Unresolved';
+  String get rebalance                  => _it ? 'Ribilancia'              : 'Rebalance';
+  String get rebalanceTitle             => _it ? 'Anteprima ribilanciamento' : 'Rebalance preview';
+  String get rebalanceSellAndBuy        => _it ? 'Vendi e compra'          : 'Sell and buy';
+  String get rebalanceBuyOnly           => _it ? 'Solo acquisti'           : 'Buy only';
+  String get rebalanceScopeCurrent      => _it ? 'Pilastro corrente'       : 'Current pillar';
+  String get rebalanceScopeAll          => _it ? 'Tutti i pilastri'       : 'All Pillars';
+  String get rebalanceContribution      => _it ? 'Contributo'              : 'Contribution';
+  String get rebalanceEstimatedTax      => _it ? 'Tasse stimate'           : 'Estimated tax';
+  String get rebalanceCashAfterSales    => _it ? 'Liquidità dopo le vendite' : 'Cash after sells';
+  String get rebalanceAvailableCash     => _it ? 'Liquidità disponibile'   : 'Available cash';
+  String get rebalanceTargetBuy         => _it ? 'Acquisti target'         : 'Target buys';
+  String get rebalanceExecutedBuy       => _it ? 'Acquisti eseguiti'       : 'Executed buys';
+  String get rebalanceCashRemaining     => _it ? 'Contante residuo'        : 'Cash remaining';
+  String get rebalanceWholeUnitsOnly    => _it ? 'Solo unità intere'       : 'Whole units only';
+  String get rebalanceUpdatingMarketData => _it
+      ? 'Aggiornamento dati di mercato...'
+      : 'Updating market data...';
+  String get rebalanceQuantity          => _it ? 'Quantità'                : 'Quantity';
+  String get rebalanceTargetPlaceholder => _it ? 'Asset target da creare'  : 'Target asset placeholder';
+  String get rebalanceNotExecutable     => _it ? "Non applicabile finché l'asset non esiste" : 'Not executable until the asset exists';
+  String get rebalanceDraftRows         => _it ? 'Transazioni proposte'    : 'Draft transactions';
+  String get rebalanceNoTrades          => _it ? 'Nessuna transazione proposta' : 'No draft transactions';
+  String get rebalanceApplyDraft        => _it ? 'Applica bozza'           : 'Apply draft';
+  String get rebalanceApplyConfirmTitle => _it ? 'Applicare la bozza?'     : 'Apply draft?';
+  String get rebalanceApplyConfirmBody  => _it
+      ? 'Verranno creati eventi asset per le righe proposte.'
+      : 'Asset events will be created for the draft rows.';
+  String get rebalanceBuy               => _it ? 'Acquisto'                : 'Buy';
+  String get rebalanceSell              => _it ? 'Vendita'                 : 'Sell';
+  String get rebalanceMissingModel      => _it ? 'Modello mancante'        : 'Missing model';
+  String get rebalanceMissingQuantity   => _it ? 'Quantità mancante'       : 'Missing current quantity';
+  String get rebalanceMissingPrice      => _it ? 'Prezzo mancante'         : 'Missing market price';
+  String get rebalanceMissingFx         => _it ? 'Cambio mancante'         : 'Missing FX rate';
+  String get rebalanceMissingCostFx     => _it ? 'Cambio storico mancante' : 'Missing cost-basis FX';
+  String get rebalanceMissingIsin       => _it ? 'ISIN mancante'           : 'Missing ISIN';
+  String get rebalanceUnmatchedModelItem => _it ? 'ISIN non presente nel pilastro' : 'ISIN not held in pillar';
   String get navAdjustments        => _it ? 'Aggiustamenti'     : 'Adjustments';
   String get navIncome             => _it ? 'Entrate'           : 'Income';
   String get tooltipHideAmounts    => _it ? 'Nascondi importi'  : 'Hide amounts';
   String get tooltipShowAmounts    => _it ? 'Mostra importi'    : 'Show amounts';
+  String get tooltipWaybackMachine => _it ? 'Wayback Machine'   : 'Wayback Machine';
+  String waybackActiveTooltip(String date) => _it ? 'Wayback Machine: $date' : 'Wayback Machine: $date';
+  String get waybackCurrentDate    => _it ? 'Data corrente'     : 'Current date';
+  String get waybackReset          => _it ? 'Usa oggi'          : 'Use today';
+  String get waybackLastEndOfMonth => _it ? 'Fine mese scorso'  : 'Last end of month';
+  String get waybackLastEndOfYear  => _it ? 'Fine anno scorso'  : 'Last end of year';
+  String get waybackCustom         => _it ? 'Personalizzata...' : 'Custom...';
   String get tooltipRefreshPrices  => _it ? 'Aggiorna prezzi di mercato' : 'Refresh Market Prices';
   String get tooltipSettings       => _it ? 'Impostazioni'      : 'Settings';
   String get tooltipImportFile     => _it ? 'Importa file'      : 'Import File';
@@ -357,6 +435,7 @@ class AppStrings {
   String get legendAccounts      => _it ? 'Conti'              : 'Accounts';
   String get legendSpreadAdj     => _it ? 'Agg. dilaz.'        : 'Spread Adj.';
   String get legendIncomeAdj     => _it ? 'Agg. reddito'       : 'Income Adj.';
+  String get legendEphemeralInflow => _it ? 'Fidi'             : 'Credit Lines';
   String get legendTotal         => _it ? 'Totale'             : 'Total';
   String get showComponents      => _it ? 'Mostra componenti'  : 'Show components';
   String get hideComponents      => _it ? 'Nascondi componenti': 'Hide components';
@@ -555,7 +634,7 @@ class AppStrings {
   String get assetTypeFieldLabel        => _it ? 'Tipo di asset'             : 'Asset type';
   String get valuationMethodFieldLabel  => _it ? 'Metodo di valutazione'     : 'Valuation method';
   String get taxRateOverrideLabel       => _it ? 'Aliquota fiscale (%)'      : 'Tax rate (%)';
-  String get includeInNetWorthLabel     => _it ? 'Includi nel patrimonio'    : 'Include in net worth';
+  String get includeInSavingsLabel      => _it ? 'Includi nei risparmi'      : 'Include in savings';
   String get currencyFieldLabel         => _it ? 'Valuta (3 lettere)'        : 'Currency (3 letters)';
 
   // ── Composition editor ───────────────────────────────────

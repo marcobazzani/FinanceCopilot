@@ -18,15 +18,24 @@ class AccountStats {
 
 /// SQL to get the latest balance per account: the balance_after from the
 /// transaction with the latest date, tiebroken by highest id within that date.
-const _latestBalanceSql =
+String _latestBalanceSql({required bool bounded}) =>
     'SELECT t.account_id, t.balance_after FROM transactions t '
     'INNER JOIN ('
-    '  SELECT account_id, MAX(value_date) AS max_date FROM transactions GROUP BY account_id'
+    '  SELECT account_id, MAX(value_date) AS max_date FROM transactions '
+    '${bounded ? 'WHERE value_date < ? ' : ''}'
+    'GROUP BY account_id'
     ') md ON t.account_id = md.account_id AND t.value_date = md.max_date '
     'WHERE t.id = ('
     '  SELECT MAX(id) FROM transactions t2 '
     '  WHERE t2.account_id = t.account_id AND t2.value_date = md.max_date'
     ')';
+
+String _statsSql({required bool bounded}) =>
+    'SELECT account_id, COUNT(*) AS cnt, '
+    'MIN(value_date) AS first_date, MAX(value_date) AS last_date '
+    'FROM transactions '
+    '${bounded ? 'WHERE value_date < ? ' : ''}'
+    'GROUP BY account_id';
 
 class AccountService {
   final AppDatabase _db;
@@ -106,30 +115,35 @@ class AccountService {
     });
   }
 
-  static const _statsQuery =
-      'SELECT account_id, COUNT(*) AS cnt, '
-      'MIN(value_date) AS first_date, MAX(value_date) AS last_date '
-      'FROM transactions GROUP BY account_id';
-
   /// Get transaction stats for all accounts.
-  Future<Map<int, AccountStats>> getStatsForAll() async {
-    final statsRows = await _db.customSelect(_statsQuery).get();
-    final balances = await _fetchLatestBalances();
+  Future<Map<int, AccountStats>> getStatsForAll({DateTime? through}) async {
+    final statsRows = await _db.customSelect(
+      _statsSql(bounded: through != null),
+      variables: _throughVars(through),
+      readsFrom: {_db.transactions},
+    ).get();
+    final balances = await _fetchLatestBalances(through: through);
     return _buildStats(statsRows, balances);
   }
 
   /// Watch transaction stats reactively.
-  Stream<Map<int, AccountStats>> watchStatsForAll() {
+  Stream<Map<int, AccountStats>> watchStatsForAll({DateTime? through}) {
     return _db.customSelect(
-      _statsQuery, readsFrom: {_db.transactions},
+      _statsSql(bounded: through != null),
+      variables: _throughVars(through),
+      readsFrom: {_db.transactions},
     ).watch().asyncMap((statsRows) async {
-      final balances = await _fetchLatestBalances();
+      final balances = await _fetchLatestBalances(through: through);
       return _buildStats(statsRows, balances);
     });
   }
 
-  Future<Map<int, double?>> _fetchLatestBalances() async {
-    final rows = await _db.customSelect(_latestBalanceSql).get();
+  Future<Map<int, double?>> _fetchLatestBalances({DateTime? through}) async {
+    final rows = await _db.customSelect(
+      _latestBalanceSql(bounded: through != null),
+      variables: _throughVars(through),
+      readsFrom: {_db.transactions},
+    ).get();
     return {
       for (final row in rows)
         row.read<int>('account_id'): row.readNullable<double>('balance_after'),
@@ -153,4 +167,14 @@ class AccountService {
 
   static DateTime? _epochToDate(int? epochSec) =>
       epochSec != null ? DateTime.fromMillisecondsSinceEpoch(epochSec * 1000) : null;
+
+  static List<Variable<int>> _throughVars(DateTime? through) {
+    if (through == null) return const [];
+    final endExclusive = DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
+    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
+  }
 }

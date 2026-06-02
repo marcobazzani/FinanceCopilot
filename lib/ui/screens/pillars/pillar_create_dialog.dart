@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../database/database.dart';
+import '../../../database/tables.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
 import '../../../utils/formatters.dart' as fmt;
@@ -19,6 +20,7 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
   late final TextEditingController _name;
   late final TextEditingController _target;
   late String _currency;
+  String? _portfolioModelId;
 
   @override
   void initState() {
@@ -35,6 +37,7 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
       text: e?.targetValue == null ? '' : fmtNum.format(e!.targetValue),
     );
     _currency = e?.targetCurrency ?? 'EUR';
+    _portfolioModelId = e?.portfolioModelId;
   }
 
   @override
@@ -48,6 +51,7 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final locale = ref.watch(appLocaleProvider).value ?? 'en';
+    final modelsAsync = ref.watch(portfolioModelsProvider);
     final isEdit = widget.existing != null;
     return AlertDialog(
       title: Text(isEdit ? s.pillarEditTitle : s.pillarCreateTitle),
@@ -90,6 +94,27 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            modelsAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => Text(s.error(e)),
+              data: (models) => DropdownButtonFormField<String?>(
+                initialValue: _portfolioModelId,
+                decoration: InputDecoration(labelText: s.portfolioModelField),
+                items: [
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text(s.portfolioModelNone),
+                  ),
+                  for (final model in models)
+                    DropdownMenuItem<String?>(
+                      value: model.id,
+                      child: Text(_modelLabel(s, model)),
+                    ),
+                ],
+                onChanged: (v) => setState(() => _portfolioModelId = v),
+              ),
+            ),
           ],
         ),
       ),
@@ -111,14 +136,13 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
     if (name.isEmpty) return;
     final svc = ref.read(pillarServiceProvider);
     final targetTxt = _target.text.trim();
-    final target = targetTxt.isEmpty
-        ? null
-        : fmt.tryParseLocalized(targetTxt, locale: locale);
+    final target = targetTxt.isEmpty ? null : fmt.tryParseLocalized(targetTxt, locale: locale);
     if (widget.existing == null) {
       await svc.create(
         name: name,
         targetValue: target,
         targetCurrency: _currency,
+        portfolioModelId: _portfolioModelId,
       );
     } else {
       await svc.update(
@@ -127,8 +151,24 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
         targetValue: target,
         clearTargetValue: target == null,
         targetCurrency: _currency,
+        portfolioModelId: _portfolioModelId,
+        clearPortfolioModel: _portfolioModelId == null,
       );
     }
     if (context.mounted) Navigator.of(context).pop();
+  }
+
+  String _modelLabel(AppStrings s, PortfolioModel model) {
+    final parts = <String>[model.name];
+    if (model.year != null) parts.add(s.portfolioModelYear(model.year!));
+    if (model.equityPercent != null) {
+      parts.add(s.portfolioModelEquity(model.equityPercent!));
+    }
+    parts.add(switch (model.variant) {
+      PortfolioModelVariant.full => s.portfolioModelFull,
+      PortfolioModelVariant.mini => s.portfolioModelMini,
+      PortfolioModelVariant.custom => s.portfolioModelCustom,
+    });
+    return parts.join(' · ');
   }
 }

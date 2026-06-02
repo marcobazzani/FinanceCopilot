@@ -114,6 +114,46 @@ void main() {
     });
   });
 
+  group('through date filtering', () {
+    test(
+      'getByAccount and watchAll hide later value dates without deleting data',
+      () async {
+        final accountId = await createAccount('Wayback');
+
+        await service.create(
+          accountId: accountId,
+          operationDate: DateTime(2024, 6, 1),
+          valueDate: DateTime(2024, 2, 29, 12),
+          amount: 100.0,
+          description: 'Included',
+          currency: 'EUR',
+        );
+        await service.create(
+          accountId: accountId,
+          operationDate: DateTime(2024, 1, 1),
+          valueDate: DateTime(2024, 3, 1),
+          amount: 200.0,
+          description: 'Future',
+          currency: 'EUR',
+        );
+
+        final txs = await service.getByAccount(
+          accountId,
+          through: DateTime(2024, 2, 29),
+        );
+        expect(txs.map((t) => t.description), ['Included']);
+
+        final all = await service
+            .watchAll(through: DateTime(2024, 2, 29))
+            .first;
+        expect(all.map((t) => t.description), ['Included']);
+
+        final rawRows = await db.select(db.transactions).get();
+        expect(rawRows, hasLength(2));
+      },
+    );
+  });
+
   group('update', () {
     test('update description', () async {
       final accountId = await createAccount('Upd');

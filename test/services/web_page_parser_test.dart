@@ -18,6 +18,7 @@ void main() {
       expect(result.symbol, 'BE000035160=MI');
       expect(result.exchange, 'Milan');
       expect(result.flag, 'IT');
+      expect(result.isin, 'BE0000351602');
       expect(result.type.toLowerCase(), contains('bond'));
       expect(result.url, '/rates-bonds/be0000351602');
     });
@@ -35,6 +36,7 @@ void main() {
       expect(result.symbol, 'XUS');
       expect(result.exchange, 'Toronto');
       expect(result.flag, 'CA');
+      expect(result.isin, 'CA46434R1091');
       expect(result.type.toLowerCase(), contains('etf'));
     });
 

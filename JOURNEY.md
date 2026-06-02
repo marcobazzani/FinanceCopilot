@@ -149,6 +149,17 @@ Every direction × treatment × frequency × cardinal feature exercised:
 15D. **Service-level assign 50%** — `PillarService.assign()` round-trips
      through to `qtyFor` / `unassignedQty` / `fractionsForPillar`;
      SUM invariant holds (`SUM(pillar quantities) ≤ total holding`)
+15D.ii. **Portfolio Models tab + catalog** — open the tab, verify the
+     32 built-in models are preloaded from `PortfolioModels/`, then create
+     a custom model for the walkthrough asset
+15D.iii. **Pillar model association + divergence** — edit/link the pillar
+     to the custom model, keep assigned assets in the pillar, and verify
+     exact-ISIN divergence rows, unmatched rows, extras, and unresolved
+     holdings are surfaced
+15D.iv. **Rebalance preview** — generate `Sell and buy` and `Buy only`
+     drafts; verify the tax estimate is present, draft rows do not write
+     automatically, and apply one deterministic small buy-only row only
+     after explicit confirmation in the in-memory walkthrough DB
 15E. **Over-assign refused** — `PillarOverAssignedException` thrown when
      `qty > available`
 15F. **ChartCard reuse** — Pillar history chart shows `Invested` (dashed)
@@ -161,7 +172,7 @@ Every direction × treatment × frequency × cardinal feature exercised:
 ## ACT XII — Cleanup
 
 16. **Cascade-delete sweep** — events, intermediaries, accounts, assets,
-    incomes, pillars; verify cascades
+    incomes, pillars, custom portfolio models; verify cascades
 
 ## Final invariant
 

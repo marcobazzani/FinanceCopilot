@@ -118,6 +118,8 @@ enum EventTreatment { instant, spread }
 
 enum EventEntryKind { scheduled, manual, reimbursement }
 
+enum PortfolioModelVariant { full, mini, custom }
+
 // ──────────────────────────────────────────────
 // Tables
 // ──────────────────────────────────────────────
@@ -209,7 +211,7 @@ class Assets extends Table {
   RealColumn get taxRate => real().nullable()(); // per-asset tax rate override
   TextColumn get valuationMethod => textEnum<ValuationMethod>()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
-  BoolColumn get includeInNetWorth => boolean().withDefault(const Constant(true))();
+  BoolColumn get includeInSavings => boolean().withDefault(const Constant(true))();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -417,14 +419,46 @@ class ExtraordinaryEventEntries extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+class PortfolioModels extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text().withLength(min: 1, max: 200)();
+  BoolColumn get isBuiltIn => boolean().withDefault(const Constant(false))();
+  IntColumn get year => integer().nullable()();
+  IntColumn get equityPercent => integer().nullable()();
+  TextColumn get variant => textEnum<PortfolioModelVariant>()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class PortfolioModelItems extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get modelId => text().references(PortfolioModels, #id, onDelete: KeyAction.cascade)();
+  TextColumn get isin => text().withLength(min: 1, max: 32)();
+  RealColumn get targetWeight => real()();
+  TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get preferredTicker => text().nullable()();
+  TextColumn get preferredExchange => text().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {modelId, isin},
+      ];
+}
+
 /// Pillar = a named bucket of asset units with an optional objective
-/// (reference portfolio + target value). One asset's units can be split
+/// (portfolio model + target value). One asset's units can be split
 /// across multiple pillars; the leftover is the implicit "Unassigned" pillar.
 class Pillars extends Table {
   TextColumn get id => text()(); // UUIDv7
   TextColumn get name => text().withLength(min: 1, max: 200)();
   RealColumn get targetValue => real().nullable()();
   TextColumn get targetCurrency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+  TextColumn get portfolioModelId => text().nullable().references(PortfolioModels, #id, onDelete: KeyAction.setNull)();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();

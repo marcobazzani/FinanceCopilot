@@ -19,7 +19,7 @@ class _MonthlyGrid extends ConsumerWidget {
     final amtFmt = fmt.amountFormat(locale);
     final theme  = Theme.of(context);
     final sym    = currencySymbol(data.baseCurrency);
-    final now    = DateTime.now();
+    final now    = ref.watch(currentDateProvider);
 
     final years = data.years;
     final yearLabels = years.map((y) => y.year).toList();

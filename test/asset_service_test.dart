@@ -259,6 +259,42 @@ void main() {
       expect(s.lastDate, isNotNull);
     });
 
+    test('through date limits quantity and cost basis without deleting data',
+        () async {
+      final assetId = await service.create(
+        name: 'Wayback',
+        currency: 'EUR',
+        intermediaryId: iid,
+      );
+
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+            assetId: assetId,
+            date: DateTime(2024, 1, 1),
+            valueDate: DateTime(2024, 1, 1),
+            type: EventType.buy,
+            amount: 1000.0,
+            quantity: const Value(10.0),
+          ));
+      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
+            assetId: assetId,
+            date: DateTime(2024, 6, 1),
+            valueDate: DateTime(2024, 6, 1),
+            type: EventType.sell,
+            amount: 300.0,
+            quantity: const Value(3.0),
+          ));
+
+      final stats = await service.getStatsForAll(through: DateTime(2024, 3, 31));
+      final s = stats[assetId]!;
+      expect(s.eventCount, 1);
+      expect(s.totalQuantity, 10.0);
+      expect(s.totalInvested, 1000.0);
+      expect(s.lastDate, DateTime(2024, 1, 1));
+
+      final allRows = await db.select(db.assetEvents).get();
+      expect(allRows.length, 2);
+    });
+
     test('firstDate/lastDate use valueDate, not operationDate', () async {
       // Two events whose `date` (operationDate) and `valueDate` are flipped:
       //   A: date=2024-06-01, valueDate=2024-01-15  (early valueDate)

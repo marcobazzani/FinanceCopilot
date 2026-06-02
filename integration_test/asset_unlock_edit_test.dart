@@ -3,7 +3,7 @@
 ///
 /// Locked default: only the original 8 fields are editable; the
 /// advanced-field block (assetType, valuationMethod, intermediary,
-/// currency, taxRate, includeInNetWorth) stays hidden. After tapping the
+/// currency, taxRate, includeInSavings) stays hidden. After tapping the
 /// lock icon those fields appear and a Save round-trips them through
 /// `AssetService.update`.
 library;

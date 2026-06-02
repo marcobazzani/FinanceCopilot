@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../services/app_actions_controller.dart';
 import '../../services/providers/providers.dart';
+import '../../utils/visualization_clock.dart';
 
 /// Builds the complete `actions:` list for an AppBar. The screen passes its
 /// local action buttons via [local]; this function appends the global
@@ -28,6 +30,7 @@ List<Widget> globalAppBarActions(
       ? const <Widget>[_GlobalActionsOverflow()]
       : const <Widget>[
           _PrivacyAction(),
+          _WaybackAction(),
           _NetworkRetryAction(),
           _RefreshAction(),
           _ImportExportAction(),
@@ -45,6 +48,117 @@ class _Separator extends StatelessWidget {
     padding: EdgeInsets.symmetric(horizontal: 4),
     child: VerticalDivider(width: 1, indent: 12, endIndent: 12, thickness: 1),
   );
+}
+
+class _WaybackAction extends ConsumerWidget {
+  const _WaybackAction();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedDate = ref.watch(waybackDateProvider);
+    final currentDate = ref.watch(currentDateProvider);
+    final s = ref.watch(appStringsProvider);
+    final localeTag = ref.watch(appLocaleProvider).value ??
+        Localizations.localeOf(context).toLanguageTag();
+    final dateFmt = DateFormat.yMMMd(localeTag);
+    final active = selectedDate != null;
+    return PopupMenuButton<String>(
+      icon: Icon(
+        Icons.history_toggle_off,
+        color: active ? Theme.of(context).colorScheme.primary : null,
+      ),
+      tooltip: active
+          ? s.waybackActiveTooltip(dateFmt.format(currentDate))
+          : s.tooltipWaybackMachine,
+      onSelected: (action) => _handleWaybackAction(context, ref, action),
+      itemBuilder: (_) => _waybackMenuItems(context, ref),
+    );
+  }
+}
+
+Future<void> _handleWaybackAction(
+  BuildContext context,
+  WidgetRef ref,
+  String action,
+) async {
+  final selectedDate = ref.read(waybackDateProvider);
+  final realToday = dateOnly(DateTime.now());
+  final localeTag = ref.read(appLocaleProvider).value ??
+      Localizations.localeOf(context).toLanguageTag();
+  switch (action) {
+    case 'reset':
+      ref.read(waybackDateProvider.notifier).state = null;
+    case 'monthEnd':
+      ref.read(waybackDateProvider.notifier).state =
+          lastCompletedMonthEnd(realToday);
+    case 'yearEnd':
+      ref.read(waybackDateProvider.notifier).state =
+          lastCompletedYearEnd(realToday);
+    case 'custom':
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: selectedDate ?? realToday,
+        firstDate: DateTime(1970),
+        lastDate: realToday,
+        locale: Locale(localeTag.split(RegExp('[-_]')).first),
+      );
+      if (picked != null) {
+        ref.read(waybackDateProvider.notifier).state = dateOnly(picked);
+      }
+  }
+}
+
+List<PopupMenuEntry<String>> _waybackMenuItems(
+  BuildContext context,
+  WidgetRef ref,
+) {
+  final selectedDate = ref.watch(waybackDateProvider);
+  final currentDate = ref.watch(currentDateProvider);
+  final s = ref.watch(appStringsProvider);
+  final localeTag = ref.watch(appLocaleProvider).value ??
+      Localizations.localeOf(context).toLanguageTag();
+  final dateFmt = DateFormat.yMMMd(localeTag);
+  return [
+    if (selectedDate != null)
+      PopupMenuItem(
+        value: 'reset',
+        child: Row(children: [
+          const Icon(Icons.today),
+          const SizedBox(width: 12),
+          Text(s.waybackReset),
+        ]),
+      ),
+    PopupMenuItem(
+      value: 'monthEnd',
+      child: Row(children: [
+        const Icon(Icons.calendar_month),
+        const SizedBox(width: 12),
+        Text(s.waybackLastEndOfMonth),
+      ]),
+    ),
+    PopupMenuItem(
+      value: 'yearEnd',
+      child: Row(children: [
+        const Icon(Icons.event),
+        const SizedBox(width: 12),
+        Text(s.waybackLastEndOfYear),
+      ]),
+    ),
+    PopupMenuItem(
+      value: 'custom',
+      child: Row(children: [
+        const Icon(Icons.edit_calendar),
+        const SizedBox(width: 12),
+        Text(s.waybackCustom),
+      ]),
+    ),
+    PopupMenuItem(
+      enabled: false,
+      child: Text(
+        '${s.waybackCurrentDate}: ${dateFmt.format(currentDate)}',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    ),
+  ];
 }
 
 class _PrivacyAction extends ConsumerWidget {
@@ -155,6 +269,11 @@ class _GlobalActionsOverflow extends ConsumerWidget {
         switch (action) {
           case 'privacy':
             ref.read(privacyModeProvider.notifier).state = !isPrivate;
+          case 'reset':
+          case 'monthEnd':
+          case 'yearEnd':
+          case 'custom':
+            await _handleWaybackAction(context, ref, action);
           case 'retryNetwork':
             await reg?.retryNetwork();
           case 'refresh':
@@ -176,6 +295,7 @@ class _GlobalActionsOverflow extends ConsumerWidget {
             Text(isPrivate ? s.tooltipHideAmounts : s.tooltipShowAmounts),
           ]),
         ),
+        ..._waybackMenuItems(context, ref),
         if (!online)
           PopupMenuItem(
             value: 'retryNetwork',

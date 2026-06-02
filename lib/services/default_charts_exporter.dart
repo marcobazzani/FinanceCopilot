@@ -44,16 +44,32 @@ class DefaultChartsExporter {
           {for (final a in activeAccounts.where((a) => a.isActive)) 'account:${a.id}'},
       'all_invested':
           {for (final a in activeAssets) 'asset_invested:${a.id}'},
+      'all_invested_saving': {
+        for (final a in activeAssets)
+          if (a.includeInSavings) 'asset_invested:${a.id}'
+      },
       'all_market':
           {for (final a in activeAssets) 'asset_market:${a.id}'},
+      'all_market_saving': {
+        for (final a in activeAssets)
+          if (a.includeInSavings) 'asset_market:${a.id}'
+      },
       'all_market_liquid': {
         for (final a in activeAssets)
           if (!_illiquidTypes.contains(a.instrumentType)) 'asset_market:${a.id}'
       },
       'all_gain':
           {for (final a in activeAssets) 'asset_gain:${a.id}'},
+      'all_gain_saving': {
+        for (final a in activeAssets)
+          if (a.includeInSavings) 'asset_gain:${a.id}'
+      },
       'all_net':
           {for (final a in activeAssets) 'asset_net:${a.id}'},
+      'all_net_saving': {
+        for (final a in activeAssets)
+          if (a.includeInSavings) 'asset_net:${a.id}'
+      },
       'all_net_liquid': {
         for (final a in activeAssets)
           if (!_illiquidTypes.contains(a.instrumentType)) 'asset_net:${a.id}'

@@ -7,15 +7,17 @@ import '../../../database/database.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../models/dashboard_chart.dart';
 import '../../../services/pillar_service.dart';
+import '../../../services/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
-import '../dashboard/dashboard_screen.dart'
-    show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider, buildTotalSpots;
+import '../dashboard/dashboard_screen.dart' show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider, buildTotalSpots;
+import '../allocation_tab.dart';
 import 'pillar_create_dialog.dart';
+import 'rebalance_preview_dialog.dart';
 
-class PillarDetailScreen extends ConsumerWidget {
+class PillarDetailScreen extends ConsumerStatefulWidget {
   final String pillarId;
   final int? focusAssetId;
   const PillarDetailScreen({
@@ -25,7 +27,26 @@ class PillarDetailScreen extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PillarDetailScreen> createState() => _PillarDetailScreenState();
+}
+
+class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final pillarsAsync = ref.watch(pillarsProvider);
     return Scaffold(
@@ -34,54 +55,108 @@ class PillarDetailScreen extends ConsumerWidget {
           loading: () => const Text('…'),
           error: (e, _) => Text('$e'),
           data: (pillars) {
-            final p = pillars.where((x) => x.id == pillarId).firstOrNull;
+            final p = pillars.where((x) => x.id == widget.pillarId).firstOrNull;
             if (p == null) return const Text('—');
             return Text(p.name);
           },
         ),
-        actions: globalAppBarActions(context, ref, local: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: s.edit,
-            onPressed: () async {
-              final p = (pillarsAsync.value ?? const [])
-                  .where((x) => x.id == pillarId)
-                  .firstOrNull;
-              if (p == null) return;
-              await showDialog(
-                context: context,
-                builder: (_) => PillarCreateDialog(existing: p),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: s.delete,
-            onPressed: () async {
-              final p = (pillarsAsync.value ?? const [])
-                  .where((x) => x.id == pillarId)
-                  .firstOrNull;
-              if (p == null) return;
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: Text(s.delete),
-                  content: Text(s.pillarDeleteConfirm),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
-                  ],
-                ),
-              );
-              if (confirm == true) {
-                await ref.read(pillarServiceProvider).delete(p.id);
-                if (context.mounted) Navigator.of(context).pop();
-              }
-            },
-          ),
-        ]),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: s.overview),
+            Tab(text: s.dashTabAssetsOverview),
+          ],
+        ),
+        actions: globalAppBarActions(
+          context,
+          ref,
+          local: [
+            IconButton(
+              icon: const Icon(Icons.balance),
+              tooltip: s.rebalance,
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  builder: (_) => RebalancePreviewDialog(
+                    pillarId: widget.pillarId,
+                    initialScopeKind: PortfolioRebalanceScopeKind.currentPillar,
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: s.edit,
+              onPressed: () async {
+                final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;
+                if (p == null) return;
+                await showDialog(
+                  context: context,
+                  builder: (_) => PillarCreateDialog(existing: p),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: s.delete,
+              onPressed: () async {
+                final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;
+                if (p == null) return;
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text(s.delete),
+                    content: Text(s.pillarDeleteConfirm),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await ref.read(pillarServiceProvider).delete(p.id);
+                  if (context.mounted) Navigator.of(context).pop();
+                }
+              },
+            ),
+          ],
+        ),
       ),
-      body: _OverviewView(pillarId: pillarId, focusAssetId: focusAssetId),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _OverviewView(pillarId: widget.pillarId, focusAssetId: widget.focusAssetId),
+          _PillarAssetsOverviewTab(pillarId: widget.pillarId),
+        ],
+      ),
+    );
+  }
+}
+
+class _PillarAssetsOverviewTab extends ConsumerWidget {
+  final String pillarId;
+
+  const _PillarAssetsOverviewTab({required this.pillarId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final dataAsync = ref.watch(pillarAllocationDataProvider(pillarId));
+    final compositionsAsync = ref.watch(assetCompositionsProvider);
+
+    return dataAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text(s.error(e))),
+      data: (data) => compositionsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text(s.error(e))),
+        data: (compositions) => AllocationOverviewBody(
+          assets: data.assets,
+          marketValues: data.marketValues,
+          baseCurrency: data.baseCurrency,
+          compositions: compositions,
+        ),
+      ),
     );
   }
 }
@@ -98,10 +173,8 @@ class _AssetRowState {
     required this.current,
   });
   double get maxAvailable => total - otherAssigned;
-  double get maxPercent =>
-      total <= 0 ? 0 : (maxAvailable / total * 100).clamp(0.0, 100.0);
-  double get currentPercent =>
-      total <= 0 ? 0 : (current / total * 100).clamp(0.0, 100.0);
+  double get maxPercent => total <= 0 ? 0 : (maxAvailable / total * 100).clamp(0.0, 100.0);
+  double get currentPercent => total <= 0 ? 0 : (current / total * 100).clamp(0.0, 100.0);
 }
 
 class _ChartViewState {
@@ -174,7 +247,9 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
     final row = _rows[assetId];
     if (row == null) return;
     try {
-      await ref.read(pillarServiceProvider).assign(
+      await ref
+          .read(pillarServiceProvider)
+          .assign(
             pillarId: widget.pillarId,
             assetId: assetId,
             qty: row.current,
@@ -216,9 +291,14 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
 
     final assets = assetsAsync.value ?? const <Asset>[];
     final assetById = {for (final a in assets) a.id: a};
-    final pillar = (pillarsAsync.value ?? const <Pillar>[])
-        .where((p) => p.id == widget.pillarId)
-        .firstOrNull;
+    final pillar = (pillarsAsync.value ?? const <Pillar>[]).where((p) => p.id == widget.pillarId).firstOrNull;
+    final modelItemsAsync = pillar?.portfolioModelId == null ? null : ref.watch(portfolioModelItemsProvider(pillar!.portfolioModelId!));
+    final targetWeightByIsin = <String, double>{};
+    if (modelItemsAsync?.value != null) {
+      for (final item in modelItemsAsync!.value!) {
+        targetWeightByIsin[_normaliseIsin(item.isin)] = item.targetWeight;
+      }
+    }
 
     double pillarValue = 0;
     for (final r in _rows.values) {
@@ -240,12 +320,16 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
         final asset = assetById[id];
         if (asset == null) continue;
         final q = _filter.toLowerCase();
-        final hit = asset.name.toLowerCase().contains(q) ||
-            (asset.ticker?.toLowerCase().contains(q) ?? false);
+        final hit = asset.name.toLowerCase().contains(q) || (asset.ticker?.toLowerCase().contains(q) ?? false);
         if (!hit) continue;
       }
       visibleRows.add(r);
     }
+    visibleRows.sort((a, b) {
+      final aValue = (marketValues[a.assetId] ?? 0) * (a.total <= 0 ? 0 : a.current / a.total);
+      final bValue = (marketValues[b.assetId] ?? 0) * (b.total <= 0 ? 0 : b.current / b.total);
+      return bValue.compareTo(aValue);
+    });
 
     final fractions = _liveFractions();
 
@@ -292,9 +376,7 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
               ),
               const SizedBox(width: 8),
               FilterChip(
-                label: Text(_onlyInPillar
-                    ? s.pillarShowInPillarOnly
-                    : s.pillarShowAllAssets),
+                label: Text(_onlyInPillar ? s.pillarShowInPillarOnly : s.pillarShowAllAssets),
                 selected: _onlyInPillar,
                 onSelected: (v) => setState(() => _onlyInPillar = v),
               ),
@@ -306,35 +388,66 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
             width: double.infinity,
             padding: const EdgeInsets.all(8),
             color: Theme.of(context).colorScheme.errorContainer,
-            child: Row(children: [
-              const Icon(Icons.error_outline, size: 16),
-              const SizedBox(width: 8),
-              Expanded(child: Text(_error!)),
-            ]),
-          ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline, size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_error!)),
+              ],
+            ),
+        ),
         Expanded(
           child: visibleRows.isEmpty
               ? Center(child: Text(s.pillarsEmptyTitle))
-              : ListView.separated(
-                  itemCount: visibleRows.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final row = visibleRows[i];
-                    final asset = assetById[row.assetId];
-                    return _AssetSliderRow(
-                      key: ValueKey('pillar-row-${row.assetId}'),
-                      row: row,
-                      asset: asset,
-                      assetMarketValue: marketValues[row.assetId] ?? 0,
-                      baseCurrency: baseCurrency,
-                      locale: locale,
-                      onChanged: (newQty) {
-                        setState(() => row.current = newQty);
-                      },
-                      onChangeEnd: () => _commit(row.assetId),
-                      s: s,
-                    );
-                  },
+              : ListView(
+                  children: [
+                    for (var i = 0; i < visibleRows.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      Builder(
+                        builder: (ctx) {
+                          final row = visibleRows[i];
+                          final asset = assetById[row.assetId];
+                          final sliceValue = (marketValues[row.assetId] ?? 0) * (row.total <= 0 ? 0 : row.current / row.total);
+                          final isin = asset?.isin?.trim();
+                          final targetWeight = isin == null ? null : targetWeightByIsin[_normaliseIsin(isin)];
+                          final currentWeight = pillarValue <= 0 ? 0.0 : sliceValue / pillarValue * 100.0;
+                          return _AssetSliderRow(
+                            key: ValueKey('pillar-row-${row.assetId}'),
+                            row: row,
+                            asset: asset,
+                            assetMarketValue: marketValues[row.assetId] ?? 0,
+                            baseCurrency: baseCurrency,
+                            locale: locale,
+                            targetWeight: targetWeight,
+                            currentWeight: currentWeight,
+                            onChanged: (newQty) {
+                              setState(() => row.current = newQty);
+                            },
+                            onChangeEnd: () => _commit(row.assetId),
+                            s: s,
+                          );
+                        },
+                      ),
+                    ],
+                    if (pillar?.portfolioModelId != null) ...[
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                        child: Text(s.portfolioDivergenceTitle, style: Theme.of(context).textTheme.titleSmall),
+                      ),
+                      if (targetWeightByIsin.isNotEmpty)
+                        ..._divergenceFooterRows(
+                          context: context,
+                          s: s,
+                          locale: locale,
+                          baseCurrency: baseCurrency,
+                          marketValues: marketValues,
+                          visibleRows: visibleRows,
+                          assetById: assetById,
+                          targetWeightByIsin: targetWeightByIsin,
+                        ),
+                    ],
+                  ],
                 ),
         ),
       ],
@@ -379,15 +492,12 @@ class _PillarMarketInvestedChart extends StatelessWidget {
     void seenX(double x) {
       if (minX == null || x < minX!) minX = x;
     }
+
     for (final entry in fractions.entries) {
       final fraction = entry.value;
       if (fraction <= 0) continue;
-      final inv = allData.assetInvested
-          .where((x) => x.key == 'asset_invested:${entry.key}')
-          .firstOrNull;
-      final mkt = allData.assetMarket
-          .where((x) => x.key == 'asset_market:${entry.key}')
-          .firstOrNull;
+      final inv = allData.assetInvested.where((x) => x.key == 'asset_invested:${entry.key}').firstOrNull;
+      final mkt = allData.assetMarket.where((x) => x.key == 'asset_market:${entry.key}').firstOrNull;
       if (inv != null) {
         if (inv.spots.isNotEmpty) seenX(inv.spots.first.x);
         scaledInvested.add(
@@ -404,10 +514,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
     // Trim leading empty area: drop spots before the pillar's first data
     // point and shift x so the chart's x=0 lines up with that date.
     final shift = minX ?? 0;
-    List<FlSpot> trim(List<FlSpot> s) => s
-        .where((p) => p.x >= shift)
-        .map((p) => FlSpot(p.x - shift, p.y))
-        .toList();
+    List<FlSpot> trim(List<FlSpot> s) => s.where((p) => p.x >= shift).map((p) => FlSpot(p.x - shift, p.y)).toList();
     final investedTotal = buildTotalSpots(scaledInvested.map(trim).toList());
     final marketTotal = buildTotalSpots(scaledMarket.map(trim).toList());
 
@@ -479,9 +586,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
         onChanged();
       },
       onToggleGroup: (keys) {
-        keys.every(state.hidden.contains)
-            ? state.hidden.removeAll(keys)
-            : state.hidden.addAll(keys);
+        keys.every(state.hidden.contains) ? state.hidden.removeAll(keys) : state.hidden.addAll(keys);
         onChanged();
       },
       onToggleHideComponents: () {
@@ -509,6 +614,8 @@ class _AssetSliderRow extends StatelessWidget {
   final double assetMarketValue;
   final String baseCurrency;
   final String locale;
+  final double? targetWeight;
+  final double? currentWeight;
   final void Function(double newQty) onChanged;
   final VoidCallback onChangeEnd;
   final AppStrings s;
@@ -519,6 +626,8 @@ class _AssetSliderRow extends StatelessWidget {
     required this.assetMarketValue,
     required this.baseCurrency,
     required this.locale,
+    required this.targetWeight,
+    required this.currentWeight,
     required this.onChanged,
     required this.onChangeEnd,
     required this.s,
@@ -532,9 +641,7 @@ class _AssetSliderRow extends StatelessWidget {
     final maxPct = row.maxPercent;
     final disabled = maxPct <= 0;
     final pf = NumberFormat.percentPattern(locale)..maximumFractionDigits = 1;
-    final sliceValue = row.total <= 0
-        ? 0.0
-        : assetMarketValue * (row.current / row.total);
+    final sliceValue = row.total <= 0 ? 0.0 : assetMarketValue * (row.current / row.total);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
@@ -544,11 +651,7 @@ class _AssetSliderRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  asset == null
-                      ? '#${row.assetId}'
-                      : (asset!.ticker == null
-                          ? asset!.name
-                          : '${asset!.ticker}  ·  ${asset!.name}'),
+                  asset == null ? '#${row.assetId}' : (asset!.ticker == null ? asset!.name : '${asset!.ticker}  ·  ${asset!.name}'),
                   style: Theme.of(context).textTheme.titleSmall,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -610,6 +713,15 @@ class _AssetSliderRow extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
+          if (targetWeight != null && currentWeight != null) ...[
+            const SizedBox(height: 4),
+            PrivacyText(
+              '${s.portfolioDivergenceTarget}: ${targetWeight!.toStringAsFixed(2)}% · '
+              '${s.portfolioDivergenceCurrent}: ${currentWeight!.toStringAsFixed(2)}% · '
+              '${s.portfolioDivergenceDelta}: ${(currentWeight! - targetWeight!).toStringAsFixed(2)}%',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
         ],
       ),
     );
@@ -620,6 +732,96 @@ class _AssetSliderRow extends StatelessWidget {
     return r < 0 ? 0 : r;
   }
 }
+
+List<Widget> _divergenceFooterRows({
+  required BuildContext context,
+  required AppStrings s,
+  required String locale,
+  required String baseCurrency,
+  required Map<int, double> marketValues,
+  required List<_AssetRowState> visibleRows,
+  required Map<int, Asset> assetById,
+  required Map<String, double> targetWeightByIsin,
+}) {
+  final amountFormat = fmt.amountFormat(locale);
+  final targetIsins = targetWeightByIsin.keys.toSet();
+  final heldIsins = <String>{};
+  final extraRows = <Widget>[];
+  final missingRows = <Widget>[];
+
+  for (final row in visibleRows) {
+    final asset = assetById[row.assetId];
+    final isin = asset?.isin?.trim();
+    final assetValue = marketValues[row.assetId] ?? 0;
+    final sliceValue = row.total <= 0 ? 0.0 : assetValue * (row.current / row.total);
+    if (isin == null || isin.isEmpty) {
+      extraRows.add(
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.add_circle_outline),
+          title: Text(asset?.name ?? '#${row.assetId}'),
+          subtitle: Text(s.rebalanceMissingIsin),
+          trailing: Text('${amountFormat.format(sliceValue)} $baseCurrency'),
+        ),
+      );
+      continue;
+    }
+    final key = _normaliseIsin(isin);
+    heldIsins.add(key);
+    if (!targetIsins.contains(key)) {
+      extraRows.add(
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.add_circle_outline),
+          title: Text(asset?.name ?? '#${row.assetId}'),
+          subtitle: Text(isin),
+          trailing: Text('${amountFormat.format(sliceValue)} $baseCurrency'),
+        ),
+      );
+    }
+  }
+
+  for (final entry in targetWeightByIsin.entries) {
+    if (heldIsins.contains(entry.key)) continue;
+    missingRows.add(
+      ListTile(
+        dense: true,
+        leading: const Icon(Icons.link_off),
+        title: Text(entry.key),
+        subtitle: Text('${s.portfolioDivergenceTarget}: ${entry.value.toStringAsFixed(2)}%'),
+      ),
+    );
+  }
+
+  final widgets = <Widget>[];
+  if (extraRows.isNotEmpty) {
+    widgets.add(const SizedBox(height: 4));
+    widgets.add(Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      child: Text(s.portfolioExtraHoldings, style: Theme.of(context).textTheme.titleSmall),
+    ));
+    widgets.addAll(extraRows);
+  }
+  if (missingRows.isNotEmpty) {
+    widgets.add(const SizedBox(height: 4));
+    widgets.add(Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      child: Text(s.portfolioUnmatchedRows, style: Theme.of(context).textTheme.titleSmall),
+    ));
+    widgets.addAll(missingRows);
+  }
+  if (widgets.isEmpty) {
+    widgets.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+        child: Text(s.portfolioDivergenceTitle),
+      ),
+    );
+  }
+  return widgets;
+}
+
+String _normaliseIsin(String value) => value.trim().toUpperCase();
 
 class _ObjectiveCard extends ConsumerWidget {
   final Pillar pillar;

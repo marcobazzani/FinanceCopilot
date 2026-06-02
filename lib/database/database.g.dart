@@ -3173,18 +3173,18 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     ),
     defaultValue: const Constant(true),
   );
-  static const VerificationMeta _includeInNetWorthMeta = const VerificationMeta(
-    'includeInNetWorth',
+  static const VerificationMeta _includeInSavingsMeta = const VerificationMeta(
+    'includeInSavings',
   );
   @override
-  late final GeneratedColumn<bool> includeInNetWorth = GeneratedColumn<bool>(
-    'include_in_net_worth',
+  late final GeneratedColumn<bool> includeInSavings = GeneratedColumn<bool>(
+    'include_in_savings',
     aliasedName,
     false,
     type: DriftSqlType.bool,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("include_in_net_worth" IN (0, 1))',
+      'CHECK ("include_in_savings" IN (0, 1))',
     ),
     defaultValue: const Constant(true),
   );
@@ -3253,7 +3253,7 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     taxRate,
     valuationMethod,
     isActive,
-    includeInNetWorth,
+    includeInSavings,
     sortOrder,
     notes,
     createdAt,
@@ -3359,12 +3359,12 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
       );
     }
-    if (data.containsKey('include_in_net_worth')) {
+    if (data.containsKey('include_in_savings')) {
       context.handle(
-        _includeInNetWorthMeta,
-        includeInNetWorth.isAcceptableOrUnknown(
-          data['include_in_net_worth']!,
-          _includeInNetWorthMeta,
+        _includeInSavingsMeta,
+        includeInSavings.isAcceptableOrUnknown(
+          data['include_in_savings']!,
+          _includeInSavingsMeta,
         ),
       );
     }
@@ -3481,9 +3481,9 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
-      includeInNetWorth: attachedDatabase.typeMapping.read(
+      includeInSavings: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
-        data['${effectivePrefix}include_in_net_worth'],
+        data['${effectivePrefix}include_in_savings'],
       )!,
       sortOrder: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -3542,7 +3542,7 @@ class Asset extends DataClass implements Insertable<Asset> {
   final double? taxRate;
   final ValuationMethod valuationMethod;
   final bool isActive;
-  final bool includeInNetWorth;
+  final bool includeInSavings;
   final int sortOrder;
   final String? notes;
   final DateTime createdAt;
@@ -3566,7 +3566,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     this.taxRate,
     required this.valuationMethod,
     required this.isActive,
-    required this.includeInNetWorth,
+    required this.includeInSavings,
     required this.sortOrder,
     this.notes,
     required this.createdAt,
@@ -3625,7 +3625,7 @@ class Asset extends DataClass implements Insertable<Asset> {
       );
     }
     map['is_active'] = Variable<bool>(isActive);
-    map['include_in_net_worth'] = Variable<bool>(includeInNetWorth);
+    map['include_in_savings'] = Variable<bool>(includeInSavings);
     map['sort_order'] = Variable<int>(sortOrder);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
@@ -3667,7 +3667,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           : Value(taxRate),
       valuationMethod: Value(valuationMethod),
       isActive: Value(isActive),
-      includeInNetWorth: Value(includeInNetWorth),
+      includeInSavings: Value(includeInSavings),
       sortOrder: Value(sortOrder),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
@@ -3709,7 +3709,7 @@ class Asset extends DataClass implements Insertable<Asset> {
         serializer.fromJson<String>(json['valuationMethod']),
       ),
       isActive: serializer.fromJson<bool>(json['isActive']),
-      includeInNetWorth: serializer.fromJson<bool>(json['includeInNetWorth']),
+      includeInSavings: serializer.fromJson<bool>(json['includeInSavings']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -3746,7 +3746,7 @@ class Asset extends DataClass implements Insertable<Asset> {
         $AssetsTable.$convertervaluationMethod.toJson(valuationMethod),
       ),
       'isActive': serializer.toJson<bool>(isActive),
-      'includeInNetWorth': serializer.toJson<bool>(includeInNetWorth),
+      'includeInSavings': serializer.toJson<bool>(includeInSavings),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -3773,7 +3773,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     Value<double?> taxRate = const Value.absent(),
     ValuationMethod? valuationMethod,
     bool? isActive,
-    bool? includeInNetWorth,
+    bool? includeInSavings,
     int? sortOrder,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
@@ -3797,7 +3797,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     taxRate: taxRate.present ? taxRate.value : this.taxRate,
     valuationMethod: valuationMethod ?? this.valuationMethod,
     isActive: isActive ?? this.isActive,
-    includeInNetWorth: includeInNetWorth ?? this.includeInNetWorth,
+    includeInSavings: includeInSavings ?? this.includeInSavings,
     sortOrder: sortOrder ?? this.sortOrder,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
@@ -3833,9 +3833,9 @@ class Asset extends DataClass implements Insertable<Asset> {
           ? data.valuationMethod.value
           : this.valuationMethod,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
-      includeInNetWorth: data.includeInNetWorth.present
-          ? data.includeInNetWorth.value
-          : this.includeInNetWorth,
+      includeInSavings: data.includeInSavings.present
+          ? data.includeInSavings.value
+          : this.includeInSavings,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -3864,7 +3864,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('taxRate: $taxRate, ')
           ..write('valuationMethod: $valuationMethod, ')
           ..write('isActive: $isActive, ')
-          ..write('includeInNetWorth: $includeInNetWorth, ')
+          ..write('includeInSavings: $includeInSavings, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
@@ -3893,7 +3893,7 @@ class Asset extends DataClass implements Insertable<Asset> {
     taxRate,
     valuationMethod,
     isActive,
-    includeInNetWorth,
+    includeInSavings,
     sortOrder,
     notes,
     createdAt,
@@ -3921,7 +3921,7 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.taxRate == this.taxRate &&
           other.valuationMethod == this.valuationMethod &&
           other.isActive == this.isActive &&
-          other.includeInNetWorth == this.includeInNetWorth &&
+          other.includeInSavings == this.includeInSavings &&
           other.sortOrder == this.sortOrder &&
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
@@ -3947,7 +3947,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<double?> taxRate;
   final Value<ValuationMethod> valuationMethod;
   final Value<bool> isActive;
-  final Value<bool> includeInNetWorth;
+  final Value<bool> includeInSavings;
   final Value<int> sortOrder;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
@@ -3971,7 +3971,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.taxRate = const Value.absent(),
     this.valuationMethod = const Value.absent(),
     this.isActive = const Value.absent(),
-    this.includeInNetWorth = const Value.absent(),
+    this.includeInSavings = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -3996,7 +3996,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.taxRate = const Value.absent(),
     required ValuationMethod valuationMethod,
     this.isActive = const Value.absent(),
-    this.includeInNetWorth = const Value.absent(),
+    this.includeInSavings = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -4024,7 +4024,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<double>? taxRate,
     Expression<String>? valuationMethod,
     Expression<bool>? isActive,
-    Expression<bool>? includeInNetWorth,
+    Expression<bool>? includeInSavings,
     Expression<int>? sortOrder,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
@@ -4049,7 +4049,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (taxRate != null) 'tax_rate': taxRate,
       if (valuationMethod != null) 'valuation_method': valuationMethod,
       if (isActive != null) 'is_active': isActive,
-      if (includeInNetWorth != null) 'include_in_net_worth': includeInNetWorth,
+      if (includeInSavings != null) 'include_in_savings': includeInSavings,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
@@ -4076,7 +4076,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<double?>? taxRate,
     Value<ValuationMethod>? valuationMethod,
     Value<bool>? isActive,
-    Value<bool>? includeInNetWorth,
+    Value<bool>? includeInSavings,
     Value<int>? sortOrder,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
@@ -4101,7 +4101,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       taxRate: taxRate ?? this.taxRate,
       valuationMethod: valuationMethod ?? this.valuationMethod,
       isActive: isActive ?? this.isActive,
-      includeInNetWorth: includeInNetWorth ?? this.includeInNetWorth,
+      includeInSavings: includeInSavings ?? this.includeInSavings,
       sortOrder: sortOrder ?? this.sortOrder,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
@@ -4174,8 +4174,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
-    if (includeInNetWorth.present) {
-      map['include_in_net_worth'] = Variable<bool>(includeInNetWorth.value);
+    if (includeInSavings.present) {
+      map['include_in_savings'] = Variable<bool>(includeInSavings.value);
     }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
@@ -4213,7 +4213,7 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('taxRate: $taxRate, ')
           ..write('valuationMethod: $valuationMethod, ')
           ..write('isActive: $isActive, ')
-          ..write('includeInNetWorth: $includeInNetWorth, ')
+          ..write('includeInSavings: $includeInSavings, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
@@ -11768,6 +11768,1115 @@ class ExtraordinaryEventEntriesCompanion
   }
 }
 
+class $PortfolioModelsTable extends PortfolioModels
+    with TableInfo<$PortfolioModelsTable, PortfolioModel> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PortfolioModelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 200,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isBuiltInMeta = const VerificationMeta(
+    'isBuiltIn',
+  );
+  @override
+  late final GeneratedColumn<bool> isBuiltIn = GeneratedColumn<bool>(
+    'is_built_in',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_built_in" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _yearMeta = const VerificationMeta('year');
+  @override
+  late final GeneratedColumn<int> year = GeneratedColumn<int>(
+    'year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _equityPercentMeta = const VerificationMeta(
+    'equityPercent',
+  );
+  @override
+  late final GeneratedColumn<int> equityPercent = GeneratedColumn<int>(
+    'equity_percent',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<PortfolioModelVariant, String>
+  variant =
+      GeneratedColumn<String>(
+        'variant',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<PortfolioModelVariant>(
+        $PortfolioModelsTable.$convertervariant,
+      );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    isBuiltIn,
+    year,
+    equityPercent,
+    variant,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'portfolio_models';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PortfolioModel> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('is_built_in')) {
+      context.handle(
+        _isBuiltInMeta,
+        isBuiltIn.isAcceptableOrUnknown(data['is_built_in']!, _isBuiltInMeta),
+      );
+    }
+    if (data.containsKey('year')) {
+      context.handle(
+        _yearMeta,
+        year.isAcceptableOrUnknown(data['year']!, _yearMeta),
+      );
+    }
+    if (data.containsKey('equity_percent')) {
+      context.handle(
+        _equityPercentMeta,
+        equityPercent.isAcceptableOrUnknown(
+          data['equity_percent']!,
+          _equityPercentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PortfolioModel map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PortfolioModel(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      isBuiltIn: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_built_in'],
+      )!,
+      year: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}year'],
+      ),
+      equityPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}equity_percent'],
+      ),
+      variant: $PortfolioModelsTable.$convertervariant.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}variant'],
+        )!,
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PortfolioModelsTable createAlias(String alias) {
+    return $PortfolioModelsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<PortfolioModelVariant, String, String>
+  $convertervariant = const EnumNameConverter<PortfolioModelVariant>(
+    PortfolioModelVariant.values,
+  );
+}
+
+class PortfolioModel extends DataClass implements Insertable<PortfolioModel> {
+  final String id;
+  final String name;
+  final bool isBuiltIn;
+  final int? year;
+  final int? equityPercent;
+  final PortfolioModelVariant variant;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const PortfolioModel({
+    required this.id,
+    required this.name,
+    required this.isBuiltIn,
+    this.year,
+    this.equityPercent,
+    required this.variant,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['is_built_in'] = Variable<bool>(isBuiltIn);
+    if (!nullToAbsent || year != null) {
+      map['year'] = Variable<int>(year);
+    }
+    if (!nullToAbsent || equityPercent != null) {
+      map['equity_percent'] = Variable<int>(equityPercent);
+    }
+    {
+      map['variant'] = Variable<String>(
+        $PortfolioModelsTable.$convertervariant.toSql(variant),
+      );
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  PortfolioModelsCompanion toCompanion(bool nullToAbsent) {
+    return PortfolioModelsCompanion(
+      id: Value(id),
+      name: Value(name),
+      isBuiltIn: Value(isBuiltIn),
+      year: year == null && nullToAbsent ? const Value.absent() : Value(year),
+      equityPercent: equityPercent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(equityPercent),
+      variant: Value(variant),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory PortfolioModel.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PortfolioModel(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      isBuiltIn: serializer.fromJson<bool>(json['isBuiltIn']),
+      year: serializer.fromJson<int?>(json['year']),
+      equityPercent: serializer.fromJson<int?>(json['equityPercent']),
+      variant: $PortfolioModelsTable.$convertervariant.fromJson(
+        serializer.fromJson<String>(json['variant']),
+      ),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'isBuiltIn': serializer.toJson<bool>(isBuiltIn),
+      'year': serializer.toJson<int?>(year),
+      'equityPercent': serializer.toJson<int?>(equityPercent),
+      'variant': serializer.toJson<String>(
+        $PortfolioModelsTable.$convertervariant.toJson(variant),
+      ),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  PortfolioModel copyWith({
+    String? id,
+    String? name,
+    bool? isBuiltIn,
+    Value<int?> year = const Value.absent(),
+    Value<int?> equityPercent = const Value.absent(),
+    PortfolioModelVariant? variant,
+    int? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => PortfolioModel(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    isBuiltIn: isBuiltIn ?? this.isBuiltIn,
+    year: year.present ? year.value : this.year,
+    equityPercent: equityPercent.present
+        ? equityPercent.value
+        : this.equityPercent,
+    variant: variant ?? this.variant,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  PortfolioModel copyWithCompanion(PortfolioModelsCompanion data) {
+    return PortfolioModel(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      isBuiltIn: data.isBuiltIn.present ? data.isBuiltIn.value : this.isBuiltIn,
+      year: data.year.present ? data.year.value : this.year,
+      equityPercent: data.equityPercent.present
+          ? data.equityPercent.value
+          : this.equityPercent,
+      variant: data.variant.present ? data.variant.value : this.variant,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PortfolioModel(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('isBuiltIn: $isBuiltIn, ')
+          ..write('year: $year, ')
+          ..write('equityPercent: $equityPercent, ')
+          ..write('variant: $variant, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    isBuiltIn,
+    year,
+    equityPercent,
+    variant,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PortfolioModel &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.isBuiltIn == this.isBuiltIn &&
+          other.year == this.year &&
+          other.equityPercent == this.equityPercent &&
+          other.variant == this.variant &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class PortfolioModelsCompanion extends UpdateCompanion<PortfolioModel> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<bool> isBuiltIn;
+  final Value<int?> year;
+  final Value<int?> equityPercent;
+  final Value<PortfolioModelVariant> variant;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const PortfolioModelsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.isBuiltIn = const Value.absent(),
+    this.year = const Value.absent(),
+    this.equityPercent = const Value.absent(),
+    this.variant = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PortfolioModelsCompanion.insert({
+    required String id,
+    required String name,
+    this.isBuiltIn = const Value.absent(),
+    this.year = const Value.absent(),
+    this.equityPercent = const Value.absent(),
+    required PortfolioModelVariant variant,
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       variant = Value(variant);
+  static Insertable<PortfolioModel> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<bool>? isBuiltIn,
+    Expression<int>? year,
+    Expression<int>? equityPercent,
+    Expression<String>? variant,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (isBuiltIn != null) 'is_built_in': isBuiltIn,
+      if (year != null) 'year': year,
+      if (equityPercent != null) 'equity_percent': equityPercent,
+      if (variant != null) 'variant': variant,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PortfolioModelsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<bool>? isBuiltIn,
+    Value<int?>? year,
+    Value<int?>? equityPercent,
+    Value<PortfolioModelVariant>? variant,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return PortfolioModelsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      isBuiltIn: isBuiltIn ?? this.isBuiltIn,
+      year: year ?? this.year,
+      equityPercent: equityPercent ?? this.equityPercent,
+      variant: variant ?? this.variant,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (isBuiltIn.present) {
+      map['is_built_in'] = Variable<bool>(isBuiltIn.value);
+    }
+    if (year.present) {
+      map['year'] = Variable<int>(year.value);
+    }
+    if (equityPercent.present) {
+      map['equity_percent'] = Variable<int>(equityPercent.value);
+    }
+    if (variant.present) {
+      map['variant'] = Variable<String>(
+        $PortfolioModelsTable.$convertervariant.toSql(variant.value),
+      );
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PortfolioModelsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('isBuiltIn: $isBuiltIn, ')
+          ..write('year: $year, ')
+          ..write('equityPercent: $equityPercent, ')
+          ..write('variant: $variant, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PortfolioModelItemsTable extends PortfolioModelItems
+    with TableInfo<$PortfolioModelItemsTable, PortfolioModelItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PortfolioModelItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _modelIdMeta = const VerificationMeta(
+    'modelId',
+  );
+  @override
+  late final GeneratedColumn<String> modelId = GeneratedColumn<String>(
+    'model_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES portfolio_models (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _isinMeta = const VerificationMeta('isin');
+  @override
+  late final GeneratedColumn<String> isin = GeneratedColumn<String>(
+    'isin',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 32,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetWeightMeta = const VerificationMeta(
+    'targetWeight',
+  );
+  @override
+  late final GeneratedColumn<double> targetWeight = GeneratedColumn<double>(
+    'target_weight',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _preferredTickerMeta = const VerificationMeta(
+    'preferredTicker',
+  );
+  @override
+  late final GeneratedColumn<String> preferredTicker = GeneratedColumn<String>(
+    'preferred_ticker',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _preferredExchangeMeta = const VerificationMeta(
+    'preferredExchange',
+  );
+  @override
+  late final GeneratedColumn<String> preferredExchange = GeneratedColumn<String>(
+    'preferred_exchange',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    modelId,
+    isin,
+    targetWeight,
+    description,
+    preferredTicker,
+    preferredExchange,
+    sortOrder,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'portfolio_model_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PortfolioModelItem> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('model_id')) {
+      context.handle(
+        _modelIdMeta,
+        modelId.isAcceptableOrUnknown(data['model_id']!, _modelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelIdMeta);
+    }
+    if (data.containsKey('isin')) {
+      context.handle(
+        _isinMeta,
+        isin.isAcceptableOrUnknown(data['isin']!, _isinMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_isinMeta);
+    }
+    if (data.containsKey('target_weight')) {
+      context.handle(
+        _targetWeightMeta,
+        targetWeight.isAcceptableOrUnknown(
+          data['target_weight']!,
+          _targetWeightMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_targetWeightMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('preferred_ticker')) {
+      context.handle(
+        _preferredTickerMeta,
+        preferredTicker.isAcceptableOrUnknown(
+          data['preferred_ticker']!,
+          _preferredTickerMeta,
+        ),
+      );
+    }
+    if (data.containsKey('preferred_exchange')) {
+      context.handle(
+        _preferredExchangeMeta,
+        preferredExchange.isAcceptableOrUnknown(
+          data['preferred_exchange']!,
+          _preferredExchangeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {modelId, isin},
+  ];
+  @override
+  PortfolioModelItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PortfolioModelItem(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      modelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_id'],
+      )!,
+      isin: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}isin'],
+      )!,
+      targetWeight: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}target_weight'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      )!,
+      preferredTicker: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preferred_ticker'],
+      ),
+      preferredExchange: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preferred_exchange'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+    );
+  }
+
+  @override
+  $PortfolioModelItemsTable createAlias(String alias) {
+    return $PortfolioModelItemsTable(attachedDatabase, alias);
+  }
+}
+
+class PortfolioModelItem extends DataClass
+    implements Insertable<PortfolioModelItem> {
+  final int id;
+  final String modelId;
+  final String isin;
+  final double targetWeight;
+  final String description;
+  final String? preferredTicker;
+  final String? preferredExchange;
+  final int sortOrder;
+  const PortfolioModelItem({
+    required this.id,
+    required this.modelId,
+    required this.isin,
+    required this.targetWeight,
+    required this.description,
+    this.preferredTicker,
+    this.preferredExchange,
+    required this.sortOrder,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['model_id'] = Variable<String>(modelId);
+    map['isin'] = Variable<String>(isin);
+    map['target_weight'] = Variable<double>(targetWeight);
+    map['description'] = Variable<String>(description);
+    if (!nullToAbsent || preferredTicker != null) {
+      map['preferred_ticker'] = Variable<String>(preferredTicker);
+    }
+    if (!nullToAbsent || preferredExchange != null) {
+      map['preferred_exchange'] = Variable<String>(preferredExchange);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    return map;
+  }
+
+  PortfolioModelItemsCompanion toCompanion(bool nullToAbsent) {
+    return PortfolioModelItemsCompanion(
+      id: Value(id),
+      modelId: Value(modelId),
+      isin: Value(isin),
+      targetWeight: Value(targetWeight),
+      description: Value(description),
+      preferredTicker: preferredTicker == null && nullToAbsent
+          ? const Value.absent()
+          : Value(preferredTicker),
+      preferredExchange: preferredExchange == null && nullToAbsent
+          ? const Value.absent()
+          : Value(preferredExchange),
+      sortOrder: Value(sortOrder),
+    );
+  }
+
+  factory PortfolioModelItem.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PortfolioModelItem(
+      id: serializer.fromJson<int>(json['id']),
+      modelId: serializer.fromJson<String>(json['modelId']),
+      isin: serializer.fromJson<String>(json['isin']),
+      targetWeight: serializer.fromJson<double>(json['targetWeight']),
+      description: serializer.fromJson<String>(json['description']),
+      preferredTicker: serializer.fromJson<String?>(json['preferredTicker']),
+      preferredExchange: serializer.fromJson<String?>(
+        json['preferredExchange'],
+      ),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'modelId': serializer.toJson<String>(modelId),
+      'isin': serializer.toJson<String>(isin),
+      'targetWeight': serializer.toJson<double>(targetWeight),
+      'description': serializer.toJson<String>(description),
+      'preferredTicker': serializer.toJson<String?>(preferredTicker),
+      'preferredExchange': serializer.toJson<String?>(preferredExchange),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+    };
+  }
+
+  PortfolioModelItem copyWith({
+    int? id,
+    String? modelId,
+    String? isin,
+    double? targetWeight,
+    String? description,
+    Value<String?> preferredTicker = const Value.absent(),
+    Value<String?> preferredExchange = const Value.absent(),
+    int? sortOrder,
+  }) => PortfolioModelItem(
+    id: id ?? this.id,
+    modelId: modelId ?? this.modelId,
+    isin: isin ?? this.isin,
+    targetWeight: targetWeight ?? this.targetWeight,
+    description: description ?? this.description,
+    preferredTicker: preferredTicker.present
+        ? preferredTicker.value
+        : this.preferredTicker,
+    preferredExchange: preferredExchange.present
+        ? preferredExchange.value
+        : this.preferredExchange,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
+  PortfolioModelItem copyWithCompanion(PortfolioModelItemsCompanion data) {
+    return PortfolioModelItem(
+      id: data.id.present ? data.id.value : this.id,
+      modelId: data.modelId.present ? data.modelId.value : this.modelId,
+      isin: data.isin.present ? data.isin.value : this.isin,
+      targetWeight: data.targetWeight.present
+          ? data.targetWeight.value
+          : this.targetWeight,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      preferredTicker: data.preferredTicker.present
+          ? data.preferredTicker.value
+          : this.preferredTicker,
+      preferredExchange: data.preferredExchange.present
+          ? data.preferredExchange.value
+          : this.preferredExchange,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PortfolioModelItem(')
+          ..write('id: $id, ')
+          ..write('modelId: $modelId, ')
+          ..write('isin: $isin, ')
+          ..write('targetWeight: $targetWeight, ')
+          ..write('description: $description, ')
+          ..write('preferredTicker: $preferredTicker, ')
+          ..write('preferredExchange: $preferredExchange, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(
+        id,
+        modelId,
+        isin,
+        targetWeight,
+        description,
+        preferredTicker,
+        preferredExchange,
+        sortOrder,
+      );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PortfolioModelItem &&
+          other.id == this.id &&
+          other.modelId == this.modelId &&
+          other.isin == this.isin &&
+          other.targetWeight == this.targetWeight &&
+          other.description == this.description &&
+          other.preferredTicker == this.preferredTicker &&
+          other.preferredExchange == this.preferredExchange &&
+          other.sortOrder == this.sortOrder);
+}
+
+class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
+  final Value<int> id;
+  final Value<String> modelId;
+  final Value<String> isin;
+  final Value<double> targetWeight;
+  final Value<String> description;
+  final Value<String?> preferredTicker;
+  final Value<String?> preferredExchange;
+  final Value<int> sortOrder;
+  const PortfolioModelItemsCompanion({
+    this.id = const Value.absent(),
+    this.modelId = const Value.absent(),
+    this.isin = const Value.absent(),
+    this.targetWeight = const Value.absent(),
+    this.description = const Value.absent(),
+    this.preferredTicker = const Value.absent(),
+    this.preferredExchange = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  PortfolioModelItemsCompanion.insert({
+    this.id = const Value.absent(),
+    required String modelId,
+    required String isin,
+    required double targetWeight,
+    this.description = const Value.absent(),
+    this.preferredTicker = const Value.absent(),
+    this.preferredExchange = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  }) : modelId = Value(modelId),
+       isin = Value(isin),
+       targetWeight = Value(targetWeight);
+  static Insertable<PortfolioModelItem> custom({
+    Expression<int>? id,
+    Expression<String>? modelId,
+    Expression<String>? isin,
+    Expression<double>? targetWeight,
+    Expression<String>? description,
+    Expression<String>? preferredTicker,
+    Expression<String>? preferredExchange,
+    Expression<int>? sortOrder,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (modelId != null) 'model_id': modelId,
+      if (isin != null) 'isin': isin,
+      if (targetWeight != null) 'target_weight': targetWeight,
+      if (description != null) 'description': description,
+      if (preferredTicker != null) 'preferred_ticker': preferredTicker,
+      if (preferredExchange != null) 'preferred_exchange': preferredExchange,
+      if (sortOrder != null) 'sort_order': sortOrder,
+    });
+  }
+
+  PortfolioModelItemsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? modelId,
+    Value<String>? isin,
+    Value<double>? targetWeight,
+    Value<String>? description,
+    Value<String?>? preferredTicker,
+    Value<String?>? preferredExchange,
+    Value<int>? sortOrder,
+  }) {
+    return PortfolioModelItemsCompanion(
+      id: id ?? this.id,
+      modelId: modelId ?? this.modelId,
+      isin: isin ?? this.isin,
+      targetWeight: targetWeight ?? this.targetWeight,
+      description: description ?? this.description,
+      preferredTicker: preferredTicker ?? this.preferredTicker,
+      preferredExchange: preferredExchange ?? this.preferredExchange,
+      sortOrder: sortOrder ?? this.sortOrder,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (modelId.present) {
+      map['model_id'] = Variable<String>(modelId.value);
+    }
+    if (isin.present) {
+      map['isin'] = Variable<String>(isin.value);
+    }
+    if (targetWeight.present) {
+      map['target_weight'] = Variable<double>(targetWeight.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (preferredTicker.present) {
+      map['preferred_ticker'] = Variable<String>(preferredTicker.value);
+    }
+    if (preferredExchange.present) {
+      map['preferred_exchange'] = Variable<String>(preferredExchange.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PortfolioModelItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('modelId: $modelId, ')
+          ..write('isin: $isin, ')
+          ..write('targetWeight: $targetWeight, ')
+          ..write('description: $description, ')
+          ..write('preferredTicker: $preferredTicker, ')
+          ..write('preferredExchange: $preferredExchange, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
   @override
   final GeneratedDatabase attachedDatabase;
@@ -11822,6 +12931,20 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
     requiredDuringInsert: false,
     defaultValue: const Constant('EUR'),
   );
+  static const VerificationMeta _portfolioModelIdMeta = const VerificationMeta(
+    'portfolioModelId',
+  );
+  @override
+  late final GeneratedColumn<String> portfolioModelId = GeneratedColumn<String>(
+    'portfolio_model_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES portfolio_models (id) ON DELETE SET NULL',
+    ),
+  );
   static const VerificationMeta _sortOrderMeta = const VerificationMeta(
     'sortOrder',
   );
@@ -11864,6 +12987,7 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
     name,
     targetValue,
     targetCurrency,
+    portfolioModelId,
     sortOrder,
     createdAt,
     updatedAt,
@@ -11911,6 +13035,15 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
         ),
       );
     }
+    if (data.containsKey('portfolio_model_id')) {
+      context.handle(
+        _portfolioModelIdMeta,
+        portfolioModelId.isAcceptableOrUnknown(
+          data['portfolio_model_id']!,
+          _portfolioModelIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('sort_order')) {
       context.handle(
         _sortOrderMeta,
@@ -11954,6 +13087,10 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
         DriftSqlType.string,
         data['${effectivePrefix}target_currency'],
       )!,
+      portfolioModelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}portfolio_model_id'],
+      ),
       sortOrder: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
@@ -11980,6 +13117,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
   final String name;
   final double? targetValue;
   final String targetCurrency;
+  final String? portfolioModelId;
   final int sortOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -11988,6 +13126,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     required this.name,
     this.targetValue,
     required this.targetCurrency,
+    this.portfolioModelId,
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
@@ -12001,6 +13140,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
       map['target_value'] = Variable<double>(targetValue);
     }
     map['target_currency'] = Variable<String>(targetCurrency);
+    if (!nullToAbsent || portfolioModelId != null) {
+      map['portfolio_model_id'] = Variable<String>(portfolioModelId);
+    }
     map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -12015,6 +13157,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
           ? const Value.absent()
           : Value(targetValue),
       targetCurrency: Value(targetCurrency),
+      portfolioModelId: portfolioModelId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(portfolioModelId),
       sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -12031,6 +13176,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
       name: serializer.fromJson<String>(json['name']),
       targetValue: serializer.fromJson<double?>(json['targetValue']),
       targetCurrency: serializer.fromJson<String>(json['targetCurrency']),
+      portfolioModelId: serializer.fromJson<String?>(json['portfolioModelId']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -12044,6 +13190,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
       'name': serializer.toJson<String>(name),
       'targetValue': serializer.toJson<double?>(targetValue),
       'targetCurrency': serializer.toJson<String>(targetCurrency),
+      'portfolioModelId': serializer.toJson<String?>(portfolioModelId),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -12055,6 +13202,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     String? name,
     Value<double?> targetValue = const Value.absent(),
     String? targetCurrency,
+    Value<String?> portfolioModelId = const Value.absent(),
     int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -12063,6 +13211,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     name: name ?? this.name,
     targetValue: targetValue.present ? targetValue.value : this.targetValue,
     targetCurrency: targetCurrency ?? this.targetCurrency,
+    portfolioModelId: portfolioModelId.present
+        ? portfolioModelId.value
+        : this.portfolioModelId,
     sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -12077,6 +13228,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
       targetCurrency: data.targetCurrency.present
           ? data.targetCurrency.value
           : this.targetCurrency,
+      portfolioModelId: data.portfolioModelId.present
+          ? data.portfolioModelId.value
+          : this.portfolioModelId,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -12090,6 +13244,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
           ..write('name: $name, ')
           ..write('targetValue: $targetValue, ')
           ..write('targetCurrency: $targetCurrency, ')
+          ..write('portfolioModelId: $portfolioModelId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -12103,6 +13258,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     name,
     targetValue,
     targetCurrency,
+    portfolioModelId,
     sortOrder,
     createdAt,
     updatedAt,
@@ -12115,6 +13271,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
           other.name == this.name &&
           other.targetValue == this.targetValue &&
           other.targetCurrency == this.targetCurrency &&
+          other.portfolioModelId == this.portfolioModelId &&
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -12125,6 +13282,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
   final Value<String> name;
   final Value<double?> targetValue;
   final Value<String> targetCurrency;
+  final Value<String?> portfolioModelId;
   final Value<int> sortOrder;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -12134,6 +13292,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     this.name = const Value.absent(),
     this.targetValue = const Value.absent(),
     this.targetCurrency = const Value.absent(),
+    this.portfolioModelId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -12144,6 +13303,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     required String name,
     this.targetValue = const Value.absent(),
     this.targetCurrency = const Value.absent(),
+    this.portfolioModelId = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -12155,6 +13315,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     Expression<String>? name,
     Expression<double>? targetValue,
     Expression<String>? targetCurrency,
+    Expression<String>? portfolioModelId,
     Expression<int>? sortOrder,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -12165,6 +13326,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
       if (name != null) 'name': name,
       if (targetValue != null) 'target_value': targetValue,
       if (targetCurrency != null) 'target_currency': targetCurrency,
+      if (portfolioModelId != null) 'portfolio_model_id': portfolioModelId,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -12177,6 +13339,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     Value<String>? name,
     Value<double?>? targetValue,
     Value<String>? targetCurrency,
+    Value<String?>? portfolioModelId,
     Value<int>? sortOrder,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -12187,6 +13350,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
       name: name ?? this.name,
       targetValue: targetValue ?? this.targetValue,
       targetCurrency: targetCurrency ?? this.targetCurrency,
+      portfolioModelId: portfolioModelId ?? this.portfolioModelId,
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -12208,6 +13372,9 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     }
     if (targetCurrency.present) {
       map['target_currency'] = Variable<String>(targetCurrency.value);
+    }
+    if (portfolioModelId.present) {
+      map['portfolio_model_id'] = Variable<String>(portfolioModelId.value);
     }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
@@ -12231,6 +13398,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
           ..write('name: $name, ')
           ..write('targetValue: $targetValue, ')
           ..write('targetCurrency: $targetCurrency, ')
+          ..write('portfolioModelId: $portfolioModelId, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -12540,6 +13708,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ExtraordinaryEventsTable(this);
   late final $ExtraordinaryEventEntriesTable extraordinaryEventEntries =
       $ExtraordinaryEventEntriesTable(this);
+  late final $PortfolioModelsTable portfolioModels = $PortfolioModelsTable(
+    this,
+  );
+  late final $PortfolioModelItemsTable portfolioModelItems =
+      $PortfolioModelItemsTable(this);
   late final $PillarsTable pillars = $PillarsTable(this);
   late final $PillarAssetsTable pillarAssets = $PillarAssetsTable(this);
   @override
@@ -12566,11 +13739,27 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     assetCompositions,
     extraordinaryEvents,
     extraordinaryEventEntries,
+    portfolioModels,
+    portfolioModelItems,
     pillars,
     pillarAssets,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'portfolio_models',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('portfolio_model_items', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'portfolio_models',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('pillars', kind: UpdateKind.update)],
+    ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'pillars',
@@ -15454,7 +16643,7 @@ typedef $$AssetsTableCreateCompanionBuilder =
       Value<double?> taxRate,
       required ValuationMethod valuationMethod,
       Value<bool> isActive,
-      Value<bool> includeInNetWorth,
+      Value<bool> includeInSavings,
       Value<int> sortOrder,
       Value<String?> notes,
       Value<DateTime> createdAt,
@@ -15480,7 +16669,7 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<double?> taxRate,
       Value<ValuationMethod> valuationMethod,
       Value<bool> isActive,
-      Value<bool> includeInNetWorth,
+      Value<bool> includeInSavings,
       Value<int> sortOrder,
       Value<String?> notes,
       Value<DateTime> createdAt,
@@ -15724,8 +16913,8 @@ class $$AssetsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<bool> get includeInNetWorth => $composableBuilder(
-    column: $table.includeInNetWorth,
+  ColumnFilters<bool> get includeInSavings => $composableBuilder(
+    column: $table.includeInSavings,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16017,8 +17206,8 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<bool> get includeInNetWorth => $composableBuilder(
-    column: $table.includeInNetWorth,
+  ColumnOrderings<bool> get includeInSavings => $composableBuilder(
+    column: $table.includeInSavings,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -16137,8 +17326,8 @@ class $$AssetsTableAnnotationComposer
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
 
-  GeneratedColumn<bool> get includeInNetWorth => $composableBuilder(
-    column: $table.includeInNetWorth,
+  GeneratedColumn<bool> get includeInSavings => $composableBuilder(
+    column: $table.includeInSavings,
     builder: (column) => column,
   );
 
@@ -16383,7 +17572,7 @@ class $$AssetsTableTableManager
                 Value<double?> taxRate = const Value.absent(),
                 Value<ValuationMethod> valuationMethod = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
-                Value<bool> includeInNetWorth = const Value.absent(),
+                Value<bool> includeInSavings = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -16407,7 +17596,7 @@ class $$AssetsTableTableManager
                 taxRate: taxRate,
                 valuationMethod: valuationMethod,
                 isActive: isActive,
-                includeInNetWorth: includeInNetWorth,
+                includeInSavings: includeInSavings,
                 sortOrder: sortOrder,
                 notes: notes,
                 createdAt: createdAt,
@@ -16433,7 +17622,7 @@ class $$AssetsTableTableManager
                 Value<double?> taxRate = const Value.absent(),
                 required ValuationMethod valuationMethod,
                 Value<bool> isActive = const Value.absent(),
-                Value<bool> includeInNetWorth = const Value.absent(),
+                Value<bool> includeInSavings = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -16457,7 +17646,7 @@ class $$AssetsTableTableManager
                 taxRate: taxRate,
                 valuationMethod: valuationMethod,
                 isActive: isActive,
-                includeInNetWorth: includeInNetWorth,
+                includeInSavings: includeInSavings,
                 sortOrder: sortOrder,
                 notes: notes,
                 createdAt: createdAt,
@@ -22021,12 +23210,915 @@ typedef $$ExtraordinaryEventEntriesTableProcessedTableManager =
       ExtraordinaryEventEntry,
       PrefetchHooks Function({bool eventId})
     >;
+typedef $$PortfolioModelsTableCreateCompanionBuilder =
+    PortfolioModelsCompanion Function({
+      required String id,
+      required String name,
+      Value<bool> isBuiltIn,
+      Value<int?> year,
+      Value<int?> equityPercent,
+      required PortfolioModelVariant variant,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$PortfolioModelsTableUpdateCompanionBuilder =
+    PortfolioModelsCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<bool> isBuiltIn,
+      Value<int?> year,
+      Value<int?> equityPercent,
+      Value<PortfolioModelVariant> variant,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$PortfolioModelsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $PortfolioModelsTable, PortfolioModel> {
+  $$PortfolioModelsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<
+    $PortfolioModelItemsTable,
+    List<PortfolioModelItem>
+  >
+  _portfolioModelItemsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.portfolioModelItems,
+        aliasName: $_aliasNameGenerator(
+          db.portfolioModels.id,
+          db.portfolioModelItems.modelId,
+        ),
+      );
+
+  $$PortfolioModelItemsTableProcessedTableManager get portfolioModelItemsRefs {
+    final manager = $$PortfolioModelItemsTableTableManager(
+      $_db,
+      $_db.portfolioModelItems,
+    ).filter((f) => f.modelId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _portfolioModelItemsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PillarsTable, List<Pillar>> _pillarsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.pillars,
+    aliasName: $_aliasNameGenerator(
+      db.portfolioModels.id,
+      db.pillars.portfolioModelId,
+    ),
+  );
+
+  $$PillarsTableProcessedTableManager get pillarsRefs {
+    final manager = $$PillarsTableTableManager($_db, $_db.pillars).filter(
+      (f) => f.portfolioModelId.id.sqlEquals($_itemColumn<String>('id')!),
+    );
+
+    final cache = $_typedResult.readTableOrNull(_pillarsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$PortfolioModelsTableFilterComposer
+    extends Composer<_$AppDatabase, $PortfolioModelsTable> {
+  $$PortfolioModelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isBuiltIn => $composableBuilder(
+    column: $table.isBuiltIn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get year => $composableBuilder(
+    column: $table.year,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get equityPercent => $composableBuilder(
+    column: $table.equityPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<
+    PortfolioModelVariant,
+    PortfolioModelVariant,
+    String
+  >
+  get variant => $composableBuilder(
+    column: $table.variant,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> portfolioModelItemsRefs(
+    Expression<bool> Function($$PortfolioModelItemsTableFilterComposer f) f,
+  ) {
+    final $$PortfolioModelItemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.portfolioModelItems,
+      getReferencedColumn: (t) => t.modelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelItemsTableFilterComposer(
+            $db: $db,
+            $table: $db.portfolioModelItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> pillarsRefs(
+    Expression<bool> Function($$PillarsTableFilterComposer f) f,
+  ) {
+    final $$PillarsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pillars,
+      getReferencedColumn: (t) => t.portfolioModelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarsTableFilterComposer(
+            $db: $db,
+            $table: $db.pillars,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PortfolioModelsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PortfolioModelsTable> {
+  $$PortfolioModelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isBuiltIn => $composableBuilder(
+    column: $table.isBuiltIn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get year => $composableBuilder(
+    column: $table.year,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get equityPercent => $composableBuilder(
+    column: $table.equityPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get variant => $composableBuilder(
+    column: $table.variant,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PortfolioModelsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PortfolioModelsTable> {
+  $$PortfolioModelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isBuiltIn =>
+      $composableBuilder(column: $table.isBuiltIn, builder: (column) => column);
+
+  GeneratedColumn<int> get year =>
+      $composableBuilder(column: $table.year, builder: (column) => column);
+
+  GeneratedColumn<int> get equityPercent => $composableBuilder(
+    column: $table.equityPercent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<PortfolioModelVariant, String> get variant =>
+      $composableBuilder(column: $table.variant, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  Expression<T> portfolioModelItemsRefs<T extends Object>(
+    Expression<T> Function($$PortfolioModelItemsTableAnnotationComposer a) f,
+  ) {
+    final $$PortfolioModelItemsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.portfolioModelItems,
+          getReferencedColumn: (t) => t.modelId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PortfolioModelItemsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.portfolioModelItems,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> pillarsRefs<T extends Object>(
+    Expression<T> Function($$PillarsTableAnnotationComposer a) f,
+  ) {
+    final $$PillarsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.pillars,
+      getReferencedColumn: (t) => t.portfolioModelId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PillarsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.pillars,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$PortfolioModelsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PortfolioModelsTable,
+          PortfolioModel,
+          $$PortfolioModelsTableFilterComposer,
+          $$PortfolioModelsTableOrderingComposer,
+          $$PortfolioModelsTableAnnotationComposer,
+          $$PortfolioModelsTableCreateCompanionBuilder,
+          $$PortfolioModelsTableUpdateCompanionBuilder,
+          (PortfolioModel, $$PortfolioModelsTableReferences),
+          PortfolioModel,
+          PrefetchHooks Function({
+            bool portfolioModelItemsRefs,
+            bool pillarsRefs,
+          })
+        > {
+  $$PortfolioModelsTableTableManager(
+    _$AppDatabase db,
+    $PortfolioModelsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PortfolioModelsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PortfolioModelsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PortfolioModelsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<bool> isBuiltIn = const Value.absent(),
+                Value<int?> year = const Value.absent(),
+                Value<int?> equityPercent = const Value.absent(),
+                Value<PortfolioModelVariant> variant = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PortfolioModelsCompanion(
+                id: id,
+                name: name,
+                isBuiltIn: isBuiltIn,
+                year: year,
+                equityPercent: equityPercent,
+                variant: variant,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<bool> isBuiltIn = const Value.absent(),
+                Value<int?> year = const Value.absent(),
+                Value<int?> equityPercent = const Value.absent(),
+                required PortfolioModelVariant variant,
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PortfolioModelsCompanion.insert(
+                id: id,
+                name: name,
+                isBuiltIn: isBuiltIn,
+                year: year,
+                equityPercent: equityPercent,
+                variant: variant,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PortfolioModelsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({portfolioModelItemsRefs = false, pillarsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (portfolioModelItemsRefs) db.portfolioModelItems,
+                    if (pillarsRefs) db.pillars,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (portfolioModelItemsRefs)
+                        await $_getPrefetchedData<
+                          PortfolioModel,
+                          $PortfolioModelsTable,
+                          PortfolioModelItem
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PortfolioModelsTableReferences
+                              ._portfolioModelItemsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PortfolioModelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).portfolioModelItemsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.modelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (pillarsRefs)
+                        await $_getPrefetchedData<
+                          PortfolioModel,
+                          $PortfolioModelsTable,
+                          Pillar
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PortfolioModelsTableReferences
+                              ._pillarsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PortfolioModelsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).pillarsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.portfolioModelId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$PortfolioModelsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PortfolioModelsTable,
+      PortfolioModel,
+      $$PortfolioModelsTableFilterComposer,
+      $$PortfolioModelsTableOrderingComposer,
+      $$PortfolioModelsTableAnnotationComposer,
+      $$PortfolioModelsTableCreateCompanionBuilder,
+      $$PortfolioModelsTableUpdateCompanionBuilder,
+      (PortfolioModel, $$PortfolioModelsTableReferences),
+      PortfolioModel,
+      PrefetchHooks Function({bool portfolioModelItemsRefs, bool pillarsRefs})
+    >;
+typedef $$PortfolioModelItemsTableCreateCompanionBuilder =
+    PortfolioModelItemsCompanion Function({
+      Value<int> id,
+      required String modelId,
+      required String isin,
+      required double targetWeight,
+      Value<String> description,
+      Value<String?> preferredTicker,
+      Value<String?> preferredExchange,
+      Value<int> sortOrder,
+    });
+typedef $$PortfolioModelItemsTableUpdateCompanionBuilder =
+    PortfolioModelItemsCompanion Function({
+      Value<int> id,
+      Value<String> modelId,
+      Value<String> isin,
+      Value<double> targetWeight,
+      Value<String> description,
+      Value<String?> preferredTicker,
+      Value<String?> preferredExchange,
+      Value<int> sortOrder,
+    });
+
+final class $$PortfolioModelItemsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $PortfolioModelItemsTable,
+          PortfolioModelItem
+        > {
+  $$PortfolioModelItemsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PortfolioModelsTable _modelIdTable(_$AppDatabase db) =>
+      db.portfolioModels.createAlias(
+        $_aliasNameGenerator(
+          db.portfolioModelItems.modelId,
+          db.portfolioModels.id,
+        ),
+      );
+
+  $$PortfolioModelsTableProcessedTableManager get modelId {
+    final $_column = $_itemColumn<String>('model_id')!;
+
+    final manager = $$PortfolioModelsTableTableManager(
+      $_db,
+      $_db.portfolioModels,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_modelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PortfolioModelItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $PortfolioModelItemsTable> {
+  $$PortfolioModelItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get isin => $composableBuilder(
+    column: $table.isin,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get targetWeight => $composableBuilder(
+    column: $table.targetWeight,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get preferredTicker => $composableBuilder(
+    column: $table.preferredTicker,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get preferredExchange => $composableBuilder(
+    column: $table.preferredExchange,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PortfolioModelsTableFilterComposer get modelId {
+    final $$PortfolioModelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.modelId,
+      referencedTable: $db.portfolioModels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelsTableFilterComposer(
+            $db: $db,
+            $table: $db.portfolioModels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PortfolioModelItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PortfolioModelItemsTable> {
+  $$PortfolioModelItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get isin => $composableBuilder(
+    column: $table.isin,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get targetWeight => $composableBuilder(
+    column: $table.targetWeight,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get preferredTicker => $composableBuilder(
+    column: $table.preferredTicker,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get preferredExchange => $composableBuilder(
+    column: $table.preferredExchange,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PortfolioModelsTableOrderingComposer get modelId {
+    final $$PortfolioModelsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.modelId,
+      referencedTable: $db.portfolioModels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelsTableOrderingComposer(
+            $db: $db,
+            $table: $db.portfolioModels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PortfolioModelItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PortfolioModelItemsTable> {
+  $$PortfolioModelItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get isin =>
+      $composableBuilder(column: $table.isin, builder: (column) => column);
+
+  GeneratedColumn<double> get targetWeight => $composableBuilder(
+    column: $table.targetWeight,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get preferredTicker => $composableBuilder(
+    column: $table.preferredTicker,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get preferredExchange => $composableBuilder(
+    column: $table.preferredExchange,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  $$PortfolioModelsTableAnnotationComposer get modelId {
+    final $$PortfolioModelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.modelId,
+      referencedTable: $db.portfolioModels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.portfolioModels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PortfolioModelItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PortfolioModelItemsTable,
+          PortfolioModelItem,
+          $$PortfolioModelItemsTableFilterComposer,
+          $$PortfolioModelItemsTableOrderingComposer,
+          $$PortfolioModelItemsTableAnnotationComposer,
+          $$PortfolioModelItemsTableCreateCompanionBuilder,
+          $$PortfolioModelItemsTableUpdateCompanionBuilder,
+          (PortfolioModelItem, $$PortfolioModelItemsTableReferences),
+          PortfolioModelItem,
+          PrefetchHooks Function({bool modelId})
+        > {
+  $$PortfolioModelItemsTableTableManager(
+    _$AppDatabase db,
+    $PortfolioModelItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PortfolioModelItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PortfolioModelItemsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$PortfolioModelItemsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> modelId = const Value.absent(),
+                Value<String> isin = const Value.absent(),
+                Value<double> targetWeight = const Value.absent(),
+                Value<String> description = const Value.absent(),
+                Value<String?> preferredTicker = const Value.absent(),
+                Value<String?> preferredExchange = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => PortfolioModelItemsCompanion(
+                id: id,
+                modelId: modelId,
+                isin: isin,
+                targetWeight: targetWeight,
+                description: description,
+                preferredTicker: preferredTicker,
+                preferredExchange: preferredExchange,
+                sortOrder: sortOrder,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String modelId,
+                required String isin,
+                required double targetWeight,
+                Value<String> description = const Value.absent(),
+                Value<String?> preferredTicker = const Value.absent(),
+                Value<String?> preferredExchange = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => PortfolioModelItemsCompanion.insert(
+                id: id,
+                modelId: modelId,
+                isin: isin,
+                targetWeight: targetWeight,
+                description: description,
+                preferredTicker: preferredTicker,
+                preferredExchange: preferredExchange,
+                sortOrder: sortOrder,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PortfolioModelItemsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({modelId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (modelId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.modelId,
+                                referencedTable:
+                                    $$PortfolioModelItemsTableReferences
+                                        ._modelIdTable(db),
+                                referencedColumn:
+                                    $$PortfolioModelItemsTableReferences
+                                        ._modelIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PortfolioModelItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PortfolioModelItemsTable,
+      PortfolioModelItem,
+      $$PortfolioModelItemsTableFilterComposer,
+      $$PortfolioModelItemsTableOrderingComposer,
+      $$PortfolioModelItemsTableAnnotationComposer,
+      $$PortfolioModelItemsTableCreateCompanionBuilder,
+      $$PortfolioModelItemsTableUpdateCompanionBuilder,
+      (PortfolioModelItem, $$PortfolioModelItemsTableReferences),
+      PortfolioModelItem,
+      PrefetchHooks Function({bool modelId})
+    >;
 typedef $$PillarsTableCreateCompanionBuilder =
     PillarsCompanion Function({
       required String id,
       required String name,
       Value<double?> targetValue,
       Value<String> targetCurrency,
+      Value<String?> portfolioModelId,
       Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -22038,6 +24130,7 @@ typedef $$PillarsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<double?> targetValue,
       Value<String> targetCurrency,
+      Value<String?> portfolioModelId,
       Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -22047,6 +24140,28 @@ typedef $$PillarsTableUpdateCompanionBuilder =
 final class $$PillarsTableReferences
     extends BaseReferences<_$AppDatabase, $PillarsTable, Pillar> {
   $$PillarsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PortfolioModelsTable _portfolioModelIdTable(_$AppDatabase db) =>
+      db.portfolioModels.createAlias(
+        $_aliasNameGenerator(
+          db.pillars.portfolioModelId,
+          db.portfolioModels.id,
+        ),
+      );
+
+  $$PortfolioModelsTableProcessedTableManager? get portfolioModelId {
+    final $_column = $_itemColumn<String>('portfolio_model_id');
+    if ($_column == null) return null;
+    final manager = $$PortfolioModelsTableTableManager(
+      $_db,
+      $_db.portfolioModels,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_portfolioModelIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>>
   _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
@@ -22110,6 +24225,29 @@ class $$PillarsTableFilterComposer
     column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$PortfolioModelsTableFilterComposer get portfolioModelId {
+    final $$PortfolioModelsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.portfolioModelId,
+      referencedTable: $db.portfolioModels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelsTableFilterComposer(
+            $db: $db,
+            $table: $db.portfolioModels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> pillarAssetsRefs(
     Expression<bool> Function($$PillarAssetsTableFilterComposer f) f,
@@ -22180,6 +24318,29 @@ class $$PillarsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$PortfolioModelsTableOrderingComposer get portfolioModelId {
+    final $$PortfolioModelsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.portfolioModelId,
+      referencedTable: $db.portfolioModels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelsTableOrderingComposer(
+            $db: $db,
+            $table: $db.portfolioModels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$PillarsTableAnnotationComposer
@@ -22215,6 +24376,29 @@ class $$PillarsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$PortfolioModelsTableAnnotationComposer get portfolioModelId {
+    final $$PortfolioModelsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.portfolioModelId,
+      referencedTable: $db.portfolioModels,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PortfolioModelsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.portfolioModels,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<T> pillarAssetsRefs<T extends Object>(
     Expression<T> Function($$PillarAssetsTableAnnotationComposer a) f,
@@ -22255,7 +24439,7 @@ class $$PillarsTableTableManager
           $$PillarsTableUpdateCompanionBuilder,
           (Pillar, $$PillarsTableReferences),
           Pillar,
-          PrefetchHooks Function({bool pillarAssetsRefs})
+          PrefetchHooks Function({bool portfolioModelId, bool pillarAssetsRefs})
         > {
   $$PillarsTableTableManager(_$AppDatabase db, $PillarsTable table)
     : super(
@@ -22274,6 +24458,7 @@ class $$PillarsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<double?> targetValue = const Value.absent(),
                 Value<String> targetCurrency = const Value.absent(),
+                Value<String?> portfolioModelId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -22283,6 +24468,7 @@ class $$PillarsTableTableManager
                 name: name,
                 targetValue: targetValue,
                 targetCurrency: targetCurrency,
+                portfolioModelId: portfolioModelId,
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -22294,6 +24480,7 @@ class $$PillarsTableTableManager
                 required String name,
                 Value<double?> targetValue = const Value.absent(),
                 Value<String> targetCurrency = const Value.absent(),
+                Value<String?> portfolioModelId = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -22303,6 +24490,7 @@ class $$PillarsTableTableManager
                 name: name,
                 targetValue: targetValue,
                 targetCurrency: targetCurrency,
+                portfolioModelId: portfolioModelId,
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -22316,35 +24504,72 @@ class $$PillarsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({pillarAssetsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (pillarAssetsRefs) db.pillarAssets],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (pillarAssetsRefs)
-                    await $_getPrefetchedData<
-                      Pillar,
-                      $PillarsTable,
-                      PillarAsset
-                    >(
-                      currentTable: table,
-                      referencedTable: $$PillarsTableReferences
-                          ._pillarAssetsRefsTable(db),
-                      managerFromTypedResult: (p0) => $$PillarsTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).pillarAssetsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.pillarId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({portfolioModelId = false, pillarAssetsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (pillarAssetsRefs) db.pillarAssets,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (portfolioModelId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.portfolioModelId,
+                                    referencedTable: $$PillarsTableReferences
+                                        ._portfolioModelIdTable(db),
+                                    referencedColumn: $$PillarsTableReferences
+                                        ._portfolioModelIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (pillarAssetsRefs)
+                        await $_getPrefetchedData<
+                          Pillar,
+                          $PillarsTable,
+                          PillarAsset
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PillarsTableReferences
+                              ._pillarAssetsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PillarsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).pillarAssetsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.pillarId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -22361,7 +24586,7 @@ typedef $$PillarsTableProcessedTableManager =
       $$PillarsTableUpdateCompanionBuilder,
       (Pillar, $$PillarsTableReferences),
       Pillar,
-      PrefetchHooks Function({bool pillarAssetsRefs})
+      PrefetchHooks Function({bool portfolioModelId, bool pillarAssetsRefs})
     >;
 typedef $$PillarAssetsTableCreateCompanionBuilder =
     PillarAssetsCompanion Function({
@@ -22779,6 +25004,10 @@ class $AppDatabaseManager {
         _db,
         _db.extraordinaryEventEntries,
       );
+  $$PortfolioModelsTableTableManager get portfolioModels =>
+      $$PortfolioModelsTableTableManager(_db, _db.portfolioModels);
+  $$PortfolioModelItemsTableTableManager get portfolioModelItems =>
+      $$PortfolioModelItemsTableTableManager(_db, _db.portfolioModelItems);
   $$PillarsTableTableManager get pillars =>
       $$PillarsTableTableManager(_db, _db.pillars);
   $$PillarAssetsTableTableManager get pillarAssets =>

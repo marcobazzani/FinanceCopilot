@@ -20,6 +20,7 @@ Account _account(int id) => Account(
 Asset _asset({
   required int id,
   required InstrumentType type,
+  bool includeInSavings = true,
 }) =>
     Asset(
       id: id,
@@ -32,7 +33,7 @@ Asset _asset({
       valuationMethod: ValuationMethod.marketPrice,
       currency: 'EUR',
       isActive: true,
-      includeInNetWorth: true,
+      includeInSavings: includeInSavings,
       sortOrder: 0,
       createdAt: DateTime(2024, 1, 1),
       updatedAt: DateTime(2024, 1, 1),
@@ -83,6 +84,21 @@ void main() {
           _asset(id: 10, type: InstrumentType.etf),
           _asset(id: 11, type: InstrumentType.pension),
           _asset(id: 12, type: InstrumentType.stock),
+        ],
+        activeEvents: const [],
+      );
+      expect(result.first.seriesJson,
+          '[{"type":"asset_market","id":10},{"type":"asset_market","id":12}]');
+    });
+
+    test('all_market_saving expands only assets flagged for savings', () {
+      final result = loader.parse(
+        '{"version":1,"charts":[{"role":"portfolio","title":"Portfolio","categories":["all_market_saving"]}]}',
+        activeAccounts: const [],
+        activeAssets: [
+          _asset(id: 10, type: InstrumentType.etf, includeInSavings: true),
+          _asset(id: 11, type: InstrumentType.stock, includeInSavings: false),
+          _asset(id: 12, type: InstrumentType.stock, includeInSavings: true),
         ],
         activeEvents: const [],
       );

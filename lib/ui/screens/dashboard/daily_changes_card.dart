@@ -90,9 +90,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
 
   bool get _isSpecialUnit => _unit == 'YTD' || _unit == 'All';
 
-  DateTime get _referenceDate {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+  DateTime _referenceDate(DateTime today) {
     return switch (_unit) {
       'd' => today.subtract(Duration(days: _number)),
       'w' => today.subtract(Duration(days: _number * 7)),
@@ -109,8 +107,9 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     // Watch providers to rebuild when period changes
     ref.watch(_priceChangeNumberProvider);
     ref.watch(_priceChangeUnitProvider);
+    final today = ref.watch(currentDateProvider);
     final s = ref.watch(appStringsProvider);
-    final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate));
+    final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate(today)));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
     final symbol = currencySymbol(widget.baseCurrency);

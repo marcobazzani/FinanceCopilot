@@ -44,14 +44,23 @@ class ExtraordinaryEventService {
 
   // ── Event CRUD ──
 
-  SimpleSelectStatement<$ExtraordinaryEventsTable, ExtraordinaryEvent> _activeEvents() =>
-      _db.select(_db.extraordinaryEvents)
-        ..where((e) => e.isActive.equals(true))
-        ..orderBy([(e) => OrderingTerm.desc(e.eventDate)]);
+  SimpleSelectStatement<$ExtraordinaryEventsTable, ExtraordinaryEvent>
+  _activeEvents({DateTime? through}) {
+    final query = _db.select(_db.extraordinaryEvents)
+      ..where((e) => e.isActive.equals(true));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.eventDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(e) => OrderingTerm.desc(e.eventDate)]);
+    return query;
+  }
 
-  Stream<List<ExtraordinaryEvent>> watchAll() => _activeEvents().watch();
+  Stream<List<ExtraordinaryEvent>> watchAll({DateTime? through}) =>
+      _activeEvents(through: through).watch();
 
-  Future<List<ExtraordinaryEvent>> getAll() => _activeEvents().get();
+  Future<List<ExtraordinaryEvent>> getAll({DateTime? through}) =>
+      _activeEvents(through: through).get();
 
   Future<ExtraordinaryEvent> getById(int id) {
     return (_db.select(_db.extraordinaryEvents)
@@ -260,32 +269,55 @@ class ExtraordinaryEventService {
 
   // ── Entries read ──
 
-  Stream<List<ExtraordinaryEventEntry>> watchEntries(int eventId) {
-    return (_db.select(_db.extraordinaryEventEntries)
-          ..where((e) => e.eventId.equals(eventId))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .watch();
+  Stream<List<ExtraordinaryEventEntry>> watchEntries(
+    int eventId, {
+    DateTime? through,
+  }) {
+    final query = _db.select(_db.extraordinaryEventEntries)
+      ..where((e) => e.eventId.equals(eventId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.date.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(e) => OrderingTerm.asc(e.date)]);
+    return query.watch();
   }
 
-  Future<List<ExtraordinaryEventEntry>> getEntries(int eventId) {
-    return (_db.select(_db.extraordinaryEventEntries)
-          ..where((e) => e.eventId.equals(eventId))
-          ..orderBy([(e) => OrderingTerm.asc(e.date)]))
-        .get();
+  Future<List<ExtraordinaryEventEntry>> getEntries(
+    int eventId, {
+    DateTime? through,
+  }) {
+    final query = _db.select(_db.extraordinaryEventEntries)
+      ..where((e) => e.eventId.equals(eventId));
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.date.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(e) => OrderingTerm.asc(e.date)]);
+    return query.get();
   }
 
   // ── Stats ──
 
-  Stream<Map<int, ExtraordinaryEventStats>> watchStatsForAll() {
+  Stream<Map<int, ExtraordinaryEventStats>> watchStatsForAll({
+    DateTime? through,
+  }) {
     final eventStream = (_db.select(_db.extraordinaryEvents)
           ..where((e) => e.isActive.equals(true)))
         .watch();
 
     return eventStream.asyncMap((events) async {
+      final endExclusive = _throughEndExclusive(through);
+      if (endExclusive != null) {
+        events = events
+            .where((e) => e.eventDate.isBefore(endExclusive))
+            .toList();
+      }
       if (events.isEmpty) return <int, ExtraordinaryEventStats>{};
 
       final ids = events.map((e) => e.id).toList();
       final placeholders = ids.map((_) => '?').join(', ');
+      final bounded = through != null;
 
       // Batch query: entry stats per event (use absolute amounts for allocated total)
       final entryStats = await _db.customSelect(
@@ -294,8 +326,12 @@ class ExtraordinaryEventService {
         'MIN(date) AS first_date, MAX(date) AS last_date '
         'FROM extraordinary_event_entries '
         'WHERE event_id IN ($placeholders) '
+        "${bounded ? 'AND date < ? ' : ''}"
         'GROUP BY event_id',
-        variables: [for (final id in ids) Variable.withInt(id)],
+        variables: [
+          for (final id in ids) Variable.withInt(id),
+          ..._throughVars(through),
+        ],
         readsFrom: {_db.extraordinaryEventEntries},
       ).get();
 
@@ -319,8 +355,12 @@ class ExtraordinaryEventService {
           'SELECT buffer_id, COALESCE(ABS(SUM(amount)), 0.0) AS total '
           'FROM buffer_transactions '
           'WHERE buffer_id IN ($bufPlaceholders) AND is_reimbursement = 1 '
+          "${bounded ? 'AND value_date < ? ' : ''}"
           'GROUP BY buffer_id',
-          variables: [for (final id in bufferIds) Variable.withInt(id)],
+          variables: [
+            for (final id in bufferIds) Variable.withInt(id),
+            ..._throughVars(through),
+          ],
           readsFrom: {_db.bufferTransactions},
         ).get();
         for (final row in reimbRows) {
@@ -354,6 +394,21 @@ class ExtraordinaryEventService {
       }
       return result;
     });
+  }
+
+  static DateTime? _throughEndExclusive(DateTime? through) {
+    if (through == null) return null;
+    return DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
+  }
+
+  static List<Variable<int>> _throughVars(DateTime? through) {
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive == null) return const [];
+    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 
   // ── Buffer linking (spread treatment only) ──

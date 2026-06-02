@@ -55,7 +55,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
     final amtFmt   = fmt.amountFormat(widget.locale);
     final sym      = currencySymbol(widget.data.baseCurrency);
     final years    = widget.data.years;
-    final now      = DateTime.now();
+    final now      = ref.watch(currentDateProvider);
     if (years.isEmpty) return const SizedBox.shrink();
 
     final colorIncome   = Colors.green.shade400;
@@ -64,7 +64,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart>
 
     double incomeOf(_YearBucket y)   => widget.monthly ? y.monthlyIncome   : y.income;
     double expensesOf(_YearBucket y) => widget.monthly ? y.monthlyExpenses : y.expenses;
-    double savingsOf(_YearBucket y)  => widget.monthly ? y.savings / max(1, y.months.length) : y.savings;
+    double savingsOf(_YearBucket y)  => widget.monthly ? y.monthlySavings : y.savings;
 
     // Build bar groups: stacked Expenses+Savings rod + thin Income rod
     final showIncome = isVisible('income');

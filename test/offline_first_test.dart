@@ -190,17 +190,19 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 40 after exchange-name normalisation (v40)', () async {
+    test('schema version is 43 after the current migration chain', () async {
       // v36 added Pillars + PillarAssets. v37 dropped
       // pillars.reference_portfolio. v38 dropped pillars.emoji. v39 dropped
       // assets.yahoo_ticker + registered_events. v40 renamed legacy
       // app_configs INVESTING_* keys to PROVIDER_* and normalised
       // assets.exchange (and cache-key suffixes) from internal codes /
-      // Italian variants to canonical English provider names ('MIL'→'Milan',
-      // 'NYQ'→'NYSE', 'Milano'→'Milan', etc.).
+      // Italian variants to canonical English provider names. v41 added
+      // portfolio model tables and the nullable pillar model association.
+      // v42 renamed assets.include_in_net_worth to include_in_savings.
+      // v43 added preferred listing metadata to portfolio model items.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 40);
+      expect(version, 43);
     });
 
     test('dashboard_charts table is gone', () async {

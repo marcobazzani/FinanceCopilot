@@ -139,6 +139,7 @@ ProviderSearchResult? parseProviderPage(String html, Uri pageUrl) {
 
   final name = instrument['name'];
   final exchange = instrument['exchange'];
+  final underlying = instrument['underlying'];
   final type = base['type']?.toString() ?? '';
 
   return ProviderSearchResult(
@@ -154,6 +155,7 @@ ProviderSearchResult? parseProviderPage(String html, Uri pageUrl) {
     flag: _strField(exchange, 'flag') ?? '',
     type: type.isNotEmpty ? type : (base['typeDefine']?.toString() ?? ''),
     url: pageUrl.path.isNotEmpty ? pageUrl.path : null,
+    isin: _strField(underlying, 'isin'),
   );
 }
 

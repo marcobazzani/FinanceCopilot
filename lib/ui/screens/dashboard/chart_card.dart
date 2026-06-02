@@ -109,8 +109,9 @@ class ChartCard extends ConsumerWidget {
     final accountSeries = series.where((s) => s.key.startsWith('account:')).toList();
     final investedSeries = series.where((s) => s.key.startsWith('asset_invested:')).toList();
     final marketSeries = series.where((s) => s.key.startsWith('asset_market:')).toList();
-    final adjustmentSeries = series.where((s) => s.key.startsWith('adjustment:')).toList();
-    final incomeAdjSeries = series.where((s) => s.key.startsWith('income_adj:')).toList();
+    final adjustmentSeries = series.where((s) => isOutflowAdjustmentSeriesKey(s.key)).toList();
+    final incomeAdjSeries = series.where((s) => isIncomeAdjustmentSeriesKey(s.key)).toList();
+    final ephemeralInflowSeries = series.where((s) => isEphemeralInflowSeriesKey(s.key)).toList();
     final gainSeries = series.where((s) => s.key.startsWith('asset_gain:')).toList();
     final cfSeries = series.where((s) => s.key.startsWith('cf:')).toList();
     final combinedSeries = series.where((s) => s.key.startsWith('combined_src:')).toList();
@@ -204,6 +205,7 @@ class ChartCard extends ConsumerWidget {
               marketSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? marketSeries : [],
               adjustmentSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? adjustmentSeries : [],
               incomeAdjSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? incomeAdjSeries : [],
+              ephemeralInflowSeries: cfSeries.isEmpty && combinedSeries.isEmpty ? ephemeralInflowSeries : [],
               otherSeries: combinedSeries.isNotEmpty ? combinedSeries : (cfSeries.isNotEmpty ? cfSeries : gainSeries),
               showTotalItem: showTotal && chart.sourceChartIds == null && cfSeries.isEmpty,
               hidden: hidden,
@@ -212,6 +214,7 @@ class ChartCard extends ConsumerWidget {
               accountsLabel: s.legendAccounts,
               spreadAdjLabel: s.legendSpreadAdj,
               incomeAdjLabel: s.legendIncomeAdj,
+              ephemeralInflowLabel: s.legendEphemeralInflow,
               assetsLabel: s.dashAssets,
               totalLabel: s.legendTotal,
             ),
@@ -327,6 +330,7 @@ class _ChartLegend extends StatelessWidget {
   final List<ChartSeries> marketSeries;
   final List<ChartSeries> adjustmentSeries;
   final List<ChartSeries> incomeAdjSeries;
+  final List<ChartSeries> ephemeralInflowSeries;
   final List<ChartSeries> otherSeries; // e.g. cash-flow series with cf: prefix
   final bool showTotalItem;
   final Set<String> hidden;
@@ -335,6 +339,7 @@ class _ChartLegend extends StatelessWidget {
   final String accountsLabel;
   final String spreadAdjLabel;
   final String incomeAdjLabel;
+  final String ephemeralInflowLabel;
   final String assetsLabel;
   final String totalLabel;
 
@@ -344,6 +349,7 @@ class _ChartLegend extends StatelessWidget {
     required this.marketSeries,
     required this.adjustmentSeries,
     required this.incomeAdjSeries,
+    required this.ephemeralInflowSeries,
     this.otherSeries = const [],
     this.showTotalItem = true,
     required this.hidden,
@@ -352,6 +358,7 @@ class _ChartLegend extends StatelessWidget {
     required this.accountsLabel,
     required this.spreadAdjLabel,
     required this.incomeAdjLabel,
+    required this.ephemeralInflowLabel,
     required this.assetsLabel,
     required this.totalLabel,
   });
@@ -370,6 +377,8 @@ class _ChartLegend extends StatelessWidget {
           ..._buildGroup(context, spreadAdjLabel, adjustmentSeries),
         if (incomeAdjSeries.isNotEmpty)
           ..._buildGroup(context, incomeAdjLabel, incomeAdjSeries),
+        if (ephemeralInflowSeries.isNotEmpty)
+          ..._buildGroup(context, ephemeralInflowLabel, ephemeralInflowSeries),
         for (final s in otherSeries)
           _ToggleLegendItem(
             color: s.color,

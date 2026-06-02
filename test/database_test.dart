@@ -142,6 +142,8 @@ void main() {
         'idx_market_prices_asset_date',
         'idx_buffer_transactions_buffer_id',
         'idx_pillar_assets_asset',
+        'idx_portfolio_model_items_model',
+        'idx_pillars_portfolio_model',
       ]));
     });
   });

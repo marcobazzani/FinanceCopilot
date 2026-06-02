@@ -5,8 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/models/dashboard_chart.dart';
-import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart'
-    show AllSeriesData, ChartRoles, ChartSeries, buildTotalSpots;
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, ChartRoles, ChartSeries, buildTotalSpots;
 
 /// Fixture: accounts + invested + market + gain + adjustment split across
 /// two assets, one of which is marked illiquid in the asset list below.
@@ -72,31 +71,31 @@ AllSeriesData _allData() {
 }
 
 List<Asset> _assets() => [
-      _asset(id: 10, name: 'Stock ETF', type: InstrumentType.etf),
-      _asset(id: 11, name: 'Pension', type: InstrumentType.pension),
-    ];
+  _asset(id: 10, name: 'Stock ETF', type: InstrumentType.etf),
+  _asset(id: 11, name: 'Pension', type: InstrumentType.pension),
+];
 
 Asset _asset({
   required int id,
   required String name,
   required InstrumentType type,
-}) =>
-    Asset(
-      id: id,
-      intermediaryId: 1,
-      name: name,
-      assetType: AssetType.stockEtf,
-      instrumentType: type,
-      assetClass: AssetClass.equity,
-      assetGroup: '',
-      valuationMethod: ValuationMethod.marketPrice,
-      currency: 'EUR',
-      isActive: true,
-      includeInNetWorth: true,
-      sortOrder: 0,
-      createdAt: DateTime(2024, 1, 1),
-      updatedAt: DateTime(2024, 1, 1),
-    );
+  bool includeInSavings = true,
+}) => Asset(
+  id: id,
+  intermediaryId: 1,
+  name: name,
+  assetType: AssetType.stockEtf,
+  instrumentType: type,
+  assetClass: AssetClass.equity,
+  assetGroup: '',
+  valuationMethod: ValuationMethod.marketPrice,
+  currency: 'EUR',
+  isActive: true,
+  includeInSavings: includeInSavings,
+  sortOrder: 0,
+  createdAt: DateTime(2024, 1, 1),
+  updatedAt: DateTime(2024, 1, 1),
+);
 
 DashboardChart _chart({
   required int id,
@@ -104,15 +103,14 @@ DashboardChart _chart({
   required String widgetType,
   required String seriesJson,
   int sortOrder = 0,
-}) =>
-    DashboardChart(
-      id: id,
-      title: title,
-      widgetType: widgetType,
-      sortOrder: sortOrder,
-      seriesJson: seriesJson,
-      createdAt: DateTime(2024, 1, 1),
-    );
+}) => DashboardChart(
+  id: id,
+  title: title,
+  widgetType: widgetType,
+  sortOrder: sortOrder,
+  seriesJson: seriesJson,
+  createdAt: DateTime(2024, 1, 1),
+);
 
 void main() {
   group('ChartRoles.spotsForRole — fallback when role chart absent', () {
@@ -126,6 +124,27 @@ void main() {
       final d = _allData();
       final got = ChartRoles.spotsForRole('saving', const [], d, _assets());
       expect(got, d.savingSpots);
+    });
+
+    test('saving: no role chart → excludes assets outside savings', () {
+      final d = _allData();
+      final assets = [
+        _asset(id: 10, name: 'Stock ETF', type: InstrumentType.etf),
+        _asset(
+          id: 11,
+          name: 'Pension',
+          type: InstrumentType.pension,
+          includeInSavings: false,
+        ),
+      ];
+      final got = ChartRoles.spotsForRole('saving', const [], d, assets);
+      final expected = buildTotalSpots([
+        ...d.accounts.map((s) => s.spots),
+        d.assetInvested.firstWhere((s) => s.key == 'asset_invested:10').spots,
+        ...d.adjustments.map((s) => s.spots),
+        ...d.incomeAdjustments.map((s) => s.spots),
+      ]);
+      expect(got, expected);
     });
 
     test('portfolio: no role chart → returns total of all assetMarket', () {
@@ -203,6 +222,79 @@ void main() {
     });
   });
 
+  group('ChartRoles.assetIdsForRoleTotal', () {
+    test('saving fallback includes only invested assets marked for savings', () {
+      final d = _allData();
+      final assets = [
+        _asset(id: 10, name: 'Stock ETF', type: InstrumentType.etf),
+        _asset(
+          id: 11,
+          name: 'Pension',
+          type: InstrumentType.pension,
+          includeInSavings: false,
+        ),
+      ];
+      final got = ChartRoles.assetIdsForRoleTotal('saving', const [], d, assets);
+      expect(got, {10});
+    });
+
+    test('custom saving chart reports only assets contributing to the total', () {
+      final d = _allData();
+      final custom = _chart(
+        id: 4,
+        title: 'Saving',
+        widgetType: 'saving',
+        seriesJson: '[{"type":"asset_invested","id":10},{"type":"account","id":1}]',
+      );
+      final got = ChartRoles.assetIdsForRoleTotal('saving', [custom], d, _assets());
+      expect(got, {10});
+    });
+
+    test('asset net supersedes invested and market without losing the asset id', () {
+      final d = AllSeriesData(
+        firstDate: DateTime(2024, 1, 1),
+        accounts: const [],
+        assetInvested: [
+          ChartSeries(
+            key: 'asset_invested:10',
+            name: 'Stock ETF cost',
+            color: Colors.orange,
+            spots: const [FlSpot(0, 1000)],
+          ),
+        ],
+        assetMarket: [
+          ChartSeries(
+            key: 'asset_market:10',
+            name: 'Stock ETF value',
+            color: Colors.orange,
+            spots: const [FlSpot(0, 1100)],
+          ),
+        ],
+        assetGain: const [],
+        assetNet: [
+          ChartSeries(
+            key: 'asset_net:10',
+            name: 'Stock ETF net',
+            color: Colors.orange,
+            spots: const [FlSpot(0, 1050)],
+          ),
+        ],
+        adjustments: const [],
+        incomeAdjustments: const [],
+        ephemeralInflows: const [],
+        baseCurrency: 'EUR',
+      );
+      final custom = _chart(
+        id: 5,
+        title: 'Saving',
+        widgetType: 'saving',
+        seriesJson: '[{"type":"asset_invested","id":10},{"type":"asset_market","id":10},{"type":"asset_net","id":10}]',
+      );
+      final got = ChartRoles.assetIdsForRoleTotal('saving', [custom], d, _assets());
+      expect(got, {10});
+    });
+  });
+
   group('ChartRoles.spotsForRole — resolvable-series check', () {
     test('role chart with only nonexistent IDs → falls back to hard-coded', () {
       final d = _allData();
@@ -232,4 +324,3 @@ void main() {
     });
   });
 }
-

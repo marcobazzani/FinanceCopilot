@@ -28,12 +28,9 @@ void main() {
     expect(await AppSettings.loadLanguageForStartup(), 'it');
   });
 
-  test(
-    'loadLanguageForStartup falls back to English for malformed values',
-    () async {
-      await AppSettings.set('language', 'pt');
+  test('loadLanguageForStartup falls back to English for malformed values', () async {
+    await AppSettings.set('language', 'pt');
 
-      expect(await AppSettings.loadLanguageForStartup(), 'en');
-    },
-  );
+    expect(await AppSettings.loadLanguageForStartup(), 'en');
+  });
 }

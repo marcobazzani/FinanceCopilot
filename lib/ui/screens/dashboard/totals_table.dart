@@ -217,12 +217,24 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     color: theme.colorScheme.onSurfaceVariant,
   );
 
+  static const Map<String, IconData> _seriesIconByPrefix = {
+    'account:': Icons.account_balance,
+    'asset_market:': Icons.show_chart,
+    'asset_invested:': Icons.pie_chart,
+    'adjustment:': Icons.calendar_month,
+    'adjustment_value:': Icons.calendar_month,
+    'adjustment_events:': Icons.calendar_month,
+    'income_adj:': Icons.receipt_long,
+    'income_adj_value:': Icons.receipt_long,
+    'income_adj_events:': Icons.receipt_long,
+    'ephemeral_inflow_value:': Icons.credit_card,
+    'ephemeral_inflow_events:': Icons.credit_card,
+  };
+
   static IconData _iconForSeriesKey(String key) {
-    if (key.startsWith('account:')) return Icons.account_balance;
-    if (key.startsWith('asset_market:')) return Icons.show_chart;
-    if (key.startsWith('asset_invested:')) return Icons.pie_chart;
-    if (key.startsWith('adjustment:')) return Icons.calendar_month;
-    if (key.startsWith('income_adj:')) return Icons.receipt_long;
+    for (final entry in _seriesIconByPrefix.entries) {
+      if (key.startsWith(entry.key)) return entry.value;
+    }
     return Icons.circle;
   }
 

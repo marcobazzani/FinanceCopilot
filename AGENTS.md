@@ -59,6 +59,9 @@
 
 Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
+- Always use `./do-release.sh` from the repo root for releases. It is the release entrypoint; do not hand-run the individual tag/release steps unless the script itself cannot complete. If a pre-release cleanup hook is available, pass it via `--cleanup-cmd` or `PRE_RELEASE_CLEANUP_CMD`.
+- The script accepts `--version`, `--title`, and optional `--merge-pr`, `--notes-file`, `--cleanup-cmd`, `--skip-cleanup`, and `--no-sync-develop`.
+
 0. **Pre-release check**: a working nightly build with `main` merged into `develop` must exist and pass CI before starting the release. Verify with `gh run list --branch develop --limit 1`.
 1. Merge `develop` into `main` (via PR if protected, else direct merge).
 2. Summarize changes: run `git log --oneline vPREVIOUS..HEAD` and write a user-facing summary.

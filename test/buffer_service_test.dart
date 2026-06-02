@@ -137,6 +137,38 @@ void main() {
       expect(txns[2].operationDate, DateTime(2024, 6, 1));
     });
 
+    test('through date filters buffer rows and balance by valueDate', () async {
+      await service.createTransaction(
+        bufferId: bufferId,
+        currency: 'EUR',
+        operationDate: DateTime(2024, 6, 1),
+        valueDate: DateTime(2024, 2, 29, 12),
+        amount: 100,
+      );
+      await service.createTransaction(
+        bufferId: bufferId,
+        currency: 'EUR',
+        operationDate: DateTime(2024, 1, 1),
+        valueDate: DateTime(2024, 3, 1),
+        amount: 200,
+      );
+
+      final txns = await service.getByBuffer(
+        bufferId,
+        through: DateTime(2024, 2, 29),
+      );
+      expect(txns.map((t) => t.amount), [100]);
+
+      final balance = await service.computeBalance(
+        bufferId,
+        through: DateTime(2024, 2, 29),
+      );
+      expect(balance, 100);
+
+      final rawRows = await db.select(db.bufferTransactions).get();
+      expect(rawRows, hasLength(2));
+    });
+
     test('computeBalance returns sum of amounts', () async {
       await service.createTransaction(
         bufferId: bufferId,

@@ -2,8 +2,7 @@ part of 'providers.dart';
 
 // ── Service providers ──
 
-Provider<T> _dbService<T>(T Function(AppDatabase) ctor) =>
-    Provider<T>((ref) => ctor(ref.watch(databaseProvider)));
+Provider<T> _dbService<T>(T Function(AppDatabase) ctor) => Provider<T>((ref) => ctor(ref.watch(databaseProvider)));
 
 final intermediaryServiceProvider = _dbService(IntermediaryService.new);
 final accountServiceProvider = _dbService(AccountService.new);
@@ -56,7 +55,15 @@ final incomeServiceProvider = _dbService(IncomeService.new);
 // ── Pillar providers ──
 
 final pillarServiceProvider = _dbService(PillarService.new);
+final portfolioModelServiceProvider = _dbService(PortfolioModelService.new);
+final portfolioRebalanceServiceProvider = Provider<PortfolioRebalanceService>((ref) {
+  final db = ref.watch(databaseProvider);
+  final priceService = ref.watch(marketPriceServiceProvider);
+  return PortfolioRebalanceService(
+    db,
+    marketDataService: priceService is WebMarketDataService ? priceService : null,
+  );
+});
 
 /// Currently selected pillar scope on dashboards (default: All).
-final selectedPillarScopeProvider =
-    StateProvider<PillarScope>((ref) => const PillarScope.all());
+final selectedPillarScopeProvider = StateProvider<PillarScope>((ref) => const PillarScope.all());

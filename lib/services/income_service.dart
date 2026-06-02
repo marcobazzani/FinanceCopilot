@@ -11,16 +11,24 @@ class IncomeService {
 
   IncomeService(this._db);
 
-  Stream<List<Income>> watchAll() {
-    return (_db.select(_db.incomes)
-          ..orderBy([(i) => OrderingTerm.desc(i.valueDate)]))
-        .watch();
+  Stream<List<Income>> watchAll({DateTime? through}) {
+    final query = _db.select(_db.incomes);
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((i) => i.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(i) => OrderingTerm.desc(i.valueDate)]);
+    return query.watch();
   }
 
-  Future<List<Income>> getAll() {
-    return (_db.select(_db.incomes)
-          ..orderBy([(i) => OrderingTerm.desc(i.valueDate)]))
-        .get();
+  Future<List<Income>> getAll({DateTime? through}) {
+    final query = _db.select(_db.incomes);
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((i) => i.valueDate.isSmallerThanValue(endExclusive));
+    }
+    query.orderBy([(i) => OrderingTerm.desc(i.valueDate)]);
+    return query.get();
   }
 
   Future<Income> getById(int id) {
@@ -79,5 +87,14 @@ class IncomeService {
     await _db.batch((batch) {
       batch.insertAll(_db.incomes, entries);
     });
+  }
+
+  static DateTime? _throughEndExclusive(DateTime? through) {
+    if (through == null) return null;
+    return DateTime(
+      through.year,
+      through.month,
+      through.day,
+    ).add(const Duration(days: 1));
   }
 }

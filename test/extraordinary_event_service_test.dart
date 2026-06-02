@@ -334,6 +334,102 @@ void main() {
       expect(inflowStats.totalAllocated, 1500);
       expect(inflowStats.remaining, 8500);
     });
+
+    test(
+      'through date filters events, entries, and reimbursements without deleting data',
+      () async {
+        final visibleId = await service.create(
+          name: 'Visible',
+          direction: EventDirection.outflow,
+          treatment: EventTreatment.instant,
+          totalAmount: 500,
+          currency: 'EUR',
+          eventDate: DateTime(2024, 1, 1),
+        );
+        await service.addManualEntry(
+          eventId: visibleId,
+          date: DateTime(2024, 2, 29, 12),
+          amount: 100,
+        );
+        await service.addManualEntry(
+          eventId: visibleId,
+          date: DateTime(2024, 3, 1),
+          amount: 200,
+        );
+
+        await service.create(
+          name: 'Future',
+          direction: EventDirection.outflow,
+          treatment: EventTreatment.instant,
+          totalAmount: 900,
+          currency: 'EUR',
+          eventDate: DateTime(2024, 3, 1),
+        );
+
+        final bufferId = await db
+            .into(db.buffers)
+            .insert(BuffersCompanion.insert(name: 'Linked'));
+        await db
+            .into(db.extraordinaryEvents)
+            .insert(
+              ExtraordinaryEventsCompanion.insert(
+                name: 'Buffered',
+                direction: EventDirection.outflow,
+                treatment: EventTreatment.spread,
+                totalAmount: 300,
+                eventDate: DateTime(2024, 1, 1),
+                bufferId: Value(bufferId),
+              ),
+            );
+        await db
+            .into(db.bufferTransactions)
+            .insert(
+              BufferTransactionsCompanion.insert(
+                bufferId: bufferId,
+                operationDate: DateTime(2024, 2, 29),
+                valueDate: DateTime(2024, 2, 29, 12),
+                amount: 50,
+                balanceAfter: 50,
+                isReimbursement: const Value(true),
+              ),
+            );
+        await db
+            .into(db.bufferTransactions)
+            .insert(
+              BufferTransactionsCompanion.insert(
+                bufferId: bufferId,
+                operationDate: DateTime(2024, 3, 1),
+                valueDate: DateTime(2024, 3, 1),
+                amount: 70,
+                balanceAfter: 120,
+                isReimbursement: const Value(true),
+              ),
+            );
+
+        final events = await service.getAll(through: DateTime(2024, 2, 29));
+        expect(events.map((e) => e.name), isNot(contains('Future')));
+
+        final entries = await service.getEntries(
+          visibleId,
+          through: DateTime(2024, 2, 29),
+        );
+        expect(entries.map((e) => e.amount), [-100]);
+
+        final stats = await service
+            .watchStatsForAll(through: DateTime(2024, 2, 29))
+            .first;
+        expect(stats[visibleId]!.entryCount, 1);
+        expect(stats[visibleId]!.totalAllocated, 100);
+        final buffered = events.singleWhere((e) => e.name == 'Buffered');
+        expect(stats[buffered.id]!.totalReimbursed, 50);
+
+        expect(
+          await db.select(db.extraordinaryEventEntries).get(),
+          hasLength(2),
+        );
+        expect(await db.select(db.bufferTransactions).get(), hasLength(2));
+      },
+    );
   });
 
   group('Ephemeral inflow flag', () {

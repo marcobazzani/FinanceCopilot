@@ -39,6 +39,27 @@ ExtraordinaryEvent _event({
       updatedAt: DateTime(2024, 1, 1),
     );
 
+Asset _asset({
+  required int id,
+  bool includeInSavings = true,
+}) =>
+    Asset(
+      id: id,
+      intermediaryId: 1,
+      name: 'Asset $id',
+      assetType: AssetType.stockEtf,
+      instrumentType: InstrumentType.etf,
+      assetClass: AssetClass.equity,
+      assetGroup: '',
+      valuationMethod: ValuationMethod.marketPrice,
+      currency: 'EUR',
+      isActive: true,
+      includeInSavings: includeInSavings,
+      sortOrder: 0,
+      createdAt: DateTime(2024, 1, 1),
+      updatedAt: DateTime(2024, 1, 1),
+    );
+
 DashboardChart _chart({
   required int id,
   required String widgetType,
@@ -125,6 +146,32 @@ void main() {
         ),
         throwsA(isA<PartialCategoryExportException>()),
       );
+    });
+
+    test('emits savings asset category when non-savings assets are deselected', () {
+      final assets = [
+        _asset(id: 10, includeInSavings: true),
+        _asset(id: 11, includeInSavings: false),
+        _asset(id: 12, includeInSavings: true),
+      ];
+      final json = exporter.export(
+        charts: [
+          _chart(
+            id: 1,
+            widgetType: 'portfolio',
+            title: 'Portfolio',
+            seriesJson:
+                '[{"type":"asset_market","id":10},{"type":"asset_market","id":12}]',
+          ),
+        ],
+        activeAccounts: const [],
+        activeAssets: assets,
+        activeEvents: const [],
+      );
+      final decoded = jsonDecode(json) as Map<String, dynamic>;
+      final charts = (decoded['charts'] as List).cast<Map<String, dynamic>>();
+      expect(charts.first['role'], 'portfolio');
+      expect(charts.first['categories'], contains('all_market_saving'));
     });
 
     test('combined chart with int-id sources emits "*" when covering all', () {
@@ -220,6 +267,33 @@ void main() {
       expect(round.first.seriesJson, original.first.seriesJson);
       expect(round.first.widgetType, original.first.widgetType);
       expect(round.first.title, original.first.title);
+    });
+
+    test('savings asset category round-trips cleanly', () {
+      final assets = [
+        _asset(id: 10, includeInSavings: true),
+        _asset(id: 11, includeInSavings: false),
+        _asset(id: 12, includeInSavings: true),
+      ];
+      final original = loader.parse(
+        '{"version":1,"charts":[{"role":"portfolio","title":"Portfolio","categories":["all_market_saving"]}]}',
+        activeAccounts: const [],
+        activeAssets: assets,
+        activeEvents: const [],
+      );
+      final json = exporter.export(
+        charts: original,
+        activeAccounts: const [],
+        activeAssets: assets,
+        activeEvents: const [],
+      );
+      final round = loader.parse(
+        json,
+        activeAccounts: const [],
+        activeAssets: assets,
+        activeEvents: const [],
+      );
+      expect(round.first.seriesJson, original.first.seriesJson);
     });
   });
 }
