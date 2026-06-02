@@ -240,6 +240,36 @@ final pillarAllocationDataProvider = FutureProvider.family<PillarAllocationData,
   );
 });
 
+final pillarPerformanceSnapshotsProvider = FutureProvider<Map<String, PillarPerformanceSnapshot>>((ref) async {
+  ref.watch(pillarAssetsProvider);
+  final currentDate = ref.watch(currentDateProvider);
+  final allData = await ref.watch(allSeriesDataProvider.future);
+  final pillars = await ref.watch(pillarsProvider.future);
+  if (allData == null || pillars.isEmpty) return const {};
+
+  final pillarService = ref.read(pillarServiceProvider);
+  final pairs = await Future.wait(
+    pillars.map((pillar) async {
+      final fractions = await pillarService.fractionsForPillar(pillar.id);
+      return MapEntry(
+        pillar.id,
+        computePillarPerformanceSnapshot(
+          asOfDate: currentDate,
+          allData: allData,
+          fractions: fractions,
+        ),
+      );
+    }),
+  );
+  return {for (final pair in pairs) pair.key: pair.value};
+});
+
+final pillarPerformanceProvider = FutureProvider.family<PillarPerformanceSnapshot, String>((ref, pillarId) async {
+  final currentDate = ref.watch(currentDateProvider);
+  final snapshots = await ref.watch(pillarPerformanceSnapshotsProvider.future);
+  return snapshots[pillarId] ?? PillarPerformanceSnapshot.empty(currentDate);
+});
+
 /// IDs of active, marketPrice-valued assets that have no rows in
 /// `market_prices`. The asset's displayed value falls back to the buy or
 /// revalue price; the UI uses this set to flag the value as not market-sourced.

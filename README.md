@@ -45,6 +45,8 @@ Period-selectable price-change table (1D/1W/1M/3M/6M/1Y/YTD/All) plus the Totals
 |---|---|
 | ![History](docs/screenshots/dashboard.png) | ![History (mobile)](docs/screenshots/dashboard_mobile.png) |
 
+The global Wayback controls now let you pin the whole app to a historical date, last month-end, or last year-end so dashboards, assets, and pillars all render from the same point in time.
+
 ### Cash Flow
 Saving vs moving-average chart, expenses vs MA & cash, and velocity. Configurable MA window per chart.
 
@@ -90,6 +92,10 @@ Each pillar drills into its own objective, history chart, and per-asset allocati
 |---|---|
 | ![Pillar Detail](docs/screenshots/pillar_detail.png) | ![Pillar Detail (mobile)](docs/screenshots/pillar_detail_mobile.png) |
 
+Portfolio Models now sit alongside Pillars: 32 built-in models are preloaded from the catalog, custom models can be created in-app, and each pillar can be linked to a target model to inspect divergence by ISIN, extra holdings, and unresolved items.
+
+From the same flow, rebalance can build either **Sell and buy** or **Buy only** draft transactions with tax estimate, whole-unit execution, live market-data resolution for missing target assets, and an explicit apply step instead of writing trades immediately.
+
 ### Import
 Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.
 
@@ -105,10 +111,17 @@ Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. I
 
 ### Dashboards
 - **Financial Health** — KPI scoring with Liquidity, Wealth, and Performance & Diversification categories (Net Worth Ratio, Expense Coverage, Savings Rate, Investment Weight, Liquid Asset Ratio, Income-to-Wealth, HHI, weighted TER, …)
-- **History** — combined chart, top movers, smart Totals
+- **History** — combined chart, top movers, smart Totals, plus global historical Wayback controls
 - **Cash Flow** — saving / spending / velocity with configurable MA windows
 - **Allocation** — six donuts + drill-down + concentration metrics (Top 1/3/5, HHI)
 - **Privacy mode** — single-toggle blur on every amount, price, quantity, and target across the app
+
+### Pillars & Portfolio Models
+- Goal-based pillars with target value, progress tracking, per-asset unit allocation, and historical charting
+- 32 built-in portfolio models preloaded from the bundled catalog, split by year / equity band / variant
+- Custom portfolio models with editable ISIN weights
+- Divergence view per pillar: target vs current weight, unmatched model rows, extra holdings, and unresolved holdings
+- Rebalance preview with **Sell and buy** and **Buy only** modes, estimated tax, whole-unit execution, and explicit draft apply
 
 ### Import
 - CSV, XLSX, clipboard

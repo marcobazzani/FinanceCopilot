@@ -75,6 +75,12 @@ class AppStrings {
   String get pillarTargetProgress => _it ? 'Progresso' : 'Progress';
   String pillarValue(String formatted) => _it ? 'Valore: $formatted' : 'Value: $formatted';
   String pillarTarget(String formatted) => _it ? 'Obiettivo: $formatted' : 'Target: $formatted';
+  String get pillarAbsoluteReturn => _it ? 'Rendimento assoluto' : 'Absolute return';
+  String get pillarTwrr => 'TWRR';
+  String get pillarCagr => 'CAGR';
+  String get pillarAbsoluteReturnShort => _it ? 'Ass.' : 'Abs';
+  String get pillarTwrrShort => 'TWRR';
+  String get pillarCagrShort => 'CAGR';
   String pillarAssetCount(int n) => _it ? '$n asset' : (n == 1 ? '1 asset' : '$n assets');
   String get pillarEditAssetsTitle => _it ? 'Modifica asset del pilastro' : 'Edit pillar assets';
   String get pillarShowAllAssets => _it ? 'Tutti gli asset' : 'All assets';

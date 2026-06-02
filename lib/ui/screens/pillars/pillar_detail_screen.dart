@@ -1,4 +1,3 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,13 +5,14 @@ import 'package:intl/intl.dart';
 import '../../../database/database.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../models/dashboard_chart.dart';
+import '../../../services/pillar_performance.dart';
 import '../../../services/pillar_service.dart';
 import '../../../services/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
-import '../dashboard/dashboard_screen.dart' show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider, buildTotalSpots;
+import '../dashboard/dashboard_screen.dart' show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider;
 import '../allocation_tab.dart';
 import 'pillar_create_dialog.dart';
 import 'rebalance_preview_dialog.dart';
@@ -285,9 +285,11 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
     final marketValues = ref.watch(assetMarketValuesProvider).value ?? const <int, double>{};
     final pillarsAsync = ref.watch(pillarsProvider);
     final allAsync = ref.watch(allSeriesDataProvider);
+    final performanceAsync = ref.watch(pillarPerformanceProvider(widget.pillarId));
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en';
     final language = locale.split('_').first;
+    final asOfDate = ref.watch(currentDateProvider);
 
     final assets = assetsAsync.value ?? const <Asset>[];
     final assetById = {for (final a in assets) a.id: a};
@@ -332,6 +334,14 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
     });
 
     final fractions = _liveFractions();
+    final livePerformance = allAsync.value == null
+        ? null
+        : computePillarPerformanceSnapshot(
+            asOfDate: asOfDate,
+            allData: allAsync.value!,
+            fractions: fractions,
+          );
+    final performance = livePerformance ?? performanceAsync.value;
 
     return Column(
       children: [
@@ -341,6 +351,7 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
             child: _ObjectiveCard(
               pillar: pillar,
               value: pillarValue,
+              performance: performance,
               locale: locale,
               baseCurrency: baseCurrency,
             ),
@@ -482,41 +493,12 @@ class _PillarMarketInvestedChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Aggregate first: scale each per-asset series by the pillar's
-    // fraction, then build ONE invested line and ONE market line via
-    // carry-forward summation. Per-asset breakdown is intentionally
-    // hidden — the chart shows pillar-level totals only.
-    final scaledInvested = <List<FlSpot>>[];
-    final scaledMarket = <List<FlSpot>>[];
-    double? minX;
-    void seenX(double x) {
-      if (minX == null || x < minX!) minX = x;
-    }
-
-    for (final entry in fractions.entries) {
-      final fraction = entry.value;
-      if (fraction <= 0) continue;
-      final inv = allData.assetInvested.where((x) => x.key == 'asset_invested:${entry.key}').firstOrNull;
-      final mkt = allData.assetMarket.where((x) => x.key == 'asset_market:${entry.key}').firstOrNull;
-      if (inv != null) {
-        if (inv.spots.isNotEmpty) seenX(inv.spots.first.x);
-        scaledInvested.add(
-          inv.spots.map((p) => FlSpot(p.x, p.y * fraction)).toList(),
-        );
-      }
-      if (mkt != null) {
-        if (mkt.spots.isNotEmpty) seenX(mkt.spots.first.x);
-        scaledMarket.add(
-          mkt.spots.map((p) => FlSpot(p.x, p.y * fraction)).toList(),
-        );
-      }
-    }
-    // Trim leading empty area: drop spots before the pillar's first data
-    // point and shift x so the chart's x=0 lines up with that date.
-    final shift = minX ?? 0;
-    List<FlSpot> trim(List<FlSpot> s) => s.where((p) => p.x >= shift).map((p) => FlSpot(p.x - shift, p.y)).toList();
-    final investedTotal = buildTotalSpots(scaledInvested.map(trim).toList());
-    final marketTotal = buildTotalSpots(scaledMarket.map(trim).toList());
+    final history = buildPillarScopedHistory(
+      allData: allData,
+      fractions: fractions,
+    );
+    final investedTotal = history.investedTotal;
+    final marketTotal = history.marketTotal;
 
     // Use the dashboard's `asset_invested:<id>` / `asset_market:<id>` key
     // shape so ChartCard's smart-total logic recognises the pair and
@@ -555,7 +537,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
     // `firstDate` and `baseCurrency` from this object; the per-category
     // lists are unused because we pass `series` directly.
     final trimmedAllData = AllSeriesData(
-      firstDate: allData.firstDate.add(Duration(days: shift.toInt())),
+      firstDate: history.inceptionDate ?? allData.firstDate,
       accounts: const [],
       assetInvested: const [],
       assetMarket: const [],
@@ -830,11 +812,13 @@ String _normaliseIsin(String value) => value.trim().toUpperCase();
 class _ObjectiveCard extends ConsumerWidget {
   final Pillar pillar;
   final double value;
+  final PillarPerformanceSnapshot? performance;
   final String locale;
   final String baseCurrency;
   const _ObjectiveCard({
     required this.pillar,
     required this.value,
+    required this.performance,
     required this.locale,
     required this.baseCurrency,
   });
@@ -843,6 +827,10 @@ class _ObjectiveCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final hasTarget = pillar.targetValue != null && pillar.targetValue! > 0;
+    final amountFormat = fmt.amountFormat(locale);
+    final percentFormat = NumberFormat.percentPattern(locale)
+      ..minimumFractionDigits = 1
+      ..maximumFractionDigits = 1;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -860,9 +848,84 @@ class _ObjectiveCard extends ConsumerWidget {
                 value: (value / pillar.targetValue!).clamp(0.0, 1.0),
               ),
             ],
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            _PerformanceRow(
+              label: s.pillarAbsoluteReturn,
+              value: _formatAbsoluteReturn(
+                amountFormat: amountFormat,
+                percentFormat: percentFormat,
+                baseCurrency: baseCurrency,
+                snapshot: performance,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _PerformanceRow(
+              label: s.pillarTwrr,
+              value: _formatPercent(
+                performance?.twrr,
+                percentFormat,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _PerformanceRow(
+              label: s.pillarCagr,
+              value: _formatPercent(
+                performance?.cagr,
+                percentFormat,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+class _PerformanceRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _PerformanceRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+        PrivacyText(
+          value,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+}
+
+String _formatAbsoluteReturn({
+  required NumberFormat amountFormat,
+  required NumberFormat percentFormat,
+  required String baseCurrency,
+  required PillarPerformanceSnapshot? snapshot,
+}) {
+  if (snapshot == null || (snapshot.marketValue == 0 && snapshot.netInvested == 0)) {
+    return '—';
+  }
+  final amount = '${amountFormat.format(snapshot.absoluteReturnAmount)} $baseCurrency';
+  final pct = _formatPercent(snapshot.absoluteReturnPct, percentFormat);
+  return '$amount · $pct';
+}
+
+String _formatPercent(double? value, NumberFormat percentFormat) {
+  if (value == null || !value.isFinite) return '—';
+  return percentFormat.format(value);
 }

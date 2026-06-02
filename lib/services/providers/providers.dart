@@ -27,6 +27,7 @@ import '../isin_lookup_service.dart';
 import '../financial_health_service.dart';
 import '../market_price_service.dart';
 import '../intermediary_service.dart';
+import '../pillar_performance.dart';
 import '../pillar_scope.dart';
 import '../pillar_service.dart';
 import '../portfolio_model_service.dart';
@@ -35,6 +36,7 @@ import '../transaction_service.dart';
 import '../../utils/asset_value_math.dart';
 import '../../utils/logger.dart';
 import '../../utils/visualization_clock.dart';
+import '../../ui/screens/dashboard/dashboard_screen.dart' show allSeriesDataProvider;
 
 part 'app_state_providers.dart';
 part 'service_providers.dart';
