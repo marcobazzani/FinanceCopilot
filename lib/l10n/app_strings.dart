@@ -306,7 +306,7 @@ class AppStrings {
   String get kpiInvestmentWeight => _it ? 'Peso del capitale investito' : 'Investment Weight';
   String get kpiLiquidAssetRatio => _it ? 'Indice di liquidabilità patrimoniale' : 'Liquid Asset Ratio';
   String get kpiIncomeToWealth => _it ? 'Tasso disproporzione entrate/patrimonio' : 'Income-to-Wealth Ratio';
-  String get kpiFireProgress => _it ? 'Progresso FIRE' : 'FIRE Progress';
+  String get kpiFireProgress => _it ? 'Progresso verso target FI' : 'FI Target Progress';
 
   // KPI descriptions by rating
   String kpiLiquidityDesc(String rating) => _it
@@ -353,29 +353,29 @@ class AppStrings {
             : 'A significant portion of your wealth is not easily convertible to cash.');
   String kpiFireDesc(String rating) => _it
       ? (rating == 'ottimo'
-            ? 'Hai raggiunto l\'indipendenza finanziaria: il tuo patrimonio sostiene le spese annuali al tasso di prelievo scelto.'
+            ? 'Il tuo patrimonio copre completamente il target FI stimato.'
             : rating == 'buono'
-            ? 'Sei oltre la metà del percorso verso l\'indipendenza finanziaria.'
+            ? 'Il tuo patrimonio copre una buona parte del target FI stimato.'
             : rating == 'sufficiente'
-            ? 'Hai costruito una base. Continua ad accumulare per avvicinarti al traguardo.'
-            : 'Sei agli inizi del percorso verso l\'indipendenza finanziaria.')
+            ? 'Il tuo patrimonio copre solo in parte il target FI stimato.'
+            : 'Il tuo patrimonio è ancora lontano dal target FI stimato.')
       : (rating == 'ottimo'
-            ? 'You have reached financial independence: your net worth covers your annual expenses at the chosen withdrawal rate.'
+            ? 'Your net worth fully covers the estimated FI target.'
             : rating == 'buono'
-            ? 'You are past the half-way mark towards financial independence.'
+            ? 'Your net worth covers a good portion of the estimated FI target.'
             : rating == 'sufficiente'
-            ? 'You have built a base. Keep accumulating to close the gap.'
-            : 'You are at the beginning of the path to financial independence.');
+            ? 'Your net worth covers only part of the estimated FI target.'
+            : 'Your net worth is still far from the estimated FI target.');
   String kpiFireInsufficientData() =>
-      _it ? 'Servono spese annuali registrate per stimare il numero FIRE.' : 'Annual expenses are required to estimate the FIRE number.';
-  String get fireDialogTitle => _it ? 'Indicatore FIRE' : 'FIRE Indicator';
+      _it ? 'Servono spese annuali registrate per stimare il target FI.' : 'Annual expenses are required to estimate the FI target.';
+  String get fireDialogTitle => _it ? 'Progresso verso target FI' : 'FI Target Progress';
   String get fireDialogIntro => _it
-      ? 'FIRE = Financial Independence, Retire Early. Il numero FIRE è il patrimonio necessario per coprire le tue spese annuali prelevando ogni anno una percentuale (SWR — Safe Withdrawal Rate).'
-      : 'FIRE = Financial Independence, Retire Early. The FIRE number is the wealth required to cover your annual expenses by withdrawing a percentage each year (SWR — Safe Withdrawal Rate).';
+      ? 'Questo indicatore mostra quanto il tuo patrimonio attuale copra il target FI stimato dalle spese annue e dallo SWR scelto. È un indicatore di progresso, non una simulazione di pensionamento.'
+      : 'This indicator shows how much of the estimated FI target is covered by your current net worth, based on annual expenses and the chosen SWR. It is a progress metric, not a retirement simulation.';
   String get fireSwrLabel => _it ? 'Tasso di prelievo sicuro (SWR)' : 'Safe Withdrawal Rate (SWR)';
   String get fireSwrHint => _it ? 'es. 2,75 = prelievo del 2,75% l\'anno' : 'e.g. 2.75 = 2.75% per year';
-  String get fireNumberLabel => _it ? 'Numero FIRE' : 'FIRE Number';
-  String get fireProgressLabel => _it ? 'Progresso' : 'Progress';
+  String get fireNumberLabel => _it ? 'Target FI' : 'FI Target';
+  String get fireProgressLabel => _it ? 'Copertura target' : 'Target coverage';
   String get fireResetDefault => _it ? 'Ripristina predefinito' : 'Reset default';
   String get fireSwrInvalid => _it ? 'Inserisci un numero positivo' : 'Enter a positive number';
   String get fireExpensesEstimateLabel => _it ? 'Spese annue stimate' : 'Estimated annual expenses';

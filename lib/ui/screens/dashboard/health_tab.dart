@@ -137,8 +137,8 @@ class _FinancialHealthTab extends ConsumerWidget {
             '= ${amtFmt.format(fire.fiNumber)}',
           );
           lines.add(
-            '${s.fireProgressLabel}: ${amtFmt.format(netWorth)} / '
-            '${amtFmt.format(fire.fiNumber)} '
+            '${s.fireProgressLabel} = ${s.healthCatWealth}\n'
+            '${amtFmt.format(netWorth)} / ${amtFmt.format(fire.fiNumber)} '
             '= ${swrFmt.format(fire.progressPct)}%',
           );
           return lines.join('\n');

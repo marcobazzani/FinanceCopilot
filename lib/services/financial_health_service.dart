@@ -242,7 +242,7 @@ class FireResult {
   /// Required portfolio for FI: annualExpenses / (swrPct / 100).
   final double fiNumber;
 
-  /// Progress towards FI as a percentage (>= 0). 100 means FI reached.
+  /// Current progress toward the FI number.
   final double progressPct;
 
   /// Rating for the progress.
@@ -278,16 +278,16 @@ FireResult computeFire({
     );
   }
   final fiNumber = annualExpenses / (swrPct / 100);
-  final progress = fiNumber > 0 ? (netWorth / fiNumber * 100) : 0.0;
+  final progressPct = fiNumber > 0 ? max(0.0, netWorth / fiNumber * 100).toDouble() : 0.0;
   return FireResult(
     fiNumber: fiNumber,
-    progressPct: progress < 0 ? 0 : progress,
-    rating: rateFire(progress),
+    progressPct: progressPct,
+    rating: rateFire(progressPct),
     insufficientData: false,
   );
 }
 
-/// Rate FIRE progress %. >=100 means goal reached.
+/// Rate FIRE progress.
 Rating rateFire(double progressPct) {
   if (progressPct >= 100) return Rating.ottimo;
   if (progressPct >= 50) return Rating.buono;
