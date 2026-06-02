@@ -64,7 +64,9 @@ Future<void> main() async {
 }
 
 class FinanceCopilotApp extends ConsumerWidget {
-  const FinanceCopilotApp({super.key});
+  final bool enableStartupSync;
+
+  const FinanceCopilotApp({super.key, this.enableStartupSync = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -109,14 +111,16 @@ class FinanceCopilotApp extends ConsumerWidget {
         bottom: true,
         child: child ?? const SizedBox(),
       ),
-      home: const _SafeAppShell(),
+      home: _SafeAppShell(enableStartupSync: enableStartupSync),
     );
   }
 }
 
 /// Catches errors when opening the DB / building AppShell.
 class _SafeAppShell extends ConsumerWidget {
-  const _SafeAppShell();
+  final bool enableStartupSync;
+
+  const _SafeAppShell({required this.enableStartupSync});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,13 +142,15 @@ class _SafeAppShell extends ConsumerWidget {
         ),
       );
     }
-    return const AppShell();
+    return AppShell(enableStartupSync: enableStartupSync);
   }
 }
 
 /// Adaptive navigation shell: bottom nav on mobile, side rail on desktop.
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key});
+  final bool enableStartupSync;
+
+  const AppShell({super.key, this.enableStartupSync = true});
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
@@ -197,7 +203,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           final nowOnline = await monitor.check();
           if (!mounted) return;
           ref.read(networkOnlineProvider.notifier).state = nowOnline;
-          if (nowOnline) _startBackgroundSync();
+          if (nowOnline && widget.enableStartupSync) _startBackgroundSync();
         },
       );
     });
@@ -219,7 +225,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       await _initDriveSync();
       await _checkEmptyDb();
       await _runPendingBalanceRecalc();
-      if (!_showLanding) _startBackgroundSync();
+      if (!_showLanding && widget.enableStartupSync) _startBackgroundSync();
     });
   }
 
@@ -527,7 +533,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                               _syncingDrive = false;
                               _showLanding = false;
                             });
-                            _startBackgroundSync();
+                            if (widget.enableStartupSync) _startBackgroundSync();
                           }
                         },
                       ),
@@ -554,7 +560,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     TextButton(
                       onPressed: () {
                         setState(() => _showLanding = false);
-                        _startBackgroundSync();
+                        if (widget.enableStartupSync) _startBackgroundSync();
                       },
                       child: Text(s.landingStartFresh),
                     ),

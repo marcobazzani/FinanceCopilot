@@ -7,6 +7,9 @@ import 'package:integration_test/integration_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/main.dart';
+import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'helpers/test_app.dart';
 
@@ -84,9 +87,18 @@ void main() {
       useRealServices: true,
     );
 
-    // Wait for background sync — 10 assets, real HTTP
-    // syncPrices resolves CIDs + fetches history; syncCompositions fetches TER
-    await tester.runAsync(() => Future.delayed(const Duration(seconds: 45)));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceCopilotApp)),
+    );
+
+    // Drive the real sync explicitly instead of depending on AppShell startup.
+    await tester.runAsync(() async {
+      await Future.wait([
+        container.read(marketPriceServiceProvider).syncPrices(forceToday: true),
+        container.read(exchangeRateServiceProvider).syncRates(force: true),
+        container.read(compositionServiceProvider).syncCompositions(),
+      ]);
+    });
     await settle(tester);
 
     // -- Verify prices for each asset --

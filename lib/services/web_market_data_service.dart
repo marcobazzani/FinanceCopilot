@@ -102,6 +102,9 @@ const _exchangeSynonyms = <String, List<String>>{
 /// Uses a headless WebView to solve Cloudflare challenges, then makes
 /// direct API calls with the obtained cookies via Dio.
 class WebMarketDataService extends MarketPriceService {
+  static const _requestTimeout = Duration(seconds: 20);
+  static const _webViewReadyTimeout = Duration(seconds: 35);
+
   final Dio _dio;
   final Future<String?> Function(Uri)? _pageFetcher;
   final Future<Map<String, dynamic>?> Function(String url, String domainId)? _jsFetchOverride;
@@ -129,7 +132,15 @@ class WebMarketDataService extends MarketPriceService {
     Future<String?> Function(Uri)? pageFetcher,
     Future<bool> Function()? solveHeadless,
     @visibleForTesting Future<Map<String, dynamic>?> Function(String url, String domainId)? jsFetchOverride,
-  }) : _dio = dio ?? Dio(),
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               connectTimeout: const Duration(seconds: 10),
+               receiveTimeout: _requestTimeout,
+               sendTimeout: const Duration(seconds: 10),
+             ),
+           ),
        _pageFetcher = pageFetcher,
        _solveOverride = solveHeadless,
        _jsFetchOverride = jsFetchOverride;
@@ -287,20 +298,22 @@ class WebMarketDataService extends MarketPriceService {
           }
         })()
       ''';
-      final result = await _webViewController!.callAsyncJavaScript(
-        functionBody:
-            '''
+      final result = await _webViewController!
+          .callAsyncJavaScript(
+            functionBody:
+                '''
           const r = await fetch('$url', {
             headers: { 'domain-id': '$domainId' }
           });
           if (!r.ok) return {__error: r.status};
           return await r.json();
         ''',
-      );
+          )
+          .timeout(_requestTimeout);
       if (result == null || result.value == null) {
         // Fallback to evaluateJavascript for platforms where callAsyncJavaScript
         // doesn't work as expected
-        final resultStr = await _webViewController!.evaluateJavascript(source: js);
+        final resultStr = await _webViewController!.evaluateJavascript(source: js).timeout(_requestTimeout);
         if (resultStr == null) return null;
         final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
         if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
@@ -337,14 +350,15 @@ class WebMarketDataService extends MarketPriceService {
   /// the provider's equities pages that block plain Dio). Used by CompositionService.
   Future<String?> fetchHtml(String url) async {
     if (!_isWebViewReady) {
-      final ok = await _ensureWebView();
+      final ok = await _ensureWebView().timeout(_webViewReadyTimeout, onTimeout: () => false);
       if (!ok) return null;
     }
     if (_webViewController == null) return null;
     try {
-      final result = await _webViewController!.evaluateJavascript(
-        source:
-            '''
+      final result = await _webViewController!
+          .evaluateJavascript(
+            source:
+                '''
         (async () => {
           try {
             const r = await fetch('$url');
@@ -353,7 +367,8 @@ class WebMarketDataService extends MarketPriceService {
           } catch(e) { return null; }
         })()
       ''',
-      );
+          )
+          .timeout(_requestTimeout);
       return result is String && result.isNotEmpty ? result : null;
     } catch (e) {
       _log.fine('fetchHtml: $url -> $e');
@@ -383,16 +398,16 @@ class WebMarketDataService extends MarketPriceService {
   Future<Map<String, dynamic>?> _webViewFetch(String url, {String domainId = 'www'}) async {
     // Ensure WebView is ready (solves CF, caches cookies, probes Dio)
     if (!_isWebViewReady) {
-      final ok = await _ensureWebView();
+      final ok = await _ensureWebView().timeout(_webViewReadyTimeout, onTimeout: () => false);
       if (!ok) return null;
     }
 
     // If Dio is known to be blocked, go straight to JS fetch
     if (_dioBlocked) {
-      return await _fetchViaJsFetch(url, domainId: domainId);
+      return await _fetchViaJsFetch(url, domainId: domainId).timeout(_requestTimeout, onTimeout: () => null);
     }
 
-    return _fetchWithDioThenJs(url, domainId: domainId);
+    return _fetchWithDioThenJs(url, domainId: domainId).timeout(_requestTimeout, onTimeout: () => null);
   }
 
   @visibleForTesting
@@ -428,11 +443,11 @@ class WebMarketDataService extends MarketPriceService {
       if (e.response?.statusCode == 403) {
         _dioBlocked = true;
         _log.info('_webViewFetch: Dio 403, switching to JS fetch');
-        return await _fetchViaJsFetch(url, domainId: domainId);
+        return await _fetchViaJsFetch(url, domainId: domainId).timeout(_requestTimeout, onTimeout: () => null);
       }
       _log.info('_webViewFetch: Dio ${e.response?.statusCode}, switching to JS fetch');
       _dioBlocked = true;
-      return await _fetchViaJsFetch(url, domainId: domainId);
+      return await _fetchViaJsFetch(url, domainId: domainId).timeout(_requestTimeout, onTimeout: () => null);
     } catch (e) {
       _log.fine('_webViewFetch: failed - $e');
       return null;

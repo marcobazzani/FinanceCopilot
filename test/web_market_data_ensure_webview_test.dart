@@ -85,4 +85,37 @@ void main() {
     expect(result?['data'], isA<List>());
     expect((result!['data'] as List).single['last_closeRaw'], 123.45);
   });
+
+  test('Dio timeout falls back to JS fetch', () async {
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          handler.reject(
+            DioException.connectionTimeout(
+              timeout: const Duration(seconds: 20),
+              requestOptions: options,
+            ),
+          );
+        },
+      ),
+    );
+
+    final svc = WebMarketDataService(
+      db,
+      dio: dio,
+      jsFetchOverride: (url, domainId) async => {
+        'data': [
+          {'rowDateTimestamp': '2026-05-29', 'last_closeRaw': 321.0},
+        ],
+      },
+    );
+
+    final result = await svc.fetchWithDioThenJsForTest(
+      'https://api.example.test/prices',
+    );
+
+    expect(result?['data'], isA<List>());
+    expect((result!['data'] as List).single['last_closeRaw'], 321.0);
+  });
 }

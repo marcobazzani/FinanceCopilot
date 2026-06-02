@@ -10,6 +10,7 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/main.dart';
+import 'package:finance_copilot/services/app_settings.dart';
 import 'package:finance_copilot/services/exchange_rate_service.dart';
 import 'package:finance_copilot/services/google_drive_sync_service.dart';
 import 'package:finance_copilot/services/import_service.dart';
@@ -31,6 +32,31 @@ class NoOpMarketPriceService extends MarketPriceService {
   Future<void> syncPrices({bool forceToday = false}) async {}
 }
 
+/// No-op Drive sync service for integration/widget tests.
+///
+/// The real desktop implementation restores persisted OAuth state from
+/// Application Support and may perform network-backed silent sign-in during
+/// app startup. Tests must stay isolated from host auth state.
+class NoOpGoogleDriveSyncService extends GoogleDriveSyncService {
+  @override
+  Future<bool> trySilentSignIn() async => false;
+
+  @override
+  Future<bool> signIn() async => false;
+
+  @override
+  Future<void> signOut() async {}
+}
+
+/// Redirect AppSettings to a fresh temp directory so integration tests never
+/// read desktop auth/session state from the host machine.
+Future<Directory> isolateTestAppSettings() async {
+  AppSettings.resetForTesting();
+  final dir = await Directory.systemTemp.createTemp('fc_settings_test_');
+  AppSettings.testConfigDir = dir;
+  return dir;
+}
+
 /// Pumps the full app with an in-memory database and stubbed services.
 ///
 /// [seed] runs after DB creation to insert test data before the UI builds.
@@ -47,6 +73,7 @@ Future<AppDatabase> pumpApp(
   bool seedTestState = true,
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
+  await isolateTestAppSettings();
 
   // Create the DB file on disk so the landing page filesystem check passes.
   // (initState checks AppDatabase.dbFile().existsSync() before touching providers)
@@ -86,8 +113,8 @@ Future<AppDatabase> pumpApp(
   final overrides = [
     // Override DB with in-memory instance
     databaseProvider.overrideWith((ref) => db),
-    // Stub Google Drive sync -- no network in tests
-    googleDriveSyncProvider.overrideWith((ref) => GoogleDriveSyncService()),
+    // Stub Google Drive sync and isolate AppSettings from the host machine.
+    googleDriveSyncProvider.overrideWith((ref) => NoOpGoogleDriveSyncService()),
   ];
 
   if (!useRealServices) {
@@ -120,7 +147,7 @@ Future<AppDatabase> pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: overrides,
-      child: const FinanceCopilotApp(),
+      child: const FinanceCopilotApp(enableStartupSync: false),
     ),
   );
   // Pump frames to build the initial UI.
