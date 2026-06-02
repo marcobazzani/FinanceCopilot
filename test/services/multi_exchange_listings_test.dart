@@ -9,15 +9,14 @@ ProviderSearchResult _r({
   String symbol = '',
   String flag = '',
   String type = '',
-}) =>
-    ProviderSearchResult(
-      cid: cid,
-      description: description,
-      symbol: symbol,
-      exchange: exchange,
-      flag: flag,
-      type: type,
-    );
+}) => ProviderSearchResult(
+  cid: cid,
+  description: description,
+  symbol: symbol,
+  exchange: exchange,
+  flag: flag,
+  type: type,
+);
 
 void main() {
   group('exchangeListingsFor (multi-exchange UI stress test)', () {

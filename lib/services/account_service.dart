@@ -43,19 +43,14 @@ class AccountService {
   AccountService(this._db);
 
   Future<List<Account>> getAll() async {
-    final result = await (_db.select(_db.accounts)
-          ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-        .get();
+    final result = await (_db.select(_db.accounts)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).get();
     _log.fine('getAll: ${result.length} accounts');
     return result;
   }
 
-  Stream<List<Account>> watchAll() => (_db.select(_db.accounts)
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-      .watch();
+  Stream<List<Account>> watchAll() => (_db.select(_db.accounts)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).watch();
 
-  Future<Account> getById(int id) =>
-      (_db.select(_db.accounts)..where((a) => a.id.equals(id))).getSingle();
+  Future<Account> getById(int id) => (_db.select(_db.accounts)..where((a) => a.id.equals(id))).getSingle();
 
   Future<int> create({
     required String name,
@@ -65,25 +60,29 @@ class AccountService {
     _log.info('create: name=$name, currency=$currency');
 
     // Set sortOrder to max+1 so new accounts appear at the end
-    final maxOrder = await _db.customSelect(
-      'SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM accounts',
-    ).getSingle();
+    final maxOrder = await _db
+        .customSelect(
+          'SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM accounts',
+        )
+        .getSingle();
     final nextOrder = (maxOrder.read<int>('max_order')) + 1;
 
-    return _db.into(_db.accounts).insert(AccountsCompanion.insert(
-      name: name,
-      type: const Value(AccountType.bank),
-      currency: Value(currency),
-      institution: Value(institution),
-      sortOrder: Value(nextOrder),
-    ));
+    return _db
+        .into(_db.accounts)
+        .insert(
+          AccountsCompanion.insert(
+            name: name,
+            type: const Value(AccountType.bank),
+            currency: Value(currency),
+            institution: Value(institution),
+            sortOrder: Value(nextOrder),
+          ),
+        );
   }
 
   Future<bool> update(int id, AccountsCompanion companion) {
     _log.info('update: id=$id');
-    return (_db.update(_db.accounts)..where((a) => a.id.equals(id)))
-        .write(companion)
-        .then((rows) => rows > 0);
+    return (_db.update(_db.accounts)..where((a) => a.id.equals(id))).write(companion).then((rows) => rows > 0);
   }
 
   Future<int> delete(int id) async {
@@ -117,36 +116,42 @@ class AccountService {
 
   /// Get transaction stats for all accounts.
   Future<Map<int, AccountStats>> getStatsForAll({DateTime? through}) async {
-    final statsRows = await _db.customSelect(
-      _statsSql(bounded: through != null),
-      variables: _throughVars(through),
-      readsFrom: {_db.transactions},
-    ).get();
+    final statsRows = await _db
+        .customSelect(
+          _statsSql(bounded: through != null),
+          variables: _throughVars(through),
+          readsFrom: {_db.transactions},
+        )
+        .get();
     final balances = await _fetchLatestBalances(through: through);
     return _buildStats(statsRows, balances);
   }
 
   /// Watch transaction stats reactively.
   Stream<Map<int, AccountStats>> watchStatsForAll({DateTime? through}) {
-    return _db.customSelect(
-      _statsSql(bounded: through != null),
-      variables: _throughVars(through),
-      readsFrom: {_db.transactions},
-    ).watch().asyncMap((statsRows) async {
-      final balances = await _fetchLatestBalances(through: through);
-      return _buildStats(statsRows, balances);
-    });
+    return _db
+        .customSelect(
+          _statsSql(bounded: through != null),
+          variables: _throughVars(through),
+          readsFrom: {_db.transactions},
+        )
+        .watch()
+        .asyncMap((statsRows) async {
+          final balances = await _fetchLatestBalances(through: through);
+          return _buildStats(statsRows, balances);
+        });
   }
 
   Future<Map<int, double?>> _fetchLatestBalances({DateTime? through}) async {
-    final rows = await _db.customSelect(
-      _latestBalanceSql(bounded: through != null),
-      variables: _throughVars(through),
-      readsFrom: {_db.transactions},
-    ).get();
+    final rows = await _db
+        .customSelect(
+          _latestBalanceSql(bounded: through != null),
+          variables: _throughVars(through),
+          readsFrom: {_db.transactions},
+        )
+        .get();
     return {
-      for (final row in rows)
-        row.read<int>('account_id'): row.readNullable<double>('balance_after'),
+      for (final row in rows) row.read<int>('account_id'): row.readNullable<double>('balance_after'),
     };
   }
 
@@ -165,8 +170,7 @@ class AccountService {
     };
   }
 
-  static DateTime? _epochToDate(int? epochSec) =>
-      epochSec != null ? DateTime.fromMillisecondsSinceEpoch(epochSec * 1000) : null;
+  static DateTime? _epochToDate(int? epochSec) => epochSec != null ? DateTime.fromMillisecondsSinceEpoch(epochSec * 1000) : null;
 
   static List<Variable<int>> _throughVars(DateTime? through) {
     if (through == null) return const [];

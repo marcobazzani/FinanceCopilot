@@ -29,7 +29,13 @@ FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
   final semicolons = ';'.allMatches(firstLine).length;
   final commas = ','.allMatches(firstLine).length;
   final tabs = '\t'.allMatches(firstLine).length;
-  final sep = separator ?? (tabs > commas && tabs > semicolons ? '\t' : semicolons > commas ? ';' : ',');
+  final sep =
+      separator ??
+      (tabs > commas && tabs > semicolons
+          ? '\t'
+          : semicolons > commas
+          ? ';'
+          : ',');
 
   final rows = Csv(fieldDelimiter: sep, lineDelimiter: '\n').decode(content);
   if (rows.isEmpty) return const FilePreview(columns: [], rows: [], totalRows: 0);
@@ -107,9 +113,7 @@ FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
     return const FilePreview(columns: [], rows: [], totalRows: 0);
   }
 
-  final effectiveRows = skipRows > 0 && skipRows < sheet.rows.length
-      ? sheet.rows.sublist(skipRows)
-      : sheet.rows;
+  final effectiveRows = skipRows > 0 && skipRows < sheet.rows.length ? sheet.rows.sublist(skipRows) : sheet.rows;
 
   if (effectiveRows.isEmpty) return const FilePreview(columns: [], rows: [], totalRows: 0);
 
@@ -176,14 +180,16 @@ Future<FilePreview> _parsePdfMain(
       final text = await page.loadStructuredText();
       for (final f in text.fragments) {
         if (f.text.trim().isEmpty) continue;
-        fragments.add(PdfFragment(
-          text: f.text,
-          left: f.bounds.left,
-          top: f.bounds.top,
-          right: f.bounds.right,
-          bottom: f.bounds.bottom,
-          page: i + 1,
-        ));
+        fragments.add(
+          PdfFragment(
+            text: f.text,
+            left: f.bounds.left,
+            top: f.bounds.top,
+            right: f.bounds.right,
+            bottom: f.bounds.bottom,
+            page: i + 1,
+          ),
+        );
       }
     }
 

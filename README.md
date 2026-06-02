@@ -150,6 +150,9 @@ Prerequisites: Flutter SDK ^3.8.1, Xcode (macOS), or Visual Studio with Desktop 
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 
+# Verify formatting
+dart format --output=none --set-exit-if-changed lib test integration_test
+
 # macOS
 flutter build macos --release
 
@@ -173,6 +176,16 @@ flutter test integration_test/all_tests.dart -d macos \
 # Live market-data smoke test (~1m, requires network)
 flutter test integration_test/live_data_fetch_test.dart -d macos \
   --dart-define=DB_FILE_NAME=finance_copilot_test.db
+```
+
+## Formatting
+
+```bash
+# Apply the repo's locked formatter settings
+dart format lib test integration_test
+
+# Check that formatting is clean without rewriting files
+dart format --output=none --set-exit-if-changed lib test integration_test
 ```
 
 ## Architecture

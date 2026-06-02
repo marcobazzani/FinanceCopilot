@@ -32,10 +32,14 @@ void main() {
 
     // Create a real SQLite DB with an account at the legacy path
     final legacyDb = AppDatabase.forTesting(NativeDatabase(File(legacyPath)));
-    await legacyDb.into(legacyDb.accounts).insert(AccountsCompanion.insert(
-      name: 'Legacy Account',
-      sortOrder: const Value(1),
-    ));
+    await legacyDb
+        .into(legacyDb.accounts)
+        .insert(
+          AccountsCompanion.insert(
+            name: 'Legacy Account',
+            sortOrder: const Value(1),
+          ),
+        );
     await legacyDb.close();
 
     // 2. Delete the new DB path so the app thinks it's a fresh install
@@ -60,7 +64,9 @@ void main() {
     // Cleanup: remove legacy file
     await File(legacyPath).delete();
     if (legacyDir.existsSync()) {
-      try { await legacyDir.delete(); } catch (_) {}
+      try {
+        await legacyDir.delete();
+      } catch (_) {}
     }
   });
 }

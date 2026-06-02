@@ -29,63 +29,62 @@ enum AssetType {
 }
 
 enum InstrumentType {
-  stock,        // Azione — Individual equity
-  bond,         // Obbligazione — Individual bond
-  etf,          // ETF — Exchange-Traded Fund
-  etc,          // ETC — Exchange-Traded Commodity
-  fund,         // Fondo — Open/closed-end fund
-  pension,      // Fondo pensione — Pension fund
-  crypto,       // Crypto — Cryptocurrency
-  cash,         // Liquidità — Bank account / cash
-  deposit,      // Deposito — Term deposit
-  realEstate,   // Immobile — Property
-  alternative,  // Alternativo — Art, collectibles, etc.
-  liability,    // Passività — Debt / mortgage
+  stock, // Azione — Individual equity
+  bond, // Obbligazione — Individual bond
+  etf, // ETF — Exchange-Traded Fund
+  etc, // ETC — Exchange-Traded Commodity
+  fund, // Fondo — Open/closed-end fund
+  pension, // Fondo pensione — Pension fund
+  crypto, // Crypto — Cryptocurrency
+  cash, // Liquidità — Bank account / cash
+  deposit, // Deposito — Term deposit
+  realEstate, // Immobile — Property
+  alternative, // Alternativo — Art, collectibles, etc.
+  liability, // Passività — Debt / mortgage
 }
 
 enum AssetClass {
-  equity,       // Azionario
-  fixedIncome,  // Obbligazionario
-  commodities,  // Materie Prime
-  moneyMarket,  // Monetario
-  cash,         // Liquidità
-  crypto,       // Crypto
-  realEstate,   // Immobiliare
-  alternative,  // Alternativi
-  multiAsset,   // Misto — Multi-asset / balanced
+  equity, // Azionario
+  fixedIncome, // Obbligazionario
+  commodities, // Materie Prime
+  moneyMarket, // Monetario
+  cash, // Liquidità
+  crypto, // Crypto
+  realEstate, // Immobiliare
+  alternative, // Alternativi
+  multiAsset, // Misto — Multi-asset / balanced
 }
 
 /// Map provider type prefixes (lowercase, singular) to classification.
 const _providerTypeMap = <String, (InstrumentType, AssetClass)>{
-  'etf':            (InstrumentType.etf,    AssetClass.equity),
-  'etc':            (InstrumentType.etc,    AssetClass.commodities),
-  'etn':            (InstrumentType.etf,    AssetClass.equity),
-  'stock':          (InstrumentType.stock,  AssetClass.equity),
-  'equity':         (InstrumentType.stock,  AssetClass.equity),
-  'bond':           (InstrumentType.bond,   AssetClass.fixedIncome),
-  'fund':           (InstrumentType.fund,   AssetClass.multiAsset),
-  'crypto':         (InstrumentType.crypto, AssetClass.crypto),
+  'etf': (InstrumentType.etf, AssetClass.equity),
+  'etc': (InstrumentType.etc, AssetClass.commodities),
+  'etn': (InstrumentType.etf, AssetClass.equity),
+  'stock': (InstrumentType.stock, AssetClass.equity),
+  'equity': (InstrumentType.stock, AssetClass.equity),
+  'bond': (InstrumentType.bond, AssetClass.fixedIncome),
+  'fund': (InstrumentType.fund, AssetClass.multiAsset),
+  'crypto': (InstrumentType.crypto, AssetClass.crypto),
   // Italian fallbacks (in case the provider returns localized types)
-  'azione':         (InstrumentType.stock,  AssetClass.equity),
-  'titolo':         (InstrumentType.stock,  AssetClass.equity),
-  'obbligazione':   (InstrumentType.bond,   AssetClass.fixedIncome),
-  'fondo':          (InstrumentType.fund,   AssetClass.multiAsset),
-  'criptovaluta':   (InstrumentType.crypto, AssetClass.crypto),
+  'azione': (InstrumentType.stock, AssetClass.equity),
+  'titolo': (InstrumentType.stock, AssetClass.equity),
+  'obbligazione': (InstrumentType.bond, AssetClass.fixedIncome),
+  'fondo': (InstrumentType.fund, AssetClass.multiAsset),
+  'criptovaluta': (InstrumentType.crypto, AssetClass.crypto),
 };
 
 /// Classify instrument type + asset class from a provider type string.
 /// [prefix] should be lowercase, singular (e.g. "etf", "stock", "bond").
-(InstrumentType, AssetClass) classifyFromProviderType(String prefix) =>
-    _providerTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
+(InstrumentType, AssetClass) classifyFromProviderType(String prefix) => _providerTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
 
 /// Default asset class for a given instrument type.
 /// Used when external classification is unavailable.
 AssetClass defaultAssetClassFor(InstrumentType inst) => switch (inst) {
-  InstrumentType.bond  => AssetClass.fixedIncome,
-  InstrumentType.etc   => AssetClass.commodities,
+  InstrumentType.bond => AssetClass.fixedIncome,
+  InstrumentType.etc => AssetClass.commodities,
   InstrumentType.crypto => AssetClass.crypto,
-  InstrumentType.fund  => AssetClass.multiAsset,
-  _                    => AssetClass.equity,
+  InstrumentType.fund => AssetClass.multiAsset,
+  _ => AssetClass.equity,
 };
 
 enum ValuationMethod { marketPrice, eventDriven, balance }
@@ -128,6 +127,7 @@ class Intermediaries extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text().withLength(min: 1, max: 100)();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
   /// Number-format locale used to parse asset-event imports under this
   /// intermediary (e.g. 'it_IT', 'en_US'). NULL means "Auto — use the
   /// app locale".
@@ -252,8 +252,8 @@ class AssetSnapshots extends Table {
 
   @override
   List<Set<Column>> get uniqueKeys => [
-        {assetId, date},
-      ];
+    {assetId, date},
+  ];
 }
 
 class Buffers extends Table {
@@ -336,6 +336,7 @@ class Incomes extends Table {
   RealColumn get amount => real()();
   TextColumn get type => textEnum<IncomeType>().withDefault(Constant(IncomeType.income.name))();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
+
   /// Optional source asset — populated for `pensionContribution` rows so
   /// re-importing a pension statement can wipe-and-replace its income
   /// entries by `(asset_id, type='pensionContribution')`. NULL for
@@ -363,8 +364,8 @@ class ImportConfigs extends Table {
 class AssetCompositions extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get assetId => integer().references(Assets, #id)();
-  TextColumn get type => text()();   // 'country', 'sector', 'holding'
-  TextColumn get name => text()();   // e.g. 'United States', 'Technology'
+  TextColumn get type => text()(); // 'country', 'sector', 'holding'
+  TextColumn get name => text()(); // e.g. 'United States', 'Technology'
   RealColumn get weight => real()(); // percentage, e.g. 67.33
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -393,6 +394,7 @@ class ExtraordinaryEvents extends Table {
 
   TextColumn get notes => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+
   /// Inflow-only flag for "money I don't have but can spend" — i.e. a line
   /// of credit. Ephemeral inflows belong to Cash (negated) but never to
   /// Saving. Only meaningful for direction=inflow + treatment=instant.
@@ -446,8 +448,8 @@ class PortfolioModelItems extends Table {
 
   @override
   List<Set<Column>> get uniqueKeys => [
-        {modelId, isin},
-      ];
+    {modelId, isin},
+  ];
 }
 
 /// Pillar = a named bucket of asset units with an optional objective

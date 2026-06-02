@@ -385,10 +385,12 @@ class GoogleDriveSyncService {
     try {
       final t0 = DateTime.now();
       _log.info('download: phase 1 - fetching remote...');
-      final response = await _driveApi!.files.get(
-        fileId,
-        downloadOptions: drive.DownloadOptions.fullMedia,
-      ) as drive.Media;
+      final response =
+          await _driveApi!.files.get(
+                fileId,
+                downloadOptions: drive.DownloadOptions.fullMedia,
+              )
+              as drive.Media;
       if (tmpFile.existsSync()) await tmpFile.delete();
       final sink = tmpFile.openWrite();
       await response.stream.pipe(sink);
@@ -424,7 +426,9 @@ class GoogleDriveSyncService {
     } catch (e, stack) {
       _log.severe('download failed: $e\n$stack');
       if (tmpFile.existsSync()) {
-        try { await tmpFile.delete(); } catch (_) {}
+        try {
+          await tmpFile.delete();
+        } catch (_) {}
       }
       rethrow;
     }

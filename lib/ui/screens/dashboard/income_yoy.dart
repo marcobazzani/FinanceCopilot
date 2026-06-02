@@ -16,7 +16,8 @@ double? incomeYoYTotal(
       double currentIncome,
       bool currentHasIncomeData,
     })
-  > months,
+  >
+  months,
 ) {
   double sum = 0;
   var hasComparableMonth = false;

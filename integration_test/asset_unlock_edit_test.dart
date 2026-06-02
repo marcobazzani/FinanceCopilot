@@ -19,8 +19,7 @@ import 'helpers/test_app.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Asset edit dialog — unlock reveals advanced fields and Save persists them',
-      (tester) async {
+  testWidgets('Asset edit dialog — unlock reveals advanced fields and Save persists them', (tester) async {
     final db = await pumpApp(tester);
     await longSettle(tester);
 
@@ -40,19 +39,15 @@ void main() {
     await longSettle(tester);
 
     // Locked default: lock_outline icon is visible; advanced labels are not.
-    expect(find.byIcon(Icons.lock_outline), findsOneWidget,
-        reason: 'edit dialog should open in locked state');
-    expect(find.text('Asset type'), findsNothing,
-        reason: 'advanced fields must be hidden when locked');
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget, reason: 'edit dialog should open in locked state');
+    expect(find.text('Asset type'), findsNothing, reason: 'advanced fields must be hidden when locked');
     expect(find.text('Tax rate (%)'), findsNothing);
 
     // Tap the lock icon to unlock.
     await tester.tap(find.byIcon(Icons.lock_outline));
     await longSettle(tester);
-    expect(find.byIcon(Icons.lock_open), findsOneWidget,
-        reason: 'icon flips to lock_open after unlock');
-    expect(find.text('Asset type'), findsOneWidget,
-        reason: 'advanced fields appear when unlocked');
+    expect(find.byIcon(Icons.lock_open), findsOneWidget, reason: 'icon flips to lock_open after unlock');
+    expect(find.text('Asset type'), findsOneWidget, reason: 'advanced fields appear when unlocked');
     expect(find.text('Tax rate (%)'), findsOneWidget);
 
     // Edit Tax rate (per-asset override; consumed by the detail header

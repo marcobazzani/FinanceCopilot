@@ -37,8 +37,7 @@ void showInfoSnack(BuildContext context, String message) {
 
 /// Confirm and delete an intermediary. Shared across screens that manage
 /// intermediaries (assets and accounts).
-Future<void> confirmAndDeleteIntermediary(
-    BuildContext context, WidgetRef ref, Intermediary intermediary) async {
+Future<void> confirmAndDeleteIntermediary(BuildContext context, WidgetRef ref, Intermediary intermediary) async {
   final s = ref.read(appStringsProvider);
   final confirmed = await showDialog<bool>(
     context: context,
@@ -122,7 +121,9 @@ Future<void> showManageIntermediariesDialog(BuildContext context, WidgetRef ref)
             width: 320,
             height: 400,
             child: intermediaries.isEmpty
-                ? Center(child: Text(s.selectIntermediaryEmpty, style: const TextStyle(color: Colors.grey)))
+                ? Center(
+                    child: Text(s.selectIntermediaryEmpty, style: const TextStyle(color: Colors.grey)),
+                  )
                 : ReorderableListView.builder(
                     buildDefaultDragHandles: false,
                     itemCount: intermediaries.length,
@@ -131,8 +132,7 @@ Future<void> showManageIntermediariesDialog(BuildContext context, WidgetRef ref)
                       final reordered = List<Intermediary>.from(intermediaries);
                       final item = reordered.removeAt(oldIndex);
                       reordered.insert(newIndex, item);
-                      ref.read(intermediaryServiceProvider)
-                          .reorder(reordered.map((i) => i.id).toList());
+                      ref.read(intermediaryServiceProvider).reorder(reordered.map((i) => i.id).toList());
                     },
                     itemBuilder: (ctx, i) {
                       final inter = intermediaries[i];
@@ -148,13 +148,11 @@ Future<void> showManageIntermediariesDialog(BuildContext context, WidgetRef ref)
                           children: [
                             IconButton(
                               icon: const Icon(Icons.edit, size: 18),
-                              onPressed: () =>
-                                  showIntermediaryEditDialog(context, ref, intermediary: inter),
+                              onPressed: () => showIntermediaryEditDialog(context, ref, intermediary: inter),
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete, size: 18),
-                              onPressed: () =>
-                                  confirmAndDeleteIntermediary(context, ref, inter),
+                              onPressed: () => confirmAndDeleteIntermediary(context, ref, inter),
                             ),
                           ],
                         ),
@@ -178,10 +176,9 @@ Future<void> showManageIntermediariesDialog(BuildContext context, WidgetRef ref)
   );
 }
 
-Future<DateTime?> pickDate(BuildContext context, DateTime initial, {int firstYear = 1990}) =>
-    showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(firstYear),
-      lastDate: DateTime(2100),
-    );
+Future<DateTime?> pickDate(BuildContext context, DateTime initial, {int firstYear = 1990}) => showDatePicker(
+  context: context,
+  initialDate: initial,
+  firstDate: DateTime(firstYear),
+  lastDate: DateTime(2100),
+);

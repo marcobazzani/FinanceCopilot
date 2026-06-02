@@ -40,6 +40,9 @@ jobs:
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Verify Dart formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test
+
       - name: Run tests
         run: flutter test --dart-define=DB_FILE_NAME=finance_copilot_test.db
 

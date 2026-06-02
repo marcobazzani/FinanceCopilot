@@ -23,10 +23,14 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = CompositionService(db);
-    final iid = await db.into(db.intermediaries).insert(
+    final iid = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
-    assetId = await db.into(db.assets).insert(
+    assetId = await db
+        .into(db.assets)
+        .insert(
           AssetsCompanion.insert(
             name: 'Test ETF',
             assetType: AssetType.stockEtf,
@@ -39,9 +43,7 @@ void main() {
   tearDown(() async => await db.close());
 
   Future<List<AssetComposition>> rowsOfType(String type) =>
-      (db.select(db.assetCompositions)
-            ..where((c) => c.assetId.equals(assetId) & c.type.equals(type)))
-          .get();
+      (db.select(db.assetCompositions)..where((c) => c.assetId.equals(assetId) & c.type.equals(type))).get();
 
   test('setEntries inserts new rows', () async {
     await service.setEntries(assetId, 'country', const [
@@ -97,8 +99,7 @@ void main() {
     final country = await rowsOfType('country');
     final sector = await rowsOfType('sector');
     expect(country.single.name, 'Italy');
-    expect(sector.single.name, 'Tech',
-        reason: 'sector rows must not be touched by a country edit');
+    expect(sector.single.name, 'Tech', reason: 'sector rows must not be touched by a country edit');
   });
 
   test('clearAndResync wipes every composition row for the asset', () async {
@@ -111,12 +112,8 @@ void main() {
 
     await service.clearAndResync(assetId);
 
-    final all = await (db.select(db.assetCompositions)
-          ..where((c) => c.assetId.equals(assetId)))
-        .get();
-    expect(all, isEmpty,
-        reason:
-            'clearAndResync must wipe rows; sync may re-populate but in tests there is no network');
+    final all = await (db.select(db.assetCompositions)..where((c) => c.assetId.equals(assetId))).get();
+    expect(all, isEmpty, reason: 'clearAndResync must wipe rows; sync may re-populate but in tests there is no network');
   });
 
   test('syncCompositions skips an asset that already has rows', () async {
@@ -130,9 +127,7 @@ void main() {
     // sync to short-circuit on the rows-exist check.
     await service.syncCompositions();
 
-    final rows = await (db.select(db.assetCompositions)
-          ..where((c) => c.assetId.equals(assetId)))
-        .get();
+    final rows = await (db.select(db.assetCompositions)..where((c) => c.assetId.equals(assetId))).get();
     expect(rows.length, 1, reason: 'sync must not touch an asset with rows');
     expect(rows.single.name, 'Synthetic Holding');
   });

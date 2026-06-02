@@ -181,9 +181,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
                       labelText: s.statusLabel,
                       border: const OutlineInputBorder(),
                     ),
-                    items: TransactionStatus.values
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s.name)))
-                        .toList(),
+                    items: TransactionStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
                     onChanged: (v) => setState(() => _status = v!),
                   ),
                 ),

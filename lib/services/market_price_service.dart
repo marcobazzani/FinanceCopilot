@@ -126,8 +126,7 @@ abstract class MarketPriceService {
   // ──────────────────────────────────────────────
 
   /// Fetch daily close prices from [from] to today for [ticker].
-  Future<Map<DateTime, double>> fetchHistoricalPrices(
-      String ticker, String currency, DateTime from);
+  Future<Map<DateTime, double>> fetchHistoricalPrices(String ticker, String currency, DateTime from);
 
   // ──────────────────────────────────────────────
   // Sync — calls abstract fetch, stores in DB
@@ -137,10 +136,11 @@ abstract class MarketPriceService {
   /// If [forceToday] is true, re-fetch today's price even if already synced.
   Future<void> syncPrices({bool forceToday = false}) async {
     try {
-      final assets = await (db.select(db.assets)
-            ..where((a) => a.isActive.equals(true))
-            ..where((a) => a.ticker.isNotNull() | a.isin.isNotNull()))
-          .get();
+      final assets =
+          await (db.select(db.assets)
+                ..where((a) => a.isActive.equals(true))
+                ..where((a) => a.ticker.isNotNull() | a.isin.isNotNull()))
+              .get();
 
       _log.info('syncPrices: found ${assets.length} active assets with ticker/ISIN');
 
@@ -177,9 +177,7 @@ abstract class MarketPriceService {
       if (forceToday) {
         // On manual refresh, re-fetch from today (or last+1, whichever is later)
         final lastPlus1 = lastDate.add(const Duration(days: 1));
-        from = DateTime(today.year, today.month, today.day).isAfter(lastPlus1)
-            ? lastPlus1
-            : DateTime(today.year, today.month, today.day);
+        from = DateTime(today.year, today.month, today.day).isAfter(lastPlus1) ? lastPlus1 : DateTime(today.year, today.month, today.day);
       } else {
         from = lastDate.add(const Duration(days: 1));
       }
@@ -233,28 +231,34 @@ abstract class MarketPriceService {
   /// Uses value_date per CLAUDE.md (canonical "money moved" date) so the
   /// price-history fetch window starts no later than the actual investment.
   Future<DateTime?> getFirstBuyDate(int assetId) async {
-    final row = await db.customSelect(
-      "SELECT MIN(value_date) AS min_date FROM asset_events WHERE asset_id = ? AND type = 'buy'",
-      variables: [Variable.withInt(assetId)],
-    ).getSingleOrNull();
+    final row = await db
+        .customSelect(
+          "SELECT MIN(value_date) AS min_date FROM asset_events WHERE asset_id = ? AND type = 'buy'",
+          variables: [Variable.withInt(assetId)],
+        )
+        .getSingleOrNull();
     return row?.readNullable<DateTime>('min_date');
   }
 
   /// Earliest stored price date for an asset.
   Future<DateTime?> getFirstPriceDate(int assetId) async {
-    final row = await db.customSelect(
-      'SELECT MIN(date) AS min_date FROM market_prices WHERE asset_id = ?',
-      variables: [Variable.withInt(assetId)],
-    ).getSingleOrNull();
+    final row = await db
+        .customSelect(
+          'SELECT MIN(date) AS min_date FROM market_prices WHERE asset_id = ?',
+          variables: [Variable.withInt(assetId)],
+        )
+        .getSingleOrNull();
     return row?.readNullable<DateTime>('min_date');
   }
 
   /// Last stored price date for an asset.
   Future<DateTime?> getLastSyncDate(int assetId) async {
-    final row = await db.customSelect(
-      'SELECT MAX(date) AS max_date FROM market_prices WHERE asset_id = ?',
-      variables: [Variable.withInt(assetId)],
-    ).getSingleOrNull();
+    final row = await db
+        .customSelect(
+          'SELECT MAX(date) AS max_date FROM market_prices WHERE asset_id = ?',
+          variables: [Variable.withInt(assetId)],
+        )
+        .getSingleOrNull();
     return row?.readNullable<DateTime>('max_date');
   }
 
@@ -270,20 +274,24 @@ abstract class MarketPriceService {
       date.day,
     ).add(const Duration(days: 1));
     final epochSec = endExclusive.millisecondsSinceEpoch ~/ 1000;
-    final row = await db.customSelect(
-      'SELECT close_price FROM market_prices '
-      'WHERE asset_id = ? AND date < ? ORDER BY date DESC LIMIT 1',
-      variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
-    ).getSingleOrNull();
+    final row = await db
+        .customSelect(
+          'SELECT close_price FROM market_prices '
+          'WHERE asset_id = ? AND date < ? ORDER BY date DESC LIMIT 1',
+          variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
+        )
+        .getSingleOrNull();
     if (row != null) return row.readNullable<double>('close_price');
     // Last-buy-price fallback for assets with no market_prices and no
     // revalues materialised yet.
-    final buyRow = await db.customSelect(
-      "SELECT price FROM asset_events "
-      "WHERE asset_id = ? AND type = 'buy' AND price IS NOT NULL AND value_date < ? "
-      "ORDER BY value_date DESC, id DESC LIMIT 1",
-      variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
-    ).getSingleOrNull();
+    final buyRow = await db
+        .customSelect(
+          "SELECT price FROM asset_events "
+          "WHERE asset_id = ? AND type = 'buy' AND price IS NOT NULL AND value_date < ? "
+          "ORDER BY value_date DESC, id DESC LIMIT 1",
+          variables: [Variable.withInt(assetId), Variable.withInt(epochSec)],
+        )
+        .getSingleOrNull();
     return buyRow?.readNullable<double>('price');
   }
 
@@ -299,54 +307,62 @@ abstract class MarketPriceService {
 
   /// Get the [count] most recent prices for an asset, newest first.
   Future<List<double>> getRecentPrices(int assetId, int count) async {
-    final rows = await db.customSelect(
-      'SELECT close_price FROM market_prices '
-      'WHERE asset_id = ? ORDER BY date DESC LIMIT ?',
-      variables: [Variable.withInt(assetId), Variable.withInt(count)],
-    ).get();
-    return rows
-        .map((r) => r.readNullable<double>('close_price'))
-        .whereType<double>()
-        .toList();
+    final rows = await db
+        .customSelect(
+          'SELECT close_price FROM market_prices '
+          'WHERE asset_id = ? ORDER BY date DESC LIMIT ?',
+          variables: [Variable.withInt(assetId), Variable.withInt(count)],
+        )
+        .get();
+    return rows.map((r) => r.readNullable<double>('close_price')).whereType<double>().toList();
   }
 
   /// Get all prices for an asset, sorted by date ascending.
   /// Revalue events are materialised into market_prices rows so they appear
   /// here without a separate fallback path.
   Future<List<MapEntry<DateTime, double>>> getPriceHistory(int assetId) async {
-    final rows = await db.customSelect(
-      'SELECT date, close_price FROM market_prices '
-      'WHERE asset_id = ? ORDER BY date ASC',
-      variables: [Variable.withInt(assetId)],
-    ).get();
+    final rows = await db
+        .customSelect(
+          'SELECT date, close_price FROM market_prices '
+          'WHERE asset_id = ? ORDER BY date ASC',
+          variables: [Variable.withInt(assetId)],
+        )
+        .get();
 
     return rows
-        .map((r) => MapEntry(
-              DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
-              r.read<double>('close_price'),
-            ))
+        .map(
+          (r) => MapEntry(
+            DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+            r.read<double>('close_price'),
+          ),
+        )
         .toList();
   }
 
   /// Get all prices for multiple assets in a single query, sorted by date ascending.
   /// Falls back to [getPriceHistory] (revalue events) for assets with no market prices.
-  Future<Map<int, List<MapEntry<DateTime, double>>>> getPriceHistoryBatch(
-      List<int> assetIds) async {
+  Future<Map<int, List<MapEntry<DateTime, double>>>> getPriceHistoryBatch(List<int> assetIds) async {
     if (assetIds.isEmpty) return {};
     final placeholders = assetIds.map((_) => '?').join(',');
-    final rows = await db.customSelect(
-      'SELECT asset_id, date, close_price FROM market_prices '
-      'WHERE asset_id IN ($placeholders) ORDER BY asset_id, date ASC',
-      variables: assetIds.map((id) => Variable.withInt(id)).toList(),
-    ).get();
+    final rows = await db
+        .customSelect(
+          'SELECT asset_id, date, close_price FROM market_prices '
+          'WHERE asset_id IN ($placeholders) ORDER BY asset_id, date ASC',
+          variables: assetIds.map((id) => Variable.withInt(id)).toList(),
+        )
+        .get();
 
     final result = <int, List<MapEntry<DateTime, double>>>{};
     for (final r in rows) {
       final assetId = r.read<int>('asset_id');
-      result.putIfAbsent(assetId, () => []).add(MapEntry(
-        DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
-        r.read<double>('close_price'),
-      ));
+      result
+          .putIfAbsent(assetId, () => [])
+          .add(
+            MapEntry(
+              DateTime.fromMillisecondsSinceEpoch(r.read<int>('date') * 1000),
+              r.read<double>('close_price'),
+            ),
+          );
     }
     return result;
   }
@@ -361,9 +377,11 @@ abstract class MarketPriceService {
     _log.info('Cleared all cached data (prices, exchange rates, compositions)');
     // Rematerialise revalue events into market_prices.
     final eventService = AssetEventService(db);
-    final assetIdRows = await db.customSelect(
-      "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
-    ).get();
+    final assetIdRows = await db
+        .customSelect(
+          "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
+        )
+        .get();
     for (final row in assetIdRows) {
       await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
     }

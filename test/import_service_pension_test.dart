@@ -29,7 +29,9 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     importer = ImportService(db);
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
   });
@@ -37,15 +39,19 @@ void main() {
   tearDown(() => db.close());
 
   Future<int> createPensionAsset({String currency = 'EUR'}) {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'Pension',
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: ValuationMethod.eventDriven,
-          currency: Value(currency),
-          intermediaryId: intermediaryId,
-        ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension',
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: ValuationMethod.eventDriven,
+            currency: Value(currency),
+            intermediaryId: intermediaryId,
+          ),
+        );
   }
 
   group('T3a — F1 (PPP) into single eventDriven asset', () {
@@ -77,15 +83,11 @@ void main() {
         numberLocaleOverride: 'it_IT',
       );
 
-      expect(result.result.errorRows, 0,
-          reason: 'errors: ${result.result.errors}');
+      expect(result.result.errorRows, 0, reason: 'errors: ${result.result.errors}');
 
-      final events = await (db.select(db.assetEvents)
-            ..orderBy([(e) => OrderingTerm.asc(e.valueDate)]))
-          .get();
+      final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
       // PPP fixture: 105 contributes + 6 revalues = 111 rows total.
-      expect(events.length, 111,
-          reason: 'fixture has 111 rows, all should import');
+      expect(events.length, 111, reason: 'fixture has 111 rows, all should import');
 
       final contributes = events.where((e) => e.type == EventType.buy);
       final revalues = events.where((e) => e.type == EventType.revalue);
@@ -104,8 +106,7 @@ void main() {
       }
     });
 
-    test('latest revalue.amount matches synthetic year-end (23100.00)',
-        () async {
+    test('latest revalue.amount matches synthetic year-end (23100.00)', () async {
       final assetId = await createPensionAsset();
       final capped = await importer.parseFile(
         'test/fixtures/ppp/import.tsv',
@@ -144,12 +145,9 @@ void main() {
         DateTime(2026, 2, 28): 23100.00,
       };
       for (final entry in expected.entries) {
-        final r = await (db.select(db.assetEvents)
-              ..where((e) =>
-                  e.assetId.equals(assetId) &
-                  e.type.equalsValue(EventType.revalue) &
-                  e.valueDate.equals(entry.key)))
-            .getSingleOrNull();
+        final r = await (db.select(
+          db.assetEvents,
+        )..where((e) => e.assetId.equals(assetId) & e.type.equalsValue(EventType.revalue) & e.valueDate.equals(entry.key))).getSingleOrNull();
         expect(r, isNotNull, reason: 'no revalue at ${entry.key}');
         expect(r!.amount, closeTo(entry.value, 0.01));
       }
@@ -157,8 +155,7 @@ void main() {
   });
 
   group('T3b — F2 (401(k)) ISIN-grouped, explicit qty/price', () {
-    test('multi-sub-fund split + explicit unit pricing wins over auto-fill',
-        () async {
+    test('multi-sub-fund split + explicit unit pricing wins over auto-fill', () async {
       final capped = await importer.parseFile(
         'test/fixtures/pension/us_401k_sample.csv',
         numberLocale: 'en_US',
@@ -178,47 +175,47 @@ void main() {
         baseCurrency: 'USD',
         intermediaryId: intermediaryId,
         contributeValues: const {
-          'employee_pretax', 'employee_roth', 'employer_match',
-          'employer_nonelective', 'rollover',
+          'employee_pretax',
+          'employee_roth',
+          'employer_match',
+          'employer_nonelective',
+          'rollover',
         },
         revalueValues: const {'position_snapshot'},
         numberLocaleOverride: 'en_US',
       );
 
-      expect(result.result.errorRows, 0,
-          reason: 'errors: ${result.result.errors}');
+      expect(result.result.errorRows, 0, reason: 'errors: ${result.result.errors}');
 
       // 3 unique ISINs → 3 assets created.
       final assets = await db.select(db.assets).get();
       expect(assets, hasLength(3));
-      expect(assets.map((a) => a.isin),
-          containsAll([
-            'US9229087690', 'US9229087443', 'US922908769C',
-          ]));
+      expect(
+        assets.map((a) => a.isin),
+        containsAll([
+          'US9229087690',
+          'US9229087443',
+          'US922908769C',
+        ]),
+      );
 
       // Explicit qty/price on every contribute — A3 auto-fill must not
       // have synthesized 1.0 prices.
-      final contribs = await (db.select(db.assetEvents)
-            ..where((e) => e.type.equalsValue(EventType.buy)))
-          .get();
+      final contribs = await (db.select(db.assetEvents)..where((e) => e.type.equalsValue(EventType.buy))).get();
       expect(contribs, isNotEmpty);
       for (final c in contribs) {
         expect(c.price, isNotNull);
-        expect(c.price! > 1.0, isTrue,
-            reason: 'real NAVs are >1; if price=1.0 the auto-fill misfired');
+        expect(c.price! > 1.0, isTrue, reason: 'real NAVs are >1; if price=1.0 the auto-fill misfired');
       }
 
       // 3 position-snapshot rows (one per sub-fund) → 3 revalue events.
-      final revalues = await (db.select(db.assetEvents)
-            ..where((e) => e.type.equalsValue(EventType.revalue)))
-          .get();
+      final revalues = await (db.select(db.assetEvents)..where((e) => e.type.equalsValue(EventType.revalue))).get();
       expect(revalues, hasLength(3));
     });
   });
 
   group('T3c — F3 (UK SIPP) contribute-only, no revalue', () {
-    test('contribute-only import produces zero revalues, no market_prices',
-        () async {
+    test('contribute-only import produces zero revalues, no market_prices', () async {
       final assetId = await createPensionAsset(currency: 'GBP');
       final capped = await importer.parseFile(
         'test/fixtures/pension/uk_sipp_summary.csv',
@@ -248,9 +245,7 @@ void main() {
       expect(events.every((e) => e.type == EventType.buy), isTrue);
 
       // No revalues → no market_prices rows materialized.
-      final prices = await (db.select(db.marketPrices)
-            ..where((p) => p.assetId.equals(assetId)))
-          .get();
+      final prices = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(assetId))).get();
       expect(prices, isEmpty);
 
       // Every contribute auto-filled qty=amount, price=1.0 (eventDriven asset).
@@ -262,8 +257,7 @@ void main() {
   });
 
   group('T4 — Idempotency: re-import inserts 0 net new rows', () {
-    test('PPP re-import is a no-op (wipe+replace under targetAssetId)',
-        () async {
+    test('PPP re-import is a no-op (wipe+replace under targetAssetId)', () async {
       final assetId = await createPensionAsset();
 
       Future<void> importPPP() async {
@@ -296,8 +290,7 @@ void main() {
 
       await importPPP();
       final secondCount = (await db.select(db.assetEvents).get()).length;
-      expect(secondCount, 111,
-          reason: 'second import wipes+replaces, no net change');
+      expect(secondCount, 111, reason: 'second import wipes+replaces, no net change');
     });
   });
 }

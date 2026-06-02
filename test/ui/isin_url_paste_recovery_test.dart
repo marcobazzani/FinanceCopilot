@@ -23,8 +23,7 @@ Widget _harness({
   return ProviderScope(
     overrides: [
       databaseProvider.overrideWithValue(db),
-      marketPriceServiceProvider.overrideWith((ref) =>
-          WebMarketDataService(db, pageFetcher: pageFetcher)),
+      marketPriceServiceProvider.overrideWith((ref) => WebMarketDataService(db, pageFetcher: pageFetcher)),
     ],
     child: MaterialApp(
       home: Scaffold(
@@ -58,12 +57,14 @@ void main() {
   });
 
   testWidgets('renders headline + explanation interpolating user query', (tester) async {
-    await tester.pumpWidget(_harness(
-      db: db,
-      pageFetcher: (_) async => null,
-      onResolved: (_) {},
-      userQuery: 'BE0000351602',
-    ));
+    await tester.pumpWidget(
+      _harness(
+        db: db,
+        pageFetcher: (_) async => null,
+        onResolved: (_) {},
+        userQuery: 'BE0000351602',
+      ),
+    );
 
     expect(find.byKey(const Key('instrumentNotFoundHeadline')), findsOneWidget);
     expect(find.byKey(const Key('instrumentNotFoundExplanation')), findsOneWidget);
@@ -76,11 +77,13 @@ void main() {
 
   testWidgets('non-http URL → urlInvalidFormat shown inline; onResolved not called', (tester) async {
     var resolvedCalls = 0;
-    await tester.pumpWidget(_harness(
-      db: db,
-      pageFetcher: (_) async => bondHtml,
-      onResolved: (_) => resolvedCalls++,
-    ));
+    await tester.pumpWidget(
+      _harness(
+        db: db,
+        pageFetcher: (_) async => bondHtml,
+        onResolved: (_) => resolvedCalls++,
+      ),
+    );
 
     await tester.enterText(find.byKey(const Key('pasteUrlField')), 'ftp://www.investing.com/foo');
     await tester.tap(find.byKey(const Key('verifyUrlButton')));
@@ -92,11 +95,13 @@ void main() {
 
   testWidgets('valid URL + happy fetcher → onResolved invoked exactly once', (tester) async {
     final captured = <ProviderSearchResult>[];
-    await tester.pumpWidget(_harness(
-      db: db,
-      pageFetcher: (_) async => bondHtml,
-      onResolved: captured.add,
-    ));
+    await tester.pumpWidget(
+      _harness(
+        db: db,
+        pageFetcher: (_) async => bondHtml,
+        onResolved: captured.add,
+      ),
+    );
 
     await tester.enterText(
       find.byKey(const Key('pasteUrlField')),
@@ -111,11 +116,13 @@ void main() {
 
   testWidgets('page parse failure → urlParseFailed shown inline', (tester) async {
     var resolvedCalls = 0;
-    await tester.pumpWidget(_harness(
-      db: db,
-      pageFetcher: (_) async => '<html><body>Just a moment...</body></html>',
-      onResolved: (_) => resolvedCalls++,
-    ));
+    await tester.pumpWidget(
+      _harness(
+        db: db,
+        pageFetcher: (_) async => '<html><body>Just a moment...</body></html>',
+        onResolved: (_) => resolvedCalls++,
+      ),
+    );
 
     await tester.enterText(
       find.byKey(const Key('pasteUrlField')),

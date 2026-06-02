@@ -43,11 +43,9 @@ class AssetService {
 
   AssetService(this._db);
 
-  Future<List<Asset>> getAll() =>
-      (_db.select(_db.assets)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).get();
+  Future<List<Asset>> getAll() => (_db.select(_db.assets)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).get();
 
-  Stream<List<Asset>> watchAll() =>
-      (_db.select(_db.assets)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).watch();
+  Stream<List<Asset>> watchAll() => (_db.select(_db.assets)..orderBy([(a) => OrderingTerm.asc(a.sortOrder)])).watch();
 
   Stream<List<Asset>> watchActive() =>
       (_db.select(_db.assets)
@@ -55,8 +53,7 @@ class AssetService {
             ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
           .watch();
 
-  Future<Asset> getById(int id) =>
-      (_db.select(_db.assets)..where((a) => a.id.equals(id))).getSingle();
+  Future<Asset> getById(int id) => (_db.select(_db.assets)..where((a) => a.id.equals(id))).getSingle();
 
   Future<int> create({
     required String name,
@@ -74,33 +71,37 @@ class AssetService {
     bool? isActive,
     bool? includeInSavings,
   }) {
-    _log.info('create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange, '
-        'intermediary=$intermediaryId, valuation=${valuationMethod.name}, '
-        'instrument=${instrumentType?.name}, class=${assetClass?.name}, '
-        'assetType=${assetType.name}');
-    return _db.into(_db.assets).insert(AssetsCompanion.insert(
-      name: name,
-      assetType: assetType,
-      valuationMethod: valuationMethod,
-      intermediaryId: intermediaryId,
-      ticker: Value(ticker),
-      isin: Value(isin),
-      exchange: Value(exchange),
-      currency: Value(currency),
-      taxRate: Value(taxRate),
-      instrumentType: instrumentType != null ? Value(instrumentType) : const Value.absent(),
-      assetClass: assetClass != null ? Value(assetClass) : const Value.absent(),
-      ter: Value(ter),
-      isActive: isActive != null ? Value(isActive) : const Value.absent(),
-      includeInSavings: includeInSavings != null ? Value(includeInSavings) : const Value.absent(),
-    ));
+    _log.info(
+      'create: name=$name, ticker=$ticker, isin=$isin, exchange=$exchange, '
+      'intermediary=$intermediaryId, valuation=${valuationMethod.name}, '
+      'instrument=${instrumentType?.name}, class=${assetClass?.name}, '
+      'assetType=${assetType.name}',
+    );
+    return _db
+        .into(_db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: assetType,
+            valuationMethod: valuationMethod,
+            intermediaryId: intermediaryId,
+            ticker: Value(ticker),
+            isin: Value(isin),
+            exchange: Value(exchange),
+            currency: Value(currency),
+            taxRate: Value(taxRate),
+            instrumentType: instrumentType != null ? Value(instrumentType) : const Value.absent(),
+            assetClass: assetClass != null ? Value(assetClass) : const Value.absent(),
+            ter: Value(ter),
+            isActive: isActive != null ? Value(isActive) : const Value.absent(),
+            includeInSavings: includeInSavings != null ? Value(includeInSavings) : const Value.absent(),
+          ),
+        );
   }
 
   Future<bool> update(int id, AssetsCompanion companion) {
     _log.info('update: id=$id');
-    return (_db.update(_db.assets)..where((a) => a.id.equals(id)))
-        .write(companion)
-        .then((rows) => rows > 0);
+    return (_db.update(_db.assets)..where((a) => a.id.equals(id))).write(companion).then((rows) => rows > 0);
   }
 
   Future<int> delete(int id) async {
@@ -193,23 +194,28 @@ class AssetService {
 
   /// Get aggregated stats for all assets from their events.
   Future<Map<int, AssetStats>> getStatsForAll({DateTime? through}) async {
-    final rows = await _db.customSelect(
-      _statsSql(bounded: through != null),
-      variables: _throughVars(through),
-      readsFrom: {_db.assetEvents},
-    ).get();
+    final rows = await _db
+        .customSelect(
+          _statsSql(bounded: through != null),
+          variables: _throughVars(through),
+          readsFrom: {_db.assetEvents},
+        )
+        .get();
     return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
   }
 
   /// Stream of aggregated stats for all assets, updates on event changes.
   Stream<Map<int, AssetStats>> watchStatsForAll({DateTime? through}) {
-    return _db.customSelect(
-      _statsSql(bounded: through != null),
-      variables: _throughVars(through),
-      readsFrom: {_db.assetEvents},
-    ).watch().map((rows) {
-      return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
-    });
+    return _db
+        .customSelect(
+          _statsSql(bounded: through != null),
+          variables: _throughVars(through),
+          readsFrom: {_db.assetEvents},
+        )
+        .watch()
+        .map((rows) {
+          return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
+        });
   }
 
   static List<Variable<int>> _throughVars(DateTime? through) {

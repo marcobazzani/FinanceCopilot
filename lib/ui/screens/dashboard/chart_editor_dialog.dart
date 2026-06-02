@@ -31,8 +31,7 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
     _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
     if (widget.existing != null) {
       try {
-        final configs = (jsonDecode(widget.existing!.seriesJson) as List)
-            .cast<Map<String, dynamic>>();
+        final configs = (jsonDecode(widget.existing!.seriesJson) as List).cast<Map<String, dynamic>>();
         for (final c in configs) {
           final type = c['type'] as String?;
           final id = c['id'] as int?;
@@ -53,34 +52,34 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
   }
 
   void _toggleKey(String key) => setState(() {
-        if (_selected.contains(key)) {
-          _selected.remove(key);
-          _inverted.remove(key);
-        } else {
-          _selected.add(key);
-        }
-      });
+    if (_selected.contains(key)) {
+      _selected.remove(key);
+      _inverted.remove(key);
+    } else {
+      _selected.add(key);
+    }
+  });
 
   /// Tri-state cycle used for adjustments only: off → positive → negative → off.
   void _cycleSign(String key) => setState(() {
-        if (!_selected.contains(key)) {
-          _selected.add(key);
-        } else if (!_inverted.contains(key)) {
-          _inverted.add(key);
-        } else {
-          _selected.remove(key);
-          _inverted.remove(key);
-        }
-      });
+    if (!_selected.contains(key)) {
+      _selected.add(key);
+    } else if (!_inverted.contains(key)) {
+      _inverted.add(key);
+    } else {
+      _selected.remove(key);
+      _inverted.remove(key);
+    }
+  });
 
   void _toggleGroup(Set<String> keys) => setState(() {
-        if (keys.every(_selected.contains)) {
-          _selected.removeAll(keys);
-          _inverted.removeAll(keys);
-        } else {
-          _selected.addAll(keys);
-        }
-      });
+    if (keys.every(_selected.contains)) {
+      _selected.removeAll(keys);
+      _inverted.removeAll(keys);
+    } else {
+      _selected.addAll(keys);
+    }
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -115,17 +114,14 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
               if (d.accounts.isNotEmpty) ...[
                 _ChartEditorSectionHeader(
                   label: s.chartSectionAccounts,
-                  allSelected:
-                      d.accounts.every((s) => _selected.contains(s.key)),
+                  allSelected: d.accounts.every((s) => _selected.contains(s.key)),
                   s: s,
-                  onToggleAll: () =>
-                      _toggleGroup(d.accounts.map((s) => s.key).toSet()),
+                  onToggleAll: () => _toggleGroup(d.accounts.map((s) => s.key).toSet()),
                 ),
                 for (final ser in d.accounts)
                   CheckboxListTile(
                     dense: true,
-                    title:
-                        Text(ser.name, style: const TextStyle(fontSize: 13)),
+                    title: Text(ser.name, style: const TextStyle(fontSize: 13)),
                     value: _selected.contains(ser.key),
                     onChanged: (_) => _toggleKey(ser.key),
                   ),
@@ -262,9 +258,9 @@ class _AssetsGrid extends StatelessWidget {
   }
 
   Set<String> _columnKeys(String type) => {
-        for (final id in assetIds)
-          if (_has(id, type)) '$type:$id',
-      };
+    for (final id in assetIds)
+      if (_has(id, type)) '$type:$id',
+  };
 
   bool _columnAllSelected(String type) {
     final keys = _columnKeys(type);
@@ -607,9 +603,7 @@ class _TriStateCell extends StatelessWidget {
         padding: EdgeInsets.zero,
         icon: Icon(icon, size: 22, color: color),
         onPressed: onTap,
-        tooltip: !selected
-            ? null
-            : (inverted ? '−' : '+'),
+        tooltip: !selected ? null : (inverted ? '−' : '+'),
       ),
     );
   }
@@ -634,9 +628,7 @@ class _ChartEditorSectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Row(
         children: [
-          Text(label,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const Spacer(),
           TextButton(
             onPressed: onToggleAll,
@@ -673,8 +665,7 @@ class _CombineChartsDialog extends ConsumerStatefulWidget {
   const _CombineChartsDialog({required this.charts, this.existing});
 
   @override
-  ConsumerState<_CombineChartsDialog> createState() =>
-      _CombineChartsDialogState();
+  ConsumerState<_CombineChartsDialog> createState() => _CombineChartsDialogState();
 }
 
 class _CombineChartsDialogState extends ConsumerState<_CombineChartsDialog> {
@@ -707,9 +698,7 @@ class _CombineChartsDialogState extends ConsumerState<_CombineChartsDialog> {
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     return AlertDialog(
-      title: Text(widget.existing != null
-          ? s.chartCombineEditTitle
-          : s.chartCombineNewTitle),
+      title: Text(widget.existing != null ? s.chartCombineEditTitle : s.chartCombineNewTitle),
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
@@ -719,43 +708,38 @@ class _CombineChartsDialogState extends ConsumerState<_CombineChartsDialog> {
             children: [
               TextField(
                 controller: _titleCtrl,
-                decoration:
-                    InputDecoration(labelText: s.chartCombineTitleLabel),
+                decoration: InputDecoration(labelText: s.chartCombineTitleLabel),
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 16),
               CheckboxListTile(
                 dense: true,
                 title: Text(s.chartCombineAutoAll),
-                subtitle: Text(s.chartCombineAutoAllHint,
-                    style: const TextStyle(fontSize: 11)),
+                subtitle: Text(s.chartCombineAutoAllHint, style: const TextStyle(fontSize: 11)),
                 value: _autoAll,
                 onChanged: (v) => setState(() => _autoAll = v ?? false),
               ),
               const Divider(height: 16),
-              Text(s.chartCombinePickHint,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: _autoAll
-                        ? Theme.of(context).disabledColor
-                        : null,
-                  )),
+              Text(
+                s.chartCombinePickHint,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: _autoAll ? Theme.of(context).disabledColor : null,
+                ),
+              ),
               const SizedBox(height: 8),
               for (final chart in widget.charts)
                 CheckboxListTile(
                   dense: true,
                   enabled: !_autoAll,
-                  title: Text(chart.title,
-                      style: const TextStyle(fontSize: 13)),
+                  title: Text(chart.title, style: const TextStyle(fontSize: 13)),
                   value: _autoAll || _selectedIds.contains(chart.id),
                   onChanged: _autoAll
                       ? null
                       : (_) => setState(() {
-                            _selectedIds.contains(chart.id)
-                                ? _selectedIds.remove(chart.id)
-                                : _selectedIds.add(chart.id);
-                          }),
+                          _selectedIds.contains(chart.id) ? _selectedIds.remove(chart.id) : _selectedIds.add(chart.id);
+                        }),
                 ),
             ],
           ),
@@ -767,17 +751,16 @@ class _CombineChartsDialogState extends ConsumerState<_CombineChartsDialog> {
           child: Text(s.cancel),
         ),
         FilledButton(
-          onPressed: _titleCtrl.text.trim().isEmpty ||
-                  (!_autoAll && _selectedIds.length < 2)
+          onPressed: _titleCtrl.text.trim().isEmpty || (!_autoAll && _selectedIds.length < 2)
               ? null
               : () => Navigator.pop(
-                    context,
-                    _CombineChartsResult(
-                      title: _titleCtrl.text.trim(),
-                      selectedChartIds: _selectedIds.toList(),
-                      autoAll: _autoAll,
-                    ),
+                  context,
+                  _CombineChartsResult(
+                    title: _titleCtrl.text.trim(),
+                    selectedChartIds: _selectedIds.toList(),
+                    autoAll: _autoAll,
                   ),
+                ),
           child: Text(s.save),
         ),
       ],

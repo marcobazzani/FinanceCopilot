@@ -24,10 +24,12 @@ class PillarAllocationData {
 /// only when rows are inserted/deleted.
 final assetIdsWithMarketPricesProvider = FutureProvider<Set<int>>((ref) async {
   final db = ref.watch(databaseProvider);
-  final rows = await db.customSelect(
-    'SELECT DISTINCT asset_id FROM market_prices',
-    readsFrom: {db.marketPrices},
-  ).get();
+  final rows = await db
+      .customSelect(
+        'SELECT DISTINCT asset_id FROM market_prices',
+        readsFrom: {db.marketPrices},
+      )
+      .get();
   return rows.map((r) => r.read<int>('asset_id')).toSet();
 });
 
@@ -51,10 +53,15 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
       // than fabricate a wrong value.
       result[account.id] = waybackDate == null
           ? await rateService.convertLive(
-              stat.balance!, account.currency, baseCurrency,
+              stat.balance!,
+              account.currency,
+              baseCurrency,
             )
           : await rateService.convertAmount(
-              stat.balance!, account.currency, baseCurrency, currentDate,
+              stat.balance!,
+              account.currency,
+              baseCurrency,
+              currentDate,
             );
     }
   }
@@ -119,8 +126,7 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
         final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
         if (rate != null && rate > 0) {
           if (waybackDate == null) {
-            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
-                .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
           }
           return amount / rate;
         }
@@ -234,19 +240,20 @@ final pillarAllocationDataProvider = FutureProvider.family<PillarAllocationData,
   );
 });
 
-
 /// IDs of active, marketPrice-valued assets that have no rows in
 /// `market_prices`. The asset's displayed value falls back to the buy or
 /// revalue price; the UI uses this set to flag the value as not market-sourced.
 final assetsWithoutMarketPriceProvider = FutureProvider<Set<int>>((ref) async {
   final db = ref.watch(databaseProvider);
   ref.watch(priceRefreshCounter); // refresh after each sync attempt
-  final rows = await db.customSelect(
-    "SELECT a.id FROM assets a "
-    "WHERE a.is_active = 1 "
-    "AND a.valuation_method = 'marketPrice' "
-    "AND NOT EXISTS (SELECT 1 FROM market_prices mp WHERE mp.asset_id = a.id)",
-  ).get();
+  final rows = await db
+      .customSelect(
+        "SELECT a.id FROM assets a "
+        "WHERE a.is_active = 1 "
+        "AND a.valuation_method = 'marketPrice' "
+        "AND NOT EXISTS (SELECT 1 FROM market_prices mp WHERE mp.asset_id = a.id)",
+      )
+      .get();
   return rows.map((r) => r.read<int>('id')).toSet();
 });
 
@@ -258,12 +265,12 @@ class AssetDailyChange {
   final double todayPrice;
   final double previousPrice;
   final double quantity;
-  final double todayFxRate;    // asset currency -> base currency (today)
+  final double todayFxRate; // asset currency -> base currency (today)
   final double previousFxRate; // asset currency -> base currency (reference date)
   final String baseCurrency;
-  final String? providerUrl;   // the market data provider page URL
-  final double priceDivisor;   // 100 for bonds (quoted per 100 nominal), 1 otherwise
-  final bool marketOpen;       // true if today's date has a stored price
+  final String? providerUrl; // the market data provider page URL
+  final double priceDivisor; // 100 for bonds (quoted per 100 nominal), 1 otherwise
+  final bool marketOpen; // true if today's date has a stored price
 
   const AssetDailyChange({
     required this.name,
@@ -282,9 +289,9 @@ class AssetDailyChange {
 
   double get priceDiff => todayPrice - previousPrice;
   double get pricePct => previousPrice != 0 ? (priceDiff / previousPrice) * 100 : 0;
+
   /// Value change in base currency, captures both price AND FX movements.
-  double get valueDiff =>
-      (todayPrice * quantity / priceDivisor * todayFxRate) - (previousPrice * quantity / priceDivisor * previousFxRate);
+  double get valueDiff => (todayPrice * quantity / priceDivisor * todayFxRate) - (previousPrice * quantity / priceDivisor * previousFxRate);
 }
 
 /// Compare latest price vs price on or before [referenceDate].
@@ -352,10 +359,12 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
     if (searchTerm != null && searchTerm.isNotEmpty) {
       final urlKey = 'PROVIDER_URL_${searchTerm}_${asset.exchange ?? 'Milan'}';
-      final urlRow = await priceService.db.customSelect(
-        'SELECT value FROM app_configs WHERE key = ?',
-        variables: [Variable.withString(urlKey)],
-      ).getSingleOrNull();
+      final urlRow = await priceService.db
+          .customSelect(
+            'SELECT value FROM app_configs WHERE key = ?',
+            variables: [Variable.withString(urlKey)],
+          )
+          .getSingleOrNull();
       if (urlRow != null) {
         final path = urlRow.read<String>('value');
         providerUrl = path.startsWith('http') ? path : '$kProviderBase$path';
@@ -363,24 +372,24 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     }
 
     // Market is open if live price was fetched within the last 15 minutes
-    final isMarketOpen = waybackDate == null &&
-        priceService is WebMarketDataService &&
-        priceService.isMarketOpen(asset.id);
+    final isMarketOpen = waybackDate == null && priceService is WebMarketDataService && priceService.isMarketOpen(asset.id);
 
-    result.add(AssetDailyChange(
-      name: asset.name,
-      ticker: asset.ticker,
-      currency: asset.currency,
-      todayPrice: latestPrice,
-      previousPrice: previousPrice,
-      quantity: stat.totalQuantity,
-      todayFxRate: todayFx,
-      previousFxRate: prevFx,
-      baseCurrency: baseCurrency,
-      providerUrl: providerUrl,
-      priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
-      marketOpen: isMarketOpen,
-    ));
+    result.add(
+      AssetDailyChange(
+        name: asset.name,
+        ticker: asset.ticker,
+        currency: asset.currency,
+        todayPrice: latestPrice,
+        previousPrice: previousPrice,
+        quantity: stat.totalQuantity,
+        todayFxRate: todayFx,
+        previousFxRate: prevFx,
+        baseCurrency: baseCurrency,
+        providerUrl: providerUrl,
+        priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
+        marketOpen: isMarketOpen,
+      ),
+    );
   }
   return result;
 });
@@ -406,8 +415,7 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
       if (rate != null && rate > 0) {
         result[ev.id] = ev.amount / rate;
         if (waybackDate == null) {
-          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id)))
-              .write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
         }
       } else {
         // Live fallback. Skip the event if no rate is available — the UI

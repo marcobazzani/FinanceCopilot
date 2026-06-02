@@ -89,10 +89,11 @@ InstrumentUrlOutcome canonicaliseInstrumentUrl(String raw) {
     }
   }
 
-  final canonicalPath = '/${[
-    ...segments.sublist(0, segments.length - 1),
-    trimmedLast,
-  ].join('/')}';
+  final canonicalPath =
+      '/${[
+        ...segments.sublist(0, segments.length - 1),
+        trimmedLast,
+      ].join('/')}';
 
   final canonical = Uri(
     scheme: 'https',
@@ -144,12 +145,14 @@ ProviderSearchResult? parseProviderPage(String html, Uri pageUrl) {
 
   return ProviderSearchResult(
     cid: cid,
-    description: _firstNonEmpty([
-      _strField(name, 'fullName'),
-      _strField(name, 'shortName'),
-      _strField(name, 'parentName'),
-      _strField(instrument['englishName'], 'fullName'),
-    ]) ?? '',
+    description:
+        _firstNonEmpty([
+          _strField(name, 'fullName'),
+          _strField(name, 'shortName'),
+          _strField(name, 'parentName'),
+          _strField(instrument['englishName'], 'fullName'),
+        ]) ??
+        '',
     symbol: _strField(name, 'symbol') ?? '',
     exchange: _strField(exchange, 'exchange') ?? '',
     flag: _strField(exchange, 'flag') ?? '',

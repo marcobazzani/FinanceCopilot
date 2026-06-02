@@ -41,8 +41,7 @@ class PillarScopePillar extends PillarScope {
   final String id;
   const PillarScopePillar(this.id);
   @override
-  bool operator ==(Object other) =>
-      other is PillarScopePillar && other.id == id;
+  bool operator ==(Object other) => other is PillarScopePillar && other.id == id;
   @override
   int get hashCode => id.hashCode;
 }

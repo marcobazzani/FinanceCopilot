@@ -41,15 +41,18 @@ void main() {
 
     // The ListTile-background assertion would surface here if the tint
     // Container still wrapped the child.
-    expect(tester.takeException(), isNull,
-        reason: 'selected tile must paint without the ListTile-in-'
-            'DecoratedBox assertion');
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'selected tile must paint without the ListTile-in-'
+          'DecoratedBox assertion',
+    );
     expect(controller.contains(1), isTrue);
     expect(find.text('Row 1'), findsOneWidget);
   });
 
-  testWidgets('check-circle overlay appears only while selected',
-      (tester) async {
+  testWidgets('check-circle overlay appears only while selected', (tester) async {
     final controller = SelectionController<int>();
     addTearDown(controller.dispose);
 

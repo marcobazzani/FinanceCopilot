@@ -111,12 +111,13 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  Expanded(child: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
+                  Expanded(
+                    child: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
                   if (isPrivate)
                     const Text('****', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
                   else
-                    Text(widget.titleValue,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text(widget.titleValue, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(width: 8),
                   Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20),
                 ],
@@ -127,52 +128,54 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
             alignment: Alignment.topCenter,
-            child: _expanded ? Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-              child: SizedBox(
-                height: 220,
-                child: Stack(
-                  children: [
-                    DragZoomWrapper(
-                      xMin: _zoomMinX ?? 0,
-                      xMax: _zoomMaxX ?? lastX,
-                      yMin: effectiveMinY,
-                      yMax: effectiveMaxY,
-                      totalDays: lastX,
-                      firstDate: widget.firstDate,
-                      baseCurrency: widget.currency,
-                      locale: locale,
-                      onZoom: _onZoom,
-                      zoomedY: _zoomMinY != null || _zoomMaxY != null,
-                      child: UnifiedChart(
-                        firstDate: widget.firstDate,
-                        visible: widget.series,
-                        totalSpots: widget.series.first.spots,
-                        showTotal: false,
-                        baseCurrency: widget.currency,
-                        locale: locale,
-                        language: language,
-                        zoomMinX: _zoomMinX,
-                        zoomMaxX: _zoomMaxX,
-                        zoomMinY: _zoomMinY,
-                        zoomMaxY: _zoomMaxY,
-                        isPrivate: isPrivate,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                    child: SizedBox(
+                      height: 220,
+                      child: Stack(
+                        children: [
+                          DragZoomWrapper(
+                            xMin: _zoomMinX ?? 0,
+                            xMax: _zoomMaxX ?? lastX,
+                            yMin: effectiveMinY,
+                            yMax: effectiveMaxY,
+                            totalDays: lastX,
+                            firstDate: widget.firstDate,
+                            baseCurrency: widget.currency,
+                            locale: locale,
+                            onZoom: _onZoom,
+                            zoomedY: _zoomMinY != null || _zoomMaxY != null,
+                            child: UnifiedChart(
+                              firstDate: widget.firstDate,
+                              visible: widget.series,
+                              totalSpots: widget.series.first.spots,
+                              showTotal: false,
+                              baseCurrency: widget.currency,
+                              locale: locale,
+                              language: language,
+                              zoomMinX: _zoomMinX,
+                              zoomMaxX: _zoomMaxX,
+                              zoomMinY: _zoomMinY,
+                              zoomMaxY: _zoomMaxY,
+                              isPrivate: isPrivate,
+                            ),
+                          ),
+                          if (hasZoom)
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: IconButton(
+                                icon: const Icon(Icons.zoom_out_map, size: 18),
+                                onPressed: () => _onZoom(null, null, null, null),
+                                tooltip: s.resetZoom,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (hasZoom)
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: IconButton(
-                          icon: const Icon(Icons.zoom_out_map, size: 18),
-                          onPressed: () => _onZoom(null, null, null, null),
-                          tooltip: s.resetZoom,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ) : const SizedBox.shrink(),
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),

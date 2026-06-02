@@ -5,6 +5,7 @@
 /// so that future changes cannot silently diverge (e.g. missing fallback
 /// paths, different date handling, different aggregation precision).
 library;
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,31 +27,41 @@ void main() {
 
   // ── Helpers ──
 
-  Future<int> createAsset(String name, {
+  Future<int> createAsset(
+    String name, {
     ValuationMethod valuation = ValuationMethod.marketPrice,
   }) async {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-      name: name,
-      assetType: AssetType.stockEtf,
-      valuationMethod: valuation,
-      intermediaryId: iid,
-    ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.stockEtf,
+            valuationMethod: valuation,
+            intermediaryId: iid,
+          ),
+        );
   }
 
   Future<void> insertMarketPrices(int assetId, List<(DateTime, double)> prices) async {
     for (final (date, price) in prices) {
-      await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
-        assetId: assetId,
-        date: date,
-        closePrice: price,
-        currency: 'EUR',
-      ));
+      await db
+          .into(db.marketPrices)
+          .insert(
+            MarketPricesCompanion.insert(
+              assetId: assetId,
+              date: date,
+              closePrice: price,
+              currency: 'EUR',
+            ),
+          );
     }
   }
 
   // Goes through AssetEventService.create so revalue events are
   // materialised into market_prices rows the way they are in production.
-  Future<void> insertEvent(int assetId, {
+  Future<void> insertEvent(
+    int assetId, {
     required DateTime date,
     required EventType type,
     required double amount,

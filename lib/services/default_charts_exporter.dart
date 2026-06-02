@@ -40,52 +40,41 @@ class DefaultChartsExporter {
     final ephemeralInflows = inflows.where((e) => e.isEphemeral).toList();
 
     final categoryFullSets = <String, Set<String>>{
-      'all_accounts':
-          {for (final a in activeAccounts.where((a) => a.isActive)) 'account:${a.id}'},
-      'all_invested':
-          {for (final a in activeAssets) 'asset_invested:${a.id}'},
+      'all_accounts': {for (final a in activeAccounts.where((a) => a.isActive)) 'account:${a.id}'},
+      'all_invested': {for (final a in activeAssets) 'asset_invested:${a.id}'},
       'all_invested_saving': {
         for (final a in activeAssets)
-          if (a.includeInSavings) 'asset_invested:${a.id}'
+          if (a.includeInSavings) 'asset_invested:${a.id}',
       },
-      'all_market':
-          {for (final a in activeAssets) 'asset_market:${a.id}'},
+      'all_market': {for (final a in activeAssets) 'asset_market:${a.id}'},
       'all_market_saving': {
         for (final a in activeAssets)
-          if (a.includeInSavings) 'asset_market:${a.id}'
+          if (a.includeInSavings) 'asset_market:${a.id}',
       },
       'all_market_liquid': {
         for (final a in activeAssets)
-          if (!_illiquidTypes.contains(a.instrumentType)) 'asset_market:${a.id}'
+          if (!_illiquidTypes.contains(a.instrumentType)) 'asset_market:${a.id}',
       },
-      'all_gain':
-          {for (final a in activeAssets) 'asset_gain:${a.id}'},
+      'all_gain': {for (final a in activeAssets) 'asset_gain:${a.id}'},
       'all_gain_saving': {
         for (final a in activeAssets)
-          if (a.includeInSavings) 'asset_gain:${a.id}'
+          if (a.includeInSavings) 'asset_gain:${a.id}',
       },
-      'all_net':
-          {for (final a in activeAssets) 'asset_net:${a.id}'},
+      'all_net': {for (final a in activeAssets) 'asset_net:${a.id}'},
       'all_net_saving': {
         for (final a in activeAssets)
-          if (a.includeInSavings) 'asset_net:${a.id}'
+          if (a.includeInSavings) 'asset_net:${a.id}',
       },
       'all_net_liquid': {
         for (final a in activeAssets)
-          if (!_illiquidTypes.contains(a.instrumentType)) 'asset_net:${a.id}'
+          if (!_illiquidTypes.contains(a.instrumentType)) 'asset_net:${a.id}',
       },
-      'outflow_value':
-          {for (final e in outflows) 'adjustment_value:${e.id}'},
-      'outflow_events':
-          {for (final e in outflows) 'adjustment_events:${e.id}'},
-      'non_ephemeral_inflow_value':
-          {for (final e in nonEphemeralInflows) 'income_adj_value:${e.id}'},
-      'non_ephemeral_inflow_events':
-          {for (final e in nonEphemeralInflows) 'income_adj_events:${e.id}'},
-      'ephemeral_inflow_value':
-          {for (final e in ephemeralInflows) 'ephemeral_inflow_value:${e.id}'},
-      'ephemeral_inflow_events':
-          {for (final e in ephemeralInflows) 'ephemeral_inflow_events:${e.id}'},
+      'outflow_value': {for (final e in outflows) 'adjustment_value:${e.id}'},
+      'outflow_events': {for (final e in outflows) 'adjustment_events:${e.id}'},
+      'non_ephemeral_inflow_value': {for (final e in nonEphemeralInflows) 'income_adj_value:${e.id}'},
+      'non_ephemeral_inflow_events': {for (final e in nonEphemeralInflows) 'income_adj_events:${e.id}'},
+      'ephemeral_inflow_value': {for (final e in ephemeralInflows) 'ephemeral_inflow_value:${e.id}'},
+      'ephemeral_inflow_events': {for (final e in ephemeralInflows) 'ephemeral_inflow_events:${e.id}'},
     };
 
     // Categories competing for the same key prefix: prefer the more specific
@@ -120,8 +109,7 @@ class DefaultChartsExporter {
         // covers every non-combined non-widget chart in the export) or a
         // JSON-encoded list of source-chart **titles**. Never int ids —
         // ids are in-memory only and would be meaningless after a rebuild.
-        entry['sourceChartIds'] =
-            _normalizeSourceChartIds(chart.sourceChartIds!, charts);
+        entry['sourceChartIds'] = _normalizeSourceChartIds(chart.sourceChartIds!, charts);
       }
       // Price Changes and combined-overlay charts have no series — skip
       // category resolution entirely.
@@ -154,9 +142,7 @@ class DefaultChartsExporter {
     List<DashboardChart> allCharts,
   ) {
     if (src == '*') return '*';
-    final pool = allCharts
-        .where((c) => c.widgetType != 'price_changes' && c.sourceChartIds == null)
-        .toList();
+    final pool = allCharts.where((c) => c.widgetType != 'price_changes' && c.sourceChartIds == null).toList();
     final titlesById = {for (final c in pool) c.id: c.title};
 
     List<String> titles;
@@ -182,8 +168,7 @@ class DefaultChartsExporter {
     }
 
     // Collapse to "*" when the title set equals every available chart.
-    final coverAll = pool.every((c) => titles.contains(c.title)) &&
-        titles.length == pool.length;
+    final coverAll = pool.every((c) => titles.contains(c.title)) && titles.length == pool.length;
     return coverAll ? '*' : jsonEncode(titles);
   }
 
@@ -221,9 +206,7 @@ class DefaultChartsExporter {
     // subset of another, in which case the smaller one matches first if
     // its keys equal a subset of the chart's selection AND the larger
     // wouldn't entirely fit.
-    final candidates = categoryFullSets.entries
-        .where((e) => e.value.isNotEmpty)
-        .toList()
+    final candidates = categoryFullSets.entries.where((e) => e.value.isNotEmpty).toList()
       ..sort((a, b) => b.value.length.compareTo(a.value.length));
 
     for (final cand in candidates) {

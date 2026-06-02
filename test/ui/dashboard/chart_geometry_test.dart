@@ -11,8 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart';
 
 void main() {
-  testWidgets('UnifiedChart dual-axis: drawing rect matches kChart constants',
-      (tester) async {
+  testWidgets('UnifiedChart dual-axis: drawing rect matches kChart constants', (tester) async {
     const widgetSize = Size(1000, 400);
     final firstDate = DateTime(2024, 1, 1);
 
@@ -92,14 +91,10 @@ void main() {
     // These offsets ARE the rectangle the wrapper must use to convert
     // pointer pixels into chart coordinates. They MUST equal our
     // wrapper constants — otherwise rectangle-zoom is wrong.
-    expect(dx, closeTo(kChartLeftReserved, 0.5),
-        reason: 'left inset must equal kChartLeftReserved');
-    expect(rightInset, closeTo(kChartRightReservedDual, 0.5),
-        reason: 'right inset must equal kChartRightReservedDual');
-    expect(bottomInset, closeTo(kChartBottomReserved, 0.5),
-        reason: 'bottom inset must equal kChartBottomReserved');
-    expect(dy, closeTo(0, 0.5),
-        reason: 'top inset must be zero (topTitles disabled)');
+    expect(dx, closeTo(kChartLeftReserved, 0.5), reason: 'left inset must equal kChartLeftReserved');
+    expect(rightInset, closeTo(kChartRightReservedDual, 0.5), reason: 'right inset must equal kChartRightReservedDual');
+    expect(bottomInset, closeTo(kChartBottomReserved, 0.5), reason: 'bottom inset must equal kChartBottomReserved');
+    expect(dy, closeTo(0, 0.5), reason: 'top inset must be zero (topTitles disabled)');
   });
 
   testWidgets('UnifiedChart single-axis: right inset is zero', (tester) async {
@@ -154,7 +149,6 @@ void main() {
     final rightInset = lineChartBox.size.width - leafSize.width - dx;
 
     expect(dx, closeTo(kChartLeftReserved, 0.5));
-    expect(rightInset, closeTo(0, 0.5),
-        reason: 'no dual axis → no right inset');
+    expect(rightInset, closeTo(0, 0.5), reason: 'no dual axis → no right inset');
   });
 }

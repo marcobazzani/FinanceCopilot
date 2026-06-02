@@ -36,8 +36,10 @@ final _log = getLogger('ImportScreen');
 class ImportScreen extends ConsumerStatefulWidget {
   final int? preselectedAccountId;
   final ImportTarget? preselectedTarget;
+
   /// For integration tests: inject a pre-parsed file preview (bypasses file picker).
   final FilePreview? testPreview;
+
   /// When shared from another app (Android share target), auto-load this file.
   final String? initialFilePath;
   const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget, this.testPreview, this.initialFilePath});
@@ -53,10 +55,12 @@ Future<String?> _loadLastDirectory() async {
   if (_lastDirectory != null) return _lastDirectory;
   if (Platform.isAndroid || Platform.isIOS) return null; // no persistent last-dir on mobile
   try {
-    final prefsDir = Directory(p.join(
-      Platform.environment['HOME'] ?? '',
-      'Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot',
-    ));
+    final prefsDir = Directory(
+      p.join(
+        Platform.environment['HOME'] ?? '',
+        'Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot',
+      ),
+    );
     final file = File(p.join(prefsDir.path, '.last_import_dir'));
     if (await file.exists()) {
       _lastDirectory = (await file.readAsString()).trim();
@@ -69,10 +73,12 @@ Future<void> _saveLastDirectory(String dir) async {
   _lastDirectory = dir;
   if (Platform.isAndroid || Platform.isIOS) return; // no persistent last-dir on mobile
   try {
-    final prefsDir = Directory(p.join(
-      Platform.environment['HOME'] ?? '',
-      'Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot',
-    ));
+    final prefsDir = Directory(
+      p.join(
+        Platform.environment['HOME'] ?? '',
+        'Library/Containers/net.bazzani.financecopilot/Data/Documents/FinanceCopilot',
+      ),
+    );
     await File(p.join(prefsDir.path, '.last_import_dir')).writeAsString(dir);
   } catch (_) {}
 }
@@ -101,8 +107,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// the resolution `parseAmount` does later: explicit selection > app
   /// locale > en_US. Without this, parser would emit "7707.97" while
   /// parseAmount with it_IT would misread the dot as thousands separator.
-  String _effectiveNumberLocale() =>
-      _selectedNumberLocale ?? ref.read(appLocaleProvider).value ?? 'en_US';
+  String _effectiveNumberLocale() => _selectedNumberLocale ?? ref.read(appLocaleProvider).value ?? 'en_US';
 
   // Asset import mode: 'historic' (date+rate required) or 'current' (default to today, rate auto-fetched)
   String _assetImportMode = 'historic';
@@ -149,19 +154,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     //   - singleAsset (pension funds, manual holdings): every row routes
     //     to one pre-existing asset chosen by the user, no ISIN needed,
     //     unit columns are optional (cash-only contributes auto-fill).
-    ImportTarget.assetEvent => _assetEventMode == 'singleAsset'
-        ? <String>[]
-        : (_assetImportMode == 'historic'
-            ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
-            : ['isin', 'quantity', 'price', 'currency']),
+    ImportTarget.assetEvent =>
+      _assetEventMode == 'singleAsset'
+          ? <String>[]
+          : (_assetImportMode == 'historic'
+                ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
+                : ['isin', 'quantity', 'price', 'currency']),
     ImportTarget.income => ['date', 'amount'],
   };
 
   List<String> get _optionalFields => switch (_target) {
     ImportTarget.transaction => ['currency', 'status'],
-    ImportTarget.assetEvent => _assetImportMode == 'historic'
-        ? ['description']
-        : ['date', 'exchangeRate', 'description'],
+    ImportTarget.assetEvent => _assetImportMode == 'historic' ? ['description'] : ['date', 'exchangeRate', 'description'],
     ImportTarget.income => ['type', 'currency'],
   };
 
@@ -189,11 +193,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _typeMode = 'column';
   final Set<String> _buyValues = {};
   final Set<String> _sellValues = {};
+
   /// Type-column values that mark a row as an external fee (e.g.
   /// "Commissioni" in Directa exports). When the user also maps an
   /// `orderRef` column, fee rows are folded into the parent Buy/Sell's
   /// commission. Without orderRef, they're silently dropped.
   final Set<String> _feeValues = {};
+
   /// Sign-mode convention: when true, a negative cash-flow amount is a BUY
   /// (Directa-style: negative = money out = bought it). Default false keeps
   /// the historical "negative = sell" behavior.
@@ -274,14 +280,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           LinearProgressIndicator(value: _step / 3),
           Expanded(
             child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: switch (_step) {
-          1 => _buildColumnMapper(),
-          2 => _buildConfirm(),
-          3 => _buildResult(),
-          _ => const SizedBox(),
-        },
-      )),
+              padding: const EdgeInsets.all(16),
+              child: switch (_step) {
+                1 => _buildColumnMapper(),
+                2 => _buildConfirm(),
+                3 => _buildResult(),
+                _ => const SizedBox(),
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -333,7 +340,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
-      final preview = await importer.parseFile(path, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader, numberLocale: _effectiveNumberLocale());
+      final preview = await importer.parseFile(
+        path,
+        sheetName: _selectedSheet,
+        skipRows: _skipRows,
+        noHeader: _noHeader,
+        numberLocale: _effectiveNumberLocale(),
+      );
       if (preview.rows.isEmpty) {
         _log.warning('_loadFile: file is empty after parsing');
         setState(() => _error = ref.read(appStringsProvider).fileEmpty);
@@ -380,10 +393,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       builder: (ctx) => SimpleDialog(
         title: Text(s.selectSheetTitle),
         children: sheets
-            .map((s) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(ctx, s),
-                  child: Text(s),
-                ))
+            .map(
+              (s) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, s),
+                child: Text(s),
+              ),
+            )
             .toList(),
       ),
     );
@@ -435,7 +450,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _log.info('_reparseFile: re-parsing with skipRows=$_skipRows, sheet=$_selectedSheet');
     try {
       final importer = ref.read(importServiceProvider);
-      final preview = await importer.parseFile(_filePath!, sheetName: _selectedSheet, skipRows: _skipRows, noHeader: _noHeader, numberLocale: _effectiveNumberLocale());
+      final preview = await importer.parseFile(
+        _filePath!,
+        sheetName: _selectedSheet,
+        skipRows: _skipRows,
+        noHeader: _noHeader,
+        numberLocale: _effectiveNumberLocale(),
+      );
       if (preview.rows.isEmpty) {
         _log.warning('_reparseFile: empty after skipping $_skipRows rows');
         setState(() => _error = ref.read(appStringsProvider).fileEmptyAfterSkip(_skipRows));
@@ -471,12 +492,19 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       setState(() => _error = ref.read(appStringsProvider).clipboardEmpty);
       return;
     }
-    setState(() { _parsing = true; _error = null; _filePath = null; });
+    setState(() {
+      _parsing = true;
+      _error = null;
+      _filePath = null;
+    });
     try {
       final importer = ref.read(importServiceProvider);
       final preview = await importer.parseClipboard(data.text!, skipRows: _skipRows, noHeader: _noHeader);
       if (preview.rows.isEmpty) {
-        setState(() { _error = ref.read(appStringsProvider).noDataRowsClipboard; _parsing = false; });
+        setState(() {
+          _error = ref.read(appStringsProvider).noDataRowsClipboard;
+          _parsing = false;
+        });
         return;
       }
       setState(() {
@@ -486,11 +514,16 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _mappings.clear();
         _amountFormula.clear();
 
-        for (final f in _requiredFields) { _mappings[f] = null; }
+        for (final f in _requiredFields) {
+          _mappings[f] = null;
+        }
         _autoMap(preview.columns);
       });
     } catch (e) {
-      setState(() { _error = ref.read(appStringsProvider).errorParsingClipboard(e); _parsing = false; });
+      setState(() {
+        _error = ref.read(appStringsProvider).errorParsingClipboard(e);
+        _parsing = false;
+      });
     }
   }
 
@@ -611,7 +644,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
-      _log.info('_applySavedConfig: result - mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms');
+      _log.info(
+        '_applySavedConfig: result - mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms',
+      );
     });
   }
 
@@ -647,13 +682,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       mappingsToSave['__balanceFilterInclude'] = jsonEncode(_balanceFilterInclude.toList());
     }
 
-    await ref.read(importConfigServiceProvider).save(
+    await ref
+        .read(importConfigServiceProvider)
+        .save(
           accountId: accountId,
           skipRows: _skipRows,
           mappings: mappingsToSave,
-          formula: _amountFormula
-              .map((t) => {'operator': t.operator, 'sourceColumn': t.sourceColumn})
-              .toList(),
+          formula: _amountFormula.map((t) => {'operator': t.operator, 'sourceColumn': t.sourceColumn}).toList(),
           hashColumns: const [],
         );
     _log.info('_saveConfig: saved config for account $accountId');
@@ -686,9 +721,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final sorted = values.toList()..sort();
       if (mounted) {
         setState(() {
-        _fullUniqueValues[column] = sorted;
-        _loadingUniqueValues = false;
-      });
+          _fullUniqueValues[column] = sorted;
+          _loadingUniqueValues = false;
+        });
       }
     } catch (e) {
       _log.warning('_loadFullUniqueValues failed: $e');
@@ -750,11 +785,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       final typeCol = _mappings['type']!;
       final uniqueVals = _fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol);
       if (uniqueVals.isNotEmpty) {
-        final allMapped = uniqueVals.every((v) =>
-            _buyValues.contains(v) ||
-            _sellValues.contains(v) ||
-            _revalueValues.contains(v) ||
-            _feeValues.contains(v));
+        final allMapped = uniqueVals.every(
+          (v) => _buyValues.contains(v) || _sellValues.contains(v) || _revalueValues.contains(v) || _feeValues.contains(v),
+        );
         if (!allMapped) return false;
         // At least one Buy/Sell/Revalue tag must exist (file with only
         // fee rows would have nothing to import).

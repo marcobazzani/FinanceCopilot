@@ -15,8 +15,7 @@ class TransactionService {
   TransactionService(this._db);
 
   Stream<List<Transaction>> watchByAccount(int accountId, {DateTime? through}) {
-    final query = _db.select(_db.transactions)
-      ..where((t) => t.accountId.equals(accountId));
+    final query = _db.select(_db.transactions)..where((t) => t.accountId.equals(accountId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
@@ -34,25 +33,24 @@ class TransactionService {
   /// into now-deleted accounts) are excluded — they would otherwise render
   /// as nameless `#<id>` rows that look like duplicates.
   Stream<List<Transaction>> watchAll({DateTime? through}) {
-    final query = _db.select(_db.transactions).join([
-      innerJoin(_db.accounts, _db.accounts.id.equalsExp(_db.transactions.accountId)),
-    ])
-      ..orderBy([
-        OrderingTerm.desc(_db.transactions.valueDate),
-        OrderingTerm.desc(_db.transactions.id),
-      ]);
+    final query =
+        _db.select(_db.transactions).join([
+          innerJoin(_db.accounts, _db.accounts.id.equalsExp(_db.transactions.accountId)),
+        ])..orderBy([
+          OrderingTerm.desc(_db.transactions.valueDate),
+          OrderingTerm.desc(_db.transactions.id),
+        ]);
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where(_db.transactions.valueDate.isSmallerThanValue(endExclusive));
     }
     return query.watch().map(
-          (rows) => rows.map((r) => r.readTable(_db.transactions)).toList(),
-        );
+      (rows) => rows.map((r) => r.readTable(_db.transactions)).toList(),
+    );
   }
 
   Future<List<Transaction>> getByAccount(int accountId, {DateTime? through}) {
-    final query = _db.select(_db.transactions)
-      ..where((t) => t.accountId.equals(accountId));
+    final query = _db.select(_db.transactions)..where((t) => t.accountId.equals(accountId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
@@ -76,30 +74,30 @@ class TransactionService {
     TransactionStatus status = TransactionStatus.settled,
   }) {
     _log.info('create: accountId=$accountId, date=$operationDate');
-    return _db.into(_db.transactions).insert(TransactionsCompanion.insert(
-      accountId: accountId,
-      operationDate: operationDate,
-      valueDate: valueDate ?? operationDate,
-      amount: amount,
-      description: Value(description),
-      descriptionFull: Value(descriptionFull),
-      balanceAfter: Value(balanceAfter),
-      currency: Value(currency),
-      status: Value(status),
-    ));
+    return _db
+        .into(_db.transactions)
+        .insert(
+          TransactionsCompanion.insert(
+            accountId: accountId,
+            operationDate: operationDate,
+            valueDate: valueDate ?? operationDate,
+            amount: amount,
+            description: Value(description),
+            descriptionFull: Value(descriptionFull),
+            balanceAfter: Value(balanceAfter),
+            currency: Value(currency),
+            status: Value(status),
+          ),
+        );
   }
 
   Future<bool> update(int id, TransactionsCompanion companion) {
     _log.info('update: id=$id');
-    return (_db.update(_db.transactions)..where((t) => t.id.equals(id)))
-        .write(companion)
-        .then((rows) => rows > 0);
+    return (_db.update(_db.transactions)..where((t) => t.id.equals(id))).write(companion).then((rows) => rows > 0);
   }
 
   Future<int> delete(int id) async {
-    final existing = await (_db.select(_db.transactions)
-          ..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    final existing = await (_db.select(_db.transactions)..where((t) => t.id.equals(id))).getSingleOrNull();
     if (existing == null) return 0;
     _log.warning('delete: transaction id=$id accountId=${existing.accountId}');
     final deleted = await (_db.delete(_db.transactions)..where((t) => t.id.equals(id))).go();
@@ -109,9 +107,7 @@ class TransactionService {
 
   Future<int> deleteMany(List<int> ids) async {
     if (ids.isEmpty) return 0;
-    final affected = await (_db.select(_db.transactions)
-          ..where((t) => t.id.isIn(ids)))
-        .get();
+    final affected = await (_db.select(_db.transactions)..where((t) => t.id.isIn(ids))).get();
     final accountIds = affected.map((t) => t.accountId).toSet();
     _log.warning('deleteMany: ${ids.length} transactions across ${accountIds.length} accounts');
     final deleted = await (_db.delete(_db.transactions)..where((t) => t.id.isIn(ids))).go();
@@ -124,9 +120,7 @@ class TransactionService {
   /// Re-run balance recalculation for an account using its saved import config.
   /// No-op when the account has no import config or the config's balance mode is 'none'.
   Future<void> _recalcFromImportConfig(int accountId) async {
-    final config = await (_db.select(_db.importConfigs)
-          ..where((c) => c.accountId.equals(accountId)))
-        .getSingleOrNull();
+    final config = await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull();
     if (config == null) return;
     final mappings = jsonDecode(config.mappingsJson) as Map<String, dynamic>;
     final mode = (mappings['__balanceMode'] as String?) ?? 'none';
@@ -175,11 +169,12 @@ class TransactionService {
     if (txs.isEmpty) return 0;
 
     // Sort chronologically (date ASC, id ASC)
-    final sorted = List.of(txs)..sort((a, b) {
-      final cmp = a.valueDate.compareTo(b.valueDate);
-      if (cmp != 0) return cmp;
-      return a.id.compareTo(b.id);
-    });
+    final sorted = List.of(txs)
+      ..sort((a, b) {
+        final cmp = a.valueDate.compareTo(b.valueDate);
+        if (cmp != 0) return cmp;
+        return a.id.compareTo(b.id);
+      });
 
     int toCents(double v) => (v * 100).round();
     double fromCents(int c) => c / 100;

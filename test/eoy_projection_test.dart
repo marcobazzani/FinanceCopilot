@@ -13,21 +13,21 @@ void main() {
   //   income=3300 each, May income=0; expenses=2200 every month including May
   //   (current income total = 13200, current expenses total = 11000)
   EoyYear buildPrev() => EoyYear(
-        year: 2025,
-        income: 36000,
-        expenses: 24000,
-        months: List.generate(12, (i) => EoyMonth(month: i + 1, income: 3000, expenses: 2000)),
-      );
+    year: 2025,
+    income: 36000,
+    expenses: 24000,
+    months: List.generate(12, (i) => EoyMonth(month: i + 1, income: 3000, expenses: 2000)),
+  );
 
   EoyYear buildCurrent() => EoyYear(
-        year: 2026,
-        income: 4 * 3300, // 13200
-        expenses: 5 * 2200, // 11000
-        months: [
-          for (int m = 1; m <= 4; m++) EoyMonth(month: m, income: 3300, expenses: 2200),
-          const EoyMonth(month: 5, income: 0, expenses: 2200),
-        ],
-      );
+    year: 2026,
+    income: 4 * 3300, // 13200
+    expenses: 5 * 2200, // 11000
+    months: [
+      for (int m = 1; m <= 4; m++) EoyMonth(month: m, income: 3300, expenses: 2200),
+      const EoyMonth(month: 5, income: 0, expenses: 2200),
+    ],
+  );
 
   group('computeEoyDetails', () {
     test('income projection skips the empty May to avoid underestimation (bug fix)', () {
@@ -43,8 +43,7 @@ void main() {
 
       const buggy = 36000.0 * 13200.0 / 15000.0;
       expect(buggy, closeTo(31680.0, 1e-6));
-      expect((inc.value - buggy).abs() > 1, isTrue,
-          reason: 'fixed projection must differ noticeably from the old buggy one');
+      expect((inc.value - buggy).abs() > 1, isTrue, reason: 'fixed projection must differ noticeably from the old buggy one');
     });
 
     test('expense projection still uses the full current period (May)', () {
@@ -171,7 +170,9 @@ void main() {
 
     test('returns null when prev has zero expenses and projection fails', () {
       final emptyPrev = EoyYear(
-        year: 2025, income: 0, expenses: 0,
+        year: 2025,
+        income: 0,
+        expenses: 0,
         months: List.generate(12, (i) => EoyMonth(month: i + 1, income: 0, expenses: 0)),
       );
       final r = estimateSmoothedAnnualExpenses(current: buildCurrent(), prev: emptyPrev);
@@ -180,7 +181,9 @@ void main() {
 
     test('falls back to prev total when current has no expenses', () {
       final emptyCurrent = EoyYear(
-        year: 2026, income: 0, expenses: 0,
+        year: 2026,
+        income: 0,
+        expenses: 0,
         months: const [EoyMonth(month: 1, income: 0, expenses: 0)],
       );
       final r = estimateSmoothedAnnualExpenses(current: emptyCurrent, prev: buildPrev());

@@ -46,8 +46,7 @@ Color _colorAt(int index) => _palette[index % _palette.length];
 // Helpers
 // ════════════════════════════════════════════════════
 
-String _pct(double value, double total) =>
-    total > 0 ? '${(value / total * 100).toStringAsFixed(1)}%' : '0%';
+String _pct(double value, double total) => total > 0 ? '${(value / total * 100).toStringAsFixed(1)}%' : '0%';
 
 String _fmtMoney(double value, String locale, String currency) =>
     NumberFormat.currency(locale: locale, symbol: currency, decimalDigits: 0).format(value);
@@ -176,43 +175,65 @@ class AllocationOverviewBody extends ConsumerWidget {
     final positionEntries = byPosition.entries.toList();
 
     final cards = <Widget>[
-      _ChartCard(title: s.allocGeographic, child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill)),
-      _ChartCard(title: s.allocSector, child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill)),
-      _ChartCard(title: s.allocAssetClass, child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill)),
-      _ChartCard(title: s.allocInstrument, child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill)),
-      _ChartCard(title: s.allocCurrency, child: _DonutChart(data: byCurrency, total: total)),
-      _ChartCard(title: s.allocTopHoldings, child: _TopHoldingsInteractive(allHoldings: holdingEntries, total: total, baseCurrency: baseCurrency, locale: locale)),
+      _ChartCard(
+        title: s.allocGeographic,
+        child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill),
+      ),
+      _ChartCard(
+        title: s.allocSector,
+        child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill),
+      ),
+      _ChartCard(
+        title: s.allocAssetClass,
+        child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill),
+      ),
+      _ChartCard(
+        title: s.allocInstrument,
+        child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill),
+      ),
+      _ChartCard(
+        title: s.allocCurrency,
+        child: _DonutChart(data: byCurrency, total: total),
+      ),
+      _ChartCard(
+        title: s.allocTopHoldings,
+        child: _TopHoldingsInteractive(allHoldings: holdingEntries, total: total, baseCurrency: baseCurrency, locale: locale),
+      ),
       _ConcentrationCard(holdings: positionEntries, total: total, baseCurrency: baseCurrency, locale: locale),
       _InvestmentCostsCard(assets: assets, marketValues: marketValues, baseCurrency: baseCurrency, locale: locale),
     ];
 
-    return LayoutBuilder(builder: (ctx, constraints) {
-      const cardMin = 400.0;
-      const gap = 16.0;
-      final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        const cardMin = 400.0;
+        const gap = 16.0;
+        final cols = max(1, (constraints.maxWidth + gap) ~/ (cardMin + gap));
 
-      final rows = <Widget>[];
-      for (var i = 0; i < cards.length; i += cols) {
-        final rowCards = cards.sublist(i, min(i + cols, cards.length));
-        rows.add(Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var j = 0; j < cols; j++) ...[
-              if (j > 0) const SizedBox(width: gap),
-              Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
-            ],
-          ],
-        ));
-        if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
-      }
-      return MobilePullToRefresh(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(children: rows),
-        ),
-      );
-    });
+        final rows = <Widget>[];
+        for (var i = 0; i < cards.length; i += cols) {
+          final rowCards = cards.sublist(i, min(i + cols, cards.length));
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var j = 0; j < cols; j++) ...[
+                  if (j > 0) const SizedBox(width: gap),
+                  Expanded(child: j < rowCards.length ? rowCards[j] : const SizedBox()),
+                ],
+              ],
+            ),
+          );
+          if (i + cols < cards.length) rows.add(const SizedBox(height: gap));
+        }
+        return MobilePullToRefresh(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(children: rows),
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -229,19 +250,19 @@ class _ChartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              child,
-            ],
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            child,
+          ],
         ),
-      );
+      ),
+    );
   }
 }
 
@@ -280,8 +301,7 @@ class _DrillableDonutState extends State<_DrillableDonut> {
     if (_selectedSlice != null) {
       final subData = widget.drillDown[_selectedSlice];
       if (subData != null && subData.isNotEmpty) {
-        final sorted = (subData.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)));
+        final sorted = (subData.entries.toList()..sort((a, b) => b.value.compareTo(a.value)));
         final subMap = Map.fromEntries(sorted);
         final subTotal = subData.values.fold(0.0, (a, b) => a + b);
 
@@ -346,8 +366,7 @@ class _DrillableDonutState extends State<_DrillableDonut> {
                   pieTouchData: onSliceTap != null
                       ? PieTouchData(
                           touchCallback: (event, response) {
-                            if (event is FlTapUpEvent &&
-                                response?.touchedSection != null) {
+                            if (event is FlTapUpEvent && response?.touchedSection != null) {
                               final idx = response!.touchedSection!.touchedSectionIndex;
                               if (idx >= 0 && idx < entries.length) {
                                 onSliceTap(entries[idx].key);
@@ -382,28 +401,30 @@ class _DrillableDonutState extends State<_DrillableDonut> {
           children: [
             for (var i = 0; i < entries.length; i++)
               if (entries[i].value / total * 100 >= 0.5) ...[
-                Builder(builder: (_) {
-                  final label = '${entries[i].key} ${_pct(entries[i].value, total)}';
-                  final child = Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 10, height: 10, color: _colorAt(i)),
-                      const SizedBox(width: 4),
-                      Text(label, style: const TextStyle(fontSize: 12)),
-                    ],
-                  );
-                  if (onSliceTap != null) {
-                    return InkWell(
-                      onTap: () => onSliceTap(entries[i].key),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: child,
-                      ),
+                Builder(
+                  builder: (_) {
+                    final label = '${entries[i].key} ${_pct(entries[i].value, total)}';
+                    final child = Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(width: 10, height: 10, color: _colorAt(i)),
+                        const SizedBox(width: 4),
+                        Text(label, style: const TextStyle(fontSize: 12)),
+                      ],
                     );
-                  }
-                  return child;
-                }),
+                    if (onSliceTap != null) {
+                      return InkWell(
+                        onTap: () => onSliceTap(entries[i].key),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: child,
+                        ),
+                      );
+                    }
+                    return child;
+                  },
+                ),
               ],
           ],
         ),
@@ -462,8 +483,7 @@ class _DonutChart extends ConsumerWidget {
                   children: [
                     Container(width: 10, height: 10, color: _colorAt(i)),
                     const SizedBox(width: 4),
-                    Text('${entries[i].key} ${_pct(entries[i].value, total)}',
-                        style: const TextStyle(fontSize: 12)),
+                    Text('${entries[i].key} ${_pct(entries[i].value, total)}', style: const TextStyle(fontSize: 12)),
                   ],
                 ),
           ],
@@ -510,10 +530,7 @@ class _TopHoldingsInteractiveState extends ConsumerState<_TopHoldingsInteractive
     }
 
     // Filter out hidden, take displayCount
-    final visible = widget.allHoldings
-        .where((e) => !_hidden.contains(e.key))
-        .take(_TopHoldingsInteractive._displayCount)
-        .toList();
+    final visible = widget.allHoldings.where((e) => !_hidden.contains(e.key)).take(_TopHoldingsInteractive._displayCount).toList();
     final visibleTotal = visible.fold(0.0, (s, e) => s + e.value);
     final maxValue = visible.isEmpty ? 1.0 : visible.first.value;
 
@@ -562,8 +579,10 @@ class _TopHoldingsInteractiveState extends ConsumerState<_TopHoldingsInteractive
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${pct.toStringAsFixed(1)}%',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+                Text(
+                  '${pct.toStringAsFixed(1)}%',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+                ),
                 if (!isPrivate) ...[
                   const SizedBox(width: 8),
                   Text(amtStr, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
@@ -571,16 +590,18 @@ class _TopHoldingsInteractiveState extends ConsumerState<_TopHoldingsInteractive
               ],
             ),
             const SizedBox(height: 3),
-            LayoutBuilder(builder: (ctx, constraints) {
-              return Container(
-                height: 14,
-                width: constraints.maxWidth * barFraction,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              );
-            }),
+            LayoutBuilder(
+              builder: (ctx, constraints) {
+                return Container(
+                  height: 14,
+                  width: constraints.maxWidth * barFraction,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -613,32 +634,40 @@ class _ConcentrationCard extends ConsumerWidget {
     final conc = alloc.computeConcentration(holdings, total);
 
     return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(sl.concentrationRisk, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 12),
-              _metricRow(sl.allocPortfolioVal, _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
-              _metricRow(sl.allocHoldings, '$count'),
-              const Divider(),
-              _metricRow('Top 1', '${conc.top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
-              _metricRow('Top 3', '${conc.top3.toStringAsFixed(1)}%'),
-              _metricRow('Top 5', '${conc.top5.toStringAsFixed(1)}%'),
-              const Divider(),
-              _metricRow('HHI', conc.hhi.toStringAsFixed(0)),
-              Text(
-                conc.classification == 'diversified' ? sl.allocWellDiversified : conc.classification == 'moderate' ? sl.allocModeratelyConcentrated : sl.allocHighlyConcentrated,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: conc.classification == 'diversified' ? Colors.green : conc.classification == 'moderate' ? Colors.orange : Colors.red,
-                ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(sl.concentrationRisk, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            _metricRow(sl.allocPortfolioVal, _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
+            _metricRow(sl.allocHoldings, '$count'),
+            const Divider(),
+            _metricRow('Top 1', '${conc.top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
+            _metricRow('Top 3', '${conc.top3.toStringAsFixed(1)}%'),
+            _metricRow('Top 5', '${conc.top5.toStringAsFixed(1)}%'),
+            const Divider(),
+            _metricRow('HHI', conc.hhi.toStringAsFixed(0)),
+            Text(
+              conc.classification == 'diversified'
+                  ? sl.allocWellDiversified
+                  : conc.classification == 'moderate'
+                  ? sl.allocModeratelyConcentrated
+                  : sl.allocHighlyConcentrated,
+              style: TextStyle(
+                fontSize: 12,
+                color: conc.classification == 'diversified'
+                    ? Colors.green
+                    : conc.classification == 'moderate'
+                    ? Colors.orange
+                    : Colors.red,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
     );
   }
 
@@ -669,8 +698,10 @@ class _InvestmentCostsCard extends ConsumerWidget {
   final String locale;
 
   const _InvestmentCostsCard({
-    required this.assets, required this.marketValues,
-    required this.baseCurrency, required this.locale,
+    required this.assets,
+    required this.marketValues,
+    required this.baseCurrency,
+    required this.locale,
   });
 
   @override
@@ -696,7 +727,13 @@ class _InvestmentCostsCard extends ConsumerWidget {
     rows.sort((a, b) => b.cost.compareTo(a.cost));
     final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
 
-    Color terColor(double ter) => ter <= 0.20 ? Colors.green.shade400 : ter <= 0.50 ? Colors.lightGreen : ter <= 1.00 ? Colors.orange : Colors.red.shade400;
+    Color terColor(double ter) => ter <= 0.20
+        ? Colors.green.shade400
+        : ter <= 0.50
+        ? Colors.lightGreen
+        : ter <= 1.00
+        ? Colors.orange
+        : Colors.red.shade400;
 
     final hs = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant);
     final vs = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
@@ -717,33 +754,111 @@ class _InvestmentCostsCard extends ConsumerWidget {
               else ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(children: [
-                    Expanded(flex: 4, child: Text(s.healthAsset, style: hs)),
-                    Expanded(flex: 2, child: Text(s.healthTer, style: hs, textAlign: TextAlign.right)),
-                    Expanded(flex: 3, child: Text(s.healthMarketValue, style: hs, textAlign: TextAlign.right)),
-                    Expanded(flex: 3, child: Text(s.healthAnnualCost, style: hs, textAlign: TextAlign.right)),
-                  ]),
+                  child: Row(
+                    children: [
+                      Expanded(flex: 4, child: Text(s.healthAsset, style: hs)),
+                      Expanded(
+                        flex: 2,
+                        child: Text(s.healthTer, style: hs, textAlign: TextAlign.right),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(s.healthMarketValue, style: hs, textAlign: TextAlign.right),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(s.healthAnnualCost, style: hs, textAlign: TextAlign.right),
+                      ),
+                    ],
+                  ),
                 ),
                 const Divider(height: 1),
                 for (final row in rows)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(children: [
-                      Expanded(flex: 4, child: Tooltip(message: row.fullName, child: Text(row.name, style: vs, overflow: TextOverflow.ellipsis))),
-                      Expanded(flex: 2, child: Text(row.ter != null ? '${pctFmt.format(row.ter)}%' : '-', style: vs?.copyWith(color: row.ter != null ? terColor(row.ter!) : Colors.grey), textAlign: TextAlign.right)),
-                      Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right) : Text(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right)),
-                      Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(row.cost), style: vs, textAlign: TextAlign.right) : Text(row.ter != null ? amtFmt.format(row.cost) : '-', style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey), textAlign: TextAlign.right)),
-                    ]),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 4,
+                          child: Tooltip(
+                            message: row.fullName,
+                            child: Text(row.name, style: vs, overflow: TextOverflow.ellipsis),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            row.ter != null ? '${pctFmt.format(row.ter)}%' : '-',
+                            style: vs?.copyWith(color: row.ter != null ? terColor(row.ter!) : Colors.grey),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: isPrivate
+                              ? PrivacyText(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right)
+                              : Text(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: isPrivate
+                              ? PrivacyText(amtFmt.format(row.cost), style: vs, textAlign: TextAlign.right)
+                              : Text(
+                                  row.ter != null ? amtFmt.format(row.cost) : '-',
+                                  style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey),
+                                  textAlign: TextAlign.right,
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
                 const Divider(height: 16, thickness: 2),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(children: [
-                    Expanded(flex: 4, child: Text(s.healthWeightedTer, style: vs?.copyWith(fontWeight: FontWeight.bold))),
-                    Expanded(flex: 2, child: Text('${pctFmt.format(weightedTer)}%', style: vs?.copyWith(fontWeight: FontWeight.bold, color: terColor(weightedTer)), textAlign: TextAlign.right)),
-                    Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(totalValue), style: vs?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.right) : Text(amtFmt.format(totalValue), style: vs?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
-                    Expanded(flex: 3, child: isPrivate ? PrivacyText(amtFmt.format(totalCost), style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400), textAlign: TextAlign.right) : Text(amtFmt.format(totalCost), style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400), textAlign: TextAlign.right)),
-                  ]),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Text(s.healthWeightedTer, style: vs?.copyWith(fontWeight: FontWeight.bold)),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          '${pctFmt.format(weightedTer)}%',
+                          style: vs?.copyWith(fontWeight: FontWeight.bold, color: terColor(weightedTer)),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: isPrivate
+                            ? PrivacyText(
+                                amtFmt.format(totalValue),
+                                style: vs?.copyWith(fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.right,
+                              )
+                            : Text(
+                                amtFmt.format(totalValue),
+                                style: vs?.copyWith(fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.right,
+                              ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: isPrivate
+                            ? PrivacyText(
+                                amtFmt.format(totalCost),
+                                style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400),
+                                textAlign: TextAlign.right,
+                              )
+                            : Text(
+                                amtFmt.format(totalCost),
+                                style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400),
+                                textAlign: TextAlign.right,
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],

@@ -22,11 +22,10 @@ class EditableChartsState {
   EditableChartsState copyWith({
     List<DashboardChart>? charts,
     List<DashboardChart>? pristine,
-  }) =>
-      EditableChartsState(
-        charts: charts ?? this.charts,
-        pristine: pristine ?? this.pristine,
-      );
+  }) => EditableChartsState(
+    charts: charts ?? this.charts,
+    pristine: pristine ?? this.pristine,
+  );
 
   /// True when the user's working set differs from the loaded JSON.
   /// Used to surface a dirty indicator on the Export FAB.
@@ -48,9 +47,7 @@ class EditableChartsNotifier extends StateNotifier<EditableChartsState> {
   /// continue downward.
   void add(DashboardChart chart) {
     final existingIds = state.charts.map((c) => c.id).toList();
-    final nextId = existingIds.isEmpty
-        ? -1
-        : (existingIds.reduce(min) - 1);
+    final nextId = existingIds.isEmpty ? -1 : (existingIds.reduce(min) - 1);
     final placed = chart.copyWith(
       id: chart.id == 0 ? nextId : chart.id,
       sortOrder: state.charts.length,
@@ -97,9 +94,7 @@ class EditableChartsNotifier extends StateNotifier<EditableChartsState> {
   /// menu's "Restore Cash" etc. items when the user has deleted one.
   void restoreRole(String role) {
     if (state.charts.any((c) => c.widgetType == role)) return; // already present
-    final template = state.pristine
-        .where((c) => c.widgetType == role)
-        .firstOrNull;
+    final template = state.pristine.where((c) => c.widgetType == role).firstOrNull;
     if (template == null) return;
     add(template.copyWith(id: 0)); // 0 → notifier picks a fresh id
   }

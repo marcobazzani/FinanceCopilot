@@ -31,18 +31,24 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     importer = ImportService(db);
     tempDir = Directory.systemTemp.createTempSync('event_type_test_');
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
-    targetAssetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'Pension',
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: ValuationMethod.eventDriven,
-          currency: const Value('EUR'),
-          intermediaryId: intermediaryId,
-        ));
+    targetAssetId = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension',
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: ValuationMethod.eventDriven,
+            currency: const Value('EUR'),
+            intermediaryId: intermediaryId,
+          ),
+        );
   });
 
   tearDown(() async {
@@ -79,9 +85,7 @@ date,type,amount,description
       );
 
       expect(result.result.errorRows, 0);
-      final events = await (db.select(db.assetEvents)
-            ..orderBy([(e) => OrderingTerm.asc(e.valueDate)]))
-          .get();
+      final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
       expect(events, hasLength(3));
       // Ordered ascending by valueDate:
       // 2024-03-15 buy, 2024-06-30 POSIZIONE, 2024-12-31 TOTALEP
@@ -113,15 +117,12 @@ date,type,amount
       );
 
       expect(result.result.errorRows, 0);
-      final events = await (db.select(db.assetEvents)
-            ..orderBy([(e) => OrderingTerm.asc(e.valueDate)]))
-          .get();
+      final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
       expect(events.map((e) => e.type), everyElement(EventType.buy));
       expect(events.map((e) => e.amount), [100.00, 200.00, 300.00]);
     });
 
-    test('user-provided contributeValues / revalueValues override',
-        () async {
+    test('user-provided contributeValues / revalueValues override', () async {
       // PPP-style labels that aren't in the built-in alias list: the user
       // tags them via the wizard chips, which become contributeValues /
       // revalueValues sets.
@@ -147,9 +148,7 @@ date,type,amount
       );
 
       expect(result.result.errorRows, 0);
-      final events = await (db.select(db.assetEvents)
-            ..orderBy([(e) => OrderingTerm.asc(e.valueDate)]))
-          .get();
+      final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
       expect(events, hasLength(3));
       expect(events[0].type, EventType.buy);
       expect(events[1].type, EventType.buy);

@@ -58,46 +58,46 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
           body: eventsAsync.when(
             data: (_) => MobilePullToRefresh(
               child: ListView(
-              padding: const EdgeInsets.only(bottom: 80),
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                const _InfoBox(),
-                if (events.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.event_note, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                          const SizedBox(height: 16),
-                          Text(s.noEventsYet, textAlign: TextAlign.center),
-                        ],
+                padding: const EdgeInsets.only(bottom: 80),
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const _InfoBox(),
+                  if (events.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.event_note, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            const SizedBox(height: 16),
+                            Text(s.noEventsYet, textAlign: TextAlign.center),
+                          ],
+                        ),
                       ),
-                    ),
-                  )
-                else
-                  for (var i = 0; i < events.length; i++) ...[
-                    SelectableItem<int>(
-                      controller: _selection,
-                      id: events[i].id,
-                      child: _EventTile(
-                        event: events[i],
-                        stats: stats[events[i].id],
-                        baseCurrency: baseCurrency,
-                        locale: locale,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => EventDetailScreen(eventId: events[i].id),
+                    )
+                  else
+                    for (var i = 0; i < events.length; i++) ...[
+                      SelectableItem<int>(
+                        controller: _selection,
+                        id: events[i].id,
+                        child: _EventTile(
+                          event: events[i],
+                          stats: stats[events[i].id],
+                          baseCurrency: baseCurrency,
+                          locale: locale,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => EventDetailScreen(eventId: events[i].id),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    if (i < events.length - 1) const Divider(height: 1),
-                  ],
-              ],
-            ),
+                      if (i < events.length - 1) const Divider(height: 1),
+                    ],
+                ],
+              ),
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text(s.error(e))),
@@ -106,8 +106,7 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
               ? SelectionActionBar<int>(
                   controller: _selection,
                   visibleIds: events.map((e) => e.id).toList(),
-                  onDelete: (ids) =>
-                      ref.read(extraordinaryEventServiceProvider).deleteMany(ids.toList()),
+                  onDelete: (ids) => ref.read(extraordinaryEventServiceProvider).deleteMany(ids.toList()),
                 )
               : null,
           floatingActionButton: _selection.active
@@ -217,9 +216,7 @@ class _EventTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                isOutflow
-                    ? (isSpread ? Icons.timeline : Icons.trending_down)
-                    : (isSpread ? Icons.timeline : Icons.trending_up),
+                isOutflow ? (isSpread ? Icons.timeline : Icons.trending_down) : (isSpread ? Icons.timeline : Icons.trending_up),
                 size: 20,
                 color: accentColor,
               ),

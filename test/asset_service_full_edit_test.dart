@@ -30,12 +30,16 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = AssetService(db);
-    iid1 = await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Broker A'),
-    );
-    iid2 = await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Broker B'),
-    );
+    iid1 = await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Broker A'),
+        );
+    iid2 = await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Broker B'),
+        );
   });
 
   tearDown(() async => await db.close());

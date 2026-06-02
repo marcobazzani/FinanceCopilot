@@ -12,8 +12,7 @@ class AssetEventService {
   AssetEventService(this._db);
 
   Stream<List<AssetEvent>> watchByAsset(int assetId, {DateTime? through}) {
-    final query = _db.select(_db.assetEvents)
-      ..where((e) => e.assetId.equals(assetId));
+    final query = _db.select(_db.assetEvents)..where((e) => e.assetId.equals(assetId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
@@ -23,8 +22,7 @@ class AssetEventService {
   }
 
   Future<List<AssetEvent>> getByAsset(int assetId, {DateTime? through}) {
-    final query = _db.select(_db.assetEvents)
-      ..where((e) => e.assetId.equals(assetId));
+    final query = _db.select(_db.assetEvents)..where((e) => e.assetId.equals(assetId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
@@ -39,8 +37,7 @@ class AssetEventService {
     DateTime? through,
   }) async {
     if (assetIds.isEmpty) return {};
-    final query = _db.select(_db.assetEvents)
-      ..where((e) => e.assetId.isIn(assetIds));
+    final query = _db.select(_db.assetEvents)..where((e) => e.assetId.isIn(assetIds));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
@@ -69,19 +66,23 @@ class AssetEventService {
     _log.info('create: assetId=$assetId, date=$date, type=${type.name}');
     // event.type carries direction — normalize qty to abs() so the stats
     // aggregation never double-negates a signed sell quantity. See #77.
-    final id = await _db.into(_db.assetEvents).insert(AssetEventsCompanion.insert(
-      assetId: assetId,
-      date: date,
-      valueDate: date,
-      type: type,
-      amount: amount,
-      quantity: Value(quantity?.abs()),
-      price: Value(price),
-      currency: Value(currency),
-      exchangeRate: Value(exchangeRate),
-      commission: Value(commission),
-      notes: Value(notes),
-    ));
+    final id = await _db
+        .into(_db.assetEvents)
+        .insert(
+          AssetEventsCompanion.insert(
+            assetId: assetId,
+            date: date,
+            valueDate: date,
+            type: type,
+            amount: amount,
+            quantity: Value(quantity?.abs()),
+            price: Value(price),
+            currency: Value(currency),
+            exchangeRate: Value(exchangeRate),
+            commission: Value(commission),
+            notes: Value(notes),
+          ),
+        );
     await resyncRevaluePricesForAsset(assetId);
     return id;
   }
@@ -89,8 +90,7 @@ class AssetEventService {
   Future<bool> update(int id, AssetEventsCompanion companion) async {
     _log.info('update: id=$id');
     final before = await (_db.select(_db.assetEvents)..where((e) => e.id.equals(id))).getSingleOrNull();
-    final rows = await (_db.update(_db.assetEvents)..where((e) => e.id.equals(id)))
-        .write(companion);
+    final rows = await (_db.update(_db.assetEvents)..where((e) => e.id.equals(id))).write(companion);
     if (rows > 0) {
       final after = await (_db.select(_db.assetEvents)..where((e) => e.id.equals(id))).getSingleOrNull();
       // Capture the displaced revalue date(s) so resync can clean up orphan
@@ -146,9 +146,9 @@ class AssetEventService {
 
   Future<int> deleteByAsset(int assetId) async {
     _log.warning('deleteByAsset: assetId=$assetId');
-    final beforeRevalues = await (_db.select(_db.assetEvents)
-          ..where((e) => e.assetId.equals(assetId) & e.type.equalsValue(EventType.revalue)))
-        .get();
+    final beforeRevalues = await (_db.select(
+      _db.assetEvents,
+    )..where((e) => e.assetId.equals(assetId) & e.type.equalsValue(EventType.revalue))).get();
     final rows = await (_db.delete(_db.assetEvents)..where((e) => e.assetId.equals(assetId))).go();
     if (rows > 0) {
       await resyncRevaluePricesForAsset(
@@ -174,14 +174,14 @@ class AssetEventService {
     int assetId, {
     List<DateTime> orphanDates = const [],
   }) async {
-    final revalueRows = await _db.customSelect(
-      "SELECT value_date FROM asset_events "
-      "WHERE asset_id = ? AND type = 'revalue'",
-      variables: [Variable.withInt(assetId)],
-    ).get();
-    final revalueDates = revalueRows
-        .map((r) => DateTime.fromMillisecondsSinceEpoch(r.read<int>('value_date') * 1000))
-        .toList();
+    final revalueRows = await _db
+        .customSelect(
+          "SELECT value_date FROM asset_events "
+          "WHERE asset_id = ? AND type = 'revalue'",
+          variables: [Variable.withInt(assetId)],
+        )
+        .get();
+    final revalueDates = revalueRows.map((r) => DateTime.fromMillisecondsSinceEpoch(r.read<int>('value_date') * 1000)).toList();
 
     // Step 1: delete market_prices rows at any current-revalue date AND any
     // orphan date passed in by the caller. Provider rows on other
@@ -207,12 +207,14 @@ class AssetEventService {
     for (final rDate in revalueDates) {
       // When two revalues share a value_date, the latest-inserted wins (same
       // last-write-wins behavior as market_prices PK on (asset_id, date)).
-      final amountRow = await _db.customSelect(
-        "SELECT amount FROM asset_events "
-        "WHERE asset_id = ? AND type = 'revalue' AND value_date = ? "
-        "ORDER BY id DESC LIMIT 1",
-        variables: [Variable.withInt(assetId), Variable.withInt(rDate.millisecondsSinceEpoch ~/ 1000)],
-      ).getSingleOrNull();
+      final amountRow = await _db
+          .customSelect(
+            "SELECT amount FROM asset_events "
+            "WHERE asset_id = ? AND type = 'revalue' AND value_date = ? "
+            "ORDER BY id DESC LIMIT 1",
+            variables: [Variable.withInt(assetId), Variable.withInt(rDate.millisecondsSinceEpoch ~/ 1000)],
+          )
+          .getSingleOrNull();
       if (amountRow == null) continue;
       final amount = amountRow.read<double>('amount');
 
@@ -223,12 +225,14 @@ class AssetEventService {
       // case.
       // ABS(quantity): event.type encodes direction. See issue #77 — broker
       // exports with negative sell quantity would otherwise be added.
-      final qtyRow = await _db.customSelect(
-        "SELECT SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
-        "WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) ELSE 0 END) AS qty "
-        "FROM asset_events WHERE asset_id = ? AND value_date <= ?",
-        variables: [Variable.withInt(assetId), Variable.withInt(rDate.millisecondsSinceEpoch ~/ 1000)],
-      ).getSingleOrNull();
+      final qtyRow = await _db
+          .customSelect(
+            "SELECT SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
+            "WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) ELSE 0 END) AS qty "
+            "FROM asset_events WHERE asset_id = ? AND value_date <= ?",
+            variables: [Variable.withInt(assetId), Variable.withInt(rDate.millisecondsSinceEpoch ~/ 1000)],
+          )
+          .getSingleOrNull();
       final qty = qtyRow?.readNullable<double>('qty') ?? 0;
       if (qty <= 0) {
         _log.warning(
@@ -238,7 +242,9 @@ class AssetEventService {
       }
 
       final closePrice = amount / qty;
-      await _db.into(_db.marketPrices).insertOnConflictUpdate(
+      await _db
+          .into(_db.marketPrices)
+          .insertOnConflictUpdate(
             MarketPricesCompanion(
               assetId: Value(assetId),
               date: Value(rDate),
@@ -253,14 +259,16 @@ class AssetEventService {
   /// Returns null if no qualifying events exist.
   Future<double?> getAverageBuyPrice(int assetId, {DateTime? through}) async {
     final bounded = through != null;
-    final row = await _db.customSelect(
-      "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
-      "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
-      "FROM asset_events WHERE asset_id = ? AND type = 'buy' "
-      "AND quantity IS NOT NULL AND price IS NOT NULL "
-      "${bounded ? 'AND value_date < ? ' : ''}",
-      variables: [Variable.withInt(assetId), ..._throughVars(through)],
-    ).getSingleOrNull();
+    final row = await _db
+        .customSelect(
+          "SELECT SUM(ABS(COALESCE(quantity,0)) * COALESCE(price,0)) AS total_cost, "
+          "SUM(ABS(COALESCE(quantity,0))) AS total_qty "
+          "FROM asset_events WHERE asset_id = ? AND type = 'buy' "
+          "AND quantity IS NOT NULL AND price IS NOT NULL "
+          "${bounded ? 'AND value_date < ? ' : ''}",
+          variables: [Variable.withInt(assetId), ..._throughVars(through)],
+        )
+        .getSingleOrNull();
     final totalCost = row?.readNullable<double>('total_cost') ?? 0;
     final totalQty = row?.readNullable<double>('total_qty') ?? 0;
     return totalQty > 0 ? totalCost / totalQty : null;
@@ -273,12 +281,14 @@ class AssetEventService {
     DateTime? through,
   }) async {
     final bounded = through != null;
-    final row = await _db.customSelect(
-      "SELECT amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' "
-      "${bounded ? 'AND value_date < ? ' : ''}"
-      "ORDER BY value_date DESC, id DESC LIMIT 1",
-      variables: [Variable.withInt(assetId), ..._throughVars(through)],
-    ).getSingleOrNull();
+    final row = await _db
+        .customSelect(
+          "SELECT amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' "
+          "${bounded ? 'AND value_date < ? ' : ''}"
+          "ORDER BY value_date DESC, id DESC LIMIT 1",
+          variables: [Variable.withInt(assetId), ..._throughVars(through)],
+        )
+        .getSingleOrNull();
     return row?.readNullable<double>('amount');
   }
 

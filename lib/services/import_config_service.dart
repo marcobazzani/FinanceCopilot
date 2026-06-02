@@ -14,8 +14,7 @@ class ImportConfigService {
 
   /// Load saved import config for an account. Returns null if none saved.
   Future<ImportConfig?> getByAccount(int accountId) async {
-    final query = _db.select(_db.importConfigs)
-      ..where((c) => c.accountId.equals(accountId));
+    final query = _db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId));
     final results = await query.get();
     if (results.isEmpty) return null;
     _log.fine('getByAccount: loaded config for account $accountId');
@@ -38,24 +37,28 @@ class ImportConfigService {
     final existing = await getByAccount(accountId);
     if (existing != null) {
       _log.info('save: updating config for account $accountId');
-      await (_db.update(_db.importConfigs)
-            ..where((c) => c.accountId.equals(accountId)))
-          .write(ImportConfigsCompanion(
-        skipRows: Value(skipRows),
-        mappingsJson: Value(mappingsJson),
-        formulaJson: Value(formulaJson),
-        hashColumnsJson: Value(hashColumnsJson),
-        updatedAt: Value(DateTime.now()),
-      ));
+      await (_db.update(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).write(
+        ImportConfigsCompanion(
+          skipRows: Value(skipRows),
+          mappingsJson: Value(mappingsJson),
+          formulaJson: Value(formulaJson),
+          hashColumnsJson: Value(hashColumnsJson),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
     } else {
       _log.info('save: creating config for account $accountId');
-      await _db.into(_db.importConfigs).insert(ImportConfigsCompanion.insert(
-            accountId: accountId,
-            skipRows: Value(skipRows),
-            mappingsJson: Value(mappingsJson),
-            formulaJson: Value(formulaJson),
-            hashColumnsJson: Value(hashColumnsJson),
-          ));
+      await _db
+          .into(_db.importConfigs)
+          .insert(
+            ImportConfigsCompanion.insert(
+              accountId: accountId,
+              skipRows: Value(skipRows),
+              mappingsJson: Value(mappingsJson),
+              formulaJson: Value(formulaJson),
+              hashColumnsJson: Value(hashColumnsJson),
+            ),
+          );
     }
   }
 }

@@ -27,8 +27,7 @@ class AccountsScreen extends ConsumerStatefulWidget {
   ConsumerState<AccountsScreen> createState() => _AccountsScreenState();
 }
 
-class _AccountsScreenState extends ConsumerState<AccountsScreen>
-    with SingleTickerProviderStateMixin {
+class _AccountsScreenState extends ConsumerState<AccountsScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
   @override
@@ -114,90 +113,95 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
         ];
         _selection.setOrderedIds(allAccountIds);
         return Scaffold(
-      body: accountsAsync.when(
-        data: (accounts) {
-          if (accounts.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.account_balance, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  const SizedBox(height: 16),
-                  Text(s.noAccountsYet, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => _showCreateDialog(context),
-                    icon: const Icon(Icons.add),
-                    label: Text(s.newAccountTitle),
+          body: accountsAsync.when(
+            data: (accounts) {
+              if (accounts.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.account_balance, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      Text(s.noAccountsYet, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () => _showCreateDialog(context),
+                        icon: const Icon(Icons.add),
+                        label: Text(s.newAccountTitle),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
+                );
+              }
 
-          final stats = statsAsync.value ?? {};
-          final intermediaries = intermediariesAsync.value ?? [];
+              final stats = statsAsync.value ?? {};
+              final intermediaries = intermediariesAsync.value ?? [];
 
-          // Group accounts by intermediaryId
-          final grouped = <int?, List<Account>>{};
-          for (final account in accounts) {
-            (grouped[account.intermediaryId] ??= []).add(account);
-          }
+              // Group accounts by intermediaryId
+              final grouped = <int?, List<Account>>{};
+              for (final account in accounts) {
+                (grouped[account.intermediaryId] ??= []).add(account);
+              }
 
-          // Show ALL intermediaries (even empty ones) + unassigned
-          final groupOrder = <int?>[
-            ...intermediaries.map((i) => i.id),
-            null, // always show unassigned
-          ];
+              // Show ALL intermediaries (even empty ones) + unassigned
+              final groupOrder = <int?>[
+                ...intermediaries.map((i) => i.id),
+                null, // always show unassigned
+              ];
 
-          return MobilePullToRefresh(
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 80),
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                _AllAccountsTile(label: s.allAccounts, total: accounts.length),
-                for (final groupId in groupOrder)
-                  if (grouped[groupId]?.isNotEmpty ?? false)
-                    _buildGroup(
-                      context, s, groupId,
-                      groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
-                      grouped[groupId] ?? [],
-                      stats, convertedStats, baseCurrency, locale,
-                      intermediaries,
+              return MobilePullToRefresh(
+                child: ListView(
+                  padding: const EdgeInsets.only(bottom: 80),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    _AllAccountsTile(label: s.allAccounts, total: accounts.length),
+                    for (final groupId in groupOrder)
+                      if (grouped[groupId]?.isNotEmpty ?? false)
+                        _buildGroup(
+                          context,
+                          s,
+                          groupId,
+                          groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
+                          grouped[groupId] ?? [],
+                          stats,
+                          convertedStats,
+                          baseCurrency,
+                          locale,
+                          intermediaries,
+                        ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text(s.error(e))),
+          ),
+          bottomNavigationBar: _selection.active
+              ? SelectionActionBar<int>(
+                  controller: _selection,
+                  visibleIds: allAccountIds,
+                  onDelete: (ids) => ref.read(accountServiceProvider).deleteMany(ids.toList()),
+                )
+              : null,
+          floatingActionButton: _selection.active
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'add_intermediary',
+                      onPressed: () => _showManageIntermediariesDialog(context),
+                      child: const Icon(Icons.business),
                     ),
-              ],
-            ),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(s.error(e))),
-      ),
-      bottomNavigationBar: _selection.active
-          ? SelectionActionBar<int>(
-              controller: _selection,
-              visibleIds: allAccountIds,
-              onDelete: (ids) => ref.read(accountServiceProvider).deleteMany(ids.toList()),
-            )
-          : null,
-      floatingActionButton: _selection.active
-          ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'add_intermediary',
-                  onPressed: () => _showManageIntermediariesDialog(context),
-                  child: const Icon(Icons.business),
+                    const SizedBox(height: 8),
+                    FloatingActionButton(
+                      heroTag: 'add_account',
+                      onPressed: () => _showCreateDialog(context),
+                      child: const Icon(Icons.add),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                FloatingActionButton(
-                  heroTag: 'add_account',
-                  onPressed: () => _showCreateDialog(context),
-                  child: const Icon(Icons.add),
-                ),
-              ],
-            ),
-    );
+        );
       },
     );
   }
@@ -272,8 +276,7 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
     );
   }
 
-  Future<void> _showManageIntermediariesDialog(BuildContext context) =>
-      showManageIntermediariesDialog(context, ref);
+  Future<void> _showManageIntermediariesDialog(BuildContext context) => showManageIntermediariesDialog(context, ref);
 
   Future<void> _showCreateDialog(BuildContext context) async {
     final s = ref.read(appStringsProvider);
@@ -286,14 +289,15 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
           title: Text(s.newAccountTitle),
           content: TextField(
             controller: nameCtrl,
-            decoration: InputDecoration(
-                labelText: s.name, hintText: s.accountNameHint),
+            decoration: InputDecoration(labelText: s.name, hintText: s.accountNameHint),
             autofocus: true,
             textInputAction: TextInputAction.done,
             onChanged: (_) => setDialogState(() {}),
             onSubmitted: (_) async {
               if (nameCtrl.text.trim().isEmpty) return;
-              await ref.read(accountServiceProvider).create(
+              await ref
+                  .read(accountServiceProvider)
+                  .create(
                     name: nameCtrl.text.trim(),
                     currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
                   );
@@ -301,13 +305,13 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
             },
           ),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text(s.cancel)),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed: nameCtrl.text.trim().isNotEmpty
                   ? () async {
-                      await ref.read(accountServiceProvider).create(
+                      await ref
+                          .read(accountServiceProvider)
+                          .create(
                             name: nameCtrl.text.trim(),
                             currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
                           );
@@ -337,10 +341,12 @@ class _AllAccountsTile extends ConsumerWidget {
       margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
       child: ListTile(
         leading: const Icon(Icons.account_tree_outlined),
-        title: Text(label,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                )),
+        title: Text(
+          label,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         subtitle: Text('$total'),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => Navigator.push(
@@ -393,17 +399,13 @@ class _AccountTile extends ConsumerWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: account.isActive
-                    ? theme.colorScheme.primaryContainer
-                    : Colors.grey.shade200,
+                color: account.isActive ? theme.colorScheme.primaryContainer : Colors.grey.shade200,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 Icons.account_balance,
                 size: 20,
-                color: account.isActive
-                    ? theme.colorScheme.onPrimaryContainer
-                    : Colors.grey,
+                color: account.isActive ? theme.colorScheme.onPrimaryContainer : Colors.grey,
               ),
             ),
             const SizedBox(width: 12),
@@ -432,11 +434,7 @@ class _AccountTile extends ConsumerWidget {
                     '${balanceFormat.format(stats!.balance!)} ${account.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: account.isActive
-                          ? (stats!.balance! >= 0
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.error)
-                          : Colors.grey,
+                      color: account.isActive ? (stats!.balance! >= 0 ? theme.colorScheme.primary : theme.colorScheme.error) : Colors.grey,
                     ),
                   ),
                   if (account.currency != baseCurrency && convertedBalance != null) ...[
@@ -462,8 +460,7 @@ class _AccountTile extends ConsumerWidget {
                   ),
                 if (!account.isActive) ...[
                   const SizedBox(height: 2),
-                  Text(s.inactive,
-                      style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey)),
+                  Text(s.inactive, style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey)),
                 ],
               ],
             ),
@@ -488,8 +485,7 @@ class _AccountTile extends ConsumerWidget {
                         const Icon(Icons.business, size: 18),
                         const SizedBox(width: 8),
                         Expanded(child: Text(i.name)),
-                        if (account.intermediaryId == i.id)
-                          const Icon(Icons.check, size: 18),
+                        if (account.intermediaryId == i.id) const Icon(Icons.check, size: 18),
                       ],
                     ),
                   ),
@@ -500,8 +496,7 @@ class _AccountTile extends ConsumerWidget {
                       const Icon(Icons.folder_open, size: 18),
                       const SizedBox(width: 8),
                       Expanded(child: Text(s.unassigned)),
-                      if (account.intermediaryId == null)
-                        const Icon(Icons.check, size: 18),
+                      if (account.intermediaryId == null) const Icon(Icons.check, size: 18),
                     ],
                   ),
                 ),

@@ -99,8 +99,7 @@ class _ChartZoom {
   double? minX, maxX, minY, maxY;
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen>
-    with SingleTickerProviderStateMixin {
+class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _hiddenPerChart = <int, Set<String>>{}; // chartId → hidden series keys
   final _chartHeights = <int, double>{}; // chartId → user-set height
@@ -142,17 +141,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     super.dispose();
   }
 
-  Set<String> _hiddenFor(int chartId) =>
-      _hiddenPerChart.putIfAbsent(chartId, () => {});
+  Set<String> _hiddenFor(int chartId) => _hiddenPerChart.putIfAbsent(chartId, () => {});
 
-  double _heightFor(int chartId) =>
-      _chartHeights.putIfAbsent(chartId, () => _defaultChartHeight);
+  double _heightFor(int chartId) => _chartHeights.putIfAbsent(chartId, () => _defaultChartHeight);
 
-  _ChartZoom _zoomFor(int chartId) =>
-      _chartZooms.putIfAbsent(chartId, () => _ChartZoom());
+  _ChartZoom _zoomFor(int chartId) => _chartZooms.putIfAbsent(chartId, () => _ChartZoom());
 
-  bool _hideComponentsFor(int chartId, {bool defaultValue = true}) =>
-      _hideComponents.putIfAbsent(chartId, () => defaultValue);
+  bool _hideComponentsFor(int chartId, {bool defaultValue = true}) => _hideComponents.putIfAbsent(chartId, () => defaultValue);
 
   @override
   Widget build(BuildContext context) {
@@ -200,8 +195,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       data: (allData) {
         if (allData == null) {
           return Center(
-            child: Text(s.dashNoData,
-                style: const TextStyle(color: Colors.grey)),
+            child: Text(s.dashNoData, style: const TextStyle(color: Colors.grey)),
           );
         }
 
@@ -216,6 +210,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           if (c.sourceChartIds != null) return 1; // combined overlays
           return 2; // regular charts + role-tagged (cash/saving/portfolio/liquid_investments)
         }
+
         final charts = [...rawCharts]
           ..sort((a, b) {
             final ba = bucket(a);
@@ -239,265 +234,255 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           children: [
             MobilePullToRefresh(
               child: ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 16, 40, 96),
-          physics: const AlwaysScrollableScrollPhysics(),
-          itemCount: charts.length,
-          itemBuilder: (context, index) {
-            final chart = charts[index];
+                padding: const EdgeInsets.fromLTRB(16, 16, 40, 96),
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: charts.length,
+                itemBuilder: (context, index) {
+                  final chart = charts[index];
 
-            // Price changes widget
-            if (chart.widgetType == 'price_changes') {
-              // Derive Totals rows from every non-combined chart on the
-              // dashboard — role-tagged ones (cash / saving / portfolio /
-              // liquid_investments) included, so the summary stays in sync
-              // with the chart list.
-              final rowCharts = charts
-                  .where((c) => c.widgetType != 'price_changes' && c.sourceChartIds == null)
-                  .toList();
-              final chartRows = rowCharts.map((c) {
-                final series = _filterSeries(allData, _parseSeriesJson(c.seriesJson));
-                return (title: c.title, series: series);
-              }).toList();
-              return Padding(
-                key: ValueKey(chart.id),
-                padding: const EdgeInsets.only(bottom: 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
-                    const SizedBox(height: 16),
-                    _SummaryTotalsTable(
-                      allData: allData,
-                      locale: locale,
-                      chartRows: chartRows,
-                      athController: _athController,
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            // Chart widgets
-            final isCombined = chart.sourceChartIds != null;
-
-            List<ChartSeries> filteredSeries;
-            if (isCombined) {
-              filteredSeries = _buildCombinedSeries(charts, chart, allData);
-            } else {
-              final seriesConfigs = _parseSeriesJson(chart.seriesJson);
-              filteredSeries = _filterSeries(allData, seriesConfigs);
-            }
-
-            final hidden = _hiddenFor(chart.id);
-            final zoom = _zoomFor(chart.id);
-            final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
-            // In release mode every chart is read-only; in debug mode user
-            // charts (positive DB ids) get full editor affordances. Static
-            // / JSON-loaded charts (negative ids) are never editable.
-            // In-memory charts have negative ids; the previous DB-positive
-            // gate is now obsolete. The editor is shown for every chart in
-            // debug mode (and never in release mode).
-            final isUserChart = debugChartsEnabled;
-            // Only bucket-2 charts (regular + role-tagged) are reorderable.
-            // Price Changes and the combined Totals overlay stay fixed.
-            final isReorderable = isUserChart && bucket(chart) == 2;
-            final bucket2 = charts.where((c) => bucket(c) == 2).toList();
-            final pos = bucket2.indexWhere((c) => c.id == chart.id);
-            final canMoveUp = isReorderable && pos > 0;
-            final canMoveDown = isReorderable && pos >= 0 && pos < bucket2.length - 1;
-
-            // Per Material/HIG: actions belong to a single owner. When this
-            // chart lives inside an ExpansionTile (source of the combined
-            // overlay) the Tile header owns edit/delete/reorder, so the
-            // inner chart card renders without them to avoid duplication.
-            final isInsideExpansionTile = collapsedChartIds.contains(chart.id);
-
-            final chartCard = ChartCard(
-              chart: chart,
-              series: filteredSeries,
-              allData: allData,
-              hidden: hidden,
-              hideComponents: hideComp,
-              locale: locale,
-              language: language,
-              chartHeight: _heightFor(chart.id),
-              zoomMinX: zoom.minX,
-              zoomMaxX: zoom.maxX,
-              zoomMinY: zoom.minY,
-              zoomMaxY: zoom.maxY,
-              onEdit: (isUserChart && !isInsideExpansionTile)
-                  ? () => isCombined
-                      ? _showCombineChartsDialog(context, charts, chart)
-                      : _showChartEditor(context, allData, chart)
-                  : null,
-              onDelete: (isUserChart && !isInsideExpansionTile)
-                  ? () => _deleteChart(context, chart)
-                  : null,
-              onMoveUp: (canMoveUp && !isInsideExpansionTile)
-                  ? () => _moveChart(charts, chart, -1)
-                  : null,
-              onMoveDown: (canMoveDown && !isInsideExpansionTile)
-                  ? () => _moveChart(charts, chart, 1)
-                  : null,
-              onToggle: (key) => setState(() {
-                hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
-              }),
-              onToggleGroup: (keys) => setState(() {
-                keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
-              }),
-              onToggleHideComponents: () => setState(() {
-                _hideComponents[chart.id] = !hideComp;
-              }),
-              onZoom: (minX, maxX, minY, maxY) => setState(() {
-                zoom.minX = minX;
-                zoom.maxX = maxX;
-                zoom.minY = minY;
-                zoom.maxY = maxY;
-              }),
-              onHeightChanged: (h) => setState(() {
-                _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
-              }),
-            );
-
-            // Source charts: collapsible (same as Cash Flow tab)
-            if (collapsedChartIds.contains(chart.id)) {
-              return Padding(
-                key: ValueKey(chart.id),
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ExpansionTile(
-                  title: Text(chart.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  trailing: isUserChart
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (canMoveUp)
-                              IconButton(
-                                icon: const Icon(Icons.arrow_upward, size: 18),
-                                onPressed: () => _moveChart(charts, chart, -1),
-                                tooltip: s.moveUp,
-                              ),
-                            if (canMoveDown)
-                              IconButton(
-                                icon: const Icon(Icons.arrow_downward, size: 18),
-                                onPressed: () => _moveChart(charts, chart, 1),
-                                tooltip: s.moveDown,
-                              ),
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              onPressed: () => isCombined
-                                  ? _showCombineChartsDialog(context, charts, chart)
-                                  : _showChartEditor(context, allData, chart),
-                              tooltip: s.edit,
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 18),
-                              onPressed: () => _deleteChart(context, chart),
-                              tooltip: s.delete,
-                            ),
-                            const Icon(Icons.expand_more),
-                          ],
-                        )
-                      : null,
-                  children: [chartCard],
-                ),
-              );
-            }
-
-            return Padding(
-              key: ValueKey(chart.id),
-              padding: const EdgeInsets.only(bottom: 24),
-              child: chartCard,
-            );
-          },
-        ),
-            ),
-            if (debugChartsEnabled) Positioned(
-              right: 16,
-              bottom: 16,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Dedicated Export FAB with a dirty dot when the in-memory
-                  // editor state differs from the loaded JSON. Click to dump
-                  // the current config; paste-and-rebuild instructions in
-                  // the modal that follows.
-                  Stack(
-                    alignment: Alignment.topRight,
-                    clipBehavior: Clip.none,
-                    children: [
-                      FloatingActionButton.small(
-                        heroTag: 'dash_export',
-                        tooltip: s.chartExportTitle,
-                        onPressed: () => _exportConfig(context, charts),
-                        child: const Icon(Icons.ios_share),
+                  // Price changes widget
+                  if (chart.widgetType == 'price_changes') {
+                    // Derive Totals rows from every non-combined chart on the
+                    // dashboard — role-tagged ones (cash / saving / portfolio /
+                    // liquid_investments) included, so the summary stays in sync
+                    // with the chart list.
+                    final rowCharts = charts.where((c) => c.widgetType != 'price_changes' && c.sourceChartIds == null).toList();
+                    final chartRows = rowCharts.map((c) {
+                      final series = _filterSeries(allData, _parseSeriesJson(c.seriesJson));
+                      return (title: c.title, series: series);
+                    }).toList();
+                    return Padding(
+                      key: ValueKey(chart.id),
+                      padding: const EdgeInsets.only(bottom: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _AssetDailyChangesCard(locale: locale, baseCurrency: allData.baseCurrency),
+                          const SizedBox(height: 16),
+                          _SummaryTotalsTable(
+                            allData: allData,
+                            locale: locale,
+                            chartRows: chartRows,
+                            athController: _athController,
+                          ),
+                        ],
                       ),
-                      if (ref.watch(chartsDirtyProvider))
-                        Positioned(
-                          right: -2,
-                          top: -2,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade400,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Theme.of(context).scaffoldBackgroundColor,
-                                width: 2,
+                    );
+                  }
+
+                  // Chart widgets
+                  final isCombined = chart.sourceChartIds != null;
+
+                  List<ChartSeries> filteredSeries;
+                  if (isCombined) {
+                    filteredSeries = _buildCombinedSeries(charts, chart, allData);
+                  } else {
+                    final seriesConfigs = _parseSeriesJson(chart.seriesJson);
+                    filteredSeries = _filterSeries(allData, seriesConfigs);
+                  }
+
+                  final hidden = _hiddenFor(chart.id);
+                  final zoom = _zoomFor(chart.id);
+                  final hideComp = isCombined ? false : _hideComponentsFor(chart.id);
+                  // In release mode every chart is read-only; in debug mode user
+                  // charts (positive DB ids) get full editor affordances. Static
+                  // / JSON-loaded charts (negative ids) are never editable.
+                  // In-memory charts have negative ids; the previous DB-positive
+                  // gate is now obsolete. The editor is shown for every chart in
+                  // debug mode (and never in release mode).
+                  final isUserChart = debugChartsEnabled;
+                  // Only bucket-2 charts (regular + role-tagged) are reorderable.
+                  // Price Changes and the combined Totals overlay stay fixed.
+                  final isReorderable = isUserChart && bucket(chart) == 2;
+                  final bucket2 = charts.where((c) => bucket(c) == 2).toList();
+                  final pos = bucket2.indexWhere((c) => c.id == chart.id);
+                  final canMoveUp = isReorderable && pos > 0;
+                  final canMoveDown = isReorderable && pos >= 0 && pos < bucket2.length - 1;
+
+                  // Per Material/HIG: actions belong to a single owner. When this
+                  // chart lives inside an ExpansionTile (source of the combined
+                  // overlay) the Tile header owns edit/delete/reorder, so the
+                  // inner chart card renders without them to avoid duplication.
+                  final isInsideExpansionTile = collapsedChartIds.contains(chart.id);
+
+                  final chartCard = ChartCard(
+                    chart: chart,
+                    series: filteredSeries,
+                    allData: allData,
+                    hidden: hidden,
+                    hideComponents: hideComp,
+                    locale: locale,
+                    language: language,
+                    chartHeight: _heightFor(chart.id),
+                    zoomMinX: zoom.minX,
+                    zoomMaxX: zoom.maxX,
+                    zoomMinY: zoom.minY,
+                    zoomMaxY: zoom.maxY,
+                    onEdit: (isUserChart && !isInsideExpansionTile)
+                        ? () => isCombined ? _showCombineChartsDialog(context, charts, chart) : _showChartEditor(context, allData, chart)
+                        : null,
+                    onDelete: (isUserChart && !isInsideExpansionTile) ? () => _deleteChart(context, chart) : null,
+                    onMoveUp: (canMoveUp && !isInsideExpansionTile) ? () => _moveChart(charts, chart, -1) : null,
+                    onMoveDown: (canMoveDown && !isInsideExpansionTile) ? () => _moveChart(charts, chart, 1) : null,
+                    onToggle: (key) => setState(() {
+                      hidden.contains(key) ? hidden.remove(key) : hidden.add(key);
+                    }),
+                    onToggleGroup: (keys) => setState(() {
+                      keys.every(hidden.contains) ? hidden.removeAll(keys) : hidden.addAll(keys);
+                    }),
+                    onToggleHideComponents: () => setState(() {
+                      _hideComponents[chart.id] = !hideComp;
+                    }),
+                    onZoom: (minX, maxX, minY, maxY) => setState(() {
+                      zoom.minX = minX;
+                      zoom.maxX = maxX;
+                      zoom.minY = minY;
+                      zoom.maxY = maxY;
+                    }),
+                    onHeightChanged: (h) => setState(() {
+                      _chartHeights[chart.id] = h.clamp(_minChartHeight, _maxChartHeight);
+                    }),
+                  );
+
+                  // Source charts: collapsible (same as Cash Flow tab)
+                  if (collapsedChartIds.contains(chart.id)) {
+                    return Padding(
+                      key: ValueKey(chart.id),
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ExpansionTile(
+                        title: Text(chart.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: isUserChart
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (canMoveUp)
+                                    IconButton(
+                                      icon: const Icon(Icons.arrow_upward, size: 18),
+                                      onPressed: () => _moveChart(charts, chart, -1),
+                                      tooltip: s.moveUp,
+                                    ),
+                                  if (canMoveDown)
+                                    IconButton(
+                                      icon: const Icon(Icons.arrow_downward, size: 18),
+                                      onPressed: () => _moveChart(charts, chart, 1),
+                                      tooltip: s.moveDown,
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, size: 18),
+                                    onPressed: () => isCombined
+                                        ? _showCombineChartsDialog(context, charts, chart)
+                                        : _showChartEditor(context, allData, chart),
+                                    tooltip: s.edit,
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, size: 18),
+                                    onPressed: () => _deleteChart(context, chart),
+                                    tooltip: s.delete,
+                                  ),
+                                  const Icon(Icons.expand_more),
+                                ],
+                              )
+                            : null,
+                        children: [chartCard],
+                      ),
+                    );
+                  }
+
+                  return Padding(
+                    key: ValueKey(chart.id),
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: chartCard,
+                  );
+                },
+              ),
+            ),
+            if (debugChartsEnabled)
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Dedicated Export FAB with a dirty dot when the in-memory
+                    // editor state differs from the loaded JSON. Click to dump
+                    // the current config; paste-and-rebuild instructions in
+                    // the modal that follows.
+                    Stack(
+                      alignment: Alignment.topRight,
+                      clipBehavior: Clip.none,
+                      children: [
+                        FloatingActionButton.small(
+                          heroTag: 'dash_export',
+                          tooltip: s.chartExportTitle,
+                          onPressed: () => _exportConfig(context, charts),
+                          child: const Icon(Icons.ios_share),
+                        ),
+                        if (ref.watch(chartsDirtyProvider))
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade400,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Theme.of(context).scaffoldBackgroundColor,
+                                  width: 2,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  FloatingActionButton.small(
-                    heroTag: 'dash_reset',
-                    tooltip: s.chartResetDefaults,
-                    onPressed: () => _resetToDefaults(context, allData),
-                    child: const Icon(Icons.restart_alt),
-                  ),
-                  const SizedBox(height: 8),
-                  // Only allow one combined/overlay chart at a time: hide
-                  // the merge FAB whenever one already exists.
-                  if (!charts.any((c) => c.sourceChartIds != null)) ...[
-                    FloatingActionButton.small(
-                      heroTag: 'dash_combine',
-                      tooltip: s.chartCombineNewTitle,
-                      onPressed: () =>
-                          _showCombineChartsDialog(context, charts, null),
-                      child: const Icon(Icons.merge_type),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                  ],
-                  MenuAnchor(
-                    builder: (ctx, ctrl, _) => FloatingActionButton(
-                      heroTag: 'dash_add',
-                      tooltip: s.chartNewTitle,
-                      onPressed: () => ctrl.isOpen ? ctrl.close() : ctrl.open(),
-                      child: const Icon(Icons.add),
+                    FloatingActionButton.small(
+                      heroTag: 'dash_reset',
+                      tooltip: s.chartResetDefaults,
+                      onPressed: () => _resetToDefaults(context, allData),
+                      child: const Icon(Icons.restart_alt),
                     ),
-                    menuChildren: [
-                      MenuItemButton(
-                        leadingIcon: const Icon(Icons.tune),
-                        onPressed: () => _showChartEditor(context, allData, null),
-                        child: Text(s.chartNewCustom),
+                    const SizedBox(height: 8),
+                    // Only allow one combined/overlay chart at a time: hide
+                    // the merge FAB whenever one already exists.
+                    if (!charts.any((c) => c.sourceChartIds != null)) ...[
+                      FloatingActionButton.small(
+                        heroTag: 'dash_combine',
+                        tooltip: s.chartCombineNewTitle,
+                        onPressed: () => _showCombineChartsDialog(context, charts, null),
+                        child: const Icon(Icons.merge_type),
                       ),
-                      const Divider(height: 1),
-                      for (final role in const ['cash', 'saving', 'portfolio', 'liquid_investments'])
-                        MenuItemButton(
-                          leadingIcon: const Icon(Icons.add_chart),
-                          onPressed: charts.any((c) => c.widgetType == role)
-                              ? null // already present — disabled
-                              : () => _restoreRoleChart(role, allData, s),
-                          child: Text(s.chartRestoreRole(_roleLabel(role, s))),
-                        ),
+                      const SizedBox(height: 8),
                     ],
-                  ),
-                ],
+                    MenuAnchor(
+                      builder: (ctx, ctrl, _) => FloatingActionButton(
+                        heroTag: 'dash_add',
+                        tooltip: s.chartNewTitle,
+                        onPressed: () => ctrl.isOpen ? ctrl.close() : ctrl.open(),
+                        child: const Icon(Icons.add),
+                      ),
+                      menuChildren: [
+                        MenuItemButton(
+                          leadingIcon: const Icon(Icons.tune),
+                          onPressed: () => _showChartEditor(context, allData, null),
+                          child: Text(s.chartNewCustom),
+                        ),
+                        const Divider(height: 1),
+                        for (final role in const ['cash', 'saving', 'portfolio', 'liquid_investments'])
+                          MenuItemButton(
+                            leadingIcon: const Icon(Icons.add_chart),
+                            onPressed: charts.any((c) => c.widgetType == role)
+                                ? null // already present — disabled
+                                : () => _restoreRoleChart(role, allData, s),
+                            child: Text(s.chartRestoreRole(_roleLabel(role, s))),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         );
       },
@@ -522,19 +507,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final seriesJson = jsonEncode(result.selectedSeries);
 
     if (existing != null) {
-      notifier.update(existing.copyWith(
-        title: result.title,
-        seriesJson: seriesJson,
-      ));
+      notifier.update(
+        existing.copyWith(
+          title: result.title,
+          seriesJson: seriesJson,
+        ),
+      );
     } else {
-      notifier.add(DashboardChart(
-        id: 0, // notifier assigns
-        title: result.title,
-        widgetType: 'chart',
-        sortOrder: 0,
-        seriesJson: seriesJson,
-        createdAt: DateTime.now(),
-      ));
+      notifier.add(
+        DashboardChart(
+          id: 0, // notifier assigns
+          title: result.title,
+          widgetType: 'chart',
+          sortOrder: 0,
+          seriesJson: seriesJson,
+          createdAt: DateTime.now(),
+        ),
+      );
     }
   }
 
@@ -545,9 +534,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   ) async {
     // Any non-widget chart can feed Totals — both role-tagged (cash, saving,
     // portfolio, liquid_investments) and user-created custom charts.
-    final candidates = charts
-        .where((c) => c.widgetType != 'price_changes' && c.sourceChartIds == null)
-        .toList();
+    final candidates = charts.where((c) => c.widgetType != 'price_changes' && c.sourceChartIds == null).toList();
     final result = await showDialog<_CombineChartsResult>(
       context: context,
       builder: (ctx) => _CombineChartsDialog(
@@ -558,29 +545,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (result == null) return;
 
     final notifier = ref.read(editableChartsProvider.notifier);
-    final sourceField =
-        result.autoAll ? '*' : jsonEncode(result.selectedChartIds);
+    final sourceField = result.autoAll ? '*' : jsonEncode(result.selectedChartIds);
 
     if (existing != null) {
-      notifier.update(existing.copyWith(
-        title: result.title,
-        sourceChartIds: sourceField,
-      ));
+      notifier.update(
+        existing.copyWith(
+          title: result.title,
+          sourceChartIds: sourceField,
+        ),
+      );
     } else {
-      notifier.add(DashboardChart(
-        id: 0,
-        title: result.title,
-        widgetType: 'chart',
-        sortOrder: 0,
-        seriesJson: '[]',
-        sourceChartIds: sourceField,
-        createdAt: DateTime.now(),
-      ));
+      notifier.add(
+        DashboardChart(
+          id: 0,
+          title: result.title,
+          widgetType: 'chart',
+          sortOrder: 0,
+          seriesJson: '[]',
+          sourceChartIds: sourceField,
+          createdAt: DateTime.now(),
+        ),
+      );
     }
   }
 
-  Future<void> _resetToDefaults(
-      BuildContext context, AllSeriesData allData) async {
+  Future<void> _resetToDefaults(BuildContext context, AllSeriesData allData) async {
     final s = ref.read(appStringsProvider);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -686,8 +675,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.chartExportInstructions,
-                    style: Theme.of(ctx).textTheme.bodyMedium),
+                Text(s.chartExportInstructions, style: Theme.of(ctx).textTheme.bodyMedium),
                 const SizedBox(height: 12),
                 Container(
                   decoration: BoxDecoration(
@@ -729,12 +717,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   }
 
   String _roleLabel(String role, AppStrings s) => switch (role) {
-        'cash'               => s.dashCash,
-        'saving'             => s.dashSaving,
-        'portfolio'          => s.dashPortfolio,
-        'liquid_investments' => s.dashLiquidInvestments,
-        _                    => role,
-      };
+    'cash' => s.dashCash,
+    'saving' => s.dashSaving,
+    'portfolio' => s.dashPortfolio,
+    'liquid_investments' => s.dashLiquidInvestments,
+    _ => role,
+  };
 
   Future<void> _deleteChart(BuildContext context, DashboardChart chart) async {
     final s = ref.read(appStringsProvider);
@@ -774,8 +762,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       data: (allData) {
         if (allData == null) {
           return Center(
-            child: Text(s.noDataYet,
-                style: const TextStyle(color: Colors.grey)),
+            child: Text(s.noDataYet, style: const TextStyle(color: Colors.grey)),
           );
         }
         return _CashFlowTab(allData: allData, locale: locale, language: language);
@@ -793,10 +780,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (src == null) return const [];
     if (src == '*') {
       return allCharts
-          .where((c) =>
-              c.id != combined.id &&
-              c.widgetType != 'price_changes' &&
-              c.sourceChartIds == null)
+          .where((c) => c.id != combined.id && c.widgetType != 'price_changes' && c.sourceChartIds == null)
           .map((c) => c.id)
           .toList();
     }
@@ -842,12 +826,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       final totalSpots = _buildSmartTotalSpotsStatic(srcSeries);
       if (totalSpots.isEmpty) continue;
 
-      result.add(ChartSeries(
-        key: 'combined_src:$srcId',
-        name: srcChart.title,
-        color: _chartColors[colorIdx % _chartColors.length],
-        spots: totalSpots,
-      ));
+      result.add(
+        ChartSeries(
+          key: 'combined_src:$srcId',
+          name: srcChart.title,
+          color: _chartColors[colorIdx % _chartColors.length],
+          spots: totalSpots,
+        ),
+      );
       colorIdx++;
     }
 
@@ -857,9 +843,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   /// Static version of smart total spots for use outside ChartCard.
   /// See `_ChartCardState._buildSmartTotalSpots` for the dedup rules.
   static List<FlSpot> _buildSmartTotalSpotsStatic(List<ChartSeries> visible) {
-    final spotsForTotal = _seriesContributingToSmartTotal(visible)
-        .map((s) => s.spots)
-        .toList();
+    final spotsForTotal = _seriesContributingToSmartTotal(visible).map((s) => s.spots).toList();
     return buildTotalSpots(spotsForTotal);
   }
 
@@ -886,11 +870,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         excludeFromTotal.add('asset_invested:$id');
       }
     }
-    return visible
-        .where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis)
-        .toList();
+    return visible.where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis).toList();
   }
-
 
   static List<Map<String, dynamic>> _parseSeriesJson(String json) {
     try {
@@ -916,24 +897,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       final keys = (type == 'adjustment')
           ? const ['adjustment_value', 'adjustment_events']
           : (type == 'income_adj')
-              ? const ['income_adj_value', 'income_adj_events']
-              : [type];
+          ? const ['income_adj_value', 'income_adj_events']
+          : [type];
 
       for (final prefix in keys) {
         final key = '$prefix:$id';
         final match = allData.allSeries.where((s) => s.key == key);
         if (match.isEmpty) continue;
         final src = match.first;
-        result.add(sign == 1
-            ? src
-            : ChartSeries(
-                key: src.key,
-                name: src.name,
-                color: src.color,
-                spots: src.spots.map((p) => FlSpot(p.x, sign * p.y)).toList(),
-                isDashed: src.isDashed,
-                rightAxis: src.rightAxis,
-              ));
+        result.add(
+          sign == 1
+              ? src
+              : ChartSeries(
+                  key: src.key,
+                  name: src.name,
+                  color: src.color,
+                  spots: src.spots.map((p) => FlSpot(p.x, sign * p.y)).toList(),
+                  isDashed: src.isDashed,
+                  rightAxis: src.rightAxis,
+                ),
+        );
       }
     }
     return result;
@@ -993,21 +976,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       if (series.isNotEmpty) return series;
     }
     return switch (role) {
-      'cash'               => allData.cashSeries,
-      'saving'             => [
+      'cash' => allData.cashSeries,
+      'saving' => [
         ...allData.accounts,
         ..._savingsAssetInvested(allData, activeAssets),
         ...allData.adjustments,
         ...allData.incomeAdjustments,
       ],
-      'portfolio'          => allData.assetMarket,
+      'portfolio' => allData.assetMarket,
       'liquid_investments' => _liquidAssetMarket(allData, activeAssets),
-      'net_asset_value'    => [
+      'net_asset_value' => [
         ...allData.accounts,
         ...allData.assetNet,
         ...allData.adjustments,
       ],
-      _                    => const <ChartSeries>[],
+      _ => const <ChartSeries>[],
     };
   }
 
@@ -1049,5 +1032,4 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     final spots = spotsForRole(role, charts, allData, activeAssets);
     return spots.isEmpty ? 0.0 : spots.last.y;
   }
-
 }

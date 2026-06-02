@@ -25,8 +25,14 @@ class EventDetailScreen extends ConsumerWidget {
     final eventAsync = ref.watch(extraordinaryEventProvider(eventId));
     return eventAsync.when(
       data: (event) => _DetailBody(event: event),
-      loading: () => Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(appBar: AppBar(), body: Center(child: Text(s.error(e)))),
+      loading: () => Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => Scaffold(
+        appBar: AppBar(),
+        body: Center(child: Text(s.error(e))),
+      ),
     );
   }
 }
@@ -45,9 +51,7 @@ class _DetailBody extends ConsumerWidget {
     final amtFmt = fmt.amountFormat(locale);
 
     // Buffer reimbursements (spread outflow only).
-    final bufferTxnAsync = event.bufferId != null
-        ? ref.watch(bufferTransactionsProvider(event.bufferId!))
-        : null;
+    final bufferTxnAsync = event.bufferId != null ? ref.watch(bufferTransactionsProvider(event.bufferId!)) : null;
 
     final isSpread = event.treatment == EventTreatment.spread;
     final isOutflow = event.direction == EventDirection.outflow;
@@ -55,32 +59,36 @@ class _DetailBody extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(event.name),
-        actions: globalAppBarActions(context, ref, local: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: s.edit,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => EventEditScreen(event: event)),
-            ),
-          ),
-          if (isSpread)
+        actions: globalAppBarActions(
+          context,
+          ref,
+          local: [
             IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: s.regenerateEntries,
-              onPressed: () async {
-                await ref.read(extraordinaryEventServiceProvider).generateScheduledEntries(event.id);
-                if (context.mounted) {
-                  showInfoSnack(context, s.entriesRegenerated);
-                }
-              },
+              icon: const Icon(Icons.edit),
+              tooltip: s.edit,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => EventEditScreen(event: event)),
+              ),
             ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: s.delete,
-            onPressed: () => _confirmDelete(context, ref),
-          ),
-        ]),
+            if (isSpread)
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: s.regenerateEntries,
+                onPressed: () async {
+                  await ref.read(extraordinaryEventServiceProvider).generateScheduledEntries(event.id);
+                  if (context.mounted) {
+                    showInfoSnack(context, s.entriesRegenerated);
+                  }
+                },
+              ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: s.delete,
+              onPressed: () => _confirmDelete(context, ref),
+            ),
+          ],
+        ),
       ),
       body: ListView(
         children: [
@@ -123,8 +131,8 @@ class _DetailBody extends ConsumerWidget {
                     Text(
                       event.notes!,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ],
@@ -187,14 +195,15 @@ class _DetailBody extends ConsumerWidget {
                       sym: sym,
                       onDelete: items[i].isReimbursement
                           ? () => _deleteReimbursement(ref, items[i].reimbursement!)
-                          : (items[i].entry!.entryKind == EventEntryKind.manual
-                              ? () => _deleteEntry(ref, items[i].entry!.id)
-                              : null),
+                          : (items[i].entry!.entryKind == EventEntryKind.manual ? () => _deleteEntry(ref, items[i].entry!.id) : null),
                     ),
                 ],
               );
             },
-            loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
             error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text(s.error(e))),
           ),
 
@@ -229,7 +238,10 @@ class _DetailBody extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 110, child: Text(label, style: TextStyle(color: Colors.grey.shade600))),
+          SizedBox(
+            width: 110,
+            child: Text(label, style: TextStyle(color: Colors.grey.shade600)),
+          ),
           Expanded(child: value),
         ],
       ),
@@ -311,7 +323,9 @@ class _DetailBody extends ConsumerWidget {
     final s = ref.read(appStringsProvider);
     final entry = await _promptAmountDescDate(context, ref, title: s.addEventEntryTitle);
     if (entry == null) return;
-    await ref.read(extraordinaryEventServiceProvider).addManualEntry(
+    await ref
+        .read(extraordinaryEventServiceProvider)
+        .addManualEntry(
           eventId: event.id,
           date: entry.date,
           amount: entry.amount,
@@ -324,7 +338,9 @@ class _DetailBody extends ConsumerWidget {
     final entry = await _promptAmountDescDate(context, ref, title: s.addReimbursementTitle);
     if (entry == null) return;
     final db = ref.read(databaseProvider);
-    await db.into(db.bufferTransactions).insert(
+    await db
+        .into(db.bufferTransactions)
+        .insert(
           BufferTransactionsCompanion.insert(
             bufferId: event.bufferId!,
             operationDate: entry.date,
@@ -396,9 +412,7 @@ class _TimelineTile extends StatelessWidget {
         ),
         title: PrivacyText('${amtFmt.format(r.amount.abs())} $sym'),
         subtitle: Text('${dateFmt.format(r.valueDate)}${r.description.isNotEmpty ? ' · ${r.description}' : ''}'),
-        trailing: onDelete != null
-            ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete)
-            : null,
+        trailing: onDelete != null ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete) : null,
       );
     }
 
@@ -416,9 +430,7 @@ class _TimelineTile extends StatelessWidget {
       subtitle: Text(
         '${dateFmt.format(e.date)}${e.description.isNotEmpty ? ' · ${e.description}' : ''}',
       ),
-      trailing: onDelete != null
-          ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete)
-          : null,
+      trailing: onDelete != null ? IconButton(icon: const Icon(Icons.delete_outline), onPressed: onDelete) : null,
     );
   }
 }

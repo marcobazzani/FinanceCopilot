@@ -18,6 +18,7 @@ class _AssetDailyChangesCard extends ConsumerStatefulWidget {
 }
 
 enum _SortCol { name, pct, valueDiff, marketValue }
+
 enum _SortDir { asc, desc, none }
 
 class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
@@ -77,6 +78,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
             final prev = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
             return prev != 0 ? (c.valueDiff / prev) * 100 : 0;
           }
+
           return basePct(a).compareTo(basePct(b));
         };
       case _SortCol.valueDiff:
@@ -120,109 +122,117 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            LayoutBuilder(builder: (ctx, constraints) {
-              final wide = constraints.maxWidth > 600;
-              final chips = <Widget>[
-                SizedBox(
-                  width: 56,
-                  child: TextField(
-                    controller: _numberController,
-                    enabled: !_isSpecialUnit,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 12),
-                    decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
-                      isDense: true,
-                      border: const OutlineInputBorder(),
-                      suffixIconConstraints: const BoxConstraints(maxWidth: 20, maxHeight: 32),
-                      suffixIcon: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            height: 16,
-                            width: 20,
-                            child: IconButton(
-                              onPressed: _isSpecialUnit ? null : () {
-                                setState(() {
-                                  _number++;
-                                  _numberController.text = '$_number';
-                                });
-                              },
-                              icon: const Icon(Icons.arrow_drop_up, size: 16),
-                              padding: EdgeInsets.zero,
+            LayoutBuilder(
+              builder: (ctx, constraints) {
+                final wide = constraints.maxWidth > 600;
+                final chips = <Widget>[
+                  SizedBox(
+                    width: 56,
+                    child: TextField(
+                      controller: _numberController,
+                      enabled: !_isSpecialUnit,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12),
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                        suffixIconConstraints: const BoxConstraints(maxWidth: 20, maxHeight: 32),
+                        suffixIcon: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              height: 16,
+                              width: 20,
+                              child: IconButton(
+                                onPressed: _isSpecialUnit
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _number++;
+                                          _numberController.text = '$_number';
+                                        });
+                                      },
+                                icon: const Icon(Icons.arrow_drop_up, size: 16),
+                                padding: EdgeInsets.zero,
+                              ),
                             ),
-                          ),
-                          SizedBox(
-                            height: 16,
-                            width: 20,
-                            child: IconButton(
-                              onPressed: _isSpecialUnit || _number <= 1 ? null : () {
-                                setState(() {
-                                  _number--;
-                                  _numberController.text = '$_number';
-                                });
-                              },
-                              icon: const Icon(Icons.arrow_drop_down, size: 16),
-                              padding: EdgeInsets.zero,
+                            SizedBox(
+                              height: 16,
+                              width: 20,
+                              child: IconButton(
+                                onPressed: _isSpecialUnit || _number <= 1
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _number--;
+                                          _numberController.text = '$_number';
+                                        });
+                                      },
+                                icon: const Icon(Icons.arrow_drop_down, size: 16),
+                                padding: EdgeInsets.zero,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                      onChanged: (v) {
+                        final n = int.tryParse(v);
+                        if (n != null && n > 0) setState(() => _number = n);
+                      },
                     ),
-                    onChanged: (v) {
-                      final n = int.tryParse(v);
-                      if (n != null && n > 0) setState(() => _number = n);
-                    },
                   ),
-                ),
-                ..._units.map((u) {
-                  final selected = u == _unit;
-                  return ChoiceChip(
-                    label: Text(u),
-                    selected: selected,
-                    onSelected: (_) => setState(() {
-                      _unit = u;
-                      if (_isSpecialUnit) {
-                        _numberController.text = '';
-                      } else if (_numberController.text.isEmpty) {
-                        _number = 1;
-                        _numberController.text = '1';
-                      }
-                    }),
-                    labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    padding: EdgeInsets.zero,
+                  ..._units.map((u) {
+                    final selected = u == _unit;
+                    return ChoiceChip(
+                      label: Text(u),
+                      selected: selected,
+                      onSelected: (_) => setState(() {
+                        _unit = u;
+                        if (_isSpecialUnit) {
+                          _numberController.text = '';
+                        } else if (_numberController.text.isEmpty) {
+                          _number = 1;
+                          _numberController.text = '1';
+                        }
+                      }),
+                      labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: EdgeInsets.zero,
+                    );
+                  }),
+                ];
+                if (wide) {
+                  return Row(
+                    children: [
+                      Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      ...chips,
+                    ],
                   );
-                }),
-              ];
-              if (wide) {
-                return Row(
-                  children: [
-                    Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    ...chips,
-                  ],
-                );
-              } else {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 4),
-                    Wrap(spacing: 4, runSpacing: 4, children: chips),
-                  ],
-                );
-              }
-            }),
+                } else {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.dashPriceChanges, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Wrap(spacing: 4, runSpacing: 4, children: chips),
+                    ],
+                  );
+                }
+              },
+            ),
             const SizedBox(height: 8),
             changesAsync.when(
-              loading: () => const Center(child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )),
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
               error: (e, _) => Text(s.error(e), style: const TextStyle(color: Colors.red, fontSize: 12)),
               data: (changes) {
                 if (changes.isEmpty) {
@@ -326,8 +336,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     );
   }
 
-  static Color _bracketColor(double v) =>
-      v == 0 ? Colors.grey.shade500 : (v > 0 ? Colors.green.shade300 : Colors.red.shade300);
+  static Color _bracketColor(double v) => v == 0 ? Colors.grey.shade500 : (v > 0 ? Colors.green.shade300 : Colors.red.shade300);
 
   Widget _buildRow({
     required ThemeData theme,
@@ -357,7 +366,8 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                 Tooltip(
                   message: marketOpen ? (s?.marketOpen ?? '') : (s?.marketClosed ?? ''),
                   child: Container(
-                    width: 7, height: 7,
+                    width: 7,
+                    height: 7,
                     margin: const EdgeInsets.only(right: 6),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -400,7 +410,11 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                   style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
                   textAlign: TextAlign.right,
                 )
-              : Text('', style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11), textAlign: TextAlign.right),
+              : Text(
+                  '',
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
+                  textAlign: TextAlign.right,
+                ),
         ),
         Expanded(
           flex: 2,
@@ -460,12 +474,20 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
           Expanded(
             flex: 2,
-            child: Text(pctStr, style: subStyle.copyWith(color: pctColor), textAlign: TextAlign.right),
+            child: Text(
+              pctStr,
+              style: subStyle.copyWith(color: pctColor),
+              textAlign: TextAlign.right,
+            ),
           ),
           Expanded(
             flex: 3,
             child: PrivacyBlur(
-              child: Text(diffStr, style: subStyle.copyWith(color: diffColor), textAlign: TextAlign.right),
+              child: Text(
+                diffStr,
+                style: subStyle.copyWith(color: diffColor),
+                textAlign: TextAlign.right,
+              ),
             ),
           ),
         ],

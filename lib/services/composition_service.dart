@@ -28,9 +28,7 @@ class CompositionService {
   final Dio _dio;
   final WebMarketDataService? _providerService;
 
-  CompositionService(this._db, {Dio? dio, WebMarketDataService? providerService})
-      : _dio = dio ?? Dio(),
-        _providerService = providerService;
+  CompositionService(this._db, {Dio? dio, WebMarketDataService? providerService}) : _dio = dio ?? Dio(), _providerService = providerService;
 
   static const _classToInstrument = {
     'Stock ETF': InstrumentType.etf,
@@ -59,9 +57,7 @@ class CompositionService {
 
   /// Sync composition data for all active assets.
   Future<void> syncCompositions() async {
-    final assets = await (_db.select(_db.assets)
-          ..where((a) => a.isActive.equals(true)))
-        .get();
+    final assets = await (_db.select(_db.assets)..where((a) => a.isActive.equals(true))).get();
 
     _log.info('syncCompositions: ${assets.length} active assets');
 
@@ -75,10 +71,11 @@ class CompositionService {
       // user clicks "Refresh from market", which clears the rows and
       // re-runs this method (see clearAndResync). Still fetch a missing
       // TER though — that's a single field, not the multi-row breakdown.
-      final existing = await (_db.select(_db.assetCompositions)
-            ..where((c) => c.assetId.equals(asset.id))
-            ..limit(1))
-          .getSingleOrNull();
+      final existing =
+          await (_db.select(_db.assetCompositions)
+                ..where((c) => c.assetId.equals(asset.id))
+                ..limit(1))
+              .getSingleOrNull();
       if (existing != null) {
         if (asset.ter == null && asset.isin != null) {
           await _fetchTerOnly(asset);
@@ -95,9 +92,7 @@ class CompositionService {
         }
 
         // Replace old data
-        await (_db.delete(_db.assetCompositions)
-              ..where((c) => c.assetId.equals(asset.id)))
-            .go();
+        await (_db.delete(_db.assetCompositions)..where((c) => c.assetId.equals(asset.id))).go();
 
         await _db.batch((batch) {
           for (final entry in data) {
@@ -114,24 +109,21 @@ class CompositionService {
         });
 
         // Auto-update instrumentType and assetClass from detected asset class
-        final assetClassEntry =
-            data.where((e) => e.type == 'assetclass').firstOrNull;
+        final assetClassEntry = data.where((e) => e.type == 'assetclass').firstOrNull;
         if (assetClassEntry != null) {
           final newInstrument = _classToInstrument[assetClassEntry.name];
           final newAssetClass = _classToAssetClass[assetClassEntry.name];
           final updates = AssetsCompanion(
-            instrumentType: newInstrument != null && newInstrument != asset.instrumentType
-                ? Value(newInstrument) : const Value.absent(),
-            assetClass: newAssetClass != null && newAssetClass != asset.assetClass
-                ? Value(newAssetClass) : const Value.absent(),
+            instrumentType: newInstrument != null && newInstrument != asset.instrumentType ? Value(newInstrument) : const Value.absent(),
+            assetClass: newAssetClass != null && newAssetClass != asset.assetClass ? Value(newAssetClass) : const Value.absent(),
           );
           if (updates.instrumentType.present || updates.assetClass.present) {
-            await (_db.update(_db.assets)
-                  ..where((a) => a.id.equals(asset.id)))
-                .write(updates);
-            _log.info('syncCompositions: ${asset.name} - updated classification '
-                '-> instrument=${newInstrument ?? asset.instrumentType}, '
-                'class=${newAssetClass ?? asset.assetClass}');
+            await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(updates);
+            _log.info(
+              'syncCompositions: ${asset.name} - updated classification '
+              '-> instrument=${newInstrument ?? asset.instrumentType}, '
+              'class=${newAssetClass ?? asset.assetClass}',
+            );
           }
         }
 
@@ -153,9 +145,7 @@ class CompositionService {
   Future<void> setEntries(int assetId, String type, List<CompositionEntry> entries) async {
     _log.info('setEntries: assetId=$assetId type=$type count=${entries.length}');
     await _db.transaction(() async {
-      await (_db.delete(_db.assetCompositions)
-            ..where((c) => c.assetId.equals(assetId) & c.type.equals(type)))
-          .go();
+      await (_db.delete(_db.assetCompositions)..where((c) => c.assetId.equals(assetId) & c.type.equals(type))).go();
       if (entries.isNotEmpty) {
         await _db.batch((batch) {
           for (final e in entries) {
@@ -179,9 +169,7 @@ class CompositionService {
   /// only way to opt back into automatic fetching once rows exist.
   Future<void> clearAndResync(int assetId) async {
     _log.info('clearAndResync: assetId=$assetId');
-    await (_db.delete(_db.assetCompositions)
-          ..where((c) => c.assetId.equals(assetId)))
-        .go();
+    await (_db.delete(_db.assetCompositions)..where((c) => c.assetId.equals(assetId))).go();
     await syncCompositions();
   }
 
@@ -232,8 +220,7 @@ class CompositionService {
         if (terMatch != null) {
           final ter = double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
           if (ter != null) {
-            await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
-                .write(AssetsCompanion(ter: Value(ter)));
+            await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
             _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (etf-provider)');
             return;
           }
@@ -244,12 +231,16 @@ class CompositionService {
     // Try the market data provider (for funds/pension)
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
     try {
-      final searchUrl = '$kProviderApiBase/api/search/v2/search'
+      final searchUrl =
+          '$kProviderApiBase/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
-      final searchResp = await _dio.get(searchUrl, options: Options(
-        headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
-        responseType: ResponseType.json,
-      ));
+      final searchResp = await _dio.get(
+        searchUrl,
+        options: Options(
+          headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
+          responseType: ResponseType.json,
+        ),
+      );
       final quotes = (searchResp.data as Map<String, dynamic>)['quotes'] as List? ?? [];
       if (quotes.isEmpty) return;
       final fundPath = quotes[0]['url'] as String?;
@@ -259,8 +250,7 @@ class CompositionService {
       if (fundHtml == null) return;
       final ter = parseTerFromProviderHtml(fundHtml);
       if (ter != null) {
-        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
-            .write(AssetsCompanion(ter: Value(ter)));
+        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
         _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (provider)');
       }
     } catch (e) {
@@ -280,8 +270,7 @@ class CompositionService {
 
     // Provider returns a redirect-to-search page when the fund is not in
     // its catalog. Detect via expected data-testid markers.
-    if (!html.contains('data-testid="etf-basics_data_table"') &&
-        !html.contains('data-testid="etf-holdings_')) {
+    if (!html.contains('data-testid="etf-basics_data_table"') && !html.contains('data-testid="etf-holdings_')) {
       _log.fine('fetchEtf: ${asset.name} - not found on etf-provider');
       return [];
     }
@@ -313,8 +302,7 @@ class CompositionService {
       if (terMatch != null) {
         final ter = double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
         if (ter != null && ter != asset.ter) {
-          await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
-              .write(AssetsCompanion(ter: Value(ter)));
+          await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
           _log.info('syncCompositions: ${asset.name} - updated TER to $ter%');
         }
       }
@@ -338,12 +326,7 @@ class CompositionService {
 
     // Fallback: find the "Investment focus" label td, get its sibling
     if (focus == null || focus.isEmpty) {
-      focus = doc.querySelectorAll('td')
-          .where((td) => td.text.trim() == 'Investment focus')
-          .firstOrNull
-          ?.nextElementSibling
-          ?.text
-          .trim();
+      focus = doc.querySelectorAll('td').where((td) => td.text.trim() == 'Investment focus').firstOrNull?.nextElementSibling?.text.trim();
     }
 
     if (focus != null && focus.isNotEmpty) {
@@ -363,10 +346,7 @@ class CompositionService {
 
     // Fund domicile as country fallback
     if (!entries.any((e) => e.type == 'country')) {
-      final domicile = doc
-          .querySelector('[data-testid="tl_etf-basics_value_fund-domicile"]')
-          ?.text
-          .trim();
+      final domicile = doc.querySelector('[data-testid="tl_etf-basics_value_fund-domicile"]')?.text.trim();
       if (domicile != null && domicile.isNotEmpty) {
         entries.add(_Entry('country', domicile, 100));
       }
@@ -379,12 +359,9 @@ class CompositionService {
   /// Detect the real asset class from the provider's Investment focus field.
   /// Returns labels like "Stock ETF", "Bond ETF", "Commodity ETF", "Gold ETC", "Money Market ETF".
   String? _detectAssetClass(Document doc) {
-    var focus = doc
-        .querySelector('[data-testid="tl_etf-basics_value_investment-focus"]')
-        ?.text
-        .trim()
-        .toLowerCase();
-    focus ??= doc.querySelectorAll('td')
+    var focus = doc.querySelector('[data-testid="tl_etf-basics_value_investment-focus"]')?.text.trim().toLowerCase();
+    focus ??= doc
+        .querySelectorAll('td')
         .where((td) => td.text.trim() == 'Investment focus')
         .firstOrNull
         ?.nextElementSibling
@@ -403,10 +380,24 @@ class CompositionService {
 
   bool _isGeographic(String text) {
     const geoTerms = {
-      'world', 'global', 'europe', 'usa', 'us', 'united states',
-      'asia', 'emerging', 'japan', 'china', 'uk', 'eurozone',
-      'north america', 'latin america', 'africa', 'pacific',
-      'developed', 'frontier',
+      'world',
+      'global',
+      'europe',
+      'usa',
+      'us',
+      'united states',
+      'asia',
+      'emerging',
+      'japan',
+      'china',
+      'uk',
+      'eurozone',
+      'north america',
+      'latin america',
+      'africa',
+      'pacific',
+      'developed',
+      'frontier',
     };
     final lower = text.toLowerCase();
     return geoTerms.any((t) => lower.contains(t));
@@ -450,12 +441,16 @@ class CompositionService {
 
     String? fundUrl;
     try {
-      final searchUrl = '$kProviderApiBase/api/search/v2/search'
+      final searchUrl =
+          '$kProviderApiBase/api/search/v2/search'
           '?q=${Uri.encodeComponent(searchTerm)}';
-      final searchResp = await _dio.get(searchUrl, options: Options(
-        headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
-        responseType: ResponseType.json,
-      ));
+      final searchResp = await _dio.get(
+        searchUrl,
+        options: Options(
+          headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
+          responseType: ResponseType.json,
+        ),
+      );
       final quotes = (searchResp.data as Map<String, dynamic>)['quotes'] as List? ?? [];
       if (quotes.isNotEmpty) {
         fundUrl = quotes[0]['url'] as String?;
@@ -474,8 +469,7 @@ class CompositionService {
     if (mainHtml != null) {
       final ter = parseTerFromProviderHtml(mainHtml);
       if (ter != null && ter != asset.ter) {
-        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id)))
-            .write(AssetsCompanion(ter: Value(ter)));
+        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
         _log.info('fetchFund: ${asset.name} - updated TER to $ter% from the provider');
       }
     }
@@ -620,9 +614,7 @@ class CompositionService {
 
   /// Extract a value from an HTML table row: <td>Label</td><td>...Value...</td>
   String? _extractTableValue(Document doc, String label) {
-    final labelTd = doc.querySelectorAll('td')
-        .where((td) => td.text.trim().toLowerCase() == label.toLowerCase())
-        .firstOrNull;
+    final labelTd = doc.querySelectorAll('td').where((td) => td.text.trim().toLowerCase() == label.toLowerCase()).firstOrNull;
     final text = labelTd?.nextElementSibling?.text.trim();
     return (text != null && text.isNotEmpty && text != '-') ? text : null;
   }
@@ -645,8 +637,7 @@ class CompositionService {
       return response.data as String;
     } on DioException catch (e) {
       // On CF-protected provider pages, fall back to WebView fetch
-      if (e.response?.statusCode == 403 && _providerService != null &&
-          url.contains(kProviderHost)) {
+      if (e.response?.statusCode == 403 && _providerService != null && url.contains(kProviderHost)) {
         _log.fine('fetchHtml: Dio 403, trying WebView fetch for $url');
         return await _providerService.fetchHtml(url);
       }

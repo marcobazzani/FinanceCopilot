@@ -26,6 +26,7 @@ class _TransferTile extends StatefulWidget {
   final Map<int, String> accountNameById;
   final String locale;
   final AppStrings s;
+
   /// Builds the row for a single leg of the transfer using the same widget as
   /// regular transactions, so the expanded view is visually identical to the
   /// rest of the list.
@@ -52,10 +53,8 @@ class _TransferTileState extends State<_TransferTile> {
     final s = widget.s;
     final amtFmt = fmt.currencyFormat(widget.locale, entry.currency);
     final dateFmt = fmt.shortDateFormat(widget.locale);
-    final fromName = widget.accountNameById[entry.outflow.accountId] ??
-        '#${entry.outflow.accountId}';
-    final toName = widget.accountNameById[entry.inflow.accountId] ??
-        '#${entry.inflow.accountId}';
+    final fromName = widget.accountNameById[entry.outflow.accountId] ?? '#${entry.outflow.accountId}';
+    final toName = widget.accountNameById[entry.inflow.accountId] ?? '#${entry.inflow.accountId}';
     final blue = scheme.primary;
 
     return Column(
@@ -76,8 +75,7 @@ class _TransferTileState extends State<_TransferTile> {
           ),
           subtitle: Row(
             children: [
-              Text(dateFmt.format(entry.valueDate),
-                  style: const TextStyle(fontSize: 12)),
+              Text(dateFmt.format(entry.valueDate), style: const TextStyle(fontSize: 12)),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(

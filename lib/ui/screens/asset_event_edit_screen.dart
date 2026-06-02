@@ -55,8 +55,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
   bool get _usesQtyPrice => _qtyPriceTypes.contains(_eventType);
   bool get _isRevalue => _eventType == EventType.revalue;
 
-  String get _baseCurrency =>
-      ref.read(baseCurrencyProvider).value ?? 'EUR';
+  String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
 
   bool get _needsConversion => _currency != _baseCurrency;
 
@@ -239,9 +238,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                         labelText: s.currency,
                         border: const OutlineInputBorder(),
                       ),
-                      items: ExchangeRateService.allCurrencies
-                          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                          .toList(),
+                      items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                       onChanged: (v) {
                         setState(() => _currency = v!);
                         _fetchExchangeRate();
@@ -253,9 +250,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                     child: TextFormField(
                       controller: _exchangeRateCtrl,
                       decoration: InputDecoration(
-                        labelText: _needsConversion
-                            ? s.rateLabel2(_baseCurrency, _currency)
-                            : s.exchangeRate,
+                        labelText: _needsConversion ? s.rateLabel2(_baseCurrency, _currency) : s.exchangeRate,
                         border: const OutlineInputBorder(),
                         hintText: _needsConversion ? s.rateHint : s.notApplicable,
                       ),
@@ -317,9 +312,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                   border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  suffixText: converted != null
-                      ? '≈ ${converted.toStringAsFixed(2)} $baseSym'
-                      : null,
+                  suffixText: converted != null ? '≈ ${converted.toStringAsFixed(2)} $baseSym' : null,
                 ),
                 readOnly: true,
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -333,9 +326,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                   labelText: _isRevalue ? s.currentValue : s.amountLabel(_needsConversion ? ' ($_currency)' : ''),
                   border: const OutlineInputBorder(),
                   hintText: '1000.00',
-                  suffixText: converted != null
-                      ? '≈ ${converted.toStringAsFixed(2)} $baseSym'
-                      : null,
+                  suffixText: converted != null ? '≈ ${converted.toStringAsFixed(2)} $baseSym' : null,
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
                 textInputAction: TextInputAction.next,
@@ -435,8 +426,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
     final svc = ref.read(assetEventServiceProvider);
 
     if (_isEditing) {
-      _log.info('saving event id=${widget.event!.id}, type=${_eventType.name}, '
-          'currency=$_currency');
+      _log.info(
+        'saving event id=${widget.event!.id}, type=${_eventType.name}, '
+        'currency=$_currency',
+      );
       await svc.update(
         widget.event!.id,
         AssetEventsCompanion(
@@ -455,8 +448,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
         ),
       );
     } else {
-      _log.info('creating event for asset=${widget.asset.id}, type=${_eventType.name}, '
-          'currency=$_currency');
+      _log.info(
+        'creating event for asset=${widget.asset.id}, type=${_eventType.name}, '
+        'currency=$_currency',
+      );
       await svc.create(
         assetId: widget.asset.id,
         date: _selectedDate,

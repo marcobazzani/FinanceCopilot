@@ -40,10 +40,12 @@ void main() {
   }
 
   Future<String?> readCached(AppDatabase db, String key) async {
-    final row = await db.customSelect(
-      'SELECT value FROM app_configs WHERE key = ?',
-      variables: [Variable.withString(key)],
-    ).getSingleOrNull();
+    final row = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString(key)],
+        )
+        .getSingleOrNull();
     return row?.read<String>('value');
   }
 
@@ -205,9 +207,11 @@ void main() {
         expect(r, isA<UrlResolveOk>());
       }
 
-      final rows = await db.customSelect(
-        "SELECT key FROM app_configs WHERE key LIKE 'PROVIDER_%_BE0000351602_MIL'",
-      ).get();
+      final rows = await db
+          .customSelect(
+            "SELECT key FROM app_configs WHERE key LIKE 'PROVIDER_%_BE0000351602_MIL'",
+          )
+          .get();
       // exactly two rows: the cid + the URL
       expect(rows.length, 2);
     });

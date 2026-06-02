@@ -395,7 +395,7 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
                 Expanded(child: Text(_error!)),
               ],
             ),
-        ),
+          ),
         Expanded(
           child: visibleRows.isEmpty
               ? Center(child: Text(s.pillarsEmptyTitle))
@@ -796,18 +796,22 @@ List<Widget> _divergenceFooterRows({
   final widgets = <Widget>[];
   if (extraRows.isNotEmpty) {
     widgets.add(const SizedBox(height: 4));
-    widgets.add(Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      child: Text(s.portfolioExtraHoldings, style: Theme.of(context).textTheme.titleSmall),
-    ));
+    widgets.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+        child: Text(s.portfolioExtraHoldings, style: Theme.of(context).textTheme.titleSmall),
+      ),
+    );
     widgets.addAll(extraRows);
   }
   if (missingRows.isNotEmpty) {
     widgets.add(const SizedBox(height: 4));
-    widgets.add(Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      child: Text(s.portfolioUnmatchedRows, style: Theme.of(context).textTheme.titleSmall),
-    ));
+    widgets.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+        child: Text(s.portfolioUnmatchedRows, style: Theme.of(context).textTheme.titleSmall),
+      ),
+    );
     widgets.addAll(missingRows);
   }
   if (widgets.isEmpty) {

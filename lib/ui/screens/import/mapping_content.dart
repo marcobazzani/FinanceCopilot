@@ -93,8 +93,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
         const SizedBox(height: 8),
 
         // Column mapping
-        Text(s.mapColumnsTitle(columns.length, totalRows),
-            style: const TextStyle(fontWeight: FontWeight.bold)),
+        Text(s.mapColumnsTitle(columns.length, totalRows), style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Expanded(
           child: ListView(
@@ -130,9 +129,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                     Text(
                       _assetEventMode == 'singleAsset'
                           ? s.singleAssetHelp
-                          : (_assetImportMode == 'historic'
-                              ? s.dateExchangeRequired
-                              : s.dateDefaultsToday),
+                          : (_assetImportMode == 'historic' ? s.dateExchangeRequired : s.dateDefaultsToday),
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     ),
                   ],
@@ -168,15 +165,13 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
-                    if (_assetEventMode == 'singleAsset')
-                      _buildSingleAssetPicker(s),
+                    if (_assetEventMode == 'singleAsset') _buildSingleAssetPicker(s),
                   ],
                 ),
                 const SizedBox(height: 8),
               ],
               // Required fields -- date required except for asset events in current mode
-              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic')
-                _buildMappingRow('date', columns, required: true),
+              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic') _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
                 _buildAmountFormulaRow(columns, s)
               else if (_target == ImportTarget.assetEvent) ...[
@@ -187,18 +182,33 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                     if (_autoCalcAmount)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(children: [
-                          SizedBox(width: 100, child: Text(s.amount, style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 13,
-                            color: Theme.of(context).colorScheme.primary,
-                          ))),
-                          const Icon(Icons.arrow_forward, size: 16),
-                          const SizedBox(width: 8),
-                          Flexible(child: Text(s.qtyTimesPrice, style: TextStyle(
-                            fontSize: 13, fontStyle: FontStyle.italic,
-                            color: Colors.grey.shade600,
-                          ))),
-                        ]),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 100,
+                              child: Text(
+                                s.amount,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward, size: 16),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                s.qtyTimesPrice,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontStyle: FontStyle.italic,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       )
                     else
                       _buildMappingRow('amount', columns),
@@ -228,21 +238,27 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                     if (_sameSettlementDate)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(children: [
-                          ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
-                            child: Text(
-                              '${s.fieldLabel('valueDate')} *',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                        child: Row(
+                          children: [
+                            ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
+                              child: Text(
+                                '${s.fieldLabel('valueDate')} *',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
                             ),
-                          ),
-                          const Icon(Icons.arrow_forward, size: 16),
-                          const SizedBox(width: 8),
-                          Text('= ${s.fieldLabel('date')}', style: TextStyle(
-                            fontSize: 13, fontStyle: FontStyle.italic,
-                            color: Colors.grey.shade600,
-                          )),
-                        ]),
+                            const Icon(Icons.arrow_forward, size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              '= ${s.fieldLabel('date')}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
                       )
                     else
                       _buildMappingRow('valueDate', columns, required: true),
@@ -305,9 +321,11 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 ),
                 if (preview.rows.length > 10) ...[
                   const SizedBox(height: 8),
-                  Text(s.hiddenRows(preview.rows.length - 10),
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
-                      textAlign: TextAlign.center),
+                  Text(
+                    s.hiddenRows(preview.rows.length - 10),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
                 if (preview.rows.length > 5) ...[
                   const SizedBox(height: 4),
@@ -334,11 +352,13 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             FilledButton(
-              onPressed: _canProceedToConfirm() ? () {
-                _setState(() => _step = 2);
-                if (_target == ImportTarget.assetEvent) _lookupIsins();
-                _computePreview();
-              } : null,
+              onPressed: _canProceedToConfirm()
+                  ? () {
+                      _setState(() => _step = 2);
+                      if (_target == ImportTarget.assetEvent) _lookupIsins();
+                      _computePreview();
+                    }
+                  : null,
               child: Text(s.next),
             ),
           ],
@@ -366,7 +386,10 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
                 child: Text(
                   '${s.fieldLabel(field)}${required ? ' *' : ''}',
-                  style: TextStyle(fontWeight: required ? FontWeight.bold : FontWeight.normal, fontSize: MediaQuery.sizeOf(context).width < 400 ? 12 : 14),
+                  style: TextStyle(
+                    fontWeight: required ? FontWeight.bold : FontWeight.normal,
+                    fontSize: MediaQuery.sizeOf(context).width < 400 ? 12 : 14,
+                  ),
                 ),
               ),
               const Icon(Icons.arrow_forward, size: 16),
@@ -379,12 +402,17 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       border: const OutlineInputBorder(),
-                      hintText: required ? s.required
-                          : field == 'date' ? '${s.notMapped} (→ ${DateTime.now().toIso8601String().substring(0, 10)})'
+                      hintText: required
+                          ? s.required
+                          : field == 'date'
+                          ? '${s.notMapped} (→ ${DateTime.now().toIso8601String().substring(0, 10)})'
                           : s.notMapped,
                     ),
                     items: [
-                      DropdownMenuItem(value: null, child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey))),
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey)),
+                      ),
                       ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
                     onChanged: (v) => _setState(() => _mappings[field] = v),
@@ -436,7 +464,10 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 child: Row(
                   children: [
                     if (i > 0)
-                      Text('+', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade500))
+                      Text(
+                        '+',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade500),
+                      )
                     else
                       const SizedBox(width: 12),
                     const SizedBox(width: 8),

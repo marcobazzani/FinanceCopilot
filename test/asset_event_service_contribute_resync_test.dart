@@ -25,18 +25,24 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     importer = ImportService(db);
     eventService = AssetEventService(db);
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
-    assetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'Pension',
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: ValuationMethod.eventDriven,
-          currency: const Value('EUR'),
-          intermediaryId: intermediaryId,
-        ));
+    assetId = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension',
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: ValuationMethod.eventDriven,
+            currency: const Value('EUR'),
+            intermediaryId: intermediaryId,
+          ),
+        );
   });
 
   tearDown(() => db.close());
@@ -71,10 +77,11 @@ void main() {
 
   test('all 6 PPP revalues materialize a market_prices row', () async {
     await importPpp();
-    final prices = await (db.select(db.marketPrices)
-          ..where((p) => p.assetId.equals(assetId))
-          ..orderBy([(p) => OrderingTerm.asc(p.date)]))
-        .get();
+    final prices =
+        await (db.select(db.marketPrices)
+              ..where((p) => p.assetId.equals(assetId))
+              ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+            .get();
     expect(prices, hasLength(6));
     expect(prices.map((p) => p.date), [
       DateTime(2021, 12, 31),
@@ -90,15 +97,17 @@ void main() {
     final expectedAmounts = [1900.00, 6800.00, 11900.00, 17000.00, 22200.00, 23100.00];
     for (var i = 0; i < prices.length; i++) {
       final p = prices[i];
-      final qtyRow = await db.customSelect(
-        "SELECT SUM(CASE WHEN type IN ('buy','contribute') THEN COALESCE(quantity,0) "
-        "WHEN type='sell' THEN -COALESCE(quantity,0) ELSE 0 END) AS q "
-        "FROM asset_events WHERE asset_id = ? AND value_date <= ?",
-        variables: [
-          Variable.withInt(assetId),
-          Variable.withInt(p.date.millisecondsSinceEpoch ~/ 1000),
-        ],
-      ).getSingleOrNull();
+      final qtyRow = await db
+          .customSelect(
+            "SELECT SUM(CASE WHEN type IN ('buy','contribute') THEN COALESCE(quantity,0) "
+            "WHEN type='sell' THEN -COALESCE(quantity,0) ELSE 0 END) AS q "
+            "FROM asset_events WHERE asset_id = ? AND value_date <= ?",
+            variables: [
+              Variable.withInt(assetId),
+              Variable.withInt(p.date.millisecondsSinceEpoch ~/ 1000),
+            ],
+          )
+          .getSingleOrNull();
       final qty = qtyRow!.read<double>('q');
       // qty × close_price must equal the position value (the revalue.amount).
       expect(qty * p.closePrice, closeTo(expectedAmounts[i], 0.01));
@@ -107,25 +116,23 @@ void main() {
 
   test('deleting the latest revalue purges its market_prices row', () async {
     await importPpp();
-    final pricesBefore = await (db.select(db.marketPrices)
-          ..where((p) => p.assetId.equals(assetId)))
-        .get();
+    final pricesBefore = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(assetId))).get();
     expect(pricesBefore, hasLength(6));
 
-    final latestRevalue = await (db.select(db.assetEvents)
-          ..where((e) =>
-              e.assetId.equals(assetId) & e.type.equalsValue(EventType.revalue))
-          ..orderBy([(e) => OrderingTerm.desc(e.valueDate)])
-          ..limit(1))
-        .getSingle();
+    final latestRevalue =
+        await (db.select(db.assetEvents)
+              ..where((e) => e.assetId.equals(assetId) & e.type.equalsValue(EventType.revalue))
+              ..orderBy([(e) => OrderingTerm.desc(e.valueDate)])
+              ..limit(1))
+            .getSingle();
     await eventService.delete(latestRevalue.id);
 
-    final pricesAfter = await (db.select(db.marketPrices)
-          ..where((p) => p.assetId.equals(assetId))
-          ..orderBy([(p) => OrderingTerm.asc(p.date)]))
-        .get();
-    expect(pricesAfter, hasLength(5),
-        reason: 'orphan cleanup: deleted revalue removes its market_prices row');
+    final pricesAfter =
+        await (db.select(db.marketPrices)
+              ..where((p) => p.assetId.equals(assetId))
+              ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+            .get();
+    expect(pricesAfter, hasLength(5), reason: 'orphan cleanup: deleted revalue removes its market_prices row');
     // The remaining 5 are intact.
     expect(pricesAfter.map((p) => p.date), [
       DateTime(2021, 12, 31),

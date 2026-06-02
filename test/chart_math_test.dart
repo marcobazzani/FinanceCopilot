@@ -131,9 +131,9 @@ void main() {
       final result = buildSpendingFromSaving(spots);
       expect(result.length, 4);
       expect(result[0].y, 0);
-      expect(result[1].y, 0);   // delta=+10, no accumulation
-      expect(result[2].y, -5);  // delta=-5
-      expect(result[3].y, -8);  // delta=-3
+      expect(result[1].y, 0); // delta=+10, no accumulation
+      expect(result[2].y, -5); // delta=-5
+      expect(result[3].y, -8); // delta=-3
     });
   });
 

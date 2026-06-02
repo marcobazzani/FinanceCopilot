@@ -73,6 +73,8 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
 # Code Quality
 
+- Dart formatting is mandatory. Any Dart file you change is not done until you run `dart format` on the touched files or on `lib test integration_test` when the scope is broad.
+- Formatting regressions must be blocked, not hand-fixed later. Use `dart format --output=none --set-exit-if-changed lib test integration_test` as the final formatting check for Dart work.
 - Never duplicate code. Extract shared logic into utilities or service methods.
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
 - **Before writing a new widget/util/service method, grep the codebase for existing equivalents.** If one exists, REUSE it. Copy/paste is a regression. When two implementations of the same UI element exist, the older/canonical one wins; the newer collapses into it via shared code.

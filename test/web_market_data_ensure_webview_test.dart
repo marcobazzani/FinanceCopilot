@@ -46,8 +46,7 @@ void main() {
       // hang every subsequent call forever.
       final second = await svc.ensureWebViewForTest().timeout(
         const Duration(seconds: 5),
-        onTimeout: () =>
-            throw StateError('second ensureWebView call deadlocked'),
+        onTimeout: () => throw StateError('second ensureWebView call deadlocked'),
       );
       expect(second, isFalse);
     },

@@ -64,8 +64,7 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(s.recalcBalanceHelp,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                  Text(s.recalcBalanceHelp, style: const TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 12),
                   SegmentedButton<String>(
                     segments: [
@@ -108,7 +107,10 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                         border: OutlineInputBorder(),
                       ),
                       items: [
-                        DropdownMenuItem(value: null, child: Text('\u2014 ${s.none} \u2014', style: const TextStyle(color: Colors.grey))),
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text('\u2014 ${s.none} \u2014', style: const TextStyle(color: Colors.grey)),
+                        ),
                         ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                       ],
                       onChanged: (v) => setDialogState(() {
@@ -144,16 +146,17 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                             label: Text(val, style: const TextStyle(fontSize: 12)),
                             selected: selected,
                             onSelected: (v) => setDialogState(() {
-                              if (v) { filterInclude.add(val); } else { filterInclude.remove(val); }
+                              if (v) {
+                                filterInclude.add(val);
+                              } else {
+                                filterInclude.remove(val);
+                              }
                             }),
                           );
                         }).toList(),
                       ),
                     ],
                   ],
-
-
-
                 ],
               ),
             ),
@@ -161,8 +164,8 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
-              onPressed: (balanceMode == 'filtered' && filterColumn == null) ||
-                      (balanceMode == 'column' && savedMappings['balanceAfter'] == null)
+              onPressed:
+                  (balanceMode == 'filtered' && filterColumn == null) || (balanceMode == 'column' && savedMappings['balanceAfter'] == null)
                   ? null
                   : () async {
                       Navigator.pop(ctx);
@@ -180,19 +183,19 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                       } else {
                         updatedMappings.remove('__balanceFilterInclude');
                       }
-                      await ref.read(importConfigServiceProvider).save(
-                        accountId: widget.account.id,
-                        skipRows: savedConfig?.skipRows ?? 0,
-                        mappings: updatedMappings.map((k, v) => MapEntry(k, v as String?)),
-                        formula: savedConfig != null
-                            ? (jsonDecode(savedConfig.formulaJson) as List<dynamic>)
-                                .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String)))
-                                .toList()
-                            : [],
-                        hashColumns: savedConfig != null
-                            ? (jsonDecode(savedConfig.hashColumnsJson) as List<dynamic>).cast<String>()
-                            : [],
-                      );
+                      await ref
+                          .read(importConfigServiceProvider)
+                          .save(
+                            accountId: widget.account.id,
+                            skipRows: savedConfig?.skipRows ?? 0,
+                            mappings: updatedMappings.map((k, v) => MapEntry(k, v as String?)),
+                            formula: savedConfig != null
+                                ? (jsonDecode(savedConfig.formulaJson) as List<dynamic>)
+                                      .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String)))
+                                      .toList()
+                                : [],
+                            hashColumns: savedConfig != null ? (jsonDecode(savedConfig.hashColumnsJson) as List<dynamic>).cast<String>() : [],
+                          );
                     },
               child: Text(s.recalculate),
             ),

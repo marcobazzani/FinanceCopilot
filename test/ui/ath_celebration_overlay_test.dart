@@ -56,9 +56,13 @@ void main() {
 
         expect(find.text('NEW ALL-TIME HIGH!'), findsOneWidget);
         expect(find.text('Portfolio'), findsOneWidget);
-        expect(find.byType(ConfettiWidget), findsNWidgets(9),
-            reason: '6 confetti corner-emitters + 3 starbursts '
-                '(real fireworks live in CustomPainter, not in ConfettiWidget)');
+        expect(
+          find.byType(ConfettiWidget),
+          findsNWidgets(9),
+          reason:
+              '6 confetti corner-emitters + 3 starbursts '
+              '(real fireworks live in CustomPainter, not in ConfettiWidget)',
+        );
       } finally {
         controller.dispose();
       }
@@ -77,8 +81,7 @@ void main() {
       }
     });
 
-    testWidgets('stacks one card per active fire when called multiple times',
-        (tester) async {
+    testWidgets('stacks one card per active fire when called multiple times', (tester) async {
       final (controller, ctx) = await _mount(tester);
       try {
         controller.fire(ctx, 'Portfolio');
@@ -86,8 +89,7 @@ void main() {
         controller.fire(ctx, 'Performance');
         await tester.pump();
 
-        expect(find.text('NEW ALL-TIME HIGH!'), findsNWidgets(3),
-            reason: 'one title per stacked card');
+        expect(find.text('NEW ALL-TIME HIGH!'), findsNWidgets(3), reason: 'one title per stacked card');
         expect(find.text('Portfolio'), findsOneWidget);
         expect(find.text('Total Assets'), findsOneWidget);
         expect(find.text('Performance'), findsOneWidget);

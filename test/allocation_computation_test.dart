@@ -122,7 +122,7 @@ void main() {
       // existing behavior of drillDownByField/weightedBreakdown.
       final assets = [
         _makeAsset(id: 1, name: 'Stock', currency: 'EUR'),
-        _makeAsset(id: 2, name: 'Loan',  currency: 'EUR'),
+        _makeAsset(id: 2, name: 'Loan', currency: 'EUR'),
       ];
       final values = {1: 1000.0, 2: -500.0};
 
@@ -132,8 +132,7 @@ void main() {
       // Pre-fix: groupByField['EUR'] was 500 (1000 + -500), and the EUR
       // drill-down had only the Stock entry (1000). The two views
       // disagreed on what total they were breaking down.
-      expect(group['EUR'], 1000.0,
-          reason: 'liability must not deflate the positive-asset bucket');
+      expect(group['EUR'], 1000.0, reason: 'liability must not deflate the positive-asset bucket');
       expect(drill['EUR']!.length, 1);
       expect(drill['EUR']!['Stock'], 1000.0);
     });
@@ -155,7 +154,11 @@ void main() {
       };
 
       final result = weightedBreakdown(
-        assets, values, compositions, 'country', (a) => 'Other',
+        assets,
+        values,
+        compositions,
+        'country',
+        (a) => 'Other',
       );
 
       expect(result['US'], 6000.0);
@@ -172,7 +175,11 @@ void main() {
       final compositions = <int, List<AssetComposition>>{};
 
       final result = weightedBreakdown(
-        assets, values, compositions, 'country', (a) => a.country ?? 'Unknown',
+        assets,
+        values,
+        compositions,
+        'country',
+        (a) => a.country ?? 'Unknown',
       );
 
       expect(result['Italy'], 5000.0);
@@ -191,7 +198,11 @@ void main() {
       };
 
       final result = weightedBreakdown(
-        assets, values, compositions, 'country', (a) => a.country ?? 'Unknown',
+        assets,
+        values,
+        compositions,
+        'country',
+        (a) => a.country ?? 'Unknown',
       );
 
       expect(result['US'], 10000.0);
@@ -206,7 +217,11 @@ void main() {
       final values = {1: 0.0, 2: -100.0};
 
       final result = weightedBreakdown(
-        assets, values, {}, 'country', (a) => 'X',
+        assets,
+        values,
+        {},
+        'country',
+        (a) => 'X',
       );
 
       expect(result, isEmpty);
@@ -241,7 +256,11 @@ void main() {
       };
 
       final result = drillDownData(
-        assets, values, compositions, 'sector', (a) => 'Other',
+        assets,
+        values,
+        compositions,
+        'sector',
+        (a) => 'Other',
       );
 
       // Tech should have contributions from both ETFs
@@ -256,7 +275,11 @@ void main() {
       final values = {1: 2000.0};
 
       final result = drillDownData(
-        assets, values, {}, 'country', (a) => a.country ?? 'Unknown',
+        assets,
+        values,
+        {},
+        'country',
+        (a) => a.country ?? 'Unknown',
       );
 
       expect(result['FR']!['Stock'], 2000.0);

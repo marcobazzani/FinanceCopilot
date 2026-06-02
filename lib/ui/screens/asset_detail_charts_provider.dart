@@ -5,8 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../database/providers.dart';
 import '../../database/tables.dart';
 import '../../services/providers/providers.dart';
-import 'dashboard/dashboard_screen.dart'
-    show ChartSeries, allSeriesDataProvider;
+import 'dashboard/dashboard_screen.dart' show ChartSeries, allSeriesDataProvider;
 
 /// Chart data for a single asset: invested + market value, and raw price.
 class SingleAssetChartData {
@@ -29,16 +28,13 @@ class SingleAssetChartData {
 
 /// Extracts invested + market series for a single asset from the shared
 /// dashboard [allSeriesDataProvider], and adds a raw price series.
-final singleAssetChartDataProvider =
-    FutureProvider.family<SingleAssetChartData?, int>((ref, assetId) async {
+final singleAssetChartDataProvider = FutureProvider.family<SingleAssetChartData?, int>((ref, assetId) async {
   final allData = await ref.watch(allSeriesDataProvider.future);
   if (allData == null) return null;
 
   // Find this asset's invested and market series from the dashboard data
-  final invMatch = allData.assetInvested
-      .where((s) => s.key == 'asset_invested:$assetId');
-  final mktMatch = allData.assetMarket
-      .where((s) => s.key == 'asset_market:$assetId');
+  final invMatch = allData.assetInvested.where((s) => s.key == 'asset_invested:$assetId');
+  final mktMatch = allData.assetMarket.where((s) => s.key == 'asset_market:$assetId');
   if (mktMatch.isEmpty) return null;
 
   final marketSeries = mktMatch.first;
@@ -54,9 +50,7 @@ final singleAssetChartDataProvider =
 
   // Look up the asset for currency and instrument type
   final db = ref.watch(databaseProvider);
-  final asset = await (db.select(db.assets)
-        ..where((a) => a.id.equals(assetId)))
-      .getSingleOrNull();
+  final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingleOrNull();
   if (asset == null) return null;
 
   // Build raw price series from market_prices table
@@ -74,8 +68,7 @@ final singleAssetChartDataProvider =
   if (allAssetSpots.isEmpty) return null;
   final xOffset = allAssetSpots.map((s) => s.x).reduce((a, b) => a < b ? a : b);
 
-  List<FlSpot> shift(List<FlSpot> spots) =>
-      spots.map((s) => FlSpot(s.x - xOffset, s.y)).toList();
+  List<FlSpot> shift(List<FlSpot> spots) => spots.map((s) => FlSpot(s.x - xOffset, s.y)).toList();
 
   // Asset-local firstDate (shifted by xOffset days from global firstDate)
   final assetFirstDate = allData.firstDate.add(Duration(days: xOffset.toInt()));

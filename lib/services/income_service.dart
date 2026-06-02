@@ -32,15 +32,11 @@ class IncomeService {
   }
 
   Future<Income> getById(int id) {
-    return (_db.select(_db.incomes)
-          ..where((i) => i.id.equals(id)))
-        .getSingle();
+    return (_db.select(_db.incomes)..where((i) => i.id.equals(id))).getSingle();
   }
 
   Stream<Income> watchById(int id) {
-    return (_db.select(_db.incomes)
-          ..where((i) => i.id.equals(id)))
-        .watchSingle();
+    return (_db.select(_db.incomes)..where((i) => i.id.equals(id))).watchSingle();
   }
 
   Future<int> create({
@@ -50,30 +46,28 @@ class IncomeService {
     required String currency,
   }) async {
     _log.info('create: date=$date, type=$type, currency=$currency');
-    return _db.into(_db.incomes).insert(
-      IncomesCompanion.insert(
-        date: date,
-        valueDate: date,
-        amount: amount,
-        type: Value(type),
-        currency: Value(currency),
-      ),
-    );
+    return _db
+        .into(_db.incomes)
+        .insert(
+          IncomesCompanion.insert(
+            date: date,
+            valueDate: date,
+            amount: amount,
+            type: Value(type),
+            currency: Value(currency),
+          ),
+        );
   }
 
   Future<bool> update(int id, IncomesCompanion companion) async {
     _log.info('update: id=$id');
-    final rows = await (_db.update(_db.incomes)
-          ..where((i) => i.id.equals(id)))
-        .write(companion);
+    final rows = await (_db.update(_db.incomes)..where((i) => i.id.equals(id))).write(companion);
     return rows > 0;
   }
 
   Future<int> delete(int id) async {
     _log.warning('delete: income id=$id');
-    return (_db.delete(_db.incomes)
-          ..where((i) => i.id.equals(id)))
-        .go();
+    return (_db.delete(_db.incomes)..where((i) => i.id.equals(id))).go();
   }
 
   Future<int> deleteMany(List<int> ids) {

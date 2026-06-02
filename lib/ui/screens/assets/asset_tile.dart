@@ -46,17 +46,13 @@ class _AssetTile extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: asset.isActive
-                    ? theme.colorScheme.primaryContainer
-                    : Colors.grey.shade200,
+                color: asset.isActive ? theme.colorScheme.primaryContainer : Colors.grey.shade200,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 Icons.pie_chart,
                 size: 20,
-                color: asset.isActive
-                    ? theme.colorScheme.onPrimaryContainer
-                    : Colors.grey,
+                color: asset.isActive ? theme.colorScheme.onPrimaryContainer : Colors.grey,
               ),
             ),
             const SizedBox(width: 12),
@@ -110,8 +106,7 @@ class _AssetTile extends StatelessWidget {
                   if (hasNoMarketData) ...[
                     const SizedBox(height: 2),
                     _buildNoMarketDataBadge(theme),
-                  ] else if (convertedInvested != null &&
-                      convertedInvested! > 0) ...[
+                  ] else if (convertedInvested != null && convertedInvested! > 0) ...[
                     const SizedBox(height: 2),
                     _buildGainLoss(theme, amtFormat),
                   ],
@@ -120,15 +115,12 @@ class _AssetTile extends StatelessWidget {
                     '${amtFormat.format(stats!.totalInvested)} ${asset.currency}',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: asset.isActive
-                          ? theme.colorScheme.primary
-                          : Colors.grey,
+                      color: asset.isActive ? theme.colorScheme.primary : Colors.grey,
                     ),
                   )
                 else
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(4),
@@ -174,9 +166,7 @@ class _AssetTile extends StatelessWidget {
                 ],
                 if (!asset.isActive) ...[
                   const SizedBox(height: 2),
-                  Text(strings.inactive,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: Colors.grey)),
+                  Text(strings.inactive, style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey)),
                 ],
               ],
             ),
@@ -201,8 +191,7 @@ class _AssetTile extends StatelessWidget {
                         const Icon(Icons.business, size: 18),
                         const SizedBox(width: 8),
                         Expanded(child: Text(i.name)),
-                        if (asset.intermediaryId == i.id)
-                          const Icon(Icons.check, size: 18),
+                        if (asset.intermediaryId == i.id) const Icon(Icons.check, size: 18),
                       ],
                     ),
                   ),
@@ -271,23 +260,29 @@ class _AssetTile extends StatelessWidget {
     final parts = <InlineSpan>[];
 
     // Event count
-    parts.add(TextSpan(
-      text: strings.nEvents(stats!.eventCount),
-      style: style,
-    ));
+    parts.add(
+      TextSpan(
+        text: strings.nEvents(stats!.eventCount),
+        style: style,
+      ),
+    );
 
     // Date range
     if (stats!.firstDate != null) {
-      parts.add(TextSpan(
-        text: '  ·  ${strings.sinceDate(dateFormat.format(stats!.firstDate!))}',
-        style: style,
-      ));
+      parts.add(
+        TextSpan(
+          text: '  ·  ${strings.sinceDate(dateFormat.format(stats!.firstDate!))}',
+          style: style,
+        ),
+      );
     }
     if (stats!.lastDate != null) {
-      parts.add(TextSpan(
-        text: '  ·  ${strings.lastDate(dateFormat.format(stats!.lastDate!))}',
-        style: style,
-      ));
+      parts.add(
+        TextSpan(
+          text: '  ·  ${strings.lastDate(dateFormat.format(stats!.lastDate!))}',
+          style: style,
+        ),
+      );
     }
 
     return RichText(
@@ -309,12 +304,7 @@ List<ProviderSearchResult> exchangeListingsFor(
   List<ProviderSearchResult> results,
   ProviderSearchResult picked,
 ) {
-  final siblings = results
-      .where((x) =>
-          x.description.isNotEmpty &&
-          x.description == picked.description &&
-          isKnownExchange(x.exchange))
-      .toList();
+  final siblings = results.where((x) => x.description.isNotEmpty && x.description == picked.description && isKnownExchange(x.exchange)).toList();
   return siblings.isNotEmpty ? siblings : [picked];
 }
 

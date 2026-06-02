@@ -53,8 +53,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final convertedStats = ref.watch(convertedAssetStatsProvider).value ?? {};
     final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
-    final noMarketData =
-        ref.watch(assetsWithoutMarketPriceProvider).value ?? const <int>{};
+    final noMarketData = ref.watch(assetsWithoutMarketPriceProvider).value ?? const <int>{};
 
     return ListenableBuilder(
       listenable: _selection,
@@ -72,89 +71,96 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
         ];
         _selection.setOrderedIds(allAssetIds);
         return Scaffold(
-      appBar: AppBar(actions: globalAppBarActions(context, ref)),
-      body: assetsAsync.when(
-        data: (assets) {
-          if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.pie_chart, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                  const SizedBox(height: 16),
-                  Text(s.noAssetsYet, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (ctx) => _CreateAssetDialog(ref: ref),
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: Text(s.createAsset),
+          appBar: AppBar(actions: globalAppBarActions(context, ref)),
+          body: assetsAsync.when(
+            data: (assets) {
+              if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.pie_chart, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 16),
+                      Text(s.noAssetsYet, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () => showDialog(
+                          context: context,
+                          builder: (ctx) => _CreateAssetDialog(ref: ref),
+                        ),
+                        icon: const Icon(Icons.add),
+                        label: Text(s.createAsset),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
+                );
+              }
 
-          final stats = statsAsync.value ?? {};
-          final intermediaries = intermediariesAsync.value ?? [];
+              final stats = statsAsync.value ?? {};
+              final intermediaries = intermediariesAsync.value ?? [];
 
-          final grouped = <int, List<Asset>>{};
-          for (final asset in assets) {
-            (grouped[asset.intermediaryId] ??= []).add(asset);
-          }
+              final grouped = <int, List<Asset>>{};
+              for (final asset in assets) {
+                (grouped[asset.intermediaryId] ??= []).add(asset);
+              }
 
-          return MobilePullToRefresh(
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 80),
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                for (final i in intermediaries)
-                  if (grouped[i.id]?.isNotEmpty ?? false)
-                    _buildGroup(
-                      context, s, i.id, i,
-                      grouped[i.id] ?? [],
-                      stats, convertedStats, marketValues, noMarketData,
-                      baseCurrency, locale,
-                      intermediaries,
+              return MobilePullToRefresh(
+                child: ListView(
+                  padding: const EdgeInsets.only(bottom: 80),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    for (final i in intermediaries)
+                      if (grouped[i.id]?.isNotEmpty ?? false)
+                        _buildGroup(
+                          context,
+                          s,
+                          i.id,
+                          i,
+                          grouped[i.id] ?? [],
+                          stats,
+                          convertedStats,
+                          marketValues,
+                          noMarketData,
+                          baseCurrency,
+                          locale,
+                          intermediaries,
+                        ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text(s.error(e))),
+          ),
+          bottomNavigationBar: _selection.active
+              ? SelectionActionBar<int>(
+                  controller: _selection,
+                  visibleIds: allAssetIds,
+                  onDelete: (ids) => ref.read(assetServiceProvider).deleteMany(ids.toList()),
+                )
+              : null,
+          floatingActionButton: _selection.active
+              ? null
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'add_intermediary_assets',
+                      onPressed: () => _showManageIntermediariesDialog(context),
+                      child: const Icon(Icons.business),
                     ),
-              ],
-            ),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(s.error(e))),
-      ),
-      bottomNavigationBar: _selection.active
-          ? SelectionActionBar<int>(
-              controller: _selection,
-              visibleIds: allAssetIds,
-              onDelete: (ids) => ref.read(assetServiceProvider).deleteMany(ids.toList()),
-            )
-          : null,
-      floatingActionButton: _selection.active
-          ? null
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'add_intermediary_assets',
-                  onPressed: () => _showManageIntermediariesDialog(context),
-                  child: const Icon(Icons.business),
+                    const SizedBox(height: 8),
+                    FloatingActionButton(
+                      heroTag: 'add_asset',
+                      onPressed: () => showDialog(
+                        context: context,
+                        builder: (ctx) => _CreateAssetDialog(ref: ref),
+                      ),
+                      child: const Icon(Icons.add),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                FloatingActionButton(
-                  heroTag: 'add_asset',
-                  onPressed: () => showDialog(
-                    context: context,
-                    builder: (ctx) => _CreateAssetDialog(ref: ref),
-                  ),
-                  child: const Icon(Icons.add),
-                ),
-              ],
-            ),
-    );
+        );
       },
     );
   }
@@ -227,7 +233,5 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     );
   }
 
-  Future<void> _showManageIntermediariesDialog(BuildContext context) =>
-      showManageIntermediariesDialog(context, ref);
+  Future<void> _showManageIntermediariesDialog(BuildContext context) => showManageIntermediariesDialog(context, ref);
 }
-

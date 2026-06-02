@@ -404,18 +404,21 @@ class PortfolioRebalanceService {
     return ids;
   }
 
-  Future<({
-    List<PortfolioRebalanceDraftRow> rows,
-    List<PortfolioRebalanceUnresolved> unresolved,
-    double availableCashBase,
-    double targetBuyBase,
-    double executedBuyBase,
-    double buyShortfallBase,
-    double leftoverCashBase,
-    double grossSellBase,
-    double currentPortfolioValueBase,
-    double projectedPortfolioValueBase,
-  })> _buildPillarDraft({
+  Future<
+    ({
+      List<PortfolioRebalanceDraftRow> rows,
+      List<PortfolioRebalanceUnresolved> unresolved,
+      double availableCashBase,
+      double targetBuyBase,
+      double executedBuyBase,
+      double buyShortfallBase,
+      double leftoverCashBase,
+      double grossSellBase,
+      double currentPortfolioValueBase,
+      double projectedPortfolioValueBase,
+    })
+  >
+  _buildPillarDraft({
     required Pillar pillar,
     required PortfolioRebalanceMode mode,
     required double contributionAmount,
@@ -706,11 +709,13 @@ class PortfolioRebalanceService {
     required String baseCurrency,
     required List<PortfolioRebalanceUnresolved> unresolved,
   }) async {
-    final assetRow = await _db.customSelect(
-      "SELECT * FROM assets WHERE UPPER(TRIM(COALESCE(isin, ''))) = ? LIMIT 1",
-      variables: [Variable<String>(normaliseIsin(isin))],
-      readsFrom: {_db.assets},
-    ).get();
+    final assetRow = await _db
+        .customSelect(
+          "SELECT * FROM assets WHERE UPPER(TRIM(COALESCE(isin, ''))) = ? LIMIT 1",
+          variables: [Variable<String>(normaliseIsin(isin))],
+          readsFrom: {_db.assets},
+        )
+        .get();
     final asset = assetRow.isEmpty ? null : _db.assets.map(assetRow.first.data);
     if (asset == null) return null;
     final price = await _latestMarketPrice(asset.id, asOf);

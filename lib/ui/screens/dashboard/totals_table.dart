@@ -7,6 +7,7 @@ part of 'dashboard_screen.dart';
 class _SummaryTotalsTable extends ConsumerStatefulWidget {
   final AllSeriesData allData;
   final String locale;
+
   /// One row per non-combined, non-widget chart currently on the History tab.
   /// The table stays in sync with the user's chart list — delete a chart,
   /// its row disappears; rename a chart, the row label follows.
@@ -115,8 +116,14 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                 children: [
                   const SizedBox(width: 30),
                   Expanded(child: Text('', style: _headerStyle(theme))),
-                  SizedBox(width: 110, child: Text(s.vsATH, style: _headerStyle(theme), textAlign: TextAlign.right)),
-                  SizedBox(width: 120, child: Text(s.value, style: _headerStyle(theme), textAlign: TextAlign.right)),
+                  SizedBox(
+                    width: 110,
+                    child: Text(s.vsATH, style: _headerStyle(theme), textAlign: TextAlign.right),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: Text(s.value, style: _headerStyle(theme), textAlign: TextAlign.right),
+                  ),
                 ],
               ),
             ),
@@ -246,28 +253,32 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     }
     items.sort((a, b) => b.value.abs().compareTo(a.value.abs()));
 
-    return items.map((entry) => Padding(
-      padding: const EdgeInsets.only(left: 34, right: 0, top: 2, bottom: 2),
-      child: Row(
-        children: [
-          Icon(_iconForSeriesKey(entry.key), size: 14, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              entry.name,
-              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+    return items
+        .map(
+          (entry) => Padding(
+            padding: const EdgeInsets.only(left: 34, right: 0, top: 2, bottom: 2),
+            child: Row(
+              children: [
+                Icon(_iconForSeriesKey(entry.key), size: 14, color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    entry.name,
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+                PrivacyText(
+                  '${entry.value >= 0 ? '+' : ''}${amtFmt.format(entry.value)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: entry.value >= 0 ? Colors.green.shade300 : Colors.red.shade300,
+                  ),
+                ),
+              ],
             ),
           ),
-          PrivacyText(
-            '${entry.value >= 0 ? '+' : ''}${amtFmt.format(entry.value)}',
-            style: TextStyle(
-              fontSize: 12,
-              color: entry.value >= 0 ? Colors.green.shade300 : Colors.red.shade300,
-            ),
-          ),
-        ],
-      ),
-    )).toList();
+        )
+        .toList();
   }
 }
 

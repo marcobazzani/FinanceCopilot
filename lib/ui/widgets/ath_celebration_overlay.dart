@@ -357,8 +357,7 @@ class _AthCartelCard extends ConsumerStatefulWidget {
   ConsumerState<_AthCartelCard> createState() => _AthCartelCardState();
 }
 
-class _AthCartelCardState extends ConsumerState<_AthCartelCard>
-    with TickerProviderStateMixin {
+class _AthCartelCardState extends ConsumerState<_AthCartelCard> with TickerProviderStateMixin {
   late final AnimationController _popIn;
   late final Animation<double> _scale;
   late final Animation<double> _fade;
@@ -513,8 +512,7 @@ class _FireworksLayer extends StatefulWidget {
   State<_FireworksLayer> createState() => _FireworksLayerState();
 }
 
-class _FireworksLayerState extends State<_FireworksLayer>
-    with SingleTickerProviderStateMixin {
+class _FireworksLayerState extends State<_FireworksLayer> with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   final List<_Shell> _shells = [];
   final math.Random _rnd = math.Random();
@@ -619,11 +617,13 @@ class _FireworksLayerState extends State<_FireworksLayer>
         for (var k = 0; k < n; k++) {
           final dx = (_rnd.nextDouble() - 0.5) * 0.18;
           final dy = (_rnd.nextDouble() - 0.5) * 0.12;
-          newChildren.add(_buildChildShell(
-            centerX: (shell.peakX + dx).clamp(0.05, 0.95),
-            centerY: (shell.peakY + dy).clamp(0.05, 0.85),
-            color: k.isEven ? shell.color : shell.secondaryColor,
-          ));
+          newChildren.add(
+            _buildChildShell(
+              centerX: (shell.peakX + dx).clamp(0.05, 0.95),
+              centerY: (shell.peakY + dy).clamp(0.05, 0.85),
+              color: k.isEven ? shell.color : shell.secondaryColor,
+            ),
+          );
         }
       }
       if (!shell.isDone) aliveShells.add(shell);
@@ -712,17 +712,14 @@ class _Shell {
     }
   }
 
-  static List<_Spark> _buildSparks(
-      _ShellType type, int count, math.Random rnd) {
+  static List<_Spark> _buildSparks(_ShellType type, int count, math.Random rnd) {
     return List.generate(count, (_) {
       final angle = rnd.nextDouble() * 2 * math.pi;
       switch (type) {
         case _ShellType.chrysanthemum:
           // Two speed populations — fast core + slow trail = denser ring.
           final fast = rnd.nextDouble() < 0.7;
-          final speed = fast
-              ? 0.30 + rnd.nextDouble() * 0.28
-              : 0.10 + rnd.nextDouble() * 0.12;
+          final speed = fast ? 0.30 + rnd.nextDouble() * 0.28 : 0.10 + rnd.nextDouble() * 0.12;
           return _Spark(
             angle: angle,
             speed: speed,
@@ -733,9 +730,7 @@ class _Shell {
           // Half the sparks form the outer fast ring, the other half a
           // slower inner halo in the secondary colour.
           final outer = rnd.nextBool();
-          final speed = outer
-              ? 0.45 + rnd.nextDouble() * 0.15
-              : 0.18 + rnd.nextDouble() * 0.10;
+          final speed = outer ? 0.45 + rnd.nextDouble() * 0.15 : 0.18 + rnd.nextDouble() * 0.10;
           return _Spark(
             angle: angle,
             speed: speed,
@@ -785,8 +780,7 @@ class _Shell {
   /// True at the moment the parent shell's burst is ~40% through and we
   /// haven't yet birthed the child shells. The tick handler reads this
   /// to perform the cascade exactly once.
-  bool get shouldSpawnChildren =>
-      spawnsChildren && !_childrenSpawned && burstProgress > 0.35;
+  bool get shouldSpawnChildren => spawnsChildren && !_childrenSpawned && burstProgress > 0.35;
 
   void markChildrenSpawned() => _childrenSpawned = true;
 }
@@ -835,8 +829,7 @@ class _FireworksPainter extends CustomPainter {
       final trailEased = Curves.easeOutQuad.transform(trailT);
       final tx = (shell.startX + (shell.peakX - shell.startX) * trailEased) * size.width;
       final ty = yStart + (yEnd - yStart) * trailEased;
-      final paint = Paint()
-        ..color = shell.color.withValues(alpha: (0.9 - i * 0.15).clamp(0.0, 0.9));
+      final paint = Paint()..color = shell.color.withValues(alpha: (0.9 - i * 0.15).clamp(0.0, 0.9));
       canvas.drawCircle(Offset(tx, ty), 3.5 - i * 0.4, paint);
     }
     // Rocket head — bright + a small white core.
@@ -850,9 +843,7 @@ class _FireworksPainter extends CustomPainter {
     final cy = shell.peakY * size.height;
     final maxDimension = math.max(size.width, size.height);
     // Alpha fades faster in the second half so the burst gracefully dies.
-    final alpha = p < 0.5
-        ? 1.0
-        : (1.0 - (p - 0.5) / 0.5).clamp(0.0, 1.0);
+    final alpha = p < 0.5 ? 1.0 : (1.0 - (p - 0.5) / 0.5).clamp(0.0, 1.0);
 
     // Brief central flash at the moment of explosion — wider for the
     // longer burst lifetime.

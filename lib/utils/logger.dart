@@ -73,7 +73,8 @@ Future<void> initLogging() async {
     if (dedupKey == lastMsg) {
       repeatCount++;
       if (repeatCount == 5) {
-        final suppressed = '$ts WARN  [Logger] Suppressing repeated: ${record.message.length > 60 ? record.message.substring(0, 60) : record.message}...';
+        final suppressed =
+            '$ts WARN  [Logger] Suppressing repeated: ${record.message.length > 60 ? record.message.substring(0, 60) : record.message}...';
         _logSink?.writeln(suppressed);
         _debugLog(suppressed);
       }
@@ -89,8 +90,7 @@ Future<void> initLogging() async {
 
     final fullMsg = record.error != null ? '$msg\n  Error: ${record.error}' : msg;
     // Skip stack traces for warnings (DioException etc.) — just the message
-    final withStack = record.stackTrace != null && record.level >= Level.SEVERE
-        ? '$fullMsg\n  ${record.stackTrace}' : fullMsg;
+    final withStack = record.stackTrace != null && record.level >= Level.SEVERE ? '$fullMsg\n  ${record.stackTrace}' : fullMsg;
 
     _logSink?.writeln(withStack);
     _debugLog(withStack);

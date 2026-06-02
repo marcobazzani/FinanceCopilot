@@ -154,29 +154,20 @@ class PdfTableReconstructor {
     // but whose header is clearly printed above. Without this step those
     // headers would either (a) merge with their nearest data anchor and
     // produce labels like "Entrate Uscite", or (b) be dropped entirely.
-    final headerLineIndex =
-        _findHeaderLine(lines, dataLineIndices.first);
-    final allAnchors = headerLineIndex != null
-        ? _augmentAnchorsWithHeader(
-            dataAnchors, lines[headerLineIndex], charWidth)
-        : dataAnchors;
+    final headerLineIndex = _findHeaderLine(lines, dataLineIndices.first);
+    final allAnchors = headerLineIndex != null ? _augmentAnchorsWithHeader(dataAnchors, lines[headerLineIndex], charWidth) : dataAnchors;
 
     final boundaries = _columnBoundaries(allAnchors);
 
-    final lineCells = lines
-        .map((line) => _assignCells(line, boundaries))
-        .toList();
+    final lineCells = lines.map((line) => _assignCells(line, boundaries)).toList();
 
-    final dateColIdx =
-        allAnchors.indexWhere((a) => identical(a, dateAnchor));
-    final amountColIdx =
-        allAnchors.indexWhere((a) => identical(a, amountAnchor));
+    final dateColIdx = allAnchors.indexWhere((a) => identical(a, dateAnchor));
+    final amountColIdx = allAnchors.indexWhere((a) => identical(a, amountAnchor));
 
     final columns = headerLineIndex != null
         ? List<String>.generate(
             allAnchors.length,
-            (k) => k < lineCells[headerLineIndex].length &&
-                    lineCells[headerLineIndex][k].isNotEmpty
+            (k) => k < lineCells[headerLineIndex].length && lineCells[headerLineIndex][k].isNotEmpty
                 ? lineCells[headerLineIndex][k]
                 : 'Column ${k + 1}',
           )
@@ -205,16 +196,11 @@ class PdfTableReconstructor {
       );
     }
 
-    final dateOk = mergedRows
-        .where((r) => _cellHasDate(_safeCell(r, dateColIdx)))
-        .length;
-    final amtOk = mergedRows
-        .where((r) => _tryAnyLocaleAmount(_safeCell(r, amountColIdx)) != null)
-        .length;
+    final dateOk = mergedRows.where((r) => _cellHasDate(_safeCell(r, dateColIdx))).length;
+    final amtOk = mergedRows.where((r) => _tryAnyLocaleAmount(_safeCell(r, amountColIdx)) != null).length;
     final dateRatio = dateOk / mergedRows.length;
     final amtRatio = amtOk / mergedRows.length;
-    if (dateRatio < _rowValidationSupport ||
-        amtRatio < _rowValidationSupport) {
+    if (dateRatio < _rowValidationSupport || amtRatio < _rowValidationSupport) {
       throw const PdfTableNotDetectedException(
         'Per-row validation failed: too many rows lack a parseable date or amount.',
       );
@@ -233,9 +219,7 @@ class PdfTableReconstructor {
     for (final f in fragments) {
       for (final code in f.text.runes) {
         totalChars++;
-        if ((code >= 0xE000 && code <= 0xF8FF) ||
-            (code >= 0xF0000 && code <= 0xFFFFD) ||
-            (code >= 0x100000 && code <= 0x10FFFD)) {
+        if ((code >= 0xE000 && code <= 0xF8FF) || (code >= 0xF0000 && code <= 0xFFFFD) || (code >= 0x100000 && code <= 0x10FFFD)) {
           puaChars++;
         }
       }
@@ -287,8 +271,7 @@ class PdfTableReconstructor {
     final tolerance = h * 0.6;
 
     for (final p in pages) {
-      final pageFrags = byPage[p]!
-        ..sort((a, b) => b.yCenter.compareTo(a.yCenter)); // top → down
+      final pageFrags = byPage[p]!..sort((a, b) => b.yCenter.compareTo(a.yCenter)); // top → down
       List<PdfFragment> bucket = [];
       double? bucketY;
       for (final f in pageFrags) {
@@ -373,9 +356,7 @@ class PdfTableReconstructor {
           }
         }
       }
-      if (best == null ||
-          supporting > bestLines ||
-          (supporting == bestLines && c.center < best.center)) {
+      if (best == null || supporting > bestLines || (supporting == bestLines && c.center < best.center)) {
         best = c;
         bestLines = supporting;
       }
@@ -448,11 +429,7 @@ class PdfTableReconstructor {
       int? bestEnd;
       final maxJ = (i + 3 <= frags.length) ? i + 3 : frags.length;
       for (var j = i; j < maxJ; j++) {
-        final combined = frags
-            .sublist(i, j + 1)
-            .map((f) => f.text.trim())
-            .where((t) => t.isNotEmpty)
-            .join(' ');
+        final combined = frags.sublist(i, j + 1).map((f) => f.text.trim()).where((t) => t.isNotEmpty).join(' ');
         if (_looksLikeDate(combined)) {
           bestEnd = j;
         }
@@ -481,10 +458,7 @@ class PdfTableReconstructor {
     final numerics = <_FragmentInLine>[];
     final supportByLine = <int, List<_FragmentInLine>>{};
     for (final i in dataLineIndices) {
-      final ns = lines[i]
-          .fragments
-          .where((f) => _tryAnyLocaleAmount(f.text) != null)
-          .toList();
+      final ns = lines[i].fragments.where((f) => _tryAnyLocaleAmount(f.text) != null).toList();
       for (final f in ns) {
         final fil = _FragmentInLine(lineIndex: i, fragment: f);
         numerics.add(fil);
@@ -515,13 +489,10 @@ class PdfTableReconstructor {
     Set<int>? chosenSupport;
     for (final c in clusters) {
       final supportLines = numerics
-          .where((n) =>
-              n.fragment.xCenter >= c.lo - charWidth &&
-              n.fragment.xCenter <= c.hi + charWidth)
+          .where((n) => n.fragment.xCenter >= c.lo - charWidth && n.fragment.xCenter <= c.hi + charWidth)
           .map((n) => n.lineIndex)
           .toSet();
-      if (supportLines.length / dataLineIndices.length >=
-          _amountAnchorSupport) {
+      if (supportLines.length / dataLineIndices.length >= _amountAnchorSupport) {
         chosen = c;
         chosenSupport = supportLines;
         break;
@@ -534,9 +505,12 @@ class PdfTableReconstructor {
     }
 
     final lefts = numerics
-        .where((n) => chosenSupport!.contains(n.lineIndex) &&
-            n.fragment.xCenter >= chosen!.lo - charWidth &&
-            n.fragment.xCenter <= chosen.hi + charWidth)
+        .where(
+          (n) =>
+              chosenSupport!.contains(n.lineIndex) &&
+              n.fragment.xCenter >= chosen!.lo - charWidth &&
+              n.fragment.xCenter <= chosen.hi + charWidth,
+        )
         .map((n) => n.fragment.left)
         .toList();
     return _ColAnchor(
@@ -564,10 +538,9 @@ class PdfTableReconstructor {
     // anchor between the month and the year.
     final candidates = <_FragmentInLine>[];
     for (final i in dataLineIndices) {
-      final frags = lines[i].fragments.where((f) =>
-          _tryAnyLocaleAmount(f.text) != null &&
-          !_xInBand(f.xCenter, amount) &&
-          !_xInBand(f.xCenter, date));
+      final frags = lines[i].fragments.where(
+        (f) => _tryAnyLocaleAmount(f.text) != null && !_xInBand(f.xCenter, amount) && !_xInBand(f.xCenter, date),
+      );
       for (final f in frags) {
         candidates.add(_FragmentInLine(lineIndex: i, fragment: f));
       }
@@ -586,9 +559,7 @@ class PdfTableReconstructor {
     final secondMost = clusters.first;
 
     final supportLines = candidates
-        .where((c) =>
-            c.fragment.xCenter >= secondMost.lo - charWidth &&
-            c.fragment.xCenter <= secondMost.hi + charWidth)
+        .where((c) => c.fragment.xCenter >= secondMost.lo - charWidth && c.fragment.xCenter <= secondMost.hi + charWidth)
         .map((c) => c.lineIndex)
         .toSet();
 
@@ -601,11 +572,8 @@ class PdfTableReconstructor {
     //    Saldo cells on subtotal rows without forcing them to be jammed
     //    into the amount cell.
     final amountSupport = (dataLineIndices.length * _amountAnchorSupport).ceil();
-    final isDense =
-        supportLines.length >= amountSupport * _balanceSupportRatio;
-    final isSparseRight = !isDense &&
-        supportLines.length >= 2 &&
-        secondMost.lo > amount.xHi;
+    final isDense = supportLines.length >= amountSupport * _balanceSupportRatio;
+    final isSparseRight = !isDense && supportLines.length >= 2 && secondMost.lo > amount.xHi;
     if (!isDense && !isSparseRight) {
       return null;
     }
@@ -615,9 +583,12 @@ class PdfTableReconstructor {
     // header detector can label it generically; the wizard's auto-mapper
     // and the user's column picker take care of routing.
     final lefts = candidates
-        .where((c) => supportLines.contains(c.lineIndex) &&
-            c.fragment.xCenter >= secondMost.lo - charWidth &&
-            c.fragment.xCenter <= secondMost.hi + charWidth)
+        .where(
+          (c) =>
+              supportLines.contains(c.lineIndex) &&
+              c.fragment.xCenter >= secondMost.lo - charWidth &&
+              c.fragment.xCenter <= secondMost.hi + charWidth,
+        )
         .map((c) => c.fragment.left)
         .toList();
     return _ColAnchor(
@@ -670,27 +641,25 @@ class PdfTableReconstructor {
     for (final c in clusters) {
       final supportingLines = <int>{};
       for (final f in lefts) {
-        if (f.fragment.left >= c.lo - charWidth * 0.5 &&
-            f.fragment.left <= c.hi + charWidth * 0.5) {
+        if (f.fragment.left >= c.lo - charWidth * 0.5 && f.fragment.left <= c.hi + charWidth * 0.5) {
           supportingLines.add(f.lineIndex);
         }
       }
-      if (supportingLines.length / dataLineIndices.length <
-          _middleColSupport) {
+      if (supportingLines.length / dataLineIndices.length < _middleColSupport) {
         continue;
       }
       final memberLefts = lefts
-          .where((f) =>
-              f.fragment.left >= c.lo - charWidth * 0.5 &&
-              f.fragment.left <= c.hi + charWidth * 0.5)
+          .where((f) => f.fragment.left >= c.lo - charWidth * 0.5 && f.fragment.left <= c.hi + charWidth * 0.5)
           .map((f) => f.fragment.left)
           .toList();
-      accepted.add(_ColAnchor(
-        role: _ColRole.middle,
-        xLeft: _median(memberLefts),
-        xLo: c.lo,
-        xHi: c.hi,
-      ));
+      accepted.add(
+        _ColAnchor(
+          role: _ColRole.middle,
+          xLeft: _median(memberLefts),
+          xLo: c.lo,
+          xHi: c.hi,
+        ),
+      );
     }
     if (accepted.isNotEmpty) {
       accepted.sort((a, b) => a.xLeft.compareTo(b.xLeft));
@@ -709,10 +678,8 @@ class PdfTableReconstructor {
     }
     final fallbackLefts = lefts.map((f) => f.fragment.left).toList();
     final fallbackRights = lefts.map((f) => f.fragment.right).toList();
-    final spanLeft =
-        fallbackLefts.reduce((a, b) => a < b ? a : b) - charWidth * 0.5;
-    final spanRight =
-        fallbackRights.reduce((a, b) => a > b ? a : b) + charWidth * 0.5;
+    final spanLeft = fallbackLefts.reduce((a, b) => a < b ? a : b) - charWidth * 0.5;
+    final spanRight = fallbackRights.reduce((a, b) => a > b ? a : b) + charWidth * 0.5;
     return [
       _ColAnchor(
         role: _ColRole.middle,
@@ -764,11 +731,7 @@ class PdfTableReconstructor {
       buckets[idx].add(f);
     }
     return buckets
-        .map((b) =>
-            (b..sort((a, c) => a.left.compareTo(c.left)))
-                .map((f) => f.text.trim())
-                .where((t) => t.isNotEmpty)
-                .join(' '))
+        .map((b) => (b..sort((a, c) => a.left.compareTo(c.left))).map((f) => f.text.trim()).where((t) => t.isNotEmpty).join(' '))
         .toList();
   }
 
@@ -794,9 +757,7 @@ class PdfTableReconstructor {
       }
       final cells = List<String>.from(lineCells[i]);
       var j = i + 1;
-      while (j < lines.length &&
-          !dataLineSet.contains(j) &&
-          lines[j].page == lines[i].page) {
+      while (j < lines.length && !dataLineSet.contains(j) && lines[j].page == lines[i].page) {
         // A continuation line never carries a numeric in an anchored
         // money column. The check covers both amount AND balance — a
         // closing-position row ("POSIZIONE INDIVIDUALE AL 04/2026
@@ -819,8 +780,7 @@ class PdfTableReconstructor {
         for (var c = 0; c < cells.length; c++) {
           final extra = (c < lineCells[j].length) ? lineCells[j][c] : '';
           if (extra.isNotEmpty) {
-            cells[c] =
-                cells[c].isEmpty ? extra : '${cells[c]} $extra';
+            cells[c] = cells[c].isEmpty ? extra : '${cells[c]} $extra';
             anyMerged = true;
           }
         }
@@ -845,8 +805,7 @@ class PdfTableReconstructor {
   static int? _findHeaderLine(List<_Line> lines, int firstDataLineIndex) {
     for (var i = firstDataLineIndex - 1; i >= 0; i--) {
       if (lines[i].page != lines[firstDataLineIndex].page) continue;
-      final nonEmpty =
-          lines[i].fragments.where((f) => f.text.trim().isNotEmpty).toList();
+      final nonEmpty = lines[i].fragments.where((f) => f.text.trim().isNotEmpty).toList();
       if (nonEmpty.length < 2) continue;
       if (nonEmpty.any((f) => _looksLikeDate(f.text))) continue;
       if (nonEmpty.any((f) => _tryAnyLocaleAmount(f.text) != null)) continue;
@@ -872,9 +831,7 @@ class PdfTableReconstructor {
     _Line headerLine,
     double charWidth,
   ) {
-    final headerFrags = headerLine.fragments
-        .where((f) => f.text.trim().isNotEmpty)
-        .toList();
+    final headerFrags = headerLine.fragments.where((f) => f.text.trim().isNotEmpty).toList();
     if (headerFrags.isEmpty || dataAnchors.isEmpty) return dataAnchors;
 
     // Group header words by their closest data anchor.
@@ -900,24 +857,21 @@ class PdfTableReconstructor {
       final words = entry.value;
       if (words.length < 2) continue;
       // Closest word stays mapped to the original anchor.
-      final closest = words.reduce((a, b) =>
-          (a.xCenter - anchor.xLeft).abs() <
-                  (b.xCenter - anchor.xLeft).abs()
-              ? a
-              : b);
+      final closest = words.reduce((a, b) => (a.xCenter - anchor.xLeft).abs() < (b.xCenter - anchor.xLeft).abs() ? a : b);
       for (final w in words) {
         if (identical(w, closest)) continue;
-        synthetic.add(_ColAnchor(
-          role: _ColRole.middle,
-          xLeft: w.xCenter,
-          xLo: w.left - charWidth,
-          xHi: w.right + charWidth,
-        ));
+        synthetic.add(
+          _ColAnchor(
+            role: _ColRole.middle,
+            xLeft: w.xCenter,
+            xLo: w.left - charWidth,
+            xHi: w.right + charWidth,
+          ),
+        );
       }
     }
     if (synthetic.isEmpty) return dataAnchors;
-    return [...dataAnchors, ...synthetic]
-      ..sort((a, b) => a.xLeft.compareTo(b.xLeft));
+    return [...dataAnchors, ...synthetic]..sort((a, b) => a.xLeft.compareTo(b.xLeft));
   }
 
   // ────────────────────────────────────────────────────────
@@ -981,8 +935,7 @@ class PdfTableReconstructor {
   }
 
   static double _medianLineHeight(List<PdfFragment> fragments) {
-    final heights =
-        fragments.map((f) => f.height).where((h) => h > 0).toList();
+    final heights = fragments.map((f) => f.height).where((h) => h > 0).toList();
     if (heights.isEmpty) return 10.0;
     heights.sort();
     return heights[heights.length ~/ 2];
@@ -1001,11 +954,9 @@ class PdfTableReconstructor {
     return false;
   }
 
-  static bool _xInBand(double x, _ColAnchor anchor) =>
-      x >= anchor.xLo && x <= anchor.xHi;
+  static bool _xInBand(double x, _ColAnchor anchor) => x >= anchor.xLo && x <= anchor.xHi;
 
-  static String _safeCell(List<String> row, int index) =>
-      (index >= 0 && index < row.length) ? row[index] : '';
+  static String _safeCell(List<String> row, int index) => (index >= 0 && index < row.length) ? row[index] : '';
 
   /// 1D agglomerative clustering: sort, merge consecutive points whose gap
   /// is below [mergeThreshold]. Returns clusters with min/max/center and

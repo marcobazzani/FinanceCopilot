@@ -78,9 +78,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
       dense: true,
       leading: CircleAvatar(
         radius: 16,
-        backgroundColor: isPositive
-            ? Colors.green.withValues(alpha: 0.1)
-            : Colors.red.withValues(alpha: 0.1),
+        backgroundColor: isPositive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
         child: Icon(
           isPositive ? Icons.arrow_downward : Icons.arrow_upward,
           size: 16,
@@ -96,26 +94,20 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
       subtitle: _isReadOnly
           ? Row(
               children: [
-                Text(dateFmt.format(tx.valueDate),
-                    style: const TextStyle(fontSize: 12)),
+                Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 1),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .secondaryContainer,
+                      color: Theme.of(context).colorScheme.secondaryContainer,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       accountNameById[tx.accountId] ?? '#${tx.accountId}',
                       style: TextStyle(
                         fontSize: 11,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSecondaryContainer,
+                        color: Theme.of(context).colorScheme.onSecondaryContainer,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -124,8 +116,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
                 ),
               ],
             )
-          : Text(dateFmt.format(tx.valueDate),
-              style: const TextStyle(fontSize: 12)),
+          : Text(dateFmt.format(tx.valueDate), style: const TextStyle(fontSize: 12)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -142,9 +133,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
             PopupMenuButton<String>(
               iconSize: 18,
               padding: EdgeInsets.zero,
-              tooltip: isPositive
-                  ? s.flagAsIncomeTooltip
-                  : s.flagAsAdjustmentTooltip,
+              tooltip: isPositive ? s.flagAsIncomeTooltip : s.flagAsAdjustmentTooltip,
               itemBuilder: (_) => [
                 if (isPositive)
                   PopupMenuItem(

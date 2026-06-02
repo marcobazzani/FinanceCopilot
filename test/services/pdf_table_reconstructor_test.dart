@@ -279,8 +279,7 @@ void main() {
       }
     });
 
-    test(
-        'anchors the date column even when every row has a second '
+    test('anchors the date column even when every row has a second '
         'embedded date in another column', () {
       // Mimics statements where the operation/description column contains
       // dates of its own (e.g. "Wire from John on 12/06/2024"). Old
@@ -295,8 +294,7 @@ void main() {
         frags.add(_f('$day/01/2024', x: 50, y: y));
         // Embedded date inside the description, x varies per row.
         frags.add(_f('Note', x: 120, y: y));
-        frags.add(_f('${(i + 1).toString().padLeft(2, '0')}/06/2023',
-            x: 160 + (i % 2) * 7, y: y));
+        frags.add(_f('${(i + 1).toString().padLeft(2, '0')}/06/2023', x: 160 + (i % 2) * 7, y: y));
         // Amount column.
         frags.add(_f('${(i + 1) * 50}.00', x: 320, y: y));
       }
@@ -309,8 +307,7 @@ void main() {
       }
     });
 
-    test(
-        'pension-statement layout: month-name period column + embedded '
+    test('pension-statement layout: month-name period column + embedded '
         'operation dates + sparse balance produces clean rows', () {
       // Synthetic version of an Italian pension fund statement layout:
       //   Period (Gennaio 2026 split into 2 frags) | Operation (text +
@@ -369,8 +366,7 @@ void main() {
               DateTime.parse(candidate);
               found = true;
             } catch (_) {}
-            if (!found && RegExp(r'^(Gennaio|Febbraio|Marzo|Aprile)\s+2026$')
-                .hasMatch(candidate)) {
+            if (!found && RegExp(r'^(Gennaio|Febbraio|Marzo|Aprile)\s+2026$').hasMatch(candidate)) {
               found = true;
             }
           }
@@ -379,8 +375,7 @@ void main() {
       }
     });
 
-    test(
-        'wrap-merge stops at a closing-balance-only summary row instead '
+    test('wrap-merge stops at a closing-balance-only summary row instead '
         'of swallowing it into the last subtotal', () {
       // Pension/account statements often print a closing-position
       // summary BELOW the last subtotal: "POSIZIONE FINALE 12,345.67"
@@ -421,8 +416,7 @@ void main() {
       expect(lastRow.any((c) => c.contains('12345.67')), isFalse);
     });
 
-    test(
-        'header row with N+1 words above N data columns produces N+1 '
+    test('header row with N+1 words above N data columns produces N+1 '
         'distinct columns (extra header gets a synthetic empty column)', () {
       // Layout mirrors a pension statement: 5 header words but only 4
       // data anchors because one column ("Uscite") is empty for every
@@ -452,13 +446,11 @@ void main() {
       expect(result.rows, hasLength(6));
       for (final row in result.rows) {
         // Debit column (index 3) should always be empty.
-        expect(row[3], equals(''),
-            reason: 'Debit column should be empty across every data row');
+        expect(row[3], equals(''), reason: 'Debit column should be empty across every data row');
       }
     });
 
-    test(
-        'amount anchor skips a sparse right-most numeric column '
+    test('amount anchor skips a sparse right-most numeric column '
         '(running balance only on subtotal rows)', () {
       // Per-row layout: Date | Description | Amount. Every 3rd row is a
       // subtotal which adds a Saldo cell on the far right. The far-right
@@ -480,8 +472,7 @@ void main() {
       expect(result.rows.length, equals(9));
       // Amount column (NOT the sparse balance) must hold every row's value.
       for (var i = 0; i < 9; i++) {
-        final amountCell =
-            result.rows[i].firstWhere((c) => c.contains('.00'), orElse: () => '');
+        final amountCell = result.rows[i].firstWhere((c) => c.contains('.00'), orElse: () => '');
         expect(amountCell, equals('${(i + 1) * 10}.00'));
       }
     });

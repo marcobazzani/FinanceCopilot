@@ -6,8 +6,8 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     var selectedType = IncomeType.income;
 
     String typeLabel(IncomeType t) => switch (t) {
-      IncomeType.income              => s.incomeTypeIncome,
-      IncomeType.refund              => s.incomeTypeRefund,
+      IncomeType.income => s.incomeTypeIncome,
+      IncomeType.refund => s.incomeTypeRefund,
       IncomeType.pensionContribution => s.incomeTypePensionContribution,
     };
 
@@ -19,9 +19,7 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
           content: DropdownButtonFormField<IncomeType>(
             initialValue: selectedType,
             decoration: InputDecoration(labelText: s.incomeTypeLabel),
-            items: IncomeType.values
-                .map((t) => DropdownMenuItem(value: t, child: Text(typeLabel(t))))
-                .toList(),
+            items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(typeLabel(t)))).toList(),
             onChanged: (v) => setDialogState(() => selectedType = v!),
           ),
           actions: [
@@ -34,12 +32,14 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
 
     if (confirmed != true) return;
 
-    await ref.read(incomeServiceProvider).create(
-      date: tx.valueDate,
-      amount: tx.amount,
-      type: selectedType,
-      currency: tx.currency,
-    );
+    await ref
+        .read(incomeServiceProvider)
+        .create(
+          date: tx.valueDate,
+          amount: tx.amount,
+          type: selectedType,
+          currency: tx.currency,
+        );
 
     if (mounted) {
       showInfoSnack(context, s.incomeFlaggedSnack);
@@ -57,9 +57,7 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     final amtFmt = fmt.currencyFormat(locale, tx.currency);
 
     final allEvents = await ref.read(extraordinaryEventsProvider.future);
-    final inflows = allEvents
-        .where((e) => e.direction == EventDirection.inflow && e.isActive)
-        .toList();
+    final inflows = allEvents.where((e) => e.direction == EventDirection.inflow && e.isActive).toList();
     if (inflows.isEmpty) {
       if (mounted) showInfoSnack(context, s.noInflowEventsAvailable);
       return;
@@ -68,8 +66,7 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     int bestMatchScore(ExtraordinaryEvent e) {
       // Lower is better. Currency mismatch adds a huge penalty so same-currency
       // candidates always win when present.
-      final dayDelta =
-          (e.eventDate.difference(tx.valueDate).inDays).abs();
+      final dayDelta = (e.eventDate.difference(tx.valueDate).inDays).abs();
       final currencyPenalty = e.currency == tx.currency ? 0 : 1000000;
       return currencyPenalty + dayDelta;
     }
@@ -95,16 +92,17 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
                 isExpanded: true,
                 decoration: InputDecoration(labelText: s.flagAsAdjustmentInflow),
                 items: inflows
-                    .map((e) => DropdownMenuItem(
-                          value: e.id,
-                          child: Text(
-                            '${e.name} · ${e.currency} · ${dateFmt.format(e.eventDate)}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ))
+                    .map(
+                      (e) => DropdownMenuItem(
+                        value: e.id,
+                        child: Text(
+                          '${e.name} · ${e.currency} · ${dateFmt.format(e.eventDate)}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
                     .toList(),
-                onChanged: (v) =>
-                    setDialogState(() => selectedId = v ?? selectedId),
+                onChanged: (v) => setDialogState(() => selectedId = v ?? selectedId),
               ),
             ],
           ),
@@ -118,7 +116,9 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
 
     if (confirmed != true) return;
 
-    await ref.read(extraordinaryEventServiceProvider).addManualEntry(
+    await ref
+        .read(extraordinaryEventServiceProvider)
+        .addManualEntry(
           eventId: selectedId,
           date: tx.valueDate,
           amount: tx.amount.abs(),
@@ -216,16 +216,18 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
             FilledButton(
               onPressed: () async {
                 if (nameCtrl.text.trim().isEmpty) return;
-                await ref.read(accountServiceProvider).update(
-                  widget.account.id,
-                  AccountsCompanion(
-                    name: Value(nameCtrl.text.trim()),
-                    currency: Value(currencyCtrl.text.trim()),
-                    institution: Value(institutionCtrl.text.trim()),
-                    isActive: Value(isActive),
-                    updatedAt: Value(DateTime.now()),
-                  ),
-                );
+                await ref
+                    .read(accountServiceProvider)
+                    .update(
+                      widget.account.id,
+                      AccountsCompanion(
+                        name: Value(nameCtrl.text.trim()),
+                        currency: Value(currencyCtrl.text.trim()),
+                        institution: Value(institutionCtrl.text.trim()),
+                        isActive: Value(isActive),
+                        updatedAt: Value(DateTime.now()),
+                      ),
+                    );
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               child: Text(s.save),

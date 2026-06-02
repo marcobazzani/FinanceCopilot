@@ -42,8 +42,7 @@ class IsinLookupResult {
   IsinExchangeOption? bestFor(String? preferredExchange) {
     if (options.isEmpty) return null;
     if (preferredExchange != null) {
-      final match = options.where((o) =>
-          o.exchange.toLowerCase().contains(preferredExchange.toLowerCase())).firstOrNull;
+      final match = options.where((o) => o.exchange.toLowerCase().contains(preferredExchange.toLowerCase())).firstOrNull;
       if (match != null) return match;
     }
     return options.first;
@@ -69,14 +68,16 @@ class IsinLookupService {
 
       final options = results
           .where((r) => r.symbol.isNotEmpty)
-          .map((r) => IsinExchangeOption(
-                cid: r.cid,
-                ticker: r.symbol,
-                name: r.description,
-                exchange: r.exchange,
-                url: r.url,
-                typeName: r.type.split(' - ').first,
-              ))
+          .map(
+            (r) => IsinExchangeOption(
+              cid: r.cid,
+              ticker: r.symbol,
+              name: r.description,
+              exchange: r.exchange,
+              url: r.url,
+              typeName: r.type.split(' - ').first,
+            ),
+          )
           .toList();
 
       _log.info('lookup: $key -> ${options.length} listings: ${options.map((o) => "${o.ticker}@${o.exchange}").join(", ")}');

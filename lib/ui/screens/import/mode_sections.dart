@@ -8,8 +8,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
       children: [
         const SizedBox(height: 8),
         Text(s.balancePerRow, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text(s.balancePerRowHelp,
-            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(s.balancePerRowHelp, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 8),
         SegmentedButton<String>(
           segments: [
@@ -32,8 +31,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
         const SizedBox(height: 8),
 
         // Column mode: show dropdown to pick balance column
-        if (_balanceMode == 'column')
-          _buildMappingRow('balanceAfter', preview.columns),
+        if (_balanceMode == 'column') _buildMappingRow('balanceAfter', preview.columns),
 
         // Cumulative: just a description
         if (_balanceMode == 'cumulative')
@@ -64,7 +62,10 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                       hintText: s.selectColumn,
                     ),
                     items: [
-                      DropdownMenuItem(value: null, child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey))),
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey)),
+                      ),
                       ...preview.columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
                     onChanged: (v) => _setState(() {
@@ -205,11 +206,15 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                   children: [
                     SizedBox(
                       width: 140,
-                      child: Text(val, style: TextStyle(
-                        fontSize: 13,
-                        color: isUnmapped ? Colors.red.shade300 : null,
-                        fontWeight: isUnmapped ? FontWeight.bold : null,
-                      ), overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        val,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isUnmapped ? Colors.red.shade300 : null,
+                          fontWeight: isUnmapped ? FontWeight.bold : null,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     ChoiceChip(
                       label: Text(s.buyLabel, style: const TextStyle(fontSize: 11)),
@@ -239,11 +244,9 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                 ),
               );
             }),
-            if (uniqueVals.any((v) =>
-                !_buyValues.contains(v) &&
-                !_sellValues.contains(v) &&
-                !_revalueValues.contains(v) &&
-                !_feeValues.contains(v)))
+            if (uniqueVals.any(
+              (v) => !_buyValues.contains(v) && !_sellValues.contains(v) && !_revalueValues.contains(v) && !_feeValues.contains(v),
+            ))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
@@ -268,8 +271,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
         ] else ...[
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(s.signBasedHelp,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            child: Text(s.signBasedHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ),
           // Toggle for cash-flow convention: brokers like Directa export buys
           // with a negative sign (money out). Default keeps the historical
@@ -288,8 +290,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                 Expanded(
                   child: GestureDetector(
                     onTap: () => _setState(() => _negativeIsBuy = !_negativeIsBuy),
-                    child: Text(s.signBasedNegativeIsBuyLabel,
-                        style: const TextStyle(fontSize: 12)),
+                    child: Text(s.signBasedNegativeIsBuyLabel, style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ],
@@ -322,8 +323,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
           }),
         ),
         const SizedBox(height: 8),
-        if (_feeMode == 'column')
-          _buildMappingRow('commission', columns, required: true),
+        if (_feeMode == 'column') _buildMappingRow('commission', columns, required: true),
         if (_feeMode == 'computed') ...[
           Text(
             'fee = |amount| − quantity × price / exchangeRate',

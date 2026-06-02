@@ -74,9 +74,7 @@ class DefaultChartsLoader {
     var nextId = -1; // negative ids never collide with DB rows
     for (var i = 0; i < charts.length; i++) {
       final chart = charts[i];
-      final widgetType = (chart['role'] as String?) ??
-          (chart['widgetType'] as String?) ??
-          'chart';
+      final widgetType = (chart['role'] as String?) ?? (chart['widgetType'] as String?) ?? 'chart';
       final title = (chart['title'] as String?) ?? '';
       // Accept three forms in JSON:
       //   "*"                                 → stored as "*"
@@ -97,23 +95,27 @@ class DefaultChartsLoader {
       final seriesConfigs = <Map<String, dynamic>>[];
       for (final entry in categories) {
         final (name, sign) = _entry(entry);
-        seriesConfigs.addAll(_expand(
-          name,
-          sign: sign,
-          activeAccounts: activeAccounts,
-          activeAssets: activeAssets,
-          activeEvents: activeEvents,
-        ));
+        seriesConfigs.addAll(
+          _expand(
+            name,
+            sign: sign,
+            activeAccounts: activeAccounts,
+            activeAssets: activeAssets,
+            activeEvents: activeEvents,
+          ),
+        );
       }
-      result.add(DashboardChart(
-        id: nextId--,
-        title: title,
-        widgetType: widgetType,
-        sortOrder: i,
-        seriesJson: jsonEncode(seriesConfigs),
-        sourceChartIds: sourceChartIds,
-        createdAt: now,
-      ));
+      result.add(
+        DashboardChart(
+          id: nextId--,
+          title: title,
+          widgetType: widgetType,
+          sortOrder: i,
+          seriesJson: jsonEncode(seriesConfigs),
+          sourceChartIds: sourceChartIds,
+          createdAt: now,
+        ),
+      );
     }
     return result;
   }
@@ -136,8 +138,7 @@ class DefaultChartsLoader {
     required List<Asset> activeAssets,
     required List<ExtraordinaryEvent> activeEvents,
   }) {
-    Map<String, dynamic> conf(String type, int id) =>
-        sign == 1 ? {'type': type, 'id': id} : {'type': type, 'id': id, 'sign': sign};
+    Map<String, dynamic> conf(String type, int id) => sign == 1 ? {'type': type, 'id': id} : {'type': type, 'id': id, 'sign': sign};
 
     final outflows = activeEvents.where((e) => e.direction == EventDirection.outflow);
     final inflows = activeEvents.where((e) => e.direction == EventDirection.inflow);
@@ -145,51 +146,22 @@ class DefaultChartsLoader {
     return switch (category) {
       'all_accounts' => activeAccounts.map((a) => conf('account', a.id)).toList(),
       'all_invested' => activeAssets.map((a) => conf('asset_invested', a.id)).toList(),
-      'all_invested_saving' => activeAssets
-          .where((a) => a.includeInSavings)
-          .map((a) => conf('asset_invested', a.id))
-          .toList(),
+      'all_invested_saving' => activeAssets.where((a) => a.includeInSavings).map((a) => conf('asset_invested', a.id)).toList(),
       'all_market' => activeAssets.map((a) => conf('asset_market', a.id)).toList(),
-      'all_market_saving' => activeAssets
-          .where((a) => a.includeInSavings)
-          .map((a) => conf('asset_market', a.id))
-          .toList(),
-      'all_market_liquid' => activeAssets
-          .where((a) => !_illiquidTypes.contains(a.instrumentType))
-          .map((a) => conf('asset_market', a.id))
-          .toList(),
+      'all_market_saving' => activeAssets.where((a) => a.includeInSavings).map((a) => conf('asset_market', a.id)).toList(),
+      'all_market_liquid' =>
+        activeAssets.where((a) => !_illiquidTypes.contains(a.instrumentType)).map((a) => conf('asset_market', a.id)).toList(),
       'all_gain' => activeAssets.map((a) => conf('asset_gain', a.id)).toList(),
-      'all_gain_saving' => activeAssets
-          .where((a) => a.includeInSavings)
-          .map((a) => conf('asset_gain', a.id))
-          .toList(),
+      'all_gain_saving' => activeAssets.where((a) => a.includeInSavings).map((a) => conf('asset_gain', a.id)).toList(),
       'all_net' => activeAssets.map((a) => conf('asset_net', a.id)).toList(),
-      'all_net_saving' => activeAssets
-          .where((a) => a.includeInSavings)
-          .map((a) => conf('asset_net', a.id))
-          .toList(),
-      'all_net_liquid' => activeAssets
-          .where((a) => !_illiquidTypes.contains(a.instrumentType))
-          .map((a) => conf('asset_net', a.id))
-          .toList(),
+      'all_net_saving' => activeAssets.where((a) => a.includeInSavings).map((a) => conf('asset_net', a.id)).toList(),
+      'all_net_liquid' => activeAssets.where((a) => !_illiquidTypes.contains(a.instrumentType)).map((a) => conf('asset_net', a.id)).toList(),
       'outflow_value' => outflows.map((e) => conf('adjustment_value', e.id)).toList(),
       'outflow_events' => outflows.map((e) => conf('adjustment_events', e.id)).toList(),
-      'non_ephemeral_inflow_value' => inflows
-          .where((e) => !e.isEphemeral)
-          .map((e) => conf('income_adj_value', e.id))
-          .toList(),
-      'non_ephemeral_inflow_events' => inflows
-          .where((e) => !e.isEphemeral)
-          .map((e) => conf('income_adj_events', e.id))
-          .toList(),
-      'ephemeral_inflow_value' => inflows
-          .where((e) => e.isEphemeral)
-          .map((e) => conf('ephemeral_inflow_value', e.id))
-          .toList(),
-      'ephemeral_inflow_events' => inflows
-          .where((e) => e.isEphemeral)
-          .map((e) => conf('ephemeral_inflow_events', e.id))
-          .toList(),
+      'non_ephemeral_inflow_value' => inflows.where((e) => !e.isEphemeral).map((e) => conf('income_adj_value', e.id)).toList(),
+      'non_ephemeral_inflow_events' => inflows.where((e) => !e.isEphemeral).map((e) => conf('income_adj_events', e.id)).toList(),
+      'ephemeral_inflow_value' => inflows.where((e) => e.isEphemeral).map((e) => conf('ephemeral_inflow_value', e.id)).toList(),
+      'ephemeral_inflow_events' => inflows.where((e) => e.isEphemeral).map((e) => conf('ephemeral_inflow_events', e.id)).toList(),
       _ => const [],
     };
   }

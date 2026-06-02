@@ -27,40 +27,56 @@ void main() {
   /// the production investing.com sync (which overwrites same-day rows
   /// previously written by the revalue resync).
   Future<void> insertPrice(int assetId, DateTime date, double price) async {
-    await db.into(db.marketPrices).insertOnConflictUpdate(MarketPricesCompanion.insert(
-      assetId: assetId,
-      date: date,
-      closePrice: price,
-      currency: 'EUR',
-    ));
+    await db
+        .into(db.marketPrices)
+        .insertOnConflictUpdate(
+          MarketPricesCompanion.insert(
+            assetId: assetId,
+            date: date,
+            closePrice: price,
+            currency: 'EUR',
+          ),
+        );
   }
 
   /// Helper to insert an FX rate (both directions).
   Future<void> insertRate(String from, String to, DateTime date, double rate) async {
-    await db.into(db.exchangeRates).insert(ExchangeRatesCompanion.insert(
-      fromCurrency: from,
-      toCurrency: to,
-      date: date,
-      rate: rate,
-    ));
-    await db.into(db.exchangeRates).insert(ExchangeRatesCompanion.insert(
-      fromCurrency: to,
-      toCurrency: from,
-      date: date,
-      rate: 1.0 / rate,
-    ));
+    await db
+        .into(db.exchangeRates)
+        .insert(
+          ExchangeRatesCompanion.insert(
+            fromCurrency: from,
+            toCurrency: to,
+            date: date,
+            rate: rate,
+          ),
+        );
+    await db
+        .into(db.exchangeRates)
+        .insert(
+          ExchangeRatesCompanion.insert(
+            fromCurrency: to,
+            toCurrency: from,
+            date: date,
+            rate: 1.0 / rate,
+          ),
+        );
   }
 
   /// Helper to create an asset with a ticker.
   Future<int> createAsset(String name, {String? ticker, String currency = 'EUR'}) async {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-      name: name,
-      assetType: AssetType.stockEtf,
-      valuationMethod: ValuationMethod.marketPrice,
-      ticker: Value(ticker),
-      currency: Value(currency),
-      intermediaryId: iid,
-    ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.stockEtf,
+            valuationMethod: ValuationMethod.marketPrice,
+            ticker: Value(ticker),
+            currency: Value(currency),
+            intermediaryId: iid,
+          ),
+        );
   }
 
   group('getPrice - offline price retrieval', () {
@@ -206,9 +222,11 @@ void main() {
     });
 
     test('dashboard_charts table is gone', () async {
-      final rows = await db.customSelect(
-        "SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='dashboard_charts'",
-      ).get();
+      final rows = await db
+          .customSelect(
+            "SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='dashboard_charts'",
+          )
+          .get();
       expect(rows.first.read<int>('c'), 0);
     });
 
@@ -303,21 +321,24 @@ void main() {
 
   group('Revalue fallback in price history', () {
     Future<int> createBond(String name, {String currency = 'EUR'}) async {
-      return db.into(db.assets).insert(AssetsCompanion.insert(
-        name: name,
-        assetType: AssetType.stockEtf,
-        instrumentType: const Value(InstrumentType.bond),
-        assetClass: const Value(AssetClass.fixedIncome),
-        valuationMethod: ValuationMethod.marketPrice,
-        currency: Value(currency),
-        intermediaryId: iid,
-      ));
+      return db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: name,
+              assetType: AssetType.stockEtf,
+              instrumentType: const Value(InstrumentType.bond),
+              assetClass: const Value(AssetClass.fixedIncome),
+              valuationMethod: ValuationMethod.marketPrice,
+              currency: Value(currency),
+              intermediaryId: iid,
+            ),
+          );
     }
 
     // Goes through AssetEventService.create so revalue events are
     // materialised into market_prices rows the way they are in production.
-    Future<void> insertEvent(int assetId, DateTime date, EventType type,
-        {double? quantity, double? price, double amount = 0}) async {
+    Future<void> insertEvent(int assetId, DateTime date, EventType type, {double? quantity, double? price, double amount = 0}) async {
       await AssetEventService(db).create(
         assetId: assetId,
         date: date,
@@ -331,10 +352,8 @@ void main() {
 
     test('getPriceHistory returns revalue-derived prices when no market prices', () async {
       final bondId = await createBond('BTP 2028');
-      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
-          quantity: 100, price: 98.0, amount: 9800.0);
-      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
-          amount: 9900.0);
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy, quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue, amount: 9900.0);
 
       final history = await priceService.getPriceHistory(bondId);
       expect(history, isNotEmpty, reason: 'Should have revalue-derived price');
@@ -352,25 +371,20 @@ void main() {
       await insertPrice(etfId, DateTime(2024, 6, 2), 111.0);
 
       // Bond has only buy + revalue (no market prices)
-      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
-          quantity: 100, price: 98.0, amount: 9800.0);
-      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
-          amount: 9900.0);
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy, quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue, amount: 9900.0);
 
       final batch = await priceService.getPriceHistoryBatch([etfId, bondId]);
       expect(batch.containsKey(etfId), isTrue);
-      expect(batch.containsKey(bondId), isTrue,
-          reason: 'Bond with revalue should be in batch results');
+      expect(batch.containsKey(bondId), isTrue, reason: 'Bond with revalue should be in batch results');
       expect(batch[bondId]!.length, 1);
       expect(batch[bondId]!.first.value, 99.0);
     });
 
     test('getPriceHistory includes both market and revalue on different dates', () async {
       final bondId = await createBond('BTP 2028');
-      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
-          quantity: 100, price: 98.0, amount: 9800.0);
-      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
-          amount: 9900.0);
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy, quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue, amount: 9900.0);
       // Market price on a different date
       await insertPrice(bondId, DateTime(2024, 6, 2), 99.5);
 
@@ -383,11 +397,9 @@ void main() {
 
     test('getPriceHistory market price wins over revalue on same date', () async {
       final bondId = await createBond('BTP 2028');
-      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
-          quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy, quantity: 100, price: 98.0, amount: 9800.0);
       // Revalue and market price on the same date
-      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue,
-          amount: 9900.0);
+      await insertEvent(bondId, DateTime(2024, 6, 1), EventType.revalue, amount: 9900.0);
       await insertPrice(bondId, DateTime(2024, 6, 1), 99.5);
 
       final history = await priceService.getPriceHistory(bondId);
@@ -398,11 +410,9 @@ void main() {
 
     test('getPriceHistory merges market prices and revalue for gaps', () async {
       final bondId = await createBond('BTP 2028');
-      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy,
-          quantity: 100, price: 98.0, amount: 9800.0);
+      await insertEvent(bondId, DateTime(2024, 1, 15), EventType.buy, quantity: 100, price: 98.0, amount: 9800.0);
       // Revalue in March (before any market price)
-      await insertEvent(bondId, DateTime(2024, 3, 1), EventType.revalue,
-          amount: 9850.0);
+      await insertEvent(bondId, DateTime(2024, 3, 1), EventType.revalue, amount: 9850.0);
       // Market price starts in June
       await insertPrice(bondId, DateTime(2024, 6, 1), 99.0);
       await insertPrice(bondId, DateTime(2024, 6, 2), 99.5);

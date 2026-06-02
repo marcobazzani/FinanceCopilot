@@ -5,7 +5,6 @@ part of 'import_screen.dart';
 // ──────────────────────────────────────────────
 
 extension _ConfirmStep on _ImportScreenState {
-
   /// Collect all unique exchange names across all ISIN lookup results.
   List<String> _allExchanges() {
     if (_isinLookupResults == null) return [];
@@ -143,7 +142,15 @@ extension _ConfirmStep on _ImportScreenState {
                         const SizedBox(height: 8),
                         Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
                         Text(s.rowCount(_preview?.totalRows ?? 0)),
-                        Text(s.targetLabel(isAssetImport ? s.targetAssetEvents : isIncomeImport ? s.importTypeIncome : s.targetTransactions)),
+                        Text(
+                          s.targetLabel(
+                            isAssetImport
+                                ? s.targetAssetEvents
+                                : isIncomeImport
+                                ? s.importTypeIncome
+                                : s.targetTransactions,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                         ..._mappings.entries
@@ -158,11 +165,13 @@ extension _ConfirmStep on _ImportScreenState {
                           if (_lookingUpIsins)
                             Padding(
                               padding: const EdgeInsets.all(8),
-                              child: Row(children: [
-                                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                                const SizedBox(width: 8),
-                                Text(s.lookingUpExchanges, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              ]),
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                  const SizedBox(width: 8),
+                                  Text(s.lookingUpExchanges, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                ],
+                              ),
                             )
                           else ...[
                             // Default exchange selector
@@ -175,7 +184,14 @@ extension _ConfirmStep on _ImportScreenState {
                                     value: _defaultExchange,
                                     hint: Text(s.auto, style: const TextStyle(fontSize: 12)),
                                     isDense: true,
-                                    items: _allExchanges().map((ex) => DropdownMenuItem(value: ex, child: Text(ex, style: const TextStyle(fontSize: 12)))).toList(),
+                                    items: _allExchanges()
+                                        .map(
+                                          (ex) => DropdownMenuItem(
+                                            value: ex,
+                                            child: Text(ex, style: const TextStyle(fontSize: 12)),
+                                          ),
+                                        )
+                                        .toList(),
                                     onChanged: (v) => _setState(() {
                                       _defaultExchange = v;
                                       // Re-apply default to all ISINs
@@ -201,7 +217,8 @@ extension _ConfirmStep on _ImportScreenState {
                                 child: Row(
                                   children: [
                                     SizedBox(
-                                      width: 24, height: 24,
+                                      width: 24,
+                                      height: 24,
                                       child: Checkbox(
                                         value: !excluded,
                                         onChanged: (v) => _setState(() {
@@ -216,7 +233,13 @@ extension _ConfirmStep on _ImportScreenState {
                                       ),
                                     ),
                                     const SizedBox(width: 4),
-                                    SizedBox(width: 130, child: Text(isin, style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: excluded ? Colors.grey : null))),
+                                    SizedBox(
+                                      width: 130,
+                                      child: Text(
+                                        isin,
+                                        style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: excluded ? Colors.grey : null),
+                                      ),
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(s.nEventsCount(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                     const SizedBox(width: 8),
@@ -226,33 +249,46 @@ extension _ConfirmStep on _ImportScreenState {
                                           value: selected?.cid,
                                           isDense: true,
                                           isExpanded: true,
-                                          items: options.map((o) => DropdownMenuItem(
-                                            value: o.cid,
-                                            child: Text('${o.ticker} — ${o.exchange}', style: const TextStyle(fontSize: 12)),
-                                          )).toList(),
-                                          onChanged: excluded ? null : (cid) => _setState(() {
-                                            _selectedExchanges[isin] = options.firstWhere((o) => o.cid == cid);
-                                          }),
+                                          items: options
+                                              .map(
+                                                (o) => DropdownMenuItem(
+                                                  value: o.cid,
+                                                  child: Text('${o.ticker} — ${o.exchange}', style: const TextStyle(fontSize: 12)),
+                                                ),
+                                              )
+                                              .toList(),
+                                          onChanged: excluded
+                                              ? null
+                                              : (cid) => _setState(() {
+                                                  _selectedExchanges[isin] = options.firstWhere((o) => o.cid == cid);
+                                                }),
                                         ),
                                       )
                                     else if (options.length == 1)
-                                      Expanded(child: Text('${options.first.ticker} — ${options.first.exchange}', style: TextStyle(fontSize: 12, color: excluded ? Colors.grey : null)))
+                                      Expanded(
+                                        child: Text(
+                                          '${options.first.ticker} — ${options.first.exchange}',
+                                          style: TextStyle(fontSize: 12, color: excluded ? Colors.grey : null),
+                                        ),
+                                      )
                                     else
                                       Expanded(
-                                        child: Row(children: [
-                                          Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                          const SizedBox(width: 8),
-                                          TextButton.icon(
-                                            icon: const Icon(Icons.link, size: 14),
-                                            label: Text(s.pasteUrlShort, style: const TextStyle(fontSize: 11)),
-                                            style: TextButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              visualDensity: VisualDensity.compact,
+                                        child: Row(
+                                          children: [
+                                            Text(s.notFound, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                            const SizedBox(width: 8),
+                                            TextButton.icon(
+                                              icon: const Icon(Icons.link, size: 14),
+                                              label: Text(s.pasteUrlShort, style: const TextStyle(fontSize: 11)),
+                                              style: TextButton.styleFrom(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                visualDensity: VisualDensity.compact,
+                                              ),
+                                              onPressed: excluded ? null : () => _openUrlPasteDialog(isin),
                                             ),
-                                            onPressed: excluded ? null : () => _openUrlPasteDialog(isin),
-                                          ),
-                                        ]),
+                                          ],
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -290,7 +326,8 @@ extension _ConfirmStep on _ImportScreenState {
                 Row(
                   children: [
                     const SizedBox(
-                      width: 16, height: 16,
+                      width: 16,
+                      height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     const SizedBox(width: 12),
@@ -340,8 +377,7 @@ extension _ConfirmStep on _ImportScreenState {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(s.selectIntermediaryEmpty,
-                  style: const TextStyle(color: Colors.grey)),
+              Text(s.selectIntermediaryEmpty, style: const TextStyle(color: Colors.grey)),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 icon: const Icon(Icons.add),
@@ -366,10 +402,12 @@ extension _ConfirmStep on _ImportScreenState {
           },
           child: Column(
             children: [
-              ...intermediaries.map((i) => RadioListTile<int?>(
-                title: Text(i.name),
-                value: i.id,
-              )),
+              ...intermediaries.map(
+                (i) => RadioListTile<int?>(
+                  title: Text(i.name),
+                  value: i.id,
+                ),
+              ),
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
@@ -404,9 +442,7 @@ extension _ConfirmStep on _ImportScreenState {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () => Navigator.pop(ctx, nameCtrl.text.trim())
-                  : null,
+              onPressed: nameCtrl.text.trim().isNotEmpty ? () => Navigator.pop(ctx, nameCtrl.text.trim()) : null,
               child: Text(s.create),
             ),
           ],
@@ -428,11 +464,13 @@ extension _ConfirmStep on _ImportScreenState {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(width: 12),
-            Text(s.computingPreview, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          ]),
+          child: Row(
+            children: [
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 12),
+              Text(s.computingPreview, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            ],
+          ),
         ),
       );
     }
@@ -452,8 +490,7 @@ extension _ConfirmStep on _ImportScreenState {
               if (p.rowsToReplace > 0) _previewRow(s.rowsToReplace, '${p.rowsToReplace}', color: Colors.orange),
               _previewRow(s.importAmountSum, amtFmt.format(p.importSum)),
               if (p.predictedBalance != null)
-                _previewRow(s.predictedBalance, amtFmt.format(p.predictedBalance!),
-                    color: Theme.of(context).colorScheme.primary, bold: true),
+                _previewRow(s.predictedBalance, amtFmt.format(p.predictedBalance!), color: Theme.of(context).colorScheme.primary, bold: true),
               if (p.errors.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 ...p.errors.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 11, color: Colors.red))),
@@ -500,7 +537,10 @@ extension _ConfirmStep on _ImportScreenState {
       child: Row(
         children: [
           SizedBox(width: 180, child: Text(label, style: const TextStyle(fontSize: 12))),
-          Text(value, style: TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.bold : null, color: color)),
+          Text(
+            value,
+            style: TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.bold : null, color: color),
+          ),
         ],
       ),
     );
@@ -524,7 +564,9 @@ extension _ConfirmStep on _ImportScreenState {
           FilledButton(
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
-              await ref.read(accountServiceProvider).create(
+              await ref
+                  .read(accountServiceProvider)
+                  .create(
                     name: nameCtrl.text.trim(),
                     currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
                   );
@@ -603,7 +645,9 @@ extension _ConfirmStep on _ImportScreenState {
         }
         // ISIN lookup may not be available (e.g. stubbed market price service)
         IsinLookupService? isinLookup;
-        try { isinLookup = ref.read(isinLookupServiceProvider); } catch (_) {}
+        try {
+          isinLookup = ref.read(isinLookupServiceProvider);
+        } catch (_) {}
         final assetResult = await importer.importAssetEventsGrouped(
           preview: fullPreview,
           mappings: mappings,
@@ -640,9 +684,7 @@ extension _ConfirmStep on _ImportScreenState {
         final txSvc = ref.read(transactionServiceProvider);
         final configSvc = ref.read(importConfigServiceProvider);
         final savedConfig = await configSvc.getByAccount(_targetId!);
-        final mappings = savedConfig != null
-            ? jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic>
-            : <String, dynamic>{};
+        final mappings = savedConfig != null ? jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic> : <String, dynamic>{};
         final mode = (mappings['__balanceMode'] as String?) ?? 'cumulative';
         await txSvc.recalculateBalances(_targetId!, balanceMode: mode, savedMappings: mappings);
       }
@@ -676,9 +718,7 @@ extension _ConfirmStep on _ImportScreenState {
   Widget _buildNumberLocalePicker() {
     final s = ref.watch(appStringsProvider);
     final appLocale = ref.watch(appLocaleProvider).value;
-    final autoLabel = appLocale != null && appLocale.isNotEmpty
-        ? 'Auto ($appLocale)'
-        : 'Auto';
+    final autoLabel = appLocale != null && appLocale.isNotEmpty ? 'Auto ($appLocale)' : 'Auto';
     final items = _numberLocaleOptions.map((opt) {
       final label = opt.$1 == null ? autoLabel : opt.$2;
       return DropdownMenuItem<String?>(

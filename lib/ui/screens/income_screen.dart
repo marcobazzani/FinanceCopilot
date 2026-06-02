@@ -40,32 +40,32 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
   String _typeLabel(AppStrings s, IncomeType type) {
     return switch (type) {
-      IncomeType.income              => s.incomeTypeIncome,
-      IncomeType.refund              => s.incomeTypeRefund,
+      IncomeType.income => s.incomeTypeIncome,
+      IncomeType.refund => s.incomeTypeRefund,
       IncomeType.pensionContribution => s.incomeTypePensionContribution,
     };
   }
 
   IconData _typeIcon(IncomeType type) {
     return switch (type) {
-      IncomeType.income              => Icons.payments,
-      IncomeType.refund              => Icons.replay,
+      IncomeType.income => Icons.payments,
+      IncomeType.refund => Icons.replay,
       IncomeType.pensionContribution => Icons.savings,
     };
   }
 
   Color _typeColor(BuildContext context, IncomeType type) {
     return switch (type) {
-      IncomeType.income              => Theme.of(context).colorScheme.primaryContainer,
-      IncomeType.refund              => Colors.orange.shade100,
+      IncomeType.income => Theme.of(context).colorScheme.primaryContainer,
+      IncomeType.refund => Colors.orange.shade100,
       IncomeType.pensionContribution => Colors.green.shade100,
     };
   }
 
   Color _typeIconColor(BuildContext context, IncomeType type) {
     return switch (type) {
-      IncomeType.income              => Theme.of(context).colorScheme.onPrimaryContainer,
-      IncomeType.refund              => Colors.orange.shade800,
+      IncomeType.income => Theme.of(context).colorScheme.onPrimaryContainer,
+      IncomeType.refund => Colors.orange.shade800,
       IncomeType.pensionContribution => Colors.green.shade800,
     };
   }
@@ -84,9 +84,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     for (var idx = startIdx; idx < lines.length; idx++) {
       final line = lines[idx];
       // Support both tab-separated and semicolon-separated
-      final parts = line.contains('\t')
-          ? line.split('\t')
-          : line.split(RegExp(r'[;]'));
+      final parts = line.contains('\t') ? line.split('\t') : line.split(RegExp(r'[;]'));
       if (parts.length < 2) continue;
 
       final dateStr = parts[0].trim();
@@ -106,21 +104,21 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       final IncomeType type;
       if (typeStr.contains('rimborso') || typeStr.contains('refund')) {
         type = IncomeType.refund;
-      } else if (typeStr.contains('previdenza') ||
-          typeStr.contains('contributo') ||
-          typeStr.contains('pension')) {
+      } else if (typeStr.contains('previdenza') || typeStr.contains('contributo') || typeStr.contains('pension')) {
         type = IncomeType.pensionContribution;
       } else {
         type = IncomeType.income;
       }
 
-      entries.add(IncomesCompanion.insert(
-        date: date,
-        valueDate: date,
-        amount: amount,
-        type: Value(type),
-        currency: Value(currency),
-      ));
+      entries.add(
+        IncomesCompanion.insert(
+          date: date,
+          valueDate: date,
+          amount: amount,
+          type: Value(type),
+          currency: Value(currency),
+        ),
+      );
     }
 
     if (entries.isEmpty) {
@@ -153,8 +151,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       onKeyEvent: (event) {
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.keyV &&
-            (HardwareKeyboard.instance.isMetaPressed ||
-                HardwareKeyboard.instance.isControlPressed)) {
+            (HardwareKeyboard.instance.isMetaPressed || HardwareKeyboard.instance.isControlPressed)) {
           _handlePaste();
         }
       },
@@ -187,36 +184,36 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
                 return MobilePullToRefresh(
                   child: ListView.separated(
-                  itemCount: incomes.length,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final income = incomes[i];
-                    final sym = currencySymbol(income.currency);
-                    return SelectableItem<int>(
-                      controller: _selection,
-                      id: income.id,
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: _typeColor(context, income.type),
-                          child: Icon(
-                            _typeIcon(income.type),
-                            color: _typeIconColor(context, income.type),
+                    itemCount: incomes.length,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (ctx, i) {
+                      final income = incomes[i];
+                      final sym = currencySymbol(income.currency);
+                      return SelectableItem<int>(
+                        controller: _selection,
+                        id: income.id,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: _typeColor(context, income.type),
+                            child: Icon(
+                              _typeIcon(income.type),
+                              color: _typeIconColor(context, income.type),
+                            ),
                           ),
+                          title: PrivacyText(
+                            '${amtFormat.format(income.amount)} $sym',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '${dateFmt.format(income.valueDate)} · ${_typeLabel(s, income.type)}',
+                          ),
+                          trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                          onTap: () => _showEditDialog(context, income),
                         ),
-                        title: PrivacyText(
-                          '${amtFormat.format(income.amount)} $sym',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Text(
-                          '${dateFmt.format(income.valueDate)} · ${_typeLabel(s, income.type)}',
-                        ),
-                        trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-                        onTap: () => _showEditDialog(context, income),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -292,18 +289,14 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 DropdownButtonFormField<IncomeType>(
                   initialValue: type,
                   decoration: InputDecoration(labelText: s.incomeTypeLabel),
-                  items: IncomeType.values
-                      .map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t))))
-                      .toList(),
+                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t)))).toList(),
                   onChanged: (v) => setDialogState(() => type = v!),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   initialValue: currency,
                   decoration: InputDecoration(labelText: s.currency),
-                  items: ExchangeRateService.allCurrencies
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
+                  items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                   onChanged: (v) => setDialogState(() => currency = v!),
                 ),
               ],
@@ -328,12 +321,14 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       return;
     }
 
-    await ref.read(incomeServiceProvider).create(
-      date: date,
-      amount: amount,
-      type: type,
-      currency: currency,
-    );
+    await ref
+        .read(incomeServiceProvider)
+        .create(
+          date: date,
+          amount: amount,
+          type: type,
+          currency: currency,
+        );
   }
 
   Future<void> _showEditDialog(BuildContext context, Income income) async {
@@ -372,18 +367,14 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 DropdownButtonFormField<IncomeType>(
                   initialValue: type,
                   decoration: InputDecoration(labelText: s.incomeTypeLabel),
-                  items: IncomeType.values
-                      .map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t))))
-                      .toList(),
+                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t)))).toList(),
                   onChanged: (v) => setDialogState(() => type = v!),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   initialValue: currency,
                   decoration: InputDecoration(labelText: s.currency),
-                  items: ExchangeRateService.allCurrencies
-                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                      .toList(),
+                  items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                   onChanged: (v) => setDialogState(() => currency = v!),
                 ),
               ],
@@ -427,16 +418,18 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
     // Update both date and valueDate together — the user only sees one field
     // and editing it should not leave the two columns inconsistent.
-    await ref.read(incomeServiceProvider).update(
-      income.id,
-      IncomesCompanion(
-        date: Value(date),
-        valueDate: Value(date),
-        amount: Value(amount),
-        type: Value(type),
-        currency: Value(currency),
-      ),
-    );
+    await ref
+        .read(incomeServiceProvider)
+        .update(
+          income.id,
+          IncomesCompanion(
+            date: Value(date),
+            valueDate: Value(date),
+            amount: Value(amount),
+            type: Value(type),
+            currency: Value(currency),
+          ),
+        );
   }
 
   Future<void> _confirmDelete(BuildContext context, Income income) async {

@@ -50,7 +50,7 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final locale = ref.watch(appLocaleProvider).value ?? 'en';
 
-      return Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: Text(s.pillarsTitle),
         actions: globalAppBarActions(
@@ -257,7 +257,6 @@ class _PillarCard extends ConsumerWidget {
       ),
     );
   }
-
 }
 
 class _UnassignedCard extends ConsumerWidget {
@@ -396,8 +395,7 @@ class _BuiltInYearGroup extends StatelessWidget {
           _BuiltInVariantGroup(
             s: s,
             variant: variant,
-            models: models.where((m) => m.variant == variant).toList()
-              ..sort((a, b) => (a.equityPercent ?? 0).compareTo(b.equityPercent ?? 0)),
+            models: models.where((m) => m.variant == variant).toList()..sort((a, b) => (a.equityPercent ?? 0).compareTo(b.equityPercent ?? 0)),
           ),
       ],
     );

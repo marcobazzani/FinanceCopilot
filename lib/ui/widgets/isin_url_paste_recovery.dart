@@ -163,7 +163,8 @@ class _IsinUrlPasteRecoveryState extends ConsumerState<IsinUrlPasteRecovery> {
               children: [
                 if (_resolving) ...[
                   const SizedBox(
-                    height: 16, width: 16,
+                    height: 16,
+                    width: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   const SizedBox(width: 12),

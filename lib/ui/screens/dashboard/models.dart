@@ -25,14 +25,14 @@ class ChartSeries {
 /// All chart data: account series, asset series, CAPEX series, market value series.
 class AllSeriesData {
   final DateTime firstDate;
-  final List<ChartSeries> accounts;      // key: "account:<id>"
+  final List<ChartSeries> accounts; // key: "account:<id>"
   final List<ChartSeries> assetInvested; // key: "asset_invested:<id>"
-  final List<ChartSeries> assetMarket;   // key: "asset_market:<id>"
-  final List<ChartSeries> assetGain;     // key: "asset_gain:<id>"  (market - invested)
-  final List<ChartSeries> assetNet;      // key: "asset_net:<id>"   (invested + max(0,gain)*(1-tax))
-  final List<ChartSeries> adjustments;          // key: "adjustment_value/events:<id>"  — outflow events
-  final List<ChartSeries> incomeAdjustments;    // key: "income_adj_value/events:<id>"  — non-ephemeral inflow events
-  final List<ChartSeries> ephemeralInflows;     // key: "ephemeral_inflow_value/events:<id>" — line-of-credit inflows
+  final List<ChartSeries> assetMarket; // key: "asset_market:<id>"
+  final List<ChartSeries> assetGain; // key: "asset_gain:<id>"  (market - invested)
+  final List<ChartSeries> assetNet; // key: "asset_net:<id>"   (invested + max(0,gain)*(1-tax))
+  final List<ChartSeries> adjustments; // key: "adjustment_value/events:<id>"  — outflow events
+  final List<ChartSeries> incomeAdjustments; // key: "income_adj_value/events:<id>"  — non-ephemeral inflow events
+  final List<ChartSeries> ephemeralInflows; // key: "ephemeral_inflow_value/events:<id>" — line-of-credit inflows
   final String baseCurrency;
 
   const AllSeriesData({
@@ -49,46 +49,43 @@ class AllSeriesData {
   });
 
   List<ChartSeries> get allSeries => [
-        ...accounts,
-        ...assetInvested,
-        ...assetMarket,
-        ...assetGain,
-        ...assetNet,
-        ...adjustments,
-        ...incomeAdjustments,
-        ...ephemeralInflows,
-      ];
+    ...accounts,
+    ...assetInvested,
+    ...assetMarket,
+    ...assetGain,
+    ...assetNet,
+    ...adjustments,
+    ...incomeAdjustments,
+    ...ephemeralInflows,
+  ];
 
   /// Series composing the Cash chart: accounts + adjustments + ephemeral
   /// inflows negated (line-of-credit money raises Cash in absolute value).
   /// Used as the resolver fallback when no `cash` role chart exists.
   List<ChartSeries> get cashSeries => [
-        ...accounts,
-        ...adjustments,
-        ...ephemeralInflows.map(_negate),
-      ];
+    ...accounts,
+    ...adjustments,
+    ...ephemeralInflows.map(_negate),
+  ];
 
   /// Series composing the Saving chart: accounts + invested + adjustments
   /// + non-ephemeral inflow adjustments. Ephemeral inflows are excluded.
-  List<ChartSeries> get savingSeries =>
-      [...accounts, ...assetInvested, ...adjustments, ...incomeAdjustments];
+  List<ChartSeries> get savingSeries => [...accounts, ...assetInvested, ...adjustments, ...incomeAdjustments];
 
   static ChartSeries _negate(ChartSeries s) => ChartSeries(
-        key: s.key,
-        name: s.name,
-        color: s.color,
-        spots: s.spots.map((p) => FlSpot(p.x, -p.y)).toList(),
-        isDashed: s.isDashed,
-        rightAxis: s.rightAxis,
-      );
+    key: s.key,
+    name: s.name,
+    color: s.color,
+    spots: s.spots.map((p) => FlSpot(p.x, -p.y)).toList(),
+    isDashed: s.isDashed,
+    rightAxis: s.rightAxis,
+  );
 
   /// Carry-forward total Cash spots — what the Cash chart plots.
-  List<FlSpot> get cashSpots =>
-      buildTotalSpots(cashSeries.map((s) => s.spots).toList());
+  List<FlSpot> get cashSpots => buildTotalSpots(cashSeries.map((s) => s.spots).toList());
 
   /// Carry-forward total Saving spots — what the Saving chart plots.
-  List<FlSpot> get savingSpots =>
-      buildTotalSpots(savingSeries.map((s) => s.spots).toList());
+  List<FlSpot> get savingSpots => buildTotalSpots(savingSeries.map((s) => s.spots).toList());
 }
 
 // ════════════════════════════════════════════════════
@@ -106,12 +103,17 @@ class _MonthBucket {
   // their NAV impact is real personal savings — only the income-side
   // classification is excluded.
   double get personalNavChange => navChange - pensionContrib;
-  double get expenses    => income - personalNavChange;
-  double get savings     => personalNavChange;
+  double get expenses => income - personalNavChange;
+  double get savings => personalNavChange;
   double get savingsRate => income > 0 ? personalNavChange / income : 0;
-  const _MonthBucket({required this.year, required this.month,
-                      required this.income, required this.navChange,
-                      this.pensionContrib = 0, this.hasIncomeData = false});
+  const _MonthBucket({
+    required this.year,
+    required this.month,
+    required this.income,
+    required this.navChange,
+    this.pensionContrib = 0,
+    this.hasIncomeData = false,
+  });
 }
 
 class _YearBucket {
@@ -120,24 +122,30 @@ class _YearBucket {
   final List<_MonthBucket> months;
 
   double get personalNavChange => navChange - pensionContrib;
-  double get expenses        => income - personalNavChange;
-  double get savings         => personalNavChange;
-  double get savingsRate     => income > 0 ? personalNavChange / income : 0;
-  double get dailyIncome     => days > 0 ? income / days : 0;
-  double get dailyExpenses   => days > 0 ? expenses / days : 0;
-  double get monthlyIncome   => days > 0 ? income / days * 30.4 : 0;
+  double get expenses => income - personalNavChange;
+  double get savings => personalNavChange;
+  double get savingsRate => income > 0 ? personalNavChange / income : 0;
+  double get dailyIncome => days > 0 ? income / days : 0;
+  double get dailyExpenses => days > 0 ? expenses / days : 0;
+  double get monthlyIncome => days > 0 ? income / days * 30.4 : 0;
   double get monthlyExpenses => days > 0 ? expenses / days * 30.4 : 0;
-  double get monthlySavings  => days > 0 ? savings / days * 30.4 : 0;
+  double get monthlySavings => days > 0 ? savings / days * 30.4 : 0;
 
-  const _YearBucket({required this.year, required this.days,
-                     required this.income, required this.navChange,
-                     required this.months, this.pensionContrib = 0});
+  const _YearBucket({
+    required this.year,
+    required this.days,
+    required this.income,
+    required this.navChange,
+    required this.months,
+    this.pensionContrib = 0,
+  });
 }
 
 class _IncomeExpenseData {
   final List<_YearBucket> years;
   final String baseCurrency;
   final DateTime firstDate;
+
   /// Cumulative pension contributions in base currency, as a series of
   /// (dayOffsetFromFirstDate, cumulativeAmount) spots. Empty when the
   /// user has no pension imports. Cashflow_tab subtracts this from
@@ -169,8 +177,7 @@ final _chartColors = [
 ];
 
 /// Convert a DateTime to a day-key (epoch seconds at midnight).
-int toDayKey(DateTime dt) =>
-    DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
+int toDayKey(DateTime dt) => DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch ~/ 1000;
 
 /// Build a carry-forward total line from multiple spot lists.
 List<FlSpot> buildTotalSpots(List<List<FlSpot>> allSpots) {
@@ -197,7 +204,8 @@ List<FlSpot> buildTotalSpots(List<List<FlSpot>> allSpots) {
   }).toList();
 }
 
-List<FlSpot> extendSingleSpotCarryForward(List<FlSpot> spots, {
+List<FlSpot> extendSingleSpotCarryForward(
+  List<FlSpot> spots, {
   required DateTime firstDate,
   required int endDayKey,
 }) {
@@ -209,20 +217,12 @@ List<FlSpot> extendSingleSpotCarryForward(List<FlSpot> spots, {
 }
 
 bool isOutflowAdjustmentSeriesKey(String key) =>
-    key.startsWith('adjustment:') ||
-    key.startsWith('adjustment_value:') ||
-    key.startsWith('adjustment_events:');
+    key.startsWith('adjustment:') || key.startsWith('adjustment_value:') || key.startsWith('adjustment_events:');
 
 bool isIncomeAdjustmentSeriesKey(String key) =>
-    key.startsWith('income_adj:') ||
-    key.startsWith('income_adj_value:') ||
-    key.startsWith('income_adj_events:');
+    key.startsWith('income_adj:') || key.startsWith('income_adj_value:') || key.startsWith('income_adj_events:');
 
-bool isEphemeralInflowSeriesKey(String key) =>
-    key.startsWith('ephemeral_inflow_value:') ||
-    key.startsWith('ephemeral_inflow_events:');
+bool isEphemeralInflowSeriesKey(String key) => key.startsWith('ephemeral_inflow_value:') || key.startsWith('ephemeral_inflow_events:');
 
 bool isAdjustmentSeriesKey(String key) =>
-    isOutflowAdjustmentSeriesKey(key) ||
-    isIncomeAdjustmentSeriesKey(key) ||
-    isEphemeralInflowSeriesKey(key);
+    isOutflowAdjustmentSeriesKey(key) || isIncomeAdjustmentSeriesKey(key) || isEphemeralInflowSeriesKey(key);

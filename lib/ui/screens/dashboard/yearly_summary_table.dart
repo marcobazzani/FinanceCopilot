@@ -14,9 +14,9 @@ class _YearlySummaryTable extends ConsumerWidget {
     final s = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
     final pctFmt = NumberFormat('0.0%');
-    final theme  = Theme.of(context);
-    final sym    = currencySymbol(data.baseCurrency);
-    final now    = ref.watch(currentDateProvider);
+    final theme = Theme.of(context);
+    final sym = currencySymbol(data.baseCurrency);
+    final now = ref.watch(currentDateProvider);
 
     final years = data.years.reversed.toList();
 
@@ -29,57 +29,80 @@ class _YearlySummaryTable extends ConsumerWidget {
         dataRowMaxHeight: 52,
         columnSpacing: 20,
         columns: [
-          DataColumn(label: Text(s.colYear,        style: const TextStyle(fontWeight: FontWeight.bold))),
-          DataColumn(label: Text(s.colIncome,      style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colExpenses,    style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colSavings,     style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colRate,        style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colAvgMonthInc, style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colAvgMonthExp, style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colDailyInc,    style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-          DataColumn(label: Text(s.colDailyExp,    style: const TextStyle(fontWeight: FontWeight.bold)), numeric: true),
+          DataColumn(
+            label: Text(s.colYear, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          DataColumn(
+            label: Text(s.colIncome, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colExpenses, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colSavings, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colRate, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colAvgMonthInc, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colAvgMonthExp, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colDailyInc, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
+          DataColumn(
+            label: Text(s.colDailyExp, style: const TextStyle(fontWeight: FontWeight.bold)),
+            numeric: true,
+          ),
         ],
         rows: [
-          for (int i = 0; i < years.length; i++)
-            _yearRow(years[i], i == 0 && years[i].year == now.year,
-                     amtFmt, pctFmt, sym, theme),
+          for (int i = 0; i < years.length; i++) _yearRow(years[i], i == 0 && years[i].year == now.year, amtFmt, pctFmt, sym, theme),
         ],
       ),
     );
   }
 
-  DataRow _yearRow(_YearBucket y, bool isCurrent,
-      NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme) {
-    TextStyle? style = isCurrent
-        ? TextStyle(fontStyle: FontStyle.italic, color: theme.colorScheme.onSurface.withValues(alpha: 0.6))
-        : null;
+  DataRow _yearRow(_YearBucket y, bool isCurrent, NumberFormat amtFmt, NumberFormat pctFmt, String sym, ThemeData theme) {
+    TextStyle? style = isCurrent ? TextStyle(fontStyle: FontStyle.italic, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)) : null;
 
     Color savingsColor = y.savings >= 0 ? Colors.green.shade700 : Colors.red.shade700;
 
-    return DataRow(cells: [
-      DataCell(Text(isCurrent ? '${y.year}*' : '${y.year}', style: style?.copyWith(fontWeight: FontWeight.w600))),
-      DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style)),
-      DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style)),
-      DataCell(PrivacyText(
-        '${y.savings >= 0 ? '+' : ''}${amtFmt.format(y.savings)} $sym',
-        style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
-      )),
-      DataCell(Text('${y.savingsRate >= 0 ? '+' : ''}${pctFmt.format(y.savingsRate)}', style: style?.copyWith(color: savingsColor))),
-      DataCell(PrivacyText('${amtFmt.format(y.monthlyIncome)} $sym', style: style)),
-      DataCell(PrivacyText('${amtFmt.format(y.monthlyExpenses)} $sym', style: style)),
-      DataCell(PrivacyText('${amtFmt.format(y.dailyIncome)} $sym', style: style)),
-      DataCell(PrivacyText('${amtFmt.format(y.dailyExpenses)} $sym', style: style)),
-    ]);
+    return DataRow(
+      cells: [
+        DataCell(Text(isCurrent ? '${y.year}*' : '${y.year}', style: style?.copyWith(fontWeight: FontWeight.w600))),
+        DataCell(PrivacyText('${amtFmt.format(y.income)} $sym', style: style)),
+        DataCell(PrivacyText('${amtFmt.format(y.expenses)} $sym', style: style)),
+        DataCell(
+          PrivacyText(
+            '${y.savings >= 0 ? '+' : ''}${amtFmt.format(y.savings)} $sym',
+            style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
+          ),
+        ),
+        DataCell(Text('${y.savingsRate >= 0 ? '+' : ''}${pctFmt.format(y.savingsRate)}', style: style?.copyWith(color: savingsColor))),
+        DataCell(PrivacyText('${amtFmt.format(y.monthlyIncome)} $sym', style: style)),
+        DataCell(PrivacyText('${amtFmt.format(y.monthlyExpenses)} $sym', style: style)),
+        DataCell(PrivacyText('${amtFmt.format(y.dailyIncome)} $sym', style: style)),
+        DataCell(PrivacyText('${amtFmt.format(y.dailyExpenses)} $sym', style: style)),
+      ],
+    );
   }
 }
 
 /// Convert a `_YearBucket` (private to the dashboard library) to the public
 /// `EoyYear` consumed by the EoY projection helper.
 EoyYear _toEoyYear(_YearBucket y) => EoyYear(
-      year: y.year,
-      income: y.income,
-      expenses: y.expenses,
-      months: y.months
-          .map((m) => EoyMonth(month: m.month, income: m.income, expenses: m.expenses))
-          .toList(),
-    );
+  year: y.year,
+  income: y.income,
+  expenses: y.expenses,
+  months: y.months.map((m) => EoyMonth(month: m.month, income: m.income, expenses: m.expenses)).toList(),
+);

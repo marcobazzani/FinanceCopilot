@@ -23,8 +23,7 @@ class NoOpMarketPriceService extends MarketPriceService {
   NoOpMarketPriceService(super.db);
 
   @override
-  Future<Map<DateTime, double>> fetchHistoricalPrices(
-      String ticker, String currency, DateTime from) async {
+  Future<Map<DateTime, double>> fetchHistoricalPrices(String ticker, String currency, DateTime from) async {
     return {};
   }
 
@@ -41,6 +40,7 @@ Future<AppDatabase> pumpApp(
   Future<void> Function(AppDatabase db)? seed,
   bool useRealServices = false,
   bool createDbFile = true,
+
   /// Set to false to start with a genuinely empty DB — no Default
   /// intermediary, no `_test_seed` account. The app's landing page WILL
   /// show; tests that opt in must dismiss it (tap "Start fresh").
@@ -61,13 +61,22 @@ Future<AppDatabase> pumpApp(
 
   if (seedTestState) {
     // Seed a default intermediary (required by assets since schema v29).
-    await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(
-      name: 'Default',
-    ));
+    await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(
+            name: 'Default',
+          ),
+        );
     // Seed a dummy account so the landing page doesn't show (empty DB check).
-    await db.into(db.accounts).insert(AccountsCompanion.insert(
-      name: '_test_seed', sortOrder: const Value(999),
-    ));
+    await db
+        .into(db.accounts)
+        .insert(
+          AccountsCompanion.insert(
+            name: '_test_seed',
+            sortOrder: const Value(999),
+          ),
+        );
   }
 
   if (seed != null) {
@@ -178,7 +187,6 @@ Future<FilePreview> parseFixtureNoHeader(
   }
 }
 
-
 /// Navigate to ImportScreen with a pre-parsed preview and optional target.
 /// This tests both the file parser (via parseFixture) and the full UI import flow.
 ///
@@ -196,9 +204,7 @@ Future<void> pushImportScreen(
   int? accountId;
   if (accountName != null) {
     final database = db ?? AppDatabase.forTesting(NativeDatabase.memory());
-    final acc = await (database.select(database.accounts)
-          ..where((a) => a.name.equals(accountName)))
-        .getSingleOrNull();
+    final acc = await (database.select(database.accounts)..where((a) => a.name.equals(accountName))).getSingleOrNull();
     accountId = acc?.id;
   }
   final context = tester.element(find.byType(Navigator).first);
@@ -317,10 +323,14 @@ Future<void> waitForNetwork(WidgetTester tester, {int seconds = 10}) async {
 
 /// Inserts a sample account and returns its id.
 Future<int> seedAccount(AppDatabase db, {String name = 'Test Account'}) async {
-  return db.into(db.accounts).insert(AccountsCompanion.insert(
-        name: name,
-        sortOrder: const Value(1),
-      ));
+  return db
+      .into(db.accounts)
+      .insert(
+        AccountsCompanion.insert(
+          name: name,
+          sortOrder: const Value(1),
+        ),
+      );
 }
 
 /// Inserts a sample asset and returns its id.
@@ -333,19 +343,23 @@ Future<int> seedAsset(
   String? currency,
 }) async {
   final intermediaries = await db.select(db.intermediaries).get();
-  return db.into(db.assets).insert(AssetsCompanion.insert(
-        name: name,
-        assetType: AssetType.stockEtf,
-        instrumentType: const Value(InstrumentType.etf),
-        assetClass: const Value(AssetClass.equity),
-        valuationMethod: ValuationMethod.marketPrice,
-        intermediaryId: intermediaries.first.id,
-        isin: Value(isin),
-        ticker: Value(ticker),
-        exchange: Value(exchange),
-        currency: Value(currency ?? 'EUR'),
-        sortOrder: const Value(1),
-      ));
+  return db
+      .into(db.assets)
+      .insert(
+        AssetsCompanion.insert(
+          name: name,
+          assetType: AssetType.stockEtf,
+          instrumentType: const Value(InstrumentType.etf),
+          assetClass: const Value(AssetClass.equity),
+          valuationMethod: ValuationMethod.marketPrice,
+          intermediaryId: intermediaries.first.id,
+          isin: Value(isin),
+          ticker: Value(ticker),
+          exchange: Value(exchange),
+          currency: Value(currency ?? 'EUR'),
+          sortOrder: const Value(1),
+        ),
+      );
 }
 
 /// Inserts a buy event for an asset.
@@ -358,16 +372,20 @@ Future<int> seedBuyEvent(
   double? price,
   String currency = 'EUR',
 }) async {
-  return db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-        assetId: assetId,
-        date: date,
-        valueDate: date,
-        type: EventType.buy,
-        amount: amount,
-        quantity: Value(quantity),
-        price: Value(price),
-        currency: Value(currency),
-      ));
+  return db
+      .into(db.assetEvents)
+      .insert(
+        AssetEventsCompanion.insert(
+          assetId: assetId,
+          date: date,
+          valueDate: date,
+          type: EventType.buy,
+          amount: amount,
+          quantity: Value(quantity),
+          price: Value(price),
+          currency: Value(currency),
+        ),
+      );
 }
 
 /// Inserts a market price for an asset.
@@ -378,21 +396,29 @@ Future<void> seedPrice(
   required double price,
   String currency = 'EUR',
 }) async {
-  await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
-        assetId: assetId,
-        date: date,
-        closePrice: price,
-        currency: currency,
-      ));
+  await db
+      .into(db.marketPrices)
+      .insert(
+        MarketPricesCompanion.insert(
+          assetId: assetId,
+          date: date,
+          closePrice: price,
+          currency: currency,
+        ),
+      );
 }
 
 /// Inserts a sample income record and returns its id.
 Future<int> seedIncome(AppDatabase db, {double amount = 1000.0}) async {
-  return db.into(db.incomes).insert(IncomesCompanion.insert(
-        date: DateTime(2025, 1, 15),
-        valueDate: DateTime(2025, 1, 15),
-        amount: amount,
-      ));
+  return db
+      .into(db.incomes)
+      .insert(
+        IncomesCompanion.insert(
+          date: DateTime(2025, 1, 15),
+          valueDate: DateTime(2025, 1, 15),
+          amount: amount,
+        ),
+      );
 }
 
 /// Tap the "Default" intermediary radio in the Confirm step of asset
@@ -461,13 +487,13 @@ Future<void> setMapping(
 ) async {
   final wanted = fieldLabel.toLowerCase();
   Finder labelText() => find.byWidgetPredicate(
-        (w) {
-          if (w is! Text || w.data == null) return false;
-          final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
-          return clean.toLowerCase() == wanted;
-        },
-        description: 'mapping-row Text matching "$fieldLabel" (case-insensitive)',
-      );
+    (w) {
+      if (w is! Text || w.data == null) return false;
+      final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
+      return clean.toLowerCase() == wanted;
+    },
+    description: 'mapping-row Text matching "$fieldLabel" (case-insensitive)',
+  );
   // Scroll the column-mapper ListView until the label is in the tree.
   // The mapper's ListView is the first vertical Scrollable on the
   // ImportScreen route. Try both directions because we don't know
@@ -478,23 +504,26 @@ Future<void> setMapping(
       // Scroll up first (drag-down): brings rows above into view.
       try {
         await tester.scrollUntilVisible(
-          labelText(), -200,
-          scrollable: scrollable.first, maxScrolls: 8,
+          labelText(),
+          -200,
+          scrollable: scrollable.first,
+          maxScrolls: 8,
         );
       } catch (_) {}
       if (labelText().evaluate().isEmpty) {
         // Try downward.
         try {
           await tester.scrollUntilVisible(
-            labelText(), 200,
-            scrollable: scrollable.first, maxScrolls: 8,
+            labelText(),
+            200,
+            scrollable: scrollable.first,
+            maxScrolls: 8,
           );
         } catch (_) {}
       }
     }
   }
-  expect(labelText(), findsWidgets,
-      reason: 'mapping label "$fieldLabel" not found in column mapper');
+  expect(labelText(), findsWidgets, reason: 'mapping label "$fieldLabel" not found in column mapper');
   final mappingRow = find.ancestor(
     of: labelText().first,
     matching: find.byType(Padding),
@@ -503,8 +532,7 @@ Future<void> setMapping(
     of: mappingRow.first,
     matching: find.byType(DropdownButtonFormField<String>),
   );
-  expect(dropdown, findsWidgets,
-      reason: 'no dropdown found in mapping row for "$fieldLabel"');
+  expect(dropdown, findsWidgets, reason: 'no dropdown found in mapping row for "$fieldLabel"');
   await tester.ensureVisible(dropdown.first);
   await settle(tester);
   await tester.tap(dropdown.first);
@@ -518,8 +546,7 @@ Future<void> setMapping(
 /// "Current").
 Future<void> setSegmentMode(WidgetTester tester, String optionLabel) async {
   final button = find.text(optionLabel);
-  expect(button, findsWidgets,
-      reason: 'SegmentedButton option "$optionLabel" not found');
+  expect(button, findsWidgets, reason: 'SegmentedButton option "$optionLabel" not found');
   await tester.ensureVisible(button.first);
   await settle(tester);
   await tester.tap(button.first);
@@ -531,8 +558,7 @@ Future<void> setSegmentMode(WidgetTester tester, String optionLabel) async {
 /// be visible.
 Future<void> tapAmountMode(WidgetTester tester, String modeLabel) async {
   final btn = find.widgetWithText(OutlinedButton, modeLabel);
-  expect(btn, findsWidgets,
-      reason: 'amount mode button "$modeLabel" not found');
+  expect(btn, findsWidgets, reason: 'amount mode button "$modeLabel" not found');
   await tester.ensureVisible(btn.first);
   await settle(tester);
   await tester.tap(btn.first);
@@ -556,8 +582,7 @@ Future<void> tapBuySellForValue(
     (w) => w is Text && w.data == value && (w.style?.fontSize ?? 0) >= 13,
     description: 'unique-value Text "$value" (fontSize >= 13)',
   );
-  expect(valueText, findsWidgets,
-      reason: 'unique-value row "$value" not found for type-from-column');
+  expect(valueText, findsWidgets, reason: 'unique-value row "$value" not found for type-from-column');
   // Chip container is a Wrap (was Row before the pension-import merge —
   // switched to Wrap to fit the 4th chip on narrow screens). Fall back to
   // Row for older code paths so the helper stays robust if the layout
@@ -566,14 +591,12 @@ Future<void> tapBuySellForValue(
   if (container.evaluate().isEmpty) {
     container = find.ancestor(of: valueText.first, matching: find.byType(Row));
   }
-  expect(container, findsWidgets,
-      reason: 'no Wrap or Row ancestor for unique-value "$value"');
+  expect(container, findsWidgets, reason: 'no Wrap or Row ancestor for unique-value "$value"');
   final chip = find.descendant(
     of: container.first,
     matching: find.widgetWithText(ChoiceChip, buy ? buyLabel : sellLabel),
   );
-  expect(chip, findsWidgets,
-      reason: 'ChoiceChip "${buy ? buyLabel : sellLabel}" not found in row "$value"');
+  expect(chip, findsWidgets, reason: 'ChoiceChip "${buy ? buyLabel : sellLabel}" not found in row "$value"');
   await tester.ensureVisible(chip.first);
   await settle(tester);
   await tester.tap(chip.first);
@@ -586,8 +609,7 @@ Future<void> tapBuySellForValue(
 /// how the calling widget's generic type was resolved).
 Future<void> selectIntermediary(WidgetTester tester, String name) async {
   final titleText = find.text(name);
-  expect(titleText, findsWidgets,
-      reason: 'intermediary "$name" Text not found in confirm step');
+  expect(titleText, findsWidgets, reason: 'intermediary "$name" Text not found in confirm step');
   // Find the closest RadioListTile ancestor without pinning the generic.
   final tile = find.ancestor(
     of: titleText.first,
@@ -596,8 +618,7 @@ Future<void> selectIntermediary(WidgetTester tester, String name) async {
       description: 'RadioListTile (any generic)',
     ),
   );
-  expect(tile, findsWidgets,
-      reason: 'intermediary radio "$name" not found in confirm step');
+  expect(tile, findsWidgets, reason: 'intermediary radio "$name" not found in confirm step');
   await tester.ensureVisible(tile.first);
   await settle(tester);
   await tester.tap(tile.first);

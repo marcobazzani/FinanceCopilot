@@ -27,5 +27,4 @@ double? tryParseAmount(String? s, {required String locale}) {
 ///  1. The user's per-source override (`saved`), if any.
 ///  2. The app's configured locale (`appLocale`).
 ///  3. `en_US` as a final safety net.
-String resolveImportLocale({String? saved, required String? appLocale}) =>
-    saved ?? appLocale ?? 'en_US';
+String resolveImportLocale({String? saved, required String? appLocale}) => saved ?? appLocale ?? 'en_US';

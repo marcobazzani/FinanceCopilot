@@ -19,18 +19,15 @@ double? tryParseLocalized(String text, {required String locale}) {
   }
 }
 
-NumberFormat amountFormat(String locale) =>
-    NumberFormat('#,##0.00', locale);
+NumberFormat amountFormat(String locale) => NumberFormat('#,##0.00', locale);
 
-NumberFormat qtyFormat(String locale) =>
-    NumberFormat('#,##0.####', locale);
+NumberFormat qtyFormat(String locale) => NumberFormat('#,##0.####', locale);
 
 NumberFormat currencyFormat(String locale, String symbol, {int? decimalDigits}) =>
     NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: decimalDigits);
 
 /// Format a date as yyyy-MM-dd without DateFormat overhead.
-String formatYmd(DateTime d) =>
-    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+String formatYmd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 DateFormat shortDateFormat(String locale) => DateFormat.yMd(locale);
 DateFormat monthYearFormat(String locale) => DateFormat.yMMM(locale);
@@ -86,5 +83,4 @@ double? parseFlexibleNumber(String text) {
 DateTime? parseFlexibleDate(String text) => date_parse.tryParseDate(text);
 
 /// Cross-platform home directory (macOS/Linux HOME, Windows USERPROFILE).
-String get homeDir =>
-    Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';
+String get homeDir => Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '.';

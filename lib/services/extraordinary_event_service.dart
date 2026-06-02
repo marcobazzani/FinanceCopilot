@@ -12,9 +12,9 @@ class ExtraordinaryEventStats {
   final DateTime? firstDate;
   final DateTime? lastDate;
   final double totalAmount;
-  final double totalAllocated;    // sum of |entry.amount| for this event
-  final double remaining;          // totalAmount − totalAllocated (>=0 expected)
-  final double totalReimbursed;    // spread+buffer only
+  final double totalAllocated; // sum of |entry.amount| for this event
+  final double remaining; // totalAmount − totalAllocated (>=0 expected)
+  final double totalReimbursed; // spread+buffer only
 
   const ExtraordinaryEventStats({
     required this.entryCount,
@@ -44,10 +44,8 @@ class ExtraordinaryEventService {
 
   // ── Event CRUD ──
 
-  SimpleSelectStatement<$ExtraordinaryEventsTable, ExtraordinaryEvent>
-  _activeEvents({DateTime? through}) {
-    final query = _db.select(_db.extraordinaryEvents)
-      ..where((e) => e.isActive.equals(true));
+  SimpleSelectStatement<$ExtraordinaryEventsTable, ExtraordinaryEvent> _activeEvents({DateTime? through}) {
+    final query = _db.select(_db.extraordinaryEvents)..where((e) => e.isActive.equals(true));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((e) => e.eventDate.isSmallerThanValue(endExclusive));
@@ -56,22 +54,16 @@ class ExtraordinaryEventService {
     return query;
   }
 
-  Stream<List<ExtraordinaryEvent>> watchAll({DateTime? through}) =>
-      _activeEvents(through: through).watch();
+  Stream<List<ExtraordinaryEvent>> watchAll({DateTime? through}) => _activeEvents(through: through).watch();
 
-  Future<List<ExtraordinaryEvent>> getAll({DateTime? through}) =>
-      _activeEvents(through: through).get();
+  Future<List<ExtraordinaryEvent>> getAll({DateTime? through}) => _activeEvents(through: through).get();
 
   Future<ExtraordinaryEvent> getById(int id) {
-    return (_db.select(_db.extraordinaryEvents)
-          ..where((e) => e.id.equals(id)))
-        .getSingle();
+    return (_db.select(_db.extraordinaryEvents)..where((e) => e.id.equals(id))).getSingle();
   }
 
   Stream<ExtraordinaryEvent> watchById(int id) {
-    return (_db.select(_db.extraordinaryEvents)
-          ..where((e) => e.id.equals(id)))
-        .watchSingle();
+    return (_db.select(_db.extraordinaryEvents)..where((e) => e.id.equals(id))).watchSingle();
   }
 
   Future<int> create({
@@ -94,30 +86,33 @@ class ExtraordinaryEventService {
         throw ArgumentError('spread treatment requires stepFrequency, spreadStart, spreadEnd');
       }
     }
-    if (isEphemeral &&
-        (direction != EventDirection.inflow || treatment != EventTreatment.instant)) {
+    if (isEphemeral && (direction != EventDirection.inflow || treatment != EventTreatment.instant)) {
       throw ArgumentError(
         'isEphemeral is only valid for inflow/instant events',
       );
     }
-    _log.info('create: name=$name, $direction/$treatment, amount=$totalAmount'
-        '${isEphemeral ? ', ephemeral' : ''}');
-    final id = await _db.into(_db.extraordinaryEvents).insert(
-      ExtraordinaryEventsCompanion.insert(
-        name: name,
-        direction: direction,
-        treatment: treatment,
-        totalAmount: totalAmount,
-        currency: Value(currency),
-        eventDate: eventDate,
-        transactionId: Value(transactionId),
-        stepFrequency: Value(stepFrequency),
-        spreadStart: Value(spreadStart),
-        spreadEnd: Value(spreadEnd),
-        notes: Value(notes),
-        isEphemeral: Value(isEphemeral),
-      ),
+    _log.info(
+      'create: name=$name, $direction/$treatment, amount=$totalAmount'
+      '${isEphemeral ? ', ephemeral' : ''}',
     );
+    final id = await _db
+        .into(_db.extraordinaryEvents)
+        .insert(
+          ExtraordinaryEventsCompanion.insert(
+            name: name,
+            direction: direction,
+            treatment: treatment,
+            totalAmount: totalAmount,
+            currency: Value(currency),
+            eventDate: eventDate,
+            transactionId: Value(transactionId),
+            stepFrequency: Value(stepFrequency),
+            spreadStart: Value(spreadStart),
+            spreadEnd: Value(spreadEnd),
+            notes: Value(notes),
+            isEphemeral: Value(isEphemeral),
+          ),
+        );
     if (treatment == EventTreatment.spread) {
       await generateScheduledEntries(id);
     }
@@ -126,9 +121,9 @@ class ExtraordinaryEventService {
 
   Future<bool> update(int id, ExtraordinaryEventsCompanion companion) async {
     _log.info('update: id=$id');
-    final rows = await (_db.update(_db.extraordinaryEvents)
-          ..where((e) => e.id.equals(id)))
-        .write(companion.copyWith(updatedAt: Value(DateTime.now())));
+    final rows = await (_db.update(
+      _db.extraordinaryEvents,
+    )..where((e) => e.id.equals(id))).write(companion.copyWith(updatedAt: Value(DateTime.now())));
     if (rows > 0) {
       final event = await getById(id);
       if (event.treatment == EventTreatment.spread) {
@@ -136,11 +131,9 @@ class ExtraordinaryEventService {
       } else {
         // Treatment changed away from spread — drop any leftover scheduled
         // entries so they don't show up as ghost rows on the event timeline.
-        await (_db.delete(_db.extraordinaryEventEntries)
-              ..where((e) =>
-                  e.eventId.equals(id) &
-                  e.entryKind.equalsValue(EventEntryKind.scheduled)))
-            .go();
+        await (_db.delete(
+          _db.extraordinaryEventEntries,
+        )..where((e) => e.eventId.equals(id) & e.entryKind.equalsValue(EventEntryKind.scheduled))).go();
       }
     }
     return rows > 0;
@@ -196,30 +189,32 @@ class ExtraordinaryEventService {
     final stepAmount = amountToSpread / dates.length;
     // Sign flip: outflow entries reduce saving (negative); inflow entries add (positive).
     final signedStep = event.direction == EventDirection.outflow ? -stepAmount : stepAmount;
-    _log.info('generateScheduledEntries: event=$eventId, ${dates.length} steps, '
-        'signedStep=$signedStep');
+    _log.info(
+      'generateScheduledEntries: event=$eventId, ${dates.length} steps, '
+      'signedStep=$signedStep',
+    );
 
     await _db.transaction(() async {
-      await (_db.delete(_db.extraordinaryEventEntries)
-            ..where((e) =>
-                e.eventId.equals(eventId) &
-                e.entryKind.equalsValue(EventEntryKind.scheduled)))
-          .go();
+      await (_db.delete(
+        _db.extraordinaryEventEntries,
+      )..where((e) => e.eventId.equals(eventId) & e.entryKind.equalsValue(EventEntryKind.scheduled))).go();
 
       var cumulative = 0.0;
       for (final date in dates) {
         cumulative += stepAmount;
         final remaining = amountToSpread - cumulative;
-        await _db.into(_db.extraordinaryEventEntries).insert(
-          ExtraordinaryEventEntriesCompanion.insert(
-            eventId: eventId,
-            date: date,
-            amount: signedStep,
-            entryKind: EventEntryKind.scheduled,
-            cumulative: Value(cumulative),
-            remaining: Value(remaining.abs() < 0.01 ? 0 : remaining),
-          ),
-        );
+        await _db
+            .into(_db.extraordinaryEventEntries)
+            .insert(
+              ExtraordinaryEventEntriesCompanion.insert(
+                eventId: eventId,
+                date: date,
+                amount: signedStep,
+                entryKind: EventEntryKind.scheduled,
+                cumulative: Value(cumulative),
+                remaining: Value(remaining.abs() < 0.01 ? 0 : remaining),
+              ),
+            );
       }
     });
   }
@@ -229,13 +224,15 @@ class ExtraordinaryEventService {
     // Net reimbursement: a negative entry is a refund/clawback and must
     // *reduce* the total, not add to it (which is what SUM(ABS) does).
     // ABS-after-SUM keeps the magnitude positive without double-counting.
-    final result = await _db.customSelect(
-      'SELECT COALESCE(ABS(SUM(amount)), 0.0) AS total '
-      'FROM buffer_transactions '
-      'WHERE buffer_id = ? AND is_reimbursement = 1',
-      variables: [Variable.withInt(event.bufferId!)],
-      readsFrom: {_db.bufferTransactions},
-    ).getSingle();
+    final result = await _db
+        .customSelect(
+          'SELECT COALESCE(ABS(SUM(amount)), 0.0) AS total '
+          'FROM buffer_transactions '
+          'WHERE buffer_id = ? AND is_reimbursement = 1',
+          variables: [Variable.withInt(event.bufferId!)],
+          readsFrom: {_db.bufferTransactions},
+        )
+        .getSingle();
     return result.read<double>('total');
   }
 
@@ -252,15 +249,17 @@ class ExtraordinaryEventService {
     // Sign rule: inflow/manual restores saving (positive).
     //            outflow/manual reduces saving (negative).
     final signed = event.direction == EventDirection.inflow ? amount.abs() : -amount.abs();
-    return _db.into(_db.extraordinaryEventEntries).insert(
-      ExtraordinaryEventEntriesCompanion.insert(
-        eventId: eventId,
-        date: date,
-        amount: signed,
-        entryKind: EventEntryKind.manual,
-        description: Value(description),
-      ),
-    );
+    return _db
+        .into(_db.extraordinaryEventEntries)
+        .insert(
+          ExtraordinaryEventEntriesCompanion.insert(
+            eventId: eventId,
+            date: date,
+            amount: signed,
+            entryKind: EventEntryKind.manual,
+            description: Value(description),
+          ),
+        );
   }
 
   Future<void> deleteEntry(int entryId) async {
@@ -273,8 +272,7 @@ class ExtraordinaryEventService {
     int eventId, {
     DateTime? through,
   }) {
-    final query = _db.select(_db.extraordinaryEventEntries)
-      ..where((e) => e.eventId.equals(eventId));
+    final query = _db.select(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(eventId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((e) => e.date.isSmallerThanValue(endExclusive));
@@ -287,8 +285,7 @@ class ExtraordinaryEventService {
     int eventId, {
     DateTime? through,
   }) {
-    final query = _db.select(_db.extraordinaryEventEntries)
-      ..where((e) => e.eventId.equals(eventId));
+    final query = _db.select(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(eventId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((e) => e.date.isSmallerThanValue(endExclusive));
@@ -302,16 +299,12 @@ class ExtraordinaryEventService {
   Stream<Map<int, ExtraordinaryEventStats>> watchStatsForAll({
     DateTime? through,
   }) {
-    final eventStream = (_db.select(_db.extraordinaryEvents)
-          ..where((e) => e.isActive.equals(true)))
-        .watch();
+    final eventStream = (_db.select(_db.extraordinaryEvents)..where((e) => e.isActive.equals(true))).watch();
 
     return eventStream.asyncMap((events) async {
       final endExclusive = _throughEndExclusive(through);
       if (endExclusive != null) {
-        events = events
-            .where((e) => e.eventDate.isBefore(endExclusive))
-            .toList();
+        events = events.where((e) => e.eventDate.isBefore(endExclusive)).toList();
       }
       if (events.isEmpty) return <int, ExtraordinaryEventStats>{};
 
@@ -320,20 +313,22 @@ class ExtraordinaryEventService {
       final bounded = through != null;
 
       // Batch query: entry stats per event (use absolute amounts for allocated total)
-      final entryStats = await _db.customSelect(
-        'SELECT event_id, COUNT(*) AS cnt, '
-        'COALESCE(SUM(ABS(amount)), 0.0) AS total_allocated, '
-        'MIN(date) AS first_date, MAX(date) AS last_date '
-        'FROM extraordinary_event_entries '
-        'WHERE event_id IN ($placeholders) '
-        "${bounded ? 'AND date < ? ' : ''}"
-        'GROUP BY event_id',
-        variables: [
-          for (final id in ids) Variable.withInt(id),
-          ..._throughVars(through),
-        ],
-        readsFrom: {_db.extraordinaryEventEntries},
-      ).get();
+      final entryStats = await _db
+          .customSelect(
+            'SELECT event_id, COUNT(*) AS cnt, '
+            'COALESCE(SUM(ABS(amount)), 0.0) AS total_allocated, '
+            'MIN(date) AS first_date, MAX(date) AS last_date '
+            'FROM extraordinary_event_entries '
+            'WHERE event_id IN ($placeholders) '
+            "${bounded ? 'AND date < ? ' : ''}"
+            'GROUP BY event_id',
+            variables: [
+              for (final id in ids) Variable.withInt(id),
+              ..._throughVars(through),
+            ],
+            readsFrom: {_db.extraordinaryEventEntries},
+          )
+          .get();
 
       final entryStatsMap = <int, QueryRow>{};
       for (final row in entryStats) {
@@ -341,28 +336,27 @@ class ExtraordinaryEventService {
       }
 
       // Reimbursement totals per linked buffer
-      final bufferIds = events
-          .where((e) => e.bufferId != null)
-          .map((e) => e.bufferId!)
-          .toList();
+      final bufferIds = events.where((e) => e.bufferId != null).map((e) => e.bufferId!).toList();
 
       final reimbursedMap = <int, double>{};
       if (bufferIds.isNotEmpty) {
         final bufPlaceholders = bufferIds.map((_) => '?').join(', ');
-        final reimbRows = await _db.customSelect(
-          // Net reimbursement: refunds (negative entries) reduce the total;
-          // SUM(ABS) would double-count them. See _totalReimbursed.
-          'SELECT buffer_id, COALESCE(ABS(SUM(amount)), 0.0) AS total '
-          'FROM buffer_transactions '
-          'WHERE buffer_id IN ($bufPlaceholders) AND is_reimbursement = 1 '
-          "${bounded ? 'AND value_date < ? ' : ''}"
-          'GROUP BY buffer_id',
-          variables: [
-            for (final id in bufferIds) Variable.withInt(id),
-            ..._throughVars(through),
-          ],
-          readsFrom: {_db.bufferTransactions},
-        ).get();
+        final reimbRows = await _db
+            .customSelect(
+              // Net reimbursement: refunds (negative entries) reduce the total;
+              // SUM(ABS) would double-count them. See _totalReimbursed.
+              'SELECT buffer_id, COALESCE(ABS(SUM(amount)), 0.0) AS total '
+              'FROM buffer_transactions '
+              'WHERE buffer_id IN ($bufPlaceholders) AND is_reimbursement = 1 '
+              "${bounded ? 'AND value_date < ? ' : ''}"
+              'GROUP BY buffer_id',
+              variables: [
+                for (final id in bufferIds) Variable.withInt(id),
+                ..._throughVars(through),
+              ],
+              readsFrom: {_db.bufferTransactions},
+            )
+            .get();
         for (final row in reimbRows) {
           reimbursedMap[row.read<int>('buffer_id')] = row.read<double>('total');
         }
@@ -373,12 +367,8 @@ class ExtraordinaryEventService {
         final eRow = entryStatsMap[ev.id];
         final cnt = eRow?.read<int>('cnt') ?? 0;
         final totalAllocated = eRow?.read<double>('total_allocated') ?? 0.0;
-        final firstDate = cnt > 0
-            ? DateTime.fromMillisecondsSinceEpoch(eRow!.read<int>('first_date') * 1000)
-            : null;
-        final lastDate = cnt > 0
-            ? DateTime.fromMillisecondsSinceEpoch(eRow!.read<int>('last_date') * 1000)
-            : null;
+        final firstDate = cnt > 0 ? DateTime.fromMillisecondsSinceEpoch(eRow!.read<int>('first_date') * 1000) : null;
+        final lastDate = cnt > 0 ? DateTime.fromMillisecondsSinceEpoch(eRow!.read<int>('last_date') * 1000) : null;
         final reimbursed = ev.bufferId != null ? (reimbursedMap[ev.bufferId!] ?? 0.0) : 0.0;
         final remaining = (ev.totalAmount - totalAllocated).clamp(0.0, double.infinity).toDouble();
 
@@ -419,14 +409,17 @@ class ExtraordinaryEventService {
       throw StateError('Buffers are only supported on spread events');
     }
     _log.info('createLinkedBuffer: event=$eventId (${event.name})');
-    final bufferId = await _db.into(_db.buffers).insert(
-      BuffersCompanion.insert(
-        name: event.name,
-        linkedEventId: Value(eventId),
-      ),
-    );
-    await (_db.update(_db.extraordinaryEvents)..where((e) => e.id.equals(eventId)))
-        .write(ExtraordinaryEventsCompanion(bufferId: Value(bufferId)));
+    final bufferId = await _db
+        .into(_db.buffers)
+        .insert(
+          BuffersCompanion.insert(
+            name: event.name,
+            linkedEventId: Value(eventId),
+          ),
+        );
+    await (_db.update(
+      _db.extraordinaryEvents,
+    )..where((e) => e.id.equals(eventId))).write(ExtraordinaryEventsCompanion(bufferId: Value(bufferId)));
     return bufferId;
   }
 }

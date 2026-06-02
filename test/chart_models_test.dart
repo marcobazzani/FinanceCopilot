@@ -2,8 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart'
-    show ChartSeries, buildTotalSpots, toDayKey;
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show ChartSeries, buildTotalSpots, toDayKey;
 
 void main() {
   group('ChartSeries', () {

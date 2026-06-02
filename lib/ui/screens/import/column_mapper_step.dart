@@ -5,7 +5,6 @@ part of 'import_screen.dart';
 // ──────────────────────────────────────────────
 
 extension _ColumnMapperStep on _ImportScreenState {
-
   Widget _buildColumnMapper() {
     final s = ref.watch(appStringsProvider);
     final preview = _preview;
@@ -22,9 +21,21 @@ extension _ColumnMapperStep on _ImportScreenState {
               Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
               SegmentedButton<ImportTarget>(
                 segments: [
-                  ButtonSegment(value: ImportTarget.transaction, icon: const Icon(Icons.receipt_long, size: 18), label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.assetEvent, icon: const Icon(Icons.trending_up, size: 18), label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.income, icon: const Icon(Icons.payments, size: 18), label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12))),
+                  ButtonSegment(
+                    value: ImportTarget.transaction,
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ImportTarget.assetEvent,
+                    icon: const Icon(Icons.trending_up, size: 18),
+                    label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ImportTarget.income,
+                    icon: const Icon(Icons.payments, size: 18),
+                    label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12)),
+                  ),
                 ],
                 selected: {_target},
                 showSelectedIcon: false,
@@ -68,10 +79,8 @@ extension _ColumnMapperStep on _ImportScreenState {
               label: Text(s.pasteFromClipboard),
               onPressed: _parsing ? null : _pasteFromClipboard,
             ),
-            if (_filePath != null)
-              Chip(label: Text(_filePath!.split('/').last)),
-            if (_filePath == null && _preview != null)
-              Chip(label: Text(s.clipboardData)),
+            if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
+            if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
             if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
           ],
         ),
@@ -87,9 +96,7 @@ extension _ColumnMapperStep on _ImportScreenState {
             ignoring: preview == null,
             child: Opacity(
               opacity: preview == null ? 0.4 : 1.0,
-              child: _isQuickMode && preview != null
-                  ? _buildQuickConfirm(preview)
-                  : _buildMappingContent(preview),
+              child: _isQuickMode && preview != null ? _buildQuickConfirm(preview) : _buildMappingContent(preview),
             ),
           ),
         ),
@@ -118,9 +125,7 @@ extension _ColumnMapperStep on _ImportScreenState {
         // a previously-imported pension asset has rows there even though
         // it has no external feed. valuation_method is the source of
         // truth ('eventDriven' vs 'marketPrice').
-        final manual = assets
-            .where((a) => a.valuationMethod == ValuationMethod.eventDriven)
-            .toList();
+        final manual = assets.where((a) => a.valuationMethod == ValuationMethod.eventDriven).toList();
         return Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -139,17 +144,22 @@ extension _ColumnMapperStep on _ImportScreenState {
                 items: manual.isEmpty
                     ? [DropdownMenuItem<int>(value: null, enabled: false, child: Text(s.noAssetsAvailable))]
                     : manual
-                        .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name, overflow: TextOverflow.ellipsis)))
-                        .toList(),
+                          .map(
+                            (a) => DropdownMenuItem(
+                              value: a.id,
+                              child: Text(a.name, overflow: TextOverflow.ellipsis),
+                            ),
+                          )
+                          .toList(),
                 onChanged: manual.isEmpty
                     ? null
                     : (v) => _setState(() {
-                          _singleAssetTargetId = v;
-                          if (v != null) {
-                            final picked = manual.firstWhere((a) => a.id == v);
-                            _selectedIntermediaryId = picked.intermediaryId;
-                          }
-                        }),
+                        _singleAssetTargetId = v;
+                        if (v != null) {
+                          final picked = manual.firstWhere((a) => a.id == v);
+                          _selectedIntermediaryId = picked.intermediaryId;
+                        }
+                      }),
               ),
             ),
             OutlinedButton.icon(
@@ -204,9 +214,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                 DropdownButtonFormField<int>(
                   initialValue: pickedIntermediary,
                   decoration: InputDecoration(labelText: s.intermediaryName),
-                  items: intermediaries
-                      .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name)))
-                      .toList(),
+                  items: intermediaries.map((i) => DropdownMenuItem(value: i.id, child: Text(i.name))).toList(),
                   onChanged: (v) => setLocal(() => pickedIntermediary = v),
                 ),
                 const SizedBox(height: 12),
@@ -224,7 +232,9 @@ extension _ColumnMapperStep on _ImportScreenState {
             FilledButton(
               onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
                   ? () async {
-                      final id = await ref.read(assetServiceProvider).create(
+                      final id = await ref
+                          .read(assetServiceProvider)
+                          .create(
                             name: nameCtrl.text.trim(),
                             currency: currency.isEmpty ? baseCurrency : currency,
                             valuationMethod: ValuationMethod.marketPrice,
@@ -258,14 +268,16 @@ extension _ColumnMapperStep on _ImportScreenState {
     return accountsAsync.when(
       data: (accounts) {
         if (accounts.isEmpty) {
-          return Row(children: [
-            Expanded(child: Text(s.noAccountsCreate, style: const TextStyle(fontSize: 13))),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: () => _showCreateAccountDialog(),
-              child: Text(s.createAccount),
-            ),
-          ]);
+          return Row(
+            children: [
+              Expanded(child: Text(s.noAccountsCreate, style: const TextStyle(fontSize: 13))),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () => _showCreateAccountDialog(),
+                child: Text(s.createAccount),
+              ),
+            ],
+          );
         }
         return Row(
           children: [

@@ -25,18 +25,22 @@ class BufferService {
     int? linkedEventId,
   }) {
     _log.info('create: name=$name, linkedEventId=$linkedEventId');
-    return _db.into(_db.buffers).insert(BuffersCompanion.insert(
-      name: name,
-      targetAmount: Value(targetAmount),
-      linkedEventId: Value(linkedEventId),
-    ));
+    return _db
+        .into(_db.buffers)
+        .insert(
+          BuffersCompanion.insert(
+            name: name,
+            targetAmount: Value(targetAmount),
+            linkedEventId: Value(linkedEventId),
+          ),
+        );
   }
 
   Future<bool> update(int id, BuffersCompanion companion) {
     _log.info('update: id=$id');
-    return (_db.update(_db.buffers)..where((b) => b.id.equals(id)))
-        .write(companion.copyWith(updatedAt: Value(DateTime.now())))
-        .then((rows) => rows > 0);
+    return (_db.update(
+      _db.buffers,
+    )..where((b) => b.id.equals(id))).write(companion.copyWith(updatedAt: Value(DateTime.now()))).then((rows) => rows > 0);
   }
 
   Future<int> delete(int id) async {
@@ -51,8 +55,7 @@ class BufferService {
     int bufferId, {
     DateTime? through,
   }) {
-    final query = _db.select(_db.bufferTransactions)
-      ..where((t) => t.bufferId.equals(bufferId));
+    final query = _db.select(_db.bufferTransactions)..where((t) => t.bufferId.equals(bufferId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
@@ -65,8 +68,7 @@ class BufferService {
     int bufferId, {
     DateTime? through,
   }) {
-    final query = _db.select(_db.bufferTransactions)
-      ..where((t) => t.bufferId.equals(bufferId));
+    final query = _db.select(_db.bufferTransactions)..where((t) => t.bufferId.equals(bufferId));
     final endExclusive = _throughEndExclusive(through);
     if (endExclusive != null) {
       query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
@@ -86,25 +88,25 @@ class BufferService {
   }) async {
     _log.info('createTransaction: bufferId=$bufferId, reimb=$isReimbursement');
     final balance = (await computeBalance(bufferId)) + amount;
-    return _db.into(_db.bufferTransactions).insert(
-      BufferTransactionsCompanion.insert(
-        bufferId: bufferId,
-        operationDate: operationDate,
-        valueDate: valueDate ?? operationDate,
-        description: Value(description),
-        amount: amount,
-        currency: Value(currency),
-        balanceAfter: balance,
-        isReimbursement: Value(isReimbursement),
-      ),
-    );
+    return _db
+        .into(_db.bufferTransactions)
+        .insert(
+          BufferTransactionsCompanion.insert(
+            bufferId: bufferId,
+            operationDate: operationDate,
+            valueDate: valueDate ?? operationDate,
+            description: Value(description),
+            amount: amount,
+            currency: Value(currency),
+            balanceAfter: balance,
+            isReimbursement: Value(isReimbursement),
+          ),
+        );
   }
 
   Future<bool> updateTransaction(int id, BufferTransactionsCompanion companion) {
     _log.info('updateTransaction: id=$id');
-    return (_db.update(_db.bufferTransactions)..where((t) => t.id.equals(id)))
-        .write(companion)
-        .then((rows) => rows > 0);
+    return (_db.update(_db.bufferTransactions)..where((t) => t.id.equals(id))).write(companion).then((rows) => rows > 0);
   }
 
   Future<int> deleteTransaction(int id) {
@@ -114,12 +116,14 @@ class BufferService {
 
   Future<double> computeBalance(int bufferId, {DateTime? through}) async {
     final bounded = through != null;
-    final row = await _db.customSelect(
-      'SELECT COALESCE(SUM(amount), 0.0) AS total '
-      'FROM buffer_transactions WHERE buffer_id = ? '
-      "${bounded ? 'AND value_date < ?' : ''}",
-      variables: [Variable.withInt(bufferId), ..._throughVars(through)],
-    ).getSingle();
+    final row = await _db
+        .customSelect(
+          'SELECT COALESCE(SUM(amount), 0.0) AS total '
+          'FROM buffer_transactions WHERE buffer_id = ? '
+          "${bounded ? 'AND value_date < ?' : ''}",
+          variables: [Variable.withInt(bufferId), ..._throughVars(through)],
+        )
+        .getSingle();
     return row.read<double>('total');
   }
 

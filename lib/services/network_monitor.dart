@@ -26,8 +26,7 @@ class NetworkMonitor {
     }
 
     try {
-      final result = await InternetAddress.lookup('api.github.com')
-          .timeout(const Duration(seconds: 5));
+      final result = await InternetAddress.lookup('api.github.com').timeout(const Duration(seconds: 5));
       _online = result.isNotEmpty && result.first.rawAddress.isNotEmpty;
     } on SocketException {
       _online = false;

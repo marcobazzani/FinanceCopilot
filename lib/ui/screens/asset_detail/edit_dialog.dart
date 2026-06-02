@@ -41,8 +41,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
   /// rebuild can't shift the format under us mid-edit.
   late final String _locale;
 
-  String _fmtDouble(double? v) =>
-      v == null ? '' : NumberFormat.decimalPattern(_locale).format(v);
+  String _fmtDouble(double? v) => v == null ? '' : NumberFormat.decimalPattern(_locale).format(v);
 
   @override
   void initState() {
@@ -113,9 +112,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       valuationMethod: _unlocked ? Value(_valuationMethod) : const Value.absent(),
       intermediaryId: _unlocked ? Value(_intermediaryId) : const Value.absent(),
       currency: _unlocked
-          ? Value(_currencyCtrl.text.trim().toUpperCase().isEmpty
-              ? widget.asset.currency
-              : _currencyCtrl.text.trim().toUpperCase())
+          ? Value(_currencyCtrl.text.trim().toUpperCase().isEmpty ? widget.asset.currency : _currencyCtrl.text.trim().toUpperCase())
           : const Value.absent(),
       taxRate: _unlocked
           ? Value(() {
@@ -183,29 +180,33 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
               const SizedBox(height: 16),
             ],
             if (widget.asset.valuationMethod != ValuationMethod.eventDriven)
-              Builder(builder: (_) {
-                // Defensive: if the asset's stored exchange isn't one of the
-                // canonical names (legacy code, provider variant, future
-                // additions), include it as an extra option so the dropdown
-                // can still render and the user can re-pick a canonical one.
-                final values = {...supportedExchanges, _selectedExchange};
-                return DropdownButtonFormField<String>(
-                  initialValue: _selectedExchange,
-                  decoration: InputDecoration(
-                    labelText: s.stockExchange,
-                    isDense: true,
-                  ),
-                  items: values
-                      .map((name) => DropdownMenuItem(
+              Builder(
+                builder: (_) {
+                  // Defensive: if the asset's stored exchange isn't one of the
+                  // canonical names (legacy code, provider variant, future
+                  // additions), include it as an extra option so the dropdown
+                  // can still render and the user can re-pick a canonical one.
+                  final values = {...supportedExchanges, _selectedExchange};
+                  return DropdownButtonFormField<String>(
+                    initialValue: _selectedExchange,
+                    decoration: InputDecoration(
+                      labelText: s.stockExchange,
+                      isDense: true,
+                    ),
+                    items: values
+                        .map(
+                          (name) => DropdownMenuItem(
                             value: name,
                             child: Text(name, style: const TextStyle(fontSize: 13)),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _selectedExchange = v);
-                  },
-                );
-              }),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _selectedExchange = v);
+                    },
+                  );
+                },
+              ),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -214,14 +215,19 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                     initialValue: _instrumentType,
                     decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
                     items: InstrumentType.values
-                        .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) {
                       if (v != null) {
                         setState(() {
-                        _instrumentType = v;
-                        _assetClass = defaultAssetClassFor(v);
-                      });
+                          _instrumentType = v;
+                          _assetClass = defaultAssetClassFor(v);
+                        });
                       }
                     },
                   ),
@@ -232,7 +238,12 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
                     initialValue: _assetClass,
                     decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
                     items: AssetClass.values
-                        .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) {
                       if (v != null) setState(() => _assetClass = v);
@@ -288,7 +299,12 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         initialValue: _assetType,
         decoration: InputDecoration(labelText: s.assetTypeFieldLabel, isDense: true),
         items: AssetType.values
-            .map((t) => DropdownMenuItem(value: t, child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13))))
+            .map(
+              (t) => DropdownMenuItem(
+                value: t,
+                child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13)),
+              ),
+            )
             .toList(),
         onChanged: (v) {
           if (v != null) setState(() => _assetType = v);
@@ -299,7 +315,12 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         initialValue: _valuationMethod,
         decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
         items: ValuationMethod.values
-            .map((m) => DropdownMenuItem(value: m, child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13))))
+            .map(
+              (m) => DropdownMenuItem(
+                value: m,
+                child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13)),
+              ),
+            )
             .toList(),
         onChanged: (v) {
           if (v != null) setState(() => _valuationMethod = v);
@@ -308,12 +329,15 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       const SizedBox(height: 12),
       if (intermediaries.isNotEmpty)
         DropdownButtonFormField<int>(
-          initialValue: intermediaries.any((i) => i.id == _intermediaryId)
-              ? _intermediaryId
-              : intermediaries.first.id,
+          initialValue: intermediaries.any((i) => i.id == _intermediaryId) ? _intermediaryId : intermediaries.first.id,
           decoration: InputDecoration(labelText: s.intermediary, isDense: true),
           items: intermediaries
-              .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name, style: const TextStyle(fontSize: 13))))
+              .map(
+                (i) => DropdownMenuItem(
+                  value: i.id,
+                  child: Text(i.name, style: const TextStyle(fontSize: 13)),
+                ),
+              )
               .toList(),
           onChanged: (v) {
             if (v != null) setState(() => _intermediaryId = v);
@@ -364,9 +388,7 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
           recoveryDefaultExchange: widget.asset.exchange ?? 'Milan',
           recoveryCacheKeyBuilder: (q) => widget.asset.isin?.isNotEmpty == true
               ? widget.asset.isin!
-              : (widget.asset.ticker?.isNotEmpty == true
-                  ? widget.asset.ticker!
-                  : q.toUpperCase()),
+              : (widget.asset.ticker?.isNotEmpty == true ? widget.asset.ticker! : q.toUpperCase()),
         ),
       ),
       actions: [

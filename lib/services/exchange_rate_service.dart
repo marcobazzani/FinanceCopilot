@@ -21,7 +21,6 @@ const backfillCurrenciesSql =
 
 final _log = getLogger('ExchangeRateService');
 
-
 /// Caches exchange rates in the DB.
 /// Uses the market data provider for live and sync rates.
 /// Historical lookups read from the DB.
@@ -31,15 +30,24 @@ class ExchangeRateService {
 
   /// Fixed set of target currencies to download (EUR is the base).
   static const targetCurrencies = [
-    'USD', 'GBP', 'CHF', 'JPY', 'SEK', 'NOK', 'DKK',
-    'PLN', 'CZK', 'HUF', 'CAD', 'AUD',
+    'USD',
+    'GBP',
+    'CHF',
+    'JPY',
+    'SEK',
+    'NOK',
+    'DKK',
+    'PLN',
+    'CZK',
+    'HUF',
+    'CAD',
+    'AUD',
   ];
 
   /// All supported currencies (including EUR as base).
   static const allCurrencies = ['EUR', ...targetCurrencies];
 
-  ExchangeRateService(this._db, {WebMarketDataService? providerService})
-      : _providerService = providerService;
+  ExchangeRateService(this._db, {WebMarketDataService? providerService}) : _providerService = providerService;
 
   // ──────────────────────────────────────────────
   // Sync
@@ -103,33 +111,36 @@ class ExchangeRateService {
 
     // Collect all distinct currencies used across the DB (including base currency)
     final rows = await _db.customSelect(backfillCurrenciesSql).get();
-    final currencies = rows.map((r) => r.read<String>('currency')).toSet()
-      ..remove('EUR'); // EUR is always the "from" side
+    final currencies = rows.map((r) => r.read<String>('currency')).toSet()..remove('EUR'); // EUR is always the "from" side
 
     if (currencies.isEmpty) return;
 
     // Find earliest date across all data. asset_events / transactions /
     // incomes use value_date (canonical per CLAUDE.md); market_prices has
     // a single date column.
-    final earliestRow = await _db.customSelect(
-      'SELECT MIN(d) AS earliest FROM ('
-      '  SELECT MIN(value_date) AS d FROM asset_events'
-      '  UNION ALL SELECT MIN(date) AS d FROM market_prices'
-      '  UNION ALL SELECT MIN(value_date) AS d FROM transactions'
-      '  UNION ALL SELECT MIN(value_date) AS d FROM incomes'
-      ')',
-    ).getSingleOrNull();
+    final earliestRow = await _db
+        .customSelect(
+          'SELECT MIN(d) AS earliest FROM ('
+          '  SELECT MIN(value_date) AS d FROM asset_events'
+          '  UNION ALL SELECT MIN(date) AS d FROM market_prices'
+          '  UNION ALL SELECT MIN(value_date) AS d FROM transactions'
+          '  UNION ALL SELECT MIN(value_date) AS d FROM incomes'
+          ')',
+        )
+        .getSingleOrNull();
     final earliestEpoch = earliestRow?.readNullable<int>('earliest');
     if (earliestEpoch == null) return;
     final since = DateTime.fromMillisecondsSinceEpoch(earliestEpoch * 1000);
 
     for (final currency in currencies) {
       // Check if EUR/X already has enough historical data
-      final countRow = await _db.customSelect(
-        'SELECT COUNT(DISTINCT date) AS cnt FROM exchange_rates '
-        "WHERE from_currency = 'EUR' AND to_currency = ?",
-        variables: [Variable.withString(currency)],
-      ).getSingle();
+      final countRow = await _db
+          .customSelect(
+            'SELECT COUNT(DISTINCT date) AS cnt FROM exchange_rates '
+            "WHERE from_currency = 'EUR' AND to_currency = ?",
+            variables: [Variable.withString(currency)],
+          )
+          .getSingle();
       final existingCount = countRow.read<int>('cnt');
       if (existingCount >= 100) {
         _log.fine('backfillHistoricalRates: EUR/$currency already has $existingCount dates, skipping');
@@ -164,9 +175,11 @@ class ExchangeRateService {
 
   /// Get the latest date stored in the exchange_rates table.
   Future<DateTime?> getLastSyncDate() async {
-    final row = await _db.customSelect(
-      'SELECT MAX(date) AS max_date FROM exchange_rates',
-    ).getSingleOrNull();
+    final row = await _db
+        .customSelect(
+          'SELECT MAX(date) AS max_date FROM exchange_rates',
+        )
+        .getSingleOrNull();
     return row?.readNullable<DateTime>('max_date');
   }
 
@@ -196,20 +209,21 @@ class ExchangeRateService {
   /// Look up rate for any [from]->[to] pair on or before [date].
   Future<double?> _lookupDirectRate(String from, String to, DateTime date) async {
     final epochSec = date.millisecondsSinceEpoch ~/ 1000;
-    final row = await _db.customSelect(
-      'SELECT rate FROM exchange_rates '
-      'WHERE from_currency = ? AND to_currency = ? '
-      'AND date <= ? ORDER BY date DESC LIMIT 1',
-      variables: [Variable.withString(from), Variable.withString(to), Variable.withInt(epochSec)],
-    ).getSingleOrNull();
+    final row = await _db
+        .customSelect(
+          'SELECT rate FROM exchange_rates '
+          'WHERE from_currency = ? AND to_currency = ? '
+          'AND date <= ? ORDER BY date DESC LIMIT 1',
+          variables: [Variable.withString(from), Variable.withString(to), Variable.withInt(epochSec)],
+        )
+        .getSingleOrNull();
     return row?.readNullable<double>('rate');
   }
 
   /// Convert [amount] from [from] currency to [to] currency at [date].
   /// Returns null when no rate is available — callers must surface or skip,
   /// not silently fall back to a wrong number.
-  Future<double?> convertAmount(
-      double amount, String from, String to, DateTime date) async {
+  Future<double?> convertAmount(double amount, String from, String to, DateTime date) async {
     if (from == to) return amount;
     final rate = await getRate(from, to, date);
     if (rate == null) {
@@ -250,9 +264,9 @@ class ExchangeRateService {
 
   /// Build an EUR↔[currency] companion pair for [date] at [rate] (EUR→[currency]).
   static List<ExchangeRatesCompanion> _eurRatePair(String currency, DateTime date, double rate) => [
-        ExchangeRatesCompanion(fromCurrency: const Value('EUR'), toCurrency: Value(currency), date: Value(date), rate: Value(rate)),
-        ExchangeRatesCompanion(fromCurrency: Value(currency), toCurrency: const Value('EUR'), date: Value(date), rate: Value(1.0 / rate)),
-      ];
+    ExchangeRatesCompanion(fromCurrency: const Value('EUR'), toCurrency: Value(currency), date: Value(date), rate: Value(rate)),
+    ExchangeRatesCompanion(fromCurrency: Value(currency), toCurrency: const Value('EUR'), date: Value(date), rate: Value(1.0 / rate)),
+  ];
 }
 
 /// Cached exchange rate resolver for chart computations.

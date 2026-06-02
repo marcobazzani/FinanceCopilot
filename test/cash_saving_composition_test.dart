@@ -2,8 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart'
-    show AllSeriesData, ChartSeries, buildTotalSpots;
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, ChartSeries, buildTotalSpots;
 
 // Fixture: a small AllSeriesData with two accounts, one invested asset,
 // one spread adjustment, one income adjustment.
@@ -57,10 +56,8 @@ AllSeriesData _fixture() {
 }
 
 void main() {
-  group('AllSeriesData cash/saving getters — pinning pre-refactor composition',
-      () {
-    test('cashSpots matches the old inline accounts+adjustments composition',
-        () {
+  group('AllSeriesData cash/saving getters — pinning pre-refactor composition', () {
+    test('cashSpots matches the old inline accounts+adjustments composition', () {
       final d = _fixture();
 
       // Old inline composition from cashflow_tab.dart/totals_table.dart/
@@ -77,9 +74,7 @@ void main() {
       }
     });
 
-    test(
-        'savingSpots matches the old inline accounts+invested+adjustments+incomeAdj composition',
-        () {
+    test('savingSpots matches the old inline accounts+invested+adjustments+incomeAdj composition', () {
       final d = _fixture();
 
       final oldSavingSpots = buildTotalSpots([
@@ -102,9 +97,7 @@ void main() {
       expect(keys, ['account:1', 'account:2', 'adjustment:1']);
     });
 
-    test(
-        'savingSeries has expected order: accounts + invested + adjustments + incomeAdj',
-        () {
+    test('savingSeries has expected order: accounts + invested + adjustments + incomeAdj', () {
       final d = _fixture();
       final keys = d.savingSeries.map((s) => s.key).toList();
       expect(keys, [

@@ -45,27 +45,26 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   late _SpreadMode _spreadMode;
   late bool _isEphemeral;
 
-  bool get _canBeEphemeral =>
-      _direction == EventDirection.inflow && _treatment == EventTreatment.instant;
+  bool get _canBeEphemeral => _direction == EventDirection.inflow && _treatment == EventTreatment.instant;
 
   bool get _isEditing => widget.event != null;
   String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
 
   DateTime get _spreadStart => switch (_spreadMode) {
-        _SpreadMode.backward => _boundaryDate,
-        _SpreadMode.startSteps => _boundaryDate,
-        _SpreadMode.forward => _eventDate,
-      };
+    _SpreadMode.backward => _boundaryDate,
+    _SpreadMode.startSteps => _boundaryDate,
+    _SpreadMode.forward => _eventDate,
+  };
 
   DateTime get _spreadEnd => switch (_spreadMode) {
-        _SpreadMode.backward => _eventDate,
-        _SpreadMode.forward => _boundaryDate,
-        _SpreadMode.startSteps => () {
-            final steps = int.tryParse(_stepsCtrl.text);
-            if (steps == null || steps < 1) return _boundaryDate;
-            return schedule_math.computeEndDate(_boundaryDate, steps, _stepFrequency);
-          }(),
-      };
+    _SpreadMode.backward => _eventDate,
+    _SpreadMode.forward => _boundaryDate,
+    _SpreadMode.startSteps => () {
+      final steps = int.tryParse(_stepsCtrl.text);
+      if (steps == null || steps < 1) return _boundaryDate;
+      return schedule_math.computeEndDate(_boundaryDate, steps, _stepFrequency);
+    }(),
+  };
 
   @override
   void initState() {
@@ -86,8 +85,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     _isEphemeral = e?.isEphemeral ?? false;
 
     // Infer spread mode from stored spread window (when editing spread events).
-    if (e != null && e.treatment == EventTreatment.spread &&
-        e.spreadStart != null && e.spreadEnd != null) {
+    if (e != null && e.treatment == EventTreatment.spread && e.spreadStart != null && e.spreadEnd != null) {
       final evNorm = DateTime(e.eventDate.year, e.eventDate.month, e.eventDate.day);
       final startNorm = DateTime(e.spreadStart!.year, e.spreadStart!.month, e.spreadStart!.day);
       final endNorm = DateTime(e.spreadEnd!.year, e.spreadEnd!.month, e.spreadEnd!.day);
@@ -100,9 +98,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
       } else {
         _spreadMode = _SpreadMode.startSteps;
         _boundaryDate = e.spreadStart!;
-        _stepsCtrl.text = schedule_math.computeStepDates(
-          e.spreadStart!, e.spreadEnd!, e.stepFrequency!
-        ).length.toString();
+        _stepsCtrl.text = schedule_math.computeStepDates(e.spreadStart!, e.spreadEnd!, e.stepFrequency!).length.toString();
       }
     } else {
       _spreadMode = _SpreadMode.forward;
@@ -301,9 +297,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                         child: DropdownButtonFormField<String>(
                           initialValue: _currency,
                           decoration: InputDecoration(labelText: s.currency),
-                          items: ExchangeRateService.allCurrencies
-                              .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                              .toList(),
+                          items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                           onChanged: (v) => setState(() => _currency = v ?? _baseCurrency),
                         ),
                       ),
@@ -331,9 +325,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                     DropdownButtonFormField<StepFrequency>(
                       initialValue: _stepFrequency,
                       decoration: InputDecoration(labelText: s.stepFrequencyLabel),
-                      items: StepFrequency.values
-                          .map((f) => DropdownMenuItem(value: f, child: Text(s.freqLabel(f))))
-                          .toList(),
+                      items: StepFrequency.values.map((f) => DropdownMenuItem(value: f, child: Text(s.freqLabel(f)))).toList(),
                       onChanged: (v) => setState(() => _stepFrequency = v ?? StepFrequency.monthly),
                     ),
                     const SizedBox(height: 12),
@@ -378,15 +370,15 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                       Text(
                         s.spreadPreview(previewDates.length, '${amtFmt.format(perStep)} $sym'),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${dateFmt.format(_spreadStart)} → ${dateFmt.format(_spreadEnd)}',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ],
@@ -426,7 +418,6 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
       ),
     );
   }
-
 }
 
 class _SectionCard extends StatelessWidget {
@@ -452,4 +443,3 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
-

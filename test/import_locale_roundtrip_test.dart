@@ -57,6 +57,7 @@ void main() {
         if (v is double) return xl.DoubleCellValue(v);
         return xl.TextCellValue(v.toString());
       }
+
       sheet.appendRow([
         xl.TextCellValue(r['date'] as String),
         xl.TextCellValue(r['valueDate'] as String),
@@ -71,23 +72,22 @@ void main() {
     return file;
   }
 
-  Future<int> seedAccount(String name) =>
-      db.into(db.accounts).insert(AccountsCompanion.insert(name: name));
+  Future<int> seedAccount(String name) => db.into(db.accounts).insert(AccountsCompanion.insert(name: name));
 
   /// Build the Fineco mappings: amount = Entrate + Uscite (formula).
   List<ColumnMapping> finecoMappings() => [
-        ColumnMapping(targetField: 'date', sourceColumn: 'Data_Operazione'),
-        ColumnMapping(targetField: 'valueDate', sourceColumn: 'Data_Valuta'),
-        ColumnMapping(
-          targetField: 'amount',
-          sourceColumn: '',
-          formulaTerms: const [
-            FormulaTerm(operator: '+', sourceColumn: 'Entrate'),
-            FormulaTerm(operator: '+', sourceColumn: 'Uscite'),
-          ],
-        ),
-        ColumnMapping(targetField: 'description', sourceColumn: 'Descrizione'),
-      ];
+    ColumnMapping(targetField: 'date', sourceColumn: 'Data_Operazione'),
+    ColumnMapping(targetField: 'valueDate', sourceColumn: 'Data_Valuta'),
+    ColumnMapping(
+      targetField: 'amount',
+      sourceColumn: '',
+      formulaTerms: const [
+        FormulaTerm(operator: '+', sourceColumn: 'Entrate'),
+        FormulaTerm(operator: '+', sourceColumn: 'Uscite'),
+      ],
+    ),
+    ColumnMapping(targetField: 'description', sourceColumn: 'Descrizione'),
+  ];
 
   /// Returns (preview sum, imported sum, imported count) for the given
   /// XLSX file under the given locale. Uses the *same* code paths the UI
@@ -144,12 +144,9 @@ void main() {
           appLocale: 'it_IT', // simulates an it_IT user (the bug condition)
         );
         expect(count, finecoRows.length, reason: 'all rows imported');
-        expect(previewSum, closeTo(expectedSum, 0.01),
-            reason: 'preview sum must match real cell math, locale=$locale');
-        expect(importedSum, closeTo(expectedSum, 0.01),
-            reason: 'imported sum must match real cell math, locale=$locale');
-        expect(previewSum, closeTo(importedSum, 0.01),
-            reason: 'preview ≡ import, locale=$locale');
+        expect(previewSum, closeTo(expectedSum, 0.01), reason: 'preview sum must match real cell math, locale=$locale');
+        expect(importedSum, closeTo(expectedSum, 0.01), reason: 'imported sum must match real cell math, locale=$locale');
+        expect(previewSum, closeTo(importedSum, 0.01), reason: 'preview ≡ import, locale=$locale');
       });
     }
 
@@ -221,12 +218,18 @@ void main() {
         ColumnMapping(targetField: 'description', sourceColumn: 'Descrizione'),
       ];
       final pv = await importer.previewTransactionImport(
-        preview: preview, mappings: mappings, accountId: accountId,
-        numberLocale: 'it_IT', appLocale: 'it_IT',
+        preview: preview,
+        mappings: mappings,
+        accountId: accountId,
+        numberLocale: 'it_IT',
+        appLocale: 'it_IT',
       );
       await importer.importTransactions(
-        preview: preview, mappings: mappings, accountId: accountId,
-        numberLocaleOverride: 'it_IT', appLocale: 'it_IT',
+        preview: preview,
+        mappings: mappings,
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        appLocale: 'it_IT',
       );
       final txns = await db.select(db.transactions).get();
       const expected = 100.5 + 50.25;

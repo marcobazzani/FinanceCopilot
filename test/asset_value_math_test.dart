@@ -41,7 +41,10 @@ void main() {
     test('returns 0 for zero quantity', () {
       expect(
         computeAssetBaseValue(
-          quantity: 0, price: 200, bondDivisor: 1, fxRate: 1.0,
+          quantity: 0,
+          price: 200,
+          bondDivisor: 1,
+          fxRate: 1.0,
         ),
         0.0,
       );
@@ -49,7 +52,10 @@ void main() {
 
     test('preserves sign of quantity (short position)', () {
       final value = computeAssetBaseValue(
-        quantity: -10, price: 100, bondDivisor: 1, fxRate: 1.0,
+        quantity: -10,
+        price: 100,
+        bondDivisor: 1,
+        fxRate: 1.0,
       );
       expect(value, -1000.0);
     });

@@ -51,8 +51,7 @@ class _CompositionSection extends ConsumerWidget {
       child: ExpansionTile(
         title: Row(
           children: [
-            Text(ss.composition,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(ss.composition, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const Spacer(),
             // Refresh: wipes rows and re-runs sync to fetch fresh market
             // data. Hidden when there's no data yet — nothing to refresh
@@ -97,44 +96,44 @@ class _CompositionSection extends ConsumerWidget {
               ),
             ),
             if (byType[type]?.isNotEmpty ?? false)
-              ...byType[type]!.map((c) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 1),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(c.name, style: const TextStyle(fontSize: 12)),
-                        ),
-                        SizedBox(
-                          width: 80,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(2),
-                                  child: LinearProgressIndicator(
-                                    value: (c.weight / 100).clamp(0, 1),
-                                    minHeight: 6,
-                                    backgroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest,
-                                  ),
+              ...byType[type]!.map(
+                (c) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(c.name, style: const TextStyle(fontSize: 12)),
+                      ),
+                      SizedBox(
+                        width: 80,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(2),
+                                child: LinearProgressIndicator(
+                                  value: (c.weight / 100).clamp(0, 1),
+                                  minHeight: 6,
+                                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              SizedBox(
-                                width: 38,
-                                child: Text(
-                                  '${c.weight.toStringAsFixed(1)}%',
-                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                  textAlign: TextAlign.right,
-                                ),
+                            ),
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 38,
+                              child: Text(
+                                '${c.weight.toStringAsFixed(1)}%',
+                                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                textAlign: TextAlign.right,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  )),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
           if (sourceUrl != null && sourceLabel != null)
             Padding(
@@ -147,8 +146,7 @@ class _CompositionSection extends ConsumerWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.open_in_new,
-                          size: 14, color: Theme.of(context).colorScheme.primary),
+                      Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 6),
                       Text(
                         sourceLabel,
@@ -183,8 +181,7 @@ class _CompositionSection extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmRefresh(
-      BuildContext context, WidgetRef ref, AppStrings ss) async {
+  Future<void> _confirmRefresh(BuildContext context, WidgetRef ref, AppStrings ss) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -222,12 +219,10 @@ class _CompositionEditorDialog extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_CompositionEditorDialog> createState() =>
-      _CompositionEditorDialogState();
+  ConsumerState<_CompositionEditorDialog> createState() => _CompositionEditorDialogState();
 }
 
-class _CompositionEditorDialogState
-    extends ConsumerState<_CompositionEditorDialog> {
+class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDialog> {
   late final List<TextEditingController> _nameCtrls;
   late final List<TextEditingController> _weightCtrls;
   late final String _locale;
@@ -241,8 +236,7 @@ class _CompositionEditorDialogState
       for (final e in widget.initial) TextEditingController(text: e.name),
     ];
     _weightCtrls = [
-      for (final e in widget.initial)
-        TextEditingController(text: fmt.format(e.weight)),
+      for (final e in widget.initial) TextEditingController(text: fmt.format(e.weight)),
     ];
     if (_nameCtrls.isEmpty) {
       _nameCtrls.add(TextEditingController());
@@ -291,19 +285,17 @@ class _CompositionEditorDialogState
       if (name.isEmpty || weight == null || weight <= 0) continue;
       entries.add(CompositionEntry(name, weight));
     }
-    await ref
-        .read(compositionServiceProvider)
-        .setEntries(widget.assetId, widget.type, entries);
+    await ref.read(compositionServiceProvider).setEntries(widget.assetId, widget.type, entries);
     if (mounted) Navigator.pop(context);
   }
 
   String _typeLabel(AppStrings ss) => switch (widget.type) {
-        'assetclass' => ss.compositionAssetClass,
-        'country' => ss.compositionGeographic,
-        'sector' => ss.compositionSector,
-        'holding' => ss.compositionTopHoldings,
-        _ => widget.type,
-      };
+    'assetclass' => ss.compositionAssetClass,
+    'country' => ss.compositionGeographic,
+    'sector' => ss.compositionSector,
+    'holding' => ss.compositionTopHoldings,
+    _ => widget.type,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -343,8 +335,7 @@ class _CompositionEditorDialogState
                             labelText: ss.compositionEntryWeight,
                             isDense: true,
                           ),
-                          keyboardType:
-                              const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onChanged: (_) => setState(() {}),
                         ),
                       ),
@@ -389,8 +380,7 @@ class _CompositionEditorDialogState
         ),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context), child: Text(ss.cancel)),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(ss.cancel)),
         FilledButton(onPressed: _save, child: Text(ss.save)),
       ],
     );

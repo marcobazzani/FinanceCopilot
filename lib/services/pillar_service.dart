@@ -21,16 +21,11 @@ class PillarService {
 
   // ── Pillar CRUD ──
 
-  Future<List<Pillar>> getAll() => (_db.select(_db.pillars)
-        ..orderBy([(p) => OrderingTerm.asc(p.sortOrder)]))
-      .get();
+  Future<List<Pillar>> getAll() => (_db.select(_db.pillars)..orderBy([(p) => OrderingTerm.asc(p.sortOrder)])).get();
 
-  Stream<List<Pillar>> watchAll() => (_db.select(_db.pillars)
-        ..orderBy([(p) => OrderingTerm.asc(p.sortOrder)]))
-      .watch();
+  Stream<List<Pillar>> watchAll() => (_db.select(_db.pillars)..orderBy([(p) => OrderingTerm.asc(p.sortOrder)])).watch();
 
-  Future<Pillar?> getById(String id) =>
-      (_db.select(_db.pillars)..where((p) => p.id.equals(id))).getSingleOrNull();
+  Future<Pillar?> getById(String id) => (_db.select(_db.pillars)..where((p) => p.id.equals(id))).getSingleOrNull();
 
   Future<String> create({
     required String name,
@@ -39,18 +34,21 @@ class PillarService {
     String? portfolioModelId,
   }) async {
     final id = UuidV7.generate();
-    final maxSort = await (_db.selectOnly(_db.pillars)
-          ..addColumns([_db.pillars.sortOrder.max()]))
-        .map((row) => row.read(_db.pillars.sortOrder.max()))
-        .getSingleOrNull();
-    await _db.into(_db.pillars).insert(PillarsCompanion.insert(
-          id: id,
-          name: name,
-          targetValue: Value(targetValue),
-          targetCurrency: Value(targetCurrency),
-          portfolioModelId: Value(portfolioModelId),
-          sortOrder: Value((maxSort ?? -1) + 1),
-        ));
+    final maxSort = await (_db.selectOnly(
+      _db.pillars,
+    )..addColumns([_db.pillars.sortOrder.max()])).map((row) => row.read(_db.pillars.sortOrder.max())).getSingleOrNull();
+    await _db
+        .into(_db.pillars)
+        .insert(
+          PillarsCompanion.insert(
+            id: id,
+            name: name,
+            targetValue: Value(targetValue),
+            targetCurrency: Value(targetCurrency),
+            portfolioModelId: Value(portfolioModelId),
+            sortOrder: Value((maxSort ?? -1) + 1),
+          ),
+        );
     _log.info('create pillar id=$id name=$name');
     return id;
   }
@@ -66,19 +64,12 @@ class PillarService {
   }) async {
     final companion = PillarsCompanion(
       name: name == null ? const Value.absent() : Value(name),
-      targetValue: clearTargetValue
-          ? const Value(null)
-          : (targetValue == null ? const Value.absent() : Value(targetValue)),
-      targetCurrency: targetCurrency == null
-          ? const Value.absent()
-          : Value(targetCurrency),
-      portfolioModelId: clearPortfolioModel
-          ? const Value(null)
-          : (portfolioModelId == null ? const Value.absent() : Value(portfolioModelId)),
+      targetValue: clearTargetValue ? const Value(null) : (targetValue == null ? const Value.absent() : Value(targetValue)),
+      targetCurrency: targetCurrency == null ? const Value.absent() : Value(targetCurrency),
+      portfolioModelId: clearPortfolioModel ? const Value(null) : (portfolioModelId == null ? const Value.absent() : Value(portfolioModelId)),
       updatedAt: Value(DateTime.now()),
     );
-    await (_db.update(_db.pillars)..where((p) => p.id.equals(id)))
-        .write(companion);
+    await (_db.update(_db.pillars)..where((p) => p.id.equals(id))).write(companion);
   }
 
   Future<void> delete(String id) async {
@@ -88,8 +79,7 @@ class PillarService {
   Future<void> reorder(List<String> orderedIds) async {
     await _db.transaction(() async {
       for (var i = 0; i < orderedIds.length; i++) {
-        await (_db.update(_db.pillars)..where((p) => p.id.equals(orderedIds[i])))
-            .write(PillarsCompanion(sortOrder: Value(i)));
+        await (_db.update(_db.pillars)..where((p) => p.id.equals(orderedIds[i]))).write(PillarsCompanion(sortOrder: Value(i)));
       }
     });
   }
@@ -104,9 +94,7 @@ class PillarService {
     if (excludePillarId != null) {
       query.where(_db.pillarAssets.pillarId.equals(excludePillarId).not());
     }
-    final res = await query
-        .map((row) => row.read(_db.pillarAssets.quantity.sum()))
-        .getSingleOrNull();
+    final res = await query.map((row) => row.read(_db.pillarAssets.quantity.sum())).getSingleOrNull();
     return res ?? 0.0;
   }
 
@@ -139,10 +127,7 @@ class PillarService {
   }
 
   Future<double> qtyFor(String pillarId, int assetId) async {
-    final row = await (_db.select(_db.pillarAssets)
-          ..where((pa) =>
-              pa.pillarId.equals(pillarId) & pa.assetId.equals(assetId)))
-        .getSingleOrNull();
+    final row = await (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId) & pa.assetId.equals(assetId))).getSingleOrNull();
     return row?.quantity ?? 0.0;
   }
 
@@ -167,7 +152,9 @@ class PillarService {
     if (qty > available + 1e-9) {
       throw PillarOverAssignedException(assetId, qty, available);
     }
-    await _db.into(_db.pillarAssets).insertOnConflictUpdate(
+    await _db
+        .into(_db.pillarAssets)
+        .insertOnConflictUpdate(
           PillarAssetsCompanion.insert(
             pillarId: pillarId,
             assetId: assetId,
@@ -180,10 +167,7 @@ class PillarService {
     required String pillarId,
     required int assetId,
   }) async {
-    await (_db.delete(_db.pillarAssets)
-          ..where((pa) =>
-              pa.pillarId.equals(pillarId) & pa.assetId.equals(assetId)))
-        .go();
+    await (_db.delete(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId) & pa.assetId.equals(assetId))).go();
   }
 
   /// Batch-apply a map of (assetId → quantity) to one pillar in a single
@@ -200,8 +184,7 @@ class PillarService {
       }
       if (entry.value == 0) continue;
       final total = await _totalQuantity(entry.key);
-      final otherAssigned =
-          await _sumAssigned(entry.key, excludePillarId: pillarId);
+      final otherAssigned = await _sumAssigned(entry.key, excludePillarId: pillarId);
       final available = total - otherAssigned;
       if (entry.value > available + 1e-9) {
         throw PillarOverAssignedException(entry.key, entry.value, available);
@@ -210,13 +193,11 @@ class PillarService {
     await _db.transaction(() async {
       for (final entry in qtyByAsset.entries) {
         if (entry.value == 0) {
-          await (_db.delete(_db.pillarAssets)
-                ..where((pa) =>
-                    pa.pillarId.equals(pillarId) &
-                    pa.assetId.equals(entry.key)))
-              .go();
+          await (_db.delete(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId) & pa.assetId.equals(entry.key))).go();
         } else {
-          await _db.into(_db.pillarAssets).insertOnConflictUpdate(
+          await _db
+              .into(_db.pillarAssets)
+              .insertOnConflictUpdate(
                 PillarAssetsCompanion.insert(
                   pillarId: pillarId,
                   assetId: entry.key,
@@ -237,7 +218,9 @@ class PillarService {
     if (fit <= 0) {
       await unassign(pillarId: pillarId, assetId: assetId);
     } else {
-      await _db.into(_db.pillarAssets).insertOnConflictUpdate(
+      await _db
+          .into(_db.pillarAssets)
+          .insertOnConflictUpdate(
             PillarAssetsCompanion.insert(
               pillarId: pillarId,
               assetId: assetId,
@@ -251,21 +234,14 @@ class PillarService {
 
   /// All rows for one pillar, joined as (assetId, qty in pillar).
   Future<List<({int assetId, double quantity})>> assetsInPillar(String pillarId) async {
-    final rows = await (_db.select(_db.pillarAssets)
-          ..where((pa) => pa.pillarId.equals(pillarId)))
-        .get();
-    return rows
-        .map((r) => (assetId: r.assetId, quantity: r.quantity))
-        .toList();
+    final rows = await (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId))).get();
+    return rows.map((r) => (assetId: r.assetId, quantity: r.quantity)).toList();
   }
 
   Stream<List<PillarAsset>> watchAssetsInPillar(String pillarId) =>
-      (_db.select(_db.pillarAssets)
-            ..where((pa) => pa.pillarId.equals(pillarId)))
-          .watch();
+      (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId))).watch();
 
-  Stream<List<PillarAsset>> watchAllAssignments() =>
-      _db.select(_db.pillarAssets).watch();
+  Stream<List<PillarAsset>> watchAllAssignments() => _db.select(_db.pillarAssets).watch();
 
   /// For each asset id, returns its current fraction in this pillar
   /// (`pillar_qty / total_qty`). Used to scope dashboard time series.
@@ -283,15 +259,13 @@ class PillarService {
 
   /// Returns the assets with rows that exceed their current total (after a sell).
   /// Each entry is (pillarId, assetId, storedQty, totalQty).
-  Future<List<({String pillarId, int assetId, double stored, double total})>>
-      detectOverAssigned() async {
+  Future<List<({String pillarId, int assetId, double stored, double total})>> detectOverAssigned() async {
     final rows = await _db.select(_db.pillarAssets).get();
     final out = <({String pillarId, int assetId, double stored, double total})>[];
     final byAsset = <int, double>{};
     final assignedPerAsset = <int, double>{};
     for (final r in rows) {
-      assignedPerAsset[r.assetId] =
-          (assignedPerAsset[r.assetId] ?? 0) + r.quantity;
+      assignedPerAsset[r.assetId] = (assignedPerAsset[r.assetId] ?? 0) + r.quantity;
     }
     for (final assetId in assignedPerAsset.keys) {
       byAsset[assetId] = await _totalQuantity(assetId);

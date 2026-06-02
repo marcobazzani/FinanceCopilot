@@ -12,15 +12,19 @@ void main() {
   late int iid;
 
   Future<int> createAsset(String name, {String currency = 'EUR'}) async {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-          name: name,
-          assetType: AssetType.stockEtf,
-          instrumentType: const Value(InstrumentType.etf),
-          assetClass: const Value(AssetClass.equity),
-          valuationMethod: ValuationMethod.eventDriven,
-          intermediaryId: iid,
-          currency: Value(currency),
-        ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.stockEtf,
+            instrumentType: const Value(InstrumentType.etf),
+            assetClass: const Value(AssetClass.equity),
+            valuationMethod: ValuationMethod.eventDriven,
+            intermediaryId: iid,
+            currency: Value(currency),
+          ),
+        );
   }
 
   Future<List<MarketPrice>> pricesFor(int assetId) async {
@@ -260,32 +264,44 @@ void main() {
       final assetId = await createAsset('Manual EUR');
       // Bypass the service so the resync hook does NOT run (simulates a DB
       // populated before this fix landed).
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-            assetId: assetId,
-            date: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            type: EventType.buy,
-            amount: 1000.0,
-            quantity: const Value(10.0),
-            currency: const Value('EUR'),
-          ));
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-            assetId: assetId,
-            date: DateTime(2024, 1, 5),
-            valueDate: DateTime(2024, 1, 5),
-            type: EventType.revalue,
-            amount: 1200.0,
-            currency: const Value('EUR'),
-          ));
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-            assetId: assetId,
-            date: DateTime(2024, 1, 10),
-            valueDate: DateTime(2024, 1, 10),
-            type: EventType.buy,
-            amount: 500.0,
-            quantity: const Value(5.0),
-            currency: const Value('EUR'),
-          ));
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 1, 1),
+              type: EventType.buy,
+              amount: 1000.0,
+              quantity: const Value(10.0),
+              currency: const Value('EUR'),
+            ),
+          );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 5),
+              valueDate: DateTime(2024, 1, 5),
+              type: EventType.revalue,
+              amount: 1200.0,
+              currency: const Value('EUR'),
+            ),
+          );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              type: EventType.buy,
+              amount: 500.0,
+              quantity: const Value(5.0),
+              currency: const Value('EUR'),
+            ),
+          );
       // Pre-fix DB has no market_prices rows for revalues.
       final pricesBefore = await pricesFor(assetId);
       expect(pricesBefore, isEmpty);
@@ -320,12 +336,16 @@ void main() {
     test('8. existing investing.com prices on other dates are preserved', () async {
       final assetId = await createAsset('Manual EUR');
       // Pretend an investing.com price tick was already stored on day 3
-      await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
-            assetId: assetId,
-            date: DateTime(2024, 1, 3),
-            closePrice: 99.0,
-            currency: 'EUR',
-          ));
+      await db
+          .into(db.marketPrices)
+          .insert(
+            MarketPricesCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 3),
+              closePrice: 99.0,
+              currency: 'EUR',
+            ),
+          );
       // Buy on day 1
       await service.create(
         assetId: assetId,
@@ -360,8 +380,7 @@ void main() {
     // the same anchoring guarantees as the buy-only tests above, but
     // for the cashflow-only path that PPP / Riester / UK SIPP rely on.
 
-    test('1. contribute-only asset: revalue close_price = amount / Σ qty',
-        () async {
+    test('1. contribute-only asset: revalue close_price = amount / Σ qty', () async {
       final assetId = await createAsset('PPP-shape');
       // 3 monthly contributes of 100 each → qty = 300.
       for (var m = 1; m <= 3; m++) {
@@ -390,8 +409,7 @@ void main() {
       expect(prices.first.closePrice, closeTo(1.05, 0.0001));
     });
 
-    test('2. pre-revalue contribute reduces close_price (more denominator)',
-        () async {
+    test('2. pre-revalue contribute reduces close_price (more denominator)', () async {
       final assetId = await createAsset('PPP-shape');
       // First contribute + revalue: 100 contrib, 110 position → 1.10.
       await service.create(
@@ -427,12 +445,10 @@ void main() {
         currency: 'EUR',
       );
       prices = await pricesFor(assetId);
-      expect(prices.first.closePrice, closeTo(0.55, 0.0001),
-          reason: 'pre-revalue contribute must reduce the close_price');
+      expect(prices.first.closePrice, closeTo(0.55, 0.0001), reason: 'pre-revalue contribute must reduce the close_price');
     });
 
-    test('3. post-revalue contribute does NOT shift close_price',
-        () async {
+    test('3. post-revalue contribute does NOT shift close_price', () async {
       final assetId = await createAsset('PPP-shape');
       await service.create(
         assetId: assetId,
@@ -467,8 +483,7 @@ void main() {
         currency: 'EUR',
       );
       prices = await pricesFor(assetId);
-      expect(prices.first.closePrice, closeTo(1.10, 0.0001),
-          reason: 'post-revalue contribute must NOT shift the anchored price');
+      expect(prices.first.closePrice, closeTo(1.10, 0.0001), reason: 'post-revalue contribute must NOT shift the anchored price');
     });
   });
 }

@@ -121,7 +121,15 @@ List<KpiCategory> computeKpis({
       name: s.kpiLiquidityRatio,
       value: liquidityRatio,
       rating: liquidityRating,
-      description: s.kpiLiquidityDesc(liquidityRating == Rating.ottimo ? 'ottimo' : liquidityRating == Rating.buono ? 'buono' : liquidityRating == Rating.sufficiente ? 'sufficiente' : 'scarso'),
+      description: s.kpiLiquidityDesc(
+        liquidityRating == Rating.ottimo
+            ? 'ottimo'
+            : liquidityRating == Rating.buono
+            ? 'buono'
+            : liquidityRating == Rating.sufficiente
+            ? 'sufficiente'
+            : 'scarso',
+      ),
       formula: 'Cash / Net Worth x 100\n${n(cash)} / ${n(netWorth)} x 100',
     ),
     HealthKpi(
@@ -136,7 +144,15 @@ List<KpiCategory> computeKpis({
       name: s.kpiSavingsRate,
       value: savingsRate,
       rating: savingsRating,
-      description: s.kpiSavingsDesc(savingsRating == Rating.ottimo ? 'ottimo' : savingsRating == Rating.buono ? 'buono' : savingsRating == Rating.sufficiente ? 'sufficiente' : 'scarso'),
+      description: s.kpiSavingsDesc(
+        savingsRating == Rating.ottimo
+            ? 'ottimo'
+            : savingsRating == Rating.buono
+            ? 'buono'
+            : savingsRating == Rating.sufficiente
+            ? 'sufficiente'
+            : 'scarso',
+      ),
       formula: 'Savings / Income x 100\n${n(annualSavings)} / ${n(annualIncome)} x 100',
     ),
   ];
@@ -193,8 +209,13 @@ double computePriceChangePct(List<(double prev, double now)> assetValues) {
 }
 
 /// Rate a price change percentage.
-Rating ratePriceChange(double pct) =>
-    pct >= 10 ? Rating.ottimo : pct >= 0 ? Rating.buono : pct >= -10 ? Rating.sufficiente : Rating.scarso;
+Rating ratePriceChange(double pct) => pct >= 10
+    ? Rating.ottimo
+    : pct >= 0
+    ? Rating.buono
+    : pct >= -10
+    ? Rating.sufficiente
+    : Rating.scarso;
 
 /// Compute HHI (Herfindahl-Hirschman Index) from a map of holding values.
 /// Returns 0-10000. Lower = more diversified.
@@ -205,8 +226,11 @@ double computeHhi(Map<String, double> holdingValues) {
 }
 
 /// Rate an HHI value.
-Rating rateHhi(double hhi) =>
-    hhi < 1500 ? Rating.ottimo : hhi < 2500 ? Rating.buono : Rating.scarso;
+Rating rateHhi(double hhi) => hhi < 1500
+    ? Rating.ottimo
+    : hhi < 2500
+    ? Rating.buono
+    : Rating.scarso;
 
 // ── FIRE (Financial Independence, Retire Early) ──
 
@@ -217,10 +241,13 @@ const double kDefaultFireSwrPct = 2.75;
 class FireResult {
   /// Required portfolio for FI: annualExpenses / (swrPct / 100).
   final double fiNumber;
+
   /// Progress towards FI as a percentage (>= 0). 100 means FI reached.
   final double progressPct;
+
   /// Rating for the progress.
   final Rating rating;
+
   /// True when the inputs were insufficient (e.g. no expenses) so the
   /// caller should mark the KPI as N/A.
   final bool insufficientData;

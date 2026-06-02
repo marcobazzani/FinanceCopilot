@@ -220,11 +220,13 @@ extension _AppShellDriveDbOps on _AppShellState {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Row(children: [
-          Icon(Icons.warning, color: Theme.of(ctx).colorScheme.error),
-          const SizedBox(width: 8),
-          Text(s.settingsWipeConfirmTitle),
-        ]),
+        title: Row(
+          children: [
+            Icon(Icons.warning, color: Theme.of(ctx).colorScheme.error),
+            const SizedBox(width: 8),
+            Text(s.settingsWipeConfirmTitle),
+          ],
+        ),
         content: Text(s.settingsWipeConfirmBody),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),

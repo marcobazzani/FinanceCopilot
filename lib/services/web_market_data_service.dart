@@ -81,7 +81,7 @@ class UrlResolveParseFailed extends UrlResolveResult {
 /// provider may return (Italian-locale variants, etc.).
 const _exchangeSynonyms = <String, List<String>>{
   'Milan': ['Milan', 'Milano'],
-  'NYSE': ['NYSE', 'NASDAQ'],  // provider lists AMZN as NASDAQ even though it's NYSE
+  'NYSE': ['NYSE', 'NASDAQ'], // provider lists AMZN as NASDAQ even though it's NYSE
   'NASDAQ': ['NASDAQ'],
   'AMEX': ['AMEX'],
   'Xetra': ['Xetra'],
@@ -128,12 +128,11 @@ class WebMarketDataService extends MarketPriceService {
     Dio? dio,
     Future<String?> Function(Uri)? pageFetcher,
     Future<bool> Function()? solveHeadless,
-    @visibleForTesting
-    Future<Map<String, dynamic>?> Function(String url, String domainId)? jsFetchOverride,
-  })  : _dio = dio ?? Dio(),
-        _pageFetcher = pageFetcher,
-        _solveOverride = solveHeadless,
-        _jsFetchOverride = jsFetchOverride;
+    @visibleForTesting Future<Map<String, dynamic>?> Function(String url, String domainId)? jsFetchOverride,
+  }) : _dio = dio ?? Dio(),
+       _pageFetcher = pageFetcher,
+       _solveOverride = solveHeadless,
+       _jsFetchOverride = jsFetchOverride;
 
   // ──────────────────────────────────────────────
   // Headless WebView: solve CF + make API calls in same browser context
@@ -141,9 +140,7 @@ class WebMarketDataService extends MarketPriceService {
 
   /// Whether the WebView is ready (CF solved, not expired).
   bool get _isWebViewReady =>
-      _webViewController != null &&
-      _webViewReadyAt != null &&
-      DateTime.now().difference(_webViewReadyAt!).inMinutes < 30;
+      _webViewController != null && _webViewReadyAt != null && DateTime.now().difference(_webViewReadyAt!).inMinutes < 30;
 
   /// Mutex: only one CF solve at a time.
   Completer<bool>? _cfSolving;
@@ -158,7 +155,9 @@ class WebMarketDataService extends MarketPriceService {
       final merged = <String, String>{};
       for (final domain in ['$kProviderBase/', '$kProviderApiBase/']) {
         final cookies = await cookieManager.getCookies(url: WebUri(domain));
-        for (final c in cookies) { merged[c.name] = c.value.toString(); }
+        for (final c in cookies) {
+          merged[c.name] = c.value.toString();
+        }
       }
       _cfCookieStr = merged.entries.map((e) => '${e.key}=${e.value}').join('; ');
       _cfUserAgent = await controller.evaluateJavascript(source: 'navigator.userAgent') as String? ?? '';
@@ -185,8 +184,10 @@ class WebMarketDataService extends MarketPriceService {
           final headers = Map<String, String>.from(_browserHeaders);
           if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
           if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
-          await _dio.get('$kProviderApiBase/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
-              options: Options(headers: headers, validateStatus: (s) => s != null && s < 400));
+          await _dio.get(
+            '$kProviderApiBase/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
+            options: Options(headers: headers, validateStatus: (s) => s != null && s < 400),
+          );
           _log.info('Dio probe: OK - using Dio for API calls');
         } on DioException catch (e) {
           if (e.response?.statusCode == 403) {
@@ -214,7 +215,9 @@ class WebMarketDataService extends MarketPriceService {
   Future<bool> _solveHeadless() async {
     _log.info('Solving CF via headless WebView...');
     if (_webView != null) {
-      try { await _webView!.dispose(); } catch (_) {}
+      try {
+        await _webView!.dispose();
+      } catch (_) {}
       _webView = null;
       _webViewController = null;
     }
@@ -252,7 +255,9 @@ class WebMarketDataService extends MarketPriceService {
     );
     timeout = Timer(const Duration(seconds: 30), () async {
       _log.warning('CF headless timed out');
-      try { await _webView?.dispose(); } catch (_) {}
+      try {
+        await _webView?.dispose();
+      } catch (_) {}
       _webView = null;
       if (!completer.isCompleted) completer.complete(false);
     });
@@ -268,7 +273,8 @@ class WebMarketDataService extends MarketPriceService {
     }
     if (_webViewController == null) return null;
     try {
-      final js = '''
+      final js =
+          '''
         (async () => {
           try {
             const r = await fetch('$url', {
@@ -282,7 +288,8 @@ class WebMarketDataService extends MarketPriceService {
         })()
       ''';
       final result = await _webViewController!.callAsyncJavaScript(
-        functionBody: '''
+        functionBody:
+            '''
           const r = await fetch('$url', {
             headers: { 'domain-id': '$domainId' }
           });
@@ -335,7 +342,9 @@ class WebMarketDataService extends MarketPriceService {
     }
     if (_webViewController == null) return null;
     try {
-      final result = await _webViewController!.evaluateJavascript(source: '''
+      final result = await _webViewController!.evaluateJavascript(
+        source:
+            '''
         (async () => {
           try {
             const r = await fetch('$url');
@@ -343,7 +352,8 @@ class WebMarketDataService extends MarketPriceService {
             return await r.text();
           } catch(e) { return null; }
         })()
-      ''');
+      ''',
+      );
       return result is String && result.isNotEmpty ? result : null;
     } catch (e) {
       _log.fine('fetchHtml: $url -> $e');
@@ -394,16 +404,20 @@ class WebMarketDataService extends MarketPriceService {
   Future<Map<String, dynamic>?> _fetchWithDioThenJs(String url, {String domainId = 'www'}) async {
     try {
       final headers = Map<String, String>.from(_browserHeaders);
-      headers['User-Agent'] = _cfUserAgent.isNotEmpty ? _cfUserAgent
+      headers['User-Agent'] = _cfUserAgent.isNotEmpty
+          ? _cfUserAgent
           : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
       if (_cfCookieStr.isNotEmpty) {
         headers['Cookie'] = _cfCookieStr;
       }
 
-      final response = await _dio.get(url, options: Options(
-        responseType: ResponseType.json,
-        headers: headers,
-      ));
+      final response = await _dio.get(
+        url,
+        options: Options(
+          responseType: ResponseType.json,
+          headers: headers,
+        ),
+      );
       final data = response.data;
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
@@ -425,18 +439,15 @@ class WebMarketDataService extends MarketPriceService {
     }
   }
 
-
   // ──────────────────────────────────────────────
   // the market data provider API: Search
   // ──────────────────────────────────────────────
-
 
   /// Search the market data provider for any query (name, ISIN, ticker, fund ID).
   /// Searches both international (www) and Italian (it) domains, merges results.
   /// Type names always come from the English (www) domain for consistent classification.
   Future<List<ProviderSearchResult>> search(String query) async {
-    final url =
-        '$kProviderApiBase/api/search/v2/search?q=${Uri.encodeComponent(query)}';
+    final url = '$kProviderApiBase/api/search/v2/search?q=${Uri.encodeComponent(query)}';
 
     _log.info('search: $query');
 

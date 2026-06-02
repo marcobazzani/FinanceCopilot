@@ -19,12 +19,16 @@ void main() {
 
   /// Helper to insert a EUR-based rate directly into the database.
   Future<void> insertRate(String target, DateTime date, double rate) async {
-    await db.into(db.exchangeRates).insert(ExchangeRatesCompanion.insert(
-          fromCurrency: 'EUR',
-          toCurrency: target,
-          date: date,
-          rate: rate,
-        ));
+    await db
+        .into(db.exchangeRates)
+        .insert(
+          ExchangeRatesCompanion.insert(
+            fromCurrency: 'EUR',
+            toCurrency: target,
+            date: date,
+            rate: rate,
+          ),
+        );
   }
 
   group('getRate', () {
@@ -85,22 +89,19 @@ void main() {
     test('converts correctly using stored rate', () async {
       await insertRate('USD', DateTime(2024, 1, 15), 1.08);
 
-      final result = await service.convertAmount(
-          100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
+      final result = await service.convertAmount(100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
       expect(result, closeTo(108.0, 1e-10));
     });
 
     test('returns original amount when same currency', () async {
-      final result = await service.convertAmount(
-          250.0, 'EUR', 'EUR', DateTime(2024, 1, 15));
+      final result = await service.convertAmount(250.0, 'EUR', 'EUR', DateTime(2024, 1, 15));
       expect(result, 250.0);
     });
 
     test('returns null when rate unavailable', () async {
       // No silent fallback to the unconverted amount: callers must surface
       // missing rates instead of mixing different currencies in a total.
-      final result = await service.convertAmount(
-          100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
+      final result = await service.convertAmount(100.0, 'EUR', 'USD', DateTime(2024, 1, 15));
       expect(result, isNull);
     });
 
@@ -108,8 +109,7 @@ void main() {
       await insertRate('USD', DateTime(2024, 1, 15), 1.08);
       await insertRate('GBP', DateTime(2024, 1, 15), 0.86);
 
-      final result = await service.convertAmount(
-          100.0, 'GBP', 'USD', DateTime(2024, 1, 15));
+      final result = await service.convertAmount(100.0, 'GBP', 'USD', DateTime(2024, 1, 15));
       expect(result, closeTo(100.0 * (1.08 / 0.86), 1e-8));
     });
   });
@@ -271,11 +271,13 @@ void main() {
     const persistValue = 1.17192081194759; // 1/USDEUR from _persistFxRate
 
     Future<double?> readEurUsd() async {
-      final row = await db.customSelect(
-        'SELECT rate FROM exchange_rates '
-        "WHERE from_currency = 'EUR' AND to_currency = 'USD' AND date = ?",
-        variables: [Variable.withInt(day.millisecondsSinceEpoch ~/ 1000)],
-      ).getSingleOrNull();
+      final row = await db
+          .customSelect(
+            'SELECT rate FROM exchange_rates '
+            "WHERE from_currency = 'EUR' AND to_currency = 'USD' AND date = ?",
+            variables: [Variable.withInt(day.millisecondsSinceEpoch ~/ 1000)],
+          )
+          .getSingleOrNull();
       return row?.readNullable<double>('rate');
     }
 
@@ -292,15 +294,17 @@ void main() {
 
     /// Simulates _persistFxRate: inserts with DoNothing (insert-if-absent).
     Future<void> writePersistFxRate(double rate) async {
-      await db.into(db.exchangeRates).insert(
-        ExchangeRatesCompanion(
-          fromCurrency: const Value('EUR'),
-          toCurrency: const Value('USD'),
-          date: Value(day),
-          rate: Value(rate),
-        ),
-        onConflict: DoNothing(),
-      );
+      await db
+          .into(db.exchangeRates)
+          .insert(
+            ExchangeRatesCompanion(
+              fromCurrency: const Value('EUR'),
+              toCurrency: const Value('USD'),
+              date: Value(day),
+              rate: Value(rate),
+            ),
+            onConflict: DoNothing(),
+          );
     }
 
     test('syncRates first, then _persistFxRate: syncRates value preserved', () async {
@@ -308,8 +312,7 @@ void main() {
       await writePersistFxRate(persistValue);
 
       final stored = await readEurUsd();
-      expect(stored, syncRatesValue,
-          reason: '_persistFxRate (DoNothing) must not overwrite syncRates');
+      expect(stored, syncRatesValue, reason: '_persistFxRate (DoNothing) must not overwrite syncRates');
     });
 
     test('_persistFxRate first, then syncRates: syncRates value wins', () async {
@@ -317,16 +320,14 @@ void main() {
       await writeSyncRates(syncRatesValue);
 
       final stored = await readEurUsd();
-      expect(stored, syncRatesValue,
-          reason: 'syncRates (DoUpdate) must overwrite _persistFxRate');
+      expect(stored, syncRatesValue, reason: 'syncRates (DoUpdate) must overwrite _persistFxRate');
     });
 
     test('_persistFxRate alone fills gap when syncRates has not run', () async {
       await writePersistFxRate(persistValue);
 
       final stored = await readEurUsd();
-      expect(stored, persistValue,
-          reason: '_persistFxRate should fill an empty slot');
+      expect(stored, persistValue, reason: '_persistFxRate should fill an empty slot');
     });
   });
 
@@ -378,33 +379,52 @@ void main() {
       // Seed one currency per UNION arm so the query has to hit every
       // table to return the full set. If any arm ever gets dropped
       // silently, the discovered set shrinks and the assertion fails.
-      final iid = await db.into(db.intermediaries).insert(
+      final iid = await db
+          .into(db.intermediaries)
+          .insert(
             IntermediariesCompanion.insert(name: 'Default'),
           );
-      await db.into(db.assets).insert(AssetsCompanion.insert(
-            name: 'Stock', assetType: AssetType.stockEtf,
-            valuationMethod: ValuationMethod.marketPrice,
-            intermediaryId: iid,
-            currency: const Value('USD'),
-          ));
-      await db.into(db.accounts).insert(AccountsCompanion.insert(
-            name: 'Acct',
-            currency: const Value('GBP'),
-          ));
-      await db.into(db.incomes).insert(IncomesCompanion.insert(
-            date: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 1000,
-            currency: const Value('CHF'),
-          ));
-      await db.into(db.extraordinaryEvents).insert(ExtraordinaryEventsCompanion.insert(
-            name: 'Bonus',
-            direction: EventDirection.inflow,
-            treatment: EventTreatment.instant,
-            totalAmount: 5000,
-            currency: const Value('JPY'),
-            eventDate: DateTime(2024, 1, 1),
-          ));
+      await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'Stock',
+              assetType: AssetType.stockEtf,
+              valuationMethod: ValuationMethod.marketPrice,
+              intermediaryId: iid,
+              currency: const Value('USD'),
+            ),
+          );
+      await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Acct',
+              currency: const Value('GBP'),
+            ),
+          );
+      await db
+          .into(db.incomes)
+          .insert(
+            IncomesCompanion.insert(
+              date: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 1, 1),
+              amount: 1000,
+              currency: const Value('CHF'),
+            ),
+          );
+      await db
+          .into(db.extraordinaryEvents)
+          .insert(
+            ExtraordinaryEventsCompanion.insert(
+              name: 'Bonus',
+              direction: EventDirection.inflow,
+              treatment: EventTreatment.instant,
+              totalAmount: 5000,
+              currency: const Value('JPY'),
+              eventDate: DateTime(2024, 1, 1),
+            ),
+          );
 
       final rows = await db.customSelect(backfillCurrenciesSql).get();
       final found = rows.map((r) => r.read<String>('currency')).toSet();

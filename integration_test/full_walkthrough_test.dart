@@ -60,15 +60,15 @@ Future<void> _createAccountThroughDialog(
     name,
   );
   await settle(tester);
-  await tester.tap(find.descendant(
-    of: dialog,
-    matching: find.widgetWithText(FilledButton, 'Create'),
-  ));
+  await tester.tap(
+    find.descendant(
+      of: dialog,
+      matching: find.widgetWithText(FilledButton, 'Create'),
+    ),
+  );
   await longSettle(tester);
 
-  final account = await (db.select(db.accounts)
-        ..where((a) => a.name.equals(name)))
-      .getSingleOrNull();
+  final account = await (db.select(db.accounts)..where((a) => a.name.equals(name))).getSingleOrNull();
   expect(account, isNotNull);
 }
 
@@ -199,11 +199,8 @@ void main() {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
     }
-    final simpleTxs = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(fineco.id)))
-        .get();
-    expect(simpleTxs, isNotEmpty,
-        reason: 'UI-driven simple import should land transactions on Fineco');
+    final simpleTxs = await (db.select(db.transactions)..where((t) => t.accountId.equals(fineco.id))).get();
+    expect(simpleTxs, isNotEmpty, reason: 'UI-driven simple import should land transactions on Fineco');
     _step('   ✓ ${simpleTxs.length} txs imported via wizard UI');
 
     // 4b — formula amount builder via UI. Drives the dense formula
@@ -238,14 +235,14 @@ void main() {
     // Each formula row's '+' Text is unique to formula terms (column
     // names don't contain '+'). Walk to the enclosing Row to find the
     // term's dropdown.
-    Finder formulaRow(int index) =>
-        find.ancestor(of: find.text('+').at(index), matching: find.byType(Row))
-            .first;
+    Finder formulaRow(int index) => find.ancestor(of: find.text('+').at(index), matching: find.byType(Row)).first;
     // Term 1 → Credit
-    final term1Dropdown = find.descendant(
-      of: formulaRow(0),
-      matching: find.byType(DropdownButtonFormField<String>),
-    ).first;
+    final term1Dropdown = find
+        .descendant(
+          of: formulaRow(0),
+          matching: find.byType(DropdownButtonFormField<String>),
+        )
+        .first;
     await tester.ensureVisible(term1Dropdown);
     await settle(tester);
     await tester.tap(term1Dropdown);
@@ -253,10 +250,12 @@ void main() {
     await tester.tap(find.text('Credit').last);
     await longSettle(tester);
     // Term 2 → Debit, then toggle the operator from + to −.
-    final term2Dropdown = find.descendant(
-      of: formulaRow(1),
-      matching: find.byType(DropdownButtonFormField<String>),
-    ).first;
+    final term2Dropdown = find
+        .descendant(
+          of: formulaRow(1),
+          matching: find.byType(DropdownButtonFormField<String>),
+        )
+        .first;
     await tester.ensureVisible(term2Dropdown);
     await settle(tester);
     await tester.tap(term2Dropdown);
@@ -265,10 +264,12 @@ void main() {
     await longSettle(tester);
     // Tap the second '+' toggle box (an InkWell wrapping a Container
     // with the symbol Text). Its InkWell ancestor is the toggle widget.
-    final term2PlusInkWell = find.ancestor(
-      of: find.text('+').at(1),
-      matching: find.byType(InkWell),
-    ).first;
+    final term2PlusInkWell = find
+        .ancestor(
+          of: find.text('+').at(1),
+          matching: find.byType(InkWell),
+        )
+        .first;
     await tester.tap(term2PlusInkWell);
     await longSettle(tester);
     // Now valueDate + description, in screen order.
@@ -285,11 +286,8 @@ void main() {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
     }
-    final afterFormulaTxs = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(fineco.id)))
-        .get();
-    expect(afterFormulaTxs.length, greaterThan(simpleTxs.length),
-        reason: 'formula import should add transactions on top of step 4');
+    final afterFormulaTxs = await (db.select(db.transactions)..where((t) => t.accountId.equals(fineco.id))).get();
+    expect(afterFormulaTxs.length, greaterThan(simpleTxs.length), reason: 'formula import should add transactions on top of step 4');
     _step('   ✓ formula UI imported ${afterFormulaTxs.length - simpleTxs.length} more txs');
 
     // ─────────────────────────────────────────────────────────────────────
@@ -312,10 +310,13 @@ void main() {
       mappings: const [
         ColumnMapping(sourceColumn: 'Data_Operazione', targetField: 'date'),
         ColumnMapping(sourceColumn: 'Data_Valuta', targetField: 'valueDate'),
-        ColumnMapping(targetField: 'amount', formulaTerms: [
-          FormulaTerm(operator: '+', sourceColumn: 'Entrate'),
-          FormulaTerm(operator: '-', sourceColumn: 'Uscite'),
-        ]),
+        ColumnMapping(
+          targetField: 'amount',
+          formulaTerms: [
+            FormulaTerm(operator: '+', sourceColumn: 'Entrate'),
+            FormulaTerm(operator: '-', sourceColumn: 'Uscite'),
+          ],
+        ),
         ColumnMapping(
           targetField: 'description',
           multiColumns: ['Descrizione', 'Descrizione_Completa'],
@@ -326,14 +327,14 @@ void main() {
     );
     _step('   ✓ imported ${finecoResult.importedRows} rows (6 years × ~3/month)');
     expect(finecoResult.importedRows, greaterThan(150));
-    final finecoTxs = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(fineco.id))
-          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
-        .get();
+    final finecoTxs =
+        await (db.select(db.transactions)
+              ..where((t) => t.accountId.equals(fineco.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+            .get();
     expect(finecoTxs.first.valueDate.year, 2020);
     expect(finecoTxs.last.valueDate.year, 2025);
-    expect(finecoTxs.where((t) => t.amount > 1000).length, greaterThan(50),
-        reason: 'monthly stipendio rows');
+    expect(finecoTxs.where((t) => t.amount > 1000).length, greaterThan(50), reason: 'monthly stipendio rows');
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 5: stress balance-per-row — recalc cumulative, verify the
@@ -342,15 +343,15 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     _step('5. Cumulative balance per row — recalc + verify all 200+ rows');
     await txService.recalculateBalances(fineco.id, balanceMode: 'cumulative');
-    final fincoSorted = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(fineco.id))
-          ..orderBy([(t) => OrderingTerm.asc(t.valueDate), (t) => OrderingTerm.asc(t.id)]))
-        .get();
+    final fincoSorted =
+        await (db.select(db.transactions)
+              ..where((t) => t.accountId.equals(fineco.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.valueDate), (t) => OrderingTerm.asc(t.id)]))
+            .get();
     var running = 0.0;
     for (final tx in fincoSorted) {
       running += tx.amount;
-      expect(tx.balanceAfter, closeTo(running, 0.001),
-          reason: 'tx#${tx.id} on ${tx.valueDate} should match running sum');
+      expect(tx.balanceAfter, closeTo(running, 0.001), reason: 'tx#${tx.id} on ${tx.valueDate} should match running sum');
     }
     _step('   ✓ all ${fincoSorted.length} balanceAfter values match');
 
@@ -416,14 +417,14 @@ void main() {
     );
     _step('   ✓ imported ${revolutResult.importedRows} Revolut rows (Tipo mixed)');
     expect(revolutResult.importedRows, greaterThan(30));
-    final revolutTxs = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(revolut.id))
-          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
-        .get();
+    final revolutTxs =
+        await (db.select(db.transactions)
+              ..where((t) => t.accountId.equals(revolut.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+            .get();
     // Balance-from-column → balanceAfter on every row matches the CSV.
     for (final tx in revolutTxs) {
-      expect(tx.balanceAfter, isNotNull,
-          reason: 'tx ${tx.description} should have balanceAfter from column');
+      expect(tx.balanceAfter, isNotNull, reason: 'tx ${tx.description} should have balanceAfter from column');
     }
     expect(revolutTxs.first.valueDate.year, 2020);
     expect(revolutTxs.last.valueDate.year, 2025);
@@ -479,8 +480,7 @@ void main() {
       await longSettle(tester);
       // Verify read-only: the toolbar should NOT show the import / wipe /
       // delete-account icons that the editable detail screen exposes.
-      expect(find.byTooltip('Wipe Transactions').evaluate(), isEmpty,
-          reason: 'All-accounts read-only mode must hide the wipe icon');
+      expect(find.byTooltip('Wipe Transactions').evaluate(), isEmpty, reason: 'All-accounts read-only mode must hide the wipe icon');
       // Type into the search field — exercises the filter path on the
       // union list (covers different code path than per-account search
       // because the result set spans both accounts).
@@ -528,9 +528,13 @@ void main() {
     // a navigation glitch `.first` could resolve to one of those.
     final s = AppStrings.en;
     final addTx = find.byTooltip(s.tooltipAddTransaction).hitTestable();
-    expect(addTx, findsOneWidget,
-        reason: 'AccountDetailScreen should show "Add Transaction" button — '
-            'navigation to Revolut detail likely failed.');
+    expect(
+      addTx,
+      findsOneWidget,
+      reason:
+          'AccountDetailScreen should show "Add Transaction" button — '
+          'navigation to Revolut detail likely failed.',
+    );
     await tester.tap(addTx);
     await longSettle(tester);
 
@@ -568,12 +572,9 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Create Transaction'));
     await longSettle(tester);
 
-    final manualTx = (await (db.select(db.transactions)
-              ..where((t) =>
-                  t.accountId.equals(revolut.id) &
-                  t.description.equals('UI manual tx')))
-            .get())
-        .single;
+    final manualTx = (await (db.select(
+      db.transactions,
+    )..where((t) => t.accountId.equals(revolut.id) & t.description.equals('UI manual tx'))).get()).single;
     expect(manualTx.descriptionFull, 'Cafe del centro · long descr');
     expect(manualTx.balanceAfter, 500.0);
     expect(manualTx.currency, 'USD');
@@ -597,9 +598,11 @@ void main() {
     await tester.runAsync(() async {
       balDeltaPreview = await parseFixture(db, 'balance_delta.csv');
     });
-    final balDeltaAccountId = await db.into(db.accounts).insert(
-      AccountsCompanion.insert(name: 'BalDeltaAcc', currency: const Value('EUR')),
-    );
+    final balDeltaAccountId = await db
+        .into(db.accounts)
+        .insert(
+          AccountsCompanion.insert(name: 'BalDeltaAcc', currency: const Value('EUR')),
+        );
     final balDeltaResult = await importer.importTransactions(
       preview: balDeltaPreview,
       mappings: const [
@@ -614,16 +617,14 @@ void main() {
       accountId: balDeltaAccountId,
     );
     expect(balDeltaResult.importedRows, greaterThan(0));
-    final balDeltaTxs = await (db.select(db.transactions)
-          ..where((t) => t.accountId.equals(balDeltaAccountId))
-          ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
-        .get();
-    expect(balDeltaTxs.firstWhere((t) => t.description == 'opening').amount, 0.0,
-        reason: 'first row contributes 0 (round-6 fix)');
-    expect(balDeltaTxs.firstWhere((t) => t.description == 'paycheck').amount,
-        closeTo(100.0, 0.001));
-    expect(balDeltaTxs.firstWhere((t) => t.description == 'coffee').amount,
-        closeTo(-20.0, 0.001));
+    final balDeltaTxs =
+        await (db.select(db.transactions)
+              ..where((t) => t.accountId.equals(balDeltaAccountId))
+              ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+            .get();
+    expect(balDeltaTxs.firstWhere((t) => t.description == 'opening').amount, 0.0, reason: 'first row contributes 0 (round-6 fix)');
+    expect(balDeltaTxs.firstWhere((t) => t.description == 'paycheck').amount, closeTo(100.0, 0.001));
+    expect(balDeltaTxs.firstWhere((t) => t.description == 'coffee').amount, closeTo(-20.0, 0.001));
 
     // ─────────────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────────────
@@ -676,10 +677,8 @@ void main() {
       await settle(tester);
     }
     final histAssets = await db.select(db.assets).get();
-    expect(histAssets, isNotEmpty,
-        reason: 'historic UI import should create at least one asset');
-    expect(histAssets.first.intermediaryId, brokerId,
-        reason: 'historic asset should be linked to Broker Fineco');
+    expect(histAssets, isNotEmpty, reason: 'historic UI import should create at least one asset');
+    expect(histAssets.first.intermediaryId, brokerId, reason: 'historic asset should be linked to Broker Fineco');
     _step('   ✓ ${histAssets.length} assets via historic UI (intermediary=Broker Fineco)');
 
     // ─────────────────────────────────────────────────────────────────────
@@ -705,8 +704,7 @@ void main() {
     await setSegmentMode(tester, 'Current');
     // After Current, date/exchangeRate fields are no longer required and
     // their mapping rows disappear — quick sanity check.
-    expect(find.text('Operation Date *'), findsNothing,
-        reason: 'date field should be hidden in Current mode');
+    expect(find.text('Operation Date *'), findsNothing, reason: 'date field should be hidden in Current mode');
     // assets_current.xlsx has no amount column — tick the Auto-calc
     // checkbox NOW (it sits in the amount row at the top of the list,
     // which would scroll out of view once we start mapping the lower
@@ -739,11 +737,9 @@ void main() {
       await settle(tester);
     }
     final curAssets = await db.select(db.assets).get();
-    expect(curAssets.length, greaterThan(histAssets.length),
-        reason: 'current UI import should add more assets');
+    expect(curAssets.length, greaterThan(histAssets.length), reason: 'current UI import should add more assets');
     final degiroLinked = curAssets.where((a) => a.intermediaryId == degiroId).toList();
-    expect(degiroLinked, isNotEmpty,
-        reason: 'at least one asset should belong to Broker Degiro');
+    expect(degiroLinked, isNotEmpty, reason: 'at least one asset should belong to Broker Degiro');
     _step('   ✓ ${curAssets.length - histAssets.length} new assets via current UI (Broker Degiro)');
 
     // ─────────────────────────────────────────────────────────────────────
@@ -781,20 +777,15 @@ void main() {
     );
     _step('   ✓ imported ${assetResult.result.importedRows} asset events');
     expect(assetResult.result.importedRows, greaterThan(10));
-    final assetEvents = await (db.select(db.assetEvents)
-          ..orderBy([(e) => OrderingTerm.asc(e.valueDate)]))
-        .get();
+    final assetEvents = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
     // Lista Titoli spans 2020..2025; the date floor is the assertion that
     // matters. (The latest event in the DB may now be from a UI step that
     // used today's date, so we no longer pin the upper bound.)
     expect(assetEvents.first.valueDate.year, 2020);
-    expect(assetEvents.any((e) => e.valueDate.year == 2025), isTrue,
-        reason: 'Lista Titoli should land at least one 2025 event');
-    expect(assetEvents.any((e) => e.type == EventType.sell), isTrue,
-        reason: 'one Lista Titoli row uses Segno=V → sell');
+    expect(assetEvents.any((e) => e.valueDate.year == 2025), isTrue, reason: 'Lista Titoli should land at least one 2025 event');
+    expect(assetEvents.any((e) => e.type == EventType.sell), isTrue, reason: 'one Lista Titoli row uses Segno=V → sell');
     final assetsCreated = await db.select(db.assets).get();
-    expect(assetsCreated.length, greaterThan(4),
-        reason: 'multiple distinct ISINs across years');
+    expect(assetsCreated.length, greaterThan(4), reason: 'multiple distinct ISINs across years');
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 8b.i: drive AssetEventEditScreen end-to-end via UI — create →
@@ -823,8 +814,7 @@ void main() {
       await longSettle(tester);
       // Asset detail is up — push AssetEventEditScreen via the FAB.
       final detailFab = find.byType(FloatingActionButton);
-      expect(detailFab, findsWidgets,
-          reason: 'asset detail must show event-add FAB');
+      expect(detailFab, findsWidgets, reason: 'asset detail must show event-add FAB');
       await tester.tap(detailFab.first);
       await longSettle(tester);
 
@@ -840,8 +830,10 @@ void main() {
       // layout assertions.
       final fields = find.byType(TextFormField);
       if (fields.evaluate().length < 5) {
-        _step('   ⚠ skipping 8b.i — edit screen did not expose the expected '
-            'fields on this device (${fields.evaluate().length} found, need ≥5)');
+        _step(
+          '   ⚠ skipping 8b.i — edit screen did not expose the expected '
+          'fields on this device (${fields.evaluate().length} found, need ≥5)',
+        );
       } else {
         await tester.enterText(fields.at(2), '10');
         await settle(tester);
@@ -850,8 +842,10 @@ void main() {
         // Save via the unique bottom FilledButton.
         final saveBtn = find.byType(FilledButton);
         if (saveBtn.evaluate().isEmpty) {
-          _step('   ⚠ skipping 8b.i save — no FilledButton in tree '
-              '(likely soft-keyboard overlay hiding bottom action)');
+          _step(
+            '   ⚠ skipping 8b.i save — no FilledButton in tree '
+            '(likely soft-keyboard overlay hiding bottom action)',
+          );
         } else {
           await tester.ensureVisible(saveBtn.first);
           await tester.tap(saveBtn.first);
@@ -975,9 +969,7 @@ void main() {
     }
 
     // TER from composition fetch (ETFs).
-    final assetsWithTer = (await db.select(db.assets).get())
-        .where((a) => a.ter != null && a.ter! > 0)
-        .toList();
+    final assetsWithTer = (await db.select(db.assets).get()).where((a) => a.ter != null && a.ter! > 0).toList();
     _step('   network: ${assetsWithTer.length} assets got TER from composition');
 
     // FX rate populated.
@@ -1001,9 +993,7 @@ void main() {
       await tester.tap(addFab.first);
       await longSettle(tester);
 
-      final searchField = find.bySemanticsLabel('Search') .evaluate().isNotEmpty
-          ? find.bySemanticsLabel('Search')
-          : find.byType(TextField).first;
+      final searchField = find.bySemanticsLabel('Search').evaluate().isNotEmpty ? find.bySemanticsLabel('Search') : find.byType(TextField).first;
       await tester.enterText(searchField, 'BE0000351602');
       // Wait for the 400ms debounce + real network round-trip on www+it.
       await pumpFor(tester, const Duration(seconds: 4));
@@ -1042,9 +1032,7 @@ void main() {
           if (w.onPressed != null) {
             await tester.tap(btn.first);
             await longSettle(tester);
-            final beAsset = (await db.select(db.assets).get())
-                .where((a) => a.isin == 'BE0000351602')
-                .toList();
+            final beAsset = (await db.select(db.assets).get()).where((a) => a.isin == 'BE0000351602').toList();
             if (beAsset.isNotEmpty) {
               _step('   ✓ BE0000351602 asset created via URL-paste flow');
             }
@@ -1074,18 +1062,15 @@ void main() {
     // synonym (so isKnownExchange returns true for all of them).
     // ─────────────────────────────────────────────────────────────────────
     _step('8e. assets.exchange invariant — all values are known');
-    final allAssetExchanges = await db
-        .customSelect(
-            "SELECT DISTINCT exchange FROM assets WHERE exchange IS NOT NULL AND exchange != ''")
-        .get();
-    final unknownExchanges = allAssetExchanges
-        .map((r) => r.read<String>('exchange'))
-        .where((ex) => !isKnownExchange(ex))
-        .toList();
-    expect(unknownExchanges, isEmpty,
-        reason:
-            'every wizard-imported asset.exchange must be canonical or a known synonym; '
-            'found unknown values: $unknownExchanges');
+    final allAssetExchanges = await db.customSelect("SELECT DISTINCT exchange FROM assets WHERE exchange IS NOT NULL AND exchange != ''").get();
+    final unknownExchanges = allAssetExchanges.map((r) => r.read<String>('exchange')).where((ex) => !isKnownExchange(ex)).toList();
+    expect(
+      unknownExchanges,
+      isEmpty,
+      reason:
+          'every wizard-imported asset.exchange must be canonical or a known synonym; '
+          'found unknown values: $unknownExchanges',
+    );
     _step('   ✓ ${allAssetExchanges.length} distinct exchange values, all known');
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1099,9 +1084,10 @@ void main() {
     _step('8f. ETF edit modal renders for current asset.exchange');
     final etfRow = await db
         .customSelect(
-            "SELECT name, exchange FROM assets "
-            "WHERE asset_type IN ('stockEtf','bondEtf','commEtf','goldEtc','monEtf') "
-            "AND exchange IS NOT NULL LIMIT 1")
+          "SELECT name, exchange FROM assets "
+          "WHERE asset_type IN ('stockEtf','bondEtf','commEtf','goldEtc','monEtf') "
+          "AND exchange IS NOT NULL LIMIT 1",
+        )
         .getSingleOrNull();
     if (etfRow != null) {
       final etfName = etfRow.read<String>('name');
@@ -1111,8 +1097,7 @@ void main() {
       // doesn't accidentally match the composition-panel edit IconButton
       // which uses the same Icons.edit). Direct pump avoids the brittle
       // sidebar→list-row→detail-screen navigation chain after step 8d.
-      final etfAsset = (await db.select(db.assets).get())
-          .firstWhere((a) => a.name == etfName);
+      final etfAsset = (await db.select(db.assets).get()).firstWhere((a) => a.name == etfName);
       final pushCtx = tester.element(find.byType(Navigator).first);
       Navigator.of(pushCtx).push(
         MaterialPageRoute(
@@ -1121,11 +1106,8 @@ void main() {
       );
       await longSettle(tester);
       // Edit pencil tooltip is "Edit Asset" (en) / "Modifica attività" (it).
-      final editPencil = find.byTooltip('Edit Asset').evaluate().isNotEmpty
-          ? find.byTooltip('Edit Asset')
-          : find.byTooltip('Modifica attività');
-      expect(editPencil.evaluate(), isNotEmpty,
-          reason: 'AssetDetailScreen AppBar must have an edit pencil');
+      final editPencil = find.byTooltip('Edit Asset').evaluate().isNotEmpty ? find.byTooltip('Edit Asset') : find.byTooltip('Modifica attività');
+      expect(editPencil.evaluate(), isNotEmpty, reason: 'AssetDetailScreen AppBar must have an edit pencil');
       await tester.tap(editPencil.first);
       await longSettle(tester);
       await longSettle(tester);
@@ -1137,10 +1119,14 @@ void main() {
       final dropdowns = find.byWidgetPredicate(
         (w) => w is DropdownButtonFormField,
       );
-      expect(dropdowns.evaluate().length, greaterThanOrEqualTo(1),
-          reason: 'edit modal must mount at least one '
-              'DropdownButtonFormField — the exchange / instrument /'
-              ' asset-class pickers all use this widget');
+      expect(
+        dropdowns.evaluate().length,
+        greaterThanOrEqualTo(1),
+        reason:
+            'edit modal must mount at least one '
+            'DropdownButtonFormField — the exchange / instrument /'
+            ' asset-class pickers all use this widget',
+      );
       _step('   ✓ edit modal opened cleanly');
 
       // 8f.i — unlock-edit + advanced-field save. Covers _unlocked branch
@@ -1305,9 +1291,7 @@ void main() {
       if (selRow.evaluate().isNotEmpty) {
         await tester.longPress(selRow.first);
         await longSettle(tester);
-        final deselect = find.byTooltip('Deselect all').evaluate().isNotEmpty
-            ? find.byTooltip('Deselect all')
-            : find.text('Deselect all');
+        final deselect = find.byTooltip('Deselect all').evaluate().isNotEmpty ? find.byTooltip('Deselect all') : find.text('Deselect all');
         if (deselect.evaluate().isNotEmpty) {
           await tester.tap(deselect.first);
           await longSettle(tester);
@@ -1365,11 +1349,8 @@ void main() {
       isReimbursement: true,
     );
     await eventsService.generateScheduledEntries(carId);
-    final scheduled1 = (await eventsService.getEntries(carId))
-        .where((e) => e.entryKind == EventEntryKind.scheduled)
-        .toList();
-    expect(scheduled1.every((e) => e.amount == -75.0), isTrue,
-        reason: '(1200-300)/12');
+    final scheduled1 = (await eventsService.getEntries(carId)).where((e) => e.entryKind == EventEntryKind.scheduled).toList();
+    expect(scheduled1.every((e) => e.amount == -75.0), isTrue, reason: '(1200-300)/12');
 
     await bufferService.createTransaction(
       bufferId: carBufferId,
@@ -1380,11 +1361,8 @@ void main() {
       isReimbursement: true,
     );
     await eventsService.generateScheduledEntries(carId);
-    final scheduled2 = (await eventsService.getEntries(carId))
-        .where((e) => e.entryKind == EventEntryKind.scheduled)
-        .toList();
-    expect(scheduled2.every((e) => e.amount == -100.0), isTrue,
-        reason: 'net 0 reimbursed → full -100/step (round-23 fix)');
+    final scheduled2 = (await eventsService.getEntries(carId)).where((e) => e.entryKind == EventEntryKind.scheduled).toList();
+    expect(scheduled2.every((e) => e.amount == -100.0), isTrue, reason: 'net 0 reimbursed → full -100/step (round-23 fix)');
 
     // 10c. QUARTERLY spread / outflow.
     _step('10c. Quarterly spread outflow — insurance €1200/year, 4 steps');
@@ -1437,8 +1415,7 @@ void main() {
     );
     final bonusEntries = await eventsService.getEntries(bonusId);
     expect(bonusEntries, hasLength(12));
-    expect(bonusEntries.every((e) => e.amount == 500.0), isTrue,
-        reason: 'inflow → positive scheduled amounts');
+    expect(bonusEntries.every((e) => e.amount == 500.0), isTrue, reason: 'inflow → positive scheduled amounts');
 
     // 10f. INSTANT inflow + manual entry.
     _step('10f. Instant inflow Gift + manual entry');
@@ -1492,9 +1469,7 @@ void main() {
     // Find the event we just created via the service (verify UI flow
     // committed) and fall back to service create if the UI navigation
     // failed.
-    final plumberEvents = await (db.select(db.extraordinaryEvents)
-          ..where((e) => e.name.equals('Plumber emergency')))
-        .get();
+    final plumberEvents = await (db.select(db.extraordinaryEvents)..where((e) => e.name.equals('Plumber emergency'))).get();
     final int oneOffId;
     if (plumberEvents.isEmpty) {
       oneOffId = await eventsService.create(
@@ -1517,8 +1492,7 @@ void main() {
     );
     final oneOffEntries = await eventsService.getEntries(oneOffId);
     expect(oneOffEntries, hasLength(1));
-    expect(oneOffEntries.first.amount, -350.0,
-        reason: 'outflow direction signs the manual entry negative');
+    expect(oneOffEntries.first.amount, -350.0, reason: 'outflow direction signs the manual entry negative');
 
     // 10h. EPHEMERAL inflow.
     _step('10h. Ephemeral inflow — line of credit (Cash but never Saving)');
@@ -1545,12 +1519,8 @@ void main() {
         spreadEnd: const Value(null),
       ),
     );
-    final scheduledAfterChange =
-        (await eventsService.getEntries(yearlyId))
-            .where((e) => e.entryKind == EventEntryKind.scheduled)
-            .toList();
-    expect(scheduledAfterChange, isEmpty,
-        reason: 'spread→instant drops scheduled entries (round-20)');
+    final scheduledAfterChange = (await eventsService.getEntries(yearlyId)).where((e) => e.entryKind == EventEntryKind.scheduled).toList();
+    expect(scheduledAfterChange, isEmpty, reason: 'spread→instant drops scheduled entries (round-20)');
 
     // 10j. EventDetailScreen via UI — tap the Car repair row in the
     // Adjustments tab, scroll its timeline (12 scheduled entries +
@@ -1615,8 +1585,7 @@ void main() {
         await tester.tap(deleteBtn.last);
         await longSettle(tester);
         // Confirm dialog appears.
-        final confirm =
-            find.widgetWithText(FilledButton, 'Delete');
+        final confirm = find.widgetWithText(FilledButton, 'Delete');
         if (confirm.evaluate().isNotEmpty) {
           await tester.tap(confirm.first);
           await longSettle(tester);
@@ -1627,9 +1596,7 @@ void main() {
             await longSettle(tester);
           }
         }
-        final giftStill = await (db.select(db.extraordinaryEvents)
-              ..where((e) => e.name.equals('Gift 2024')))
-            .get();
+        final giftStill = await (db.select(db.extraordinaryEvents)..where((e) => e.name.equals('Gift 2024'))).get();
         if (giftStill.isEmpty) {
           _step('   ✓ Gift event bulk-deleted via SelectionActionBar');
         }
@@ -1687,6 +1654,7 @@ void main() {
         }
         return find.byIcon(icon);
       }
+
       final hideToggle = iconOrTooltip(
         Icons.visibility,
         ['Hide series', 'Nascondi serie'],
@@ -1970,9 +1938,7 @@ void main() {
     // retroactively shift the implied per-unit price.
     // ─────────────────────────────────────────────────────────────────────
     _step('11B. Manual asset revalue → market_prices anchoring');
-    final manualHolding = await (db.select(db.assets)
-          ..where((a) => a.name.equals('My Custom Holding')))
-        .getSingleOrNull();
+    final manualHolding = await (db.select(db.assets)..where((a) => a.name.equals('My Custom Holding'))).getSingleOrNull();
     if (manualHolding == null) {
       _step('   ⚠ skipping (manual asset not present from 11A)');
     } else {
@@ -1996,15 +1962,14 @@ void main() {
         currency: 'EUR',
       );
 
-      var prices = await (db.select(db.marketPrices)
-            ..where((p) => p.assetId.equals(manualHolding.id))
-            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
-          .get();
-      expect(prices, hasLength(1),
-          reason: 'revalue must materialise exactly one market_prices row');
+      var prices =
+          await (db.select(db.marketPrices)
+                ..where((p) => p.assetId.equals(manualHolding.id))
+                ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+              .get();
+      expect(prices, hasLength(1), reason: 'revalue must materialise exactly one market_prices row');
       expect(prices.first.date, DateTime(2024, 1, 10));
-      expect(prices.first.closePrice, 120.0,
-          reason: '1200 / qty(10) = 120 per unit');
+      expect(prices.first.closePrice, 120.0, reason: '1200 / qty(10) = 120 per unit');
 
       // Add a later buy of 5 units. The revalue's close_price must NOT
       // shift — it stays anchored to qty(=10) at value_date 2024-01-10.
@@ -2017,11 +1982,8 @@ void main() {
         price: 120.0,
         currency: 'EUR',
       );
-      prices = await (db.select(db.marketPrices)
-            ..where((p) => p.assetId.equals(manualHolding.id)))
-          .get();
-      expect(prices.first.closePrice, 120.0,
-          reason: 'post-revalue buy must NOT shift the anchored close_price');
+      prices = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(manualHolding.id))).get();
+      expect(prices.first.closePrice, 120.0, reason: 'post-revalue buy must NOT shift the anchored close_price');
 
       // getPrice() now reads the materialised row directly.
       final priceService = WebMarketDataService(db);
@@ -2038,21 +2000,17 @@ void main() {
         quantity: 2.0,
         currency: 'EUR',
       );
-      var afterAdd = await (db.select(db.marketPrices)
-            ..where((p) => p.assetId.equals(manualHolding.id)))
-          .get();
-      expect(afterAdd.first.closePrice, 100.0,
-          reason: 'pre-revalue buy must reduce the anchored close_price');
+      var afterAdd = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(manualHolding.id))).get();
+      expect(afterAdd.first.closePrice, 100.0, reason: 'pre-revalue buy must reduce the anchored close_price');
 
       // Removing the pre-revalue buy must put close_price back to 120.
       await eventService.delete(laterBuyId);
-      afterAdd = await (db.select(db.marketPrices)
-            ..where((p) => p.assetId.equals(manualHolding.id)))
-          .get();
-      expect(afterAdd.first.closePrice, 120.0,
-          reason: 'deleting the pre-revalue buy must restore the anchor');
-      _step('   ✓ revalue materialised, anchored to qty-at-date, robust to '
-          'pre/post-revalue buys');
+      afterAdd = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(manualHolding.id))).get();
+      expect(afterAdd.first.closePrice, 120.0, reason: 'deleting the pre-revalue buy must restore the anchor');
+      _step(
+        '   ✓ revalue materialised, anchored to qty-at-date, robust to '
+        'pre/post-revalue buys',
+      );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -2102,8 +2060,7 @@ void main() {
         revalueValues: const {'TOTALEP'},
         numberLocaleOverride: 'it_IT',
       );
-      expect(result.result.errorRows, 0,
-          reason: 'PPP import errors: ${result.result.errors}');
+      expect(result.result.errorRows, 0, reason: 'PPP import errors: ${result.result.errors}');
 
       // The import does batched inserts, so the resync isn't triggered
       // automatically; run it once to materialize market_prices.
@@ -2116,18 +2073,21 @@ void main() {
       expect(latest!, closeTo(23100.00, 0.01));
 
       // Cost basis (Σ contributes) from the synthetic fixture.
-      final totals = await db.customSelect(
-        "SELECT SUM(amount) AS total FROM asset_events "
-        "WHERE asset_id = ? AND type IN ('buy','contribute')",
-        variables: [Variable.withInt(pensionId)],
-      ).getSingle();
+      final totals = await db
+          .customSelect(
+            "SELECT SUM(amount) AS total FROM asset_events "
+            "WHERE asset_id = ? AND type IN ('buy','contribute')",
+            variables: [Variable.withInt(pensionId)],
+          )
+          .getSingle();
       expect(totals.read<double>('total'), closeTo(21700.00, 0.01));
 
       // 6 anchor revalue dates each with a market_prices row.
-      final prices = await (db.select(db.marketPrices)
-            ..where((p) => p.assetId.equals(pensionId))
-            ..orderBy([(p) => OrderingTerm.asc(p.date)]))
-          .get();
+      final prices =
+          await (db.select(db.marketPrices)
+                ..where((p) => p.assetId.equals(pensionId))
+                ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+              .get();
       expect(prices, hasLength(6));
 
       // getPrice for any future date returns the latest close_price.
@@ -2136,8 +2096,10 @@ void main() {
       expect(priceLatest, isNotNull);
       expect(priceLatest! - prices.last.closePrice, closeTo(0.0, 0.0001));
 
-      _step('   ✓ PPP imported (111 rows, 6 revalues, €21700.00 invested → '
-          '€23100.00 position)');
+      _step(
+        '   ✓ PPP imported (111 rows, 6 revalues, €21700.00 invested → '
+        '€23100.00 position)',
+      );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -2168,38 +2130,31 @@ void main() {
         baseCurrency: 'USD',
         intermediaryId: anyIntermediary.id,
         contributeValues: const {
-          'employee_pretax', 'employee_roth', 'employer_match',
-          'employer_nonelective', 'rollover',
+          'employee_pretax',
+          'employee_roth',
+          'employer_match',
+          'employer_nonelective',
+          'rollover',
         },
         revalueValues: const {'position_snapshot'},
         numberLocaleOverride: 'en_US',
       );
-      expect(result.result.errorRows, 0,
-          reason: '401(k) import errors: ${result.result.errors}');
+      expect(result.result.errorRows, 0, reason: '401(k) import errors: ${result.result.errors}');
 
       final assetsAfter = await db.select(db.assets).get();
-      expect(assetsAfter.length - assetsBefore, 3,
-          reason: '3 unique ISINs → 3 new assets');
+      expect(assetsAfter.length - assetsBefore, 3, reason: '3 unique ISINs → 3 new assets');
 
       // Every contribute on a 401(k) sub-fund carries the explicit NAV
       // from the CSV (auto-fill must NOT have synthesized 1.0). Scope
       // by ISIN since 11C's PPP contributes also exist in this DB and
       // they DO carry price=1.0 by design.
-      final fund401kIds = assetsAfter
-          .where((a) => a.isin != null && a.isin!.startsWith('US922908'))
-          .map((a) => a.id)
-          .toList();
+      final fund401kIds = assetsAfter.where((a) => a.isin != null && a.isin!.startsWith('US922908')).map((a) => a.id).toList();
       expect(fund401kIds, hasLength(3));
-      final contribs = await (db.select(db.assetEvents)
-            ..where((e) =>
-                e.type.equalsValue(EventType.buy) &
-                e.assetId.isIn(fund401kIds)))
-          .get();
+      final contribs = await (db.select(db.assetEvents)..where((e) => e.type.equalsValue(EventType.buy) & e.assetId.isIn(fund401kIds))).get();
       expect(contribs, isNotEmpty);
       for (final c in contribs) {
         expect(c.price, isNotNull);
-        expect(c.price!, greaterThan(1.0),
-            reason: 'real NAVs are >1; price=1.0 means auto-fill misfired');
+        expect(c.price!, greaterThan(1.0), reason: 'real NAVs are >1; price=1.0 means auto-fill misfired');
       }
       _step('   ✓ 401(k) imported (3 sub-funds, units×NAV preserved)');
     }
@@ -2351,12 +2306,10 @@ void main() {
     expect(await pillarService.getAll(), isEmpty);
     await tester.tap(find.text('Pillars').first);
     await longSettle(tester);
-    expect(find.text('Create your first pillar'), findsOneWidget,
-        reason: 'empty-state CTA visible on a fresh Pillars tab');
+    expect(find.text('Create your first pillar'), findsOneWidget, reason: 'empty-state CTA visible on a fresh Pillars tab');
     await tester.tap(find.widgetWithText(Tab, 'Portfolio Models'));
     await longSettle(tester);
-    expect(find.text('Built-in'), findsAtLeast(1),
-        reason: 'Portfolio Models tab should seed and show built-in models');
+    expect(find.text('Built-in'), findsAtLeast(1), reason: 'Portfolio Models tab should seed and show built-in models');
     await tester.tap(find.widgetWithText(Tab, 'Pillars'));
     await longSettle(tester);
 
@@ -2382,8 +2335,7 @@ void main() {
     await longSettle(tester);
     // The detail body renders one Slider per asset that has units > 0.
     final sliders = find.byType(Slider);
-    expect(sliders, findsAtLeast(1),
-        reason: 'asset slider list should render in the overview');
+    expect(sliders, findsAtLeast(1), reason: 'asset slider list should render in the overview');
 
     _step('15D. Service-level assign(50%) round-trips through PillarService');
     // Pick a target asset that allSeriesDataProvider actually surfaces in
@@ -2394,22 +2346,17 @@ void main() {
     // excluded even with plenty of market_prices rows.
     final ctxFor15D = tester.element(find.byType(MaterialApp).first);
     final containerFor15D = ProviderScope.containerOf(ctxFor15D);
-    final allDataFor15D =
-        await containerFor15D.read(allSeriesDataProvider.future);
-    expect(allDataFor15D, isNotNull,
-        reason: 'allSeriesDataProvider must build for ACT XV chart assertions');
+    final allDataFor15D = await containerFor15D.read(allSeriesDataProvider.future);
+    expect(allDataFor15D, isNotNull, reason: 'allSeriesDataProvider must build for ACT XV chart assertions');
     final marketReadyIds = allDataFor15D!.assetMarket
-        .where((s) =>
-            s.key.startsWith('asset_market:') && s.spots.isNotEmpty)
+        .where((s) => s.key.startsWith('asset_market:') && s.spots.isNotEmpty)
         .map((s) => int.parse(s.key.split(':').last))
         .toSet();
     final investedReadyIds = allDataFor15D.assetInvested
-        .where((s) =>
-            s.key.startsWith('asset_invested:') && s.spots.isNotEmpty)
+        .where((s) => s.key.startsWith('asset_invested:') && s.spots.isNotEmpty)
         .map((s) => int.parse(s.key.split(':').last))
         .toSet();
-    final eligibleIds =
-        marketReadyIds.intersection(investedReadyIds);
+    final eligibleIds = marketReadyIds.intersection(investedReadyIds);
     int? targetAssetId;
     double? targetTotalQty;
     for (final id in eligibleIds) {
@@ -2420,9 +2367,11 @@ void main() {
         break;
       }
     }
-    expect(targetAssetId, isNotNull,
-        reason:
-            'walkthrough must have at least one asset with non-empty assetMarket+assetInvested series and qty>0');
+    expect(
+      targetAssetId,
+      isNotNull,
+      reason: 'walkthrough must have at least one asset with non-empty assetMarket+assetInvested series and qty>0',
+    );
     final halfQty = targetTotalQty! / 2;
     await pillarService.assign(
       pillarId: pillarId,
@@ -2430,8 +2379,7 @@ void main() {
       qty: halfQty,
     );
     expect(await pillarService.qtyFor(pillarId, targetAssetId), halfQty);
-    expect(await pillarService.unassignedQty(targetAssetId),
-        closeTo(targetTotalQty - halfQty, 1e-9));
+    expect(await pillarService.unassignedQty(targetAssetId), closeTo(targetTotalQty - halfQty, 1e-9));
     final fracs = await pillarService.fractionsForPillar(pillarId);
     expect(fracs[targetAssetId], closeTo(0.5, 1e-9));
     _step('   ✓ asset $targetAssetId @ 50%; SUM invariant holds');
@@ -2462,8 +2410,7 @@ void main() {
       ],
     );
     await pillarService.update(pillarId, portfolioModelId: customModelId);
-    final marketValuesFor15D =
-        await containerFor15D.read(assetMarketValuesProvider.future);
+    final marketValuesFor15D = await containerFor15D.read(assetMarketValuesProvider.future);
     final divergence = await portfolioModelService.computeDivergenceForPillar(
       pillarId: pillarId,
       marketValuesByAssetId: marketValuesFor15D,
@@ -2484,9 +2431,7 @@ void main() {
       mode: PortfolioRebalanceMode.buyOnly,
       contributionAmount: 10,
     );
-    final eventsBeforeDraft = await (db.select(db.assetEvents)
-          ..where((e) => e.assetId.equals(targetAssetId!)))
-        .get();
+    final eventsBeforeDraft = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(targetAssetId!))).get();
     if (buyOnlyDraft.rows.isNotEmpty) {
       await rebalanceService.applyDraft(
         PortfolioRebalanceDraft(
@@ -2506,16 +2451,12 @@ void main() {
         AssetEventService(db),
         date: DateTime(2026, 1, 15),
       );
-      final eventsAfterDraft = await (db.select(db.assetEvents)
-            ..where((e) => e.assetId.equals(targetAssetId!)))
-          .get();
+      final eventsAfterDraft = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(targetAssetId!))).get();
       expect(eventsAfterDraft.length, eventsBeforeDraft.length + 1);
       _step('   ✓ buy-only draft applied after explicit service call');
     } else {
       expect(
-        await (db.select(db.assetEvents)
-              ..where((e) => e.assetId.equals(targetAssetId!)))
-            .get(),
+        await (db.select(db.assetEvents)..where((e) => e.assetId.equals(targetAssetId!))).get(),
         hasLength(eventsBeforeDraft.length),
       );
       _step('   ✓ no draft rows generated; no events inserted');
@@ -2557,11 +2498,13 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Delete').last);
       await longSettle(tester);
     }
-    expect(await pillarService.getAll(), isEmpty,
-        reason: 'pillar delete cascades pillar_assets rows');
+    expect(await pillarService.getAll(), isEmpty, reason: 'pillar delete cascades pillar_assets rows');
     await portfolioModelService.deleteCustomModel(customModelId);
-    expect(await portfolioModelService.getById(customModelId), isNull,
-        reason: 'custom portfolio models are removable after pillar association is gone');
+    expect(
+      await portfolioModelService.getById(customModelId),
+      isNull,
+      reason: 'custom portfolio models are removable after pillar association is gone',
+    );
     _step('   ✓ pillar deleted, assignment removed via FK cascade');
 
     // ─────────────────────────────────────────────────────────────────────
@@ -2570,14 +2513,11 @@ void main() {
     _step('12. Cascade-delete sweep');
     await eventsService.delete(carId);
     expect(
-      (await (db.select(db.bufferTransactions)
-                ..where((t) => t.bufferId.equals(carBufferId)))
-              .get()),
+      (await (db.select(db.bufferTransactions)..where((t) => t.bufferId.equals(carBufferId))).get()),
       isEmpty,
       reason: 'event delete cascades buffer transactions',
     );
-    final remainingExtIds =
-        (await db.select(db.extraordinaryEvents).get()).map((e) => e.id).toList();
+    final remainingExtIds = (await db.select(db.extraordinaryEvents).get()).map((e) => e.id).toList();
     if (remainingExtIds.isNotEmpty) {
       await eventsService.deleteMany(remainingExtIds);
     }
@@ -2605,8 +2545,7 @@ void main() {
     );
     // Realistic shape: multi-year transactions, multiple assets, full
     // adjustment matrix exercised.
-    expect(finalTxs.length, greaterThan(180),
-        reason: 'multi-year Fineco + Revolut should produce many rows');
+    expect(finalTxs.length, greaterThan(180), reason: 'multi-year Fineco + Revolut should produce many rows');
     expect(finalAssetEvents.length, greaterThan(10));
   });
 }

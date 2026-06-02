@@ -57,8 +57,7 @@ class _WaybackAction extends ConsumerWidget {
     final selectedDate = ref.watch(waybackDateProvider);
     final currentDate = ref.watch(currentDateProvider);
     final s = ref.watch(appStringsProvider);
-    final localeTag = ref.watch(appLocaleProvider).value ??
-        Localizations.localeOf(context).toLanguageTag();
+    final localeTag = ref.watch(appLocaleProvider).value ?? Localizations.localeOf(context).toLanguageTag();
     final dateFmt = DateFormat.yMMMd(localeTag);
     final active = selectedDate != null;
     return PopupMenuButton<String>(
@@ -66,9 +65,7 @@ class _WaybackAction extends ConsumerWidget {
         Icons.history_toggle_off,
         color: active ? Theme.of(context).colorScheme.primary : null,
       ),
-      tooltip: active
-          ? s.waybackActiveTooltip(dateFmt.format(currentDate))
-          : s.tooltipWaybackMachine,
+      tooltip: active ? s.waybackActiveTooltip(dateFmt.format(currentDate)) : s.tooltipWaybackMachine,
       onSelected: (action) => _handleWaybackAction(context, ref, action),
       itemBuilder: (_) => _waybackMenuItems(context, ref),
     );
@@ -82,17 +79,14 @@ Future<void> _handleWaybackAction(
 ) async {
   final selectedDate = ref.read(waybackDateProvider);
   final realToday = dateOnly(DateTime.now());
-  final localeTag = ref.read(appLocaleProvider).value ??
-      Localizations.localeOf(context).toLanguageTag();
+  final localeTag = ref.read(appLocaleProvider).value ?? Localizations.localeOf(context).toLanguageTag();
   switch (action) {
     case 'reset':
       ref.read(waybackDateProvider.notifier).state = null;
     case 'monthEnd':
-      ref.read(waybackDateProvider.notifier).state =
-          lastCompletedMonthEnd(realToday);
+      ref.read(waybackDateProvider.notifier).state = lastCompletedMonthEnd(realToday);
     case 'yearEnd':
-      ref.read(waybackDateProvider.notifier).state =
-          lastCompletedYearEnd(realToday);
+      ref.read(waybackDateProvider.notifier).state = lastCompletedYearEnd(realToday);
     case 'custom':
       final picked = await showDatePicker(
         context: context,
@@ -114,42 +108,49 @@ List<PopupMenuEntry<String>> _waybackMenuItems(
   final selectedDate = ref.watch(waybackDateProvider);
   final currentDate = ref.watch(currentDateProvider);
   final s = ref.watch(appStringsProvider);
-  final localeTag = ref.watch(appLocaleProvider).value ??
-      Localizations.localeOf(context).toLanguageTag();
+  final localeTag = ref.watch(appLocaleProvider).value ?? Localizations.localeOf(context).toLanguageTag();
   final dateFmt = DateFormat.yMMMd(localeTag);
   return [
     if (selectedDate != null)
       PopupMenuItem(
         value: 'reset',
-        child: Row(children: [
-          const Icon(Icons.today),
-          const SizedBox(width: 12),
-          Text(s.waybackReset),
-        ]),
+        child: Row(
+          children: [
+            const Icon(Icons.today),
+            const SizedBox(width: 12),
+            Text(s.waybackReset),
+          ],
+        ),
       ),
     PopupMenuItem(
       value: 'monthEnd',
-      child: Row(children: [
-        const Icon(Icons.calendar_month),
-        const SizedBox(width: 12),
-        Text(s.waybackLastEndOfMonth),
-      ]),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_month),
+          const SizedBox(width: 12),
+          Text(s.waybackLastEndOfMonth),
+        ],
+      ),
     ),
     PopupMenuItem(
       value: 'yearEnd',
-      child: Row(children: [
-        const Icon(Icons.event),
-        const SizedBox(width: 12),
-        Text(s.waybackLastEndOfYear),
-      ]),
+      child: Row(
+        children: [
+          const Icon(Icons.event),
+          const SizedBox(width: 12),
+          Text(s.waybackLastEndOfYear),
+        ],
+      ),
     ),
     PopupMenuItem(
       value: 'custom',
-      child: Row(children: [
-        const Icon(Icons.edit_calendar),
-        const SizedBox(width: 12),
-        Text(s.waybackCustom),
-      ]),
+      child: Row(
+        children: [
+          const Icon(Icons.edit_calendar),
+          const SizedBox(width: 12),
+          Text(s.waybackCustom),
+        ],
+      ),
     ),
     PopupMenuItem(
       enabled: false,
@@ -170,8 +171,7 @@ class _PrivacyAction extends ConsumerWidget {
     return IconButton(
       icon: Icon(isPrivate ? Icons.visibility_off : Icons.visibility),
       tooltip: isPrivate ? s.tooltipHideAmounts : s.tooltipShowAmounts,
-      onPressed: () =>
-          ref.read(privacyModeProvider.notifier).state = !isPrivate,
+      onPressed: () => ref.read(privacyModeProvider.notifier).state = !isPrivate,
     );
   }
 }
@@ -289,60 +289,72 @@ class _GlobalActionsOverflow extends ConsumerWidget {
       itemBuilder: (_) => [
         PopupMenuItem(
           value: 'privacy',
-          child: Row(children: [
-            Icon(isPrivate ? Icons.visibility_off : Icons.visibility),
-            const SizedBox(width: 12),
-            Text(isPrivate ? s.tooltipHideAmounts : s.tooltipShowAmounts),
-          ]),
+          child: Row(
+            children: [
+              Icon(isPrivate ? Icons.visibility_off : Icons.visibility),
+              const SizedBox(width: 12),
+              Text(isPrivate ? s.tooltipHideAmounts : s.tooltipShowAmounts),
+            ],
+          ),
         ),
         ..._waybackMenuItems(context, ref),
         if (!online)
           PopupMenuItem(
             value: 'retryNetwork',
-            child: Row(children: [
-              Icon(Icons.signal_wifi_off, color: Colors.red.shade300),
-              const SizedBox(width: 12),
-              Text(s.noNetworkRetry),
-            ]),
+            child: Row(
+              children: [
+                Icon(Icons.signal_wifi_off, color: Colors.red.shade300),
+                const SizedBox(width: 12),
+                Text(s.noNetworkRetry),
+              ],
+            ),
           ),
         PopupMenuItem(
           value: 'refresh',
           enabled: !isSyncing,
-          child: Row(children: [
-            isSyncing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            const SizedBox(width: 12),
-            Text(s.tooltipRefreshPrices),
-          ]),
+          child: Row(
+            children: [
+              isSyncing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              const SizedBox(width: 12),
+              Text(s.tooltipRefreshPrices),
+            ],
+          ),
         ),
         PopupMenuItem(
           value: 'importExport',
-          child: Row(children: [
-            const Icon(Icons.import_export),
-            const SizedBox(width: 12),
-            Text(s.tooltipImportExportDb),
-          ]),
+          child: Row(
+            children: [
+              const Icon(Icons.import_export),
+              const SizedBox(width: 12),
+              Text(s.tooltipImportExportDb),
+            ],
+          ),
         ),
         PopupMenuItem(
           value: 'settings',
-          child: Row(children: [
-            const Icon(Icons.settings),
-            const SizedBox(width: 12),
-            Text(s.tooltipSettings),
-          ]),
+          child: Row(
+            children: [
+              const Icon(Icons.settings),
+              const SizedBox(width: 12),
+              Text(s.tooltipSettings),
+            ],
+          ),
         ),
         PopupMenuItem(
           value: 'importFile',
-          child: Row(children: [
-            const Icon(Icons.file_upload),
-            const SizedBox(width: 12),
-            Text(s.tooltipImportFile),
-          ]),
+          child: Row(
+            children: [
+              const Icon(Icons.file_upload),
+              const SizedBox(width: 12),
+              Text(s.tooltipImportFile),
+            ],
+          ),
         ),
       ],
     );

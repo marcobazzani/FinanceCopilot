@@ -21,8 +21,7 @@ Map<String, double> groupByField(
     final key = keyFn(asset);
     map[key] = (map[key] ?? 0) + val;
   }
-  final sorted = map.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
+  final sorted = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
   return Map.fromEntries(sorted);
 }
 
@@ -57,9 +56,7 @@ Map<String, double> weightedBreakdown(
     final mv = marketValues[asset.id] ?? 0;
     if (mv <= 0) continue;
 
-    final comps = compositions[asset.id]
-        ?.where((c) => c.type == compositionType)
-        .toList();
+    final comps = compositions[asset.id]?.where((c) => c.type == compositionType).toList();
 
     if (comps != null && comps.isNotEmpty) {
       for (final c in comps) {
@@ -70,8 +67,7 @@ Map<String, double> weightedBreakdown(
       result[key] = (result[key] ?? 0) + mv;
     }
   }
-  final sorted = result.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
+  final sorted = result.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
   return Map.fromEntries(sorted);
 }
 
@@ -89,16 +85,13 @@ Map<String, Map<String, double>> drillDownData(
     final mv = marketValues[asset.id] ?? 0;
     if (mv <= 0) continue;
 
-    final comps = compositions[asset.id]
-        ?.where((c) => c.type == compositionType)
-        .toList();
+    final comps = compositions[asset.id]?.where((c) => c.type == compositionType).toList();
 
     if (comps != null && comps.isNotEmpty) {
       for (final c in comps) {
         final contribution = mv * c.weight / 100;
         result.putIfAbsent(c.name, () => {});
-        result[c.name]![asset.name] =
-            (result[c.name]![asset.name] ?? 0) + contribution;
+        result[c.name]![asset.name] = (result[c.name]![asset.name] ?? 0) + contribution;
       }
     } else {
       final key = fallback(asset);
@@ -138,21 +131,18 @@ ConcentrationResult computeConcentration(
   final top1 = count >= 1 ? holdings[0].value / total * 100 : 0.0;
   final top3 = count >= 3
       ? holdings.take(3).fold(0.0, (a, b) => a + b.value) / total * 100
-      : (count > 0
-          ? holdings.fold(0.0, (a, b) => a + b.value) / total * 100
-          : 0.0);
+      : (count > 0 ? holdings.fold(0.0, (a, b) => a + b.value) / total * 100 : 0.0);
   final top5 = count >= 5
       ? holdings.take(5).fold(0.0, (a, b) => a + b.value) / total * 100
-      : (count > 0
-          ? holdings.fold(0.0, (a, b) => a + b.value) / total * 100
-          : 0.0);
+      : (count > 0 ? holdings.fold(0.0, (a, b) => a + b.value) / total * 100 : 0.0);
 
-  final hhi = total > 0
-      ? holdings.fold(0.0, (sum, e) => sum + pow(e.value / total, 2)) * 10000
-      : 0.0;
+  final hhi = total > 0 ? holdings.fold(0.0, (sum, e) => sum + pow(e.value / total, 2)) * 10000 : 0.0;
 
-  final classification =
-      hhi < 1500 ? 'diversified' : hhi < 2500 ? 'moderate' : 'concentrated';
+  final classification = hhi < 1500
+      ? 'diversified'
+      : hhi < 2500
+      ? 'moderate'
+      : 'concentrated';
 
   return ConcentrationResult(
     top1: top1,

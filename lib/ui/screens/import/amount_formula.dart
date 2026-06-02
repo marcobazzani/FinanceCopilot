@@ -72,7 +72,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
               children: [
                 ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
-                  child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+                  child: Text(
+                    s.amountRequired,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14),
+                  ),
                 ),
                 _buildAmountModeButtons(columns, currentMode: mode),
               ],
@@ -123,7 +126,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
-            child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+            child: Text(
+              s.amountRequired,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14),
+            ),
           ),
           const Icon(Icons.arrow_forward, size: 16),
           const SizedBox(width: 4),
@@ -137,7 +143,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
                 hintText: ref.watch(appStringsProvider).selectColumn,
               ),
               items: [
-                DropdownMenuItem(value: null, child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey))),
+                DropdownMenuItem(
+                  value: null,
+                  child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey)),
+                ),
                 ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
               ],
               onChanged: (v) => _setState(() => _mappings['amount'] = v),
@@ -187,7 +196,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
             children: [
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
-                child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+                child: Text(
+                  s.amountRequired,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14),
+                ),
               ),
               _buildAmountModeButtons(columns, currentMode: mode),
             ],

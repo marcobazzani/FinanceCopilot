@@ -7,8 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../services/providers/providers.dart';
-import 'dashboard_screen.dart'
-    show ChartSeries, DragZoomWrapper, UnifiedChart, kChartRightReservedDual;
+import 'dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, kChartRightReservedDual;
 
 /// Immersive full-screen view of a single chart.
 ///
@@ -38,8 +37,7 @@ class FullscreenChartScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<FullscreenChartScreen> createState() =>
-      _FullscreenChartScreenState();
+  ConsumerState<FullscreenChartScreen> createState() => _FullscreenChartScreenState();
 }
 
 class _FullscreenChartScreenState extends ConsumerState<FullscreenChartScreen> {
@@ -127,9 +125,7 @@ class _FullscreenChartScreenState extends ConsumerState<FullscreenChartScreen> {
             baseCurrency: widget.baseCurrency,
             locale: locale,
             onZoom: _onZoom,
-            rightReserved: widget.series.any((s) => s.rightAxis)
-                ? kChartRightReservedDual
-                : 0,
+            rightReserved: widget.series.any((s) => s.rightAxis) ? kChartRightReservedDual : 0,
             zoomedY: _zoomMinY != null || _zoomMaxY != null,
             fullPinch: true,
             child: UnifiedChart(

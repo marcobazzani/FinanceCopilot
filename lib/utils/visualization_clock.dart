@@ -1,5 +1,4 @@
-DateTime dateOnly(DateTime value) =>
-    DateTime(value.year, value.month, value.day);
+DateTime dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
 
 DateTime lastCompletedMonthEnd(DateTime today) {
   final d = dateOnly(today);

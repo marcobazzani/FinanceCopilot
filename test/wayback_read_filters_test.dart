@@ -10,8 +10,7 @@ import 'package:finance_copilot/services/account_service.dart';
 import 'package:finance_copilot/services/asset_service.dart';
 import 'package:finance_copilot/services/market_price_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
-import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart'
-    show allSeriesDataProvider;
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show allSeriesDataProvider;
 
 void main() {
   late AppDatabase db;
@@ -51,9 +50,7 @@ void main() {
     container.read(waybackDateProvider.notifier).state = DateTime(2024, 2, 29);
     final through = container.read(waybackDateProvider);
 
-    final accountId = await db
-        .into(db.accounts)
-        .insert(AccountsCompanion.insert(name: 'Checking'));
+    final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Checking'));
     await db
         .into(db.transactions)
         .insert(
@@ -75,9 +72,7 @@ void main() {
           ),
         );
 
-    final intermediaryId = await db
-        .into(db.intermediaries)
-        .insert(IntermediariesCompanion.insert(name: 'Broker'));
+    final intermediaryId = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Broker'));
     final assetId = await db
         .into(db.assets)
         .insert(
@@ -130,9 +125,7 @@ void main() {
           ),
         );
 
-    final bufferId = await db
-        .into(db.buffers)
-        .insert(BuffersCompanion.insert(name: 'Buffer'));
+    final bufferId = await db.into(db.buffers).insert(BuffersCompanion.insert(name: 'Buffer'));
     await db
         .into(db.bufferTransactions)
         .insert(
@@ -199,39 +192,24 @@ void main() {
           ),
         );
 
-    final txs = await container
-        .read(transactionServiceProvider)
-        .getByAccount(accountId, through: through);
+    final txs = await container.read(transactionServiceProvider).getByAccount(accountId, through: through);
     expect(txs.map((t) => t.amount), [100]);
-    final allTxs = await container
-        .read(transactionServiceProvider)
-        .watchAll(through: through)
-        .first;
+    final allTxs = await container.read(transactionServiceProvider).watchAll(through: through).first;
     expect(allTxs.map((t) => t.amount), [100]);
 
-    final assetEvents = await container
-        .read(assetEventServiceProvider)
-        .getByAsset(assetId, through: through);
+    final assetEvents = await container.read(assetEventServiceProvider).getByAsset(assetId, through: through);
     expect(assetEvents.map((e) => e.amount), [300]);
 
-    final incomes = await container
-        .read(incomeServiceProvider)
-        .getAll(through: through);
+    final incomes = await container.read(incomeServiceProvider).getAll(through: through);
     expect(incomes.map((i) => i.amount), [500]);
 
-    final bufferTxs = await container
-        .read(bufferServiceProvider)
-        .getByBuffer(bufferId, through: through);
+    final bufferTxs = await container.read(bufferServiceProvider).getByBuffer(bufferId, through: through);
     expect(bufferTxs.map((t) => t.amount), [700]);
 
-    final events = await container
-        .read(extraordinaryEventServiceProvider)
-        .getAll(through: through);
+    final events = await container.read(extraordinaryEventServiceProvider).getAll(through: through);
     expect(events.map((e) => e.name), ['Event']);
 
-    final entries = await container
-        .read(extraordinaryEventServiceProvider)
-        .getEntries(eventId, through: through);
+    final entries = await container.read(extraordinaryEventServiceProvider).getEntries(eventId, through: through);
     expect(entries.map((e) => e.amount), [-90]);
 
     expect(await db.select(db.transactions).get(), hasLength(2));
@@ -260,9 +238,7 @@ void main() {
             AppConfigsCompanion.insert(key: 'TAX_RATE', value: '0.26'),
           );
 
-      final intermediaryId = await db
-          .into(db.intermediaries)
-          .insert(IntermediariesCompanion.insert(name: 'Broker'));
+      final intermediaryId = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Broker'));
       final assetId = await db
           .into(db.assets)
           .insert(

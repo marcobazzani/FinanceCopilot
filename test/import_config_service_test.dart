@@ -16,9 +16,7 @@ void main() {
     service = ImportConfigService(db);
 
     // Create an account to reference in import configs.
-    accountId = await db
-        .into(db.accounts)
-        .insert(AccountsCompanion.insert(name: 'Test Account'));
+    accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Test Account'));
   });
 
   tearDown(() async => await db.close());
@@ -69,7 +67,7 @@ void main() {
         skipRows: 5,
         mappings: {'date': 'B', 'amount': 'C'},
         formula: [
-          {'operator': '*', 'sourceColumn': 'X'}
+          {'operator': '*', 'sourceColumn': 'X'},
         ],
         hashColumns: ['B', 'C'],
       );
@@ -83,13 +81,11 @@ void main() {
       expect(mappings['date'], 'B');
       expect(mappings['amount'], 'C');
 
-      final formula =
-          jsonDecode(config.formulaJson) as List<dynamic>;
+      final formula = jsonDecode(config.formulaJson) as List<dynamic>;
       expect(formula.length, 1);
       expect(formula[0]['operator'], '*');
 
-      final hashColumns =
-          jsonDecode(config.hashColumnsJson) as List<dynamic>;
+      final hashColumns = jsonDecode(config.hashColumnsJson) as List<dynamic>;
       expect(hashColumns, ['B', 'C']);
     });
   });
@@ -111,8 +107,7 @@ void main() {
       );
 
       final config = await service.getByAccount(accountId);
-      final decoded =
-          jsonDecode(config!.mappingsJson) as Map<String, dynamic>;
+      final decoded = jsonDecode(config!.mappingsJson) as Map<String, dynamic>;
       expect(decoded['date'], 'Date');
       expect(decoded['amount'], isNull);
       expect(decoded['description'], 'Desc');
@@ -134,8 +129,7 @@ void main() {
       );
 
       final config = await service.getByAccount(accountId);
-      final decoded =
-          jsonDecode(config!.formulaJson) as List<dynamic>;
+      final decoded = jsonDecode(config!.formulaJson) as List<dynamic>;
       expect(decoded.length, 3);
       expect(decoded[1]['operator'], '-');
       expect(decoded[2]['sourceColumn'], 'Factor');
@@ -153,8 +147,7 @@ void main() {
       );
 
       final config = await service.getByAccount(accountId);
-      final decoded =
-          jsonDecode(config!.hashColumnsJson) as List<dynamic>;
+      final decoded = jsonDecode(config!.hashColumnsJson) as List<dynamic>;
       expect(decoded, ['Date', 'Amount', 'Description', 'Reference']);
     });
 

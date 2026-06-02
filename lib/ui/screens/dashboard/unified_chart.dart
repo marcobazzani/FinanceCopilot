@@ -148,6 +148,7 @@ class DragZoomWrapper extends StatefulWidget {
   // makes pointer→chart math drift (off-by-N pixels per click).
   final double leftReserved = kChartLeftReserved;
   final double bottomReserved = kChartBottomReserved;
+
   /// Pixels reserved on the right edge for a right-axis ruler. Pass
   /// [kChartRightReservedDual] when the wrapped chart has any
   /// right-axis series; otherwise leave at 0.
@@ -155,10 +156,12 @@ class DragZoomWrapper extends StatefulWidget {
   final DateTime firstDate;
   final String baseCurrency;
   final String locale;
+
   /// True when the parent has explicitly zoomed Y (rectangle zoom set
   /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
   /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
   final bool zoomedY;
+
   /// Full-screen / immersive mode. On touch, pinch zooms BOTH axes
   /// (anchored at the focal point) and a single-finger drag pans both.
   /// Use for a dedicated full-screen chart — not for the dashboard
@@ -167,7 +170,8 @@ class DragZoomWrapper extends StatefulWidget {
   final bool fullPinch;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
-  const DragZoomWrapper({super.key,
+  const DragZoomWrapper({
+    super.key,
     required this.child,
     required this.xMin,
     required this.xMax,
@@ -203,19 +207,19 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   double? _scaleStartFocalChartY;
 
   double _pixelToChartX(double px, double drawWidth) => pixelToChartX(
-        px: px,
-        drawWidth: drawWidth,
-        leftReserved: widget.leftReserved,
-        xMin: widget.xMin,
-        xMax: widget.xMax,
-      );
+    px: px,
+    drawWidth: drawWidth,
+    leftReserved: widget.leftReserved,
+    xMin: widget.xMin,
+    xMax: widget.xMax,
+  );
 
   double _pixelToChartY(double py, double drawHeight) => pixelToChartY(
-        py: py,
-        drawHeight: drawHeight,
-        yMin: widget.yMin,
-        yMax: widget.yMax,
-      );
+    py: py,
+    drawHeight: drawHeight,
+    yMin: widget.yMin,
+    yMax: widget.yMax,
+  );
 
   bool get _isZoomedY => widget.zoomedY;
 
@@ -261,8 +265,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     // Plain wheel must scroll the parent page; only zoom when the user
     // explicitly opts in with Cmd (macOS) or Ctrl (Win/Linux) — same
     // convention as Google Maps / Mapbox / Excel.
-    final cmdOrCtrl = HardwareKeyboard.instance.isControlPressed
-        || HardwareKeyboard.instance.isMetaPressed;
+    final cmdOrCtrl = HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
     if (!cmdOrCtrl) return;
     final shift = HardwareKeyboard.instance.isShiftPressed;
     final factor = exp(-sig.scrollDelta.dy * 0.0015);
@@ -304,8 +307,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
     _scaleStartMinX = widget.xMin;
     _scaleStartMaxX = widget.xMax;
     final pxToUnitsX = (widget.xMax - widget.xMin) / chartWidth;
-    _scaleStartFocalChartX =
-        widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnitsX;
+    _scaleStartFocalChartX = widget.xMin + (d.localFocalPoint.dx - widget.leftReserved) * pxToUnitsX;
     if (widget.fullPinch && chartHeight > 0) {
       _scaleStartMinY = widget.yMin;
       _scaleStartMaxY = widget.yMax;
@@ -373,8 +375,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final chartWidth =
-            constraints.maxWidth - widget.leftReserved - widget.rightReserved;
+        final chartWidth = constraints.maxWidth - widget.leftReserved - widget.rightReserved;
         final chartHeight = constraints.maxHeight - widget.bottomReserved;
         final dateFmt = fmt.fullDateFormat(widget.locale);
         final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: 0);
@@ -453,8 +454,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
           child: RawGestureDetector(
             behavior: HitTestBehavior.translucent,
             gestures: <Type, GestureRecognizerFactory>{
-              ScaleGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
+              ScaleGestureRecognizer: GestureRecognizerFactoryWithHandlers<ScaleGestureRecognizer>(
                 () => ScaleGestureRecognizer(
                   supportedDevices: const {
                     PointerDeviceKind.touch,
@@ -462,8 +462,12 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                   },
                 ),
                 (r) => r
-                  ..onStart = (d) { _onScaleStart(d, chartWidth, chartHeight); }
-                  ..onUpdate = (d) { _onScaleUpdate(d, chartWidth, chartHeight); }
+                  ..onStart = (d) {
+                    _onScaleStart(d, chartWidth, chartHeight);
+                  }
+                  ..onUpdate = (d) {
+                    _onScaleUpdate(d, chartWidth, chartHeight);
+                  }
                   ..onEnd = _onScaleEnd,
               ),
             },
@@ -474,35 +478,35 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                 children: [
                   widget.child,
                   if (_isDragging && !_panning && _dragStart != null && _dragCurrent != null)
-                  Positioned(
-                    left: min(_dragStart!.dx, _dragCurrent!.dx),
-                    top: min(_dragStart!.dy, _dragCurrent!.dy),
-                    width: (_dragCurrent!.dx - _dragStart!.dx).abs(),
-                    height: (_dragCurrent!.dy - _dragStart!.dy).abs(),
-                    child: IgnorePointer(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.12),
-                          border: Border.all(color: Colors.blue.withValues(alpha: 0.5), width: 1),
-                        ),
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            color: Colors.blue.withValues(alpha: 0.7),
-                            child: Text(
-                              '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))} \u2013 '
-                              '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))}\n'
-                              '${currFmt.format(_pixelToChartY(max(_dragStart!.dy, _dragCurrent!.dy), chartHeight))} \u2013 '
-                              '${currFmt.format(_pixelToChartY(min(_dragStart!.dy, _dragCurrent!.dy), chartHeight))}',
-                              style: const TextStyle(color: Colors.white, fontSize: 10),
-                              textAlign: TextAlign.center,
+                    Positioned(
+                      left: min(_dragStart!.dx, _dragCurrent!.dx),
+                      top: min(_dragStart!.dy, _dragCurrent!.dy),
+                      width: (_dragCurrent!.dx - _dragStart!.dx).abs(),
+                      height: (_dragCurrent!.dy - _dragStart!.dy).abs(),
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.12),
+                            border: Border.all(color: Colors.blue.withValues(alpha: 0.5), width: 1),
+                          ),
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              color: Colors.blue.withValues(alpha: 0.7),
+                              child: Text(
+                                '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))} \u2013 '
+                                '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))}\n'
+                                '${currFmt.format(_pixelToChartY(max(_dragStart!.dy, _dragCurrent!.dy), chartHeight))} \u2013 '
+                                '${currFmt.format(_pixelToChartY(min(_dragStart!.dy, _dragCurrent!.dy), chartHeight))}',
+                                style: const TextStyle(color: Colors.white, fontSize: 10),
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -530,12 +534,14 @@ class UnifiedChart extends StatelessWidget {
   final double? zoomMinY;
   final double? zoomMaxY;
   final bool isPrivate;
+
   /// True for the immersive full-screen view, where zoom updates fire at
   /// pointer-frequency and the 150ms LineChart tween becomes the
   /// bottleneck. Skipping the tween makes pinch feel native.
   final bool liveZoom;
 
-  const UnifiedChart({super.key,
+  const UnifiedChart({
+    super.key,
     required this.firstDate,
     required this.visible,
     required this.totalSpots,
@@ -565,16 +571,16 @@ class UnifiedChart extends StatelessWidget {
     final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
     // ── Dual Y-axis setup ──
-    final leftVisible  = visible.where((s) => !s.rightAxis).toList();
-    final rightVisible = visible.where((s) =>  s.rightAxis).toList();
-    final hasDualAxis  = rightVisible.isNotEmpty;
+    final leftVisible = visible.where((s) => !s.rightAxis).toList();
+    final rightVisible = visible.where((s) => s.rightAxis).toList();
+    final hasDualAxis = rightVisible.isNotEmpty;
 
     // Left Y range (left series + total)
     final leftY = [
       if (showTotal) ...totalSpots.map((s) => s.y),
       ...leftVisible.expand((s) => s.spots.map((p) => p.y)),
     ];
-    final leftAutoMin = leftY.isEmpty ? 0.0  : leftY.reduce(min);
+    final leftAutoMin = leftY.isEmpty ? 0.0 : leftY.reduce(min);
     final leftAutoMax = leftY.isEmpty ? 100.0 : leftY.reduce(max);
     final leftAutoRange = leftAutoMax - leftAutoMin;
     final chartMinY = zoomMinY ?? (leftAutoRange > 0 ? leftAutoMin - leftAutoRange * 0.05 : leftAutoMin - 100);
@@ -594,48 +600,48 @@ class UnifiedChart extends StatelessWidget {
     final rightNatRange = (rightNatMax - rightNatMin).abs().clamp(1e-9, double.infinity);
 
     // Scale right-axis value → left pixel space
-    double scaleRight(double y) =>
-        chartRange <= 0 ? chartMinY : (y - rightNatMin) / rightNatRange * chartRange + chartMinY;
+    double scaleRight(double y) => chartRange <= 0 ? chartMinY : (y - rightNatMin) / rightNatRange * chartRange + chartMinY;
 
     // Reverse-scale left-pixel value → actual right-axis value (for tooltip/labels)
-    double unscaleRight(double scaledY) =>
-        chartRange <= 0 ? rightNatMin : (scaledY - chartMinY) / chartRange * rightNatRange + rightNatMin;
+    double unscaleRight(double scaledY) => chartRange <= 0 ? rightNatMin : (scaledY - chartMinY) / chartRange * rightNatRange + rightNatMin;
 
     final lineBars = <LineChartBarData>[];
 
     // Total line (always left axis)
     if (showTotal) {
-      lineBars.add(LineChartBarData(
-        spots: totalSpots,
-        isCurved: true,
-        preventCurveOverShooting: true,
-        curveSmoothness: 0.15,
-        color: isDark ? Colors.white : theme.colorScheme.primary,
-        barWidth: 2.5,
-        dotData: const FlDotData(show: false),
-        belowBarData: BarAreaData(
-          show: true,
-          color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.08),
+      lineBars.add(
+        LineChartBarData(
+          spots: totalSpots,
+          isCurved: true,
+          preventCurveOverShooting: true,
+          curveSmoothness: 0.15,
+          color: isDark ? Colors.white : theme.colorScheme.primary,
+          barWidth: 2.5,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            color: (isDark ? Colors.white : theme.colorScheme.primary).withValues(alpha: 0.08),
+          ),
         ),
-      ));
+      );
     }
 
     // Visible series lines (right-axis series are scaled into left pixel space)
     for (final s in visible) {
-      final spots = s.rightAxis
-          ? s.spots.map((pt) => FlSpot(pt.x, scaleRight(pt.y))).toList()
-          : s.spots;
-      lineBars.add(LineChartBarData(
-        spots: spots,
-        isCurved: true,
-        preventCurveOverShooting: true,
-        curveSmoothness: 0.15,
-        color: s.color,
-        barWidth: s.rightAxis ? 1.5 : (s.isDashed ? 1.5 : 2),
-        dotData: const FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-        dashArray: s.isDashed ? [6, 3] : null,
-      ));
+      final spots = s.rightAxis ? s.spots.map((pt) => FlSpot(pt.x, scaleRight(pt.y))).toList() : s.spots;
+      lineBars.add(
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          preventCurveOverShooting: true,
+          curveSmoothness: 0.15,
+          color: s.color,
+          barWidth: s.rightAxis ? 1.5 : (s.isDashed ? 1.5 : 2),
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+          dashArray: s.isDashed ? [6, 3] : null,
+        ),
+      );
     }
 
     final xMin = zoomMinX ?? 0;
@@ -658,8 +664,7 @@ class UnifiedChart extends StatelessWidget {
           show: true,
           drawVerticalLine: false,
           horizontalInterval: yRange > 0 ? yRange / 4 : 100,
-          getDrawingHorizontalLine: (value) =>
-              FlLine(color: gridColor, strokeWidth: 0.5),
+          getDrawingHorizontalLine: (value) => FlLine(color: gridColor, strokeWidth: 0.5),
         ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -685,8 +690,7 @@ class UnifiedChart extends StatelessWidget {
                 return SideTitleWidget(
                   meta: meta,
                   angle: -0.5,
-                  child: Text(dateFmt.format(date),
-                      style: TextStyle(fontSize: 12, color: textColor)),
+                  child: Text(dateFmt.format(date), style: TextStyle(fontSize: 12, color: textColor)),
                 );
               },
             ),
@@ -700,8 +704,7 @@ class UnifiedChart extends StatelessWidget {
                 final label = isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(value);
                 return SideTitleWidget(
                   meta: meta,
-                  child: Text(label,
-                      style: TextStyle(fontSize: 12, color: textColor)),
+                  child: Text(label, style: TextStyle(fontSize: 12, color: textColor)),
                 );
               },
             ),
@@ -742,17 +745,21 @@ class UnifiedChart extends StatelessWidget {
                 final datePrefix = spotIdx == 0 ? '${fullFmt.format(date)}\n' : '';
 
                 if (isTotal) {
-                  items.add(LineTooltipItem(
-                    '${fullFmt.format(date)}\nTotal: ${currFmt.format(spot.y)}',
-                    const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                  ));
+                  items.add(
+                    LineTooltipItem(
+                      '${fullFmt.format(date)}\nTotal: ${currFmt.format(spot.y)}',
+                      const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  );
                 } else if (seriesIdx >= 0 && seriesIdx < visible.length) {
                   final s = visible[seriesIdx];
                   final displayY = s.rightAxis ? unscaleRight(spot.y) : spot.y;
-                  items.add(LineTooltipItem(
-                    '$datePrefix${s.name}: ${currFmt.format(displayY)}${s.rightAxis ? ' (\u2192)' : ''}',
-                    TextStyle(color: s.color, fontSize: 12),
-                  ));
+                  items.add(
+                    LineTooltipItem(
+                      '$datePrefix${s.name}: ${currFmt.format(displayY)}${s.rightAxis ? ' (\u2192)' : ''}',
+                      TextStyle(color: s.color, fontSize: 12),
+                    ),
+                  );
                 } else {
                   items.add(null);
                 }

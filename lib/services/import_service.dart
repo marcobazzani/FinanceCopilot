@@ -40,7 +40,14 @@ class ColumnMapping {
   final List<String>? multiColumns; // combine multiple columns (concat strings, sum numbers)
   final String multiDelimiter; // delimiter for string concatenation (default: space)
 
-  const ColumnMapping({this.sourceColumn, required this.targetField, this.formulaTerms, this.balanceDiffColumn, this.multiColumns, this.multiDelimiter = ' '});
+  const ColumnMapping({
+    this.sourceColumn,
+    required this.targetField,
+    this.formulaTerms,
+    this.balanceDiffColumn,
+    this.multiColumns,
+    this.multiDelimiter = ' ',
+  });
 
   bool get isFormula => formulaTerms != null && formulaTerms!.isNotEmpty;
   bool get isBalanceDiff => balanceDiffColumn != null;
@@ -50,6 +57,7 @@ class ColumnMapping {
 /// Result of parsing a file before column mapping.
 class FilePreview {
   final List<String> columns;
+
   /// Preview rows for UI display (first 5 + last 5 = max 10).
   /// For full row access during import, re-parse the file.
   final List<Map<String, String>> rows;
@@ -61,6 +69,7 @@ class FilePreview {
   final int skipRows;
   final bool noHeader;
   final String? sheetName;
+
   /// Locale used to format numeric XLSX cells when stringifying. Stored so
   /// `getFullRows` can detect when a locale change requires re-parsing.
   final String? numberLocale;
@@ -85,10 +94,12 @@ class ImportResult {
   final int deletedRows;
   final int errorRows;
   final List<String> errors;
+
   /// External fee rows (asset imports) whose `(isin, orderRef)` key matched
   /// no parent Buy/Sell. The fee amount was discarded; the count is
   /// surfaced so the user can investigate. Always 0 for transaction imports.
   final int unmatchedFees;
+
   /// External fee rows successfully folded into a parent's `commission`.
   final int attachedFees;
 
@@ -157,8 +168,7 @@ class ImportService {
   Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) =>
       _parser.parseClipboard(text, skipRows: skipRows, noHeader: noHeader);
 
-  Future<FilePreview> getFullRows(FilePreview preview, {String? numberLocale}) =>
-      _parser.getFullRows(preview, numberLocale: numberLocale);
+  Future<FilePreview> getFullRows(FilePreview preview, {String? numberLocale}) => _parser.getFullRows(preview, numberLocale: numberLocale);
 
   // ──────────────────────────────────────────────
   // Helpers: mapping resolution
@@ -200,8 +210,7 @@ class ImportService {
   /// with missing/garbage cells also contribute 0 but do NOT clear the
   /// last-known balance, so a single bad cell doesn't cause the next row
   /// to look like a huge transaction.
-  List<double> _computeBalanceDiffs(
-      List<Map<String, String>> rows, String balCol) {
+  List<double> _computeBalanceDiffs(List<Map<String, String>> rows, String balCol) {
     final out = <double>[];
     double? prevBalance;
     for (final row in rows) {
@@ -239,8 +248,7 @@ class ImportService {
   /// Format a numeric result so it round-trips through `_parseAmount`. Plain
   /// `toString()` always emits '.' as decimal — which it_IT (and other EU
   /// locales) then re-parse as a thousands separator, multiplying the value.
-  String _formatAmount(double v) =>
-      NumberFormat.decimalPattern(_activeLocale).format(v);
+  String _formatAmount(double v) => NumberFormat.decimalPattern(_activeLocale).format(v);
 
   /// Re-parse the underlying file when the preview's `numberLocale` no
   /// longer matches `_activeLocale`. Only matters for XLSX (numeric cells
@@ -312,10 +320,12 @@ class ImportService {
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
+
     /// User's per-import locale choice from the wizard. Persisted to
     /// `ImportConfigs.numberLocale` for this account when non-null.
     /// NULL means "Auto — fall back to the saved value or [appLocale]".
     String? numberLocaleOverride,
+
     /// App's configured locale (e.g. `it_IT`). Used as the final fallback
     /// when no per-source override or saved value exists.
     String? appLocale,
@@ -334,7 +344,9 @@ class ImportService {
     if (dateMapping == null || amountMapping == null) {
       _log.severe('importTransactions: missing required mappings');
       return const ImportResult(
-        totalRows: 0, importedRows: 0, errorRows: 0,
+        totalRows: 0,
+        importedRows: 0,
+        errorRows: 0,
         errors: ['date and amount columns are required'],
       );
     }
@@ -343,8 +355,7 @@ class ImportService {
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
       _log.info('importTransactions: balance-diff mode, column=${amountMapping.balanceDiffColumn}');
-      balanceDiffAmounts = _computeBalanceDiffs(
-          preview.rows, amountMapping.balanceDiffColumn!);
+      balanceDiffAmounts = _computeBalanceDiffs(preview.rows, amountMapping.balanceDiffColumn!);
     }
 
     // Fetch account's currency for fallback
@@ -392,19 +403,21 @@ class ImportService {
           txStatus = TransactionStatus.values.where((s) => s.name.toLowerCase() == sStr).firstOrNull;
         }
 
-        parsedRows.add(_ParsedTransactionRow(
-          date: date,
-          valueDate: valueDate,
-          amount: amount,
-          description: descMapping != null ? (_resolveMapping(descMapping, row) ?? '') : '',
-          balanceAfterFromColumn: balanceMapping != null ? _tryParseAmount(_resolveMapping(balanceMapping, row)) : null,
-          currency: currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? accountCurrency) : accountCurrency,
-          status: txStatus,
-          rawMetadata: rawMetadata,
-          hash: null,
-          filterColumnValue: balanceFilterColumn != null ? (row[balanceFilterColumn] ?? '').trim() : null,
-          csvIndex: i,
-        ));
+        parsedRows.add(
+          _ParsedTransactionRow(
+            date: date,
+            valueDate: valueDate,
+            amount: amount,
+            description: descMapping != null ? (_resolveMapping(descMapping, row) ?? '') : '',
+            balanceAfterFromColumn: balanceMapping != null ? _tryParseAmount(_resolveMapping(balanceMapping, row)) : null,
+            currency: currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? accountCurrency) : accountCurrency,
+            status: txStatus,
+            rawMetadata: rawMetadata,
+            hash: null,
+            filterColumnValue: balanceFilterColumn != null ? (row[balanceFilterColumn] ?? '').trim() : null,
+            csvIndex: i,
+          ),
+        );
         imported++;
       } catch (e, stack) {
         errorCount++;
@@ -441,17 +454,21 @@ class ImportService {
     onProgress?.call(preview.rows.length, preview.rows.length);
 
     // Batch insert all parsed rows
-    final companions = parsedRows.map((r) => TransactionsCompanion.insert(
-      accountId: accountId,
-      operationDate: r.date,
-      valueDate: r.valueDate ?? r.date,
-      amount: r.amount,
-      description: Value(r.description),
-      balanceAfter: Value(r.balanceAfter),
-      currency: Value(r.currency),
-      status: r.status != null ? Value(r.status!) : const Value.absent(),
-      rawMetadata: Value(jsonEncode(r.rawMetadata)),
-    )).toList();
+    final companions = parsedRows
+        .map(
+          (r) => TransactionsCompanion.insert(
+            accountId: accountId,
+            operationDate: r.date,
+            valueDate: r.valueDate ?? r.date,
+            amount: r.amount,
+            description: Value(r.description),
+            balanceAfter: Value(r.balanceAfter),
+            currency: Value(r.currency),
+            status: r.status != null ? Value(r.status!) : const Value.absent(),
+            rawMetadata: Value(jsonEncode(r.rawMetadata)),
+          ),
+        )
+        .toList();
 
     _log.info('importTransactions: batch-inserting ${companions.length} rows');
     await _db.batch((batch) {
@@ -478,9 +495,11 @@ class ImportService {
     required List<ColumnMapping> mappings,
     required String defaultCurrency,
     void Function(int processed, int total)? onProgress,
+
     /// User's per-import locale choice. Persisted to the
     /// `IMPORT_INCOME_LOCALE` AppConfigs key when non-null.
     String? numberLocaleOverride,
+
     /// App's configured locale (e.g. `it_IT`). Final fallback.
     String? appLocale,
   }) async {
@@ -495,7 +514,9 @@ class ImportService {
 
     if (dateMapping == null || amountMapping == null) {
       return const ImportResult(
-        totalRows: 0, importedRows: 0, errorRows: 0,
+        totalRows: 0,
+        importedRows: 0,
+        errorRows: 0,
         errors: ['date and amount columns are required'],
       );
     }
@@ -524,13 +545,15 @@ class ImportService {
             ? IncomeType.refund
             : IncomeType.income;
 
-        companions.add(IncomesCompanion.insert(
-          date: date,
-          valueDate: valueDate,
-          amount: amount,
-          type: Value(type),
-          currency: Value(currency.isNotEmpty ? currency : defaultCurrency),
-        ));
+        companions.add(
+          IncomesCompanion.insert(
+            date: date,
+            valueDate: valueDate,
+            amount: amount,
+            type: Value(type),
+            currency: Value(currency.isNotEmpty ? currency : defaultCurrency),
+          ),
+        );
         imported++;
       } catch (e, stack) {
         errorCount++;
@@ -569,15 +592,13 @@ class ImportService {
     String balanceMode = 'cumulative',
     String? balanceFilterColumn,
     Set<String>? balanceFilterInclude,
+
     /// Locale used for parsing during preview only — NOT persisted.
     String? numberLocale,
     String? appLocale,
   }) async {
-    final saved = numberLocale ??
-        (await (_db.select(_db.importConfigs)
-                  ..where((c) => c.accountId.equals(accountId)))
-                .getSingleOrNull())
-            ?.numberLocale;
+    final saved =
+        numberLocale ?? (await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull())?.numberLocale;
     _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
     preview = await _ensurePreviewLocale(preview);
     _log.info('previewTransactionImport: accountId=$accountId, ${preview.totalRows} rows, locale=$_activeLocale');
@@ -587,7 +608,10 @@ class ImportService {
 
     if (dateMapping == null || amountMapping == null) {
       return const TransactionImportPreview(
-        parsedRows: 0, errorRows: 0, importSum: 0, rowsToReplace: 0,
+        parsedRows: 0,
+        errorRows: 0,
+        importSum: 0,
+        rowsToReplace: 0,
         errors: ['date and amount columns are required'],
       );
     }
@@ -595,8 +619,7 @@ class ImportService {
     // Pre-compute balance-diff amounts if needed
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
-      balanceDiffAmounts = _computeBalanceDiffs(
-          preview.rows, amountMapping.balanceDiffColumn!);
+      balanceDiffAmounts = _computeBalanceDiffs(preview.rows, amountMapping.balanceDiffColumn!);
     }
 
     final valueDateMapping = mappingByField['valueDate'];
@@ -625,9 +648,7 @@ class ImportService {
         // Check filtered mode
         if (balanceMode == 'filtered' && balanceFilterColumn != null) {
           final filterVal = (row[balanceFilterColumn] ?? '').trim();
-          final included = balanceFilterInclude == null ||
-              balanceFilterInclude.isEmpty ||
-              balanceFilterInclude.contains(filterVal);
+          final included = balanceFilterInclude == null || balanceFilterInclude.isEmpty || balanceFilterInclude.contains(filterVal);
           if (included) importSum += amount;
         } else {
           importSum += amount;
@@ -645,13 +666,14 @@ class ImportService {
     var rowsToReplace = 0;
     double? predictedBalance;
     if (oldestDate != null) {
-      final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day)
-          .millisecondsSinceEpoch ~/ 1000;
+      final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day).millisecondsSinceEpoch ~/ 1000;
 
-      final countResult = await _db.customSelect(
-        'SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ? AND operation_date >= ?',
-        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-      ).getSingle();
+      final countResult = await _db
+          .customSelect(
+            'SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ? AND operation_date >= ?',
+            variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+          )
+          .getSingle();
       rowsToReplace = countResult.read<int>('cnt');
 
       // Predicted balance = balance before cutoff + sum of CSV amounts.
@@ -667,8 +689,10 @@ class ImportService {
       }
     }
 
-    _log.info('previewTransactionImport: parsed=$parsed, errors=$errorCount, sum=$importSum, '
-        'predicted=$predictedBalance, toReplace=$rowsToReplace');
+    _log.info(
+      'previewTransactionImport: parsed=$parsed, errors=$errorCount, sum=$importSum, '
+      'predicted=$predictedBalance, toReplace=$rowsToReplace',
+    );
     return TransactionImportPreview(
       parsedRows: parsed,
       errorRows: errorCount,
@@ -694,14 +718,19 @@ class ImportService {
     if (mapping == null) return null;
     final s = _resolveMapping(mapping, row);
     if (s == null || s.isEmpty) return null;
-    try { return _parseDate(s); } catch (_) { return null; }
+    try {
+      return _parseDate(s);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Parse [dateStr] with fallback to [fallback] when parsing fails.
   /// If both fail (parse error and no fallback), rethrows the parse error.
   DateTime _parseDateWithFallback(String dateStr, DateTime? fallback) {
-    try { return _parseDate(dateStr); }
-    catch (_) {
+    try {
+      return _parseDate(dateStr);
+    } catch (_) {
       if (fallback != null) return fallback;
       rethrow;
     }
@@ -724,31 +753,30 @@ class ImportService {
     required String? override,
     required String? appLocale,
   }) async {
-    final saved = override ??
-        (await (_db.select(_db.importConfigs)
-                  ..where((c) => c.accountId.equals(accountId)))
-                .getSingleOrNull())
-            ?.numberLocale;
+    final saved =
+        override ?? (await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull())?.numberLocale;
     _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
 
     if (override != null) {
       // Upsert into ImportConfigs. If no row exists yet, create one with
       // sensible defaults so future opens of the wizard show the choice.
-      final existing = await (_db.select(_db.importConfigs)
-            ..where((c) => c.accountId.equals(accountId)))
-          .getSingleOrNull();
+      final existing = await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull();
       if (existing == null) {
-        await _db.into(_db.importConfigs).insert(ImportConfigsCompanion.insert(
-              accountId: accountId,
-              numberLocale: Value(override),
-            ));
+        await _db
+            .into(_db.importConfigs)
+            .insert(
+              ImportConfigsCompanion.insert(
+                accountId: accountId,
+                numberLocale: Value(override),
+              ),
+            );
       } else {
-        await (_db.update(_db.importConfigs)
-              ..where((c) => c.accountId.equals(accountId)))
-            .write(ImportConfigsCompanion(
-          numberLocale: Value(override),
-          updatedAt: Value(DateTime.now()),
-        ));
+        await (_db.update(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).write(
+          ImportConfigsCompanion(
+            numberLocale: Value(override),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
       }
     }
   }
@@ -761,20 +789,17 @@ class ImportService {
     required String? override,
     required String? appLocale,
   }) async {
-    final saved = override ??
-        (await (_db.select(_db.intermediaries)
-                  ..where((i) => i.id.equals(intermediaryId)))
-                .getSingleOrNull())
-            ?.defaultImportLocale;
+    final saved =
+        override ?? (await (_db.select(_db.intermediaries)..where((i) => i.id.equals(intermediaryId))).getSingleOrNull())?.defaultImportLocale;
     _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
 
     if (override != null) {
-      await (_db.update(_db.intermediaries)
-            ..where((i) => i.id.equals(intermediaryId)))
-          .write(IntermediariesCompanion(
-        defaultImportLocale: Value(override),
-        updatedAt: Value(DateTime.now()),
-      ));
+      await (_db.update(_db.intermediaries)..where((i) => i.id.equals(intermediaryId))).write(
+        IntermediariesCompanion(
+          defaultImportLocale: Value(override),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
     }
   }
 
@@ -789,17 +814,21 @@ class ImportService {
   }) async {
     String? saved = override;
     if (saved == null) {
-      final row = await _db.customSelect(
-        'SELECT value FROM app_configs WHERE key = ?',
-        variables: [Variable.withString(_incomeLocaleConfigKey)],
-      ).getSingleOrNull();
+      final row = await _db
+          .customSelect(
+            'SELECT value FROM app_configs WHERE key = ?',
+            variables: [Variable.withString(_incomeLocaleConfigKey)],
+          )
+          .getSingleOrNull();
       final v = row?.read<String?>('value');
       if (v != null && v.isNotEmpty) saved = v;
     }
     _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
 
     if (override != null) {
-      await _db.into(_db.appConfigs).insertOnConflictUpdate(
+      await _db
+          .into(_db.appConfigs)
+          .insertOnConflictUpdate(
             AppConfigsCompanion.insert(
               key: _incomeLocaleConfigKey,
               value: override,
@@ -821,6 +850,7 @@ class ImportService {
     Set<String>? sellValues,
     Set<String>? feeValues,
     Set<String>? revalueValues,
+
     /// Kept for wizard-API compatibility — these values map to
     /// `EventType.buy`. Pension contributions are accounting-equivalent
     /// to a discounted-NAV purchase: same effect on cost basis and
@@ -877,19 +907,23 @@ class ImportService {
     String balanceMode = 'cumulative',
   }) async {
     if (balanceMode == 'filtered') {
-      final row = await _db.customSelect(
-        'SELECT balance_after FROM transactions '
-        'WHERE account_id = ? AND operation_date < ? '
-        'ORDER BY operation_date DESC, id DESC LIMIT 1',
-        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-      ).getSingleOrNull();
+      final row = await _db
+          .customSelect(
+            'SELECT balance_after FROM transactions '
+            'WHERE account_id = ? AND operation_date < ? '
+            'ORDER BY operation_date DESC, id DESC LIMIT 1',
+            variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+          )
+          .getSingleOrNull();
       return row?.readNullable<double>('balance_after') ?? 0.0;
     }
-    final row = await _db.customSelect(
-      'SELECT COALESCE(SUM(amount), 0) AS s FROM transactions '
-      'WHERE account_id = ? AND operation_date < ?',
-      variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-    ).getSingle();
+    final row = await _db
+        .customSelect(
+          'SELECT COALESCE(SUM(amount), 0) AS s FROM transactions '
+          'WHERE account_id = ? AND operation_date < ?',
+          variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+        )
+        .getSingle();
     return row.read<double>('s');
   }
 
@@ -941,9 +975,7 @@ class ImportService {
       int balanceCents = toCents(startingBalance);
       for (final i in indexed) {
         final filterVal = rows[i].filterColumnValue ?? '';
-        final included = balanceFilterInclude == null ||
-            balanceFilterInclude.isEmpty ||
-            balanceFilterInclude.contains(filterVal);
+        final included = balanceFilterInclude == null || balanceFilterInclude.isEmpty || balanceFilterInclude.contains(filterVal);
         if (included) {
           balanceCents += toCents(rows[i].amount);
         }

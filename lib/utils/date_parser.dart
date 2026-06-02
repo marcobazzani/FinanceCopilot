@@ -82,8 +82,7 @@ DateTime parseDate(String s) {
   // E.g. "Gennaio 2026", "January 2026", "Févr 2026". Used by pension /
   // periodic statements where the period column is a localized month label.
   // Resolution mirrors the MM/YYYY case above so parser behavior is uniform.
-  final monthYearNamed =
-      RegExp(r'^(\w+)\s+(\d{4})$', caseSensitive: false).firstMatch(s);
+  final monthYearNamed = RegExp(r'^(\w+)\s+(\d{4})$', caseSensitive: false).firstMatch(s);
   if (monthYearNamed != null) {
     final month = monthMap[monthYearNamed.group(1)!.toLowerCase()];
     if (month != null) {
@@ -168,9 +167,7 @@ DateTime parseDate(String s) {
   final epoch = RegExp(r'^(\d{10,13})$').firstMatch(s);
   if (epoch != null) {
     final n = int.parse(epoch.group(1)!);
-    return n > 9999999999
-        ? DateTime.fromMillisecondsSinceEpoch(n)
-        : DateTime.fromMillisecondsSinceEpoch(n * 1000);
+    return n > 9999999999 ? DateTime.fromMillisecondsSinceEpoch(n) : DateTime.fromMillisecondsSinceEpoch(n * 1000);
   }
 
   // ── Fallback: Dart's DateTime.parse (handles ISO 8601) ──
@@ -190,5 +187,4 @@ DateTime? tryParseDate(String text) {
   }
 }
 
-bool _validDayMonth(int day, int month) =>
-    month >= 1 && month <= 12 && day >= 1 && day <= 31;
+bool _validDayMonth(int day, int month) => month >= 1 && month <= 12 && day >= 1 && day <= 31;
