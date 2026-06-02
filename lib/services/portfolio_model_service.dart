@@ -35,18 +35,29 @@ class PortfolioModelInputItem {
   final String isin;
   final double targetWeight;
   final String description;
+  final String? preferredTicker;
+  final String? preferredExchange;
 
   const PortfolioModelInputItem({
     required this.isin,
     required this.targetWeight,
     this.description = '',
+    this.preferredTicker,
+    this.preferredExchange,
   });
 
   PortfolioModelInputItem normalised() => PortfolioModelInputItem(
     isin: normaliseIsin(isin),
     targetWeight: targetWeight,
     description: description.trim(),
+    preferredTicker: _blankToNull(preferredTicker?.trim()),
+    preferredExchange: _blankToNull(preferredExchange?.trim()),
   );
+}
+
+String? _blankToNull(String? value) {
+  if (value == null || value.isEmpty) return null;
+  return value;
 }
 
 class ParsedPortfolioModel {
@@ -389,6 +400,8 @@ class PortfolioModelService {
             isin: item.isin,
             targetWeight: item.targetWeight,
             description: Value(item.description),
+            preferredTicker: Value(item.preferredTicker),
+            preferredExchange: Value(item.preferredExchange),
             sortOrder: Value(i),
           ),
         );
@@ -476,22 +489,40 @@ class PortfolioModelService {
     }
 
     final items = <PortfolioModelInputItem>[];
+    List<String>? headers;
     for (final line in lines) {
       final trimmed = line.trim();
       if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) continue;
       final cells = trimmed.substring(1, trimmed.length - 1).split('|').map((cell) => cell.trim()).toList();
       if (cells.length < 3) continue;
       final first = cells[0].toLowerCase();
-      if (first == 'isin' || first.replaceAll('-', '').isEmpty) continue;
+      if (first == 'isin') {
+        headers = cells.map((cell) => cell.toLowerCase()).toList();
+        continue;
+      }
+      if (first.replaceAll('-', '').isEmpty) continue;
       final weight = _parseWeight(cells[1]);
       if (weight == null) {
         throw PortfolioModelValidationException(['invalid weight "${cells[1]}" in $id']);
       }
+      String? headerValue(List<String> names) {
+        final currentHeaders = headers;
+        if (currentHeaders == null) return null;
+        for (final name in names) {
+          final index = currentHeaders.indexOf(name);
+          if (index >= 0 && index < cells.length) return cells[index];
+        }
+        return null;
+      }
+
+      final description = headerValue(const ['description', 'asset', 'name']) ?? cells.sublist(2).join(' | ');
       items.add(
         PortfolioModelInputItem(
           isin: cells[0],
           targetWeight: weight,
-          description: cells.sublist(2).join(' | '),
+          description: description,
+          preferredTicker: headerValue(const ['ticker', 'preferred ticker']),
+          preferredExchange: headerValue(const ['exchange', 'preferred exchange']),
         ),
       );
     }

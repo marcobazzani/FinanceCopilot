@@ -12409,6 +12409,28 @@ class $PortfolioModelItemsTable extends PortfolioModelItems
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _preferredTickerMeta = const VerificationMeta(
+    'preferredTicker',
+  );
+  @override
+  late final GeneratedColumn<String> preferredTicker = GeneratedColumn<String>(
+    'preferred_ticker',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _preferredExchangeMeta = const VerificationMeta(
+    'preferredExchange',
+  );
+  @override
+  late final GeneratedColumn<String> preferredExchange = GeneratedColumn<String>(
+    'preferred_exchange',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _sortOrderMeta = const VerificationMeta(
     'sortOrder',
   );
@@ -12428,6 +12450,8 @@ class $PortfolioModelItemsTable extends PortfolioModelItems
     isin,
     targetWeight,
     description,
+    preferredTicker,
+    preferredExchange,
     sortOrder,
   ];
   @override
@@ -12481,6 +12505,24 @@ class $PortfolioModelItemsTable extends PortfolioModelItems
         ),
       );
     }
+    if (data.containsKey('preferred_ticker')) {
+      context.handle(
+        _preferredTickerMeta,
+        preferredTicker.isAcceptableOrUnknown(
+          data['preferred_ticker']!,
+          _preferredTickerMeta,
+        ),
+      );
+    }
+    if (data.containsKey('preferred_exchange')) {
+      context.handle(
+        _preferredExchangeMeta,
+        preferredExchange.isAcceptableOrUnknown(
+          data['preferred_exchange']!,
+          _preferredExchangeMeta,
+        ),
+      );
+    }
     if (data.containsKey('sort_order')) {
       context.handle(
         _sortOrderMeta,
@@ -12520,6 +12562,14 @@ class $PortfolioModelItemsTable extends PortfolioModelItems
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       )!,
+      preferredTicker: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preferred_ticker'],
+      ),
+      preferredExchange: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preferred_exchange'],
+      ),
       sortOrder: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
@@ -12540,6 +12590,8 @@ class PortfolioModelItem extends DataClass
   final String isin;
   final double targetWeight;
   final String description;
+  final String? preferredTicker;
+  final String? preferredExchange;
   final int sortOrder;
   const PortfolioModelItem({
     required this.id,
@@ -12547,6 +12599,8 @@ class PortfolioModelItem extends DataClass
     required this.isin,
     required this.targetWeight,
     required this.description,
+    this.preferredTicker,
+    this.preferredExchange,
     required this.sortOrder,
   });
   @override
@@ -12557,6 +12611,12 @@ class PortfolioModelItem extends DataClass
     map['isin'] = Variable<String>(isin);
     map['target_weight'] = Variable<double>(targetWeight);
     map['description'] = Variable<String>(description);
+    if (!nullToAbsent || preferredTicker != null) {
+      map['preferred_ticker'] = Variable<String>(preferredTicker);
+    }
+    if (!nullToAbsent || preferredExchange != null) {
+      map['preferred_exchange'] = Variable<String>(preferredExchange);
+    }
     map['sort_order'] = Variable<int>(sortOrder);
     return map;
   }
@@ -12568,6 +12628,12 @@ class PortfolioModelItem extends DataClass
       isin: Value(isin),
       targetWeight: Value(targetWeight),
       description: Value(description),
+      preferredTicker: preferredTicker == null && nullToAbsent
+          ? const Value.absent()
+          : Value(preferredTicker),
+      preferredExchange: preferredExchange == null && nullToAbsent
+          ? const Value.absent()
+          : Value(preferredExchange),
       sortOrder: Value(sortOrder),
     );
   }
@@ -12583,6 +12649,10 @@ class PortfolioModelItem extends DataClass
       isin: serializer.fromJson<String>(json['isin']),
       targetWeight: serializer.fromJson<double>(json['targetWeight']),
       description: serializer.fromJson<String>(json['description']),
+      preferredTicker: serializer.fromJson<String?>(json['preferredTicker']),
+      preferredExchange: serializer.fromJson<String?>(
+        json['preferredExchange'],
+      ),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
     );
   }
@@ -12595,6 +12665,8 @@ class PortfolioModelItem extends DataClass
       'isin': serializer.toJson<String>(isin),
       'targetWeight': serializer.toJson<double>(targetWeight),
       'description': serializer.toJson<String>(description),
+      'preferredTicker': serializer.toJson<String?>(preferredTicker),
+      'preferredExchange': serializer.toJson<String?>(preferredExchange),
       'sortOrder': serializer.toJson<int>(sortOrder),
     };
   }
@@ -12605,6 +12677,8 @@ class PortfolioModelItem extends DataClass
     String? isin,
     double? targetWeight,
     String? description,
+    Value<String?> preferredTicker = const Value.absent(),
+    Value<String?> preferredExchange = const Value.absent(),
     int? sortOrder,
   }) => PortfolioModelItem(
     id: id ?? this.id,
@@ -12612,6 +12686,12 @@ class PortfolioModelItem extends DataClass
     isin: isin ?? this.isin,
     targetWeight: targetWeight ?? this.targetWeight,
     description: description ?? this.description,
+    preferredTicker: preferredTicker.present
+        ? preferredTicker.value
+        : this.preferredTicker,
+    preferredExchange: preferredExchange.present
+        ? preferredExchange.value
+        : this.preferredExchange,
     sortOrder: sortOrder ?? this.sortOrder,
   );
   PortfolioModelItem copyWithCompanion(PortfolioModelItemsCompanion data) {
@@ -12625,6 +12705,12 @@ class PortfolioModelItem extends DataClass
       description: data.description.present
           ? data.description.value
           : this.description,
+      preferredTicker: data.preferredTicker.present
+          ? data.preferredTicker.value
+          : this.preferredTicker,
+      preferredExchange: data.preferredExchange.present
+          ? data.preferredExchange.value
+          : this.preferredExchange,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
     );
   }
@@ -12637,6 +12723,8 @@ class PortfolioModelItem extends DataClass
           ..write('isin: $isin, ')
           ..write('targetWeight: $targetWeight, ')
           ..write('description: $description, ')
+          ..write('preferredTicker: $preferredTicker, ')
+          ..write('preferredExchange: $preferredExchange, ')
           ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
@@ -12644,7 +12732,16 @@ class PortfolioModelItem extends DataClass
 
   @override
   int get hashCode =>
-      Object.hash(id, modelId, isin, targetWeight, description, sortOrder);
+      Object.hash(
+        id,
+        modelId,
+        isin,
+        targetWeight,
+        description,
+        preferredTicker,
+        preferredExchange,
+        sortOrder,
+      );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -12654,6 +12751,8 @@ class PortfolioModelItem extends DataClass
           other.isin == this.isin &&
           other.targetWeight == this.targetWeight &&
           other.description == this.description &&
+          other.preferredTicker == this.preferredTicker &&
+          other.preferredExchange == this.preferredExchange &&
           other.sortOrder == this.sortOrder);
 }
 
@@ -12663,6 +12762,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
   final Value<String> isin;
   final Value<double> targetWeight;
   final Value<String> description;
+  final Value<String?> preferredTicker;
+  final Value<String?> preferredExchange;
   final Value<int> sortOrder;
   const PortfolioModelItemsCompanion({
     this.id = const Value.absent(),
@@ -12670,6 +12771,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
     this.isin = const Value.absent(),
     this.targetWeight = const Value.absent(),
     this.description = const Value.absent(),
+    this.preferredTicker = const Value.absent(),
+    this.preferredExchange = const Value.absent(),
     this.sortOrder = const Value.absent(),
   });
   PortfolioModelItemsCompanion.insert({
@@ -12678,6 +12781,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
     required String isin,
     required double targetWeight,
     this.description = const Value.absent(),
+    this.preferredTicker = const Value.absent(),
+    this.preferredExchange = const Value.absent(),
     this.sortOrder = const Value.absent(),
   }) : modelId = Value(modelId),
        isin = Value(isin),
@@ -12688,6 +12793,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
     Expression<String>? isin,
     Expression<double>? targetWeight,
     Expression<String>? description,
+    Expression<String>? preferredTicker,
+    Expression<String>? preferredExchange,
     Expression<int>? sortOrder,
   }) {
     return RawValuesInsertable({
@@ -12696,6 +12803,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
       if (isin != null) 'isin': isin,
       if (targetWeight != null) 'target_weight': targetWeight,
       if (description != null) 'description': description,
+      if (preferredTicker != null) 'preferred_ticker': preferredTicker,
+      if (preferredExchange != null) 'preferred_exchange': preferredExchange,
       if (sortOrder != null) 'sort_order': sortOrder,
     });
   }
@@ -12706,6 +12815,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
     Value<String>? isin,
     Value<double>? targetWeight,
     Value<String>? description,
+    Value<String?>? preferredTicker,
+    Value<String?>? preferredExchange,
     Value<int>? sortOrder,
   }) {
     return PortfolioModelItemsCompanion(
@@ -12714,6 +12825,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
       isin: isin ?? this.isin,
       targetWeight: targetWeight ?? this.targetWeight,
       description: description ?? this.description,
+      preferredTicker: preferredTicker ?? this.preferredTicker,
+      preferredExchange: preferredExchange ?? this.preferredExchange,
       sortOrder: sortOrder ?? this.sortOrder,
     );
   }
@@ -12736,6 +12849,12 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
     if (description.present) {
       map['description'] = Variable<String>(description.value);
     }
+    if (preferredTicker.present) {
+      map['preferred_ticker'] = Variable<String>(preferredTicker.value);
+    }
+    if (preferredExchange.present) {
+      map['preferred_exchange'] = Variable<String>(preferredExchange.value);
+    }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
@@ -12750,6 +12869,8 @@ class PortfolioModelItemsCompanion extends UpdateCompanion<PortfolioModelItem> {
           ..write('isin: $isin, ')
           ..write('targetWeight: $targetWeight, ')
           ..write('description: $description, ')
+          ..write('preferredTicker: $preferredTicker, ')
+          ..write('preferredExchange: $preferredExchange, ')
           ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
@@ -23598,6 +23719,8 @@ typedef $$PortfolioModelItemsTableCreateCompanionBuilder =
       required String isin,
       required double targetWeight,
       Value<String> description,
+      Value<String?> preferredTicker,
+      Value<String?> preferredExchange,
       Value<int> sortOrder,
     });
 typedef $$PortfolioModelItemsTableUpdateCompanionBuilder =
@@ -23607,6 +23730,8 @@ typedef $$PortfolioModelItemsTableUpdateCompanionBuilder =
       Value<String> isin,
       Value<double> targetWeight,
       Value<String> description,
+      Value<String?> preferredTicker,
+      Value<String?> preferredExchange,
       Value<int> sortOrder,
     });
 
@@ -23675,6 +23800,16 @@ class $$PortfolioModelItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get preferredTicker => $composableBuilder(
+    column: $table.preferredTicker,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get preferredExchange => $composableBuilder(
+    column: $table.preferredExchange,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
@@ -23733,6 +23868,16 @@ class $$PortfolioModelItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get preferredTicker => $composableBuilder(
+    column: $table.preferredTicker,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get preferredExchange => $composableBuilder(
+    column: $table.preferredExchange,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
@@ -23784,6 +23929,16 @@ class $$PortfolioModelItemsTableAnnotationComposer
 
   GeneratedColumn<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get preferredTicker => $composableBuilder(
+    column: $table.preferredTicker,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get preferredExchange => $composableBuilder(
+    column: $table.preferredExchange,
     builder: (column) => column,
   );
 
@@ -23855,6 +24010,8 @@ class $$PortfolioModelItemsTableTableManager
                 Value<String> isin = const Value.absent(),
                 Value<double> targetWeight = const Value.absent(),
                 Value<String> description = const Value.absent(),
+                Value<String?> preferredTicker = const Value.absent(),
+                Value<String?> preferredExchange = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
               }) => PortfolioModelItemsCompanion(
                 id: id,
@@ -23862,6 +24019,8 @@ class $$PortfolioModelItemsTableTableManager
                 isin: isin,
                 targetWeight: targetWeight,
                 description: description,
+                preferredTicker: preferredTicker,
+                preferredExchange: preferredExchange,
                 sortOrder: sortOrder,
               ),
           createCompanionCallback:
@@ -23871,6 +24030,8 @@ class $$PortfolioModelItemsTableTableManager
                 required String isin,
                 required double targetWeight,
                 Value<String> description = const Value.absent(),
+                Value<String?> preferredTicker = const Value.absent(),
+                Value<String?> preferredExchange = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
               }) => PortfolioModelItemsCompanion.insert(
                 id: id,
@@ -23878,6 +24039,8 @@ class $$PortfolioModelItemsTableTableManager
                 isin: isin,
                 targetWeight: targetWeight,
                 description: description,
+                preferredTicker: preferredTicker,
+                preferredExchange: preferredExchange,
                 sortOrder: sortOrder,
               ),
           withReferenceMapper: (p0) => p0

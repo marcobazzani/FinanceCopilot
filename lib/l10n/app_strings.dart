@@ -108,6 +108,9 @@ class AppStrings {
   String get portfolioModelWeight       => _it ? 'Peso (%)'                : 'Weight (%)';
   String get portfolioModelDescription  => _it ? 'Descrizione'             : 'Description';
   String get portfolioModelAddRow       => _it ? 'Aggiungi riga'           : 'Add row';
+  String get portfolioModelSearchResolveFailed => _it
+      ? 'Impossibile ricavare un ISIN valido dallo strumento selezionato.'
+      : 'Could not resolve a valid ISIN for the selected instrument.';
   String get portfolioModelDeleteConfirm => _it
       ? 'Eliminare questo modello personalizzato? Le associazioni ai pilastri verranno rimosse.'
       : 'Delete this custom model? Pillar associations will be removed.';
@@ -134,6 +137,9 @@ class AppStrings {
   String get rebalanceExecutedBuy       => _it ? 'Acquisti eseguiti'       : 'Executed buys';
   String get rebalanceCashRemaining     => _it ? 'Contante residuo'        : 'Cash remaining';
   String get rebalanceWholeUnitsOnly    => _it ? 'Solo unità intere'       : 'Whole units only';
+  String get rebalanceUpdatingMarketData => _it
+      ? 'Aggiornamento dati di mercato...'
+      : 'Updating market data...';
   String get rebalanceQuantity          => _it ? 'Quantità'                : 'Quantity';
   String get rebalanceTargetPlaceholder => _it ? 'Asset target da creare'  : 'Target asset placeholder';
   String get rebalanceNotExecutable     => _it ? "Non applicabile finché l'asset non esiste" : 'Not executable until the asset exists';

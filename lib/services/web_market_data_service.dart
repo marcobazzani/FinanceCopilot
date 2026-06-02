@@ -30,6 +30,7 @@ class ProviderSearchResult {
   final String flag;
   final String type;
   final String? url; // relative URL path, e.g. "/equities/amazon-com-inc"
+  final String? isin;
 
   const ProviderSearchResult({
     required this.cid,
@@ -39,6 +40,7 @@ class ProviderSearchResult {
     required this.flag,
     required this.type,
     this.url,
+    this.isin,
   });
 }
 
@@ -469,6 +471,295 @@ class WebMarketDataService extends MarketPriceService {
     return results.values.toList();
   }
 
+  /// Resolve exchange listings for [isin] even when the search index does not
+  /// match the raw ISIN. Every returned listing is verified against the
+  /// instrument page ISIN before it can be used for pricing or asset creation.
+  Future<List<ProviderSearchResult>> resolveListingsByIsin({
+    required String isin,
+    String? description,
+    String? preferredTicker,
+    String? preferredExchange,
+    Iterable<String> extraQueries = const [],
+  }) async {
+    final targetIsin = isin.trim().toUpperCase();
+    if (targetIsin.isEmpty) return const [];
+
+    final byCid = <int, ProviderSearchResult>{};
+    final detailsByCid = <int, ProviderSearchResult?>{};
+    final canonicalPreferredExchange = _canonicalExchange(preferredExchange);
+    final cached = await _cachedPreferredListing(
+      isin: targetIsin,
+      preferredTicker: preferredTicker,
+      preferredExchange: canonicalPreferredExchange,
+    );
+    if (cached != null) byCid[cached.cid] = cached;
+
+    final queries = _instrumentLookupQueries(
+      isin: targetIsin,
+      description: description,
+      preferredTicker: preferredTicker,
+      extraQueries: extraQueries,
+    );
+
+    for (final query in queries) {
+      final results = await search(query);
+      final isExactIsinQuery = query.trim().toUpperCase() == targetIsin;
+      for (final candidate in results) {
+        if (isExactIsinQuery || _matchesPreferredListing(candidate, preferredTicker, canonicalPreferredExchange)) {
+          final listing = _trustedSearchListing(candidate, targetIsin);
+          byCid[listing.cid] = listing;
+          await _cacheResolvedListing(targetIsin, listing);
+          continue;
+        }
+
+        final details = detailsByCid.putIfAbsent(
+          candidate.cid,
+          () => candidate.isin == targetIsin ? candidate : null,
+        );
+        final resolved = details ?? await resolveSearchResultDetails(candidate);
+        detailsByCid[candidate.cid] = resolved;
+        final resolvedIsin = (resolved?.isin ?? candidate.isin)?.trim().toUpperCase();
+        if (resolvedIsin != targetIsin) continue;
+
+        final listing = _mergeSearchAndPageResult(
+          candidate,
+          resolved,
+          targetIsin,
+        );
+        byCid[listing.cid] = listing;
+        await _cacheResolvedListing(targetIsin, listing);
+      }
+    }
+
+    return byCid.values.toList()..sort((a, b) {
+      final byExchange = a.exchange.compareTo(b.exchange);
+      if (byExchange != 0) return byExchange;
+      return a.symbol.compareTo(b.symbol);
+    });
+  }
+
+  /// Fetch historical prices for an already-resolved listing. This avoids
+  /// resolving the ticker again through a default exchange before an asset row
+  /// exists locally.
+  Future<Map<DateTime, double>> fetchHistoricalPricesForListing(
+    ProviderSearchResult listing,
+    DateTime from,
+  ) async {
+    if (listing.cid <= 0) return const {};
+    final label = listing.symbol.trim().isNotEmpty ? listing.symbol : listing.description;
+    return _fetchByCid(listing.cid, from, label: label);
+  }
+
+  List<String> _instrumentLookupQueries({
+    required String isin,
+    required String? description,
+    required String? preferredTicker,
+    required Iterable<String> extraQueries,
+  }) {
+    final seen = <String>{};
+    final queries = <String>[];
+
+    void add(String value) {
+      final normalized = _squashLookupWhitespace(value);
+      if (normalized.length < 3) return;
+      final key = normalized.toLowerCase();
+      if (seen.add(key)) queries.add(normalized);
+    }
+
+    add(isin);
+    final ticker = preferredTicker?.trim();
+    if (ticker != null && ticker.isNotEmpty) {
+      add(ticker);
+    }
+    final desc = description?.trim();
+    if (desc != null && desc.isNotEmpty) {
+      add(desc);
+      add(_removeInstrumentLookupNoise(desc));
+      final significantPrefix = _significantLookupTokens(desc).take(6).join(' ');
+      add(significantPrefix);
+    }
+    for (final query in extraQueries) {
+      add(query);
+    }
+    return queries;
+  }
+
+  Future<ProviderSearchResult?> _cachedPreferredListing({
+    required String isin,
+    required String? preferredTicker,
+    required String? preferredExchange,
+  }) async {
+    final ticker = preferredTicker?.trim();
+    final exchange = preferredExchange?.trim();
+    if (ticker == null || ticker.isEmpty || exchange == null || exchange.isEmpty) return null;
+    final cidRow = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString('PROVIDER_CID_${isin}_$exchange')],
+        )
+        .getSingleOrNull();
+    final cid = cidRow == null ? null : int.tryParse(cidRow.read<String>('value'));
+    if (cid == null || cid <= 0) return null;
+
+    final urlRow = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString('PROVIDER_URL_${isin}_$exchange')],
+        )
+        .getSingleOrNull();
+    final typeRow = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString('PROVIDER_TYPE_${isin}_$exchange')],
+        )
+        .getSingleOrNull();
+    var type = typeRow?.read<String>('value') ?? '';
+    if (type.isEmpty) {
+      final recovered = await _recoverListingType(
+        ticker: ticker,
+        exchange: exchange,
+        cid: cid,
+      );
+      type = recovered ?? '';
+    }
+
+    return ProviderSearchResult(
+      cid: cid,
+      description: '',
+      symbol: ticker,
+      exchange: exchange,
+      flag: '',
+      type: type,
+      url: urlRow?.read<String>('value'),
+      isin: isin,
+    );
+  }
+
+  Future<String?> _recoverListingType({
+    required String ticker,
+    required String exchange,
+    required int cid,
+  }) async {
+    final candidates = await search(ticker);
+    for (final candidate in candidates) {
+      if (candidate.cid == cid) return candidate.type;
+      if (candidate.symbol.trim().toUpperCase() == ticker.toUpperCase() && _canonicalExchange(candidate.exchange) == exchange) {
+        return candidate.type;
+      }
+    }
+    return null;
+  }
+
+  bool _matchesPreferredListing(
+    ProviderSearchResult candidate,
+    String? preferredTicker,
+    String? preferredExchange,
+  ) {
+    final ticker = preferredTicker?.trim().toUpperCase();
+    final exchange = preferredExchange?.trim();
+    if (ticker == null || ticker.isEmpty || exchange == null || exchange.isEmpty) return false;
+    return candidate.symbol.trim().toUpperCase() == ticker && _canonicalExchange(candidate.exchange) == exchange;
+  }
+
+  ProviderSearchResult _trustedSearchListing(ProviderSearchResult candidate, String verifiedIsin) {
+    return ProviderSearchResult(
+      cid: candidate.cid,
+      description: candidate.description,
+      symbol: candidate.symbol,
+      exchange: _canonicalExchange(candidate.exchange) ?? candidate.exchange,
+      flag: candidate.flag,
+      type: candidate.type,
+      url: candidate.url,
+      isin: verifiedIsin,
+    );
+  }
+
+  String? _canonicalExchange(String? exchange) {
+    final value = exchange?.trim();
+    if (value == null || value.isEmpty) return null;
+    return exchangeSynonyms[value] ?? value;
+  }
+
+  static final _lookupNoiseWords = RegExp(
+    r'\b(UCITS|ETF|ETC|ETN|ACC|DIST|DR|USD|EUR|GBP|CHF|HEDGED|CLASS|1C)\b',
+    caseSensitive: false,
+  );
+
+  static String _removeInstrumentLookupNoise(String value) => _squashLookupWhitespace(value.replaceAll(_lookupNoiseWords, ' '));
+
+  static Iterable<String> _significantLookupTokens(String value) sync* {
+    for (final token in _squashLookupWhitespace(value).split(' ')) {
+      if (token.isEmpty) continue;
+      if (_lookupNoiseWords.hasMatch(token)) continue;
+      yield token;
+    }
+  }
+
+  static String _squashLookupWhitespace(String value) => value.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  ProviderSearchResult _mergeSearchAndPageResult(
+    ProviderSearchResult searchResult,
+    ProviderSearchResult? pageResult,
+    String verifiedIsin,
+  ) {
+    String firstNonEmpty(String? preferred, String fallback) {
+      final value = preferred?.trim();
+      return value == null || value.isEmpty ? fallback : value;
+    }
+
+    return ProviderSearchResult(
+      cid: pageResult?.cid ?? searchResult.cid,
+      description: firstNonEmpty(pageResult?.description, searchResult.description),
+      symbol: firstNonEmpty(pageResult?.symbol, searchResult.symbol),
+      exchange:
+          exchangeSynonyms[firstNonEmpty(pageResult?.exchange, searchResult.exchange)] ??
+          firstNonEmpty(pageResult?.exchange, searchResult.exchange),
+      flag: firstNonEmpty(pageResult?.flag, searchResult.flag),
+      type: firstNonEmpty(pageResult?.type, searchResult.type),
+      url: pageResult?.url ?? searchResult.url,
+      isin: verifiedIsin,
+    );
+  }
+
+  Future<void> _cacheResolvedListing(String isin, ProviderSearchResult listing) async {
+    final exchange = exchangeSynonyms[listing.exchange] ?? listing.exchange;
+    if (exchange.isEmpty) return;
+    final cidKey = 'PROVIDER_CID_${isin}_$exchange';
+    await db
+        .into(db.appConfigs)
+        .insertOnConflictUpdate(
+          AppConfigsCompanion.insert(
+            key: cidKey,
+            value: listing.cid.toString(),
+            description: Value('the market data provider cid for $isin on $exchange'),
+          ),
+        );
+    if (listing.url != null && listing.url!.isNotEmpty) {
+      final urlKey = 'PROVIDER_URL_${isin}_$exchange';
+      await db
+          .into(db.appConfigs)
+          .insertOnConflictUpdate(
+            AppConfigsCompanion.insert(
+              key: urlKey,
+              value: listing.url!,
+              description: Value('the market data provider URL for $isin'),
+            ),
+          );
+    }
+    if (listing.type.trim().isNotEmpty) {
+      final typeKey = 'PROVIDER_TYPE_${isin}_$exchange';
+      await db
+          .into(db.appConfigs)
+          .insertOnConflictUpdate(
+            AppConfigsCompanion.insert(
+              key: typeKey,
+              value: listing.type,
+              description: Value('the market data provider type for $isin'),
+            ),
+          );
+    }
+  }
+
   /// Resolve a user-pasted instrument page URL into an [ProviderSearchResult]
   /// by fetching the page and parsing its embedded `__NEXT_DATA__` JSON.
   ///
@@ -528,20 +819,54 @@ class WebMarketDataService extends MarketPriceService {
     // Cache cid + URL so future _searchCid calls short-circuit.
     final cidKey = 'PROVIDER_CID_${cacheKey}_$exchange';
     final urlKey = 'PROVIDER_URL_${cacheKey}_$exchange';
-    await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-      key: cidKey,
-      value: parsed.cid.toString(),
-      description: Value('the market data provider cid for $cacheKey on $exchange'),
-    ));
+    await db
+        .into(db.appConfigs)
+        .insertOnConflictUpdate(
+          AppConfigsCompanion.insert(
+            key: cidKey,
+            value: parsed.cid.toString(),
+            description: Value('the market data provider cid for $cacheKey on $exchange'),
+          ),
+        );
     if (parsed.url != null && parsed.url!.isNotEmpty) {
-      await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-        key: urlKey,
-        value: parsed.url!,
-        description: Value('the market data provider URL for $cacheKey'),
-      ));
+      await db
+          .into(db.appConfigs)
+          .insertOnConflictUpdate(
+            AppConfigsCompanion.insert(
+              key: urlKey,
+              value: parsed.url!,
+              description: Value('the market data provider URL for $cacheKey'),
+            ),
+          );
     }
     _log.info('resolveFromInstrumentUrl: $cacheKey on $exchange -> cid=${parsed.cid}');
     return UrlResolveOk(parsed);
+  }
+
+  /// Resolve a search hit to its instrument-page metadata without writing
+  /// cache rows. This is used by UI flows that need the canonical ISIN after
+  /// a generic name/ticker search.
+  Future<ProviderSearchResult?> resolveSearchResultDetails(
+    ProviderSearchResult result,
+  ) async {
+    final rawUrl = result.url?.trim();
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+
+    final absoluteUrl = rawUrl.startsWith('http') ? rawUrl : '$kProviderBase$rawUrl';
+    final outcome = canonicaliseInstrumentUrl(absoluteUrl);
+    final canonical = outcome.uri;
+    if (canonical == null) return null;
+
+    String? html;
+    try {
+      html = await (_pageFetcher ?? _fetchInstrumentPage)(canonical);
+    } catch (e) {
+      _log.fine('resolveSearchResultDetails: fetch threw: $e');
+      return null;
+    }
+    if (html == null || html.isEmpty) return null;
+
+    return parseProviderPage(html, canonical);
   }
 
   /// Fetch an instrument page HTML. Plain Dio first (works for most pages and
@@ -553,7 +878,8 @@ class WebMarketDataService extends MarketPriceService {
         url.toString(),
         options: Options(
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+            'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                 'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml',
             'Accept-Language': 'en-US,en;q=0.9',
@@ -598,10 +924,12 @@ class WebMarketDataService extends MarketPriceService {
   Future<int?> _searchCid(String searchTerm, String exchange) async {
     // Check cached cid first
     final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
-    final cidRow = await db.customSelect(
-      'SELECT value FROM app_configs WHERE key = ?',
-      variables: [Variable.withString(cidKey)],
-    ).getSingleOrNull();
+    final cidRow = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString(cidKey)],
+        )
+        .getSingleOrNull();
     if (cidRow != null) {
       final cached = int.tryParse(cidRow.read<String>('value'));
       if (cached != null) return cached;
@@ -616,14 +944,26 @@ class WebMarketDataService extends MarketPriceService {
 
     // Cache helper
     Future<int> cacheAndReturn(ProviderSearchResult r) async {
-      await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-        key: cidKey, value: r.cid.toString(), description: Value('the market data provider cid for $searchTerm on ${exchangeNameList.first}'),
-      ));
+      await db
+          .into(db.appConfigs)
+          .insertOnConflictUpdate(
+            AppConfigsCompanion.insert(
+              key: cidKey,
+              value: r.cid.toString(),
+              description: Value('the market data provider cid for $searchTerm on ${exchangeNameList.first}'),
+            ),
+          );
       if (r.url != null && r.url!.isNotEmpty) {
         final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
-        await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-          key: urlKey, value: r.url!, description: Value('the market data provider URL for $searchTerm'),
-        ));
+        await db
+            .into(db.appConfigs)
+            .insertOnConflictUpdate(
+              AppConfigsCompanion.insert(
+                key: urlKey,
+                value: r.url!,
+                description: Value('the market data provider URL for $searchTerm'),
+              ),
+            );
       }
       _log.info('searchCid: found $searchTerm -> cid=${r.cid} symbol=${r.symbol} (${r.exchange})');
       return r.cid;
@@ -638,8 +978,10 @@ class WebMarketDataService extends MarketPriceService {
       }
       // No exchange match -- take first result as fallback
       if (results.isNotEmpty) {
-        _log.warning('searchCid: ISIN $searchTerm - no exchange match for ${exchangeNameList.first}, '
-            'using first result: ${results.first.symbol}@${results.first.exchange}');
+        _log.warning(
+          'searchCid: ISIN $searchTerm - no exchange match for ${exchangeNameList.first}, '
+          'using first result: ${results.first.symbol}@${results.first.exchange}',
+        );
         return cacheAndReturn(results.first);
       }
     } else {
@@ -652,8 +994,10 @@ class WebMarketDataService extends MarketPriceService {
       }
     }
 
-    _log.warning('searchCid: $searchTerm not found on ${exchangeNameList.first} '
-        '(candidates: ${results.map((r) => '${r.symbol}@${r.exchange}').join(', ')})');
+    _log.warning(
+      'searchCid: $searchTerm not found on ${exchangeNameList.first} '
+      '(candidates: ${results.map((r) => '${r.symbol}@${r.exchange}').join(', ')})',
+    );
     return null;
   }
 
@@ -699,10 +1043,12 @@ class WebMarketDataService extends MarketPriceService {
     }
 
     // Resolve CID for this asset (ISIN-first, same logic as syncPrices/_searchCid)
-    final assetRow = await db.customSelect(
-      'SELECT ticker, isin, exchange, currency FROM assets WHERE id = ?',
-      variables: [Variable.withInt(assetId)],
-    ).getSingleOrNull();
+    final assetRow = await db
+        .customSelect(
+          'SELECT ticker, isin, exchange, currency FROM assets WHERE id = ?',
+          variables: [Variable.withInt(assetId)],
+        )
+        .getSingleOrNull();
     if (assetRow == null) return getPrice(assetId, DateTime.now());
 
     final isin = assetRow.readNullable<String>('isin');
@@ -713,10 +1059,12 @@ class WebMarketDataService extends MarketPriceService {
     if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
 
     final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
-    final cidRow = await db.customSelect(
-      'SELECT value FROM app_configs WHERE key = ?',
-      variables: [Variable.withString(cidKey)],
-    ).getSingleOrNull();
+    final cidRow = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString(cidKey)],
+        )
+        .getSingleOrNull();
     final cid = cidRow != null ? int.tryParse(cidRow.read<String>('value')) : null;
     if (cid == null) return getPrice(assetId, DateTime.now());
 
@@ -726,7 +1074,8 @@ class WebMarketDataService extends MarketPriceService {
     final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
     final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final url = '$kProviderApiBase/api/financialdata/historical/$cid'
+    final url =
+        '$kProviderApiBase/api/financialdata/historical/$cid'
         '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
     final data = await _webViewFetch(url);
@@ -753,10 +1102,15 @@ class WebMarketDataService extends MarketPriceService {
             closePrice: Value(price),
             currency: Value(currency),
           );
-          unawaited(db.into(db.marketPrices).insertOnConflictUpdate(c).then(
-            (_) {},
-            onError: (e) => _log.warning('Failed to persist live price for asset $assetId: $e'),
-          ));
+          unawaited(
+            db
+                .into(db.marketPrices)
+                .insertOnConflictUpdate(c)
+                .then(
+                  (_) {},
+                  onError: (e) => _log.warning('Failed to persist live price for asset $assetId: $e'),
+                ),
+          );
           return price;
         }
       }
@@ -804,24 +1158,30 @@ class WebMarketDataService extends MarketPriceService {
   void _persistFxRate(String from, String to, double rate) {
     final now = DateTime.now();
     final day = DateTime(now.year, now.month, now.day);
-    db.into(db.exchangeRates).insert(
-      ExchangeRatesCompanion(
-        fromCurrency: Value(from),
-        toCurrency: Value(to),
-        date: Value(day),
-        rate: Value(rate),
-      ),
-      onConflict: DoNothing(),
-    ).then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $from/$to: $e'));
-    db.into(db.exchangeRates).insert(
-      ExchangeRatesCompanion(
-        fromCurrency: Value(to),
-        toCurrency: Value(from),
-        date: Value(day),
-        rate: Value(1.0 / rate),
-      ),
-      onConflict: DoNothing(),
-    ).then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $to/$from: $e'));
+    db
+        .into(db.exchangeRates)
+        .insert(
+          ExchangeRatesCompanion(
+            fromCurrency: Value(from),
+            toCurrency: Value(to),
+            date: Value(day),
+            rate: Value(rate),
+          ),
+          onConflict: DoNothing(),
+        )
+        .then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $from/$to: $e'));
+    db
+        .into(db.exchangeRates)
+        .insert(
+          ExchangeRatesCompanion(
+            fromCurrency: Value(to),
+            toCurrency: Value(from),
+            date: Value(day),
+            rate: Value(1.0 / rate),
+          ),
+          onConflict: DoNothing(),
+        )
+        .then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $to/$from: $e'));
   }
 
   Future<double?> _fetchFxRate(String pairKey) async {
@@ -831,10 +1191,12 @@ class WebMarketDataService extends MarketPriceService {
       if (cid == null) {
         // Also check DB cache
         final cidKey = 'PROVIDER_FX_CID_$pairKey';
-        final cidRow = await db.customSelect(
-          'SELECT value FROM app_configs WHERE key = ?',
-          variables: [Variable.withString(cidKey)],
-        ).getSingleOrNull();
+        final cidRow = await db
+            .customSelect(
+              'SELECT value FROM app_configs WHERE key = ?',
+              variables: [Variable.withString(cidKey)],
+            )
+            .getSingleOrNull();
         if (cidRow != null) {
           cid = int.tryParse(cidRow.read<String>('value'));
         }
@@ -842,8 +1204,7 @@ class WebMarketDataService extends MarketPriceService {
         if (cid == null) {
           final results = await search(pairKey);
           for (final r in results) {
-            if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') ||
-                r.symbol == pairKey) {
+            if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') || r.symbol == pairKey) {
               cid = r.cid;
               break;
             }
@@ -851,9 +1212,15 @@ class WebMarketDataService extends MarketPriceService {
           if (cid == null) return null;
 
           // Cache in DB
-          await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-            key: cidKey, value: cid.toString(), description: Value('the market data provider FX cid for $pairKey'),
-          ));
+          await db
+              .into(db.appConfigs)
+              .insertOnConflictUpdate(
+                AppConfigsCompanion.insert(
+                  key: cidKey,
+                  value: cid.toString(),
+                  description: Value('the market data provider FX cid for $pairKey'),
+                ),
+              );
         }
         _fxCidCache[pairKey] = cid;
       }
@@ -864,7 +1231,8 @@ class WebMarketDataService extends MarketPriceService {
       final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
       final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-      final url = '$kProviderApiBase/api/financialdata/historical/$cid'
+      final url =
+          '$kProviderApiBase/api/financialdata/historical/$cid'
           '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
       final data = await _webViewFetch(url);
@@ -891,33 +1259,39 @@ class WebMarketDataService extends MarketPriceService {
 
   /// Fetch historical FX rates for a currency pair from [since] to today.
   /// Returns a map of date → rate (closing price).
-  Future<Map<DateTime, double>> fetchHistoricalFxRates(
-      String from, String to, DateTime since) async {
+  Future<Map<DateTime, double>> fetchHistoricalFxRates(String from, String to, DateTime since) async {
     final pairKey = '$from/$to';
     // Resolve CID (same pattern as _fetchFxRate)
     var cid = _fxCidCache[pairKey];
     if (cid == null) {
       final cidKey = 'PROVIDER_FX_CID_$pairKey';
-      final cidRow = await db.customSelect(
-        'SELECT value FROM app_configs WHERE key = ?',
-        variables: [Variable.withString(cidKey)],
-      ).getSingleOrNull();
+      final cidRow = await db
+          .customSelect(
+            'SELECT value FROM app_configs WHERE key = ?',
+            variables: [Variable.withString(cidKey)],
+          )
+          .getSingleOrNull();
       if (cidRow != null) {
         cid = int.tryParse(cidRow.read<String>('value'));
       }
       if (cid == null) {
         final results = await search(pairKey);
         for (final r in results) {
-          if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') ||
-              r.symbol == pairKey) {
+          if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') || r.symbol == pairKey) {
             cid = r.cid;
             break;
           }
         }
         if (cid == null) return {};
-        await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-          key: cidKey, value: cid.toString(), description: Value('the market data provider FX cid for $pairKey'),
-        ));
+        await db
+            .into(db.appConfigs)
+            .insertOnConflictUpdate(
+              AppConfigsCompanion.insert(
+                key: cidKey,
+                value: cid.toString(),
+                description: Value('the market data provider FX cid for $pairKey'),
+              ),
+            );
       }
       _fxCidCache[pairKey] = cid;
     }
@@ -928,16 +1302,14 @@ class WebMarketDataService extends MarketPriceService {
   // the market data provider API: Historical prices
   // ──────────────────────────────────────────────
 
-  Future<Map<DateTime, double>> _fetchByCid(
-      int cid, DateTime from, {String? label}) async {
+  Future<Map<DateTime, double>> _fetchByCid(int cid, DateTime from, {String? label}) async {
     final tag = label ?? 'cid=$cid';
-    final fromStr =
-        '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
+    final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
     final now = DateTime.now();
-    final toStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final url = '$kProviderApiBase/api/financialdata/historical/$cid'
+    final url =
+        '$kProviderApiBase/api/financialdata/historical/$cid'
         '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
 
     _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
@@ -980,13 +1352,14 @@ class WebMarketDataService extends MarketPriceService {
   // ──────────────────────────────────────────────
 
   @override
-  Future<Map<DateTime, double>> fetchHistoricalPrices(
-      String ticker, String currency, DateTime from) async {
+  Future<Map<DateTime, double>> fetchHistoricalPrices(String ticker, String currency, DateTime from) async {
     // Look up the asset's exchange to resolve the CID
-    final row = await db.customSelect(
-      'SELECT exchange FROM assets WHERE ticker = ? LIMIT 1',
-      variables: [Variable.withString(ticker)],
-    ).getSingleOrNull();
+    final row = await db
+        .customSelect(
+          'SELECT exchange FROM assets WHERE ticker = ? LIMIT 1',
+          variables: [Variable.withString(ticker)],
+        )
+        .getSingleOrNull();
     final exchange = row?.readNullable<String>('exchange') ?? 'Milan';
 
     final cid = await _searchCid(ticker, exchange);
@@ -1014,17 +1387,21 @@ class WebMarketDataService extends MarketPriceService {
       if (searchTerm == null || searchTerm.isEmpty) continue;
       final exchange = asset.exchange ?? 'Milan';
       final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
-      final urlRow = await db.customSelect(
-        'SELECT value FROM app_configs WHERE key = ?',
-        variables: [Variable.withString(urlKey)],
-      ).getSingleOrNull();
+      final urlRow = await db
+          .customSelect(
+            'SELECT value FROM app_configs WHERE key = ?',
+            variables: [Variable.withString(urlKey)],
+          )
+          .getSingleOrNull();
       if (urlRow != null) continue; // already has URL
 
       final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
-      final cidRow = await db.customSelect(
-        'SELECT value FROM app_configs WHERE key = ?',
-        variables: [Variable.withString(cidKey)],
-      ).getSingleOrNull();
+      final cidRow = await db
+          .customSelect(
+            'SELECT value FROM app_configs WHERE key = ?',
+            variables: [Variable.withString(cidKey)],
+          )
+          .getSingleOrNull();
       if (cidRow == null) continue; // no CID cached, will be resolved later
       final cid = int.tryParse(cidRow.read<String>('value'));
       if (cid == null) continue;
@@ -1042,9 +1419,15 @@ class WebMarketDataService extends MarketPriceService {
         for (final r in results) {
           if (r.cid == cid && r.url != null && r.url!.isNotEmpty) {
             final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
-            await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(
-              key: urlKey, value: r.url!, description: Value('the market data provider URL for $searchTerm'),
-            ));
+            await db
+                .into(db.appConfigs)
+                .insertOnConflictUpdate(
+                  AppConfigsCompanion.insert(
+                    key: urlKey,
+                    value: r.url!,
+                    description: Value('the market data provider URL for $searchTerm'),
+                  ),
+                );
             _log.info('backfillUrls: cached URL for $searchTerm -> ${r.url}');
             break;
           }
@@ -1066,16 +1449,16 @@ class WebMarketDataService extends MarketPriceService {
   /// Default fetch start when no prior price has been stored. Subtracts
   /// [_initialSyncBuffer] from the asset's first buy so a holiday/weekend
   /// around the buy date still captures the prior trading day.
-  static DateTime initialSyncDefaultFrom(DateTime? firstBuy) =>
-      firstBuy?.subtract(_initialSyncBuffer) ?? DateTime(2020, 1, 1);
+  static DateTime initialSyncDefaultFrom(DateTime? firstBuy) => firstBuy?.subtract(_initialSyncBuffer) ?? DateTime(2020, 1, 1);
 
   @override
   Future<void> syncPrices({bool forceToday = false}) async {
     try {
-      final assets = await (db.select(db.assets)
-            ..where((a) => a.isActive.equals(true))
-            ..where((a) => a.ticker.isNotNull() | a.isin.isNotNull()))
-          .get();
+      final assets =
+          await (db.select(db.assets)
+                ..where((a) => a.isActive.equals(true))
+                ..where((a) => a.ticker.isNotNull() | a.isin.isNotNull()))
+              .get();
 
       _log.info('syncPrices: found ${assets.length} active assets with ticker/ISIN');
       if (assets.isEmpty) return;
@@ -1097,9 +1480,7 @@ class WebMarketDataService extends MarketPriceService {
         final firstPrice = await getFirstPriceDate(asset.id);
         final defaultFrom = initialSyncDefaultFrom(firstBuy);
 
-        final needsBackfill = firstBuy != null &&
-            firstPrice != null &&
-            firstBuy.isBefore(firstPrice);
+        final needsBackfill = firstBuy != null && firstPrice != null && firstBuy.isBefore(firstPrice);
 
         // Re-fetch from lastDate (not +1) so that an intraday price stored
         // during trading hours gets corrected with the actual close.
@@ -1114,9 +1495,11 @@ class WebMarketDataService extends MarketPriceService {
 
         if (needsBackfill) {
           backfillRanges[asset.id] = firstBuy;
-          _log.info('syncPrices: ${_assetLabel(asset)} - needs backfill from '
-              '${formatYmd(firstBuy)} to '
-              '${formatYmd(firstPrice)}');
+          _log.info(
+            'syncPrices: ${_assetLabel(asset)} - needs backfill from '
+            '${formatYmd(firstBuy)} to '
+            '${formatYmd(firstPrice)}',
+          );
         }
 
         candidates.add((asset, searchTerm));
@@ -1166,8 +1549,10 @@ class WebMarketDataService extends MarketPriceService {
           if (backfillFrom != null) {
             final firstPrice = await getFirstPriceDate(asset.id);
             if (firstPrice != null) {
-              _log.info('syncPrices: $label - backfilling from '
-                  '${formatYmd(backfillFrom)}');
+              _log.info(
+                'syncPrices: $label - backfilling from '
+                '${formatYmd(backfillFrom)}',
+              );
               final gapPrices = await _fetchByCid(cid, backfillFrom, label: label);
               if (gapPrices.isNotEmpty) {
                 await db.batch((batch) {
@@ -1178,8 +1563,7 @@ class WebMarketDataService extends MarketPriceService {
                       closePrice: Value(p.value),
                       currency: Value(asset.currency),
                     );
-                    batch.insert(db.marketPrices, c,
-                        onConflict: DoUpdate((_) => c));
+                    batch.insert(db.marketPrices, c, onConflict: DoUpdate((_) => c));
                   }
                 });
                 _log.info('syncPrices: $label - backfilled ${gapPrices.length} prices');
@@ -1207,8 +1591,7 @@ class WebMarketDataService extends MarketPriceService {
                     closePrice: Value(p.value),
                     currency: Value(asset.currency),
                   );
-                  batch.insert(db.marketPrices, c,
-                      onConflict: DoUpdate((_) => c));
+                  batch.insert(db.marketPrices, c, onConflict: DoUpdate((_) => c));
                 }
               });
               _log.info('syncPrices: $label - stored ${prices.length} prices');
@@ -1239,9 +1622,12 @@ class WebMarketDataService extends MarketPriceService {
         await action(items[i]);
       }
     }
-    await Future.wait(List.generate(
-      maxConcurrent.clamp(1, items.length),
-      (_) => worker(),
-    ));
+
+    await Future.wait(
+      List.generate(
+        maxConcurrent.clamp(1, items.length),
+        (_) => worker(),
+      ),
+    );
   }
 }

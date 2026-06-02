@@ -56,7 +56,14 @@ final incomeServiceProvider = _dbService(IncomeService.new);
 
 final pillarServiceProvider = _dbService(PillarService.new);
 final portfolioModelServiceProvider = _dbService(PortfolioModelService.new);
-final portfolioRebalanceServiceProvider = _dbService(PortfolioRebalanceService.new);
+final portfolioRebalanceServiceProvider = Provider<PortfolioRebalanceService>((ref) {
+  final db = ref.watch(databaseProvider);
+  final priceService = ref.watch(marketPriceServiceProvider);
+  return PortfolioRebalanceService(
+    db,
+    marketDataService: priceService is WebMarketDataService ? priceService : null,
+  );
+});
 
 /// Currently selected pillar scope on dashboards (default: All).
 final selectedPillarScopeProvider = StateProvider<PillarScope>((ref) => const PillarScope.all());

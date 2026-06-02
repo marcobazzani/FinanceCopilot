@@ -77,7 +77,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 42;
+  int get schemaVersion => 43;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -681,6 +681,19 @@ class AppDatabase extends _$AppDatabase {
               );
             }
             _log.info('Migration 42: renamed assets.include_in_net_worth to include_in_savings');
+          }
+          if (from < 43) {
+            if (!await _hasColumn('portfolio_model_items', 'preferred_ticker')) {
+              await customStatement(
+                'ALTER TABLE portfolio_model_items ADD COLUMN preferred_ticker TEXT',
+              );
+            }
+            if (!await _hasColumn('portfolio_model_items', 'preferred_exchange')) {
+              await customStatement(
+                'ALTER TABLE portfolio_model_items ADD COLUMN preferred_exchange TEXT',
+              );
+            }
+            _log.info('Migration 43: added preferred listing metadata to portfolio model items');
           }
         },
       );

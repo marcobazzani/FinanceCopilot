@@ -25,13 +25,13 @@ class RebalancePreviewDialog extends ConsumerStatefulWidget {
 class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog> {
   PortfolioRebalanceMode _mode = PortfolioRebalanceMode.sellAndBuy;
   late final TextEditingController _contribution;
-  late Future<PortfolioRebalanceDraft> _draftFuture;
+  late Stream<PortfolioRebalanceDraft> _draftStream;
 
   @override
   void initState() {
     super.initState();
     _contribution = TextEditingController();
-    _draftFuture = _buildDraft();
+    _draftStream = _buildDraftStream();
   }
 
   @override
@@ -72,7 +72,7 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
                     onSelectionChanged: (value) {
                       setState(() {
                         _mode = value.first;
-                        _draftFuture = _buildDraft();
+                        _draftStream = _buildDraftStream();
                       });
                     },
                   ),
@@ -86,24 +86,26 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
                   decoration: InputDecoration(labelText: s.rebalanceContribution),
                   onChanged: (_) {
                     setState(() {
-                      _draftFuture = _buildDraft();
+                      _draftStream = _buildDraftStream();
                     });
                   },
                 ),
               ],
               const SizedBox(height: 16),
-              FutureBuilder<PortfolioRebalanceDraft>(
-                future: _draftFuture,
+              StreamBuilder<PortfolioRebalanceDraft>(
+                stream: _draftStream,
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
                   final draft = snapshot.data!;
+                  final isUpdating = snapshot.connectionState != ConnectionState.done;
                   return _DraftView(
                     draft: draft,
                     locale: locale,
                     s: s,
-                    onApply: draft.hasExecutableTrades ? () => _applyDraft(context, draft) : null,
+                    isUpdating: isUpdating,
+                    onApply: !isUpdating && draft.hasExecutableTrades ? () => _applyDraft(context, draft) : null,
                   );
                 },
               ),
@@ -120,7 +122,7 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
     );
   }
 
-  Future<PortfolioRebalanceDraft> _buildDraft() {
+  Stream<PortfolioRebalanceDraft> _buildDraftStream() {
     final locale = ref.read(appLocaleProvider).value ?? 'en';
     final contribution = fmt.tryParseLocalized(_contribution.text, locale: locale) ?? 0;
     final scope = widget.initialScopeKind == PortfolioRebalanceScopeKind.currentPillar
@@ -128,7 +130,7 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
         : const PortfolioRebalanceScope.allAssociatedPillars();
     return ref
         .read(portfolioRebalanceServiceProvider)
-        .buildDraft(
+        .buildDraftStream(
           scope: scope,
           mode: _mode,
           contributionAmount: contribution,
@@ -163,12 +165,14 @@ class _DraftView extends StatelessWidget {
   final PortfolioRebalanceDraft draft;
   final String locale;
   final AppStrings s;
+  final bool isUpdating;
   final VoidCallback? onApply;
 
   const _DraftView({
     required this.draft,
     required this.locale,
     required this.s,
+    required this.isUpdating,
     required this.onApply,
   });
 
@@ -180,9 +184,8 @@ class _DraftView extends StatelessWidget {
       if (total <= 0) return '0.0';
       return (value / total * 100.0).toStringAsFixed(2);
     }
-    final cashLabel = draft.mode == PortfolioRebalanceMode.sellAndBuy
-        ? s.rebalanceCashAfterSales
-        : s.rebalanceAvailableCash;
+
+    final cashLabel = draft.mode == PortfolioRebalanceMode.sellAndBuy ? s.rebalanceCashAfterSales : s.rebalanceAvailableCash;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -202,12 +205,37 @@ class _DraftView extends StatelessWidget {
                   spacing: 12,
                   runSpacing: 12,
                   children: [
-                    _SummaryMetric(label: cashLabel, value: '${amountFormat.format(draft.availableCashBase)} ${draft.baseCurrency}', icon: Icons.account_balance_wallet_outlined, color: Colors.blue),
-                    _SummaryMetric(label: s.rebalanceTargetBuy, value: '${amountFormat.format(draft.targetBuyBase)} ${draft.baseCurrency}', icon: Icons.shopping_cart_outlined, color: Colors.orange),
-                    _SummaryMetric(label: s.rebalanceExecutedBuy, value: '${amountFormat.format(draft.executedBuyBase)} ${draft.baseCurrency}', icon: Icons.check_circle_outline, color: Colors.green),
-                    _SummaryMetric(label: s.rebalanceEstimatedTax, value: '${amountFormat.format(draft.estimatedTax)} ${draft.baseCurrency}', icon: Icons.receipt_long_outlined, color: Colors.red),
+                    _SummaryMetric(
+                      label: cashLabel,
+                      value: '${amountFormat.format(draft.availableCashBase)} ${draft.baseCurrency}',
+                      icon: Icons.account_balance_wallet_outlined,
+                      color: Colors.blue,
+                    ),
+                    _SummaryMetric(
+                      label: s.rebalanceTargetBuy,
+                      value: '${amountFormat.format(draft.targetBuyBase)} ${draft.baseCurrency}',
+                      icon: Icons.shopping_cart_outlined,
+                      color: Colors.orange,
+                    ),
+                    _SummaryMetric(
+                      label: s.rebalanceExecutedBuy,
+                      value: '${amountFormat.format(draft.executedBuyBase)} ${draft.baseCurrency}',
+                      icon: Icons.check_circle_outline,
+                      color: Colors.green,
+                    ),
+                    _SummaryMetric(
+                      label: s.rebalanceEstimatedTax,
+                      value: '${amountFormat.format(draft.estimatedTax)} ${draft.baseCurrency}',
+                      icon: Icons.receipt_long_outlined,
+                      color: Colors.red,
+                    ),
                     if (draft.leftoverCashBase > 0.01)
-                      _SummaryMetric(label: s.rebalanceCashRemaining, value: '${amountFormat.format(draft.leftoverCashBase)} ${draft.baseCurrency}', icon: Icons.savings_outlined, color: Colors.grey),
+                      _SummaryMetric(
+                        label: s.rebalanceCashRemaining,
+                        value: '${amountFormat.format(draft.leftoverCashBase)} ${draft.baseCurrency}',
+                        icon: Icons.savings_outlined,
+                        color: Colors.grey,
+                      ),
                   ],
                 ),
               ],
@@ -225,6 +253,16 @@ class _DraftView extends StatelessWidget {
               title: Text(row.assetName ?? row.isin ?? row.pillarName ?? s.invalid),
               subtitle: Text(_reason(s, row.reason)),
             ),
+        ],
+        if (isUpdating) ...[
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            minHeight: 3,
+            color: Theme.of(context).colorScheme.primary,
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+          ),
+          const SizedBox(height: 8),
+          Text(s.rebalanceUpdatingMarketData, style: Theme.of(context).textTheme.labelMedium),
         ],
         const SizedBox(height: 12),
         Text(s.rebalanceDraftRows, style: Theme.of(context).textTheme.titleSmall),

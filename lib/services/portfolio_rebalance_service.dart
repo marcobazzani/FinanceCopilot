@@ -5,9 +5,13 @@ import 'package:drift/drift.dart';
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/logger.dart';
+import 'asset_service.dart';
 import 'asset_event_service.dart';
 import 'exchange_rate_service.dart';
 import 'portfolio_model_service.dart';
+import 'web_market_data_service.dart';
+import 'market_price_service.dart' show exchangeCurrency;
+import '../utils/formatters.dart' show formatYmd;
 
 final _log = getLogger('PortfolioRebalanceService');
 
@@ -69,6 +73,7 @@ class PortfolioRebalanceDraftRow {
   final double currentBaseValue;
   final double projectedBaseValue;
   final bool isPlaceholder;
+  final PortfolioRebalanceAutoCreateSpec? autoCreateSpec;
   final String notes;
 
   const PortfolioRebalanceDraftRow({
@@ -88,7 +93,28 @@ class PortfolioRebalanceDraftRow {
     required this.currentBaseValue,
     required this.projectedBaseValue,
     this.isPlaceholder = false,
+    this.autoCreateSpec,
     required this.notes,
+  });
+}
+
+class PortfolioRebalanceAutoCreateSpec {
+  final String isin;
+  final String ticker;
+  final String exchange;
+  final String currency;
+  final InstrumentType instrumentType;
+  final AssetClass assetClass;
+  final AssetType assetType;
+
+  const PortfolioRebalanceAutoCreateSpec({
+    required this.isin,
+    required this.ticker,
+    required this.exchange,
+    required this.currency,
+    required this.instrumentType,
+    required this.assetClass,
+    required this.assetType,
   });
 }
 
@@ -136,6 +162,26 @@ class _TargetPlaceholder {
   });
 }
 
+class _SyntheticTargetAsset {
+  final Pillar pillar;
+  final PortfolioModelItem target;
+  final String assetName;
+  final PortfolioRebalanceAutoCreateSpec createSpec;
+  final double price;
+  final double fxRate;
+
+  const _SyntheticTargetAsset({
+    required this.pillar,
+    required this.target,
+    required this.assetName,
+    required this.createSpec,
+    required this.price,
+    required this.fxRate,
+  });
+
+  double get unitBaseValue => price / (createSpec.instrumentType == InstrumentType.bond ? 100.0 : 1.0) * fxRate;
+}
+
 class _Position {
   final Pillar pillar;
   final Asset asset;
@@ -172,16 +218,19 @@ class _PositionGroup {
   final PortfolioModelItem target;
   final List<_Position> positions;
   final _TargetPlaceholder? placeholder;
+  final _SyntheticTargetAsset? syntheticTarget;
 
   const _PositionGroup({
     required this.isin,
     required this.target,
     required this.positions,
     this.placeholder,
+    this.syntheticTarget,
   });
 
   double get currentValueBase => positions.fold<double>(0, (sum, p) => sum + p.currentValueBase);
   double get unitBaseValue {
+    if (syntheticTarget != null) return syntheticTarget!.unitBaseValue;
     if (placeholder != null) return double.infinity;
     if (positions.isEmpty) return 0;
     return positions.first.unitBaseValue;
@@ -216,14 +265,17 @@ class PortfolioRebalanceService {
   final AppDatabase _db;
   late final ExchangeRateService _rates = ExchangeRateService(_db);
   late final PortfolioModelService _models = PortfolioModelService(_db);
+  late final AssetService _assets = AssetService(_db);
+  final WebMarketDataService? _marketData;
 
-  PortfolioRebalanceService(this._db);
+  PortfolioRebalanceService(this._db, {WebMarketDataService? marketDataService}) : _marketData = marketDataService;
 
   Future<PortfolioRebalanceDraft> buildDraft({
     required PortfolioRebalanceScope scope,
     required PortfolioRebalanceMode mode,
     double contributionAmount = 0,
     DateTime? asOf,
+    bool resolveMissingTargets = true,
   }) async {
     if (mode == PortfolioRebalanceMode.buyOnly && contributionAmount < 0) {
       throw ArgumentError('contributionAmount must be >= 0');
@@ -250,6 +302,7 @@ class PortfolioRebalanceService {
         asOf: date,
         baseCurrency: baseCurrency,
         defaultTaxRate: defaultTaxRate,
+        resolveMissingTargets: resolveMissingTargets,
       );
       allRows.addAll(result.rows);
       allUnresolved.addAll(result.unresolved);
@@ -278,6 +331,31 @@ class PortfolioRebalanceService {
     );
   }
 
+  Stream<PortfolioRebalanceDraft> buildDraftStream({
+    required PortfolioRebalanceScope scope,
+    required PortfolioRebalanceMode mode,
+    double contributionAmount = 0,
+    DateTime? asOf,
+  }) async* {
+    final partial = await buildDraft(
+      scope: scope,
+      mode: mode,
+      contributionAmount: contributionAmount,
+      asOf: asOf,
+      resolveMissingTargets: false,
+    );
+    yield partial;
+
+    final resolved = await buildDraft(
+      scope: scope,
+      mode: mode,
+      contributionAmount: contributionAmount,
+      asOf: asOf,
+      resolveMissingTargets: true,
+    );
+    yield resolved;
+  }
+
   Future<List<int>> applyDraft(
     PortfolioRebalanceDraft draft,
     AssetEventService eventService, {
@@ -286,10 +364,21 @@ class PortfolioRebalanceService {
     final appliedAt = _dateOnly(date ?? DateTime.now());
     final ids = <int>[];
     for (final row in draft.rows) {
-      if (row.isPlaceholder || row.assetId == null) continue;
+      if (row.isPlaceholder) continue;
+      var assetId = row.assetId;
+      if (assetId == null) {
+        final spec = row.autoCreateSpec;
+        if (row.type != EventType.buy || spec == null || row.isin == null) continue;
+        assetId = await _createTargetAssetForDraftRow(
+          draft: draft,
+          row: row,
+          spec: spec,
+          appliedAt: appliedAt,
+        );
+      }
       ids.add(
         await eventService.create(
-          assetId: row.assetId!,
+          assetId: assetId,
           date: appliedAt,
           type: row.type,
           amount: row.amount,
@@ -299,6 +388,17 @@ class PortfolioRebalanceService {
           notes: row.notes,
         ),
       );
+      if (row.assetId == null && row.type == EventType.buy) {
+        await _db
+            .into(_db.pillarAssets)
+            .insertOnConflictUpdate(
+              PillarAssetsCompanion.insert(
+                pillarId: row.pillarId,
+                assetId: assetId,
+                quantity: row.estimatedQuantity,
+              ),
+            );
+      }
     }
     _log.info('applyDraft: inserted ${ids.length} asset events');
     return ids;
@@ -322,6 +422,7 @@ class PortfolioRebalanceService {
     required DateTime asOf,
     required String baseCurrency,
     required double defaultTaxRate,
+    required bool resolveMissingTargets,
   }) async {
     final modelId = pillar.portfolioModelId;
     if (modelId == null || modelId.isEmpty) {
@@ -426,6 +527,24 @@ class PortfolioRebalanceService {
           unresolved: unresolved,
         );
         if (synthetic == null) {
+          final remoteTarget = resolveMissingTargets
+              ? await _syntheticTargetForTargetIsin(
+                  pillar: pillar,
+                  target: entry.value,
+                  isin: entry.key,
+                  asOf: asOf,
+                  baseCurrency: baseCurrency,
+                )
+              : null;
+          if (remoteTarget != null) {
+            groups[entry.key] = _PositionGroup(
+              isin: entry.key,
+              target: entry.value,
+              positions: const [],
+              syntheticTarget: remoteTarget,
+            );
+            continue;
+          }
           groups[entry.key] = _PositionGroup(
             isin: entry.key,
             target: entry.value,
@@ -705,11 +824,35 @@ class PortfolioRebalanceService {
     _PositionGroup group,
     int quantity,
   ) {
-    final position = group.positions.first;
     final unitBase = group.unitBaseValue;
     if (unitBase <= 0) return const [];
     if (quantity <= 0) return const [];
     final actualBaseAmount = quantity * unitBase;
+    if (group.syntheticTarget != null) {
+      final synthetic = group.syntheticTarget!;
+      return [
+        PortfolioRebalanceDraftRow(
+          pillarId: synthetic.pillar.id,
+          pillarName: synthetic.pillar.name,
+          assetId: null,
+          assetName: synthetic.assetName,
+          isin: synthetic.createSpec.isin,
+          type: EventType.buy,
+          amount: actualBaseAmount / synthetic.fxRate,
+          baseAmount: actualBaseAmount,
+          estimatedQuantity: quantity.toDouble(),
+          price: synthetic.price,
+          currency: synthetic.createSpec.currency,
+          fxRate: synthetic.fxRate,
+          estimatedTax: 0,
+          currentBaseValue: 0,
+          projectedBaseValue: actualBaseAmount,
+          autoCreateSpec: synthetic.createSpec,
+          notes: 'Portfolio rebalance draft',
+        ),
+      ];
+    }
+    final position = group.positions.first;
     return [
       PortfolioRebalanceDraftRow(
         pillarId: position.pillar.id,
@@ -727,9 +870,177 @@ class PortfolioRebalanceService {
         estimatedTax: 0,
         currentBaseValue: position.currentValueBase,
         projectedBaseValue: position.currentValueBase + actualBaseAmount,
+        autoCreateSpec: null,
         notes: 'Portfolio rebalance draft',
       ),
     ];
+  }
+
+  Future<_SyntheticTargetAsset?> _syntheticTargetForTargetIsin({
+    required Pillar pillar,
+    required PortfolioModelItem target,
+    required String isin,
+    required DateTime asOf,
+    required String baseCurrency,
+  }) async {
+    final marketData = _marketData;
+    if (marketData == null) return null;
+
+    final resolved = await marketData.resolveListingsByIsin(
+      isin: isin,
+      description: target.description,
+      preferredTicker: target.preferredTicker,
+      preferredExchange: target.preferredExchange,
+    );
+    if (resolved.isEmpty) return null;
+
+    resolved.sort((a, b) {
+      int score(ProviderSearchResult r) {
+        final ccy = exchangeCurrency[r.exchange];
+        if (ccy == baseCurrency) return 0;
+        if (r.exchange == 'Milan') return 1;
+        return 2;
+      }
+
+      final byScore = score(a).compareTo(score(b));
+      if (byScore != 0) return byScore;
+      return a.exchange.compareTo(b.exchange);
+    });
+
+    for (final candidate in resolved) {
+      final currency = exchangeCurrency[candidate.exchange];
+      if (currency == null || candidate.symbol.trim().isEmpty) continue;
+      final history = await marketData.fetchHistoricalPricesForListing(
+        candidate,
+        asOf.subtract(const Duration(days: 14)),
+      );
+      final entries = history.entries.where((entry) => !entry.key.isAfter(asOf)).toList()..sort((a, b) => b.key.compareTo(a.key));
+      if (entries.isEmpty) continue;
+      final price = entries.first.value;
+      if (price <= 0) continue;
+      final fxRate = currency == baseCurrency ? 1.0 : await _rates.getRate(currency, baseCurrency, asOf);
+      if (fxRate == null || fxRate <= 0) continue;
+
+      final classification = classifyFromProviderType(
+        candidate.type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), ''),
+      );
+      final createSpec = PortfolioRebalanceAutoCreateSpec(
+        isin: normaliseIsin(isin),
+        ticker: candidate.symbol,
+        exchange: candidate.exchange,
+        currency: currency,
+        instrumentType: classification.$1,
+        assetClass: classification.$2,
+        assetType: _defaultAssetTypeFor(classification.$1, classification.$2),
+      );
+      final assetName = target.description.trim().isNotEmpty
+          ? target.description.trim()
+          : candidate.description.trim().isNotEmpty
+          ? candidate.description.trim()
+          : normaliseIsin(isin);
+      return _SyntheticTargetAsset(
+        pillar: pillar,
+        target: target,
+        assetName: assetName,
+        createSpec: createSpec,
+        price: price,
+        fxRate: fxRate,
+      );
+    }
+    return null;
+  }
+
+  AssetType _defaultAssetTypeFor(InstrumentType instrumentType, AssetClass assetClass) {
+    switch (instrumentType) {
+      case InstrumentType.bond:
+        return AssetType.bondEtf;
+      case InstrumentType.etc:
+        return assetClass == AssetClass.commodities ? AssetType.goldEtc : AssetType.commEtf;
+      case InstrumentType.crypto:
+        return AssetType.crypto;
+      case InstrumentType.pension:
+        return AssetType.pension;
+      case InstrumentType.deposit:
+        return AssetType.deposit;
+      case InstrumentType.realEstate:
+        return AssetType.realEstate;
+      case InstrumentType.alternative:
+        return AssetType.alternative;
+      case InstrumentType.liability:
+        return AssetType.liability;
+      case InstrumentType.fund:
+      case InstrumentType.etf:
+      case InstrumentType.stock:
+        return AssetType.stockEtf;
+      case InstrumentType.cash:
+        return AssetType.cash;
+    }
+  }
+
+  Future<int> _createTargetAssetForDraftRow({
+    required PortfolioRebalanceDraft draft,
+    required PortfolioRebalanceDraftRow row,
+    required PortfolioRebalanceAutoCreateSpec spec,
+    required DateTime appliedAt,
+  }) async {
+    final intermediaryId = await _preferredIntermediaryIdForPillar(row.pillarId);
+    final assetId = await _assets.create(
+      name: row.assetName,
+      intermediaryId: intermediaryId,
+      ticker: spec.ticker,
+      isin: spec.isin,
+      exchange: spec.exchange,
+      currency: spec.currency,
+      instrumentType: spec.instrumentType,
+      assetClass: spec.assetClass,
+      assetType: spec.assetType,
+    );
+    await _db
+        .into(_db.marketPrices)
+        .insertOnConflictUpdate(
+          MarketPricesCompanion.insert(
+            assetId: assetId,
+            date: appliedAt,
+            closePrice: row.price,
+            currency: spec.currency,
+          ),
+        );
+    _log.info(
+      'applyDraft: auto-created asset $assetId for ${spec.isin} '
+      '(${spec.ticker}@${spec.exchange}) price=${row.price} ${spec.currency} on ${formatYmd(appliedAt)}',
+    );
+    return assetId;
+  }
+
+  Future<int> _preferredIntermediaryIdForPillar(String pillarId) async {
+    final rows = await _db
+        .customSelect(
+          'SELECT a.intermediary_id AS intermediary_id, COUNT(*) AS cnt '
+          'FROM pillar_assets pa '
+          'JOIN assets a ON a.id = pa.asset_id '
+          'WHERE pa.pillar_id = ? '
+          'GROUP BY a.intermediary_id '
+          'ORDER BY cnt DESC, a.intermediary_id ASC '
+          'LIMIT 1',
+          variables: [Variable.withString(pillarId)],
+          readsFrom: {_db.pillarAssets, _db.assets},
+        )
+        .getSingleOrNull();
+    final existing = rows?.readNullable<int>('intermediary_id');
+    if (existing != null) return existing;
+
+    final fallback =
+        await (_db.select(_db.intermediaries)
+              ..orderBy([(i) => OrderingTerm.asc(i.sortOrder), (i) => OrderingTerm.asc(i.id)])
+              ..limit(1))
+            .getSingleOrNull();
+    if (fallback != null) return fallback.id;
+
+    return _db
+        .into(_db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Default'),
+        );
   }
 
   Future<List<_Position>> _positionsForPillar(

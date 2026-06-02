@@ -440,6 +440,8 @@ class PortfolioModelItems extends Table {
   TextColumn get isin => text().withLength(min: 1, max: 32)();
   RealColumn get targetWeight => real()();
   TextColumn get description => text().withDefault(const Constant(''))();
+  TextColumn get preferredTicker => text().nullable()();
+  TextColumn get preferredExchange => text().nullable()();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
   @override

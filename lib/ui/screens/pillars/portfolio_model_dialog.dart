@@ -5,7 +5,9 @@ import '../../../database/database.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/portfolio_model_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../../services/web_market_data_service.dart';
 import '../../../utils/formatters.dart' as fmt;
+import '../../widgets/asset_search.dart';
 
 class PortfolioModelDialog extends ConsumerStatefulWidget {
   final PortfolioModel? existing;
@@ -25,6 +27,7 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
   late final TextEditingController _name;
   final List<_ModelItemControllers> _rows = [];
   String? _error;
+  bool _resolvingSearchSelection = false;
 
   @override
   void initState() {
@@ -76,7 +79,9 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
                 _ModelItemRow(
                   controllers: _rows[i],
                   s: s,
+                  ref: ref,
                   onChanged: () => setState(() {}),
+                  onSearch: () => _pickAssetForRow(_rows[i]),
                   onRemove: _rows.length == 1
                       ? null
                       : () {
@@ -95,6 +100,10 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
               ),
               const SizedBox(height: 8),
               Text(s.portfolioModelWeightTotal(total.toStringAsFixed(2))),
+              if (_resolvingSearchSelection) ...[
+                const SizedBox(height: 8),
+                const LinearProgressIndicator(),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 8),
                 Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -125,6 +134,8 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
           isin: row.isin.text,
           targetWeight: weight ?? -1,
           description: row.description.text,
+          preferredTicker: row.preferredTicker.text,
+          preferredExchange: row.preferredExchange.text,
         ),
       );
     }
@@ -147,18 +158,96 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
       setState(() => _error = s.portfolioModelReadOnly);
     }
   }
+
+  static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
+
+  Future<void> _pickAssetForRow(_ModelItemControllers row) async {
+    var typedQuery = '';
+    final selected = await showDialog<({ProviderSearchResult result, String query})>(
+      context: context,
+      builder: (dialogContext) {
+        final s = ref.read(appStringsProvider);
+        return AlertDialog(
+          title: Text(s.searchAssetTitle),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: AssetSearchSection(
+              widgetRef: ref,
+              onSelect: (result) {
+                Navigator.of(dialogContext).pop((
+                  result: result,
+                  query: typedQuery,
+                ));
+              },
+              recoveryDefaultExchange: 'Milan',
+              recoveryCacheKeyBuilder: (q) => _kIsinRegex.hasMatch(q.toUpperCase()) ? q.toUpperCase() : q,
+              onQueryChanged: (q) => typedQuery = q.trim(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(s.cancel),
+            ),
+          ],
+        );
+      },
+    );
+    if (selected == null) return;
+
+    setState(() {
+      _error = null;
+      _resolvingSearchSelection = true;
+    });
+
+    try {
+      final query = selected.query.trim().toUpperCase();
+      var resolvedIsin = _kIsinRegex.hasMatch(query) ? query : selected.result.isin;
+
+      if (resolvedIsin == null || resolvedIsin.isEmpty) {
+        final service = ref.read(marketPriceServiceProvider);
+        if (service is WebMarketDataService) {
+          final resolved = await service.resolveSearchResultDetails(selected.result);
+          final candidate = resolved?.isin?.trim().toUpperCase();
+          if (candidate != null && _kIsinRegex.hasMatch(candidate)) {
+            resolvedIsin = candidate;
+          }
+        }
+      }
+
+      if (!mounted) return;
+      if (resolvedIsin == null || resolvedIsin.isEmpty) {
+        setState(() => _error = ref.read(appStringsProvider).portfolioModelSearchResolveFailed);
+        return;
+      }
+
+      row.isin.text = resolvedIsin;
+      row.description.text = selected.result.description;
+      row.preferredTicker.text = selected.result.symbol;
+      row.preferredExchange.text = selected.result.exchange;
+      setState(() {});
+    } finally {
+      if (mounted) {
+        setState(() => _resolvingSearchSelection = false);
+      }
+    }
+  }
 }
 
 class _ModelItemRow extends StatelessWidget {
   final _ModelItemControllers controllers;
   final AppStrings s;
+  final WidgetRef ref;
   final VoidCallback onChanged;
+  final VoidCallback onSearch;
   final VoidCallback? onRemove;
 
   const _ModelItemRow({
     required this.controllers,
     required this.s,
+    required this.ref,
     required this.onChanged,
+    required this.onSearch,
     required this.onRemove,
   });
 
@@ -170,7 +259,14 @@ class _ModelItemRow extends StatelessWidget {
           flex: 2,
           child: TextField(
             controller: controllers.isin,
-            decoration: InputDecoration(labelText: s.portfolioModelIsin),
+            decoration: InputDecoration(
+              labelText: s.portfolioModelIsin,
+              suffixIcon: IconButton(
+                tooltip: s.search,
+                icon: const Icon(Icons.search),
+                onPressed: onSearch,
+              ),
+            ),
             textCapitalization: TextCapitalization.characters,
             onChanged: (_) => onChanged(),
           ),
@@ -207,28 +303,38 @@ class _ModelItemControllers {
   final TextEditingController isin;
   final TextEditingController weight;
   final TextEditingController description;
+  final TextEditingController preferredTicker;
+  final TextEditingController preferredExchange;
 
   _ModelItemControllers({
     required this.isin,
     required this.weight,
     required this.description,
+    required this.preferredTicker,
+    required this.preferredExchange,
   });
 
   factory _ModelItemControllers.empty() => _ModelItemControllers(
     isin: TextEditingController(),
     weight: TextEditingController(),
     description: TextEditingController(),
+    preferredTicker: TextEditingController(),
+    preferredExchange: TextEditingController(),
   );
 
   factory _ModelItemControllers.fromItem(PortfolioModelItem item) => _ModelItemControllers(
     isin: TextEditingController(text: item.isin),
     weight: TextEditingController(text: item.targetWeight.toStringAsFixed(2)),
     description: TextEditingController(text: item.description),
+    preferredTicker: TextEditingController(text: item.preferredTicker ?? ''),
+    preferredExchange: TextEditingController(text: item.preferredExchange ?? ''),
   );
 
   void dispose() {
     isin.dispose();
     weight.dispose();
     description.dispose();
+    preferredTicker.dispose();
+    preferredExchange.dispose();
   }
 }

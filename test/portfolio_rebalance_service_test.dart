@@ -8,6 +8,34 @@ import 'package:finance_copilot/services/asset_service.dart';
 import 'package:finance_copilot/services/pillar_service.dart';
 import 'package:finance_copilot/services/portfolio_model_service.dart';
 import 'package:finance_copilot/services/portfolio_rebalance_service.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
+
+class _FakeMarketDataService extends WebMarketDataService {
+  final Map<String, List<ProviderSearchResult>> searchResults;
+  final Map<String, Map<DateTime, double>> pricesByTicker;
+
+  _FakeMarketDataService(
+    super.db, {
+    required this.searchResults,
+    required this.pricesByTicker,
+  });
+
+  @override
+  Future<List<ProviderSearchResult>> search(String query) async => searchResults[query] ?? const [];
+
+  @override
+  Future<Map<DateTime, double>> fetchHistoricalPrices(
+    String ticker,
+    String currency,
+    DateTime from,
+  ) async => pricesByTicker[ticker] ?? const {};
+
+  @override
+  Future<Map<DateTime, double>> fetchHistoricalPricesForListing(
+    ProviderSearchResult listing,
+    DateTime from,
+  ) async => pricesByTicker[listing.symbol] ?? const {};
+}
 
 void main() {
   late AppDatabase db;
@@ -429,5 +457,225 @@ void main() {
     final inserted = await rebalance.applyDraft(draft, events, date: DateTime(2026, 1, 3));
     expect(inserted, hasLength(1));
     expect(await events.getByAsset(a), hasLength(2));
+  });
+
+  test('missing target asset becomes executable from market data and apply auto-creates it', () async {
+    final held = await assetPosition(
+      name: 'Held',
+      isin: 'IE00B4L5Y983',
+      quantity: 10,
+      buyPrice: 100,
+      marketPrice: 100,
+    );
+    final modelId = await models.createCustomModel(
+      name: 'Model',
+      items: const [
+        PortfolioModelInputItem(isin: 'IE00B4L5Y983', targetWeight: 50),
+        PortfolioModelInputItem(
+          isin: 'IE0006WW1TQ4',
+          targetWeight: 50,
+          description: 'Xtrackers MSCI World ex USA UCITS ETF 1C',
+        ),
+      ],
+    );
+    final pillarId = await pillars.create(name: 'Retirement', portfolioModelId: modelId);
+    await pillars.assign(pillarId: pillarId, assetId: held, qty: 10);
+
+    rebalance = PortfolioRebalanceService(
+      db,
+      marketDataService: _FakeMarketDataService(
+        db,
+        searchResults: {
+          'IE0006WW1TQ4': const [
+            ProviderSearchResult(
+              cid: 2001,
+              description: 'Xtrackers MSCI World ex USA UCITS ETF 1C USD',
+              symbol: 'EXUS',
+              exchange: 'Xetra',
+              flag: 'DE',
+              type: 'ETFs - Xetra',
+              url: '/etfs/exus-xetra',
+            ),
+          ],
+        },
+        pricesByTicker: {
+          'EXUS': {
+            DateTime(2026, 1, 2): 100,
+          },
+        },
+      ),
+    );
+
+    final draft = await rebalance.buildDraft(
+      scope: PortfolioRebalanceScope.currentPillar(pillarId),
+      mode: PortfolioRebalanceMode.buyOnly,
+      contributionAmount: 1000,
+      asOf: DateTime(2026, 1, 2),
+    );
+
+    final targetBuy = draft.rows.singleWhere(
+      (row) => row.type == EventType.buy && row.isin == 'IE0006WW1TQ4',
+    );
+    expect(targetBuy.isPlaceholder, isFalse);
+    expect(targetBuy.assetId, isNull);
+    expect(targetBuy.autoCreateSpec, isNotNull);
+    expect(targetBuy.currency, 'EUR');
+    expect(targetBuy.price, 100);
+    expect(targetBuy.estimatedQuantity, greaterThan(0));
+    expect(draft.hasExecutableTrades, isTrue);
+
+    final inserted = await rebalance.applyDraft(
+      draft,
+      events,
+      date: DateTime(2026, 1, 3),
+    );
+    expect(inserted, isNotEmpty);
+
+    final createdAsset = await (db.select(db.assets)..where((a) => a.isin.equals('IE0006WW1TQ4'))).getSingleOrNull();
+    expect(createdAsset, isNotNull);
+    expect(createdAsset!.ticker, 'EXUS');
+    expect(createdAsset.exchange, 'Xetra');
+
+    final createdEvents = await events.getByAsset(createdAsset.id);
+    expect(createdEvents, hasLength(1));
+    expect(createdEvents.single.type, EventType.buy);
+    expect(createdEvents.single.quantity, targetBuy.estimatedQuantity);
+
+    final assignmentQuery = db.select(db.pillarAssets)
+      ..where((pa) => pa.pillarId.equals(pillarId))
+      ..where((pa) => pa.assetId.equals(createdAsset.id));
+    final assignment = await assignmentQuery.getSingleOrNull();
+    expect(assignment, isNotNull);
+    expect(assignment!.quantity, targetBuy.estimatedQuantity);
+  });
+
+  test('progressive draft emits placeholders before resolving missing target assets', () async {
+    final held = await assetPosition(
+      name: 'Held',
+      isin: 'IE00B4L5Y983',
+      quantity: 10,
+      buyPrice: 100,
+      marketPrice: 100,
+    );
+    final modelId = await models.createCustomModel(
+      name: 'Model',
+      items: const [
+        PortfolioModelInputItem(isin: 'IE00B4L5Y983', targetWeight: 50),
+        PortfolioModelInputItem(
+          isin: 'IE0006WW1TQ4',
+          targetWeight: 50,
+          description: 'Xtrackers MSCI World ex USA UCITS ETF 1C',
+        ),
+      ],
+    );
+    final pillarId = await pillars.create(name: 'Retirement', portfolioModelId: modelId);
+    await pillars.assign(pillarId: pillarId, assetId: held, qty: 10);
+
+    rebalance = PortfolioRebalanceService(
+      db,
+      marketDataService: _FakeMarketDataService(
+        db,
+        searchResults: {
+          'IE0006WW1TQ4': const [
+            ProviderSearchResult(
+              cid: 2001,
+              description: 'Xtrackers MSCI World ex USA UCITS ETF 1C USD',
+              symbol: 'EXUS',
+              exchange: 'Xetra',
+              flag: 'DE',
+              type: 'ETFs - Xetra',
+              url: '/etfs/exus-xetra',
+            ),
+          ],
+        },
+        pricesByTicker: {
+          'EXUS': {
+            DateTime(2026, 1, 2): 100,
+          },
+        },
+      ),
+    );
+
+    final drafts = await rebalance
+        .buildDraftStream(
+          scope: PortfolioRebalanceScope.currentPillar(pillarId),
+          mode: PortfolioRebalanceMode.buyOnly,
+          contributionAmount: 1000,
+          asOf: DateTime(2026, 1, 2),
+        )
+        .toList();
+
+    expect(drafts, hasLength(2));
+    expect(drafts.first.rows.any((row) => row.isin == 'IE0006WW1TQ4' && row.isPlaceholder), isTrue);
+    final resolvedBuy = drafts.last.rows.singleWhere((row) => row.isin == 'IE0006WW1TQ4');
+    expect(resolvedBuy.isPlaceholder, isFalse);
+    expect(resolvedBuy.autoCreateSpec?.ticker, 'EXUS');
+  });
+
+  test('applyDraft auto-creates a default intermediary when the database has none', () async {
+    await db.close();
+    db = AppDatabase.forTesting(NativeDatabase.memory());
+    assets = AssetService(db);
+    events = AssetEventService(db);
+    pillars = PillarService(db);
+    models = PortfolioModelService(db);
+
+    final modelId = await models.createCustomModel(
+      name: 'Model',
+      items: const [
+        PortfolioModelInputItem(
+          isin: 'IE0006WW1TQ4',
+          targetWeight: 100,
+          description: 'Xtrackers MSCI World ex USA UCITS ETF 1C',
+          preferredTicker: 'EXUS',
+          preferredExchange: 'Xetra',
+        ),
+      ],
+    );
+    final pillarId = await pillars.create(name: 'Retirement', portfolioModelId: modelId);
+
+    rebalance = PortfolioRebalanceService(
+      db,
+      marketDataService: _FakeMarketDataService(
+        db,
+        searchResults: {
+          'IE0006WW1TQ4': const [
+            ProviderSearchResult(
+              cid: 2001,
+              description: 'Xtrackers MSCI World ex USA UCITS ETF 1C USD',
+              symbol: 'EXUS',
+              exchange: 'Xetra',
+              flag: 'DE',
+              type: 'ETFs - Xetra',
+              url: '/etfs/exus-xetra',
+            ),
+          ],
+        },
+        pricesByTicker: {
+          'EXUS': {DateTime(2026, 1, 2): 100},
+        },
+      ),
+    );
+
+    final draft = await rebalance.buildDraft(
+      scope: PortfolioRebalanceScope.currentPillar(pillarId),
+      mode: PortfolioRebalanceMode.buyOnly,
+      contributionAmount: 1000,
+      asOf: DateTime(2026, 1, 2),
+    );
+
+    final inserted = await rebalance.applyDraft(
+      draft,
+      events,
+      date: DateTime(2026, 1, 3),
+    );
+    expect(inserted, hasLength(1));
+
+    final allIntermediaries = await db.select(db.intermediaries).get();
+    expect(allIntermediaries, hasLength(1));
+    expect(allIntermediaries.single.name, 'Default');
+
+    final createdAsset = await (db.select(db.assets)..where((a) => a.isin.equals('IE0006WW1TQ4'))).getSingle();
+    expect(createdAsset.intermediaryId, allIntermediaries.single.id);
   });
 }

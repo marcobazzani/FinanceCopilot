@@ -68,13 +68,21 @@ void main() {
       final id = await service.createCustomModel(
         name: 'Core',
         items: const [
-          PortfolioModelInputItem(isin: 'IE00B4L5Y983', targetWeight: 60, description: 'World'),
+          PortfolioModelInputItem(
+            isin: 'IE00B4L5Y983',
+            targetWeight: 60,
+            description: 'World',
+            preferredTicker: 'SWDA',
+            preferredExchange: 'Milan',
+          ),
           PortfolioModelInputItem(isin: 'IE00B579F325', targetWeight: 40, description: 'Gold'),
         ],
       );
       var model = await service.getWithItems(id);
       expect(model!.model.isBuiltIn, isFalse);
       expect(model.items.map((i) => i.isin), ['IE00B4L5Y983', 'IE00B579F325']);
+      expect(model.items.first.preferredTicker, 'SWDA');
+      expect(model.items.first.preferredExchange, 'Milan');
 
       await service.updateCustomModel(
         id,
@@ -194,13 +202,15 @@ void main() {
 
     final migrated = AppDatabase.forTesting(NativeDatabase(File(path)));
     final version = (await migrated.customSelect('PRAGMA user_version').get()).first.read<int>('user_version');
-    expect(version, 42);
+    expect(version, 43);
     final modelTables = await migrated
         .customSelect(
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio_models', 'portfolio_model_items')",
         )
         .get();
     expect(modelTables, hasLength(2));
+    final itemColumns = await migrated.customSelect('PRAGMA table_info(portfolio_model_items)').get();
+    expect(itemColumns.map((row) => row.read<String>('name')), containsAll(['preferred_ticker', 'preferred_exchange']));
     final pillarColumns = await migrated.customSelect('PRAGMA table_info(pillars)').get();
     expect(pillarColumns.map((row) => row.read<String>('name')), contains('portfolio_model_id'));
 
