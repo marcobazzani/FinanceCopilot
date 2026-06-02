@@ -118,7 +118,7 @@ if git show-ref --tags --quiet --verify "refs/tags/$version"; then
   die "Tag $version already exists locally"
 fi
 
-run git fetch origin --tags --prune
+run git fetch origin --tags --prune --force
 
 if [[ -n "$merge_pr" ]]; then
   pr_state="$(gh pr view "$merge_pr" --json state --jq .state)"
@@ -153,7 +153,8 @@ develop_ci="$(gh run list --branch develop --limit 1 --json conclusion --jq '.[0
 if [[ -z "$develop_ci" ]]; then
   die "Could not determine the latest develop workflow result"
 fi
-if [[ "$develop_ci" != SUCCESS ]]; then
+develop_ci="$(printf '%s' "$develop_ci" | tr '[:upper:]' '[:lower:]')"
+if [[ "$develop_ci" != success ]]; then
   die "Latest develop workflow did not pass: $develop_ci"
 fi
 
@@ -163,21 +164,25 @@ trap 'rm -f "$tmp_notes"' EXIT
 previous_tag="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || true)"
 repo_slug="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
 
-{
-  echo "$version -- $title"
-  echo
-  if [[ -n "$previous_tag" ]]; then
-    echo "Changes since $previous_tag:"
-    git log --oneline "${previous_tag}..HEAD"
-  else
-    echo "Changes:"
-    git log --oneline HEAD
-  fi
-  if [[ -n "$merge_pr" ]]; then
+if [[ -n "$notes_file" ]]; then
+  cp "$notes_file" "$tmp_notes"
+else
+  {
+    echo "$version -- $title"
     echo
-    echo "Merged PR #$merge_pr: https://github.com/$repo_slug/pull/$merge_pr"
-  fi
-} >"$tmp_notes"
+    if [[ -n "$previous_tag" ]]; then
+      echo "Changes since $previous_tag:"
+      git log --oneline "${previous_tag}..HEAD"
+    else
+      echo "Changes:"
+      git log --oneline HEAD
+    fi
+    if [[ -n "$merge_pr" ]]; then
+      echo
+      echo "Merged PR #$merge_pr: https://github.com/$repo_slug/pull/$merge_pr"
+    fi
+  } >"$tmp_notes"
+fi
 
 run git tag -a "$version" -m "$version -- $title"
 run git push origin "$version"
