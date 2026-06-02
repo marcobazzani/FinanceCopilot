@@ -212,12 +212,6 @@ class _DraftView extends StatelessWidget {
                       color: Colors.blue,
                     ),
                     _SummaryMetric(
-                      label: s.rebalanceTargetBuy,
-                      value: '${amountFormat.format(draft.targetBuyBase)} ${draft.baseCurrency}',
-                      icon: Icons.shopping_cart_outlined,
-                      color: Colors.orange,
-                    ),
-                    _SummaryMetric(
                       label: s.rebalanceExecutedBuy,
                       value: '${amountFormat.format(draft.executedBuyBase)} ${draft.baseCurrency}',
                       icon: Icons.check_circle_outline,

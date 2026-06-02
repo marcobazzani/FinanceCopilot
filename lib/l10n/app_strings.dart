@@ -133,7 +133,6 @@ class AppStrings {
   String get rebalanceEstimatedTax      => _it ? 'Tasse stimate'           : 'Estimated tax';
   String get rebalanceCashAfterSales    => _it ? 'Liquidità dopo le vendite' : 'Cash after sells';
   String get rebalanceAvailableCash     => _it ? 'Liquidità disponibile'   : 'Available cash';
-  String get rebalanceTargetBuy         => _it ? 'Acquisti target'         : 'Target buys';
   String get rebalanceExecutedBuy       => _it ? 'Acquisti eseguiti'       : 'Executed buys';
   String get rebalanceCashRemaining     => _it ? 'Contante residuo'        : 'Cash remaining';
   String get rebalanceWholeUnitsOnly    => _it ? 'Solo unità intere'       : 'Whole units only';
