@@ -280,8 +280,7 @@ void main() {
     await longSettle(tester);
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    await longSettle(tester);
-    await longSettle(tester);
+    await pumpFor(tester, const Duration(seconds: 30));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -670,8 +669,8 @@ void main() {
     await selectIntermediary(tester, 'Broker Fineco');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    await longSettle(tester);
-    await longSettle(tester);
+    // Wait for the result screen — Android CI XLSX parse can take >3 s.
+    await pumpFor(tester, const Duration(seconds: 30));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -730,8 +729,8 @@ void main() {
     await selectIntermediary(tester, 'Broker Degiro');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    await longSettle(tester);
-    await longSettle(tester);
+    // Wait for the result screen — Android CI XLSX parse can take >3 s.
+    await pumpFor(tester, const Duration(seconds: 30));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -1182,9 +1181,7 @@ void main() {
     if (find.widgetWithText(FilledButton, 'Import').evaluate().isNotEmpty) {
       await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
       await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-      for (var i = 0; i < 12; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
+      await pumpFor(tester, const Duration(seconds: 20));
     }
     final incomeRows = await db.select(db.incomes).get();
     expect(incomeRows, isNotEmpty);
