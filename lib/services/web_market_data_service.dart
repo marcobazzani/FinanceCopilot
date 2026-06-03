@@ -5,11 +5,13 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import '../database/database.dart';
-import '../utils/formatters.dart' show formatYmd;
-import '../utils/logger.dart';
-import 'web_page_parser.dart';
-import 'market_price_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/web_page_parser.dart';
+import 'package:finance_copilot/services/market_price_service.dart';
+
+part 'web_market_data_results.dart';
 
 final _log = getLogger('WebMarketDataService');
 
@@ -20,59 +22,6 @@ const kProviderHost = 'www.investing.com';
 const kProviderApiHost = 'api.investing.com';
 const kProviderBase = 'https://$kProviderHost';
 const kProviderApiBase = 'https://$kProviderApiHost';
-
-/// Result from the market data provider search API.
-class ProviderSearchResult {
-  final int cid;
-  final String description;
-  final String symbol;
-  final String exchange;
-  final String flag;
-  final String type;
-  final String? url; // relative URL path, e.g. "/equities/amazon-com-inc"
-  final String? isin;
-
-  const ProviderSearchResult({
-    required this.cid,
-    required this.description,
-    required this.symbol,
-    required this.exchange,
-    required this.flag,
-    required this.type,
-    this.url,
-    this.isin,
-  });
-}
-
-/// Outcome of [WebMarketDataService.resolveFromInstrumentUrl].
-sealed class UrlResolveResult {
-  const UrlResolveResult();
-}
-
-class UrlResolveOk extends UrlResolveResult {
-  final ProviderSearchResult result;
-  const UrlResolveOk(this.result);
-}
-
-class UrlResolveInvalidFormat extends UrlResolveResult {
-  const UrlResolveInvalidFormat();
-}
-
-class UrlResolveWrongHost extends UrlResolveResult {
-  const UrlResolveWrongHost();
-}
-
-class UrlResolveUnsupportedCategory extends UrlResolveResult {
-  const UrlResolveUnsupportedCategory();
-}
-
-class UrlResolveFetchFailed extends UrlResolveResult {
-  const UrlResolveFetchFailed();
-}
-
-class UrlResolveParseFailed extends UrlResolveResult {
-  const UrlResolveParseFailed();
-}
 
 /// the market data provider exchange name mapping.
 /// Synonyms accepted when filtering search results by exchange. Keys are

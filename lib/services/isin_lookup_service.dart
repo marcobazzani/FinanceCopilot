@@ -1,6 +1,6 @@
-import '../database/tables.dart';
-import '../utils/logger.dart';
-import 'web_market_data_service.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 final _log = getLogger('IsinLookupService');
 

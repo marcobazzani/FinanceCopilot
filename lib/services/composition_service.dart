@@ -8,10 +8,10 @@ import 'package:drift/drift.dart';
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' show parse;
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import '../utils/logger.dart';
-import 'web_market_data_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 final _log = getLogger('CompositionService');
 

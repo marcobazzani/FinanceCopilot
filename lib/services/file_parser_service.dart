@@ -7,10 +7,10 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:intl/intl.dart';
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
-import '../utils/logger.dart';
-import 'import_service.dart' show FilePreview;
-import 'pdf_exceptions.dart';
-import 'pdf_table_reconstructor.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/import_service.dart' show FilePreview;
+import 'package:finance_copilot/services/pdf_exceptions.dart';
+import 'package:finance_copilot/services/pdf_table_reconstructor.dart';
 
 final _log = getLogger('FileParserService');
 

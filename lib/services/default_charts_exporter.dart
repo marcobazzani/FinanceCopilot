@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import '../models/dashboard_chart.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/models/dashboard_chart.dart';
 
 /// Thrown when a chart's `series_json` cannot be expressed as a clean union
 /// of categories — e.g. only some accounts ticked rather than all. The

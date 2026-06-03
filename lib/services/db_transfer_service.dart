@@ -4,9 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../database/database.dart';
-import '../database/db_file_name.dart';
-import '../utils/logger.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/db_file_name.dart';
+import 'package:finance_copilot/utils/logger.dart';
 
 final _log = getLogger('DbTransferService');
 

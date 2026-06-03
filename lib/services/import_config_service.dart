@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
-import '../database/database.dart';
-import '../utils/logger.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/utils/logger.dart';
 
 final _log = getLogger('ImportConfigService');
 

@@ -3,7 +3,7 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/legacy.dart';
 
-import '../models/dashboard_chart.dart';
+import 'package:finance_copilot/models/dashboard_chart.dart';
 
 /// In-memory state for the History-tab chart editor (debug mode only).
 ///

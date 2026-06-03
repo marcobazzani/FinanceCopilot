@@ -1,9 +1,9 @@
 import 'package:drift/drift.dart';
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import '../utils/logger.dart';
-import '../utils/schedule_math.dart' as schedule_math;
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/schedule_math.dart' as schedule_math;
 
 final _log = getLogger('ExtraordinaryEventService');
 

@@ -1,9 +1,9 @@
 import 'package:drift/drift.dart';
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import '../utils/logger.dart';
-import 'asset_event_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/asset_event_service.dart';
 
 final _log = getLogger('AssetService');
 

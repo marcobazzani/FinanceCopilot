@@ -10,9 +10,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../database/db_file_name.dart';
-import '../utils/logger.dart';
-import 'app_settings.dart';
+import 'package:finance_copilot/database/db_file_name.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/app_settings.dart';
 
 final _log = getLogger('GoogleDriveSync');
 

@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart';
 
-import '../database/database.dart';
-import '../utils/logger.dart';
-import '../utils/uuid_v7.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/uuid_v7.dart';
 
 final _log = getLogger('PillarService');
 

@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import '../database/database.dart';
+import 'package:finance_copilot/database/database.dart';
 
 /// Groups assets by a field, sums market values, returns sorted descending map.
 ///

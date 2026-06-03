@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
 
-import '../ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, buildTotalSpots;
+import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, buildTotalSpots;
 
 class PillarScopedHistory {
   final DateTime? inceptionDate;

@@ -4,16 +4,16 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import 'asset_event_service.dart';
-import '../utils/amount_parser.dart' as amt;
-import '../utils/date_parser.dart' as date_parse;
-import '../utils/formatters.dart' show formatYmd;
-import '../utils/logger.dart';
-import 'exchange_rate_service.dart';
-import 'file_parser_service.dart';
-import 'isin_lookup_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/asset_event_service.dart';
+import 'package:finance_copilot/utils/amount_parser.dart' as amt;
+import 'package:finance_copilot/utils/date_parser.dart' as date_parse;
+import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/exchange_rate_service.dart';
+import 'package:finance_copilot/services/file_parser_service.dart';
+import 'package:finance_copilot/services/isin_lookup_service.dart';
 
 part 'asset_import_flow.dart';
 

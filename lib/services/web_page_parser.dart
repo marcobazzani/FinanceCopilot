@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import '../utils/logger.dart';
-import 'web_market_data_service.dart' show ProviderSearchResult, kProviderHost;
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart' show ProviderSearchResult, kProviderHost;
 
 final _log = getLogger('WebPageParser');
 

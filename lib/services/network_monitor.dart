@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import '../utils/logger.dart';
+import 'package:finance_copilot/utils/logger.dart';
 
 final _log = getLogger('NetworkMonitor');
 

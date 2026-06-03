@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../l10n/app_strings.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
 
 // ── Rating system ──
 

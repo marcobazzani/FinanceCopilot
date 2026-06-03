@@ -4,10 +4,10 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import '../utils/logger.dart';
-import '../utils/uuid_v7.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/uuid_v7.dart';
 
 final _log = getLogger('PortfolioModelService');
 

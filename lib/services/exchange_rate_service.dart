@@ -1,10 +1,10 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
-import '../database/database.dart';
-import '../utils/formatters.dart' show formatYmd;
-import '../utils/logger.dart';
-import 'web_market_data_service.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/web_market_data_service.dart';
 
 /// Tables touched by [ExchangeRateService.backfillHistoricalRates] when
 /// collecting "which currencies need historical FX data". Exposed so the

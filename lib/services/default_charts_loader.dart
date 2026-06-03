@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show rootBundle;
 
-import '../database/database.dart';
-import '../database/tables.dart';
-import '../models/dashboard_chart.dart';
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/models/dashboard_chart.dart';
 
-export '../models/dashboard_chart.dart';
+export 'package:finance_copilot/models/dashboard_chart.dart';
 
 /// Reads `assets/default_charts.json` and expands the category-based config
 /// into runtime `DashboardChart` records. Negative ids by convention so they
