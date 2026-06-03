@@ -41,12 +41,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Run code generation
-        run: dart run build_runner build --delete-conflicting-outputs
-
       - name: Verify Dart formatting
         shell: bash
         run: tool/check_dart_format.sh
+
+      - name: Run code generation
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Run tests
         run: flutter test --dart-define=DB_FILE_NAME=finance_copilot_test.db
