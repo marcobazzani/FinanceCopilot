@@ -340,7 +340,9 @@ abstract class MarketPriceService {
   }
 
   /// Get all prices for multiple assets in a single query, sorted by date ascending.
-  /// Falls back to [getPriceHistory] (revalue events) for assets with no market prices.
+  /// Falls back to buy-event prices for assets with no market_prices rows, mirroring
+  /// the [getPrice] single-point fallback so the dashboard history chart is consistent
+  /// with the portfolio screen's current-value display.
   Future<Map<int, List<MapEntry<DateTime, double>>>> getPriceHistoryBatch(List<int> assetIds) async {
     if (assetIds.isEmpty) return {};
     final placeholders = assetIds.map((_) => '?').join(',');
@@ -364,6 +366,39 @@ abstract class MarketPriceService {
             ),
           );
     }
+
+    // For assets with no market_prices rows at all, fall back to buy-event
+    // prices so the history chart is consistent with the portfolio screen's
+    // current-value display (which uses getPrice()'s buy-price fallback).
+    final missingIds = assetIds.where((id) => !result.containsKey(id)).toList();
+    if (missingIds.isNotEmpty) {
+      final missingPlaceholders = missingIds.map((_) => '?').join(',');
+      final buyRows = await db
+          .customSelect(
+            // id ASC tiebreak makes the last-in-list (last-write-wins after the
+            // day-keyed collapse in the chart) the highest-id same-day buy,
+            // matching getPrice()'s `value_date DESC, id DESC LIMIT 1`.
+            "SELECT asset_id, value_date, price FROM asset_events "
+            "WHERE asset_id IN ($missingPlaceholders) AND type = 'buy' "
+            "AND price IS NOT NULL ORDER BY asset_id, value_date ASC, id ASC",
+            variables: missingIds.map((id) => Variable.withInt(id)).toList(),
+          )
+          .get();
+      for (final r in buyRows) {
+        final assetId = r.read<int>('asset_id');
+        final price = r.readNullable<double>('price');
+        if (price == null) continue;
+        result
+            .putIfAbsent(assetId, () => [])
+            .add(
+              MapEntry(
+                DateTime.fromMillisecondsSinceEpoch(r.read<int>('value_date') * 1000),
+                price,
+              ),
+            );
+      }
+    }
+
     return result;
   }
 
