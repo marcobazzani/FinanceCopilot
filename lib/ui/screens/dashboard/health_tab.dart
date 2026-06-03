@@ -853,6 +853,7 @@ Future<void> _showFireDialog({
       );
     },
   );
+  controller.dispose();
 }
 
 class _FireDialogRow extends StatelessWidget {

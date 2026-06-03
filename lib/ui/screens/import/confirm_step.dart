@@ -435,27 +435,32 @@ extension _ConfirmStep on _ImportScreenState {
   Future<void> _createIntermediaryInline() async {
     final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.addIntermediary),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.intermediaryName),
-            autofocus: true,
-            onChanged: (_) => setDialogState(() {}),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty ? () => Navigator.pop(ctx, nameCtrl.text.trim()) : null,
-              child: Text(s.create),
+    final String? name;
+    try {
+      name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Text(s.addIntermediary),
+            content: TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(labelText: s.intermediaryName),
+              autofocus: true,
+              onChanged: (_) => setDialogState(() {}),
             ),
-          ],
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+              FilledButton(
+                onPressed: nameCtrl.text.trim().isNotEmpty ? () => Navigator.pop(ctx, nameCtrl.text.trim()) : null,
+                child: Text(s.create),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+    }
     if (name == null || name.isEmpty) return;
     final svc = ref.read(intermediaryServiceProvider);
     final id = await svc.create(name: name);
@@ -557,33 +562,38 @@ extension _ConfirmStep on _ImportScreenState {
     final s = ref.read(appStringsProvider);
     final nameCtrl = TextEditingController();
 
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.newAccountTitle),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: InputDecoration(labelText: s.name, hintText: s.accountNameHint),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-          FilledButton(
-            onPressed: () async {
-              if (nameCtrl.text.trim().isEmpty) return;
-              await ref
-                  .read(accountServiceProvider)
-                  .create(
-                    name: nameCtrl.text.trim(),
-                    currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-                  );
-              if (ctx.mounted) Navigator.pop(ctx, true);
-            },
-            child: Text(s.create),
+    final bool? created;
+    try {
+      created = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(s.newAccountTitle),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(labelText: s.name, hintText: s.accountNameHint),
+            autofocus: true,
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+            FilledButton(
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty) return;
+                await ref
+                    .read(accountServiceProvider)
+                    .create(
+                      name: nameCtrl.text.trim(),
+                      currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
+                    );
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              },
+              child: Text(s.create),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      nameCtrl.dispose();
+    }
     if (created == true) _setState(() {});
   }
 

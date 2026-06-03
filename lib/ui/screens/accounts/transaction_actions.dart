@@ -178,63 +178,69 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     var institutionCtrl = TextEditingController(text: widget.account.institution);
     var isActive = widget.account.isActive;
 
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.editAccountTitle),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: InputDecoration(labelText: s.name),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: currencyCtrl,
-                  decoration: InputDecoration(labelText: s.currency, hintText: 'EUR'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: institutionCtrl,
-                  decoration: InputDecoration(labelText: s.institution),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: Text(s.active),
-                  value: isActive,
-                  onChanged: (v) => setDialogState(() => isActive = v),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
+    try {
+      await showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Text(s.editAccountTitle),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(labelText: s.name),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: currencyCtrl,
+                    decoration: InputDecoration(labelText: s.currency, hintText: 'EUR'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: institutionCtrl,
+                    decoration: InputDecoration(labelText: s.institution),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: Text(s.active),
+                    value: isActive,
+                    onChanged: (v) => setDialogState(() => isActive = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+              FilledButton(
+                onPressed: () async {
+                  if (nameCtrl.text.trim().isEmpty) return;
+                  await ref
+                      .read(accountServiceProvider)
+                      .update(
+                        widget.account.id,
+                        AccountsCompanion(
+                          name: Value(nameCtrl.text.trim()),
+                          currency: Value(currencyCtrl.text.trim()),
+                          institution: Value(institutionCtrl.text.trim()),
+                          isActive: Value(isActive),
+                          updatedAt: Value(DateTime.now()),
+                        ),
+                      );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+                child: Text(s.save),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                await ref
-                    .read(accountServiceProvider)
-                    .update(
-                      widget.account.id,
-                      AccountsCompanion(
-                        name: Value(nameCtrl.text.trim()),
-                        currency: Value(currencyCtrl.text.trim()),
-                        institution: Value(institutionCtrl.text.trim()),
-                        isActive: Value(isActive),
-                        updatedAt: Value(DateTime.now()),
-                      ),
-                    );
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: Text(s.save),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+      currencyCtrl.dispose();
+      institutionCtrl.dispose();
+    }
   }
 }

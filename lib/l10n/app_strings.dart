@@ -63,16 +63,9 @@ class AppStrings {
   String get pillarUnassigned => _it ? 'Non assegnato' : 'Unassigned';
   String get pillarObjective => _it ? 'Obiettivo' : 'Objective';
   String get pillarHistoryTitle => _it ? 'Storico' : 'History';
-  String get pillarAddAsset => _it ? 'Aggiungi asset' : 'Add asset';
   String get pillarAssignToTitle => _it ? 'Assegna a un pilastro' : 'Assign to pillar';
-  String get pillarAssignedQty => _it ? 'Quantità assegnata' : 'Assigned quantity';
-  String get pillarAvailableQty => _it ? 'Disponibile' : 'Available';
-  String get pillarOverAssignedBadge => _it ? 'Eccede le partecipazioni' : 'Exceeds holdings';
-  String get pillarClipAction => _it ? 'Adatta' : 'Clip';
-  String get pillarOverAssignedError => _it ? 'Quantità superiore al disponibile' : 'Quantity exceeds available units';
   String get pillarDeleteConfirm =>
       _it ? 'Eliminare questo pilastro? Le assegnazioni verranno rimosse.' : 'Delete this pillar? Assignments will be removed.';
-  String get pillarTargetProgress => _it ? 'Progresso' : 'Progress';
   String pillarValue(String formatted) => _it ? 'Valore: $formatted' : 'Value: $formatted';
   String pillarTarget(String formatted) => _it ? 'Obiettivo: $formatted' : 'Target: $formatted';
   String get pillarAbsoluteReturn => _it ? 'Rendimento assoluto' : 'Absolute return';
@@ -82,7 +75,6 @@ class AppStrings {
   String get pillarTwrrShort => 'TWRR';
   String get pillarCagrShort => 'CAGR';
   String pillarAssetCount(int n) => _it ? '$n asset' : (n == 1 ? '1 asset' : '$n assets');
-  String get pillarEditAssetsTitle => _it ? 'Modifica asset del pilastro' : 'Edit pillar assets';
   String get pillarShowAllAssets => _it ? 'Tutti gli asset' : 'All assets';
   String get pillarShowInPillarOnly => _it ? 'Solo nel pilastro' : 'In pillar only';
   String get pillarSearchAssets => _it ? 'Cerca asset…' : 'Search assets…';
@@ -91,7 +83,6 @@ class AppStrings {
   String get pillarPickPillar => _it ? 'Scegli pilastro' : 'Pick pillar';
   String get pillarTabPillars => _it ? 'Pilastri' : 'Pillars';
   String get pillarTabPortfolioModels => _it ? 'Modelli' : 'Portfolio Models';
-  String get portfolioModelsTitle => _it ? 'Modelli di portafoglio' : 'Portfolio Models';
   String get portfolioModelsBuiltIn => _it ? 'Predefiniti' : 'Built-in';
   String get portfolioModelsCustom => _it ? 'Personalizzati' : 'Custom';
   String get portfolioModelsEmpty => _it ? 'Nessun modello' : 'No models yet';
@@ -126,7 +117,6 @@ class AppStrings {
   String get rebalanceTitle => _it ? 'Anteprima ribilanciamento' : 'Rebalance preview';
   String get rebalanceSellAndBuy => _it ? 'Vendi e compra' : 'Sell and buy';
   String get rebalanceBuyOnly => _it ? 'Solo acquisti' : 'Buy only';
-  String get rebalanceScopeCurrent => _it ? 'Pilastro corrente' : 'Current pillar';
   String get rebalanceScopeAll => _it ? 'Tutti i pilastri' : 'All Pillars';
   String get rebalanceContribution => _it ? 'Contributo' : 'Contribution';
   String get rebalanceEstimatedTax => _it ? 'Tasse stimate' : 'Estimated tax';
@@ -448,7 +438,6 @@ class AppStrings {
       : 'At least one chart has a partial category selection so it cannot be expressed without specific ids. Edit the charts so every section is fully selected or fully cleared.\n\n$reason';
   String get cfVelocity => _it ? 'Velocità' : 'Velocity';
   String get colTotal => _it ? 'Totale' : 'Total';
-  String get colAvg => _it ? 'Media' : 'Avg';
   String get legendAccounts => _it ? 'Conti' : 'Accounts';
   String get legendSpreadAdj => _it ? 'Agg. dilaz.' : 'Spread Adj.';
   String get legendIncomeAdj => _it ? 'Agg. reddito' : 'Income Adj.';
@@ -482,7 +471,7 @@ class AppStrings {
   String get colDailyInc => _it ? 'Giorn. Ent.' : 'Daily Inc';
   String get colDailyExp => _it ? 'Giorn. Usc.' : 'Daily Exp';
   String get colMonth => _it ? 'Mese' : 'Month';
-  String get eoyLabel => _it ? '  Pre. anno~' : '  EOY~';
+  String get yoyRowLabel => 'YoY';
   String get eoyFormula => _it
       ? 'Formula: totale anno prec. × progresso anno corr. ÷ stesso periodo anno prec.'
       : 'Formula: prev year total × current year progress ÷ prev year same period';
@@ -495,9 +484,6 @@ class AppStrings {
   String get legendAvgMonthlyIncome => _it ? 'Media Mensile Entrate' : 'Avg Monthly Income';
   String get legendAvgMonthlyExpenses => _it ? 'Media Mensile Uscite' : 'Avg Monthly Expenses';
   String get legendAvgMonthlySavings => _it ? 'Media Mensile Risparmi' : 'Avg Monthly Savings';
-  String get tipAvgMonthIncome => _it ? 'Media/Mese Entrate' : 'Avg/Mo Income';
-  String get tipAvgMonthExpenses => _it ? 'Media/Mese Uscite' : 'Avg/Mo Expenses';
-  String get tipAvgMonthSavings => _it ? 'Media/Mese Risparmi' : 'Avg/Mo Savings';
 
   // ── Accounts ────────────────────────────────────────────
   String get noAccountsYet => _it ? 'Nessun conto.\nImporta un file per iniziare.' : 'No accounts yet.\nImport a file to get started.';
@@ -920,6 +906,16 @@ class AppStrings {
   String get importPreviewTitle => _it ? 'Anteprima importazione' : 'Import Preview';
   String get predictedBalance => _it ? 'Saldo previsto' : 'Predicted balance';
   String get importAmountSum => _it ? 'Somma importi' : 'Import amount sum';
+
+  // ── Import amount-mode builder ──────────────────────────
+  String get amountModeDirect => _it ? 'Diretto' : 'Direct';
+  String get amountModeFormula => _it ? 'Formula' : 'Formula';
+  String get amountModeBalance => _it ? 'Saldo Δ' : 'Balance Δ';
+  String get amountModeDirectTooltip => _it ? 'Mappatura diretta della colonna' : 'Direct column mapping';
+  String get amountModeFormulaTooltip => _it ? 'Combina più colonne (es. Entrate + Uscite)' : 'Combine multiple columns (e.g. Entrate + Uscite)';
+  String get amountModeBalanceTooltip => _it ? 'Calcola l\'importo dalle differenze di saldo' : 'Compute amount from balance differences';
+  String get previewLabel => _it ? 'Anteprima' : 'Preview';
+  String get firstRowLabel => _it ? '(primo)' : '(first)';
   String get rowsToReplace => _it ? 'Righe da sostituire' : 'Rows to replace';
   String get parsedRowsLabel => _it ? 'Righe analizzate' : 'Parsed rows';
   String get computingPreview => _it ? 'Calcolo anteprima...' : 'Computing preview...';
@@ -945,7 +941,6 @@ class AppStrings {
   String get sellLabel => _it ? 'Vendita' : 'Sell';
   String get feeLabel => _it ? 'Commissione' : 'Fee';
   String get revalueLabel => _it ? 'Rivalutazione' : 'Revalue';
-  String get pensionFundLabel => _it ? 'Fondo pensione' : 'Pension fund';
   String get importIntoSingleAsset => _it ? 'Importa in un singolo asset' : 'Import into single asset';
   String get importByIsin => _it ? 'Raggruppa per ISIN' : 'Group by ISIN';
   String get pickAssetForImport => _it ? 'Asset di destinazione' : 'Target asset';

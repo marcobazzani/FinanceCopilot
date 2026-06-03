@@ -313,10 +313,14 @@ class _DetailBody extends ConsumerWidget {
         ),
       ),
     );
+    final amountText = amountCtrl.text;
+    final descText = descCtrl.text.trim();
+    amountCtrl.dispose();
+    descCtrl.dispose();
     if (result != true) return null;
-    final amount = fmt.tryParseLocalized(amountCtrl.text, locale: locale);
+    final amount = fmt.tryParseLocalized(amountText, locale: locale);
     if (amount == null) return null;
-    return (amount: amount, desc: descCtrl.text.trim(), date: date);
+    return (amount: amount, desc: descText, date: date);
   }
 
   Future<void> _addManualEntry(BuildContext context, WidgetRef ref) async {

@@ -206,14 +206,40 @@ class ExchangeRateService {
     return null;
   }
 
-  /// Look up rate for any [from]->[to] pair on or before [date].
-  Future<double?> _lookupDirectRate(String from, String to, DateTime date) async {
+  /// Like [getRate] but, when no rate exists on or before [date] (the reference
+  /// date predates all stored history for the pair), falls back to the nearest
+  /// rate stored *after* [date]. Used for historical comparisons (e.g. daily
+  /// change) where we want the closest real rate we have rather than skipping
+  /// the asset — but never a fabricated 1:1 or a future "today" rate.
+  Future<double?> getRateNearest(String from, String to, DateTime date) async {
+    final onOrBefore = await getRate(from, to, date);
+    if (onOrBefore != null) return onOrBefore;
+    if (from == to) return 1.0;
+    // Search forward: earliest rate on or after [date].
+    final direct = await _lookupDirectRate(from, to, date, after: true);
+    if (direct != null) return direct;
+    final inverse = await _lookupDirectRate(to, from, date, after: true);
+    if (inverse != null) return 1.0 / inverse;
+    if (from != 'EUR' && to != 'EUR') {
+      final rTo = await _lookupDirectRate('EUR', to, date, after: true);
+      final rFrom = await _lookupDirectRate('EUR', from, date, after: true);
+      if (rTo != null && rFrom != null && rFrom != 0) return rTo / rFrom;
+    }
+    return null;
+  }
+
+  /// Look up rate for any [from]->[to] pair. By default returns the latest rate
+  /// on or before [date]; when [after] is true, returns the earliest rate on or
+  /// after [date] instead.
+  Future<double?> _lookupDirectRate(String from, String to, DateTime date, {bool after = false}) async {
     final epochSec = date.millisecondsSinceEpoch ~/ 1000;
+    final comparator = after ? '>=' : '<=';
+    final order = after ? 'ASC' : 'DESC';
     final row = await _db
         .customSelect(
           'SELECT rate FROM exchange_rates '
           'WHERE from_currency = ? AND to_currency = ? '
-          'AND date <= ? ORDER BY date DESC LIMIT 1',
+          'AND date $comparator ? ORDER BY date $order LIMIT 1',
           variables: [Variable.withString(from), Variable.withString(to), Variable.withInt(epochSec)],
         )
         .getSingleOrNull();

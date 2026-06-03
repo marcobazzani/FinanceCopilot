@@ -20,24 +20,6 @@ DateTime addMonthsClamped(DateTime dt, int months) {
   return DateTime(targetYear, normalizedMonth, dt.day.clamp(1, lastDay));
 }
 
-DateTime advanceStep(DateTime current, StepFrequency freq) {
-  return switch (freq) {
-    StepFrequency.weekly => current.add(const Duration(days: 7)),
-    StepFrequency.monthly => addMonthsClamped(current, 1),
-    StepFrequency.quarterly => addMonthsClamped(current, 3),
-    StepFrequency.yearly => addMonthsClamped(current, 12),
-  };
-}
-
-DateTime retreatStep(DateTime current, StepFrequency freq) {
-  return switch (freq) {
-    StepFrequency.weekly => current.subtract(const Duration(days: 7)),
-    StepFrequency.monthly => addMonthsClamped(current, -1),
-    StepFrequency.quarterly => addMonthsClamped(current, -3),
-    StepFrequency.yearly => addMonthsClamped(current, -12),
-  };
-}
-
 /// Months to advance per step for monthly/quarterly/yearly. Returns 0 for
 /// weekly (which uses day-based stepping instead).
 int _monthsPerStep(StepFrequency freq) => switch (freq) {

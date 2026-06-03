@@ -113,12 +113,5 @@ Future<void> initLogging() async {
   });
 }
 
-/// Flush and close the log file. Call on app shutdown if needed.
-Future<void> closeLogging() async {
-  await _logSink?.flush();
-  await _logSink?.close();
-  _logSink = null;
-}
-
 /// Create a named logger. Usage: `final _log = getLogger('MyClass');`
 Logger getLogger(String name) => Logger(name);

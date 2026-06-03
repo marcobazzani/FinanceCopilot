@@ -183,7 +183,6 @@ extension _ColumnMapperStep on _ImportScreenState {
   /// the new asset as the import target.
   Future<void> _showCreateEmptyAssetDialog() async {
     final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController();
     final intermediaries = await ref.read(intermediaryServiceProvider).getAll();
     if (intermediaries.isEmpty) {
       if (mounted) showInfoSnack(context, s.noIntermediariesAvailable);
@@ -194,63 +193,69 @@ extension _ColumnMapperStep on _ImportScreenState {
     String currency = baseCurrency;
     if (!mounted) return;
 
-    final created = await showDialog<int>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Text(s.createEmptyAsset),
-          content: SizedBox(
-            width: 380,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  autofocus: true,
-                  decoration: InputDecoration(labelText: s.name),
-                  onChanged: (_) => setLocal(() {}),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: pickedIntermediary,
-                  decoration: InputDecoration(labelText: s.intermediaryName),
-                  items: intermediaries.map((i) => DropdownMenuItem(value: i.id, child: Text(i.name))).toList(),
-                  onChanged: (v) => setLocal(() => pickedIntermediary = v),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  initialValue: currency,
-                  decoration: const InputDecoration(labelText: 'Currency'),
-                  textCapitalization: TextCapitalization.characters,
-                  onChanged: (v) => currency = v.trim().toUpperCase(),
-                ),
-              ],
+    final nameCtrl = TextEditingController();
+    final int? created;
+    try {
+      created = await showDialog<int>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            title: Text(s.createEmptyAsset),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration: InputDecoration(labelText: s.name),
+                    onChanged: (_) => setLocal(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: pickedIntermediary,
+                    decoration: InputDecoration(labelText: s.intermediaryName),
+                    items: intermediaries.map((i) => DropdownMenuItem(value: i.id, child: Text(i.name))).toList(),
+                    onChanged: (v) => setLocal(() => pickedIntermediary = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    initialValue: currency,
+                    decoration: InputDecoration(labelText: s.currency),
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: (v) => currency = v.trim().toUpperCase(),
+                  ),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+              FilledButton(
+                onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
+                    ? () async {
+                        final id = await ref
+                            .read(assetServiceProvider)
+                            .create(
+                              name: nameCtrl.text.trim(),
+                              currency: currency.isEmpty ? baseCurrency : currency,
+                              valuationMethod: ValuationMethod.marketPrice,
+                              instrumentType: InstrumentType.alternative,
+                              assetClass: AssetClass.alternative,
+                              intermediaryId: pickedIntermediary!,
+                            );
+                        if (ctx.mounted) Navigator.pop(ctx, id);
+                      }
+                    : null,
+                child: Text(s.create),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
-                  ? () async {
-                      final id = await ref
-                          .read(assetServiceProvider)
-                          .create(
-                            name: nameCtrl.text.trim(),
-                            currency: currency.isEmpty ? baseCurrency : currency,
-                            valuationMethod: ValuationMethod.marketPrice,
-                            instrumentType: InstrumentType.alternative,
-                            assetClass: AssetClass.alternative,
-                            intermediaryId: pickedIntermediary!,
-                          );
-                      if (ctx.mounted) Navigator.pop(ctx, id);
-                    }
-                  : null,
-              child: Text(s.create),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+    }
 
     if (created != null && mounted) {
       _setState(() {

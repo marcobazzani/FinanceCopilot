@@ -59,7 +59,7 @@ const monthMap = {
 
 /// Smart number parser detecting `1.234,56` (EU) vs `1,234.56` (US) formats.
 double? parseFlexibleNumber(String text) {
-  var s = text.replaceAll('€', '').replaceAll('\$', '').replaceAll('\u00A0', '').trim();
+  var s = text.replaceAll(RegExp(r'[€$£¥\s\u00A0]'), '').trim();
   if (s.isEmpty) return null;
   // EU format: dots as thousands, comma as decimal
   if (s.contains('.') && s.contains(',')) {

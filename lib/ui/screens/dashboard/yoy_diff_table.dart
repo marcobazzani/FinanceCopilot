@@ -117,7 +117,7 @@ class _YoYDiffTable extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                child: Text('YoY', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                child: Text(s.yoyRowLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               ),
               for (final p in pairs) ...[
                 Builder(

@@ -88,7 +88,7 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 # UI Consistency
 
 - **Delete affordance** is one canonical pattern across the app: trashcan icon in detail view + swipe-to-delete in lists. Long-press-to-delete is forbidden going forward. Three-dot menus offering delete must be reconciled to the canonical pattern.
-- **Collapsible cards**: chevron + header layout MUST match the Cash Flow tab implementation (`lib/ui/screens/dashboard/cash_flow_tab.dart` part files). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap. Reuse the existing widget — do not re-implement.
+- **Collapsible cards**: chevron + header layout MUST match the Cash Flow tab implementation (`lib/ui/screens/dashboard/cashflow_tab.dart`). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap. Reuse the existing widget — do not re-implement.
 - **Bottom-of-screen "Next" buttons in wizards** MUST share a common navbar widget. Fix consistently across all wizards, never one-by-one.
 - **Empty states** and **error toasts/snackbars** use one shared component each, with consistent placement.
 - Before adding a new widget, grep for existing equivalents. Reuse > re-implement.
@@ -107,7 +107,7 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 # Branch & DB Discipline
 
 - **Before any code edit**: confirm the current branch matches the user's stated target. If unclear, ASK. Do not assume `develop`.
-- **Before launching the app or running integration tests**: confirm `DB_FILE_NAME` matches the intended dev DB. Mixing the dev container DB with the user's real `~/Documents/FinanceCopilot.db` is a top historical failure — never write to the real DB from tests/builds.
+- **Before launching the app or running integration tests**: confirm `DB_FILE_NAME` matches the intended dev DB. Mixing the dev container DB with the user's real production DB (the sandboxed app DB — see "Database & Sandbox" below for the current per-platform path) is a top historical failure — never write to the real DB from tests/builds.
 - Never commit dart-defines or env-specific config to a non-feature branch.
 - When the user references a specific DB path or branch name, that overrides any default — re-confirm before acting.
 
@@ -145,7 +145,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - The released artifact must be fully self-contained.
 - For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
 - **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, CI config, screenshots, alt text, identifiers (class/file/variable names), log messages, doc strings, or user-facing strings. Refer to them generically (e.g. "market data provider", "composition data").
-  - **Functional URL literals are exempt** (host strings in `lib/services/web_market_data_service.dart`, `lib/services/web_page_parser.dart`, `lib/services/composition_service.dart`, and `'Origin'`/`'Referer'` headers): these are operational data — the literal IS the integration point — and replacing them would change which provider we integrate with. Grep hits inside `https://...` URL strings, `host.endsWith(...)` validators, `Origin`/`Referer` headers, and test fixture HTML/URL files are acceptable. New occurrences in those forms are also fine.
+  - **Functional URL literals are exempt** (host strings in `lib/services/market/web_market_data_service.dart`, `lib/services/market/web_page_parser.dart`, `lib/services/market/composition_service.dart`, and `'Origin'`/`'Referer'` headers): these are operational data — the literal IS the integration point — and replacing them would change which provider we integrate with. Grep hits inside `https://...` URL strings, `host.endsWith(...)` validators, `Origin`/`Referer` headers, and test fixture HTML/URL files are acceptable. New occurrences in those forms are also fine.
   - **Test fixtures are exempt**: `test/fixtures/instrument_page_*.html` and URL strings inside test files are functional test data.
   - **Historical migration code is exempt**: SQL strings in `database.dart`'s `onUpgrade` migrations from earlier versions (e.g. v8/v9/v11) reference legacy provider names because they ran on past upgrades; rewriting them would not change persisted DB data and risks divergence from what shipped.
   - Outside those exemptions, the grep `Investing\.com\|InvestingCom\|InvestingPage\|InvestingComService\|investing_com\|investing_page` must return zero hits.
@@ -162,28 +162,30 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/database/tables.dart` — All table definitions
 - `lib/database/providers.dart` — Database provider
 - `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
-- `lib/services/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
-- `lib/services/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
-- `lib/services/market_price_service.dart` — Abstract market price service
-- `lib/services/investing_com_service.dart` — Market price/search/composition provider (WebView + Dio)
-- `lib/services/composition_service.dart` — ETF/stock composition fetcher
-- `lib/services/asset_service.dart` — Asset CRUD
-- `lib/services/asset_event_service.dart` — Asset events (buy/sell/revalue)
-- `lib/services/exchange_rate_service.dart` — FX rates
-- `lib/services/intermediary_service.dart` — Broker/institution grouping
-- `lib/services/income_service.dart` — Income tracking
-- `lib/services/income_adjustment_service.dart` — Income adjustments
-- `lib/services/capex_service.dart` — Depreciation/adjustment schedules
-- `lib/services/buffer_service.dart` — Buffer management
-- `lib/services/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
-- `lib/services/db_transfer_service.dart` — Import/export DB file
-- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 15 part files)
+- `lib/services/import/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
+- `lib/services/import/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
+- `lib/services/import/import_service.dart` — Import mapping, dedup, balance recompute
+- `lib/services/market/market_price_service.dart` — Abstract market price service
+- `lib/services/market/web_market_data_service.dart` — Market price/search/composition provider (WebView + Dio)
+- `lib/services/market/composition_service.dart` — ETF/stock composition fetcher
+- `lib/services/market/exchange_rate_service.dart` — FX rates
+- `lib/services/domain/asset_service.dart` — Asset CRUD
+- `lib/services/domain/asset_event_service.dart` — Asset events (buy/sell/revalue)
+- `lib/services/domain/intermediary_service.dart` — Broker/institution grouping
+- `lib/services/domain/income_service.dart` — Income tracking
+- `lib/services/domain/extraordinary_event_service.dart` — Extraordinary events / adjustments / depreciation schedules
+- `lib/services/domain/buffer_service.dart` — Buffer management
+- `lib/services/sync/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
+- `lib/services/sync/db_transfer_service.dart` — Import/export DB file
+- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into part files)
+- `lib/ui/screens/dashboard/cashflow_tab.dart` — Canonical collapsible-card (ExpansionTile) reference
 - `lib/ui/screens/dashboard/health_tab.dart` — Financial Health KPIs
 - `lib/ui/screens/dashboard/totals_table.dart` — Totals with drill-down
-- `lib/ui/screens/allocation_tab.dart` — Portfolio allocation donuts
-- `lib/ui/screens/assets_screen.dart` — Asset list + create dialog
-- `lib/ui/screens/accounts_screen.dart` — Account list
-- `lib/ui/screens/capex_screen.dart` — Adjustments screen
-- `lib/ui/screens/import/import_screen.dart` — CSV import (split into 4 part files)
+- `lib/ui/screens/allocation/allocation_tab.dart` — Portfolio allocation donuts
+- `lib/ui/screens/assets/assets_screen.dart` — Asset list + create dialog
+- `lib/ui/screens/accounts/accounts_screen.dart` — Account list
+- `lib/ui/screens/accounts/capex_screen.dart` — Adjustments screen
+- `lib/ui/screens/import/import_screen.dart` — CSV import (split into part files)
 - `lib/utils/date_parser.dart` — Comprehensive multi-format date parser
+- `lib/utils/formatters.dart` — Locale-aware number/date formatting + `parseFlexibleNumber` (single source of truth for ambiguous-locale number parsing)
 - `lib/version.dart` — Version number

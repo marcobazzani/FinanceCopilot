@@ -85,6 +85,42 @@ void main() {
     });
   });
 
+  group('getRateNearest', () {
+    test('prefers the on-or-before rate when one exists', () async {
+      await insertRate('USD', DateTime(2024, 1, 10), 1.08);
+      await insertRate('USD', DateTime(2024, 6, 1), 1.20);
+
+      final rate = await service.getRateNearest('EUR', 'USD', DateTime(2024, 1, 15));
+      expect(rate, 1.08, reason: 'closest earlier rate wins when available');
+    });
+
+    test('falls back to the nearest later rate when the date predates all history', () async {
+      await insertRate('USD', DateTime(2024, 6, 1), 1.20);
+      await insertRate('USD', DateTime(2024, 9, 1), 1.25);
+
+      final rate = await service.getRateNearest('EUR', 'USD', DateTime(2024, 1, 1));
+      expect(rate, 1.20, reason: 'earliest rate after the date is used, not the latest');
+    });
+
+    test('cross-rate via nearest-after also works', () async {
+      await insertRate('USD', DateTime(2024, 6, 1), 1.20);
+      await insertRate('GBP', DateTime(2024, 6, 1), 0.80);
+
+      final rate = await service.getRateNearest('GBP', 'USD', DateTime(2024, 1, 1));
+      expect(rate, closeTo(1.20 / 0.80, 1e-10));
+    });
+
+    test('returns null when no rate exists before or after', () async {
+      final rate = await service.getRateNearest('EUR', 'USD', DateTime(2024, 1, 1));
+      expect(rate, isNull);
+    });
+
+    test('same currency returns 1.0 even with no stored rates', () async {
+      final rate = await service.getRateNearest('USD', 'USD', DateTime(2024, 1, 1));
+      expect(rate, 1.0);
+    });
+  });
+
   group('convertAmount', () {
     test('converts correctly using stored rate', () async {
       await insertRate('USD', DateTime(2024, 1, 15), 1.08);

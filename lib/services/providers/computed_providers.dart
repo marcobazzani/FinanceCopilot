@@ -354,7 +354,9 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
 
     double todayFx = 1.0;
     double prevFx = 1.0;
-    if (asset.currency != baseCurrency) {
+    final isForeign = asset.currency != baseCurrency;
+    double? referenceFx; // previous-day rate; null until resolved
+    if (isForeign) {
       final currentFx = waybackDate == null
           ? await rateService.getLiveRate(asset.currency, baseCurrency)
           : await rateService.getRate(asset.currency, baseCurrency, today);
@@ -366,7 +368,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
         continue;
       }
       todayFx = currentFx;
-      prevFx = await rateService.getRate(asset.currency, baseCurrency, referenceDate) ?? todayFx;
+      referenceFx = await rateService.getRateNearest(asset.currency, baseCurrency, referenceDate);
     }
 
     // If reference date is before first buy, use weighted average buy price
@@ -381,6 +383,19 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       }
     } else {
       previousPrice = await priceService.getPrice(asset.id, referenceDate);
+      if (isForeign) {
+        if (referenceFx == null) {
+          // No FX rate at all for this pair (not even after the reference date)
+          // -> we cannot value the asset honestly. Skip rather than fabricate.
+          _log.warning(
+            'dailyChanges: ${asset.ticker ?? asset.name} - no ${asset.currency}/$baseCurrency rate available, skipping',
+          );
+          continue;
+        }
+        // referenceFx is the closest real rate on or before the reference date,
+        // or the nearest one after it when the reference predates all history.
+        prevFx = referenceFx;
+      }
     }
     if (previousPrice == null) continue;
 

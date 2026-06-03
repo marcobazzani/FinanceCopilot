@@ -785,7 +785,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     final col = _mappings[field];
     if (col == null) return null;
     final raw = row[col] ?? '';
-    return double.tryParse(raw.replaceAll(RegExp(r'[€\$£¥\s]'), '').replaceAll(',', '.'));
+    return fmt.parseFlexibleNumber(raw);
   }
 
   /// Preview the result of combining multiple columns for a field.
@@ -796,7 +796,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     final delimiter = _multiDelimiters[field] ?? ' ';
 
     // Try numeric sum first
-    final nums = values.map((v) => double.tryParse(v.replaceAll(RegExp(r'[€\$£¥,\s]'), ''))).toList();
+    final nums = values.map((v) => fmt.parseFlexibleNumber(v)).toList();
     if (nums.every((n) => n != null)) {
       final sum = nums.fold(0.0, (a, b) => a + b!);
       return sum.toStringAsFixed(2);

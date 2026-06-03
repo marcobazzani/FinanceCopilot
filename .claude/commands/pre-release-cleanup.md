@@ -2,23 +2,26 @@
 description: Long-running pre-release sweep — branch/DB sanity, UI consistency, dedup, silent-default eradication, locale enforcement, date semantics, LoC reduction, Dart best-practices audit, dead code, provider-name leak check, bug hunt loop. Run before every major release.
 ---
 
-Mission: harden the codebase before a major release. Long-running and exhaustive — keep iterating until a full pass produces zero findings in every phase. Behavior must be preserved unless a phase explicitly fixes a bug (in which case a failing test must exist first). Read CLAUDE.md in full before starting.
+Mission: harden the codebase before a major release. Long-running and exhaustive — keep iterating until a full pass produces zero findings in every phase. Behavior must be preserved unless a phase explicitly fixes a bug (in which case a failing test must exist first). Read the project guidelines file (`AGENTS.md`, or `CLAUDE.md` if that is what the repo uses) in full before starting.
+
+Do not hardcode-trust the paths/filenames mentioned in this command — the codebase refactors over time. Treat every path below as a hint, not a guarantee: if a referenced file does not exist, locate the current equivalent by its role (grep/glob for the canonical implementation) and proceed. The phase intent is authoritative; the example path is not.
 
 ## Phase 0 — Sanity gate (do once, never skip)
 1. Confirm current branch is `develop` (or whatever target the user specified). If not, STOP and ask.
-2. Confirm `DB_FILE_NAME` in `.env` matches the intended dev DB. The user's real DB at `~/Documents/FinanceCopilot.db` is OFF-LIMITS for tests/builds.
-3. Capture green baseline (all four MUST pass before proceeding):
+2. Confirm `DB_FILE_NAME` in `.env` matches the intended dev DB. Never let tests/builds touch the user's real production DB (the sandboxed app DB — see the "Database & Sandbox" section of the guidelines file for the current per-platform location). Tests/builds must always run against a disposable dev/test DB.
+3. Capture green baseline (all four MUST pass before proceeding). Integration runs MUST target the disposable test DB — never the dev/real DB:
    - `dart fix --apply && dart analyze lib/ test/ integration_test/`  (zero warnings/infos)
    - `flutter test`
-   - `flutter test integration_test/all_tests.dart -d macos`
-   - `flutter test integration_test/live_data_fetch_test.dart -d macos`
+   - `flutter test integration_test/all_tests.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db`
+   - `flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db`
+   (If the test entrypoints have been renamed, discover the current ones under `integration_test/` before running. Always pass `DB_FILE_NAME=finance_copilot_test.db` — integration tests delete that file.)
 4. Record starting LoC: `find lib -name '*.dart' -not -name '*.g.dart' | xargs wc -l | tail -1`.
 5. If anything in step 3 is red, STOP — fix the existing red before this command can do anything else.
 
 ## Phase 1 — UI consistency audit (report only, no edits)
 Catalog every instance of these patterns and flag deviations from the canonical reference:
 - **Delete affordances**: trashcan icon in detail view + swipe-to-delete in lists is canonical. Any long-press-to-delete is a violation. Any three-dot menu offering delete must be reconciled.
-- **Collapsible cards**: chevron + header layout MUST match Cash Flow tab (`lib/ui/screens/dashboard/cash_flow_tab.dart` part files). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap.
+- **Collapsible cards**: chevron + header layout MUST match the canonical Cash Flow tab implementation (currently `lib/ui/screens/dashboard/cashflow_tab.dart`; if renamed/split, find it by role). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap.
 - **Wizard "Next" button bars**: must use one shared widget, not per-screen reimplementations.
 - **Empty states**: same icon + tagline pattern across screens.
 - **Error toasts / snackbars**: same component, same placement.
@@ -72,7 +75,7 @@ Run code against Dart/Flutter idioms. Each finding fixed must keep all four suit
 
 1. **Tooling baseline**:
    - `dart fix --apply` and `dart format .` produce zero residual diffs.
-   - `analysis_options.yaml` includes `flutter_lints` AND `package:lints/recommended.yaml` (or stricter). No `// ignore:` line lacks an inline justification comment.
+   - `analysis_options.yaml` includes the project's chosen lint set (currently `flutter_lints`) and `dart analyze` is clean under it. Do NOT add a stricter lint package (e.g. `package:lints/recommended.yaml`) as part of this sweep unless the user explicitly asks — that is a separate, opt-in decision, not a pre-release fix. No `// ignore:` line lacks an inline justification comment.
 2. **Null-safety hygiene**:
    - Grep `\\![\\s\\.\\[\\(]` in `lib/` — every bang operator on a nullable must justify why null is impossible; otherwise rewrite with `?.`, `??`, `case ... when`, or an explicit guard.
    - No `late` without a comment explaining the init contract; replace with `?` + null-check when feasible.

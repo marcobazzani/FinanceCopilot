@@ -310,10 +310,12 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       ),
     );
 
-    if (result != true) return;
-
-    final date = _tryParseDate(dateCtl.text);
-    final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
+    final confirmed = result == true;
+    final date = confirmed ? _tryParseDate(dateCtl.text) : null;
+    final amount = confirmed ? fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName) : null;
+    dateCtl.dispose();
+    amountCtl.dispose();
+    if (!confirmed) return;
     if (date == null || amount == null) {
       if (context.mounted) {
         showInfoSnack(context, s.invalidDateOrAmount);
@@ -399,6 +401,11 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       ),
     );
 
+    final dateText = dateCtl.text;
+    final amountText = amountCtl.text;
+    dateCtl.dispose();
+    amountCtl.dispose();
+
     if (result == 'delete') {
       if (context.mounted) {
         await _confirmDelete(context, income);
@@ -407,8 +414,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     }
     if (result != 'save') return;
 
-    final date = _tryParseDate(dateCtl.text);
-    final amount = fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
+    final date = _tryParseDate(dateText);
+    final amount = fmt.tryParseLocalized(amountText, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
     if (date == null || amount == null) {
       if (context.mounted) {
         showInfoSnack(context, s.invalidDateOrAmount);
