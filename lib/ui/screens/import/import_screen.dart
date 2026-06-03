@@ -131,6 +131,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // Cached full ISIN summary (from all rows, not capped preview)
   Map<String, int>? _fullIsinSummary;
 
+  // Shared complete preview load. The mapper, confirm lookup, dry-run
+  // preview, and final import can all request full rows; sharing the in-flight
+  // work prevents duplicate XLSX reparses when the user proceeds quickly.
+  FilePreview? _fullPreviewCache;
+  Future<FilePreview>? _fullPreviewFuture;
+  String? _fullPreviewLocale;
+
   // ISINs excluded from import by user (unchecked in exchange picker)
   final Set<String> _excludedIsins = {};
 
@@ -232,6 +239,43 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   void _setState(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
+  }
+
+  void _clearFullPreviewCache() {
+    _fullPreviewCache = null;
+    _fullPreviewFuture = null;
+    _fullPreviewLocale = null;
+  }
+
+  Future<FilePreview> _loadCompletePreview() {
+    final preview = _preview!;
+    if (preview.rows.length >= preview.totalRows) return Future.value(preview);
+
+    final locale = _effectiveNumberLocale();
+    if (_fullPreviewCache != null && _fullPreviewLocale == locale) {
+      return Future.value(_fullPreviewCache!);
+    }
+
+    final existing = _fullPreviewFuture;
+    if (existing != null && _fullPreviewLocale == locale) return existing;
+
+    final importer = ref.read(importServiceProvider);
+    _fullPreviewLocale = locale;
+    _fullPreviewFuture = importer
+        .getFullRows(preview, numberLocale: locale)
+        .then((full) {
+          _fullPreviewCache = full;
+          return full;
+        })
+        .whenComplete(() {
+          _fullPreviewFuture = null;
+        });
+    return _fullPreviewFuture!;
+  }
+
+  IsinLookupService? _maybeIsinLookupService() {
+    final priceService = ref.read(marketPriceServiceProvider);
+    return priceService is WebMarketDataService ? IsinLookupService(priceService) : null;
   }
 
   @override
@@ -359,6 +403,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _log.info('_loadFile: parsed OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
+        _clearFullPreviewCache();
         _fullIsinSummary = null;
         _parsing = false;
         for (final f in _requiredFields) {
@@ -468,6 +513,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _log.info('_reparseFile: OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
         _preview = preview;
+        _clearFullPreviewCache();
         _fullIsinSummary = null;
         _error = null;
         _mappings.clear();
@@ -512,6 +558,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
       setState(() {
         _preview = preview;
+        _clearFullPreviewCache();
         _fullIsinSummary = null;
         _parsing = false;
         _mappings.clear();
@@ -714,8 +761,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_fullUniqueValues.containsKey(column) || _preview == null || _loadingUniqueValues) return;
     setState(() => _loadingUniqueValues = true);
     try {
-      final importer = ref.read(importServiceProvider);
-      final full = await importer.getFullRows(_preview!, numberLocale: _effectiveNumberLocale());
+      final full = await _loadCompletePreview();
       final values = <String>{};
       for (final row in full.rows) {
         final v = (row[column] ?? '').trim();
@@ -806,6 +852,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   void _reset() {
     _preview = null;
+    _clearFullPreviewCache();
     _filePath = null;
     _selectedSheet = null;
     _skipRows = 0;
@@ -895,7 +942,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // are handled inside ImportService.
       var fullPreview = _preview!;
       if (fullPreview.rows.length < fullPreview.totalRows) {
-        fullPreview = await importer.getFullRows(fullPreview, numberLocale: _effectiveNumberLocale());
+        fullPreview = await _loadCompletePreview();
       }
 
       final appLocale = ref.read(appLocaleProvider).value;

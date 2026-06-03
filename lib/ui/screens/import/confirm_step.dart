@@ -25,8 +25,7 @@ extension _ConfirmStep on _ImportScreenState {
     // ISINs in middle rows would be invisible without this.
     var source = _preview!;
     if (source.rows.length < source.totalRows) {
-      final importer = ref.read(importServiceProvider);
-      source = await importer.getFullRows(source, numberLocale: _effectiveNumberLocale());
+      source = await _loadCompletePreview();
     }
 
     final isinCol = _mappings['isin']!;
@@ -41,7 +40,15 @@ extension _ConfirmStep on _ImportScreenState {
     if (isins.isEmpty) return;
     _setState(() => _lookingUpIsins = true);
     try {
-      final lookup = ref.read(isinLookupServiceProvider);
+      final lookup = _maybeIsinLookupService();
+      if (lookup == null) {
+        if (mounted) {
+          _setState(() {
+            _isinLookupResults = {for (final isin in isins) isin: const IsinLookupResult()};
+          });
+        }
+        return;
+      }
       final results = await lookup.lookupBatch(isins);
       if (mounted) {
         _setState(() {
@@ -602,7 +609,7 @@ extension _ConfirmStep on _ImportScreenState {
       var fullPreview = _preview!;
       if (fullPreview.rows.length < fullPreview.totalRows) {
         _log.info('_executeImport: re-parsing full file (${fullPreview.totalRows} rows)...');
-        fullPreview = await importer.getFullRows(fullPreview, numberLocale: _effectiveNumberLocale());
+        fullPreview = await _loadCompletePreview();
         _log.info('_executeImport: re-parsed ${fullPreview.rows.length} rows');
       }
 
@@ -643,11 +650,10 @@ extension _ConfirmStep on _ImportScreenState {
         if (_typeMode == 'sign') {
           mappings.removeWhere((m) => m.targetField == 'type');
         }
-        // ISIN lookup may not be available (e.g. stubbed market price service)
-        IsinLookupService? isinLookup;
-        try {
-          isinLookup = ref.read(isinLookupServiceProvider);
-        } catch (_) {}
+        // ISIN lookup is available only when the market data service is the
+        // web-backed implementation. Test/no-op services still import assets
+        // using the raw ISIN data.
+        final isinLookup = _maybeIsinLookupService();
         final assetResult = await importer.importAssetEventsGrouped(
           preview: fullPreview,
           mappings: mappings,
@@ -743,6 +749,7 @@ extension _ConfirmStep on _ImportScreenState {
               items: items,
               onChanged: (v) {
                 _setState(() => _selectedNumberLocale = v);
+                _clearFullPreviewCache();
                 _computePreview();
               },
             ),
