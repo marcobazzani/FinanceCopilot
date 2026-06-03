@@ -229,7 +229,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _lookingUpIsins = false;
 
   // ignore: invalid_use_of_protected_member
-  void _setState(VoidCallback fn) => setState(fn);
+  void _setState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
 
   @override
   void initState() {
