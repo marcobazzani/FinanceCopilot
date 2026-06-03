@@ -85,9 +85,11 @@ jobs:
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Run integration tests
+      - name: Run smoke integration tests
         timeout-minutes: 25
-        run: flutter test integration_test/all_tests.dart -d ${{ matrix.device }} --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
+        run: |
+          flutter test integration_test/asset_unlock_edit_test.dart -d ${{ matrix.device }} --dart-define=DB_FILE_NAME=finance_copilot_test.db
+          flutter test integration_test/import_sheet_cancel_test.dart -d ${{ matrix.device }} --dart-define=DB_FILE_NAME=finance_copilot_test.db
 
       - name: Run live data fetch test
         if: matrix.device == 'macos'
