@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../services/app_actions_controller.dart';
+import 'package:finance_copilot/services/app_actions_controller.dart';
 import '../../services/providers/providers.dart';
 import '../../utils/visualization_clock.dart';
 

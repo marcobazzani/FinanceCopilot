@@ -11,10 +11,10 @@ import 'dart:convert';
 
 import '../../../database/database.dart';
 import '../../../database/tables.dart';
-import '../../../services/import_service.dart';
-import '../../../services/web_market_data_service.dart';
-import '../../../services/isin_lookup_service.dart';
-import '../../../services/pdf_exceptions.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/isin_lookup_service.dart';
+import 'package:finance_copilot/services/import/pdf_exceptions.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
 import '../../../utils/dialogs.dart';

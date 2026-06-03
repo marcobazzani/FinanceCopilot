@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../database/tables.dart';
 import '../../../l10n/app_strings.dart';
-import '../../../services/portfolio_rebalance_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../../utils/formatters.dart' as fmt;
 

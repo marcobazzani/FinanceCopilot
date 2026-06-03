@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/default_charts_loader.dart';
+import 'package:finance_copilot/services/charts/default_charts_loader.dart';
 
 Account _account(int id) => Account(
   id: id,

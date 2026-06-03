@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:finance_copilot/services/default_charts_loader.dart';
-import 'package:finance_copilot/services/editable_charts_notifier.dart';
+import 'package:finance_copilot/services/charts/default_charts_loader.dart';
+import 'package:finance_copilot/services/charts/editable_charts_notifier.dart';
 
 DashboardChart _chart({
   required int id,

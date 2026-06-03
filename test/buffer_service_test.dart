@@ -2,7 +2,7 @@ import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/buffer_service.dart';
+import 'package:finance_copilot/services/domain/buffer_service.dart';
 
 void main() {
   late AppDatabase db;

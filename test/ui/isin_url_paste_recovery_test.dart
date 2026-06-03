@@ -7,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
-import 'package:finance_copilot/services/web_market_data_service.dart';
-import 'package:finance_copilot/services/market_price_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/market_price_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/widgets/isin_url_paste_recovery.dart';
 

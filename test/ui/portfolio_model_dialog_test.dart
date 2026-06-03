@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
-import 'package:finance_copilot/services/portfolio_model_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/pillars/portfolio_model_dialog.dart';
 

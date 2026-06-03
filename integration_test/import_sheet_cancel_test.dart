@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 
 import 'helpers/test_app.dart';

@@ -1,0 +1,312 @@
+import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
+import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
+
+/// Tables touched by [ExchangeRateService.backfillHistoricalRates] when
+/// collecting "which currencies need historical FX data". Exposed so the
+/// non-regression test can run the exact SQL against the live schema —
+/// the prior version referenced `depreciation_schedules`, which had been
+/// dropped in a migration, and the silent SqliteException stalled FX
+/// backfill for every USD-denominated asset.
+@visibleForTesting
+const backfillCurrenciesSql =
+    'SELECT DISTINCT currency FROM assets '
+    'UNION SELECT DISTINCT currency FROM accounts '
+    'UNION SELECT DISTINCT currency FROM incomes '
+    'UNION SELECT DISTINCT currency FROM extraordinary_events';
+
+final _log = getLogger('ExchangeRateService');
+
+/// Caches exchange rates in the DB.
+/// Uses the market data provider for live and sync rates.
+/// Historical lookups read from the DB.
+class ExchangeRateService {
+  final AppDatabase _db;
+  final WebMarketDataService? _providerService;
+
+  /// Fixed set of target currencies to download (EUR is the base).
+  static const targetCurrencies = [
+    'USD',
+    'GBP',
+    'CHF',
+    'JPY',
+    'SEK',
+    'NOK',
+    'DKK',
+    'PLN',
+    'CZK',
+    'HUF',
+    'CAD',
+    'AUD',
+  ];
+
+  /// All supported currencies (including EUR as base).
+  static const allCurrencies = ['EUR', ...targetCurrencies];
+
+  ExchangeRateService(this._db, {WebMarketDataService? providerService}) : _providerService = providerService;
+
+  // ──────────────────────────────────────────────
+  // Sync
+  // ──────────────────────────────────────────────
+
+  /// Sync exchange rates via the market data provider.
+  /// Stores the latest rate for each target currency as today's date.
+  /// When [force] is true, re-fetches even if already up to date.
+  Future<void> syncRates({bool force = false}) async {
+    if (_providerService == null) {
+      _log.warning('syncRates: no WebMarketDataService configured');
+      return;
+    }
+    // Backfill historical rates for any sparse currency pairs
+    try {
+      await backfillHistoricalRates();
+    } catch (e, stack) {
+      _log.warning('backfillHistoricalRates failed', e, stack);
+    }
+    try {
+      final lastDate = await getLastSyncDate();
+      final now = DateTime.now();
+      final storeDate = DateTime(now.year, now.month, now.day);
+
+      if (!force && lastDate != null && !lastDate.isBefore(storeDate)) {
+        _log.info('syncRates: already up to date (last=${formatYmd(lastDate)})');
+        return;
+      }
+
+      _log.info('syncRates: fetching ${targetCurrencies.length} pairs from provider');
+
+      final companions = <ExchangeRatesCompanion>[];
+      for (final currency in targetCurrencies) {
+        final rate = await _providerService.getLiveFxRate('EUR', currency);
+        if (rate == null) {
+          _log.warning('syncRates: EUR/$currency - no rate from provider');
+          continue;
+        }
+        _log.fine('syncRates: EUR/$currency = $rate');
+        companions.addAll(_eurRatePair(currency, storeDate, rate));
+      }
+
+      if (companions.isNotEmpty) {
+        await _db.batch((batch) {
+          for (final c in companions) {
+            batch.insert(_db.exchangeRates, c, onConflict: DoUpdate((_) => c));
+          }
+        });
+        _log.info('syncRates: stored ${companions.length} rates for ${formatYmd(storeDate)}');
+      }
+    } catch (e, stack) {
+      _log.warning('syncRates: failed', e, stack);
+    }
+  }
+
+  /// Backfill historical exchange rates for all currency pairs needed by the DB.
+  /// Always fetches EUR/X pairs from the provider (reliable quoting convention)
+  /// and stores both directions. Cross-rates are computed from EUR pairs at lookup time.
+  Future<void> backfillHistoricalRates() async {
+    if (_providerService == null) return;
+
+    // Collect all distinct currencies used across the DB (including base currency)
+    final rows = await _db.customSelect(backfillCurrenciesSql).get();
+    final currencies = rows.map((r) => r.read<String>('currency')).toSet()..remove('EUR'); // EUR is always the "from" side
+
+    if (currencies.isEmpty) return;
+
+    // Find earliest date across all data. asset_events / transactions /
+    // incomes use value_date (canonical per CLAUDE.md); market_prices has
+    // a single date column.
+    final earliestRow = await _db
+        .customSelect(
+          'SELECT MIN(d) AS earliest FROM ('
+          '  SELECT MIN(value_date) AS d FROM asset_events'
+          '  UNION ALL SELECT MIN(date) AS d FROM market_prices'
+          '  UNION ALL SELECT MIN(value_date) AS d FROM transactions'
+          '  UNION ALL SELECT MIN(value_date) AS d FROM incomes'
+          ')',
+        )
+        .getSingleOrNull();
+    final earliestEpoch = earliestRow?.readNullable<int>('earliest');
+    if (earliestEpoch == null) return;
+    final since = DateTime.fromMillisecondsSinceEpoch(earliestEpoch * 1000);
+
+    for (final currency in currencies) {
+      // Check if EUR/X already has enough historical data
+      final countRow = await _db
+          .customSelect(
+            'SELECT COUNT(DISTINCT date) AS cnt FROM exchange_rates '
+            "WHERE from_currency = 'EUR' AND to_currency = ?",
+            variables: [Variable.withString(currency)],
+          )
+          .getSingle();
+      final existingCount = countRow.read<int>('cnt');
+      if (existingCount >= 100) {
+        _log.fine('backfillHistoricalRates: EUR/$currency already has $existingCount dates, skipping');
+        continue;
+      }
+
+      _log.info('backfillHistoricalRates: fetching EUR/$currency from ${formatYmd(since)}');
+      try {
+        final rates = await _providerService.fetchHistoricalFxRates('EUR', currency, since);
+        if (rates.isEmpty) {
+          _log.warning('backfillHistoricalRates: EUR/$currency - no data returned');
+          continue;
+        }
+
+        // Store EUR→X and the inverse X→EUR
+        final companions = <ExchangeRatesCompanion>[];
+        for (final entry in rates.entries) {
+          companions.addAll(_eurRatePair(currency, entry.key, entry.value));
+        }
+
+        await _db.batch((batch) {
+          for (final c in companions) {
+            batch.insert(_db.exchangeRates, c, onConflict: DoNothing());
+          }
+        });
+        _log.info('backfillHistoricalRates: EUR/$currency - stored ${rates.length} dates');
+      } catch (e) {
+        _log.warning('backfillHistoricalRates: EUR/$currency failed - $e');
+      }
+    }
+  }
+
+  /// Get the latest date stored in the exchange_rates table.
+  Future<DateTime?> getLastSyncDate() async {
+    final row = await _db
+        .customSelect(
+          'SELECT MAX(date) AS max_date FROM exchange_rates',
+        )
+        .getSingleOrNull();
+    return row?.readNullable<DateTime>('max_date');
+  }
+
+  // ──────────────────────────────────────────────
+  // Rate lookup
+  // ──────────────────────────────────────────────
+
+  /// Get exchange rate from [from] to [to] on or before [date].
+  /// Tries direct pair, then inverse, then EUR cross-rate as fallback.
+  Future<double?> getRate(String from, String to, DateTime date) async {
+    if (from == to) return 1.0;
+    // 1. Direct lookup: from->to
+    final direct = await _lookupDirectRate(from, to, date);
+    if (direct != null) return direct;
+    // 2. Inverse lookup: to->from
+    final inverse = await _lookupDirectRate(to, from, date);
+    if (inverse != null) return 1.0 / inverse;
+    // 3. EUR cross-rate fallback (legacy data)
+    if (from != 'EUR' && to != 'EUR') {
+      final rTo = await _lookupDirectRate('EUR', to, date);
+      final rFrom = await _lookupDirectRate('EUR', from, date);
+      if (rTo != null && rFrom != null && rFrom != 0) return rTo / rFrom;
+    }
+    return null;
+  }
+
+  /// Look up rate for any [from]->[to] pair on or before [date].
+  Future<double?> _lookupDirectRate(String from, String to, DateTime date) async {
+    final epochSec = date.millisecondsSinceEpoch ~/ 1000;
+    final row = await _db
+        .customSelect(
+          'SELECT rate FROM exchange_rates '
+          'WHERE from_currency = ? AND to_currency = ? '
+          'AND date <= ? ORDER BY date DESC LIMIT 1',
+          variables: [Variable.withString(from), Variable.withString(to), Variable.withInt(epochSec)],
+        )
+        .getSingleOrNull();
+    return row?.readNullable<double>('rate');
+  }
+
+  /// Convert [amount] from [from] currency to [to] currency at [date].
+  /// Returns null when no rate is available — callers must surface or skip,
+  /// not silently fall back to a wrong number.
+  Future<double?> convertAmount(double amount, String from, String to, DateTime date) async {
+    if (from == to) return amount;
+    final rate = await getRate(from, to, date);
+    if (rate == null) {
+      _log.warning('convertAmount: no $from/$to rate for ${date.toIso8601String().substring(0, 10)} - returning null');
+      return null;
+    }
+    return amount * rate;
+  }
+
+  // ──────────────────────────────────────────────
+  // Live rate (today)
+  // ──────────────────────────────────────────────
+
+  /// Get today's live rate via the market data provider. Falls back to stored DB rate.
+  Future<double?> getLiveRate(String from, String to) async {
+    if (from == to) return 1.0;
+
+    if (_providerService != null) {
+      final rate = await _providerService.getLiveFxRate(from, to);
+      if (rate != null) return rate;
+    }
+
+    // Fallback to latest stored rate
+    return getRate(from, to, DateTime.now());
+  }
+
+  /// Convert [amount] using today's live rate (live fetch, then DB fallback).
+  /// Returns null when no rate is available — callers must surface or skip.
+  Future<double?> convertLive(double amount, String from, String to) async {
+    if (from == to) return amount;
+    final rate = await getLiveRate(from, to);
+    if (rate == null) {
+      _log.warning('convertLive: no $from/$to rate available - returning null');
+      return null;
+    }
+    return amount * rate;
+  }
+
+  /// Build an EUR↔[currency] companion pair for [date] at [rate] (EUR→[currency]).
+  static List<ExchangeRatesCompanion> _eurRatePair(String currency, DateTime date, double rate) => [
+    ExchangeRatesCompanion(fromCurrency: const Value('EUR'), toCurrency: Value(currency), date: Value(date), rate: Value(rate)),
+    ExchangeRatesCompanion(fromCurrency: Value(currency), toCurrency: const Value('EUR'), date: Value(date), rate: Value(1.0 / rate)),
+  ];
+}
+
+/// Cached exchange rate resolver for chart computations.
+/// Wraps [ExchangeRateService] with an in-memory cache keyed by (currency, dayKey).
+class CachedRateResolver {
+  final ExchangeRateService _rateService;
+  final String baseCurrency;
+  final _cache = <String, double?>{};
+
+  CachedRateResolver(this._rateService, this.baseCurrency);
+
+  /// Returns the [from]->[baseCurrency] rate at [dayKey], or null if unavailable.
+  /// Null results are cached too so we don't re-query missing pairs every spot.
+  Future<double?> getRate(String from, int dayKey) async {
+    if (from == baseCurrency) return 1.0;
+    final key = '$from:$dayKey';
+    if (_cache.containsKey(key)) return _cache[key];
+    final date = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+    final rate = await _rateService.getRate(from, baseCurrency, date);
+    if (rate == null) {
+      _log.warning('CachedRateResolver: no $from/$baseCurrency rate for ${date.toIso8601String().substring(0, 10)}');
+    }
+    _cache[key] = rate;
+    return rate;
+  }
+}
+
+/// Convert an amount to base currency using stored rate or DB-resolved rate.
+/// Returns null if neither a stored nor a historical rate is available.
+Future<double?> convertToBase({
+  required double amount,
+  required String currency,
+  required String baseCurrency,
+  required double? storedRate,
+  required CachedRateResolver resolver,
+  required int dayKey,
+}) async {
+  if (currency == baseCurrency) return amount.abs();
+  if (storedRate != null && storedRate > 0) return amount.abs() / storedRate;
+  final rate = await resolver.getRate(currency, dayKey);
+  if (rate == null) return null;
+  return amount.abs() * rate;
+}

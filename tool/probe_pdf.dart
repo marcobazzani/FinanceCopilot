@@ -8,8 +8,8 @@
 // Use it to iterate on the algorithm without needing UI clicks.
 import 'dart:convert';
 import 'dart:io';
-import 'package:finance_copilot/services/pdf_exceptions.dart';
-import 'package:finance_copilot/services/pdf_table_reconstructor.dart';
+import 'package:finance_copilot/services/import/pdf_exceptions.dart';
+import 'package:finance_copilot/services/import/pdf_table_reconstructor.dart';
 
 void main(List<String> args) async {
   if (args.isEmpty) {

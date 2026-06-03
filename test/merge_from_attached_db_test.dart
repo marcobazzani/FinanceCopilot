@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/db_transfer_service.dart';
+import 'package:finance_copilot/services/sync/db_transfer_service.dart';
 
 void main() {
   late Directory tmpDir;

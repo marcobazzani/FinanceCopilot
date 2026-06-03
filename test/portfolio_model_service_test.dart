@@ -8,10 +8,10 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/asset_service.dart';
-import 'package:finance_copilot/services/pillar_service.dart';
-import 'package:finance_copilot/services/portfolio_model_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
+import 'package:finance_copilot/services/pillars/pillar_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

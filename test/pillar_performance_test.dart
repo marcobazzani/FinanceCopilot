@@ -8,9 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/market_price_service.dart';
-import 'package:finance_copilot/services/pillar_performance.dart';
-import 'package:finance_copilot/services/pillar_service.dart';
+import 'package:finance_copilot/services/market/market_price_service.dart';
+import 'package:finance_copilot/services/pillars/pillar_performance.dart';
+import 'package:finance_copilot/services/pillars/pillar_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, ChartSeries, allSeriesDataProvider;
 

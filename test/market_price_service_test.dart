@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;

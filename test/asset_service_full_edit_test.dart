@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
 
 /// Pins the "unlock all fields" edit path. The unlocked Edit dialog only
 /// surfaces header attributes that have real read-side consumers in

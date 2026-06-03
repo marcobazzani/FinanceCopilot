@@ -1,7 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/portfolio_rebalance_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/pillars/rebalance_preview_dialog.dart';
 import 'package:flutter/material.dart';

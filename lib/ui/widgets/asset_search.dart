@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import '../../services/providers/providers.dart';
 import 'isin_url_paste_recovery.dart';
 

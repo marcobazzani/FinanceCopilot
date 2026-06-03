@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/composition_service.dart';
+import 'package:finance_copilot/services/market/composition_service.dart';
 
 /// Pins the manual-edit path on `CompositionService`:
 ///

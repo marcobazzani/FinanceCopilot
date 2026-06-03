@@ -3,12 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/asset_service.dart';
-import 'package:finance_copilot/services/pillar_service.dart';
-import 'package:finance_copilot/services/portfolio_model_service.dart';
-import 'package:finance_copilot/services/portfolio_rebalance_service.dart';
-import 'package:finance_copilot/services/web_market_data_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
+import 'package:finance_copilot/services/pillars/pillar_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 
 class _FakeMarketDataService extends WebMarketDataService {
   final Map<String, List<ProviderSearchResult>> searchResults;

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/pdf_exceptions.dart';
-import 'package:finance_copilot/services/pdf_table_reconstructor.dart';
+import 'package:finance_copilot/services/import/pdf_exceptions.dart';
+import 'package:finance_copilot/services/import/pdf_table_reconstructor.dart';
 
 /// Synthetic-fragment fixtures for [PdfTableReconstructor]. These tests run
 /// without any PDF library — the reconstructor is data-in / data-out, so we

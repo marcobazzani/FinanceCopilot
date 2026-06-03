@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/import_service.dart';
-import 'package:finance_copilot/services/isin_lookup_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
+import 'package:finance_copilot/services/market/isin_lookup_service.dart';
 
 void main() {
   late AppDatabase db;

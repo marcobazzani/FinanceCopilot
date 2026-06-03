@@ -6,8 +6,8 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
-import 'package:finance_copilot/services/pillar_performance.dart';
-import 'package:finance_copilot/services/pillar_service.dart';
+import 'package:finance_copilot/services/pillars/pillar_performance.dart';
+import 'package:finance_copilot/services/pillars/pillar_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, allSeriesDataProvider;
 import 'package:finance_copilot/ui/screens/pillars/pillar_detail_screen.dart';

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/financial_health_service.dart';
+import 'package:finance_copilot/services/pillars/financial_health_service.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 
 void main() {

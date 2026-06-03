@@ -1,4 +1,4 @@
-part of '../assets_screen.dart';
+part of 'assets_screen.dart';
 
 class _CreateAssetDialog extends StatefulWidget {
   final WidgetRef ref;
