@@ -358,8 +358,10 @@ void main() {
       final history = await priceService.getPriceHistory(bondId);
       expect(history, isNotEmpty, reason: 'Should have revalue-derived price');
       expect(history.length, 1);
-      // 9900 / 100 qty = 99.0 per unit
-      expect(history.first.value, 99.0);
+      // Bonds are valued as qty * close_price / 100 (price quoted as % of par),
+      // so the revalue's close_price is scaled by 100 to make the rendered value
+      // equal the revalue total: 9900 / 100 qty * 100 = 9900 (issue #87).
+      expect(history.first.value, 9900.0);
     });
 
     test('getPriceHistoryBatch includes revalue-only assets', () async {
@@ -378,7 +380,8 @@ void main() {
       expect(batch.containsKey(etfId), isTrue);
       expect(batch.containsKey(bondId), isTrue, reason: 'Bond with revalue should be in batch results');
       expect(batch[bondId]!.length, 1);
-      expect(batch[bondId]!.first.value, 99.0);
+      // Bond revalue close_price is scaled by 100 (see issue #87).
+      expect(batch[bondId]!.first.value, 9900.0);
     });
 
     test('getPriceHistory includes both market and revalue on different dates', () async {
@@ -391,7 +394,7 @@ void main() {
       final history = await priceService.getPriceHistory(bondId);
       // Both: revalue on June 1 + market on June 2
       expect(history.length, 2);
-      expect(history[0].value, 99.0); // 9900 / 100 qty
+      expect(history[0].value, 9900.0); // revalue close_price scaled ×100 (issue #87)
       expect(history[1].value, 99.5); // market price
     });
 
@@ -421,7 +424,7 @@ void main() {
       // Should include the revalue point (March) + 2 market prices (June)
       expect(history.length, 3);
       // Sorted by date: revalue first, then market prices
-      expect(history[0].value, 98.5); // 9850 / 100 qty
+      expect(history[0].value, 9850.0); // revalue close_price scaled ×100 (issue #87)
       expect(history[1].value, 99.0);
       expect(history[2].value, 99.5);
     });

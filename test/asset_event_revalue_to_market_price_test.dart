@@ -34,6 +34,22 @@ void main() {
         .get();
   }
 
+  Future<int> createBond(String name, {String currency = 'EUR'}) async {
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.bondEtf,
+            instrumentType: const Value(InstrumentType.bond),
+            assetClass: const Value(AssetClass.fixedIncome),
+            valuationMethod: ValuationMethod.eventDriven,
+            intermediaryId: iid,
+            currency: Value(currency),
+          ),
+        );
+  }
+
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = AssetEventService(db);
@@ -484,6 +500,75 @@ void main() {
       );
       prices = await pricesFor(assetId);
       expect(prices.first.closePrice, closeTo(1.10, 0.0001), reason: 'post-revalue contribute must NOT shift the anchored price');
+    });
+  });
+
+  group('bond revalue (issue #87 — position must not collapse ×1/100)', () {
+    // A bond's market value is computed downstream as
+    //   qty * close_price / bondDivisor(=100) * fxRate
+    // A revalue carries a TOTAL position value (currency). To make the
+    // displayed value equal that total, the materialised close_price must be
+    // pre-multiplied by the bond divisor so the read-time /100 cancels out.
+    // Pre-fix: close_price = amount/qty → displayed = amount/100 → vanishes.
+
+    double displayedValue(double qty, double closePrice) {
+      const bondDivisor = 100.0;
+      return qty * closePrice / bondDivisor; // fxRate = 1 (EUR)
+    }
+
+    test('bond revalue close_price is scaled so displayed value == revalue amount', () async {
+      final assetId = await createBond('Mystery BTP');
+      // Bond: qty 3000 (face), price 100 (% of par) → cost 3000.
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 10),
+        type: EventType.buy,
+        amount: 3000.0,
+        quantity: 3000.0,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      // Revalue the whole position to 3100.
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        type: EventType.revalue,
+        amount: 3100.0,
+        currency: 'EUR',
+      );
+
+      final prices = await pricesFor(assetId);
+      expect(prices, hasLength(1));
+      // 3100 / 3000 * 100 = 103.333…
+      expect(prices.first.closePrice, closeTo(3100.0 / 3000.0 * 100.0, 1e-9));
+      // The number consumers actually render must equal the revalue total.
+      expect(
+        displayedValue(3000.0, prices.first.closePrice),
+        closeTo(3100.0, 1e-6),
+        reason: 'bond revalue must not collapse the position to 1/100',
+      );
+    });
+
+    test('non-bond revalue is unaffected (no ×100 scaling)', () async {
+      final assetId = await createAsset('Manual EUR');
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 5),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+      final prices = await pricesFor(assetId);
+      expect(prices.first.closePrice, 120.0); // 1200 / 10, bondDivisor = 1
     });
   });
 }

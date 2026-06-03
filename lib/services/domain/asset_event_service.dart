@@ -203,6 +203,13 @@ class AssetEventService {
     final assetRow = await (_db.select(_db.assets)..where((a) => a.id.equals(assetId))).getSingleOrNull();
     if (assetRow == null) return;
     final currency = assetRow.currency;
+    // A revalue carries a TOTAL position value (currency), independent of the
+    // bond percent-of-face quoting convention. Consumers compute market value
+    // as `qty * close_price / bondDivisor`, so for bonds we must pre-multiply
+    // the materialised close_price by the divisor — otherwise `amount / qty`
+    // gets divided by 100 a second time at read time and the position collapses
+    // to ~1/100 of its real value (issue #87).
+    final bondDivisor = assetRow.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
 
     for (final rDate in revalueDates) {
       // When two revalues share a value_date, the latest-inserted wins (same
@@ -241,7 +248,7 @@ class AssetEventService {
         continue;
       }
 
-      final closePrice = amount / qty;
+      final closePrice = amount / qty * bondDivisor;
       await _db
           .into(_db.marketPrices)
           .insertOnConflictUpdate(
