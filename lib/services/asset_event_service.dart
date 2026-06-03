@@ -255,6 +255,54 @@ class AssetEventService {
     }
   }
 
+  /// Re-derive stored `amount` for buy/sell events after an asset's
+  /// instrument type changes to/from bond. Bond prices are quoted as a
+  /// percentage of face value, so the money amount is `qty * price / 100`
+  /// for bonds and `qty * price` otherwise. When the user reclassifies an
+  /// asset (e.g. a bond that the provider didn't recognize was imported as an
+  /// ETF), the previously-stored amounts are off by 100x and must be rescaled
+  /// so cost-basis (invested) and the buy-price history stay consistent with
+  /// the live market value (which already applies the divisor at read time).
+  ///
+  /// Only buy/sell events that carry BOTH quantity and price are touched —
+  /// their amount was derived from `qty * price`. Cash-only events (no qty or
+  /// no price) and revalue events (amount is a total position value, not a
+  /// per-unit product) are left untouched. The amount sign is preserved.
+  /// After rescaling, revalue-derived market_prices rows are re-synced.
+  Future<int> rescaleEventAmountsForBondReclassification(
+    int assetId, {
+    required bool toBond,
+  }) async {
+    // toBond: amount was qty*price (×100 too large) → divide by 100.
+    // fromBond: amount was qty*price/100 → multiply by 100.
+    final factor = toBond ? 1.0 / 100.0 : 100.0;
+    final rows =
+        await (_db.select(_db.assetEvents)..where(
+              (e) => e.assetId.equals(assetId) & e.type.isIn(const ['buy', 'sell']) & e.quantity.isNotNull() & e.price.isNotNull(),
+            ))
+            .get();
+    if (rows.isEmpty) return 0;
+    var updated = 0;
+    await _db.batch((batch) {
+      for (final ev in rows) {
+        batch.update(
+          _db.assetEvents,
+          AssetEventsCompanion(amount: Value(ev.amount * factor)),
+          where: (e) => e.id.equals(ev.id),
+        );
+        updated++;
+      }
+    });
+    _log.info(
+      'rescaleEventAmountsForBondReclassification: assetId=$assetId toBond=$toBond '
+      'rescaled $updated buy/sell events by ×$factor',
+    );
+    // Revalue anchors derive close_price from amount/qty; resync so any
+    // revalue-based market_prices rows reflect the corrected amounts.
+    await resyncRevaluePricesForAsset(assetId);
+    return updated;
+  }
+
   /// Weighted average buy price: total_cost / total_qty for buy events.
   /// Returns null if no qualifying events exist.
   Future<double?> getAverageBuyPrice(int assetId, {DateTime? through}) async {

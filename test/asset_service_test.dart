@@ -94,6 +94,159 @@ void main() {
     });
   });
 
+  group('bond reclassification rescales event amounts (issue #87)', () {
+    // Helper: read current invested cost-basis for an asset.
+    Future<double> investedOf(int assetId) async {
+      final stats = await service.getStatsForAll();
+      return stats[assetId]!.totalInvested;
+    }
+
+    test('reclassifying ETF→bond divides buy/sell amounts by 100', () async {
+      // A bond the provider didn't recognize, imported as an ETF: face value
+      // 3000, price 100 (% of par) → amount stored as 3000*100 = 300000.
+      final id = await service.create(
+        name: 'Mystery BTP',
+        isin: 'IT0005340929',
+        currency: 'EUR',
+        intermediaryId: iid,
+        instrumentType: InstrumentType.etf,
+      );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              type: EventType.buy,
+              amount: 300000.0, // 3000 * 100, no bond divisor applied at import
+              quantity: const Value(3000.0),
+              price: const Value(100.0),
+            ),
+          );
+
+      expect(await investedOf(id), closeTo(300000.0, 0.01), reason: 'pre-fix: invested is 100x too large');
+
+      // User corrects the instrument type to bond.
+      await service.update(id, const AssetsCompanion(instrumentType: Value(InstrumentType.bond)));
+
+      expect(await investedOf(id), closeTo(3000.0, 0.01), reason: 'amount rescaled to qty*price/100');
+
+      final ev = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(id))).getSingle();
+      expect(ev.amount, closeTo(3000.0, 0.01));
+      expect(ev.quantity, 3000.0, reason: 'quantity is untouched');
+      expect(ev.price, 100.0, reason: 'price is untouched (still per-100-face-value)');
+    });
+
+    test('reclassifying bond→ETF multiplies buy/sell amounts by 100', () async {
+      final id = await service.create(
+        name: 'Was a bond',
+        currency: 'EUR',
+        intermediaryId: iid,
+        instrumentType: InstrumentType.bond,
+      );
+      // Correctly stored bond amount: 3000 * 100 / 100 = 3000.
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              type: EventType.buy,
+              amount: 3000.0,
+              quantity: const Value(3000.0),
+              price: const Value(100.0),
+            ),
+          );
+
+      await service.update(id, const AssetsCompanion(instrumentType: Value(InstrumentType.etf)));
+
+      final ev = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(id))).getSingle();
+      expect(ev.amount, closeTo(300000.0, 0.01), reason: 'amount rescaled back to qty*price');
+    });
+
+    test('preserves amount sign for sell events', () async {
+      final id = await service.create(
+        name: 'Bond with sell',
+        currency: 'EUR',
+        intermediaryId: iid,
+        instrumentType: InstrumentType.etf,
+      );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              type: EventType.sell,
+              amount: -300000.0, // negative-amount sell convention
+              quantity: const Value(3000.0),
+              price: const Value(100.0),
+            ),
+          );
+
+      await service.update(id, const AssetsCompanion(instrumentType: Value(InstrumentType.bond)));
+
+      final ev = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(id))).getSingle();
+      expect(ev.amount, closeTo(-3000.0, 0.01), reason: 'sign preserved, magnitude /100');
+    });
+
+    test('leaves cash-only events (no qty/price) untouched', () async {
+      final id = await service.create(
+        name: 'Cash-only',
+        currency: 'EUR',
+        intermediaryId: iid,
+        instrumentType: InstrumentType.etf,
+      );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              type: EventType.buy,
+              amount: 5000.0, // no quantity / price → not derived from qty*price
+            ),
+          );
+
+      await service.update(id, const AssetsCompanion(instrumentType: Value(InstrumentType.bond)));
+
+      final ev = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(id))).getSingle();
+      expect(ev.amount, 5000.0, reason: 'cash-only amount must not be rescaled');
+    });
+
+    test('no-op when instrument type does not cross the bond boundary', () async {
+      final id = await service.create(
+        name: 'ETF stays ETF kind',
+        currency: 'EUR',
+        intermediaryId: iid,
+        instrumentType: InstrumentType.etf,
+      );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: id,
+              date: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              type: EventType.buy,
+              amount: 1000.0,
+              quantity: const Value(10.0),
+              price: const Value(100.0),
+            ),
+          );
+
+      // etf → stock: neither is bond, so amounts must be untouched.
+      await service.update(id, const AssetsCompanion(instrumentType: Value(InstrumentType.stock)));
+
+      final ev = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(id))).getSingle();
+      expect(ev.amount, 1000.0, reason: 'non-bond ↔ non-bond change must not rescale');
+    });
+  });
+
   group('delete', () {
     test('delete removes the asset', () async {
       final id = await service.create(name: 'ToDelete', currency: 'EUR', intermediaryId: iid);

@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../database/database.dart';
 import '../database/tables.dart';
 import '../utils/logger.dart';
+import 'asset_event_service.dart';
 
 final _log = getLogger('AssetService');
 
@@ -99,9 +100,30 @@ class AssetService {
         );
   }
 
-  Future<bool> update(int id, AssetsCompanion companion) {
+  Future<bool> update(int id, AssetsCompanion companion) async {
     _log.info('update: id=$id');
-    return (_db.update(_db.assets)..where((a) => a.id.equals(id))).write(companion).then((rows) => rows > 0);
+    // Detect a bond reclassification so we can rescale event amounts: bond
+    // prices are quoted as % of face value, so amount = qty*price/100 for
+    // bonds vs qty*price otherwise. A provider-unrecognized bond imported as
+    // an ETF stores 100x-too-large amounts; correcting the type here must
+    // also correct the stored amounts, or invested/cost-basis stays 100x off
+    // while the live market value (read-time divisor) looks right — the
+    // "incongruenza" in issue #87.
+    InstrumentType? before;
+    if (companion.instrumentType.present) {
+      final old = await (_db.select(_db.assets)..where((a) => a.id.equals(id))).getSingleOrNull();
+      before = old?.instrumentType;
+    }
+    final rows = await (_db.update(_db.assets)..where((a) => a.id.equals(id))).write(companion);
+    if (rows > 0 && companion.instrumentType.present && before != null) {
+      final after = companion.instrumentType.value;
+      final wasBond = before == InstrumentType.bond;
+      final isBond = after == InstrumentType.bond;
+      if (wasBond != isBond) {
+        await AssetEventService(_db).rescaleEventAmountsForBondReclassification(id, toBond: isBond);
+      }
+    }
+    return rows > 0;
   }
 
   Future<int> delete(int id) async {
