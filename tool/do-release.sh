@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./do-release.sh --version v0.10.1 --title "Short description" [options]
+  ./tool/do-release.sh --version v0.10.1 --title "Short description" [options]
 
 Required:
   --version VERSION     Release version, with or without a leading v.

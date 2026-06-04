@@ -24,20 +24,89 @@
 - To run a second emulator alongside an existing one, just launch it — don't kill the first. They get sequential ports (5554, 5556, ...).
 - If `am start` or `monkey` fails with "Activity does not exist" on a freshly launched emulator, the emulator image is likely corrupted (e.g. EdXposed or other framework mods). Fix: kill it (`adb -s emulator-XXXX emu kill`), relaunch with `flutter emulators --launch`, and reinstall.
 
-## Windows VM (Parallels)
+## Windows VM (UTM)
 
-- A Parallels "Windows 11" VM runs on this Mac. Use `prlctl exec "Windows 11"` to run commands.
-- Flutter path: `C:\Users\marco\dev\flutter\bin\flutter.bat`
-- Project path: `C:\Users\marco\dev\FinanceCopilot`
-- Build: the Windows project has its own `.env` copy at `C:\Users\marco\dev\FinanceCopilot\.env` — load it into the cmd session via a `for /f` loop before running flutter so Google OAuth dart-defines are populated.
-  ```
-  prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && for /f \"usebackq tokens=1,* delims==\" %a in (\".env\") do set %a=%b && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% --dart-define=GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% --dart-define=DB_FILE_NAME=%DB_FILE_NAME% 2>&1"
-  ```
-- Kill before rebuild: `prlctl exec "Windows 11" cmd /c "taskkill /F /IM FinanceCopilot.exe 2>&1"`
-- **Launch GUI app** — `prlctl exec` runs in a non-interactive service session (Session 0), so use a scheduled task to launch in the user's interactive session:
-  ```
-  prlctl exec "Windows 11" cmd /c "schtasks /Create /TN LaunchFC /TR \"C:\Users\marco\dev\FinanceCopilot\build\windows\x64\runner\Release\FinanceCopilot.exe\" /SC ONCE /ST 00:00 /F /RU marco 2>&1 && schtasks /Run /TN LaunchFC 2>&1 && schtasks /Delete /TN LaunchFC /F 2>&1"
-  ```
+The Windows build runs in a **UTM** virtual machine, controlled from the Mac with the bundled `utmctl` CLI. The commands below use placeholders — substitute your own values:
+
+| Placeholder | Meaning | Example |
+| --- | --- | --- |
+| `<VM>` | UTM VM name (full name, or UUID from `utmctl list`) | `"Windows 11"` |
+| `<USER>` | Windows username | `dev` |
+| `<PROJECT>` | Project checkout path in the guest | `C:\Users\<USER>\dev\FinanceCopilot` |
+| `<FLUTTER>` | Flutter `bin\flutter.bat` path in the guest | `C:\Users\<USER>\dev\flutter\bin\flutter.bat` |
+
+- `utmctl` path (not on PATH): `/Applications/UTM.app/Contents/MacOS/utmctl`
+- The Mac and the guest share the same `origin` git remote, so branches round-trip via GitHub. Find the guest IP with `utmctl ip-address "<VM>"` if you need direct network access.
+
+### Critical `utmctl exec` caveats
+
+- **No stdout/stderr is returned.** `utmctl exec` is fire-and-forget: it launches the process in the guest and returns immediately. It does NOT pipe back output and does NOT return the guest's real exit code (the host always sees exit 0 unless the *launch itself* fails, e.g. binary not found). To see ANY output you MUST redirect it to a file in the guest and pull it back with `utmctl file pull`.
+- **Runs as `nt authority\system` (Session 0), not as `<USER>`.** This means: GUI apps must be launched via the scheduled-task trick (below); and `%APPDATA%`/`$env:APPDATA` resolve to SYSTEM's *own* profile, not the interactive user's — so reads that rely on those env vars come back empty. SYSTEM **can** read the interactive user's profile, but only via the **absolute** `C:\Users\<USER>\...` path. Write helper/log files to a SYSTEM-readable location such as `C:\` (the examples below use `C:\`).
+- **Complex inline PowerShell gets corrupted.** `$variables` inside a `utmctl exec --cmd "powershell -Command \"...\""` are eaten by the host shell → quoting layers. For anything beyond a trivial one-liner, push a `.ps1` and run it with `--cmd "powershell.exe" "-NoProfile" "-ExecutionPolicy" "Bypass" "-File" "C:\script.ps1"`.
+- **`file pull` races a still-open file.** While a command is writing to its redirect target, `file pull` fails with "The process cannot access the file because it is being used by another process." This is the completion signal's inverse: poll `file pull` and treat the lock error as "still running." Append a marker line (e.g. `DONE_EXITCODE=%ERRORLEVEL%`) as the last write so a successful pull containing the marker means "finished."
+
+### Guest `.env`
+
+The guest checkout has its own `.env` at `<PROJECT>\.env`. It must contain the Google OAuth client IDs **and** `DB_FILE_NAME` (e.g. `DB_FILE_NAME=finance_copilot_dev.db`). Always load the full `.env` via the `for /f` loop and pass ALL dart-defines (client id/secret + web + android client ids + DB file name); unset cmd vars expand to their literal `%NAME%` text, which silently produces a wrong build, so never rely on a key being present — verify.
+
+### Sync workflow (uses the `sync` branch)
+
+`sync` is a throwaway branch that mirrors the Mac working copy to the guest. Force-push from the Mac, force-reset on the guest.
+
+1. Push working copy from the Mac:
+   ```
+   git checkout -B sync && git add -A && git commit -m "sync" && git push -f origin sync
+   ```
+2. Pull it in the guest (poll the log until `SYNC_DONE` appears; lock error = still running):
+   ```
+   /Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "cd /d <PROJECT> & git fetch origin > C:\fc_sync.log 2>&1 & git checkout -f sync >> C:\fc_sync.log 2>&1 & git reset --hard origin/sync >> C:\fc_sync.log 2>&1 & echo SYNC_DONE >> C:\fc_sync.log"
+   /Applications/UTM.app/Contents/MacOS/utmctl file pull "<VM>" "C:\fc_sync.log"
+   ```
+
+### Build — MUST use a guest batch file (do NOT use a `&`-chained one-liner)
+
+**Critical bug:** a single-line `cmd /c "... for /f ... do set %a=%b & flutter ... --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% ..."` does NOT work. `cmd` expands every `%VAR%` on the line at **parse time — before the `for` loop runs** — so the dart-defines receive the literal text `%GOOGLE_CLIENT_ID%` (it reaches Google as `client_id=%25GOOGLE_CLIENT_ID%25` → `Error 401: invalid_client`). The build "succeeds" but bakes in placeholders. A `.bat` file is parsed/executed **line by line**, so `%VAR%` on the flutter line expands after the loop has `set` it. Always build via a batch file.
+
+1. Kill any running instance FIRST (a running `FinanceCopilot.exe` locks `WebView2Loader.dll` in the Release dir and the build fails with `MSB3021`/`MSB3027`):
+   ```
+   /Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "taskkill /F /IM FinanceCopilot.exe /T"
+   ```
+2. Use the repo's `tool/win_build.bat` as the guest build script. Edit the `cd` and flutter paths at the top to match your `<PROJECT>`/`<FLUTTER>`, then push it into the guest:
+   ```
+   cat tool/win_build.bat | /Applications/UTM.app/Contents/MacOS/utmctl file push "<VM>" "C:\win_build.bat"
+   ```
+   The script loads `.env`, runs the release build with all dart-defines, redirects to `C:\fc_build.log`, and appends `DONE_EXITCODE=%ERRORLEVEL%` as the completion marker. (Inside a `.bat`, the `for` variable is written `%%a`/`%%b`.)
+3. Run it (fire-and-forget):
+   ```
+   /Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "C:\win_build.bat"
+   ```
+4. Poll (≤10s sleeps): `utmctl file pull "<VM>" "C:\fc_build.log"` until it contains `DONE_EXITCODE=` (or ends with `√ Built ...Release\FinanceCopilot.exe`). A release build takes ~2–4 min. Artifact: `<PROJECT>\build\windows\x64\runner\Release\FinanceCopilot.exe`.
+5. **Verify the credentials baked in** (the placeholder bug is silent). Run a check against the compiled `app.so`; expect `PLACEHOLDER_ABSENT`:
+   ```powershell
+   $t = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes('<PROJECT>\build\windows\x64\runner\Release\data\app.so'))
+   if ($t.Contains('%GOOGLE_CLIENT_ID%')) {'PLACEHOLDER_PRESENT'} else {'PLACEHOLDER_ABSENT'} | Set-Content C:\fc_check.txt
+   ```
+
+### Launch GUI app (scheduled-task trick, required because exec is Session 0/SYSTEM)
+
+```
+/Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "schtasks /Create /TN LaunchFC /TR \"<PROJECT>\build\windows\x64\runner\Release\FinanceCopilot.exe\" /SC ONCE /ST 00:00 /F /RU <USER> & schtasks /Run /TN LaunchFC & schtasks /Delete /TN LaunchFC /F"
+```
+Verify it's running: `utmctl exec ... cmd /c "tasklist > C:\fc_proc.txt 2>&1"` then `utmctl file pull ... fc_proc.txt` and look for `FinanceCopilot.exe` in `Console` session 1.
+
+### Read the app log (the GUI app holds it open for writing)
+
+The Windows log lives at `C:\Users\<USER>\AppData\Roaming\FinanceCopilot\FinanceCopilot\app.log` — note the path is **`FinanceCopilot\FinanceCopilot`** (Flutter's `getApplicationSupportDirectory()` = `%APPDATA%\<OrgName>\<AppName>`), NOT the `net.bazzani.financecopilot` bundle id. Two gotchas:
+- SYSTEM's `%APPDATA%` is not the user's, so use the absolute `C:\Users\<USER>\...` path.
+- The running app keeps the file open, so `Get-Content` returns nothing — must open with `FileShare.ReadWrite`.
+
+Use the repo's `tool/win_read_log.ps1` (handles both). Push and run it, passing the user's absolute log path:
+```
+cat tool/win_read_log.ps1 | /Applications/UTM.app/Contents/MacOS/utmctl file push "<VM>" "C:\win_read_log.ps1"
+/Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "powershell.exe" "-NoProfile" "-ExecutionPolicy" "Bypass" "-File" "C:\win_read_log.ps1" "-Tail" "80" "-LogPath" "C:\Users\<USER>\AppData\Roaming\FinanceCopilot\FinanceCopilot\app.log"
+/Applications/UTM.app/Contents/MacOS/utmctl file pull "<VM>" "C:\fc_applog.txt"
+```
+The script writes the last `-Tail` lines to `C:\fc_applog.txt` and appends `READLOG_DONE` as the completion marker. The same `previous_session.log` and `finance_copilot_*.db` live in that folder.
 
 # Git Workflow
 
@@ -59,7 +128,7 @@
 
 Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
-- Always use `./do-release.sh` from the repo root for releases. It is the release entrypoint; do not hand-run the individual tag/release steps unless the script itself cannot complete. If a pre-release cleanup hook is available, pass it via `--cleanup-cmd` or `PRE_RELEASE_CLEANUP_CMD`.
+- Always use `./tool/do-release.sh` for releases (it `cd`s to the repo root itself, so it can be run from anywhere). It is the release entrypoint; do not hand-run the individual tag/release steps unless the script itself cannot complete. If a pre-release cleanup hook is available, pass it via `--cleanup-cmd` or `PRE_RELEASE_CLEANUP_CMD`.
 - The script accepts `--version`, `--title`, and optional `--merge-pr`, `--notes-file`, `--cleanup-cmd`, `--skip-cleanup`, and `--no-sync-develop`.
 
 0. **Pre-release check**: a working nightly build with `main` merged into `develop` must exist and pass CI before starting the release. Verify with `gh run list --branch develop --limit 1`.
@@ -132,8 +201,8 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - **macOS DB**: `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
 - **macOS logs**: `tail -f ~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application\ Support/net.bazzani.financecopilot/app.log`
 - **macOS OS log**: `log stream --predicate 'subsystem == "net.bazzani.financecopilot"' --level debug`
-- **Windows DB**: `C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\finance_copilot.db`
-- **Windows logs**: `Get-Content C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\app.log -Wait`
+- **Windows DB**: `%APPDATA%\net.bazzani.financecopilot\finance_copilot.db` (i.e. `C:\Users\<USER>\AppData\Roaming\net.bazzani.financecopilot\finance_copilot.db`)
+- **Windows logs**: `Get-Content $env:APPDATA\net.bazzani.financecopilot\app.log -Wait`
 - **Android logs**: `adb logcat -s flutter`
 - **Previous session log**: `previous_session.log` (same dir as app.log, for bug reports)
 - Never use `assets.db` in the repo root (stale copy, gitignored).
