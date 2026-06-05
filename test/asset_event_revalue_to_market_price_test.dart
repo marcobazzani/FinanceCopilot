@@ -50,6 +50,22 @@ void main() {
         );
   }
 
+  Future<int> createMarketPriced(String name, {String currency = 'EUR'}) async {
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.stockEtf,
+            instrumentType: const Value(InstrumentType.etf),
+            assetClass: const Value(AssetClass.equity),
+            valuationMethod: ValuationMethod.marketPrice,
+            intermediaryId: iid,
+            currency: Value(currency),
+          ),
+        );
+  }
+
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = AssetEventService(db);
@@ -349,9 +365,15 @@ void main() {
       expect(prices.first.closePrice, 120.0);
     });
 
-    test('8. existing investing.com prices on other dates are preserved', () async {
-      final assetId = await createAsset('Manual EUR');
-      // Pretend an investing.com price tick was already stored on day 3
+    test('8. adding a revalue to a market-priced asset flips it event-driven '
+        'and wipes prior provider rows', () async {
+      // Per the manual-revalue model, ANY asset that receives a revalue
+      // becomes event-driven (its value is now manually maintained), so its
+      // previously-fetched provider ticks are wiped — the price history is
+      // rebuilt purely from revalues. (Market-priced assets without revalues
+      // keep their feed untouched; that path is exercised elsewhere.)
+      final assetId = await createMarketPriced('Market EUR');
+      // Pretend a provider price tick was already stored on day 3
       await db
           .into(db.marketPrices)
           .insert(
@@ -371,7 +393,7 @@ void main() {
         quantity: 10.0,
         currency: 'EUR',
       );
-      // Revalue on day 5 -> writes row at day 5 only, day 3 untouched
+      // Revalue on day 5 -> asset flips event-driven, day-3 provider row wiped.
       await service.create(
         assetId: assetId,
         date: DateTime(2024, 1, 5),
@@ -381,11 +403,49 @@ void main() {
       );
 
       final prices = await pricesFor(assetId);
-      expect(prices.length, 2);
-      expect(prices[0].date, DateTime(2024, 1, 3));
-      expect(prices[0].closePrice, 99.0); // untouched investing.com row
-      expect(prices[1].date, DateTime(2024, 1, 5));
-      expect(prices[1].closePrice, 120.0);
+      expect(prices.length, 1);
+      expect(prices[0].date, DateTime(2024, 1, 5));
+      expect(prices[0].closePrice, 120.0);
+    });
+
+    test('8b. event-driven asset: a revalue wipes ALL prior market_prices and '
+        'rebuilds only from revalue events', () async {
+      // Event-driven assets have no feed; their whole price history derives
+      // from revalues. Any stray/stale price row (e.g. a leftover from an
+      // earlier revalue that was later deleted) must be wiped on resync.
+      final assetId = await createAsset('Manual EUR');
+      // A stale price row on a non-revalue date (should NOT survive).
+      await db
+          .into(db.marketPrices)
+          .insert(
+            MarketPricesCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 3),
+              closePrice: 99.0,
+              currency: 'EUR',
+            ),
+          );
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        currency: 'EUR',
+      );
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 5),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+
+      // Only the revalue-derived row remains; the day-3 stray is wiped.
+      final prices = await pricesFor(assetId);
+      expect(prices.length, 1);
+      expect(prices[0].date, DateTime(2024, 1, 5));
+      expect(prices[0].closePrice, 120.0);
     });
   });
 
@@ -569,6 +629,72 @@ void main() {
       );
       final prices = await pricesFor(assetId);
       expect(prices.first.closePrice, 120.0); // 1200 / 10, bondDivisor = 1
+    });
+  });
+
+  group('manual-revalue auto-toggle (valuationMethod)', () {
+    Future<ValuationMethod> methodOf(int id) async {
+      final a = await (db.select(db.assets)..where((x) => x.id.equals(id))).getSingle();
+      return a.valuationMethod;
+    }
+
+    test('adding a revalue flips a market-priced asset to eventDriven', () async {
+      final id = await createMarketPriced('Bond no feed');
+      expect(await methodOf(id), ValuationMethod.marketPrice); // default OFF
+      await service.create(
+        assetId: id,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        currency: 'EUR',
+      );
+      // Still OFF after a plain buy (no revalue yet).
+      expect(await methodOf(id), ValuationMethod.marketPrice);
+      await service.create(
+        assetId: id,
+        date: DateTime(2024, 1, 5),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+      expect(await methodOf(id), ValuationMethod.eventDriven); // ON
+    });
+
+    test('removing the last revalue flips eventDriven back to marketPrice and '
+        'wipes the revalue-derived prices', () async {
+      final id = await createMarketPriced('Bond no feed');
+      await service.create(
+        assetId: id,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000.0,
+        quantity: 10.0,
+        currency: 'EUR',
+      );
+      final revId = await service.create(
+        assetId: id,
+        date: DateTime(2024, 1, 5),
+        type: EventType.revalue,
+        amount: 1200.0,
+        currency: 'EUR',
+      );
+      expect(await methodOf(id), ValuationMethod.eventDriven);
+      expect((await pricesFor(id)).length, 1);
+
+      await service.delete(revId);
+      expect(await methodOf(id), ValuationMethod.marketPrice); // OFF again
+      expect(await pricesFor(id), isEmpty); // revalue-derived price wiped
+    });
+
+    test('with multiple revalues, removing one keeps eventDriven ON', () async {
+      final id = await createMarketPriced('Bond no feed');
+      await service.create(assetId: id, date: DateTime(2024, 1, 1), type: EventType.buy, amount: 1000, quantity: 10, currency: 'EUR');
+      final r1 = await service.create(assetId: id, date: DateTime(2024, 1, 5), type: EventType.revalue, amount: 1200, currency: 'EUR');
+      await service.create(assetId: id, date: DateTime(2024, 2, 5), type: EventType.revalue, amount: 1300, currency: 'EUR');
+      expect(await methodOf(id), ValuationMethod.eventDriven);
+      await service.delete(r1);
+      expect(await methodOf(id), ValuationMethod.eventDriven); // still ON (one revalue left)
     });
   });
 }

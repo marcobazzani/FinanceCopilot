@@ -174,6 +174,9 @@ class AssetEventService {
     int assetId, {
     List<DateTime> orphanDates = const [],
   }) async {
+    final assetRow = await (_db.select(_db.assets)..where((a) => a.id.equals(assetId))).getSingleOrNull();
+    if (assetRow == null) return;
+
     final revalueRows = await _db
         .customSelect(
           "SELECT value_date FROM asset_events "
@@ -183,25 +186,66 @@ class AssetEventService {
         .get();
     final revalueDates = revalueRows.map((r) => DateTime.fromMillisecondsSinceEpoch(r.read<int>('value_date') * 1000)).toList();
 
-    // Step 1: delete market_prices rows at any current-revalue date AND any
-    // orphan date passed in by the caller. Provider rows on other
-    // dates are preserved.
-    final datesToClear = <DateTime>{...revalueDates, ...orphanDates};
-    if (datesToClear.isNotEmpty) {
-      final placeholders = datesToClear.map((_) => '?').join(',');
-      await _db.customStatement(
-        'DELETE FROM market_prices WHERE asset_id = ? AND date IN ($placeholders)',
-        [
-          assetId,
-          ...datesToClear.map((d) => d.millisecondsSinceEpoch ~/ 1000),
-        ],
+    // Auto-toggle the manual-revalue flag (valuationMethod):
+    //  - the asset has ≥1 revalue and isn't already event-driven → flip ON
+    //    (event-driven = "manual revalue", decoupled from asset/instrument
+    //    type, so e.g. a bond with no price feed can be revalued manually).
+    //  - the last revalue was removed (0 revalues) and the asset is
+    //    event-driven → flip back OFF (market-priced).
+    // Default for new assets is market-price, so the flag starts OFF.
+    var valuation = assetRow.valuationMethod;
+    var flippedOff = false;
+    if (revalueDates.isNotEmpty && valuation != ValuationMethod.eventDriven) {
+      valuation = ValuationMethod.eventDriven;
+      await (_db.update(_db.assets)..where((a) => a.id.equals(assetId))).write(
+        const AssetsCompanion(valuationMethod: Value(ValuationMethod.eventDriven)),
       );
+      _log.info('resyncRevalue: assetId=$assetId now has revalues → valuationMethod=eventDriven');
+    } else if (revalueDates.isEmpty && valuation == ValuationMethod.eventDriven) {
+      valuation = ValuationMethod.marketPrice;
+      flippedOff = true;
+      await (_db.update(_db.assets)..where((a) => a.id.equals(assetId))).write(
+        const AssetsCompanion(valuationMethod: Value(ValuationMethod.marketPrice)),
+      );
+      _log.info('resyncRevalue: assetId=$assetId has no revalues left → valuationMethod=marketPrice');
+    }
+
+    // Step 1: clear stale market_prices.
+    //
+    // Event-driven assets (pensions, manual holdings) have NO external price
+    // feed — their entire price history is derived from revalue events. So
+    // every time we resync we wipe ALL of the asset's market_prices and
+    // rebuild from the current revalue set. This guarantees the price history
+    // always reflects exactly the revalues in the asset's history (a deleted
+    // or edited revalue can't leave a stale price row behind).
+    //
+    // Market-priced assets DO have an external feed, so we only clear rows at
+    // the current revalue dates (plus any orphan dates the caller passed when
+    // a revalue moved/changed), preserving provider ticks on other dates.
+    final isEventDriven = valuation == ValuationMethod.eventDriven;
+    if (isEventDriven || flippedOff) {
+      // Event-driven, or just flipped back to market-price because its last
+      // revalue was removed: in both cases every existing price row was
+      // revalue-derived, so wipe them all. (When flippedOff there are no
+      // revalues left to rebuild from — the asset returns to a clean slate
+      // for the market feed to repopulate.)
+      await _db.customStatement('DELETE FROM market_prices WHERE asset_id = ?', [assetId]);
+    } else {
+      final datesToClear = <DateTime>{...revalueDates, ...orphanDates};
+      if (datesToClear.isNotEmpty) {
+        final placeholders = datesToClear.map((_) => '?').join(',');
+        await _db.customStatement(
+          'DELETE FROM market_prices WHERE asset_id = ? AND date IN ($placeholders)',
+          [
+            assetId,
+            ...datesToClear.map((d) => d.millisecondsSinceEpoch ~/ 1000),
+          ],
+        );
+      }
     }
 
     if (revalueDates.isEmpty) return;
 
-    final assetRow = await (_db.select(_db.assets)..where((a) => a.id.equals(assetId))).getSingleOrNull();
-    if (assetRow == null) return;
     final currency = assetRow.currency;
     // A revalue carries a TOTAL position value (currency), independent of the
     // bond percent-of-face quoting convention. Consumers compute market value

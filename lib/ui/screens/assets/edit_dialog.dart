@@ -109,7 +109,9 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
       // dialog. This keeps the locked path byte-identical to the original
       // behavior and lets the pinning test stay untouched.
       assetType: _unlocked ? Value(_assetType) : const Value.absent(),
-      valuationMethod: _unlocked ? Value(_valuationMethod) : const Value.absent(),
+      // valuationMethod is auto-managed by revalue add/remove — never written
+      // from the edit dialog (it's shown read-only).
+      valuationMethod: const Value.absent(),
       intermediaryId: _unlocked ? Value(_intermediaryId) : const Value.absent(),
       currency: _unlocked
           ? Value(_currencyCtrl.text.trim().toUpperCase().isEmpty ? widget.asset.currency : _currencyCtrl.text.trim().toUpperCase())
@@ -311,20 +313,19 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
         },
       ),
       const SizedBox(height: 12),
-      DropdownButtonFormField<ValuationMethod>(
-        initialValue: _valuationMethod,
-        decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
-        items: ValuationMethod.values
-            .map(
-              (m) => DropdownMenuItem(
-                value: m,
-                child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13)),
-              ),
-            )
-            .toList(),
-        onChanged: (v) {
-          if (v != null) setState(() => _valuationMethod = v);
-        },
+      // Valuation method is auto-managed (read-only): it flips to
+      // "Event-driven (manual)" when the asset has a revalue and back to
+      // "Market price" when the last revalue is removed. Shown for clarity,
+      // not editable.
+      InputDecorator(
+        decoration: InputDecoration(
+          labelText: s.valuationMethodFieldLabel,
+          isDense: true,
+          helperText: s.valuationMethodAutoHelp,
+          helperMaxLines: 2,
+          suffixIcon: const Icon(Icons.lock_outline, size: 16),
+        ),
+        child: Text(s.valuationMethodLabel(_valuationMethod), style: const TextStyle(fontSize: 13)),
       ),
       const SizedBox(height: 12),
       if (intermediaries.isNotEmpty)

@@ -35,7 +35,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           intermediaryId: intermediaryId,
           instrumentType: _instrumentType,
           assetClass: _assetClass,
-          valuationMethod: _unlocked && _valuationMethodOverride != null ? _valuationMethodOverride! : ValuationMethod.marketPrice,
+          valuationMethod: ValuationMethod.marketPrice,
           assetType: _unlocked ? _assetType : AssetType.stockEtf,
           ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
           taxRate: _unlocked
@@ -74,7 +74,6 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   // (geographic / sector / asset class breakdown) is edited inline on the
   // Composition panel of the asset detail screen.
   AssetType _assetType = AssetType.stockEtf;
-  ValuationMethod? _valuationMethodOverride;
   final _currencyCtrl = TextEditingController();
   final _terCtrl = TextEditingController();
   final _taxRateCtrl = TextEditingController();
@@ -98,7 +97,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     onPressed: () => setState(() => _unlocked = !_unlocked),
   );
 
-  List<Widget> _buildAdvancedFields(AppStrings s, {required bool showValuation}) {
+  List<Widget> _buildAdvancedFields(AppStrings s) {
     return [
       const Divider(height: 24),
       DropdownButtonFormField<AssetType>(
@@ -116,24 +115,8 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           if (v != null) setState(() => _assetType = v);
         },
       ),
-      if (showValuation) ...[
-        const SizedBox(height: 12),
-        DropdownButtonFormField<ValuationMethod>(
-          initialValue: _valuationMethodOverride,
-          decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
-          items: ValuationMethod.values
-              .map(
-                (m) => DropdownMenuItem(
-                  value: m,
-                  child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13)),
-                ),
-              )
-              .toList(),
-          onChanged: (v) {
-            if (v != null) setState(() => _valuationMethodOverride = v);
-          },
-        ),
-      ],
+      // Valuation method is auto-managed by revalue add/remove (new assets
+      // start market-priced) — no manual control here.
       const SizedBox(height: 12),
       TextField(
         controller: _currencyCtrl,
@@ -308,7 +291,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
             ),
             const SizedBox(height: 16),
             _buildIntermediaryPicker(s),
-            if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
+            if (_unlocked) ..._buildAdvancedFields(s),
           ],
         ),
       ),
@@ -533,7 +516,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
             ),
             const SizedBox(height: 16),
             _buildIntermediaryPicker(s),
-            if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
+            if (_unlocked) ..._buildAdvancedFields(s),
           ],
         ),
       ),
