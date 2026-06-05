@@ -182,15 +182,17 @@ class PdfTableReconstructor {
     }
 
     final dataLineSet = dataLineIndices.toSet();
-    final mergedRows = _mergeWraps(
+    final merge = _mergeWraps(
       lines: lines,
       lineCells: lineCells,
       dataLineSet: dataLineSet,
       dateAnchor: dateAnchor,
       amountAnchor: amountAnchor,
       balanceAnchor: balanceAnchor,
+      dateColIdx: dateColIdx,
       lineHeight: lineHeight,
     );
+    final mergedRows = merge.rows;
 
     if (mergedRows.isEmpty) {
       throw const PdfTableNotDetectedException(
@@ -198,10 +200,22 @@ class PdfTableReconstructor {
       );
     }
 
-    final dateOk = mergedRows.where((r) => _cellHasDate(_safeCell(r, dateColIdx))).length;
-    final amtOk = mergedRows.where((r) => _tryAnyLocaleAmount(_safeCell(r, amountColIdx)) != null).length;
-    final dateRatio = dateOk / mergedRows.length;
-    final amtRatio = amtOk / mergedRows.length;
+    // Snapshot rows (date-less, amount/balance-only — e.g. opening/closing
+    // position lines) are emitted so their data survives, but by design they
+    // have no date and their value sits in the balance column, not the
+    // amount column. Validate date AND amount support over the non-snapshot
+    // rows only; snapshot rows were already gated on having an anchored
+    // amount/balance when emitted.
+    final datedRows = [
+      for (var k = 0; k < mergedRows.length; k++)
+        if (!merge.snapshotRowIndices.contains(k)) mergedRows[k],
+    ];
+    final denom = datedRows.isEmpty ? mergedRows.length : datedRows.length;
+    final validatedRows = datedRows.isEmpty ? mergedRows : datedRows;
+    final dateOk = validatedRows.where((r) => _cellHasDate(_safeCell(r, dateColIdx))).length;
+    final amtOk = validatedRows.where((r) => _tryAnyLocaleAmount(_safeCell(r, amountColIdx)) != null).length;
+    final dateRatio = dateOk / denom;
+    final amtRatio = amtOk / denom;
     if (dateRatio < _rowValidationSupport || amtRatio < _rowValidationSupport) {
       throw const PdfTableNotDetectedException(
         'Per-row validation failed: too many rows lack a parseable date or amount.',
@@ -741,19 +755,74 @@ class PdfTableReconstructor {
   // Step 7: merge wrapped continuation lines into data rows
   // ────────────────────────────────────────────────────────
 
-  static List<List<String>> _mergeWraps({
+  static _MergeResult _mergeWraps({
     required List<_Line> lines,
     required List<List<String>> lineCells,
     required Set<int> dataLineSet,
     required _ColAnchor dateAnchor,
     required _ColAnchor amountAnchor,
     required _ColAnchor? balanceAnchor,
+    required int dateColIdx,
     required double lineHeight,
   }) {
+    // Vertical span of the data block. A snapshot row may sit just ABOVE the
+    // first data line (opening position) or just BELOW the last (closing
+    // position), so the eligibility window extends a couple of line-heights
+    // past the block on each end — but never as far as page chrome/footers.
+    final firstData = dataLineSet.isEmpty ? 0 : dataLineSet.reduce((a, b) => a < b ? a : b);
+    final lastData = dataLineSet.isEmpty ? 0 : dataLineSet.reduce((a, b) => a > b ? a : b);
+    // Lines are sorted top-to-bottom (descending Y), so the first data line
+    // has the highest Y and the last the lowest.
+    final blockTopY = lines[firstData].medianY;
+    final blockBotY = lines[lastData].medianY;
+    // Use the median Y-pitch between consecutive lines in the block (not the
+    // glyph height, which is much smaller) so the snapshot window reaches the
+    // opening line just above and the closing line a couple of subtotals
+    // below the data block.
+    final pitches = <double>[];
+    for (var k = firstData; k < lastData; k++) {
+      final gap = lines[k].medianY - lines[k + 1].medianY;
+      if (gap > 0) pitches.add(gap);
+    }
+    pitches.sort();
+    final pitch = pitches.isEmpty ? lineHeight : pitches[pitches.length ~/ 2];
+    final margin = pitch * 4.0;
+
+    bool inSnapshotWindow(int idx) {
+      final y = lines[idx].medianY;
+      return y <= blockTopY + margin && y >= blockBotY - margin && lines[idx].page == lines[firstData].page;
+    }
+
+    final dateColIdxLocal = dateColIdx;
+
+    // A snapshot row carries a parseable amount in any money cell (any
+    // assigned cell other than the date column). We check the already
+    // assigned cells — which use full column boundaries — so a right-aligned
+    // value of any width is detected regardless of its x-center, and we don't
+    // depend on which specific money column (amount vs balance vs a
+    // header-augmented Saldo) it landed in.
+    bool lineHasAnchoredAmount(int idx) {
+      final cells = lineCells[idx];
+      for (var c = 0; c < cells.length; c++) {
+        if (c == dateColIdxLocal) continue;
+        if (_tryAnyLocaleAmount(cells[c]) != null) return true;
+      }
+      return false;
+    }
+
     final rows = <List<String>>[];
+    final snapshotIndices = <int>{};
     var i = 0;
     while (i < lines.length) {
       if (!dataLineSet.contains(i)) {
+        // A date-less line near the table that carries an anchored
+        // amount/balance is a position snapshot (e.g. "POSIZIONE
+        // INDIVIDUALE 01/01 47.984,24"). Emit it as its own row rather than
+        // dropping it; the wizard's split/filter controls can shape it.
+        if (inSnapshotWindow(i) && lineHasAnchoredAmount(i)) {
+          snapshotIndices.add(rows.length);
+          rows.add(List<String>.from(lineCells[i]));
+        }
         i++;
         continue;
       }
@@ -792,7 +861,7 @@ class PdfTableReconstructor {
       rows.add(cells);
       i = j;
     }
-    return rows;
+    return _MergeResult(rows: rows, snapshotRowIndices: snapshotIndices);
   }
 
   // ────────────────────────────────────────────────────────

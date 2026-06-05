@@ -57,3 +57,15 @@ class _Cluster1D {
     required this.count,
   });
 }
+
+/// Output of [PdfTableReconstructor._mergeWraps]: the assembled rows plus
+/// the indices of "snapshot" rows — date-less lines that carry only an
+/// anchored amount/balance (e.g. a pension statement's "POSIZIONE
+/// INDIVIDUALE" opening/closing position). They are emitted as their own
+/// rows so the data isn't lost, but excluded from the per-row date
+/// validation since they legitimately have no date.
+class _MergeResult {
+  final List<List<String>> rows;
+  final Set<int> snapshotRowIndices;
+  const _MergeResult({required this.rows, required this.snapshotRowIndices});
+}
