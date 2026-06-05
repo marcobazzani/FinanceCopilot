@@ -267,6 +267,41 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                 ),
               ),
             ],
+            // Optional amount source for Revalue rows. Appears only when at
+            // least one Type value is bucketed as Revalue. Pension statements
+            // keep the position-snapshot value (Saldo) in a different column
+            // than per-row contributions (Entrate); a Revalue row's amount is
+            // that snapshot. Empty = use the primary amount mapping.
+            if (_revalueValues.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(s.revalueAmountSource, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: (_revalueAmountColumn != null && columns.contains(_revalueAmountColumn)) ? _revalueAmountColumn : null,
+                  decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                  hint: Text(s.revalueAmountSourceHint, style: const TextStyle(fontSize: 12)),
+                  items: [
+                    DropdownMenuItem<String>(value: null, child: Text(s.revalueAmountSourceNone, style: const TextStyle(fontSize: 12))),
+                    ...columns.map(
+                      (c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => _setState(() => _revalueAmountColumn = v),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 4, top: 2),
+                child: Text(
+                  s.revalueAmountSourceHelp,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ],
           ],
         ] else ...[
           Padding(

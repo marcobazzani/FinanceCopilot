@@ -160,7 +160,6 @@ List<String> _listSheetsIsolate(List<int> bytes) {
 /// layer maps each to a localized message.
 Future<FilePreview> _parsePdfMain(
   Uint8List bytes, {
-  required int skipRows,
   required bool noHeader,
 }) async {
   pdfrx.PdfDocument document;
@@ -198,9 +197,11 @@ Future<FilePreview> _parsePdfMain(
     var columns = result.columns;
     var dataRows = result.rows;
 
-    if (skipRows > 0 && skipRows < dataRows.length) {
-      dataRows = dataRows.sublist(skipRows);
-    }
+    // NOTE: `skipRows` is intentionally NOT applied to PDFs. It is a raw-line
+    // concept for CSV/XLSX (skip lines before the header); for PDFs the table
+    // reconstructor already emits clean header + data rows, so dropping the
+    // first N reconstructed rows would just silently lose data. Row filters
+    // are the correct tool for excluding PDF rows.
     if (noHeader) {
       columns = List<String>.generate(columns.length, (i) => 'Column ${i + 1}');
     }
@@ -256,7 +257,7 @@ class FileParserService {
         });
       case 'pdf':
         final bytes = await File(filePath).readAsBytes();
-        result = await _parsePdfMain(bytes, skipRows: skipRows, noHeader: noHeader);
+        result = await _parsePdfMain(bytes, noHeader: noHeader);
       default:
         throw UnsupportedError('Unsupported file format: .$ext');
     }
@@ -345,7 +346,7 @@ class FileParserService {
           });
         case 'pdf':
           final bytes = await File(preview.filePath!).readAsBytes();
-          return _parsePdfMain(bytes, skipRows: preview.skipRows, noHeader: preview.noHeader);
+          return _parsePdfMain(bytes, noHeader: preview.noHeader);
       }
     } else if (preview.clipboardText != null) {
       return compute(_parseCsvIsolate, <String, dynamic>{

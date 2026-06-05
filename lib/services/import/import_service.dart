@@ -860,13 +860,18 @@ class ImportService {
     Set<String>? contributeValues,
   }) {
     final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
+    // Normalize the user's tagged values the SAME way as the cell value so a
+    // tag containing spaces (e.g. "POSIZIONE INDIVIDUALE") matches the
+    // space→underscore-normalized cell. Without this, any multi-word tag
+    // would silently never match and fall through to "Unknown event type".
+    String norm(String v) => v.trim().toUpperCase().replaceAll(' ', '_');
     // Custom user-defined mappings take priority — wizard chip tags win
     // over built-in aliases so users can override surprising defaults.
-    if (feeValues != null && feeValues.any((v) => v.toUpperCase() == normalized)) return null;
-    if (buyValues != null && buyValues.any((v) => v.toUpperCase() == normalized)) return EventType.buy;
-    if (sellValues != null && sellValues.any((v) => v.toUpperCase() == normalized)) return EventType.sell;
-    if (revalueValues != null && revalueValues.any((v) => v.toUpperCase() == normalized)) return EventType.revalue;
-    if (contributeValues != null && contributeValues.any((v) => v.toUpperCase() == normalized)) return EventType.buy;
+    if (feeValues != null && feeValues.any((v) => norm(v) == normalized)) return null;
+    if (buyValues != null && buyValues.any((v) => norm(v) == normalized)) return EventType.buy;
+    if (sellValues != null && sellValues.any((v) => norm(v) == normalized)) return EventType.sell;
+    if (revalueValues != null && revalueValues.any((v) => norm(v) == normalized)) return EventType.revalue;
+    if (contributeValues != null && contributeValues.any((v) => norm(v) == normalized)) return EventType.buy;
     // Direct enum match
     final direct = EventType.values.where((e) => e.name.toUpperCase() == normalized).firstOrNull;
     if (direct != null) return direct;

@@ -12,6 +12,8 @@ import 'dart:convert';
 import '../../../database/database.dart';
 import '../../../database/tables.dart';
 import 'package:finance_copilot/services/import/import_service.dart';
+import 'package:finance_copilot/services/import/import_config_service.dart';
+import 'package:finance_copilot/services/import/preview_transforms.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import 'package:finance_copilot/services/market/isin_lookup_service.dart';
 import 'package:finance_copilot/services/import/pdf_exceptions.dart';
@@ -24,6 +26,7 @@ import '../../widgets/isin_url_paste_recovery.dart';
 
 part 'column_mapper_step.dart';
 part 'mapping_content.dart';
+part 'refine_panel.dart';
 part 'mode_sections.dart';
 part 'amount_formula.dart';
 part 'confirm_step.dart';
@@ -89,6 +92,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// instead of the full column mapper. Auto-enabled when a saved config is applied successfully.
   bool _isQuickMode = false;
   FilePreview? _preview;
+
+  /// Untransformed parser output. [_preview] is derived from this by applying
+  /// [_transforms]. Kept so toggling/editing transforms doesn't require a
+  /// file re-parse.
+  FilePreview? _rawPreview;
   String? _filePath;
   String? _selectedSheet;
   int _skipRows = 0;
@@ -121,6 +129,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   bool _noHeader = false;
   bool _sameSettlementDate = false; // when true, valueDate = date (operation date)
   String? _balanceDiffColumn; // when set, amount = balance[i] - balance[i-1]
+
+  /// Post-parse row/column transforms (filters + column splits) chosen in the
+  /// "Refine rows & columns" panel. Applied to the raw parser output to
+  /// derive [_preview]. Works for any source (CSV/XLSX/PDF/clipboard).
+  PreviewTransforms _transforms = const PreviewTransforms();
 
   // Debounce timer for skip-rows auto re-parse
   Timer? _skipRowsTimer;
@@ -218,6 +231,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // in lib/services/import_service.dart.
   final Set<String> _revalueValues = {};
 
+  /// Optional column to source the amount from for Revalue rows only.
+  /// Pension statements keep the position-snapshot value in a different
+  /// column (e.g. Saldo) than per-row contributions (e.g. Entrate). When a
+  /// Revalue type bucket exists and this is set, revalue rows read their
+  /// amount from here. `null` = use the primary amount mapping for all rows.
+  String? _revalueAmountColumn;
+
   // Asset-event single-asset mode: when set, every parsed row routes to
   // this pre-existing asset (pension funds, manual holdings) instead of
   // being grouped by ISIN. Toggled by a SegmentedButton in the wizard
@@ -235,6 +255,31 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String? _defaultExchange; // e.g. "Milano" -- applies to all ISINs
   bool _lookingUpIsins = false;
 
+  /// When true, the preview shows ALL parsed rows in one scrollable table
+  /// instead of the first-5 / last-5 split view. The full row set is loaded
+  /// lazily ([_showAllRows]) only when the user toggles this on — never
+  /// eagerly, so large CSV/XLSX don't pull every row into memory up front.
+  bool _showAllPreviewRows = false;
+
+  /// Lazily-loaded full row set for the "Show all" preview. Null until the
+  /// user requests it; loaded via [_loadCompletePreview].
+  List<Map<String, String>>? _showAllRows;
+  bool _loadingShowAll = false;
+
+  /// Complete (transformed) row set used to drive the preview WHEN transforms
+  /// are active. Row filters/splits must be evaluated over every row — not the
+  /// capped first-5/last-5 sample — otherwise middle rows (e.g. Marzo/Aprile
+  /// in a pension statement) silently vanish from the preview and the kept-row
+  /// count is wrong. Loaded once per (transform, locale) and reused.
+  List<Map<String, String>>? _transformedFullRows;
+  bool _loadingTransformedFull = false;
+
+  /// True when the loaded source is a PDF. PDFs go through the table
+  /// reconstructor, so "skip rows" has no useful meaning (it would just drop
+  /// the first N reconstructed rows, not skip pre-header lines) — the control
+  /// is hidden for PDFs; use row filters instead.
+  bool get _isPdf => (_filePath ?? '').toLowerCase().endsWith('.pdf');
+
   // ignore: invalid_use_of_protected_member
   void _setState(VoidCallback fn) {
     if (!mounted) return;
@@ -247,9 +292,137 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _fullPreviewLocale = null;
   }
 
+  /// Apply [_transforms] to a parser-produced [FilePreview], returning a new
+  /// preview with derived columns and filtered rows. Shared by the capped
+  /// preview and the full-row load so the import sees the same shape the
+  /// user previewed.
+  FilePreview _applyTransforms(FilePreview raw) {
+    if (_transforms.isEmpty) return raw;
+    final cols = _transforms.transformColumns(raw.columns);
+    final rows = _transforms.transformRows(raw.rows);
+    // Row filters change the effective row count. We can only state the exact
+    // filtered total when we hold the COMPLETE row set (raw not capped);
+    // filtering a capped sample (first5+last5) would understate the real
+    // total. When capped, keep the raw total so the header isn't misleading —
+    // the precise filtered count is shown once the full set is loaded
+    // ("Show all") or computed at import.
+    final isComplete = raw.rows.length >= raw.totalRows;
+    final int effectiveTotal;
+    if (_transforms.filters.isEmpty) {
+      effectiveTotal = raw.totalRows;
+    } else if (isComplete) {
+      effectiveTotal = rows.length;
+    } else {
+      effectiveTotal = raw.totalRows;
+    }
+    return FilePreview(
+      columns: cols,
+      rows: rows,
+      totalRows: effectiveTotal,
+      filePath: raw.filePath,
+      clipboardText: raw.clipboardText,
+      skipRows: raw.skipRows,
+      noHeader: raw.noHeader,
+      sheetName: raw.sheetName,
+      numberLocale: raw.numberLocale,
+    );
+  }
+
+  /// Re-derive [_preview] from [_rawPreview] using the current transforms.
+  /// Call after any transform edit. Re-runs auto-map so newly created split
+  /// columns can be picked up.
+  void _rebuildPreviewFromTransforms() {
+    final raw = _rawPreview;
+    if (raw == null) return;
+    setState(() {
+      _preview = _applyTransforms(raw);
+      _clearFullPreviewCache();
+      _fullIsinSummary = null;
+      _fullUniqueValues.clear();
+      // The previously-loaded full row sets are stale after a transform change.
+      _showAllRows = null;
+      _transformedFullRows = null;
+      _autoMap(_preview!.columns);
+      _reconcileTypeTags();
+    });
+    if (_savedConfig != null) _applySavedConfig(restoreTransforms: false);
+    // Load the complete transformed set so the preview shows every affected
+    // row (filters/splits evaluated over all rows, not the capped sample).
+    _ensureTransformedFullRows();
+    // If the user had "Show all" open, refresh it against the new transforms.
+    if (_showAllPreviewRows) {
+      _loadCompletePreview().then((full) {
+        if (mounted) _setState(() => _showAllRows = full.rows);
+      });
+    }
+  }
+
+  /// Drop Buy/Sell/Revalue/Fee type tags that reference a value no longer
+  /// present in the (post-transform) Type column. Column splits/filters can
+  /// rewrite the Type column's text — e.g. "POSIZIONE INDIVIDUALE 01/01"
+  /// becomes "POSIZIONE INDIVIDUALE" — which would otherwise leave the old
+  /// tag orphaned and the new value silently untagged (→ "Unknown event
+  /// type" at import). Pruning forces the value back into the "needs
+  /// tagging" state so the wizard's gate catches it and the user re-tags.
+  void _reconcileTypeTags() {
+    final typeCol = _mappings['type'];
+    if (typeCol == null || _preview == null) return;
+    if (!_preview!.columns.contains(typeCol)) {
+      // The previously-mapped type column no longer exists (e.g. renamed by
+      // a split); clear all tags — they can't apply.
+      _buyValues.clear();
+      _sellValues.clear();
+      _revalueValues.clear();
+      _feeValues.clear();
+      return;
+    }
+    // Prune against the FULL value set when it's loaded; otherwise fall back
+    // to the capped preview. On a large file a tag's value may live beyond
+    // the preview sample, so prefer the full set to avoid dropping a tag that
+    // is actually still present.
+    final current = (_fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol)).toSet();
+    _buyValues.removeWhere((v) => !current.contains(v));
+    _sellValues.removeWhere((v) => !current.contains(v));
+    _revalueValues.removeWhere((v) => !current.contains(v));
+    _feeValues.removeWhere((v) => !current.contains(v));
+  }
+
+  /// Toggle the preview's "Show all rows" mode. Turning it ON lazily loads the
+  /// full (transformed) row set via [_loadCompletePreview] — never eagerly, so
+  /// big CSV/XLSX don't materialise every row until the user asks. Turning it
+  /// OFF drops the loaded rows so they can be GC'd.
+  Future<void> _toggleShowAllPreview() async {
+    if (_showAllPreviewRows) {
+      _setState(() {
+        _showAllPreviewRows = false;
+        _showAllRows = null;
+      });
+      return;
+    }
+    _setState(() => _loadingShowAll = true);
+    try {
+      final full = await _loadCompletePreview();
+      if (!mounted) return;
+      _setState(() {
+        _showAllRows = full.rows;
+        _showAllPreviewRows = true;
+        _loadingShowAll = false;
+      });
+    } catch (e) {
+      _log.warning('_toggleShowAllPreview: $e');
+      if (mounted) _setState(() => _loadingShowAll = false);
+    }
+  }
+
   Future<FilePreview> _loadCompletePreview() {
     final preview = _preview!;
-    if (preview.rows.length >= preview.totalRows) return Future.value(preview);
+    final raw = _rawPreview ?? preview;
+    // When the parser already returned every row (small file), the capped
+    // preview IS complete — but only trust that on the RAW preview, since
+    // filters make _preview.totalRows the post-filter count.
+    if (raw.rows.length >= raw.totalRows) {
+      return Future.value(_transforms.isEmpty ? preview : _applyTransforms(raw));
+    }
 
     final locale = _effectiveNumberLocale();
     if (_fullPreviewCache != null && _fullPreviewLocale == locale) {
@@ -261,16 +434,46 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     final importer = ref.read(importServiceProvider);
     _fullPreviewLocale = locale;
+    // getFullRows re-parses the source, so it returns the RAW (untransformed)
+    // rows. Apply the same transforms the capped preview used so the import
+    // operates on exactly what the user saw.
     _fullPreviewFuture = importer
-        .getFullRows(preview, numberLocale: locale)
+        .getFullRows(raw, numberLocale: locale)
         .then((full) {
-          _fullPreviewCache = full;
-          return full;
+          final transformed = _applyTransforms(full);
+          _fullPreviewCache = transformed;
+          return transformed;
         })
         .whenComplete(() {
           _fullPreviewFuture = null;
         });
     return _fullPreviewFuture!;
+  }
+
+  /// Ensure [_transformedFullRows] is populated when transforms are active and
+  /// the parser only returned a capped preview. Loads the complete transformed
+  /// set once so the preview reflects EVERY row the filters/splits act on (no
+  /// missing middle rows). No-op when transforms are empty, the raw set is
+  /// already complete, or a load is already running/done.
+  void _ensureTransformedFullRows() {
+    final raw = _rawPreview;
+    if (raw == null) return;
+    if (_transforms.isEmpty) return;
+    if (raw.rows.length >= raw.totalRows) return; // not capped — preview is complete
+    if (_transformedFullRows != null || _loadingTransformedFull) return;
+    _loadingTransformedFull = true;
+    _loadCompletePreview()
+        .then((full) {
+          if (!mounted) return;
+          _setState(() {
+            _transformedFullRows = full.rows;
+            _loadingTransformedFull = false;
+          });
+        })
+        .catchError((Object e) {
+          _log.warning('_ensureTransformedFullRows: $e');
+          if (mounted) _setState(() => _loadingTransformedFull = false);
+        });
   }
 
   IsinLookupService? _maybeIsinLookupService() {
@@ -290,6 +493,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
     // Integration test injection: auto-load a pre-parsed preview
     if (widget.testPreview != null) {
+      _rawPreview = widget.testPreview;
       _preview = widget.testPreview;
       _autoMap(widget.testPreview!.columns);
       // Mirror production _loadFile: apply any saved config for the
@@ -402,14 +606,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
       _log.info('_loadFile: parsed OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
-        _preview = preview;
+        _rawPreview = preview;
+        _preview = _applyTransforms(preview);
         _clearFullPreviewCache();
         _fullIsinSummary = null;
         _parsing = false;
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
-        _autoMap(preview.columns);
+        _autoMap(_preview!.columns);
       });
       // Load saved config if we have a preselected account
       await _loadSavedConfig(preview.columns);
@@ -488,7 +693,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       tryMap('price', ['price', 'prezzo', 'corso', 'prezzo unitario', 'unit price']);
       tryMap('currency', ['currency', 'valuta', 'divisa', 'ccy']);
       tryMap('exchangeRate', ['exchange rate', 'cambio', 'tasso di cambio', 'fx rate', 'tasso']);
-      tryMap('amount', ['amount', 'controvalore', 'equivalent value', 'importo', 'total']);
+      tryMap('amount', ['amount', 'controvalore', 'equivalent value', 'importo', 'total', 'entrate', 'uscite']);
       tryMap('commission', ['fee', 'commission', 'commissione', 'commissioni', 'spese']);
     }
   }
@@ -512,7 +717,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
       _log.info('_reparseFile: OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
       setState(() {
-        _preview = preview;
+        _rawPreview = preview;
+        _preview = _applyTransforms(preview);
         _clearFullPreviewCache();
         _fullIsinSummary = null;
         _error = null;
@@ -522,7 +728,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
-        _autoMap(preview.columns);
+        _autoMap(_preview!.columns);
       });
 
       // Re-apply saved config on top of auto-map
@@ -557,7 +763,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         return;
       }
       setState(() {
-        _preview = preview;
+        _rawPreview = preview;
+        _preview = _applyTransforms(preview);
         _clearFullPreviewCache();
         _fullIsinSummary = null;
         _parsing = false;
@@ -567,7 +774,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
-        _autoMap(preview.columns);
+        _autoMap(_preview!.columns);
       });
     } catch (e) {
       setState(() {
@@ -577,15 +784,30 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     }
   }
 
-  /// Load saved import config for the preselected account and cache it.
+  /// Load saved import config for the current scope (account / intermediary /
+  /// single asset / income) and cache it.
   Future<void> _loadSavedConfig(List<String> fileColumns) async {
-    final accountId = widget.preselectedAccountId ?? _targetId;
-    if (accountId == null) return;
-
-    final config = await ref.read(importConfigServiceProvider).getByAccount(accountId);
+    final svc = ref.read(importConfigServiceProvider);
+    final ImportConfig? config;
+    switch (_target) {
+      case ImportTarget.transaction:
+        final accountId = widget.preselectedAccountId ?? _targetId;
+        if (accountId == null) return;
+        config = await svc.getByAccount(accountId);
+      case ImportTarget.assetEvent:
+        if (_assetEventMode == 'singleAsset') {
+          if (_singleAssetTargetId == null) return;
+          config = await svc.getByAsset(_singleAssetTargetId!);
+        } else {
+          if (_selectedIntermediaryId == null) return;
+          config = await svc.getByIntermediary(_selectedIntermediaryId!);
+        }
+      case ImportTarget.income:
+        config = await svc.getIncome();
+    }
     if (config == null) return;
 
-    _log.info('_loadSavedConfig: found config for account $accountId');
+    _log.info('_loadSavedConfig: found ${config.scope} config');
     _savedConfig = config;
     _selectedNumberLocale = config.numberLocale;
 
@@ -607,6 +829,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _applySavedConfig();
     }
 
+    // With transforms restored, ensure the preview reflects every row the
+    // filters/splits act on (load the complete transformed set if capped).
+    _ensureTransformedFullRows();
+
     // Auto-enable quick mode if the saved config covers all required fields.
     // The user can still tap "Let me edit" to drop into the full mapper.
     if (_canProceedToConfirm()) {
@@ -615,9 +841,57 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   /// Apply cached saved config mappings/formula/hash to current preview columns.
-  void _applySavedConfig() {
+  ///
+  /// [restoreTransforms] controls whether the saved row-filters/column-splits
+  /// are re-adopted. True on initial load (the saved transforms are
+  /// authoritative and must shape the preview before tags/mappings match).
+  /// False when re-invoked from [_rebuildPreviewFromTransforms] after a live
+  /// refine edit, so the user's in-progress transforms aren't clobbered.
+  void _applySavedConfig({bool restoreTransforms = true}) {
     final config = _savedConfig;
     if (config == null || _preview == null) return;
+
+    // Restore preview transforms FIRST, so derived split columns exist before
+    // mappings are matched against the column list.
+    final preMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
+    final restoredFilters = <RowFilter>[];
+    final restoredSplits = <ColumnSplit>[];
+    var restoredCombine = FilterCombine.all;
+    if (preMappings['__rowFilters'] != null) {
+      for (final f in jsonDecode(preMappings['__rowFilters'] as String) as List<dynamic>) {
+        restoredFilters.add(RowFilter.fromJson(f as Map<String, dynamic>));
+      }
+      restoredCombine = FilterCombine.values.firstWhere(
+        (c) => c.name == preMappings['__filterCombine'],
+        orElse: () => FilterCombine.all,
+      );
+    }
+    if (preMappings['__columnSplits'] != null) {
+      for (final sp in jsonDecode(preMappings['__columnSplits'] as String) as List<dynamic>) {
+        restoredSplits.add(ColumnSplit.fromJson(sp as Map<String, dynamic>));
+      }
+    }
+    if (restoreTransforms && (restoredFilters.isNotEmpty || restoredSplits.isNotEmpty)) {
+      // Adopt the saved transforms and rebuild the preview from the raw rows
+      // so derived split columns (and filtered rows) exist BEFORE mappings and
+      // type-tags are matched below. The chips/mappings must align to the
+      // split column values on the very first load — not only after a manual
+      // refine edit re-triggers the rebuild.
+      _transforms = PreviewTransforms(filters: restoredFilters, splits: restoredSplits, combine: restoredCombine);
+      if (_rawPreview != null) _preview = _applyTransforms(_rawPreview!);
+      // Invalidate full-row caches: when the file was loaded BEFORE the
+      // target/mode (so transforms were empty), these hold pre-split values.
+      // The type-tag chips read _fullUniqueValues, so stale entries would show
+      // un-split values (e.g. "C/Azienda mese 01/2026" instead of "C/Azienda")
+      // and the saved tags wouldn't match.
+      _clearFullPreviewCache();
+      _fullUniqueValues.clear();
+      _transformedFullRows = null;
+    }
+    _log.fine(
+      '_applySavedConfig: restoreTransforms=$restoreTransforms splits=${restoredSplits.length} filters=${restoredFilters.length} '
+      'rawCols=${_rawPreview?.columns} previewCols=${_preview?.columns}',
+    );
 
     final currentCols = _preview!.columns;
     _log.info('_applySavedConfig: applying to ${currentCols.length} columns: $currentCols');
@@ -694,6 +968,48 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
+      // Restore asset-event-specific state (type tags, revalue amount source,
+      // historic/current + fee mode). Type-tag values are validated against
+      // the current Type column's values so a stale tag can't orphan.
+      if (_target == ImportTarget.assetEvent) {
+        _assetImportMode = (savedMappings['__assetImportMode'] as String?) ?? _assetImportMode;
+        _typeMode = (savedMappings['__typeMode'] as String?) ?? _typeMode;
+        _feeMode = (savedMappings['__feeMode'] as String?) ?? _feeMode;
+        _negativeIsBuy = savedMappings['__negativeIsBuy'] == 'true';
+        // Auto-calc (amount = qty × price) is mutually exclusive with a mapped
+        // amount column. A mapped amount always wins; otherwise honor the
+        // saved auto-calc flag. This prevents the contradictory state where
+        // both are set (auto-calc then silently produced 0 for cash-only
+        // pension rows that have no qty/price).
+        _autoCalcAmount = _mappings['amount'] == null && savedMappings['__autoCalcAmount'] == 'true';
+
+        final typeCol = _mappings['type'];
+        // Prune a restored tag only when we can confirm its value is absent
+        // from the FULL value set. The capped preview (first/last sample) may
+        // not contain a value that exists deeper in a large file, so when only
+        // the preview is available we keep saved tags as-is rather than
+        // silently dropping a still-valid tag (the user would have to re-tag).
+        final fullVals = typeCol != null ? _fullUniqueValues[typeCol] : null;
+        final canPrune = typeCol != null && fullVals != null;
+        final validTypeVals = (canPrune ? fullVals : const <String>[]).toSet();
+        void restoreTagSet(Set<String> target, String key) {
+          target.clear();
+          if (savedMappings[key] != null) {
+            for (final v in (jsonDecode(savedMappings[key] as String) as List<dynamic>).cast<String>()) {
+              if (!canPrune || validTypeVals.contains(v)) target.add(v);
+            }
+          }
+        }
+
+        restoreTagSet(_buyValues, '__buyValues');
+        restoreTagSet(_sellValues, '__sellValues');
+        restoreTagSet(_revalueValues, '__revalueValues');
+        restoreTagSet(_feeValues, '__feeValues');
+
+        final revCol = savedMappings['__revalueAmountColumn'] as String?;
+        _revalueAmountColumn = (revCol != null && currentCols.contains(revCol)) ? revCol : null;
+      }
+
       _log.info(
         '_applySavedConfig: result - mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms',
       );
@@ -702,8 +1018,32 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   /// Save current import config for the target account.
   Future<void> _saveConfig() async {
-    final accountId = widget.preselectedAccountId ?? _targetId;
-    if (accountId == null || _target != ImportTarget.transaction) return;
+    // Resolve the scope + key for the current import mode. Each mode persists
+    // under its natural key (transaction→account, asset byIsin→intermediary,
+    // asset single→asset, income→global). When no key is available the
+    // config simply isn't saved.
+    final ImportConfigScope scope;
+    int? accountId;
+    int? intermediaryId;
+    int? assetId;
+    switch (_target) {
+      case ImportTarget.transaction:
+        scope = ImportConfigScope.transaction;
+        accountId = widget.preselectedAccountId ?? _targetId;
+        if (accountId == null) return;
+      case ImportTarget.assetEvent:
+        if (_assetEventMode == 'singleAsset') {
+          scope = ImportConfigScope.assetSingle;
+          assetId = _singleAssetTargetId;
+          if (assetId == null) return;
+        } else {
+          scope = ImportConfigScope.assetByIsin;
+          intermediaryId = _selectedIntermediaryId;
+          if (intermediaryId == null) return;
+        }
+      case ImportTarget.income:
+        scope = ImportConfigScope.income;
+    }
 
     // Store balanceDiffColumn, noHeader, multiMappings, multiDelimiters in mappings JSON
     final mappingsToSave = Map<String, String?>.from(_mappings);
@@ -731,17 +1071,42 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_balanceFilterInclude.isNotEmpty) {
       mappingsToSave['__balanceFilterInclude'] = jsonEncode(_balanceFilterInclude.toList());
     }
+    // Save preview transforms (row filters + column splits)
+    if (_transforms.filters.isNotEmpty) {
+      mappingsToSave['__rowFilters'] = jsonEncode(_transforms.filters.map((f) => f.toJson()).toList());
+      mappingsToSave['__filterCombine'] = _transforms.combine.name;
+    }
+    if (_transforms.splits.isNotEmpty) {
+      mappingsToSave['__columnSplits'] = jsonEncode(_transforms.splits.map((sp) => sp.toJson()).toList());
+    }
+    // Save asset-event-specific state so pension/broker imports round-trip.
+    if (_target == ImportTarget.assetEvent) {
+      mappingsToSave['__assetImportMode'] = _assetImportMode; // historic | current
+      mappingsToSave['__typeMode'] = _typeMode; // column | sign
+      if (_negativeIsBuy) mappingsToSave['__negativeIsBuy'] = 'true';
+      if (_buyValues.isNotEmpty) mappingsToSave['__buyValues'] = jsonEncode(_buyValues.toList());
+      if (_sellValues.isNotEmpty) mappingsToSave['__sellValues'] = jsonEncode(_sellValues.toList());
+      if (_revalueValues.isNotEmpty) mappingsToSave['__revalueValues'] = jsonEncode(_revalueValues.toList());
+      if (_feeValues.isNotEmpty) mappingsToSave['__feeValues'] = jsonEncode(_feeValues.toList());
+      if (_revalueAmountColumn != null) mappingsToSave['__revalueAmountColumn'] = _revalueAmountColumn;
+      mappingsToSave['__feeMode'] = _feeMode; // column | computed
+      if (_autoCalcAmount) mappingsToSave['__autoCalcAmount'] = 'true';
+    }
 
     await ref
         .read(importConfigServiceProvider)
-        .save(
+        .saveScoped(
+          scope: scope,
           accountId: accountId,
+          intermediaryId: intermediaryId,
+          assetId: assetId,
           skipRows: _skipRows,
           mappings: mappingsToSave,
           formula: _amountFormula.map((t) => {'operator': t.operator, 'sourceColumn': t.sourceColumn}).toList(),
           hashColumns: const [],
+          numberLocale: _selectedNumberLocale,
         );
-    _log.info('_saveConfig: saved config for account $accountId');
+    _log.info('_saveConfig: saved ${scope.wire} config');
   }
 
   /// Get unique values from a specific column across all preview rows.
@@ -852,6 +1217,13 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   void _reset() {
     _preview = null;
+    _rawPreview = null;
+    _transforms = const PreviewTransforms();
+    _showAllPreviewRows = false;
+    _showAllRows = null;
+    _loadingShowAll = false;
+    _transformedFullRows = null;
+    _loadingTransformedFull = false;
     _clearFullPreviewCache();
     _filePath = null;
     _selectedSheet = null;
@@ -888,6 +1260,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _mappings.remove('orderRef');
     _negativeIsBuy = false;
     _revalueValues.clear();
+    _revalueAmountColumn = null;
     _assetEventMode = 'byIsin';
     _singleAssetTargetId = null;
     _isinLookupResults = null;
@@ -922,6 +1295,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     } else if (_mappings['amount'] != null) {
       mappings.add(ColumnMapping(sourceColumn: _mappings['amount']!, targetField: 'amount'));
     }
+    // DEBUG-level diagnostic: the resolved mapping set is the single most
+    // useful thing when an import produces unexpected values (e.g. all-zero
+    // amounts). Kept permanently at fine() so it's hidden in normal runs but
+    // available without a rebuild.
+    _log.fine(
+      '_buildColumnMappings: _mappings=$_mappings autoCalc=$_autoCalcAmount revalueAmtCol=$_revalueAmountColumn '
+      'built=${mappings.map((m) => '${m.targetField}<-${m.sourceColumn ?? (m.isMultiColumn
+              ? "multi${m.multiColumns}"
+              : m.isFormula
+              ? "formula"
+              : m.balanceDiffColumn)}').toList()}',
+    );
     return mappings;
   }
 
@@ -976,6 +1361,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           numberLocale: _selectedNumberLocale,
           appLocale: appLocale,
           targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
+          revalueAmountColumn: _revalueValues.isNotEmpty ? _revalueAmountColumn : null,
         );
         if (mounted) _setState(() => _assetPreview = result);
       }

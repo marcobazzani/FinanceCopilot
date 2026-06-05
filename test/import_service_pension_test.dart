@@ -293,4 +293,121 @@ void main() {
       expect(secondCount, 111, reason: 'second import wipes+replaces, no net change');
     });
   });
+
+  group('revalueAmountColumn — per-type amount source', () {
+    test('Revalue rows read amount from the override column (Saldo), '
+        'contributions still read the primary amount column (Entrate)', () async {
+      final assetId = await createPensionAsset();
+      // Two contributions (value in Entrate, Saldo empty) and one position
+      // snapshot (Entrate empty, value in Saldo). Mirrors a PPP statement.
+      final preview = FilePreview(
+        columns: const ['Periodo', 'Operazione', 'Entrate', 'Saldo'],
+        rows: const [
+          {'Periodo': '01/2026', 'Operazione': 'C/Azienda', 'Entrate': '358,35', 'Saldo': ''},
+          {'Periodo': '01/2026', 'Operazione': 'C/TFR', 'Entrate': '428,42', 'Saldo': ''},
+          {'Periodo': '05/2026', 'Operazione': 'POSIZIONE INDIVIDUALE', 'Entrate': '', 'Saldo': '52.610,23'},
+        ],
+        totalRows: 3,
+      );
+
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Periodo', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Operazione', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'Entrate', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+        targetAssetId: assetId,
+        buyValues: const {'C/Azienda', 'C/TFR'},
+        revalueValues: const {'POSIZIONE INDIVIDUALE'},
+        revalueAmountColumn: 'Saldo',
+        numberLocaleOverride: 'it_IT',
+      );
+
+      expect(result.result.errorRows, 0, reason: 'errors: ${result.result.errors}');
+
+      final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
+      final buys = events.where((e) => e.type == EventType.buy).toList();
+      final revalues = events.where((e) => e.type == EventType.revalue).toList();
+
+      expect(buys, hasLength(2));
+      expect(buys.map((b) => b.amount).toList(), [358.35, 428.42], reason: 'buys keep Entrate values');
+
+      expect(revalues, hasLength(1));
+      expect(revalues.single.amount, 52610.23, reason: 'revalue amount comes from Saldo, not the empty Entrate');
+    });
+
+    test('without revalueAmountColumn, a Revalue row with empty primary '
+        'amount is skipped as an error (not silently zeroed)', () async {
+      final assetId = await createPensionAsset();
+      final preview = FilePreview(
+        columns: const ['Periodo', 'Operazione', 'Entrate', 'Saldo'],
+        rows: const [
+          {'Periodo': '01/2026', 'Operazione': 'C/Azienda', 'Entrate': '358,35', 'Saldo': ''},
+          {'Periodo': '05/2026', 'Operazione': 'POSIZIONE INDIVIDUALE', 'Entrate': '', 'Saldo': '52.610,23'},
+        ],
+        totalRows: 2,
+      );
+
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Periodo', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Operazione', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'Entrate', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+        targetAssetId: assetId,
+        buyValues: const {'C/Azienda'},
+        revalueValues: const {'POSIZIONE INDIVIDUALE'},
+        // No revalueAmountColumn.
+        numberLocaleOverride: 'it_IT',
+      );
+
+      // The revalue row's primary (Entrate) amount is empty → strict parse
+      // throws → the row is skipped as an error. This is exactly the
+      // "Skipped 1" behavior that motivated the override.
+      expect(result.result.errorRows, 1);
+      final revalues = await (db.select(db.assetEvents)..where((e) => e.type.equalsValue(EventType.revalue))).get();
+      expect(revalues, isEmpty, reason: 'errored revalue row is not stored');
+    });
+
+    test('dry-run preview surfaces the empty-date Revalue error (so the user '
+        'can fix it before importing)', () async {
+      final assetId = await createPensionAsset();
+      final preview = FilePreview(
+        columns: const ['Data Breve', 'Operazione', 'Entrate', 'Saldo'],
+        rows: const [
+          {'Data Breve': '01/2026', 'Operazione': 'C/Azienda', 'Entrate': '358,35', 'Saldo': ''},
+          // Revalue row with an EMPTY date (snapshot period was stripped).
+          {'Data Breve': '', 'Operazione': 'POSIZIONE INDIVIDUALE', 'Entrate': '', 'Saldo': '52.610,23'},
+        ],
+        totalRows: 2,
+      );
+
+      final result = await importer.previewAssetEventImport(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Data Breve', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Operazione', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'Entrate', targetField: 'amount'),
+        ],
+        targetAssetId: assetId,
+        buyValues: const {'C/Azienda'},
+        revalueValues: const {'POSIZIONE INDIVIDUALE'},
+        revalueAmountColumn: 'Saldo',
+        numberLocale: 'it_IT',
+      );
+
+      // The empty-date revalue row must be reported as an error in the
+      // PREVIEW (not silently passed through to fail only at import time).
+      expect(result.errorRows, 1, reason: 'preview must predict the empty-date failure');
+      expect(result.errors.any((e) => e.contains('date')), isTrue, reason: 'errors: ${result.errors}');
+      // The valid contribution still parses.
+      expect(result.parsedRows, 1);
+    });
+  });
 }

@@ -110,6 +110,15 @@ extension AssetImportFlow on ImportService {
     /// mode (the existing path) remains the default for multi-sub-fund
     /// statements like 401(k) / Group RRSP.
     int? targetAssetId,
+
+    /// Optional per-type amount source: when a row resolves to
+    /// [EventType.revalue] and this column is set, the amount is read from
+    /// it instead of the primary `amount` mapping. Pension statements put
+    /// contribution values in one column (Entrate) and the absolute
+    /// position-snapshot value in another (Saldo); a Revalue row's value is
+    /// the snapshot, not the (empty) contribution cell. Mirrors the
+    /// `awk`-style "use column 6 for total rows, column 5 otherwise".
+    String? revalueAmountColumn,
   }) async {
     await _setLocaleForIntermediary(
       intermediaryId: intermediaryId,
@@ -168,7 +177,7 @@ extension AssetImportFlow on ImportService {
       for (final row in preview.rows) {
         final typeStr = _resolveMapping(typeMapping, row) ?? '';
         final normalized = typeStr.trim().toUpperCase().replaceAll(' ', '_');
-        final isFee = feeValues.any((v) => v.toUpperCase() == normalized);
+        final isFee = feeValues.any((v) => v.trim().toUpperCase().replaceAll(' ', '_') == normalized);
         if (!isFee) continue;
         if (orderRefMapping == null) continue; // drop silently
         final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
@@ -357,9 +366,20 @@ extension AssetImportFlow on ImportService {
         // Amount: from column, or auto-calculated as quantity * price
         // For bonds, prices are quoted as % of face value → divide by 100
         final isBond = bondIsins.contains(isin);
-        final double amount;
+        double amount;
         if (amountMapping != null) {
-          amount = _parseAmount(_resolveMapping(amountMapping, row) ?? '');
+          final amountStr = _resolveMapping(amountMapping, row) ?? '';
+          // Defer the strict parse when a per-type override column is
+          // configured AND the primary cell is empty: a Revalue row's value
+          // lives in the override column (e.g. Saldo), so the empty primary
+          // amount (e.g. Entrate) must not abort the row here. The actual
+          // value is resolved after the type is known (below). Non-revalue
+          // rows with an empty amount still hit the strict parse there.
+          if (amountStr.trim().isEmpty && revalueAmountColumn != null) {
+            amount = 0;
+          } else {
+            amount = _parseAmount(amountStr);
+          }
         } else if (qty != null && price != null) {
           amount = isBond ? qty * price / 100 : qty * price;
         } else {
@@ -394,6 +414,28 @@ extension AssetImportFlow on ImportService {
           // indicates a sell.
           final isNeg = (qty != null && qty < 0) || amount < 0;
           eventType = isNeg ? EventType.sell : EventType.buy;
+        }
+
+        // Per-type amount source: a Revalue row's value is the absolute
+        // position snapshot, which lives in a different column (e.g. Saldo)
+        // than the per-row contribution amount (e.g. Entrate). When the
+        // wizard maps a revalue amount column, re-read the amount from it for
+        // revalue rows only.
+        if (revalueAmountColumn != null && amountMapping != null) {
+          if (eventType == EventType.revalue) {
+            final raw = (row[revalueAmountColumn] ?? '').trim();
+            // The snapshot value is required for a revalue row; parse strictly
+            // so a missing position is surfaced, not silently zeroed.
+            amount = _parseAmount(raw);
+          } else {
+            // Non-revalue row: the primary amount parse was deferred above
+            // only to let revalue rows through. Enforce it now so a genuinely
+            // empty contribution amount still errors instead of becoming 0.
+            final primary = _resolveMapping(amountMapping, row) ?? '';
+            if (primary.trim().isEmpty) {
+              amount = _parseAmount(primary); // throws FormatException(Empty amount)
+            }
+          }
         }
 
         // A3 — Pension cash-only fallback: when the source has no
@@ -673,6 +715,11 @@ extension AssetImportFlow on ImportService {
     /// a synthetic placeholder so the wizard's preview block can still
     /// render row counts.
     int? targetAssetId,
+
+    /// Mirror of `importAssetEventsGrouped.revalueAmountColumn`: read a
+    /// Revalue row's amount from this column instead of the primary amount
+    /// mapping. Kept in sync so the dry-run preview matches the real import.
+    String? revalueAmountColumn,
   }) async {
     _activeLocale = amt.resolveImportLocale(
       saved: numberLocale,
@@ -703,6 +750,8 @@ extension AssetImportFlow on ImportService {
     final amountMapping = mappingByField['amount'];
     final currencyMapping = mappingByField['currency'];
     final orderRefMapping = mappingByField['orderRef'];
+    final dateMapping = mappingByField['date'];
+    final valueDateMapping = mappingByField['valueDate'];
 
     var parsed = 0;
     var errorCount = 0;
@@ -724,7 +773,7 @@ extension AssetImportFlow on ImportService {
       for (final row in preview.rows) {
         final typeStr = _resolveMapping(typeMapping, row) ?? '';
         final normalized = typeStr.trim().toUpperCase().replaceAll(' ', '_');
-        final isFee = feeValues.any((v) => v.toUpperCase() == normalized);
+        final isFee = feeValues.any((v) => v.trim().toUpperCase().replaceAll(' ', '_') == normalized);
         if (!isFee) continue;
         if (orderRefMapping == null) continue;
         final orderRef = (_resolveMapping(orderRefMapping, row) ?? '').trim();
@@ -773,6 +822,24 @@ extension AssetImportFlow on ImportService {
         } else {
           final isNeg = (qty != null && qty < 0) || (amount != null && amount < 0);
           eventType = isNeg ? EventType.sell : EventType.buy;
+        }
+
+        // Validate date + amount with the SAME strict rules the real import
+        // uses, so the dry-run preview surfaces "Empty date" / "Empty amount"
+        // errors here (where the user can still fix the config) instead of
+        // only at import time. Honors the per-type revalue overrides.
+        if (dateMapping != null) {
+          final dateStr = _resolveMapping(dateMapping, row) ?? '';
+          final vd = _tryParseDateMapping(valueDateMapping, row);
+          _parseDateWithFallback(dateStr, vd); // throws on empty/unparseable
+        }
+        if (amountMapping != null) {
+          final primaryStr = _resolveMapping(amountMapping, row) ?? '';
+          if (eventType == EventType.revalue && revalueAmountColumn != null) {
+            _parseAmount((row[revalueAmountColumn] ?? '').trim());
+          } else {
+            _parseAmount(primaryStr);
+          }
         }
 
         final absQty = qty?.abs() ?? 0;

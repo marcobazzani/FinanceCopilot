@@ -11,6 +11,33 @@ extension _ColumnMapperStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Data source toolbar FIRST — pick the file (or paste) up front.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.folder_open),
+              label: Text(s.openFile),
+              onPressed: _parsing ? null : _pickFile,
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.content_paste),
+              label: Text(s.pasteFromClipboard),
+              onPressed: _parsing ? null : _pasteFromClipboard,
+            ),
+            if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
+            if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
+            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(color: Colors.red)),
+        ],
+        const SizedBox(height: 12),
+
         // Target selector (hidden when preselected from account view)
         if (widget.preselectedAccountId == null && widget.preselectedTarget == null) ...[
           Wrap(
@@ -39,18 +66,25 @@ extension _ColumnMapperStep on _ImportScreenState {
                 ],
                 selected: {_target},
                 showSelectedIcon: false,
-                onSelectionChanged: (v) => _setState(() {
-                  _target = v.first;
-                  _targetId = null;
-                  _isQuickMode = false;
-                  _savedConfig = null;
-                  _mappings.clear();
-                  _amountFormula.clear();
-                  for (final f in _requiredFields) {
-                    _mappings[f] = null;
+                onSelectionChanged: (v) async {
+                  _setState(() {
+                    _target = v.first;
+                    _targetId = null;
+                    _isQuickMode = false;
+                    _savedConfig = null;
+                    _mappings.clear();
+                    _amountFormula.clear();
+                    for (final f in _requiredFields) {
+                      _mappings[f] = null;
+                    }
+                    if (preview != null) _autoMap(preview.columns);
+                  });
+                  // Income has no per-target key — load its single global
+                  // config as soon as the user picks the Income target.
+                  if (_target == ImportTarget.income && _preview != null) {
+                    await _loadSavedConfig(_preview!.columns);
                   }
-                  if (preview != null) _autoMap(preview.columns);
-                }),
+                },
               ),
             ],
           ),
@@ -63,32 +97,13 @@ extension _ColumnMapperStep on _ImportScreenState {
           const SizedBox(height: 12),
         ],
 
-        // Data source toolbar
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: Text(s.openFile),
-              onPressed: _parsing ? null : _pickFile,
-            ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.content_paste),
-              label: Text(s.pasteFromClipboard),
-              onPressed: _parsing ? null : _pasteFromClipboard,
-            ),
-            if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
-            if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
-            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-          ],
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Text(_error!, style: const TextStyle(color: Colors.red)),
+        // Asset-event Mode + Group/Single selectors. Picking the single-asset
+        // target loads its saved config (and applies it to the already-loaded
+        // file when one is present).
+        if (_target == ImportTarget.assetEvent) ...[
+          _buildAssetModeSelectors(),
+          const SizedBox(height: 12),
         ],
-        const SizedBox(height: 12),
 
         // Body: quick-confirm view OR full mapping UI
         Expanded(
@@ -153,13 +168,20 @@ extension _ColumnMapperStep on _ImportScreenState {
                           .toList(),
                 onChanged: manual.isEmpty
                     ? null
-                    : (v) => _setState(() {
-                        _singleAssetTargetId = v;
-                        if (v != null) {
-                          final picked = manual.firstWhere((a) => a.id == v);
-                          _selectedIntermediaryId = picked.intermediaryId;
+                    : (v) async {
+                        _setState(() {
+                          _singleAssetTargetId = v;
+                          if (v != null) {
+                            final picked = manual.firstWhere((a) => a.id == v);
+                            _selectedIntermediaryId = picked.intermediaryId;
+                          }
+                          _savedConfig = null;
+                        });
+                        // Load any saved single-asset config for this target.
+                        if (v != null && _preview != null) {
+                          await _loadSavedConfig(_preview!.columns);
                         }
-                      }),
+                      },
               ),
             ),
             OutlinedButton.icon(
@@ -239,7 +261,11 @@ extension _ColumnMapperStep on _ImportScreenState {
                             .create(
                               name: nameCtrl.text.trim(),
                               currency: currency.isEmpty ? baseCurrency : currency,
-                              valuationMethod: ValuationMethod.marketPrice,
+                              // Single-asset import targets are manual by
+                              // definition (no feed) — create them event-driven
+                              // so they appear in the picker immediately, before
+                              // any revalue auto-toggles the flag.
+                              valuationMethod: ValuationMethod.eventDriven,
                               instrumentType: InstrumentType.alternative,
                               assetClass: AssetClass.alternative,
                               intermediaryId: pickedIntermediary!,

@@ -551,15 +551,39 @@ Future<void> setMapping(
     }
   }
   expect(labelText(), findsWidgets, reason: 'mapping label "$fieldLabel" not found in column mapper');
-  final mappingRow = find.ancestor(
-    of: labelText().first,
-    matching: find.byType(Padding),
-  );
-  Finder dropdown = find.descendant(
-    of: mappingRow.first,
+  // The same text can appear in the preview table's column header (e.g. a CSV
+  // column literally named "Amount") AND in the mapping row. The mapping row
+  // is the one whose Padding ancestor contains a column dropdown — pick that
+  // occurrence rather than blindly taking the first match.
+  Finder dropdownForLabel(int i) => find.descendant(
+    of: find.ancestor(of: labelText().at(i), matching: find.byType(Padding)).first,
     matching: find.byType(DropdownButtonFormField<String>),
   );
-  expect(dropdown, findsWidgets, reason: 'no dropdown found in mapping row for "$fieldLabel"');
+  int findMatch() {
+    final n = labelText().evaluate().length;
+    for (var i = 0; i < n; i++) {
+      if (dropdownForLabel(i).evaluate().isNotEmpty) return i;
+    }
+    return -1;
+  }
+
+  var matchIndex = findMatch();
+  // The mapping-row occurrence may live below the preview table (which can
+  // also carry a matching column header). Scroll down to build it if needed.
+  if (matchIndex == -1) {
+    final scrollable = find.byType(Scrollable);
+    for (var s = 0; s < 8 && matchIndex == -1; s++) {
+      try {
+        await tester.drag(scrollable.first, const Offset(0, -250));
+        await longSettle(tester);
+      } catch (_) {
+        break;
+      }
+      matchIndex = findMatch();
+    }
+  }
+  expect(matchIndex, isNot(-1), reason: 'no dropdown found in any mapping row for "$fieldLabel"');
+  final dropdown = dropdownForLabel(matchIndex);
   await tester.ensureVisible(dropdown.first);
   await settle(tester);
   await tester.tap(dropdown.first);

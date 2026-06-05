@@ -355,6 +355,23 @@ extension _ConfirmStep on _ImportScreenState {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              if (_missingMappingReason() != null) ...[
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, size: 16, color: Colors.red.shade300),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _missingMappingReason()!,
+                          style: TextStyle(fontSize: 12, color: Colors.red.shade300),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               FilledButton.icon(
                 icon: const Icon(Icons.check),
                 label: Text(s.importButton),
@@ -366,9 +383,32 @@ extension _ConfirmStep on _ImportScreenState {
     );
   }
 
+  /// Human-readable reason the Import button is disabled due to a missing
+  /// required mapping, or null when all mandatory fields are mapped. Lets the
+  /// confirm step explain *why* it's blocked instead of a silently-disabled
+  /// button (which previously let all-zero-amount imports slip through).
+  String? _missingMappingReason() {
+    final s = ref.read(appStringsProvider);
+    final needsDate = !(_target == ImportTarget.assetEvent && _assetImportMode == 'current');
+    if (needsDate && _mappings['date'] == null) return s.missingDateMapping;
+    if (_target == ImportTarget.transaction && !_sameSettlementDate && _mappings['valueDate'] == null) {
+      return s.missingValueDateMapping;
+    }
+    if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) {
+      return s.missingAmountMapping;
+    }
+    return null;
+  }
+
   /// Asset imports require an intermediary selection. Income imports don't.
   /// Transaction imports require a target account.
   bool _canImport(bool isAssetImport, bool isIncomeImport) {
+    // Re-validate the full mapping gate at import time, not just the target.
+    // The step-1 "Next" gate can be satisfied and then invalidated (e.g. a
+    // refine-panel edit drops the amount mapping), so the final Import button
+    // must independently require every mandatory mapping — otherwise an import
+    // with no amount column silently writes all-zero events.
+    if (!_canProceedToConfirm()) return false;
     if (isAssetImport) return _selectedIntermediaryId != null;
     if (isIncomeImport) return true;
     return _targetId != null;
@@ -599,6 +639,15 @@ extension _ConfirmStep on _ImportScreenState {
 
   Future<void> _executeImport() async {
     _log.info('_executeImport: starting import - target=${_target.name}, targetId=$_targetId');
+    // Hard stop: never run an import with a missing required mapping (the
+    // button gate should already prevent this, but guard the entry point so
+    // a regression can't silently produce all-zero events).
+    final missing = _missingMappingReason();
+    if (missing != null) {
+      _log.warning('_executeImport: blocked — $missing');
+      _setState(() => _error = missing);
+      return;
+    }
     _setState(() {
       _importing = true;
       _importedSoFar = 0;
@@ -683,6 +732,7 @@ extension _ConfirmStep on _ImportScreenState {
           numberLocaleOverride: _selectedNumberLocale,
           appLocale: appLocale,
           targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
+          revalueAmountColumn: _revalueValues.isNotEmpty ? _revalueAmountColumn : null,
         );
         result = assetResult.result;
       }
