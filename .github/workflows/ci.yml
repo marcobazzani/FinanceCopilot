@@ -16,8 +16,42 @@ env:
   FLUTTER_VERSION: '3.41.6'
 
 jobs:
+  # On a pull_request (develop -> main) the PR head commit is usually the exact
+  # same commit that already ran the full suite via the `push` trigger on
+  # develop. Re-running test/integration/android on that identical SHA is pure
+  # duplicate compute. This job asks the GitHub API whether a CI run for this
+  # exact SHA, triggered by `push`, already concluded successfully. If so, the
+  # heavy jobs below skip themselves. For push/tag/dispatch events it is a no-op
+  # (outputs already_green=false), so nothing changes there.
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      already_green: ${{ steps.check.outputs.already_green }}
+    steps:
+      - name: Check for an existing green CI run on this SHA
+        id: check
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Look for a completed, successful CI run for this exact commit that
+          # was triggered by a `push` (i.e. the develop branch run). The PR run
+          # itself is a `pull_request` event, so it never matches its own SHA.
+          MATCH=$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${HEAD_SHA}&event=push&status=success&per_page=1" \
+            --jq '.total_count')
+          if [ "${MATCH:-0}" -gt 0 ]; then
+            echo "Found an existing green push-run for ${HEAD_SHA}; heavy jobs will be skipped."
+            echo "already_green=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No prior green push-run for ${HEAD_SHA}; heavy jobs will run."
+            echo "already_green=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
-    if: "!startsWith(github.ref, 'refs/tags/v')"
+    needs: [precheck]
+    if: "!startsWith(github.ref, 'refs/tags/v') && needs.precheck.outputs.already_green != 'true'"
     strategy:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
@@ -52,7 +86,8 @@ jobs:
         run: flutter test --dart-define=DB_FILE_NAME=finance_copilot_test.db
 
   integration-test:
-    if: "!startsWith(github.ref, 'refs/tags/v')"
+    needs: [precheck]
+    if: "!startsWith(github.ref, 'refs/tags/v') && needs.precheck.outputs.already_green != 'true'"
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +131,8 @@ jobs:
         run: flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 
   integration-test-android:
-    if: "!startsWith(github.ref, 'refs/tags/v')"
+    needs: [precheck]
+    if: "!startsWith(github.ref, 'refs/tags/v') && needs.precheck.outputs.already_green != 'true'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
