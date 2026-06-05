@@ -9,6 +9,35 @@ import 'package:path_provider/path_provider.dart';
 IOSink? _logSink;
 String? logFilePath;
 
+/// Resolve the configured minimum log level from `--dart-define=LOG_LEVEL`.
+/// Defaults to INFO. DEBUG/TRACE map to FINE/FINEST; ALL captures everything.
+Level _configuredLevel() {
+  const raw = String.fromEnvironment('LOG_LEVEL', defaultValue: 'INFO');
+  final v = raw.trim().toUpperCase();
+  switch (v) {
+    case 'ALL':
+      return Level.ALL;
+    case 'TRACE':
+    case 'FINEST':
+      return Level.FINEST;
+    case 'FINER':
+      return Level.FINER;
+    case 'DEBUG':
+    case 'FINE':
+      return Level.FINE;
+    case 'INFO':
+      return Level.INFO;
+    case 'WARNING':
+    case 'WARN':
+      return Level.WARNING;
+    case 'SEVERE':
+    case 'ERROR':
+      return Level.SEVERE;
+    default:
+      return Level.INFO;
+  }
+}
+
 /// Write a log line to the debug console (logcat on Android, Xcode on iOS, stderr on desktop).
 void _debugLog(String msg) {
   if (Platform.isAndroid || Platform.isIOS) {
@@ -21,8 +50,13 @@ void _debugLog(String msg) {
 /// Initialize logging for the whole app. Call once in main().
 /// Logs to `<app documents>`/FinanceCopilot/app.log (sandbox-safe)
 /// and also to stderr for debug console visibility.
+///
+/// The minimum captured level is controlled by `--dart-define=LOG_LEVEL=...`
+/// (INFO by default; set to FINE/DEBUG/ALL to capture DEBUG diagnostics like
+/// the import column-mapping dump). Accepts both Dart level names (FINE,
+/// FINER, FINEST, INFO, …) and the friendly aliases DEBUG/TRACE/ALL.
 Future<void> initLogging() async {
-  Logger.root.level = Level.ALL;
+  Logger.root.level = _configuredLevel();
 
   // Open log file inside the app's Application Support directory
   try {

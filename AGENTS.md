@@ -205,6 +205,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - **Windows logs**: `Get-Content $env:APPDATA\net.bazzani.financecopilot\app.log -Wait`
 - **Android logs**: `adb logcat -s flutter`
 - **Previous session log**: `previous_session.log` (same dir as app.log, for bug reports)
+- **Log level**: defaults to INFO. Build/run with `--dart-define=LOG_LEVEL=DEBUG` (aliases: `FINE`/`TRACE`/`FINEST`/`ALL`) to capture `fine()` diagnostics — e.g. the import wizard's `_buildColumnMappings` dump that shows the resolved mappings/autoCalc/revalue-amount-column when an import produces unexpected values. Never add/remove temporary log lines for one-off debugging; log at `fine()` and raise the level instead.
 - Never use `assets.db` in the repo root (stale copy, gitignored).
 
 # Architecture
