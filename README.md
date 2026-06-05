@@ -8,21 +8,23 @@ Built with Flutter for **macOS**, **Windows**, and **Android**. All data lives i
 
 ## How does it compare?
 
-|                          | FinanceCopilot | Mint / Monarch | YNAB | Actual Budget | Firefly III | Maybe Finance | GnuCash |
-|--------------------------|:--------------:|:--------------:|:----:|:-------------:|:-----------:|:-------------:|:-------:|
-| Runs fully offline       |       Yes      |       No       |  No  |      Yes      |   Self-host |    Self-host  |   Yes   |
-| No subscription          |       Yes      |       No       |  No  |      Yes      |     Yes     |      Yes      |   Yes   |
-| No server to host        |       Yes      |       n/a      |  n/a |      Yes      |      No     |       No      |   Yes   |
-| Bank accounts + cash     |       Yes      |       Yes      |  Yes |      Yes      |     Yes     |      Yes      |   Yes   |
-| Stocks / ETFs / bonds    |       Yes      |     Limited    |   No |       No      |   Limited   |      Yes      | Limited |
-| ETF composition + TER    |       Yes      |       No       |  No  |       No      |      No     |    Limited    |    No   |
-| ISIN-first matching      |       Yes      |       No       |  No  |       No      |      No     |       No      |    No   |
-| Multi-currency + FX hist |    13 + daily  |     Limited    |   No |     Limited   |     Yes     |      Yes      |   Yes   |
-| EU broker imports tested |       Yes      |       No       |  No  |     Manual    |    Manual   |    Limited    |  Manual |
-| Mobile + desktop         |       Both     |    Web/Mobile  | Both |    Web only   |   Web only  |    Web only   | Desktop |
-| MIT license              |       Yes      |       No       |  No  |      MIT      |    AGPL     |     AGPL      |   GPL   |
+🟢 full · 🟡 partial / limited / self-host / manual · 🔴 none · — not applicable
 
-If FinanceCopilot is missing a feature you actually use, [open an issue](https://github.com/marcobazzani/FinanceCopilot/issues) — happy to discuss.
+|                              | FinanceCopilot | Mint / Monarch | YNAB | Actual Budget | Firefly III | Maybe Finance | GnuCash |
+|------------------------------|:--------------:|:--------------:|:----:|:-------------:|:-----------:|:-------------:|:-------:|
+| Runs fully offline           |       🟢       |       🔴       |  🔴  |      🟢       |  🟡 self-host |  🟡 self-host |   🟢    |
+| No subscription              |       🟢       |  🟡 Mint free  |  🔴  |      🟢       |     🟢      |      🟢       |   🟢    |
+| No server to host            |       🟢       |       —        |  —   |      🟢       |     🔴      |      🔴       |   🟢    |
+| Bank accounts + cash         |       🟢       |       🟢       |  🟢  |      🟢       |     🟢      |      🟢       |   🟢    |
+| Stocks / ETFs / bonds        |       🟢       |       🟡       |  🔴  |      🔴       |     🟡      |      🟢       |   🟡    |
+| ETF composition + TER        |       🟢       |       🔴       |  🔴  |      🔴       |     🔴      |      🟡       |   🔴    |
+| ISIN-first matching          |       🟢       |       🔴       |  🔴  |      🔴       |     🔴      |      🔴       |   🔴    |
+| Multi-currency + FX history  |   🟢 13, daily |       🟡       |  🔴  |     🟡        |     🟢      |      🟢       |   🟢    |
+| CSV / Excel / PDF import     |       🟢       |       🔴       | 🟡 CSV |   🟡 CSV     |   🟡 CSV    |     🟡 CSV    | 🟡 CSV/QIF |
+| Mobile + desktop             |   🟢 both      |  🟡 web/mobile | 🟢 both |  🟡 web     |   🟡 web    |     🟡 web    | 🟡 desktop |
+| Open source                  |     🟢 MIT     |       🔴       |  🔴  |     🟢 MIT    |   🟢 AGPL   |    🟢 AGPL    |  🟢 GPL  |
+
+Ratings reflect each tool's commonly-available configuration as of 2025; self-hosted and paid tiers can change a cell. If a rating looks off or FinanceCopilot is missing a feature you actually use, [open an issue](https://github.com/marcobazzani/FinanceCopilot/issues) — happy to correct it.
 
 
 ## Why
@@ -97,7 +99,7 @@ Portfolio Models now sit alongside Pillars: 32 built-in models are preloaded fro
 From the same flow, rebalance can build either **Sell and buy** or **Buy only** draft transactions with tax estimate, whole-unit execution, live market-data resolution for missing target assets, and an explicit apply step instead of writing trades immediately.
 
 ### Import
-Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.
+Map any bank or broker CSV / Excel / PDF onto Transactions, Asset Events, or Income. PDF bank statements are reconstructed into tables automatically (no per-bank templates). A **Refine rows & columns** panel adds row filters and column splits before mapping; plus ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.
 
 ![Import](docs/screenshots/import.png)
 
@@ -124,8 +126,9 @@ Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. I
 - Rebalance preview with **Sell and buy** and **Buy only** modes, estimated tax, whole-unit execution, and explicit draft apply
 
 ### Import
-- CSV, XLSX, clipboard
-- Saved column-mapping configs per account
+- CSV, XLSX, PDF, clipboard — PDF statement tables reconstructed automatically (no per-bank templates)
+- **Refine rows & columns** — row filters and column splits applied to the preview before mapping
+- Saved column-mapping configs, scoped per account, intermediary, single asset, or income
 - ISIN exchange picker with auto-lookup
 - Tested against Fineco, Directa, N26, Revolut, Interactive Brokers, and arbitrary custom formats
 - Handles 3-decimal XLSX numerics, locale decimal separators, and multi-column amount math
@@ -179,10 +182,10 @@ flutter build apk --release
 ## Run tests
 
 ```bash
-# Unit tests (~720, ~15s)
+# Unit tests (~900, ~20s)
 flutter test
 
-# Integration tests (5 suites, ~3m, requires a running desktop device)
+# Integration tests (4 suites, ~5m, requires a running desktop device)
 flutter test integration_test/all_tests.dart -d macos \
   --dart-define=DB_FILE_NAME=finance_copilot_test.db
 
