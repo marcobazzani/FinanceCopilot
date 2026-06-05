@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/transaction_service.dart';
+import 'package:finance_copilot/services/domain/transaction_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -14,9 +14,13 @@ void main() {
 
   /// Helper: insert a parent account and return its id.
   Future<int> createAccount(String name) async {
-    return db.into(db.accounts).insert(AccountsCompanion.insert(
-          name: name,
-        ));
+    return db
+        .into(db.accounts)
+        .insert(
+          AccountsCompanion.insert(
+            name: name,
+          ),
+        );
   }
 
   setUp(() {
@@ -143,9 +147,7 @@ void main() {
         );
         expect(txs.map((t) => t.description), ['Included']);
 
-        final all = await service
-            .watchAll(through: DateTime(2024, 2, 29))
-            .first;
+        final all = await service.watchAll(through: DateTime(2024, 2, 29)).first;
         expect(all.map((t) => t.description), ['Included']);
 
         final rawRows = await db.select(db.transactions).get();
@@ -216,16 +218,22 @@ void main() {
     test('deleteMany removes only the given transaction ids', () async {
       final accountId = await createAccount('Multi');
       final a = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 1),
-        amount: 100.0, currency: 'EUR',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 1),
+        amount: 100.0,
+        currency: 'EUR',
       );
       final b = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 2),
-        amount: 200.0, currency: 'EUR',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 2),
+        amount: 200.0,
+        currency: 'EUR',
       );
       final c = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 3),
-        amount: 300.0, currency: 'EUR',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 3),
+        amount: 300.0,
+        currency: 'EUR',
       );
 
       expect(await service.deleteMany([a, c]), 2);
@@ -326,33 +334,45 @@ void main() {
       final accountId = await createAccount('Filtered');
 
       // Insert with raw metadata for filter
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 1, 10),
-        valueDate: DateTime(2024, 1, 8),
-        amount: 100.0,
-        currency: const Value('EUR'),
-        description: const Value('included'),
-        rawMetadata: const Value('{"cat":"yes"}'),
-      ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 1, 5),
-        valueDate: DateTime(2024, 1, 3),
-        amount: 50.0,
-        currency: const Value('EUR'),
-        description: const Value('excluded'),
-        rawMetadata: const Value('{"cat":"no"}'),
-      ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 1, 15),
-        valueDate: DateTime(2024, 1, 12),
-        amount: 75.0,
-        currency: const Value('EUR'),
-        description: const Value('included2'),
-        rawMetadata: const Value('{"cat":"yes"}'),
-      ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 8),
+              amount: 100.0,
+              currency: const Value('EUR'),
+              description: const Value('included'),
+              rawMetadata: const Value('{"cat":"yes"}'),
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 5),
+              valueDate: DateTime(2024, 1, 3),
+              amount: 50.0,
+              currency: const Value('EUR'),
+              description: const Value('excluded'),
+              rawMetadata: const Value('{"cat":"no"}'),
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 15),
+              valueDate: DateTime(2024, 1, 12),
+              amount: 75.0,
+              currency: const Value('EUR'),
+              description: const Value('included2'),
+              rawMetadata: const Value('{"cat":"yes"}'),
+            ),
+          );
 
       await service.recalculateBalances(
         accountId,
@@ -409,12 +429,14 @@ void main() {
 
       // Read balances in value_date order (same as the chart query):
       // SELECT value_date, balance_after ... ORDER BY value_date ASC, id ASC
-      final rows = await db.customSelect(
-        'SELECT value_date, balance_after FROM transactions '
-        'WHERE account_id = ? AND balance_after IS NOT NULL '
-        'ORDER BY value_date ASC, id ASC',
-        variables: [Variable.withInt(accountId)],
-      ).get();
+      final rows = await db
+          .customSelect(
+            'SELECT value_date, balance_after FROM transactions '
+            'WHERE account_id = ? AND balance_after IS NOT NULL '
+            'ORDER BY value_date ASC, id ASC',
+            variables: [Variable.withInt(accountId)],
+          )
+          .get();
 
       final balances = rows.map((r) => r.read<double>('balance_after')).toList();
 
@@ -436,13 +458,17 @@ void main() {
 
   group('delete triggers balance recalc when import config exists', () {
     Future<void> saveImportConfig(int accountId, String balanceMode) async {
-      await db.into(db.importConfigs).insert(ImportConfigsCompanion.insert(
-        accountId: accountId,
-        skipRows: const Value(0),
-        mappingsJson: Value(jsonEncode({'__balanceMode': balanceMode})),
-        formulaJson: const Value('[]'),
-        hashColumnsJson: const Value('[]'),
-      ));
+      await db
+          .into(db.importConfigs)
+          .insert(
+            ImportConfigsCompanion.insert(
+              accountId: Value(accountId),
+              skipRows: const Value(0),
+              mappingsJson: Value(jsonEncode({'__balanceMode': balanceMode})),
+              formulaJson: const Value('[]'),
+              hashColumnsJson: const Value('[]'),
+            ),
+          );
     }
 
     test('single delete recomputes balanceAfter on remaining transactions', () async {
@@ -450,22 +476,30 @@ void main() {
       await saveImportConfig(accountId, 'cumulative');
 
       final a = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 1),
-        amount: 100.0, currency: 'EUR', description: 'A',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 1),
+        amount: 100.0,
+        currency: 'EUR',
+        description: 'A',
       );
       final b = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 2),
-        amount: 200.0, currency: 'EUR', description: 'B',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 2),
+        amount: 200.0,
+        currency: 'EUR',
+        description: 'B',
       );
       final c = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 3),
-        amount: 300.0, currency: 'EUR', description: 'C',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 3),
+        amount: 300.0,
+        currency: 'EUR',
+        description: 'C',
       );
       await service.recalculateBalances(accountId, balanceMode: 'cumulative');
 
       var txs = await service.getByAccount(accountId);
-      expect(txs.firstWhere((t) => t.id == c).balanceAfter, 600.0,
-          reason: 'sanity: cumulative running balance A+B+C');
+      expect(txs.firstWhere((t) => t.id == c).balanceAfter, 600.0, reason: 'sanity: cumulative running balance A+B+C');
 
       // Delete middle transaction B (amount 200). Last tx C should drop to 400.
       await service.delete(b);
@@ -473,8 +507,7 @@ void main() {
       txs = await service.getByAccount(accountId);
       expect(txs.length, 2);
       expect(txs.firstWhere((t) => t.id == a).balanceAfter, 100.0);
-      expect(txs.firstWhere((t) => t.id == c).balanceAfter, 400.0,
-          reason: 'C balance must be recomputed after B is deleted');
+      expect(txs.firstWhere((t) => t.id == c).balanceAfter, 400.0, reason: 'C balance must be recomputed after B is deleted');
     });
 
     test('deleteMany recomputes across each affected account', () async {
@@ -484,20 +517,28 @@ void main() {
       await saveImportConfig(acc2, 'cumulative');
 
       final a1 = await service.create(
-        accountId: acc1, operationDate: DateTime(2024, 1, 1),
-        amount: 100.0, currency: 'EUR',
+        accountId: acc1,
+        operationDate: DateTime(2024, 1, 1),
+        amount: 100.0,
+        currency: 'EUR',
       );
       final a2 = await service.create(
-        accountId: acc1, operationDate: DateTime(2024, 1, 2),
-        amount: 200.0, currency: 'EUR',
+        accountId: acc1,
+        operationDate: DateTime(2024, 1, 2),
+        amount: 200.0,
+        currency: 'EUR',
       );
       final b1 = await service.create(
-        accountId: acc2, operationDate: DateTime(2024, 1, 1),
-        amount: 50.0, currency: 'EUR',
+        accountId: acc2,
+        operationDate: DateTime(2024, 1, 1),
+        amount: 50.0,
+        currency: 'EUR',
       );
       final b2 = await service.create(
-        accountId: acc2, operationDate: DateTime(2024, 1, 2),
-        amount: 75.0, currency: 'EUR',
+        accountId: acc2,
+        operationDate: DateTime(2024, 1, 2),
+        amount: 75.0,
+        currency: 'EUR',
       );
       await service.recalculateBalances(acc1, balanceMode: 'cumulative');
       await service.recalculateBalances(acc2, balanceMode: 'cumulative');
@@ -506,21 +547,25 @@ void main() {
 
       final acc1Txs = await service.getByAccount(acc1);
       final acc2Txs = await service.getByAccount(acc2);
-      expect(acc1Txs.firstWhere((t) => t.id == a2).balanceAfter, 200.0,
-          reason: 'acc1 sole remaining tx now equals its own amount');
-      expect(acc2Txs.firstWhere((t) => t.id == b2).balanceAfter, 75.0,
-          reason: 'acc2 sole remaining tx now equals its own amount');
+      expect(acc1Txs.firstWhere((t) => t.id == a2).balanceAfter, 200.0, reason: 'acc1 sole remaining tx now equals its own amount');
+      expect(acc2Txs.firstWhere((t) => t.id == b2).balanceAfter, 75.0, reason: 'acc2 sole remaining tx now equals its own amount');
     });
 
     test('delete without import config does not error and does not touch balances', () async {
       final accountId = await createAccount('NoConfig');
       final a = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 1),
-        amount: 100.0, balanceAfter: 100.0, currency: 'EUR',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 1),
+        amount: 100.0,
+        balanceAfter: 100.0,
+        currency: 'EUR',
       );
       final b = await service.create(
-        accountId: accountId, operationDate: DateTime(2024, 1, 2),
-        amount: 200.0, balanceAfter: 300.0, currency: 'EUR',
+        accountId: accountId,
+        operationDate: DateTime(2024, 1, 2),
+        amount: 200.0,
+        balanceAfter: 300.0,
+        currency: 'EUR',
       );
 
       await service.delete(a);
@@ -528,8 +573,7 @@ void main() {
       final txs = await service.getByAccount(accountId);
       expect(txs.length, 1);
       expect(txs.first.id, b);
-      expect(txs.first.balanceAfter, 300.0,
-          reason: 'no import config means no recalc; existing balance untouched');
+      expect(txs.first.balanceAfter, 300.0, reason: 'no import config means no recalc; existing balance untouched');
     });
   });
 
@@ -587,5 +631,4 @@ void main() {
       expect(txs2.length, 1);
     });
   });
-
 }

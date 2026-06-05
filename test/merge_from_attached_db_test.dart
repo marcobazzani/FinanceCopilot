@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/db_transfer_service.dart';
+import 'package:finance_copilot/services/sync/db_transfer_service.dart';
 
 void main() {
   late Directory tmpDir;
@@ -31,9 +31,7 @@ void main() {
     // A "remote" backup DB at the current schema version, with one row.
     final remotePath = '${tmpDir.path}/remote.db';
     final remoteDb = AppDatabase.forTesting(NativeDatabase(File(remotePath)));
-    await remoteDb
-        .into(remoteDb.intermediaries)
-        .insert(IntermediariesCompanion.insert(name: 'Broker From Backup'));
+    await remoteDb.into(remoteDb.intermediaries).insert(IntermediariesCompanion.insert(name: 'Broker From Backup'));
     await remoteDb.close();
 
     final localDb = AppDatabase.forTesting(NativeDatabase.memory());
@@ -52,9 +50,7 @@ void main() {
       // backup taken by a different app version.
       final remotePath = '${tmpDir.path}/old_remote.db';
       final remoteDb = AppDatabase.forTesting(NativeDatabase(File(remotePath)));
-      await remoteDb
-          .into(remoteDb.intermediaries)
-          .insert(IntermediariesCompanion.insert(name: 'Backup Broker'));
+      await remoteDb.into(remoteDb.intermediaries).insert(IntermediariesCompanion.insert(name: 'Backup Broker'));
       await remoteDb.close();
       final raw = sqlite3.open(remotePath);
       raw.execute('PRAGMA user_version = 1');
@@ -62,9 +58,7 @@ void main() {
 
       final localDb = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(localDb.close);
-      await localDb
-          .into(localDb.intermediaries)
-          .insert(IntermediariesCompanion.insert(name: 'Local Broker'));
+      await localDb.into(localDb.intermediaries).insert(IntermediariesCompanion.insert(name: 'Local Broker'));
 
       await expectLater(
         localDb.mergeFromAttachedDb(remotePath),
@@ -82,18 +76,14 @@ void main() {
     () async {
       final importPath = '${tmpDir.path}/import.db';
       final importDb = AppDatabase.forTesting(NativeDatabase(File(importPath)));
-      await importDb
-          .into(importDb.intermediaries)
-          .insert(IntermediariesCompanion.insert(name: 'Imported Broker'));
+      await importDb.into(importDb.intermediaries).insert(IntermediariesCompanion.insert(name: 'Imported Broker'));
       await importDb.close();
 
       final localPath = '${tmpDir.path}/local.db';
       final localFile = File(localPath);
       final localDb = AppDatabase.forTesting(NativeDatabase(localFile));
       addTearDown(localDb.close);
-      await localDb
-          .into(localDb.intermediaries)
-          .insert(IntermediariesCompanion.insert(name: 'Local Broker'));
+      await localDb.into(localDb.intermediaries).insert(IntermediariesCompanion.insert(name: 'Local Broker'));
 
       final emissions = <List<String>>[];
       final sub = localDb.select(localDb.intermediaries).watch().listen((rows) {

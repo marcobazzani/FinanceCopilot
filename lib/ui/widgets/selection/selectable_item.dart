@@ -52,9 +52,7 @@ class SelectableItem<T> extends StatelessWidget {
               Positioned.fill(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 120),
-                  color: selected
-                      ? Theme.of(ctx).colorScheme.primaryContainer.withValues(alpha: 0.4)
-                      : Colors.transparent,
+                  color: selected ? Theme.of(ctx).colorScheme.primaryContainer.withValues(alpha: 0.4) : Colors.transparent,
                 ),
               ),
               IgnorePointer(

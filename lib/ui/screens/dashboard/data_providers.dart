@@ -28,9 +28,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
           currentDate.month,
           currentDate.day,
         ).add(const Duration(days: 1));
-  final cutoffEndExclusive = waybackDate == null
-      ? null
-      : cutoffEndDate!.millisecondsSinceEpoch ~/ 1000;
+  final cutoffEndExclusive = waybackDate == null ? null : cutoffEndDate!.millisecondsSinceEpoch ~/ 1000;
   bool includeDayKey(int dayKey) => cutoffDayKey == null || dayKey <= cutoffDayKey;
 
   final allDayKeys = <int>{};
@@ -42,23 +40,26 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   // ════════════════════════════════════════════════
   // 1. ACCOUNTS — daily balance from transactions
   // ════════════════════════════════════════════════
-  final activeAccounts = await (db.select(db.accounts)
-        ..where((a) => a.isActive.equals(true))
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-      .get();
+  final activeAccounts =
+      await (db.select(db.accounts)
+            ..where((a) => a.isActive.equals(true))
+            ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+          .get();
   final activeIds = activeAccounts.map((a) => a.id).toSet();
 
   final perAccount = <int, Map<int, double>>{};
   if (activeIds.isNotEmpty) {
     final placeholders = activeIds.map((_) => '?').join(',');
-    final rows = await db.customSelect(
-      'SELECT account_id, value_date, balance_after '
-      'FROM transactions '
-      'WHERE account_id IN ($placeholders) '
-      'AND balance_after IS NOT NULL '
-      'ORDER BY value_date ASC, id ASC',
-      variables: activeIds.map((id) => Variable.withInt(id)).toList(),
-    ).get();
+    final rows = await db
+        .customSelect(
+          'SELECT account_id, value_date, balance_after '
+          'FROM transactions '
+          'WHERE account_id IN ($placeholders) '
+          'AND balance_after IS NOT NULL '
+          'ORDER BY value_date ASC, id ASC',
+          variables: activeIds.map((id) => Variable.withInt(id)).toList(),
+        )
+        .get();
 
     for (final row in rows) {
       final accountId = row.read<int>('account_id');
@@ -77,29 +78,31 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   // ════════════════════════════════════════════════
   // 2. ASSETS — cumulative invested value from events
   // ════════════════════════════════════════════════
-  final activeAssets = await (db.select(db.assets)
-        ..where((a) => a.isActive.equals(true))
-        ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
-      .get();
+  final activeAssets =
+      await (db.select(db.assets)
+            ..where((a) => a.isActive.equals(true))
+            ..orderBy([(a) => OrderingTerm.asc(a.sortOrder)]))
+          .get();
   final assetIds = activeAssets.map((a) => a.id).toSet();
 
   final perAssetDeltas = <int, Map<int, double>>{};
   final perAssetQtyDeltas = <int, Map<int, double>>{};
 
-
   if (assetIds.isNotEmpty) {
     final assetPlaceholders = assetIds.map((_) => '?').join(',');
-    final evRows = await db.customSelect(
-      'SELECT asset_id, value_date, type, amount, quantity, currency, exchange_rate, commission '
-      'FROM asset_events '
-      'WHERE asset_id IN ($assetPlaceholders) '
-      "${cutoffEndExclusive != null ? 'AND value_date < ? ' : ''}"
-      'ORDER BY value_date ASC',
-      variables: [
-        ...assetIds.map((id) => Variable.withInt(id)),
-        if (cutoffEndExclusive != null) Variable.withInt(cutoffEndExclusive),
-      ],
-    ).get();
+    final evRows = await db
+        .customSelect(
+          'SELECT asset_id, value_date, type, amount, quantity, currency, exchange_rate, commission '
+          'FROM asset_events '
+          'WHERE asset_id IN ($assetPlaceholders) '
+          "${cutoffEndExclusive != null ? 'AND value_date < ? ' : ''}"
+          'ORDER BY value_date ASC',
+          variables: [
+            ...assetIds.map((id) => Variable.withInt(id)),
+            if (cutoffEndExclusive != null) Variable.withInt(cutoffEndExclusive),
+          ],
+        )
+        .get();
 
     for (final row in evRows) {
       final assetId = row.read<int>('asset_id');
@@ -126,8 +129,12 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
       final netAmount = amount - commission;
       final baseAmount = await convertToBase(
-        amount: netAmount, currency: currency, baseCurrency: baseCurrency,
-        storedRate: storedRate, resolver: rates, dayKey: dayKey,
+        amount: netAmount,
+        currency: currency,
+        baseCurrency: baseCurrency,
+        storedRate: storedRate,
+        resolver: rates,
+        dayKey: dayKey,
       );
       // No rate available -> drop this event from the chart series rather
       // than feed a wrong number into cumulative totals. The resolver has
@@ -135,12 +142,10 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       if (baseAmount == null) continue;
 
       perAssetDeltas.putIfAbsent(assetId, () => {});
-      perAssetDeltas[assetId]![dayKey] =
-          (perAssetDeltas[assetId]![dayKey] ?? 0) + sign * baseAmount;
+      perAssetDeltas[assetId]![dayKey] = (perAssetDeltas[assetId]![dayKey] ?? 0) + sign * baseAmount;
 
       perAssetQtyDeltas.putIfAbsent(assetId, () => {});
-      perAssetQtyDeltas[assetId]![dayKey] =
-          (perAssetQtyDeltas[assetId]![dayKey] ?? 0) + sign * quantity.abs();
+      perAssetQtyDeltas[assetId]![dayKey] = (perAssetQtyDeltas[assetId]![dayKey] ?? 0) + sign * quantity.abs();
 
       allDayKeys.add(dayKey);
     }
@@ -150,24 +155,20 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   // 3. EXTRAORDINARY EVENTS — preload and contribute their dates to the
   // global chart domain before series are built.
   // ════════════════════════════════════════════════
-  final activeEventsQuery = db.select(db.extraordinaryEvents)
-    ..where((e) => e.isActive.equals(true));
+  final activeEventsQuery = db.select(db.extraordinaryEvents)..where((e) => e.isActive.equals(true));
   final activeEvents = (await activeEventsQuery.get())
       .where(
-        (event) =>
-            cutoffEndDate == null || event.eventDate.isBefore(cutoffEndDate),
+        (event) => cutoffEndDate == null || event.eventDate.isBefore(cutoffEndDate),
       )
       .toList();
 
   final allEventEntries = <int, List<ExtraordinaryEventEntry>>{};
   if (activeEvents.isNotEmpty) {
-    final entriesQuery = db.select(db.extraordinaryEventEntries)
-      ..where((e) => e.eventId.isIn(activeEvents.map((e) => e.id).toList()));
+    final entriesQuery = db.select(db.extraordinaryEventEntries)..where((e) => e.eventId.isIn(activeEvents.map((e) => e.id).toList()));
     entriesQuery.orderBy([(e) => OrderingTerm.asc(e.date)]);
     final rows = (await entriesQuery.get())
         .where(
-          (entry) =>
-              cutoffEndDate == null || entry.date.isBefore(cutoffEndDate),
+          (entry) => cutoffEndDate == null || entry.date.isBefore(cutoffEndDate),
         )
         .toList();
     for (final entry in rows) {
@@ -178,18 +179,14 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   }
 
   final allReimbursements = <int, List<BufferTransaction>>{};
-  final bufferIds = activeEvents
-      .where((e) => e.bufferId != null)
-      .map((e) => e.bufferId!)
-      .toList();
+  final bufferIds = activeEvents.where((e) => e.bufferId != null).map((e) => e.bufferId!).toList();
   if (bufferIds.isNotEmpty) {
     final reimbQuery = db.select(db.bufferTransactions)
       ..where((t) => t.bufferId.isIn(bufferIds))
       ..where((t) => t.isReimbursement.equals(true));
     final reimbRows = (await reimbQuery.get())
         .where(
-          (txn) =>
-              cutoffEndDate == null || txn.valueDate.isBefore(cutoffEndDate),
+          (txn) => cutoffEndDate == null || txn.valueDate.isBefore(cutoffEndDate),
         )
         .toList();
     for (final txn in reimbRows) {
@@ -207,10 +204,12 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   // Add market price dates so sortedDays is dense for FX-adjusted ATH
   if (assetIds.isNotEmpty) {
     final pricePlaceholders = assetIds.map((_) => '?').join(',');
-    final priceDateRows = await db.customSelect(
-      'SELECT DISTINCT date FROM market_prices WHERE asset_id IN ($pricePlaceholders)',
-      variables: assetIds.map((id) => Variable.withInt(id)).toList(),
-    ).get();
+    final priceDateRows = await db
+        .customSelect(
+          'SELECT DISTINCT date FROM market_prices WHERE asset_id IN ($pricePlaceholders)',
+          variables: assetIds.map((id) => Variable.withInt(id)).toList(),
+        )
+        .get();
     for (final row in priceDateRows) {
       final dayKey = row.read<int>('date');
       if (includeDayKey(dayKey)) allDayKeys.add(dayKey);
@@ -218,10 +217,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   }
 
   // Need actual data beyond just today's placeholder
-  if (allDayKeys.length <= 1 &&
-      perAccount.isEmpty &&
-      perAssetDeltas.isEmpty &&
-      activeEvents.isEmpty) {
+  if (allDayKeys.length <= 1 && perAccount.isEmpty && perAssetDeltas.isEmpty && activeEvents.isEmpty) {
     return null;
   }
 
@@ -247,12 +243,14 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       }
     }
 
-    accountSeries.add(ChartSeries(
-      key: 'account:${account.id}',
-      name: account.name,
-      color: _chartColors[colorIdx % _chartColors.length],
-      spots: spots,
-    ));
+    accountSeries.add(
+      ChartSeries(
+        key: 'account:${account.id}',
+        name: account.name,
+        color: _chartColors[colorIdx % _chartColors.length],
+        spots: spots,
+      ),
+    );
     colorIdx++;
   }
 
@@ -277,13 +275,15 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       }
     }
 
-    assetInvestedSeries.add(ChartSeries(
-      key: 'asset_invested:${asset.id}',
-      name: '${asset.ticker ?? asset.name} inv.',
-      color: _chartColors[colorIdx % _chartColors.length],
-      spots: spots,
-      isDashed: true,
-    ));
+    assetInvestedSeries.add(
+      ChartSeries(
+        key: 'asset_invested:${asset.id}',
+        name: '${asset.ticker ?? asset.name} inv.',
+        color: _chartColors[colorIdx % _chartColors.length],
+        spots: spots,
+        isDashed: true,
+      ),
+    );
     colorIdx++;
   }
 
@@ -300,18 +300,20 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   if (assetCurrencies.isNotEmpty) {
     final currList = assetCurrencies.toList();
     final currPlaceholders = currList.map((_) => '?').join(',');
-    final fxRows = await db.customSelect(
-      'SELECT from_currency, to_currency, date, rate FROM exchange_rates '
-      'WHERE (from_currency IN ($currPlaceholders) AND to_currency = ?) '
-      'OR (from_currency = ? AND to_currency IN ($currPlaceholders)) '
-      'ORDER BY date',
-      variables: [
-        ...currList.map((c) => Variable.withString(c)),
-        Variable.withString(baseCurrency),
-        Variable.withString(baseCurrency),
-        ...currList.map((c) => Variable.withString(c)),
-      ],
-    ).get();
+    final fxRows = await db
+        .customSelect(
+          'SELECT from_currency, to_currency, date, rate FROM exchange_rates '
+          'WHERE (from_currency IN ($currPlaceholders) AND to_currency = ?) '
+          'OR (from_currency = ? AND to_currency IN ($currPlaceholders)) '
+          'ORDER BY date',
+          variables: [
+            ...currList.map((c) => Variable.withString(c)),
+            Variable.withString(baseCurrency),
+            Variable.withString(baseCurrency),
+            ...currList.map((c) => Variable.withString(c)),
+          ],
+        )
+        .get();
     // Merge direct + inverse per currency, preferring direct on same date
     final directByDate = <String, Map<int, double>>{};
     final inverseByDate = <String, Map<int, double>>{};
@@ -393,8 +395,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         // Batch lookup; fall back to async resolver for EUR cross-rates.
         // If neither yields a rate, skip the spot rather than plot a value
         // computed with an implicit 1.0 FX rate.
-        final fxRate = lookupFx(asset.currency, dayKey) ??
-            await rates.getRate(asset.currency, dayKey);
+        final fxRate = lookupFx(asset.currency, dayKey) ?? await rates.getRate(asset.currency, dayKey);
         if (fxRate == null) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
         final x = dt.difference(firstDate).inDays.toDouble();
@@ -407,12 +408,14 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     final investedIdx = assetInvestedSeries.indexWhere((s) => s.key == 'asset_invested:${asset.id}');
     final color = investedIdx >= 0 ? assetInvestedSeries[investedIdx].color : _chartColors[colorIdx++ % _chartColors.length];
 
-    assetMarketSeries.add(ChartSeries(
-      key: 'asset_market:${asset.id}',
-      name: asset.ticker ?? asset.name,
-      color: color,
-      spots: spots,
-    ));
+    assetMarketSeries.add(
+      ChartSeries(
+        key: 'asset_market:${asset.id}',
+        name: asset.ticker ?? asset.name,
+        color: color,
+        spots: spots,
+      ),
+    );
   }
 
   // ── Build asset gain series (market - invested) ──
@@ -435,12 +438,14 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       if (invLookup.containsKey(mkt.x)) lastInv = invLookup[mkt.x]!;
       gainSpots.add(FlSpot(mkt.x, mkt.y - lastInv));
     }
-    assetGainSeries.add(ChartSeries(
-      key: 'asset_gain:${asset.id}',
-      name: asset.ticker ?? asset.name,
-      color: mktMatch.first.color,
-      spots: gainSpots,
-    ));
+    assetGainSeries.add(
+      ChartSeries(
+        key: 'asset_gain:${asset.id}',
+        name: asset.ticker ?? asset.name,
+        color: mktMatch.first.color,
+        spots: gainSpots,
+      ),
+    );
   }
 
   // ── Build asset net series (invested + max(0,gain) * (1 - τ)) ──
@@ -462,17 +467,21 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     double lastInv = 0;
     for (final mkt in mktSpots) {
       if (invLookup.containsKey(mkt.x)) lastInv = invLookup[mkt.x]!;
-      netSpots.add(FlSpot(
-        mkt.x,
-        computeAssetNetValue(invested: lastInv, market: mkt.y, taxRate: tau),
-      ));
+      netSpots.add(
+        FlSpot(
+          mkt.x,
+          computeAssetNetValue(invested: lastInv, market: mkt.y, taxRate: tau),
+        ),
+      );
     }
-    assetNetSeries.add(ChartSeries(
-      key: 'asset_net:${asset.id}',
-      name: asset.ticker ?? asset.name,
-      color: mktMatch.first.color,
-      spots: netSpots,
-    ));
+    assetNetSeries.add(
+      ChartSeries(
+        key: 'asset_net:${asset.id}',
+        name: asset.ticker ?? asset.name,
+        color: mktMatch.first.color,
+        spots: netSpots,
+      ),
+    );
   }
 
   // ════════════════════════════════════════════════
@@ -527,8 +536,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     // "Events" (entries + reimbursements over time) as separate picks.
     final eventDayKey = toDayKey(event.eventDate);
     final valueMap = <int, double>{
-      if (includeDayKey(eventDayKey))
-        eventDayKey: anchorSign * event.totalAmount,
+      if (includeDayKey(eventDayKey)) eventDayKey: anchorSign * event.totalAmount,
     };
     if (includeDayKey(eventDayKey)) allDayKeys.add(eventDayKey);
 
@@ -583,23 +591,27 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     }
 
     if (valueSpots.isNotEmpty) {
-      bucket.add(ChartSeries(
-        key: '$valuePrefix:${event.id}',
-        name: event.name,
-        color: _chartColors[colorIdx % _chartColors.length],
-        spots: valueSpots,
-        isDashed: true,
-      ));
+      bucket.add(
+        ChartSeries(
+          key: '$valuePrefix:${event.id}',
+          name: event.name,
+          color: _chartColors[colorIdx % _chartColors.length],
+          spots: valueSpots,
+          isDashed: true,
+        ),
+      );
       colorIdx++;
     }
     if (eventSpots.isNotEmpty) {
-      bucket.add(ChartSeries(
-        key: '$eventsPrefix:${event.id}',
-        name: event.name,
-        color: _chartColors[colorIdx % _chartColors.length],
-        spots: eventSpots,
-        isDashed: true,
-      ));
+      bucket.add(
+        ChartSeries(
+          key: '$eventsPrefix:${event.id}',
+          name: event.name,
+          color: _chartColors[colorIdx % _chartColors.length],
+          spots: eventSpots,
+          isDashed: true,
+        ),
+      );
       colorIdx++;
     }
   }
@@ -631,9 +643,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   final rateService = ref.watch(exchangeRateServiceProvider);
   ref.watch(incomesProvider); // reactive
   final currentDate = ref.watch(currentDateProvider);
-  final cutoffDayKey = ref.watch(waybackDateProvider) == null
-      ? null
-      : toDayKey(currentDate);
+  final cutoffDayKey = ref.watch(waybackDateProvider) == null ? null : toDayKey(currentDate);
   bool includeDayKey(int dayKey) => cutoffDayKey == null || dayKey <= cutoffDayKey;
 
   final rates = _RateResolver(rateService, baseCurrency);
@@ -644,11 +654,13 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // the ledger but doesn't want them inflating salary totals.
   // Ordered by value_date per CLAUDE.md convention — operation_date is
   // only for import dedup, never for display/aggregation.
-  final rows = await db.customSelect(
-    "SELECT value_date AS date, amount, currency FROM incomes "
-    "WHERE type NOT IN ('refund', 'pensionContribution') "
-    "ORDER BY value_date ASC",
-  ).get();
+  final rows = await db
+      .customSelect(
+        "SELECT value_date AS date, amount, currency FROM incomes "
+        "WHERE type NOT IN ('refund', 'pensionContribution') "
+        "ORDER BY value_date ASC",
+      )
+      .get();
 
   final incomeByMonth = <(int, int), double>{};
   final monthsWithIncomeData = <(int, int)>{};
@@ -693,10 +705,12 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // Only subtract contribution rows whose asset is actually included in
   // the resolved Saving total. If a pension fund is excluded from Saving,
   // subtracting its mirrored income rows here would double-exclude it.
-  final rawPensionRows = await db.customSelect(
-    "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
-    "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
-  ).get();
+  final rawPensionRows = await db
+      .customSelect(
+        "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
+        "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
+      )
+      .get();
   final pensionRows = rawPensionRows.where((row) {
     final assetId = row.readNullable<int>('asset_id');
     return assetId != null && savingAssetIds.contains(assetId);
@@ -717,7 +731,11 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     final x = date.difference(allSeriesData.firstDate).inDays.toDouble();
     double nav = 0;
     for (final s in savingSpots) {
-      if (s.x <= x) { nav = s.y; } else { break; }
+      if (s.x <= x) {
+        nav = s.y;
+      } else {
+        break;
+      }
     }
     return nav;
   }
@@ -745,29 +763,33 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
       final mStartRef = DateTime(y, m, 1).subtract(const Duration(days: 1));
       final mEnd = (isCurrentYear && m == now.month)
           ? now
-          : (m < 12
-              ? DateTime(y, m + 1, 1).subtract(const Duration(days: 1))
-              : DateTime(y, 12, 31));
+          : (m < 12 ? DateTime(y, m + 1, 1).subtract(const Duration(days: 1)) : DateTime(y, 12, 31));
       final mIncome = incomeByMonth[(y, m)] ?? 0;
       final mPensionContrib = pensionContribByMonth[(y, m)] ?? 0;
       yearIncome += mIncome;
       yearPensionContrib += mPensionContrib;
-      months.add(_MonthBucket(
-        year: y, month: m,
-        income: mIncome,
-        navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
-        pensionContrib: mPensionContrib,
-        hasIncomeData: monthsWithIncomeData.contains((y, m)),
-      ));
+      months.add(
+        _MonthBucket(
+          year: y,
+          month: m,
+          income: mIncome,
+          navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
+          pensionContrib: mPensionContrib,
+          hasIncomeData: monthsWithIncomeData.contains((y, m)),
+        ),
+      );
     }
 
-    years.add(_YearBucket(
-      year: y, days: days,
-      income: yearIncome,
-      navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
-      pensionContrib: yearPensionContrib,
-      months: months,
-    ));
+    years.add(
+      _YearBucket(
+        year: y,
+        days: days,
+        income: yearIncome,
+        navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
+        pensionContrib: yearPensionContrib,
+        months: months,
+      ),
+    );
   }
 
   // Cumulative pension contributions as a day-offset spot series,
@@ -775,8 +797,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // from savingSpots without re-running a query. Each spot's x is the
   // day offset of that contribution; y is the running total in base
   // currency. Used to build a "personal saving" series for velocity.
-  final sortedPension = pensionRows.toList()
-    ..sort((a, b) => a.read<int>('date').compareTo(b.read<int>('date')));
+  final sortedPension = pensionRows.toList()..sort((a, b) => a.read<int>('date').compareTo(b.read<int>('date')));
   final pensionContribSpots = <FlSpot>[];
   double cumulative = 0;
   for (final row in sortedPension) {

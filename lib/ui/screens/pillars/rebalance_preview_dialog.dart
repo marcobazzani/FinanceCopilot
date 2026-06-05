@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../database/tables.dart';
 import '../../../l10n/app_strings.dart';
-import '../../../services/portfolio_rebalance_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
 import '../../../utils/formatters.dart' as fmt;
 
@@ -210,12 +210,6 @@ class _DraftView extends StatelessWidget {
                       value: '${amountFormat.format(draft.availableCashBase)} ${draft.baseCurrency}',
                       icon: Icons.account_balance_wallet_outlined,
                       color: Colors.blue,
-                    ),
-                    _SummaryMetric(
-                      label: s.rebalanceTargetBuy,
-                      value: '${amountFormat.format(draft.targetBuyBase)} ${draft.baseCurrency}',
-                      icon: Icons.shopping_cart_outlined,
-                      color: Colors.orange,
                     ),
                     _SummaryMetric(
                       label: s.rebalanceExecutedBuy,

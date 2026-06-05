@@ -15,9 +15,9 @@ class _YoYDiffTable extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
-    final theme  = Theme.of(context);
-    final sym    = currencySymbol(data.baseCurrency);
-    final years  = data.years;
+    final theme = Theme.of(context);
+    final sym = currencySymbol(data.baseCurrency);
+    final years = data.years;
 
     if (years.length < 2) {
       return Padding(
@@ -52,12 +52,22 @@ class _YoYDiffTable extends ConsumerWidget {
     );
 
     Widget diffCell(double? v) {
-      if (v == null) return const Padding(padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5), child: Text('\u2014', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: Colors.grey)));
+      if (v == null) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          child: Text(
+            '\u2014',
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        );
+      }
       final color = v >= 0 ? Colors.green.shade700 : Colors.red.shade700;
-      final text  = '${v >= 0 ? '+' : ''}${amtFmt.format(v)} $sym';
+      final text = '${v >= 0 ? '+' : ''}${amtFmt.format(v)} $sym';
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        child: PrivacyText(text,
+        child: PrivacyText(
+          text,
           style: TextStyle(fontSize: 12, color: color),
           textAlign: TextAlign.right,
         ),
@@ -75,47 +85,61 @@ class _YoYDiffTable extends ConsumerWidget {
           TableRow(
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      child: Text(s.colMonth, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Text(s.colMonth, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
               for (final p in pairs)
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        child: Text('${p.$1.year}\u2192${p.$2.year}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                          textAlign: TextAlign.right)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Text(
+                    '${p.$1.year}\u2192${p.$2.year}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
             ],
           ),
           // Month rows
           for (int m = 1; m <= 12; m++)
-            TableRow(children: [
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      child: Text(_localizedMonths()[m - 1],
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-              for (final p in pairs)
-                diffCell(diff(p.$1, p.$2, m)),
-            ]),
+            TableRow(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  child: Text(_localizedMonths()[m - 1], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+                for (final p in pairs) diffCell(diff(p.$1, p.$2, m)),
+              ],
+            ),
           // YoY row: sum of all monthly diffs for months available so far
           TableRow(
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            child: Text('YoY', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                child: Text(s.yoyRowLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
               for (final p in pairs) ...[
-                Builder(builder: (ctx) {
-                  final maxM = p.$2.months.length;
-                  return diffCell(incomeYoYTotal([
-                    for (int m = 1; m <= maxM; m++)
-                      () {
-                        final prevMonth = p.$1.months.where((mb) => mb.month == m).firstOrNull;
-                        final curMonth = p.$2.months.where((mb) => mb.month == m).firstOrNull;
-                        return (
-                          previousIncome: prevMonth?.income ?? 0,
-                          previousHasIncomeData: prevMonth?.hasIncomeData ?? false,
-                          currentIncome: curMonth?.income ?? 0,
-                          currentHasIncomeData: curMonth?.hasIncomeData ?? false,
-                        );
-                      }(),
-                  ]));
-                }),
+                Builder(
+                  builder: (ctx) {
+                    final maxM = p.$2.months.length;
+                    return diffCell(
+                      incomeYoYTotal([
+                        for (int m = 1; m <= maxM; m++)
+                          () {
+                            final prevMonth = p.$1.months.where((mb) => mb.month == m).firstOrNull;
+                            final curMonth = p.$2.months.where((mb) => mb.month == m).firstOrNull;
+                            return (
+                              previousIncome: prevMonth?.income ?? 0,
+                              previousHasIncomeData: prevMonth?.hasIncomeData ?? false,
+                              currentIncome: curMonth?.income ?? 0,
+                              currentHasIncomeData: curMonth?.hasIncomeData ?? false,
+                            );
+                          }(),
+                      ]),
+                    );
+                  },
+                ),
               ],
             ],
           ),

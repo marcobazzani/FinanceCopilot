@@ -5,7 +5,6 @@ part of 'import_screen.dart';
 // ──────────────────────────────────────────────
 
 extension _ResultStep on _ImportScreenState {
-
   Widget _buildResult() {
     final r = _result!;
     final s = ref.watch(appStringsProvider);
@@ -65,7 +64,10 @@ extension _ResultStep on _ImportScreenState {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(width: 180, child: Text(label)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
+          Text(
+            value,
+            style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          ),
         ],
       ),
     );

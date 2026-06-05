@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -13,14 +13,18 @@ void main() {
 
   /// Helper: insert a parent asset and return its id.
   Future<int> createAsset(String name) async {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-          name: name,
-          assetType: AssetType.stockEtf,
-          instrumentType: const Value(InstrumentType.etf),
-          assetClass: const Value(AssetClass.equity),
-          valuationMethod: ValuationMethod.eventDriven,
-          intermediaryId: iid,
-        ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.stockEtf,
+            instrumentType: const Value(InstrumentType.etf),
+            assetClass: const Value(AssetClass.equity),
+            valuationMethod: ValuationMethod.eventDriven,
+            intermediaryId: iid,
+          ),
+        );
   }
 
   setUp(() async {
@@ -121,25 +125,32 @@ void main() {
       // valueDate-desc order should be B then A. Pre-fix order (by `date`)
       // would have been A then B.
       final assetId = await createAsset('ValueDateOrdered');
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-        assetId: assetId,
-        date: DateTime(2024, 6, 1),
-        valueDate: DateTime(2024, 1, 15),
-        type: EventType.buy,
-        amount: 100,
-      ));
-      await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-        assetId: assetId,
-        date: DateTime(2024, 1, 15),
-        valueDate: DateTime(2024, 6, 1),
-        type: EventType.buy,
-        amount: 200,
-      ));
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 6, 1),
+              valueDate: DateTime(2024, 1, 15),
+              type: EventType.buy,
+              amount: 100,
+            ),
+          );
+      await db
+          .into(db.assetEvents)
+          .insert(
+            AssetEventsCompanion.insert(
+              assetId: assetId,
+              date: DateTime(2024, 1, 15),
+              valueDate: DateTime(2024, 6, 1),
+              type: EventType.buy,
+              amount: 200,
+            ),
+          );
 
       final events = await service.getByAsset(assetId);
       expect(events, hasLength(2));
-      expect(events[0].amount, 200,
-          reason: 'event B has the later valueDate and must come first');
+      expect(events[0].amount, 200, reason: 'event B has the later valueDate and must come first');
       expect(events[1].amount, 100);
     });
   });
@@ -287,16 +298,25 @@ void main() {
     test('deleteMany removes only the given event ids', () async {
       final assetId = await createAsset('Multi');
       final a = await service.create(
-        assetId: assetId, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 100.0, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100.0,
+        currency: 'EUR',
       );
       final b = await service.create(
-        assetId: assetId, date: DateTime(2024, 2, 1),
-        type: EventType.buy, amount: 200.0, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 2, 1),
+        type: EventType.buy,
+        amount: 200.0,
+        currency: 'EUR',
       );
       final c = await service.create(
-        assetId: assetId, date: DateTime(2024, 3, 1),
-        type: EventType.buy, amount: 300.0, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 3, 1),
+        type: EventType.buy,
+        amount: 300.0,
+        currency: 'EUR',
       );
 
       expect(await service.deleteMany([a, c]), 2);
@@ -344,8 +364,11 @@ void main() {
     test('returns null when no revalue events exist', () async {
       final assetId = await createAsset('NoRevalue');
       await service.create(
-        assetId: assetId, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 1000, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 1000,
+        currency: 'EUR',
       );
       final result = await service.getLatestRevalueAmount(assetId);
       expect(result, isNull);
@@ -354,12 +377,18 @@ void main() {
     test('returns latest revalue amount', () async {
       final assetId = await createAsset('BFP');
       await service.create(
-        assetId: assetId, date: DateTime(2024, 1, 1),
-        type: EventType.revalue, amount: 5000, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.revalue,
+        amount: 5000,
+        currency: 'EUR',
       );
       await service.create(
-        assetId: assetId, date: DateTime(2024, 6, 1),
-        type: EventType.revalue, amount: 5200, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        type: EventType.revalue,
+        amount: 5200,
+        currency: 'EUR',
       );
       final result = await service.getLatestRevalueAmount(assetId);
       expect(result, 5200);
@@ -368,12 +397,18 @@ void main() {
     test('ignores non-revalue events', () async {
       final assetId = await createAsset('Mixed');
       await service.create(
-        assetId: assetId, date: DateTime(2024, 1, 1),
-        type: EventType.revalue, amount: 3000, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.revalue,
+        amount: 3000,
+        currency: 'EUR',
       );
       await service.create(
-        assetId: assetId, date: DateTime(2024, 6, 1),
-        type: EventType.buy, amount: 9999, currency: 'EUR',
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        type: EventType.buy,
+        amount: 9999,
+        currency: 'EUR',
       );
       final result = await service.getLatestRevalueAmount(assetId);
       expect(result, 3000);
@@ -424,26 +459,41 @@ void main() {
 
       // 3 events for asset1
       await service.create(
-        assetId: asset1, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 100, currency: 'EUR',
+        assetId: asset1,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100,
+        currency: 'EUR',
       );
       await service.create(
-        assetId: asset1, date: DateTime(2024, 2, 1),
-        type: EventType.buy, amount: 200, currency: 'EUR',
+        assetId: asset1,
+        date: DateTime(2024, 2, 1),
+        type: EventType.buy,
+        amount: 200,
+        currency: 'EUR',
       );
       await service.create(
-        assetId: asset1, date: DateTime(2024, 3, 1),
-        type: EventType.sell, amount: 50, currency: 'EUR',
+        assetId: asset1,
+        date: DateTime(2024, 3, 1),
+        type: EventType.sell,
+        amount: 50,
+        currency: 'EUR',
       );
 
       // 2 events for asset2
       await service.create(
-        assetId: asset2, date: DateTime(2024, 1, 15),
-        type: EventType.buy, amount: 500, currency: 'USD',
+        assetId: asset2,
+        date: DateTime(2024, 1, 15),
+        type: EventType.buy,
+        amount: 500,
+        currency: 'USD',
       );
       await service.create(
-        assetId: asset2, date: DateTime(2024, 4, 1),
-        type: EventType.buy, amount: 300, currency: 'USD',
+        assetId: asset2,
+        date: DateTime(2024, 4, 1),
+        type: EventType.buy,
+        amount: 300,
+        currency: 'USD',
       );
 
       final result = await service.getByAssets([asset1, asset2]);
@@ -463,16 +513,25 @@ void main() {
       final asset3 = await createAsset('A3');
 
       await service.create(
-        assetId: asset1, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 100, currency: 'EUR',
+        assetId: asset1,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100,
+        currency: 'EUR',
       );
       await service.create(
-        assetId: asset2, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 200, currency: 'EUR',
+        assetId: asset2,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 200,
+        currency: 'EUR',
       );
       await service.create(
-        assetId: asset3, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 300, currency: 'EUR',
+        assetId: asset3,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 300,
+        currency: 'EUR',
       );
 
       final result = await service.getByAssets([asset1, asset3]);
@@ -522,13 +581,21 @@ void main() {
     test('returns weighted average of buy events', () async {
       final assetId = await createAsset('Bond');
       await service.create(
-        assetId: assetId, date: DateTime(2024, 1, 1),
-        type: EventType.buy, amount: 9800, quantity: 100, price: 98.0,
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 9800,
+        quantity: 100,
+        price: 98.0,
         currency: 'EUR',
       );
       await service.create(
-        assetId: assetId, date: DateTime(2024, 6, 1),
-        type: EventType.buy, amount: 4900, quantity: 50, price: 98.0,
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        type: EventType.buy,
+        amount: 4900,
+        quantity: 50,
+        price: 98.0,
         currency: 'EUR',
       );
       final result = await service.getAverageBuyPrice(assetId);

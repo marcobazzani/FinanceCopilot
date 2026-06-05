@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/web_market_data_service.dart';
-import 'package:finance_copilot/ui/screens/assets_screen.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
+import 'package:finance_copilot/ui/screens/assets/assets_screen.dart';
 
 ProviderSearchResult _r({
   required int cid,
@@ -9,15 +9,14 @@ ProviderSearchResult _r({
   String symbol = '',
   String flag = '',
   String type = '',
-}) =>
-    ProviderSearchResult(
-      cid: cid,
-      description: description,
-      symbol: symbol,
-      exchange: exchange,
-      flag: flag,
-      type: type,
-    );
+}) => ProviderSearchResult(
+  cid: cid,
+  description: description,
+  symbol: symbol,
+  exchange: exchange,
+  flag: flag,
+  type: type,
+);
 
 void main() {
   group('exchangeListingsFor (multi-exchange UI stress test)', () {

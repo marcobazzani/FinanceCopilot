@@ -37,17 +37,12 @@ class PrivacyText extends ConsumerWidget {
   final int? maxLines;
   final TextOverflow? overflow;
 
-  const PrivacyText(this.text,
-      {this.style, this.textAlign, this.maxLines, this.overflow, super.key});
+  const PrivacyText(this.text, {this.style, this.textAlign, this.maxLines, this.overflow, super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isPrivate = ref.watch(privacyModeProvider);
-    final child = Text(text,
-        style: style,
-        textAlign: textAlign,
-        maxLines: maxLines,
-        overflow: overflow);
+    final child = Text(text, style: style, textAlign: textAlign, maxLines: maxLines, overflow: overflow);
     if (!isPrivate) return child;
     return ImageFiltered(
       imageFilter: ImageFilter.blur(

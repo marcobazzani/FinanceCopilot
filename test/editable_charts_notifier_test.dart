@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:finance_copilot/services/default_charts_loader.dart';
-import 'package:finance_copilot/services/editable_charts_notifier.dart';
+import 'package:finance_copilot/services/charts/default_charts_loader.dart';
+import 'package:finance_copilot/services/charts/editable_charts_notifier.dart';
 
 DashboardChart _chart({
   required int id,
@@ -10,22 +10,22 @@ DashboardChart _chart({
   int sortOrder = 0,
   String seriesJson = '[]',
   String? sourceChartIds,
-}) =>
-    DashboardChart(
-      id: id,
-      title: title,
-      widgetType: widgetType,
-      sortOrder: sortOrder,
-      seriesJson: seriesJson,
-      sourceChartIds: sourceChartIds,
-      createdAt: DateTime(2024, 1, 1),
-    );
+}) => DashboardChart(
+  id: id,
+  title: title,
+  widgetType: widgetType,
+  sortOrder: sortOrder,
+  seriesJson: seriesJson,
+  sourceChartIds: sourceChartIds,
+  createdAt: DateTime(2024, 1, 1),
+);
 
-EditableChartsNotifier _make(List<DashboardChart> initial) =>
-    EditableChartsNotifier(EditableChartsState(
-      charts: List.of(initial),
-      pristine: List.of(initial),
-    ));
+EditableChartsNotifier _make(List<DashboardChart> initial) => EditableChartsNotifier(
+  EditableChartsState(
+    charts: List.of(initial),
+    pristine: List.of(initial),
+  ),
+);
 
 void main() {
   group('EditableChartsState.isDirty', () {

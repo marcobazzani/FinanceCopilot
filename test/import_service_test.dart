@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/import_service.dart';
-import 'package:finance_copilot/services/isin_lookup_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
+import 'package:finance_copilot/services/market/isin_lookup_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -21,9 +21,11 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     importer = ImportService(db);
     tempDir = Directory.systemTemp.createTempSync('import_test_');
-    defaultIntermediaryId = await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Default'),
-    );
+    defaultIntermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Default'),
+        );
   });
 
   tearDown(() async {
@@ -67,9 +69,11 @@ Data_Operazione;Data_Valuta;Entrate;Uscite;Descrizione
 
   group('Transaction import', () {
     test('import CSV as transactions', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Fineco'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Fineco'),
+          );
 
       final file = writeCsv('fineco.csv', '''
 Date,Amount,Description,Extra
@@ -103,9 +107,11 @@ Date,Amount,Description,Extra
     });
 
     test('re-importing same file replaces rows cleanly', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Fineco'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Fineco'),
+          );
 
       final file = writeCsv('fineco.csv', '''
 Date,Amount,Description
@@ -133,9 +139,11 @@ Date,Amount,Description
     });
 
     test('partial re-import: overlapping rows replaced, earlier rows kept', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Revolut'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Revolut'),
+          );
 
       // First import: 3 rows spanning Jan-Feb
       final file1 = writeCsv('rev1.csv', '''
@@ -187,9 +195,11 @@ Date,Amount,Desc
 Date,Amount
 15/01/2024,-10
 ''');
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Test'),
+          );
       final preview = await importer.parseFile(file.path);
       await importer.importTransactions(
         preview: preview,
@@ -210,9 +220,11 @@ Date,Amount
 Date,Amount
 2024-03-14,-10
 ''');
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Test'),
+          );
       final preview = await importer.parseFile(file.path);
       await importer.importTransactions(
         preview: preview,
@@ -234,9 +246,11 @@ Date,Amount
 Date,Amount
 01/01/2024,"1.234,56"
 ''');
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Test'),
+          );
       final preview = await importer.parseFile(file.path);
       await importer.importTransactions(
         preview: preview,
@@ -302,18 +316,12 @@ Date,Amount
       expect(preview.rows.length, 10); // capped
 
       // Extract ISINs from capped preview -- DK0062498333 is MISSING
-      final cappedIsins = preview.rows
-          .map((r) => r['ISIN']?.trim() ?? '')
-          .where((s) => s.isNotEmpty)
-          .toSet();
+      final cappedIsins = preview.rows.map((r) => r['ISIN']?.trim() ?? '').where((s) => s.isNotEmpty).toSet();
       expect(cappedIsins, isNot(contains('DK0062498333')));
 
       // getFullRows recovers it
       final full = await importer.getFullRows(preview);
-      final fullIsins = full.rows
-          .map((r) => r['ISIN']?.trim() ?? '')
-          .where((s) => s.isNotEmpty)
-          .toSet();
+      final fullIsins = full.rows.map((r) => r['ISIN']?.trim() ?? '').where((s) => s.isNotEmpty).toSet();
       expect(fullIsins, contains('DK0062498333'));
       expect(fullIsins.length, 10); // 10 unique ISINs
     });
@@ -325,10 +333,18 @@ Date,Amount
     FilePreview makeAssetPreview(List<List<String>> rows) {
       return FilePreview(
         columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
-        rows: rows.map((r) => {
-          'date': r[0], 'isin': r[1], 'quantity': r[2],
-          'price': r[3], 'currency': r[4], 'amount': r[5],
-        }).toList(),
+        rows: rows
+            .map(
+              (r) => {
+                'date': r[0],
+                'isin': r[1],
+                'quantity': r[2],
+                'price': r[3],
+                'currency': r[4],
+                'amount': r[5],
+              },
+            )
+            .toList(),
         totalRows: rows.length,
       );
     }
@@ -347,7 +363,9 @@ Date,Amount
         ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
       ]);
       final result = await importer.importAssetEventsGrouped(
-        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: mappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
       );
       expect(result.result.importedRows, 1);
@@ -363,11 +381,15 @@ Date,Amount
       ]);
       // Provide a selected exchange with the market data provider name
       final result = await importer.importAssetEventsGrouped(
-        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: mappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
         selectedExchanges: {
           'IE00B4L5Y983': const IsinExchangeOption(
-            cid: 46925, ticker: 'SWDA', name: 'iShares MSCI World',
+            cid: 46925,
+            ticker: 'SWDA',
+            name: 'iShares MSCI World',
             exchange: 'London',
           ),
         },
@@ -385,7 +407,9 @@ Date,Amount
         ['2024-01-15', 'LU0908500753', '5', '260.44', 'EUR', '1302.20'],
       ]);
       final result = await importer.importAssetEventsGrouped(
-        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: mappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
         excludedIsins: {'LU0908500753'},
       );
@@ -396,23 +420,29 @@ Date,Amount
 
     test('existing asset is reused by ISIN, not recreated', () async {
       // Pre-create an asset with ISIN and TER
-      final existingId = await db.into(db.assets).insert(AssetsCompanion.insert(
-        name: 'SWDA ETF',
-        assetType: AssetType.stockEtf,
-        instrumentType: const Value(InstrumentType.etf),
-        assetClass: const Value(AssetClass.equity),
-        valuationMethod: ValuationMethod.marketPrice,
-        isin: const Value('IE00B4L5Y983'),
-        exchange: const Value('MIL'),
-        ter: const Value(0.20),
-        intermediaryId: defaultIntermediaryId,
-      ));
+      final existingId = await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'SWDA ETF',
+              assetType: AssetType.stockEtf,
+              instrumentType: const Value(InstrumentType.etf),
+              assetClass: const Value(AssetClass.equity),
+              valuationMethod: ValuationMethod.marketPrice,
+              isin: const Value('IE00B4L5Y983'),
+              exchange: const Value('MIL'),
+              ter: const Value(0.20),
+              intermediaryId: defaultIntermediaryId,
+            ),
+          );
 
       final preview = makeAssetPreview([
         ['2024-01-15', 'IE00B4L5Y983', '10', '100.50', 'EUR', '1005.00'],
       ]);
       final result = await importer.importAssetEventsGrouped(
-        preview: preview, mappings: mappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: mappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
       );
 
@@ -425,15 +455,19 @@ Date,Amount
 
     test('bond ISINs apply price /100 divisor when amount is auto-calculated', () async {
       // Pre-create a bond asset
-      final bondId = await db.into(db.assets).insert(AssetsCompanion.insert(
-        name: 'Italian BTP',
-        assetType: AssetType.stockEtf,
-        instrumentType: const Value(InstrumentType.bond),
-        assetClass: const Value(AssetClass.fixedIncome),
-        valuationMethod: ValuationMethod.marketPrice,
-        isin: const Value('XS1234567890'),
-        intermediaryId: defaultIntermediaryId,
-      ));
+      final bondId = await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'Italian BTP',
+              assetType: AssetType.stockEtf,
+              instrumentType: const Value(InstrumentType.bond),
+              assetClass: const Value(AssetClass.fixedIncome),
+              valuationMethod: ValuationMethod.marketPrice,
+              isin: const Value('XS1234567890'),
+              intermediaryId: defaultIntermediaryId,
+            ),
+          );
 
       // Use mappings WITHOUT amount so the auto-calc path (qty * price / 100) fires
       final preview = FilePreview(
@@ -452,7 +486,9 @@ Date,Amount
       ];
 
       final result = await importer.importAssetEventsGrouped(
-        preview: preview, mappings: bondMappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: bondMappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
       );
 
@@ -468,9 +504,14 @@ Date,Amount
 
   group('Date fallback', () {
     test('operation date falls back to value date when unparsable', () async {
-      final account = await db.into(db.accounts).insert(AccountsCompanion.insert(
-        name: 'Test', sortOrder: const Value(0),
-      ));
+      final account = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Test',
+              sortOrder: const Value(0),
+            ),
+          );
       // Row with invalid operation date '-' but valid value date
       final preview = FilePreview(
         columns: ['Data_Operazione', 'Data_Valuta', 'Amount', 'Description'],
@@ -508,9 +549,14 @@ Date,Amount
     });
 
     test('value date falls back to operation date when unmapped', () async {
-      final account = await db.into(db.accounts).insert(AccountsCompanion.insert(
-        name: 'Test2', sortOrder: const Value(0),
-      ));
+      final account = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Test2',
+              sortOrder: const Value(0),
+            ),
+          );
       final preview = FilePreview(
         columns: ['Date', 'Amount', 'Description'],
         rows: [
@@ -537,9 +583,14 @@ Date,Amount
     });
 
     test('row skipped when both dates are unparsable', () async {
-      final account = await db.into(db.accounts).insert(AccountsCompanion.insert(
-        name: 'Test3', sortOrder: const Value(0),
-      ));
+      final account = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Test3',
+              sortOrder: const Value(0),
+            ),
+          );
       final preview = FilePreview(
         columns: ['Data_Operazione', 'Data_Valuta', 'Amount', 'Description'],
         rows: [
@@ -573,10 +624,18 @@ Date,Amount
     FilePreview makeDatedPreview(List<List<String>> rows) {
       return FilePreview(
         columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
-        rows: rows.map((r) => {
-          'date': r[0], 'isin': r[1], 'quantity': r[2],
-          'price': r[3], 'currency': r[4], 'amount': r[5],
-        }).toList(),
+        rows: rows
+            .map(
+              (r) => {
+                'date': r[0],
+                'isin': r[1],
+                'quantity': r[2],
+                'price': r[3],
+                'currency': r[4],
+                'amount': r[5],
+              },
+            )
+            .toList(),
         totalRows: rows.length,
       );
     }
@@ -594,10 +653,17 @@ Date,Amount
     FilePreview makeSpotPreview(List<List<String>> rows) {
       return FilePreview(
         columns: ['isin', 'quantity', 'price', 'currency', 'amount'],
-        rows: rows.map((r) => {
-          'isin': r[0], 'quantity': r[1], 'price': r[2],
-          'currency': r[3], 'amount': r[4],
-        }).toList(),
+        rows: rows
+            .map(
+              (r) => {
+                'isin': r[0],
+                'quantity': r[1],
+                'price': r[2],
+                'currency': r[3],
+                'amount': r[4],
+              },
+            )
+            .toList(),
         totalRows: rows.length,
       );
     }
@@ -617,7 +683,9 @@ Date,Amount
         ['2024-02-15', 'IE00B4L5Y983', '5', '110', 'EUR', '550'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: preview1, mappings: datedMappings, baseCurrency: 'EUR',
+        preview: preview1,
+        mappings: datedMappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
       );
       var events = await db.select(db.assetEvents).get();
@@ -628,7 +696,9 @@ Date,Amount
         ['2024-02-15', 'IE00B4L5Y983', '8', '115', 'EUR', '920'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: preview2, mappings: datedMappings, baseCurrency: 'EUR',
+        preview: preview2,
+        mappings: datedMappings,
+        baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
       );
 
@@ -640,9 +710,11 @@ Date,Amount
     });
 
     test('transaction re-import with intermediary wipes all intermediary assets from cutoff', () async {
-      final intermediaryId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
+      final intermediaryId = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
 
       // First import: two ISINs under same intermediary
       final preview1 = makeDatedPreview([
@@ -650,7 +722,9 @@ Date,Amount
         ['2024-02-15', 'LU0908500753', '5', '260', 'EUR', '1300'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: preview1, mappings: datedMappings, baseCurrency: 'EUR',
+        preview: preview1,
+        mappings: datedMappings,
+        baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
       );
       var events = await db.select(db.assetEvents).get();
@@ -662,7 +736,9 @@ Date,Amount
         ['2024-02-15', 'LU0908500753', '8', '270', 'EUR', '2160'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: preview2, mappings: datedMappings, baseCurrency: 'EUR',
+        preview: preview2,
+        mappings: datedMappings,
+        baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
       );
 
@@ -673,19 +749,25 @@ Date,Amount
     });
 
     test('transaction re-import does not wipe events from other intermediary', () async {
-      final brokerA = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
-      final brokerB = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker B'),
-      );
+      final brokerA = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
+      final brokerB = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker B'),
+          );
 
       // Import under Broker B
       final previewB = makeDatedPreview([
         ['2024-01-15', 'IE00B4L5Y983', '20', '100', 'EUR', '2000'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: previewB, mappings: datedMappings, baseCurrency: 'EUR',
+        preview: previewB,
+        mappings: datedMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerB,
       );
 
@@ -694,7 +776,9 @@ Date,Amount
         ['2024-01-15', 'IE00B4L5Y983', '10', '100', 'EUR', '1000'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: previewA, mappings: datedMappings, baseCurrency: 'EUR',
+        preview: previewA,
+        mappings: datedMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerA,
       );
 
@@ -708,9 +792,11 @@ Date,Amount
     // Reproduces GitHub issue #51: re-importing a spot portfolio file doubles
     // quantities because old events from a previous day are never deleted.
     test('issue #51: spot re-import does not double quantities', () async {
-      final intermediaryId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'My Broker'),
-      );
+      final intermediaryId = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'My Broker'),
+          );
 
       final preview = makeSpotPreview([
         ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
@@ -719,7 +805,9 @@ Date,Amount
 
       // First import
       await importer.importAssetEventsGrouped(
-        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
       );
 
@@ -731,7 +819,9 @@ Date,Amount
 
       // Re-import the exact same file (spot, so all events get today's date)
       await importer.importAssetEventsGrouped(
-        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
       );
 
@@ -742,16 +832,20 @@ Date,Amount
     });
 
     test('spot re-import with intermediary replaces all events', () async {
-      final intermediaryId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
+      final intermediaryId = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
 
       // First spot import
       final preview1 = makeSpotPreview([
         ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: preview1, mappings: spotMappings, baseCurrency: 'EUR',
+        preview: preview1,
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
       );
       var events = await db.select(db.assetEvents).get();
@@ -768,7 +862,9 @@ Date,Amount
 
       // Re-import same file (spot, so date = today)
       await importer.importAssetEventsGrouped(
-        preview: preview1, mappings: spotMappings, baseCurrency: 'EUR',
+        preview: preview1,
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
       );
 
@@ -783,19 +879,25 @@ Date,Amount
     // valid since schema v29 — every asset must have an intermediary.
 
     test('spot re-import with intermediary does not wipe other intermediary events', () async {
-      final brokerA = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
-      final brokerB = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker B'),
-      );
+      final brokerA = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
+      final brokerB = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker B'),
+          );
 
       // Import same ISIN under Broker B first
       final preview = makeSpotPreview([
         ['IE00B4L5Y983', '20', '100', 'EUR', '2000'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: preview, mappings: spotMappings, baseCurrency: 'EUR',
+        preview: preview,
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerB,
       );
 
@@ -804,7 +906,9 @@ Date,Amount
         ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
       ]);
       await importer.importAssetEventsGrouped(
-        preview: previewA, mappings: spotMappings, baseCurrency: 'EUR',
+        preview: previewA,
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerA,
       );
 
@@ -819,34 +923,39 @@ Date,Amount
     });
 
     test('issue #61: disjoint-ISIN spot imports under two intermediaries do not accumulate', () async {
-      final brokerA = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
-      final brokerB = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker B'),
-      );
+      final brokerA = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
+      final brokerB = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker B'),
+          );
 
       await importer.importAssetEventsGrouped(
         preview: makeSpotPreview([
           ['AAAA00000001', '10', '100', 'EUR', '1000'],
-          ['AAAA00000002', '5',  '200', 'EUR', '1000'],
-          ['AAAA00000003', '2',  '300', 'EUR',  '600'],
+          ['AAAA00000002', '5', '200', 'EUR', '1000'],
+          ['AAAA00000003', '2', '300', 'EUR', '600'],
         ]),
-        mappings: spotMappings, baseCurrency: 'EUR',
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerA,
       );
       expect((await db.select(db.assetEvents).get()).length, 3);
 
       await importer.importAssetEventsGrouped(
         preview: makeSpotPreview([
-          ['BBBB00000001', '7', '50',  'EUR', '350'],
+          ['BBBB00000001', '7', '50', 'EUR', '350'],
           ['BBBB00000002', '4', '125', 'EUR', '500'],
         ]),
-        mappings: spotMappings, baseCurrency: 'EUR',
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerB,
       );
-      expect((await db.select(db.assetEvents).get()).length, 5,
-          reason: "A's 3 + B's 2 = 5 (disjoint ISINs, both portfolios preserved)");
+      expect((await db.select(db.assetEvents).get()).length, 5, reason: "A's 3 + B's 2 = 5 (disjoint ISINs, both portfolios preserved)");
 
       // Re-import Broker A with NEW quantities. Pre-fix this would have left
       // Broker A's old events behind because the wipe only scoped to the
@@ -857,42 +966,49 @@ Date,Amount
           ['AAAA00000002', '15', '210', 'EUR', '3150'],
           ['AAAA00000003', '12', '310', 'EUR', '3720'],
         ]),
-        mappings: spotMappings, baseCurrency: 'EUR',
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerA,
       );
 
-      final joined = await db.customSelect(
-        'SELECT ae.quantity, a.intermediary_id FROM asset_events ae '
-        'JOIN assets a ON a.id = ae.asset_id',
-      ).get();
-      final aQtys = joined.where((r) => r.read<int>('intermediary_id') == brokerA)
-          .map((r) => r.read<double>('quantity')).toList()..sort();
-      final bQtys = joined.where((r) => r.read<int>('intermediary_id') == brokerB)
-          .map((r) => r.read<double>('quantity')).toList()..sort();
+      final joined = await db
+          .customSelect(
+            'SELECT ae.quantity, a.intermediary_id FROM asset_events ae '
+            'JOIN assets a ON a.id = ae.asset_id',
+          )
+          .get();
+      final aQtys = joined.where((r) => r.read<int>('intermediary_id') == brokerA).map((r) => r.read<double>('quantity')).toList()..sort();
+      final bQtys = joined.where((r) => r.read<int>('intermediary_id') == brokerB).map((r) => r.read<double>('quantity')).toList()..sort();
       expect(aQtys, [12.0, 15.0, 20.0], reason: 'Broker A wiped and replaced with NEW quantities');
-      expect(bQtys, [4.0, 7.0],         reason: 'Broker B untouched');
+      expect(bQtys, [4.0, 7.0], reason: 'Broker B untouched');
     });
 
     test('same ISIN at two intermediaries produces two independent asset rows', () async {
-      final brokerA = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
-      final brokerB = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker B'),
-      );
+      final brokerA = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
+      final brokerB = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker B'),
+          );
 
       await importer.importAssetEventsGrouped(
         preview: makeSpotPreview([
           ['IE00B4L5Y983', '10', '100', 'EUR', '1000'],
         ]),
-        mappings: spotMappings, baseCurrency: 'EUR',
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerA,
       );
       await importer.importAssetEventsGrouped(
         preview: makeSpotPreview([
           ['IE00B4L5Y983', '5', '100', 'EUR', '500'],
         ]),
-        mappings: spotMappings, baseCurrency: 'EUR',
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerB,
       );
 
@@ -911,7 +1027,8 @@ Date,Amount
         preview: makeSpotPreview([
           ['IE00B4L5Y983', '99', '110', 'EUR', '10890'],
         ]),
-        mappings: spotMappings, baseCurrency: 'EUR',
+        mappings: spotMappings,
+        baseCurrency: 'EUR',
         intermediaryId: brokerA,
       );
       final eventsAAfter = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(byBroker[brokerA]!))).get();
@@ -923,23 +1040,31 @@ Date,Amount
 
   group('Cumulative balance seeding from pre-cutoff sum', () {
     test('previewTransactionImport predicts balance from true pre-cutoff sum, not stale balance_after', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Test'),
+          );
 
       // Pre-existing row with intentionally stale balance_after (mirrors a previous
       // partial-period import that started its cumulative from 0).
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 12, 1),
-        valueDate: DateTime(2024, 12, 1),
-        amount: 1000.0,
-        balanceAfter: const Value(500.0), // wrong: true cumulative is 1000
-      ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 12, 1),
+              valueDate: DateTime(2024, 12, 1),
+              amount: 1000.0,
+              balanceAfter: const Value(500.0), // wrong: true cumulative is 1000
+            ),
+          );
 
       final preview = const FilePreview(
         columns: ['Date', 'Amount'],
-        rows: [{'Date': '2025-01-01', 'Amount': '-100'}],
+        rows: [
+          {'Date': '2025-01-01', 'Amount': '-100'},
+        ],
         totalRows: 1,
       );
 
@@ -957,18 +1082,24 @@ Date,Amount
     });
 
     test('importTransactions seeds cumulative balance_after from pre-cutoff sum', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Test'),
+          );
 
       // Pre-existing row that the import will NOT touch (op_date < cutoff).
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 12, 1),
-        valueDate: DateTime(2024, 12, 1),
-        amount: 1000.0,
-        balanceAfter: const Value(1000.0),
-      ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 12, 1),
+              valueDate: DateTime(2024, 12, 1),
+              amount: 1000.0,
+              balanceAfter: const Value(1000.0),
+            ),
+          );
 
       final preview = const FilePreview(
         columns: ['Date', 'Amount'],
@@ -988,9 +1119,7 @@ Date,Amount
         accountId: accountId,
       );
 
-      final txs = await (db.select(db.transactions)
-            ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
-          .get();
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.operationDate)])).get();
       expect(txs.length, 3);
       // Pre-existing untouched
       expect(txs[0].balanceAfter, 1000.0);
@@ -1004,27 +1133,37 @@ Date,Amount
       // (e.g. Revolut internal transfers). The DB stores ALL rows but
       // balance_after on each row is the FILTERED cumulative. SUM(amount)
       // would include the excluded rows and produce a wildly wrong answer.
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Revolut'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Revolut'),
+          );
 
       // Pre-existing rows: amounts sum to 1000, but stored balance_after on
       // the latest row is 200 (because 800 was excluded by the filter when
       // the previous import wrote those rows).
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 12, 1),
-        valueDate: DateTime(2024, 12, 1),
-        amount: 800.0,
-        balanceAfter: const Value(0.0), // excluded by filter
-      ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-        accountId: accountId,
-        operationDate: DateTime(2024, 12, 2),
-        valueDate: DateTime(2024, 12, 2),
-        amount: 200.0,
-        balanceAfter: const Value(200.0), // filtered cumulative = 200
-      ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 12, 1),
+              valueDate: DateTime(2024, 12, 1),
+              amount: 800.0,
+              balanceAfter: const Value(0.0), // excluded by filter
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 12, 2),
+              valueDate: DateTime(2024, 12, 2),
+              amount: 200.0,
+              balanceAfter: const Value(200.0), // filtered cumulative = 200
+            ),
+          );
 
       final preview = const FilePreview(
         columns: ['Date', 'Amount', 'State'],
@@ -1055,9 +1194,11 @@ Date,Amount
     });
 
     test('importTransactions starting balance is 0 when no pre-cutoff rows exist', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'FreshAccount'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'FreshAccount'),
+          );
 
       final preview = const FilePreview(
         columns: ['Date', 'Amount'],
@@ -1077,9 +1218,7 @@ Date,Amount
         accountId: accountId,
       );
 
-      final txs = await (db.select(db.transactions)
-            ..orderBy([(t) => OrderingTerm.asc(t.operationDate)]))
-          .get();
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.operationDate)])).get();
       expect(txs.length, 2);
       expect(txs[0].balanceAfter, 500.0);
       expect(txs[1].balanceAfter, 300.0);
@@ -1090,10 +1229,17 @@ Date,Amount
     FilePreview makeSpotPreview(List<List<String>> rows) {
       return FilePreview(
         columns: ['isin', 'quantity', 'price', 'currency', 'amount'],
-        rows: rows.map((r) => {
-          'isin': r[0], 'quantity': r[1], 'price': r[2],
-          'currency': r[3], 'amount': r[4],
-        }).toList(),
+        rows: rows
+            .map(
+              (r) => {
+                'isin': r[0],
+                'quantity': r[1],
+                'price': r[2],
+                'currency': r[3],
+                'amount': r[4],
+              },
+            )
+            .toList(),
         totalRows: rows.length,
       );
     }
@@ -1109,9 +1255,11 @@ Date,Amount
     test('issue #60 — Italian "80,000" / "81,050" parsed as 80 / 81.05', () async {
       // The literal #60 scenario: Sella XLSX certificate row with
       // Italian-locale 3-decimal display.
-      final intId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker IT'),
-      );
+      final intId = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker IT'),
+          );
       await importer.importAssetEventsGrouped(
         preview: makeSpotPreview([
           ['XS3209104044', '80,000', '81,050', 'EUR', '6.484,00'],
@@ -1129,9 +1277,11 @@ Date,Amount
     });
 
     test('per-intermediary override is persisted and reused', () async {
-      final intId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker A'),
-      );
+      final intId = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker A'),
+          );
 
       // First import: user explicitly picks en_US.
       await importer.importAssetEventsGrouped(
@@ -1146,9 +1296,7 @@ Date,Amount
       );
 
       // Override should be persisted on the intermediary.
-      final inter = await (db.select(db.intermediaries)
-            ..where((i) => i.id.equals(intId)))
-          .getSingle();
+      final inter = await (db.select(db.intermediaries)..where((i) => i.id.equals(intId))).getSingle();
       expect(inter.defaultImportLocale, 'en_US');
 
       // Second import without override: parses under saved 'en_US',
@@ -1169,13 +1317,14 @@ Date,Amount
     });
 
     test('per-account override is persisted on ImportConfigs', () async {
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Test'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Test'),
+          );
       final tempDir2 = await Directory.systemTemp.createTemp('fc_locale_');
       addTearDown(() async => await tempDir2.delete(recursive: true));
-      final f = File('${tempDir2.path}/tx.csv')
-        ..writeAsStringSync('Date,Amount\n01/01/2024,"1.234,56"\n');
+      final f = File('${tempDir2.path}/tx.csv')..writeAsStringSync('Date,Amount\n01/01/2024,"1.234,56"\n');
       final preview = await importer.parseFile(f.path);
       await importer.importTransactions(
         preview: preview,
@@ -1187,18 +1336,18 @@ Date,Amount
         numberLocaleOverride: 'it_IT',
         appLocale: 'en_US',
       );
-      final cfg = await (db.select(db.importConfigs)
-            ..where((c) => c.accountId.equals(accountId)))
-          .getSingle();
+      final cfg = await (db.select(db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingle();
       expect(cfg.numberLocale, 'it_IT');
       final tx = (await db.select(db.transactions).get()).first;
       expect(tx.amount, closeTo(1234.56, 1e-9));
     });
 
     test('appLocale fallback when no override and no saved value', () async {
-      final intId = await db.into(db.intermediaries).insert(
-        IntermediariesCompanion.insert(name: 'Broker NoOverride'),
-      );
+      final intId = await db
+          .into(db.intermediaries)
+          .insert(
+            IntermediariesCompanion.insert(name: 'Broker NoOverride'),
+          );
       await importer.importAssetEventsGrouped(
         preview: makeSpotPreview([
           ['IE00B4L5Y983', '5.000', '100', 'EUR', '500.000'],
@@ -1211,9 +1360,7 @@ Date,Amount
       final events = await db.select(db.assetEvents).get();
       expect(events.first.quantity, 5000.0);
       // No override given → defaultImportLocale stays NULL.
-      final inter = await (db.select(db.intermediaries)
-            ..where((i) => i.id.equals(intId)))
-          .getSingle();
+      final inter = await (db.select(db.intermediaries)..where((i) => i.id.equals(intId))).getSingle();
       expect(inter.defaultImportLocale, isNull);
     });
   });
@@ -1232,9 +1379,11 @@ Date,Amount
       // Running balance in valueDate order: 100, 150.
       // Pre-fix code sorted by operationDate (Jan 3, Jan 5) -> 50, 150 — so
       // row0's balanceAfter was 150 instead of 100.
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'OrderTest'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'OrderTest'),
+          );
       final file = writeCsv('order.csv', '''
 OpDate,ValDate,Amount
 05/01/2024,01/01/2024,100
@@ -1250,8 +1399,7 @@ OpDate,ValDate,Amount
         ],
         accountId: accountId,
       );
-      final txs = await (db.select(db.transactions)
-            ..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
       expect(txs, hasLength(2));
       // First by valueDate: Jan 1, +100 -> balance 100
       expect(txs[0].valueDate, DateTime(2024, 1, 1));
@@ -1269,9 +1417,11 @@ OpDate,ValDate,Amount
       // The import path was fixed in a prior change; the preview path had
       // the same bug duplicated and would lie to the user before they hit
       // the Import button.
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'BankP'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'BankP'),
+          );
       final file = writeCsv('balprev.csv', '''
 Date,Balance
 15/01/2024,1000
@@ -1283,16 +1433,14 @@ Date,Balance
         preview: preview,
         mappings: const [
           ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
-          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount',
-              balanceDiffColumn: 'Balance'),
+          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
         ],
         accountId: accountId,
       );
       // importSum is the sum of all parsed amounts. The diffs are 0+100+(-20)=80.
       // Pre-fix code summed 1000+100-20=1080.
       expect(result.parsedRows, 3);
-      expect(result.importSum, closeTo(80.0, 1e-9),
-          reason: 'sum must match the import path (round-6 fix)');
+      expect(result.importSum, closeTo(80.0, 1e-9), reason: 'sum must match the import path (round-6 fix)');
     });
   });
 
@@ -1302,9 +1450,11 @@ Date,Balance
       // `balance ?? 0`, i.e. it silently imported the starting balance as
       // the first transaction's amount, inflating the account by the entire
       // opening balance.
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'BankX'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'BankX'),
+          );
       final file = writeCsv('bal.csv', '''
 Date,Balance
 15/01/2024,1000
@@ -1316,16 +1466,13 @@ Date,Balance
         preview: preview,
         mappings: const [
           ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
-          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount',
-              balanceDiffColumn: 'Balance'),
+          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
         ],
         accountId: accountId,
       );
-      final txs = await (db.select(db.transactions)
-            ..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
       expect(txs, hasLength(3));
-      expect(txs[0].amount, 0.0,
-          reason: 'first row has no prior balance, must be 0 not 1000');
+      expect(txs[0].amount, 0.0, reason: 'first row has no prior balance, must be 0 not 1000');
       expect(txs[1].amount, closeTo(100.0, 1e-9));
       expect(txs[2].amount, closeTo(-20.0, 1e-9));
     });
@@ -1334,9 +1481,11 @@ Date,Balance
       // Row 1 has no balance — the diff for row 2 should be (row2 - row0),
       // not (row2 - 0). Pre-fix code reset prevBalance to null on the gap
       // and then row 2 fell back to `balance ?? 0` = the full balance.
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'BankY'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'BankY'),
+          );
       final file = writeCsv('gap.csv', '''
 Date,Balance
 15/01/2024,1000
@@ -1348,19 +1497,15 @@ Date,Balance
         preview: preview,
         mappings: const [
           ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
-          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount',
-              balanceDiffColumn: 'Balance'),
+          ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
         ],
         accountId: accountId,
       );
-      final txs = await (db.select(db.transactions)
-            ..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
       expect(txs, hasLength(3));
       expect(txs[0].amount, 0.0);
-      expect(txs[1].amount, 0.0,
-          reason: 'gap row has no parseable balance, contributes 0');
-      expect(txs[2].amount, closeTo(80.0, 1e-9),
-          reason: 'diff is computed against last known balance (1000), not 0');
+      expect(txs[1].amount, 0.0, reason: 'gap row has no parseable balance, contributes 0');
+      expect(txs[2].amount, closeTo(80.0, 1e-9), reason: 'diff is computed against last known balance (1000), not 0');
     });
   });
 
@@ -1372,10 +1517,8 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'type', 'quantity', 'price', 'currency', 'amount'],
         rows: const [
-          {'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'type': 'BUY',
-           'quantity': '10', 'price': '100', 'currency': 'EUR', 'amount': '1000'},
-          {'date': '2024-02-15', 'isin': 'IE00B4L5Y983', 'type': 'DIVIDEND',
-           'quantity': '0', 'price': '0', 'currency': 'EUR', 'amount': '5'},
+          {'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'type': 'BUY', 'quantity': '10', 'price': '100', 'currency': 'EUR', 'amount': '1000'},
+          {'date': '2024-02-15', 'isin': 'IE00B4L5Y983', 'type': 'DIVIDEND', 'quantity': '0', 'price': '0', 'currency': 'EUR', 'amount': '5'},
         ],
         totalRows: 2,
       );
@@ -1393,8 +1536,7 @@ Date,Balance
         baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
       );
-      expect(result.result.importedRows, 1,
-          reason: 'only the BUY row should import; DIVIDEND has no mapping');
+      expect(result.result.importedRows, 1, reason: 'only the BUY row should import; DIVIDEND has no mapping');
       expect(result.result.errorRows, 1);
       final events = await db.select(db.assetEvents).get();
       expect(events, hasLength(1));
@@ -1408,8 +1550,7 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'type', 'quantity', 'price', 'currency', 'amount'],
         rows: const [
-          {'date': '2024-02-15', 'isin': 'IE00B4L5Y983', 'type': 'DIVIDEND',
-           'quantity': '0', 'price': '0', 'currency': 'EUR', 'amount': '5'},
+          {'date': '2024-02-15', 'isin': 'IE00B4L5Y983', 'type': 'DIVIDEND', 'quantity': '0', 'price': '0', 'currency': 'EUR', 'amount': '5'},
         ],
         totalRows: 1,
       );
@@ -1442,42 +1583,36 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'type', 'quantity', 'amount', 'orderRef'],
         rows: const [
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
-           'quantity': '30', 'amount': '-1033.2', 'orderRef': 'A1'},
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
-           'quantity': '0',  'amount': '-9.5',    'orderRef': 'A1'},
-          {'date': '2026-02-04', 'isin': 'DK0062498333', 'type': 'Commissioni',
-           'quantity': '0',  'amount': '-9.5',    'orderRef': 'A2'},
-          {'date': '2026-02-04', 'isin': 'DK0062498333', 'type': 'Acquisto',
-           'quantity': '10', 'amount': '-340.0',  'orderRef': 'A2'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto', 'quantity': '30', 'amount': '-1033.2', 'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni', 'quantity': '0', 'amount': '-9.5', 'orderRef': 'A1'},
+          {'date': '2026-02-04', 'isin': 'DK0062498333', 'type': 'Commissioni', 'quantity': '0', 'amount': '-9.5', 'orderRef': 'A2'},
+          {'date': '2026-02-04', 'isin': 'DK0062498333', 'type': 'Acquisto', 'quantity': '10', 'amount': '-340.0', 'orderRef': 'A2'},
         ],
         totalRows: 4,
       );
       final result = await importer.importAssetEventsGrouped(
         preview: preview,
         mappings: const [
-          ColumnMapping(sourceColumn: 'date',     targetField: 'date'),
-          ColumnMapping(sourceColumn: 'isin',     targetField: 'isin'),
-          ColumnMapping(sourceColumn: 'type',     targetField: 'type'),
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
           ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
-          ColumnMapping(sourceColumn: 'amount',   targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
           ColumnMapping(sourceColumn: 'orderRef', targetField: 'orderRef'),
         ],
         baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
-        buyValues:  {'Acquisto'},
+        buyValues: {'Acquisto'},
         sellValues: {'Vendita'},
-        feeValues:  {'Commissioni'},
+        feeValues: {'Commissioni'},
       );
-      expect(result.result.importedRows, 2,
-          reason: 'two buys; the two fee rows are folded into commission');
+      expect(result.result.importedRows, 2, reason: 'two buys; the two fee rows are folded into commission');
       expect(result.result.attachedFees, 2);
       expect(result.result.unmatchedFees, 0);
       final events = await db.select(db.assetEvents).get();
       expect(events, hasLength(2));
       expect(events.map((e) => e.commission).whereType<double>().toSet(), {9.5});
-      expect(events.every((e) => e.type == EventType.buy), isTrue,
-          reason: 'type column wins; negative amount must NOT flip to sell');
+      expect(events.every((e) => e.type == EventType.buy), isTrue, reason: 'type column wins; negative amount must NOT flip to sell');
     });
 
     test('orphan fee row (no matching parent) is counted, not imported', () async {
@@ -1486,29 +1621,26 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'type', 'quantity', 'amount', 'orderRef'],
         rows: const [
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
-           'quantity': '30', 'amount': '-1033.2', 'orderRef': 'A1'},
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
-           'quantity': '0',  'amount': '-9.5',    'orderRef': 'A1'},
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
-           'quantity': '0',  'amount': '-1.0',    'orderRef': 'A99'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto', 'quantity': '30', 'amount': '-1033.2', 'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni', 'quantity': '0', 'amount': '-9.5', 'orderRef': 'A1'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni', 'quantity': '0', 'amount': '-1.0', 'orderRef': 'A99'},
         ],
         totalRows: 3,
       );
       final result = await importer.importAssetEventsGrouped(
         preview: preview,
         mappings: const [
-          ColumnMapping(sourceColumn: 'date',     targetField: 'date'),
-          ColumnMapping(sourceColumn: 'isin',     targetField: 'isin'),
-          ColumnMapping(sourceColumn: 'type',     targetField: 'type'),
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
           ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
-          ColumnMapping(sourceColumn: 'amount',   targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
           ColumnMapping(sourceColumn: 'orderRef', targetField: 'orderRef'),
         ],
         baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
-        buyValues:  {'Acquisto'},
-        feeValues:  {'Commissioni'},
+        buyValues: {'Acquisto'},
+        feeValues: {'Commissioni'},
       );
       expect(result.result.importedRows, 1);
       expect(result.result.attachedFees, 1);
@@ -1524,26 +1656,24 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'type', 'quantity', 'amount'],
         rows: const [
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
-           'quantity': '30', 'amount': '-1033.2'},
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
-           'quantity': '0',  'amount': '-9.5'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto', 'quantity': '30', 'amount': '-1033.2'},
+          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni', 'quantity': '0', 'amount': '-9.5'},
         ],
         totalRows: 2,
       );
       final result = await importer.importAssetEventsGrouped(
         preview: preview,
         mappings: const [
-          ColumnMapping(sourceColumn: 'date',     targetField: 'date'),
-          ColumnMapping(sourceColumn: 'isin',     targetField: 'isin'),
-          ColumnMapping(sourceColumn: 'type',     targetField: 'type'),
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
           ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
-          ColumnMapping(sourceColumn: 'amount',   targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
         ],
         baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
-        buyValues:  {'Acquisto'},
-        feeValues:  {'Commissioni'},
+        buyValues: {'Acquisto'},
+        feeValues: {'Commissioni'},
       );
       expect(result.result.importedRows, 1);
       expect(result.result.errorRows, 0);
@@ -1551,8 +1681,7 @@ Date,Balance
       expect(result.result.unmatchedFees, 0);
       final events = await db.select(db.assetEvents).get();
       expect(events, hasLength(1));
-      expect(events.single.commission, isNull,
-          reason: 'no inline commission column either');
+      expect(events.single.commission, isNull, reason: 'no inline commission column either');
     });
 
     test('external fee wins over inline commission column on the same parent', () async {
@@ -1562,33 +1691,46 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'type', 'quantity', 'amount', 'commission', 'orderRef'],
         rows: const [
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Acquisto',
-           'quantity': '30', 'amount': '-1033.2', 'commission': '3.5',  'orderRef': 'A1'},
-          {'date': '2026-02-23', 'isin': 'DK0062498333', 'type': 'Commissioni',
-           'quantity': '0',  'amount': '-9.5',     'commission': '',      'orderRef': 'A1'},
+          {
+            'date': '2026-02-23',
+            'isin': 'DK0062498333',
+            'type': 'Acquisto',
+            'quantity': '30',
+            'amount': '-1033.2',
+            'commission': '3.5',
+            'orderRef': 'A1',
+          },
+          {
+            'date': '2026-02-23',
+            'isin': 'DK0062498333',
+            'type': 'Commissioni',
+            'quantity': '0',
+            'amount': '-9.5',
+            'commission': '',
+            'orderRef': 'A1',
+          },
         ],
         totalRows: 2,
       );
       final result = await importer.importAssetEventsGrouped(
         preview: preview,
         mappings: const [
-          ColumnMapping(sourceColumn: 'date',       targetField: 'date'),
-          ColumnMapping(sourceColumn: 'isin',       targetField: 'isin'),
-          ColumnMapping(sourceColumn: 'type',       targetField: 'type'),
-          ColumnMapping(sourceColumn: 'quantity',   targetField: 'quantity'),
-          ColumnMapping(sourceColumn: 'amount',     targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
           ColumnMapping(sourceColumn: 'commission', targetField: 'commission'),
-          ColumnMapping(sourceColumn: 'orderRef',   targetField: 'orderRef'),
+          ColumnMapping(sourceColumn: 'orderRef', targetField: 'orderRef'),
         ],
         baseCurrency: 'EUR',
         intermediaryId: defaultIntermediaryId,
-        buyValues:  {'Acquisto'},
-        feeValues:  {'Commissioni'},
+        buyValues: {'Acquisto'},
+        feeValues: {'Commissioni'},
       );
       expect(result.result.importedRows, 1);
       final events = await db.select(db.assetEvents).get();
-      expect(events.single.commission, 9.5,
-          reason: 'external Commissioni row (9.5) wins over inline commission column (3.5)');
+      expect(events.single.commission, 9.5, reason: 'external Commissioni row (9.5) wins over inline commission column (3.5)');
     });
 
     test('negativeIsBuy flips sign-based detection for cash-flow exports', () async {
@@ -1600,7 +1742,7 @@ Date,Balance
         columns: ['date', 'isin', 'quantity', 'amount'],
         rows: const [
           {'date': '2026-02-23', 'isin': 'DK0062498333', 'quantity': '30', 'amount': '-1033.2'},
-          {'date': '2026-02-16', 'isin': 'IE00BHZRQZ17', 'quantity': '2',  'amount': '-74.45'},
+          {'date': '2026-02-16', 'isin': 'IE00BHZRQZ17', 'quantity': '2', 'amount': '-74.45'},
           {'date': '2026-02-10', 'isin': 'DK0062498333', 'quantity': '40', 'amount': '1882.6'},
         ],
         totalRows: 3,
@@ -1632,7 +1774,7 @@ Date,Balance
         columns: ['date', 'isin', 'quantity', 'amount'],
         rows: const [
           {'date': '2026-02-23', 'isin': 'DK0062498333', 'quantity': '30', 'amount': '-1033.2'},
-          {'date': '2026-02-10', 'isin': 'IE00BHZRQZ17', 'quantity': '2',  'amount': '74.45'},
+          {'date': '2026-02-10', 'isin': 'IE00BHZRQZ17', 'quantity': '2', 'amount': '74.45'},
         ],
         totalRows: 2,
       );
@@ -1662,10 +1804,8 @@ Date,Balance
       final preview = FilePreview(
         columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
         rows: [
-          {'date': 'not-a-date', 'isin': '???', 'quantity': 'x', 'price': 'y',
-           'currency': 'EUR', 'amount': 'z'},
-          {'date': 'also-bad', 'isin': '!!!', 'quantity': 'a', 'price': 'b',
-           'currency': 'EUR', 'amount': 'c'},
+          {'date': 'not-a-date', 'isin': '???', 'quantity': 'x', 'price': 'y', 'currency': 'EUR', 'amount': 'z'},
+          {'date': 'also-bad', 'isin': '!!!', 'quantity': 'a', 'price': 'b', 'currency': 'EUR', 'amount': 'c'},
         ],
         totalRows: 2,
       );
@@ -1694,10 +1834,19 @@ Date,Balance
     FilePreview makeFeePreview(List<List<String>> rows) {
       return FilePreview(
         columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount', 'rate'],
-        rows: rows.map((r) => {
-          'date': r[0], 'isin': r[1], 'quantity': r[2], 'price': r[3],
-          'currency': r[4], 'amount': r[5], 'rate': r[6],
-        }).toList(),
+        rows: rows
+            .map(
+              (r) => {
+                'date': r[0],
+                'isin': r[1],
+                'quantity': r[2],
+                'price': r[3],
+                'currency': r[4],
+                'amount': r[5],
+                'rate': r[6],
+              },
+            )
+            .toList(),
         totalRows: rows.length,
       );
     }
@@ -1729,8 +1878,7 @@ Date,Balance
       );
       final events = await db.select(db.assetEvents).get();
       expect(events, hasLength(1));
-      expect(events.first.commission, isNull,
-          reason: 'commission must not be fabricated from a 1.0 rate fallback');
+      expect(events.first.commission, isNull, reason: 'commission must not be fabricated from a 1.0 rate fallback');
     });
 
     test('commission is null when exchange-rate cell is non-numeric', () async {
@@ -1793,8 +1941,12 @@ Date,Balance
         columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
         rows: [
           {
-            'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'quantity': '10',
-            'price': '100', 'currency': 'EUR', 'amount': '1010',
+            'date': '2024-01-15',
+            'isin': 'IE00B4L5Y983',
+            'quantity': '10',
+            'price': '100',
+            'currency': 'EUR',
+            'amount': '1010',
           },
         ],
         totalRows: 1,

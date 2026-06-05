@@ -5,54 +5,13 @@ part of 'import_screen.dart';
 // ──────────────────────────────────────────────
 
 extension _ColumnMapperStep on _ImportScreenState {
-
   Widget _buildColumnMapper() {
     final s = ref.watch(appStringsProvider);
     final preview = _preview;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Target selector (hidden when preselected from account view)
-        if (widget.preselectedAccountId == null && widget.preselectedTarget == null) ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
-              SegmentedButton<ImportTarget>(
-                segments: [
-                  ButtonSegment(value: ImportTarget.transaction, icon: const Icon(Icons.receipt_long, size: 18), label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.assetEvent, icon: const Icon(Icons.trending_up, size: 18), label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.income, icon: const Icon(Icons.payments, size: 18), label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12))),
-                ],
-                selected: {_target},
-                showSelectedIcon: false,
-                onSelectionChanged: (v) => _setState(() {
-                  _target = v.first;
-                  _targetId = null;
-                  _isQuickMode = false;
-                  _savedConfig = null;
-                  _mappings.clear();
-                  _amountFormula.clear();
-                  for (final f in _requiredFields) {
-                    _mappings[f] = null;
-                  }
-                  if (preview != null) _autoMap(preview.columns);
-                }),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-        ],
-
-        // Account selector (transactions only, when no preselected account)
-        if (_target == ImportTarget.transaction && widget.preselectedAccountId == null) ...[
-          _buildInlineAccountSelector(),
-          const SizedBox(height: 12),
-        ],
-
-        // Data source toolbar
+        // Data source toolbar FIRST — pick the file (or paste) up front.
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -68,10 +27,8 @@ extension _ColumnMapperStep on _ImportScreenState {
               label: Text(s.pasteFromClipboard),
               onPressed: _parsing ? null : _pasteFromClipboard,
             ),
-            if (_filePath != null)
-              Chip(label: Text(_filePath!.split('/').last)),
-            if (_filePath == null && _preview != null)
-              Chip(label: Text(s.clipboardData)),
+            if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
+            if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
             if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
           ],
         ),
@@ -81,15 +38,80 @@ extension _ColumnMapperStep on _ImportScreenState {
         ],
         const SizedBox(height: 12),
 
+        // Target selector (hidden when preselected from account view)
+        if (widget.preselectedAccountId == null && widget.preselectedTarget == null) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
+              SegmentedButton<ImportTarget>(
+                segments: [
+                  ButtonSegment(
+                    value: ImportTarget.transaction,
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ImportTarget.assetEvent,
+                    icon: const Icon(Icons.trending_up, size: 18),
+                    label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ImportTarget.income,
+                    icon: const Icon(Icons.payments, size: 18),
+                    label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12)),
+                  ),
+                ],
+                selected: {_target},
+                showSelectedIcon: false,
+                onSelectionChanged: (v) async {
+                  _setState(() {
+                    _target = v.first;
+                    _targetId = null;
+                    _isQuickMode = false;
+                    _savedConfig = null;
+                    _mappings.clear();
+                    _amountFormula.clear();
+                    for (final f in _requiredFields) {
+                      _mappings[f] = null;
+                    }
+                    if (preview != null) _autoMap(preview.columns);
+                  });
+                  // Income has no per-target key — load its single global
+                  // config as soon as the user picks the Income target.
+                  if (_target == ImportTarget.income && _preview != null) {
+                    await _loadSavedConfig(_preview!.columns);
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Account selector (transactions only, when no preselected account)
+        if (_target == ImportTarget.transaction && widget.preselectedAccountId == null) ...[
+          _buildInlineAccountSelector(),
+          const SizedBox(height: 12),
+        ],
+
+        // Asset-event Mode + Group/Single selectors. Picking the single-asset
+        // target loads its saved config (and applies it to the already-loaded
+        // file when one is present).
+        if (_target == ImportTarget.assetEvent) ...[
+          _buildAssetModeSelectors(),
+          const SizedBox(height: 12),
+        ],
+
         // Body: quick-confirm view OR full mapping UI
         Expanded(
           child: IgnorePointer(
             ignoring: preview == null,
             child: Opacity(
               opacity: preview == null ? 0.4 : 1.0,
-              child: _isQuickMode && preview != null
-                  ? _buildQuickConfirm(preview)
-                  : _buildMappingContent(preview),
+              child: _isQuickMode && preview != null ? _buildQuickConfirm(preview) : _buildMappingContent(preview),
             ),
           ),
         ),
@@ -118,9 +140,7 @@ extension _ColumnMapperStep on _ImportScreenState {
         // a previously-imported pension asset has rows there even though
         // it has no external feed. valuation_method is the source of
         // truth ('eventDriven' vs 'marketPrice').
-        final manual = assets
-            .where((a) => a.valuationMethod == ValuationMethod.eventDriven)
-            .toList();
+        final manual = assets.where((a) => a.valuationMethod == ValuationMethod.eventDriven).toList();
         return Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -139,17 +159,29 @@ extension _ColumnMapperStep on _ImportScreenState {
                 items: manual.isEmpty
                     ? [DropdownMenuItem<int>(value: null, enabled: false, child: Text(s.noAssetsAvailable))]
                     : manual
-                        .map((a) => DropdownMenuItem(value: a.id, child: Text(a.name, overflow: TextOverflow.ellipsis)))
-                        .toList(),
+                          .map(
+                            (a) => DropdownMenuItem(
+                              value: a.id,
+                              child: Text(a.name, overflow: TextOverflow.ellipsis),
+                            ),
+                          )
+                          .toList(),
                 onChanged: manual.isEmpty
                     ? null
-                    : (v) => _setState(() {
+                    : (v) async {
+                        _setState(() {
                           _singleAssetTargetId = v;
                           if (v != null) {
                             final picked = manual.firstWhere((a) => a.id == v);
                             _selectedIntermediaryId = picked.intermediaryId;
                           }
-                        }),
+                          _savedConfig = null;
+                        });
+                        // Load any saved single-asset config for this target.
+                        if (v != null && _preview != null) {
+                          await _loadSavedConfig(_preview!.columns);
+                        }
+                      },
               ),
             ),
             OutlinedButton.icon(
@@ -173,7 +205,6 @@ extension _ColumnMapperStep on _ImportScreenState {
   /// the new asset as the import target.
   Future<void> _showCreateEmptyAssetDialog() async {
     final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController();
     final intermediaries = await ref.read(intermediaryServiceProvider).getAll();
     if (intermediaries.isEmpty) {
       if (mounted) showInfoSnack(context, s.noIntermediariesAvailable);
@@ -184,63 +215,73 @@ extension _ColumnMapperStep on _ImportScreenState {
     String currency = baseCurrency;
     if (!mounted) return;
 
-    final created = await showDialog<int>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Text(s.createEmptyAsset),
-          content: SizedBox(
-            width: 380,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  autofocus: true,
-                  decoration: InputDecoration(labelText: s.name),
-                  onChanged: (_) => setLocal(() {}),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: pickedIntermediary,
-                  decoration: InputDecoration(labelText: s.intermediaryName),
-                  items: intermediaries
-                      .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name)))
-                      .toList(),
-                  onChanged: (v) => setLocal(() => pickedIntermediary = v),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  initialValue: currency,
-                  decoration: const InputDecoration(labelText: 'Currency'),
-                  textCapitalization: TextCapitalization.characters,
-                  onChanged: (v) => currency = v.trim().toUpperCase(),
-                ),
-              ],
+    final nameCtrl = TextEditingController();
+    final int? created;
+    try {
+      created = await showDialog<int>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) => AlertDialog(
+            title: Text(s.createEmptyAsset),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration: InputDecoration(labelText: s.name),
+                    onChanged: (_) => setLocal(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: pickedIntermediary,
+                    decoration: InputDecoration(labelText: s.intermediaryName),
+                    items: intermediaries.map((i) => DropdownMenuItem(value: i.id, child: Text(i.name))).toList(),
+                    onChanged: (v) => setLocal(() => pickedIntermediary = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    initialValue: currency,
+                    decoration: InputDecoration(labelText: s.currency),
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: (v) => currency = v.trim().toUpperCase(),
+                  ),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
+              FilledButton(
+                onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
+                    ? () async {
+                        final id = await ref
+                            .read(assetServiceProvider)
+                            .create(
+                              name: nameCtrl.text.trim(),
+                              currency: currency.isEmpty ? baseCurrency : currency,
+                              // Single-asset import targets are manual by
+                              // definition (no feed) — create them event-driven
+                              // so they appear in the picker immediately, before
+                              // any revalue auto-toggles the flag.
+                              valuationMethod: ValuationMethod.eventDriven,
+                              instrumentType: InstrumentType.alternative,
+                              assetClass: AssetClass.alternative,
+                              intermediaryId: pickedIntermediary!,
+                            );
+                        if (ctx.mounted) Navigator.pop(ctx, id);
+                      }
+                    : null,
+                child: Text(s.create),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
-                  ? () async {
-                      final id = await ref.read(assetServiceProvider).create(
-                            name: nameCtrl.text.trim(),
-                            currency: currency.isEmpty ? baseCurrency : currency,
-                            valuationMethod: ValuationMethod.marketPrice,
-                            instrumentType: InstrumentType.alternative,
-                            assetClass: AssetClass.alternative,
-                            intermediaryId: pickedIntermediary!,
-                          );
-                      if (ctx.mounted) Navigator.pop(ctx, id);
-                    }
-                  : null,
-              child: Text(s.create),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      nameCtrl.dispose();
+    }
 
     if (created != null && mounted) {
       _setState(() {
@@ -258,14 +299,16 @@ extension _ColumnMapperStep on _ImportScreenState {
     return accountsAsync.when(
       data: (accounts) {
         if (accounts.isEmpty) {
-          return Row(children: [
-            Expanded(child: Text(s.noAccountsCreate, style: const TextStyle(fontSize: 13))),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: () => _showCreateAccountDialog(),
-              child: Text(s.createAccount),
-            ),
-          ]);
+          return Row(
+            children: [
+              Expanded(child: Text(s.noAccountsCreate, style: const TextStyle(fontSize: 13))),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () => _showCreateAccountDialog(),
+                child: Text(s.createAccount),
+              ),
+            ],
+          );
         }
         return Row(
           children: [

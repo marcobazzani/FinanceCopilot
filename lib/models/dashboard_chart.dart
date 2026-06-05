@@ -35,9 +35,7 @@ class DashboardChart {
       widgetType: widgetType ?? this.widgetType,
       sortOrder: sortOrder ?? this.sortOrder,
       seriesJson: seriesJson ?? this.seriesJson,
-      sourceChartIds: identical(sourceChartIds, _sentinel)
-          ? this.sourceChartIds
-          : sourceChartIds as String?,
+      sourceChartIds: identical(sourceChartIds, _sentinel) ? this.sourceChartIds : sourceChartIds as String?,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -53,8 +51,7 @@ class DashboardChart {
       other.sourceChartIds == sourceChartIds;
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, widgetType, sortOrder, seriesJson, sourceChartIds);
+  int get hashCode => Object.hash(id, title, widgetType, sortOrder, seriesJson, sourceChartIds);
 }
 
 const Object _sentinel = Object();

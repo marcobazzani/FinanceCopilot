@@ -70,9 +70,7 @@ EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = fa
   if (lastMonth == null || currentTotal == 0) return null;
   final n = lastMonth;
 
-  final prevSame = prev.months
-      .where((m) => m.month <= n)
-      .fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income));
+  final prevSame = prev.months.where((m) => m.month <= n).fold(0.0, (s, m) => s + (expenses ? m.expenses : m.income));
   if (prevSame == 0) return null;
 
   final prevTotal = expenses ? prev.expenses : prev.income;
@@ -85,7 +83,7 @@ EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = fa
   );
 }
 
-const _monthAbbrs = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const _monthAbbrs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 String monthAbbr(int month) => _monthAbbrs[(month - 1).clamp(0, 11)];
 
 /// Smoothed annual expense estimate for forward-looking KPIs (e.g. FIRE).
@@ -101,10 +99,13 @@ String monthAbbr(int month) => _monthAbbrs[(month - 1).clamp(0, 11)];
 class SmoothedAnnualExpenses {
   /// Final smoothed estimate.
   final double value;
+
   /// EoY projection for [current], or `null` when not computable.
   final double? projectedCurrent;
+
   /// Full-year total for [prev], or `null` when [prev] was missing/zero.
   final double? prevTotal;
+
   /// How many months of [current] data fed the projection (for display).
   final int? projectionMonths;
 
@@ -167,34 +168,37 @@ TextSpan? buildEoyExplanationSpan({
   final isIt = s.eoyFormula.contains('anno'); // detect language
   final boldStyle = const TextStyle(fontWeight: FontWeight.w700);
 
-  String monthRangeOf(EoyDetails d) =>
-      d.months == 1 ? 'Jan' : 'Jan–${monthAbbr(d.months)}';
+  String monthRangeOf(EoyDetails d) => d.months == 1 ? 'Jan' : 'Jan–${monthAbbr(d.months)}';
 
   String fmtAmt(double v) => '${amtFmt.format(v)} $sym';
 
   final children = <InlineSpan>[];
 
   // ── Header ─────────────────────────────────────────────
-  children.add(TextSpan(
-    text: isIt
-        ? 'Previsione fine anno ${current.year}\n'
-        : 'End-of-year ${current.year} prediction\n',
-    style: const TextStyle(fontWeight: FontWeight.w700),
-  ));
-  children.add(TextSpan(
-    text: isIt
-        ? 'Basata sull\'andamento del ${prev.year} come riferimento stagionale.\n\n'
-        : 'Based on ${prev.year} as the seasonal reference.\n\n',
-  ));
+  children.add(
+    TextSpan(
+      text: isIt ? 'Previsione fine anno ${current.year}\n' : 'End-of-year ${current.year} prediction\n',
+      style: const TextStyle(fontWeight: FontWeight.w700),
+    ),
+  );
+  children.add(
+    TextSpan(
+      text: isIt
+          ? 'Basata sull\'andamento del ${prev.year} come riferimento stagionale.\n\n'
+          : 'Based on ${prev.year} as the seasonal reference.\n\n',
+    ),
+  );
 
   // ── Predictions (bold values) ─────────────────────────
   void addPrediction(String label, double? value, {bool isPct = false}) {
     if (value == null) return;
     children.add(TextSpan(text: '  $label: '));
-    children.add(TextSpan(
-      text: isPct ? '~${pctFmt.format(value)}\n' : '~${fmtAmt(value)}\n',
-      style: boldStyle,
-    ));
+    children.add(
+      TextSpan(
+        text: isPct ? '~${pctFmt.format(value)}\n' : '~${fmtAmt(value)}\n',
+        style: boldStyle,
+      ),
+    );
   }
 
   addPrediction(s.colIncome, eoyInc);
@@ -203,28 +207,28 @@ TextSpan? buildEoyExplanationSpan({
   addPrediction(s.colRate, eoyRate, isPct: true);
 
   // ── Details ───────────────────────────────────────────
-  children.add(TextSpan(
-    text: isIt ? '\nDettagli del calcolo:\n' : '\nHow it\'s calculated:\n',
-    style: const TextStyle(fontWeight: FontWeight.w600),
-  ));
+  children.add(
+    TextSpan(
+      text: isIt ? '\nDettagli del calcolo:\n' : '\nHow it\'s calculated:\n',
+      style: const TextStyle(fontWeight: FontWeight.w600),
+    ),
+  );
 
   void addMetricDetail(String label, EoyDetails? d, double? result) {
     if (d == null || result == null) return;
     final monthRange = monthRangeOf(d);
-    final prevPct = d.prevSame != 0
-        ? (d.currentTotal / d.prevSame * 100).toStringAsFixed(1)
-        : '?';
+    final prevPct = d.prevSame != 0 ? (d.currentTotal / d.prevSame * 100).toStringAsFixed(1) : '?';
     final body = isIt
         ? '━ $label\n'
-            '  Nel ${prev.year}, il totale annuo è stato ${fmtAmt(d.prevTotal)}.\n'
-            '  Nello stesso periodo ($monthRange) del ${prev.year}: ${fmtAmt(d.prevSame)}.\n'
-            '  Nel ${current.year} ($monthRange) finora: ${fmtAmt(d.currentTotal)} ($prevPct% rispetto al ${prev.year}).\n'
-            '  Proiezione: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${fmtAmt(result)}\n'
+              '  Nel ${prev.year}, il totale annuo è stato ${fmtAmt(d.prevTotal)}.\n'
+              '  Nello stesso periodo ($monthRange) del ${prev.year}: ${fmtAmt(d.prevSame)}.\n'
+              '  Nel ${current.year} ($monthRange) finora: ${fmtAmt(d.currentTotal)} ($prevPct% rispetto al ${prev.year}).\n'
+              '  Proiezione: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${fmtAmt(result)}\n'
         : '━ $label\n'
-            '  In ${prev.year}, the full-year total was ${fmtAmt(d.prevTotal)}.\n'
-            '  Over the same period ($monthRange) in ${prev.year}: ${fmtAmt(d.prevSame)}.\n'
-            '  In ${current.year} ($monthRange) so far: ${fmtAmt(d.currentTotal)} ($prevPct% vs ${prev.year}).\n'
-            '  Projection: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${fmtAmt(result)}\n';
+              '  In ${prev.year}, the full-year total was ${fmtAmt(d.prevTotal)}.\n'
+              '  Over the same period ($monthRange) in ${prev.year}: ${fmtAmt(d.prevSame)}.\n'
+              '  In ${current.year} ($monthRange) so far: ${fmtAmt(d.currentTotal)} ($prevPct% vs ${prev.year}).\n'
+              '  Projection: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${fmtAmt(result)}\n';
     children.add(TextSpan(text: body));
   }
 
@@ -232,16 +236,22 @@ TextSpan? buildEoyExplanationSpan({
   addMetricDetail(s.colExpenses, expD, eoyExp);
 
   if (eoySav != null) {
-    children.add(TextSpan(
-      text: '━ ${s.colSavings}\n'
-          '  ~${fmtAmt(eoyInc!)} − ~${fmtAmt(eoyExp!)} = ~${fmtAmt(eoySav)}\n',
-    ));
+    children.add(
+      TextSpan(
+        text:
+            '━ ${s.colSavings}\n'
+            '  ~${fmtAmt(eoyInc!)} − ~${fmtAmt(eoyExp!)} = ~${fmtAmt(eoySav)}\n',
+      ),
+    );
   }
   if (eoyRate != null) {
-    children.add(TextSpan(
-      text: '━ ${s.colRate}\n'
-          '  ~${amtFmt.format(eoySav!)} ÷ ~${amtFmt.format(eoyInc!)} = ~${pctFmt.format(eoyRate)}\n',
-    ));
+    children.add(
+      TextSpan(
+        text:
+            '━ ${s.colRate}\n'
+            '  ~${amtFmt.format(eoySav!)} ÷ ~${amtFmt.format(eoyInc!)} = ~${pctFmt.format(eoyRate)}\n',
+      ),
+    );
   }
 
   children.add(TextSpan(text: '\n${s.eoyFormula}\n'));

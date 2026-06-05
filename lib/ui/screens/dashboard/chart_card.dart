@@ -23,9 +23,9 @@ class ChartCard extends ConsumerWidget {
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
   final ValueChanged<double> onHeightChanged;
   final Widget? headerExtra; // optional trailing widget in title bar (e.g. MA window input)
-  final VoidCallback? onEdit;     // optional — shows edit icon when non-null (user charts)
-  final VoidCallback? onDelete;   // optional — shows delete icon when non-null (user charts)
-  final VoidCallback? onMoveUp;   // optional — shows up-arrow when non-null (reorderable)
+  final VoidCallback? onEdit; // optional — shows edit icon when non-null (user charts)
+  final VoidCallback? onDelete; // optional — shows delete icon when non-null (user charts)
+  final VoidCallback? onMoveUp; // optional — shows up-arrow when non-null (reorderable)
   final VoidCallback? onMoveDown; // optional — shows down-arrow when non-null (reorderable)
   /// When false, the Total line is not drawn and the Total legend chip is
   /// suppressed. The header still shows the running smart-total readout.
@@ -85,10 +85,7 @@ class ChartCard extends ConsumerWidget {
         excludeFromTotal.add('asset_invested:$id');
       }
     }
-    final spotsForTotal = visible
-        .where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis)
-        .map((s) => s.spots)
-        .toList();
+    final spotsForTotal = visible.where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis).map((s) => s.spots).toList();
     return buildTotalSpots(spotsForTotal);
   }
 
@@ -224,74 +221,76 @@ class ChartCard extends ConsumerWidget {
           // Chart
           Expanded(
             child: totalSpots.length >= 2
-                ? Builder(builder: (context) {
-                    // Compute Y range so _DragZoomWrapper can map pixels to chart Y
-                    // Must match _UnifiedChart's Y range: include total only when shown
-                    final showTotalLine = showTotal && chart.sourceChartIds == null && !hidden.contains('_total');
-                    final allY = [
-                      if (showTotalLine) ...totalSpots.map((s) => s.y),
-                      ...drawnSeries.where((s) => !s.rightAxis).expand((s) => s.spots.map((p) => p.y)),
-                    ];
-                    final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
-                    final autoMaxY = allY.isEmpty ? 100.0 : allY.reduce(max);
-                    final autoRange = autoMaxY - autoMinY;
-                    final effectiveMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
-                    final effectiveMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
+                ? Builder(
+                    builder: (context) {
+                      // Compute Y range so _DragZoomWrapper can map pixels to chart Y
+                      // Must match _UnifiedChart's Y range: include total only when shown
+                      final showTotalLine = showTotal && chart.sourceChartIds == null && !hidden.contains('_total');
+                      final allY = [
+                        if (showTotalLine) ...totalSpots.map((s) => s.y),
+                        ...drawnSeries.where((s) => !s.rightAxis).expand((s) => s.spots.map((p) => p.y)),
+                      ];
+                      final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
+                      final autoMaxY = allY.isEmpty ? 100.0 : allY.reduce(max);
+                      final autoRange = autoMaxY - autoMinY;
+                      final effectiveMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
+                      final effectiveMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
 
-                    return GestureDetector(
-                      // Long-press anywhere on the chart opens the
-                      // immersive full-screen view. Discoverable via the
-                      // expand icon in the title bar; this is the
-                      // power-user shortcut. Long-press's 500ms hold
-                      // threshold doesn't conflict with pinch / pan.
-                      onLongPress: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            fullscreenDialog: true,
-                            builder: (_) => FullscreenChartScreen(
-                              title: chart.title,
-                              series: drawnSeries,
-                              totalSpots: totalSpots,
-                              showTotal: showTotalLine,
-                              firstDate: allData.firstDate,
-                              baseCurrency: allData.baseCurrency,
-                              isPrivate: isPrivate,
+                      return GestureDetector(
+                        // Long-press anywhere on the chart opens the
+                        // immersive full-screen view. Discoverable via the
+                        // expand icon in the title bar; this is the
+                        // power-user shortcut. Long-press's 500ms hold
+                        // threshold doesn't conflict with pinch / pan.
+                        onLongPress: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              fullscreenDialog: true,
+                              builder: (_) => FullscreenChartScreen(
+                                title: chart.title,
+                                series: drawnSeries,
+                                totalSpots: totalSpots,
+                                showTotal: showTotalLine,
+                                firstDate: allData.firstDate,
+                                baseCurrency: allData.baseCurrency,
+                                isPrivate: isPrivate,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                      child: DragZoomWrapper(
-                        xMin: zoomMinX ?? 0,
-                        xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
-                        yMin: effectiveMinY,
-                        yMax: effectiveMaxY,
-                        totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 1,
-                        firstDate: allData.firstDate,
-                        baseCurrency: allData.baseCurrency,
-                        locale: locale,
-                        onZoom: onZoom,
-                        rightReserved: drawnSeries.any((s) => s.rightAxis)
-                            ? kChartRightReservedDual
-                            : 0,
-                        zoomedY: zoomMinY != null || zoomMaxY != null,
-                        child: UnifiedChart(
+                          );
+                        },
+                        child: DragZoomWrapper(
+                          xMin: zoomMinX ?? 0,
+                          xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
+                          yMin: effectiveMinY,
+                          yMax: effectiveMaxY,
+                          totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 1,
                           firstDate: allData.firstDate,
-                          visible: drawnSeries,
-                          totalSpots: totalSpots,
-                          showTotal: showTotal && chart.sourceChartIds == null && !hidden.contains('_total'),
                           baseCurrency: allData.baseCurrency,
                           locale: locale,
-                          language: language,
-                          zoomMinX: zoomMinX,
-                          zoomMaxX: zoomMaxX,
-                          zoomMinY: zoomMinY,
-                          zoomMaxY: zoomMaxY,
-                          isPrivate: isPrivate,
+                          onZoom: onZoom,
+                          rightReserved: drawnSeries.any((s) => s.rightAxis) ? kChartRightReservedDual : 0,
+                          zoomedY: zoomMinY != null || zoomMaxY != null,
+                          child: UnifiedChart(
+                            firstDate: allData.firstDate,
+                            visible: drawnSeries,
+                            totalSpots: totalSpots,
+                            showTotal: showTotal && chart.sourceChartIds == null && !hidden.contains('_total'),
+                            baseCurrency: allData.baseCurrency,
+                            locale: locale,
+                            language: language,
+                            zoomMinX: zoomMinX,
+                            zoomMaxX: zoomMaxX,
+                            zoomMinY: zoomMinY,
+                            zoomMaxY: zoomMaxY,
+                            isPrivate: isPrivate,
+                          ),
                         ),
-                      ),
-                    );
-                  })
-                : Center(child: Text(s.dashNotEnoughData, style: const TextStyle(color: Colors.grey))),
+                      );
+                    },
+                  )
+                : Center(
+                    child: Text(s.dashNotEnoughData, style: const TextStyle(color: Colors.grey)),
+                  ),
           ),
 
           // Resize handle
@@ -369,16 +368,11 @@ class _ChartLegend extends StatelessWidget {
       spacing: 6,
       runSpacing: 4,
       children: [
-        if (accountSeries.isNotEmpty)
-          ..._buildGroup(context, accountsLabel, accountSeries),
-        if (investedSeries.isNotEmpty || marketSeries.isNotEmpty)
-          ..._buildAssetGroup(context),
-        if (adjustmentSeries.isNotEmpty)
-          ..._buildGroup(context, spreadAdjLabel, adjustmentSeries),
-        if (incomeAdjSeries.isNotEmpty)
-          ..._buildGroup(context, incomeAdjLabel, incomeAdjSeries),
-        if (ephemeralInflowSeries.isNotEmpty)
-          ..._buildGroup(context, ephemeralInflowLabel, ephemeralInflowSeries),
+        if (accountSeries.isNotEmpty) ..._buildGroup(context, accountsLabel, accountSeries),
+        if (investedSeries.isNotEmpty || marketSeries.isNotEmpty) ..._buildAssetGroup(context),
+        if (adjustmentSeries.isNotEmpty) ..._buildGroup(context, spreadAdjLabel, adjustmentSeries),
+        if (incomeAdjSeries.isNotEmpty) ..._buildGroup(context, incomeAdjLabel, incomeAdjSeries),
+        if (ephemeralInflowSeries.isNotEmpty) ..._buildGroup(context, ephemeralInflowLabel, ephemeralInflowSeries),
         for (final s in otherSeries)
           _ToggleLegendItem(
             color: s.color,
@@ -416,13 +410,15 @@ class _ChartLegend extends StatelessWidget {
                   ? Theme.of(context).colorScheme.surfaceContainerHighest
                   : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ),
-            child: Text(label, style: TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w600,
-              color: !allHidden
-                  ? Theme.of(context).colorScheme.onSurface
-                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-              decoration: !allHidden ? null : TextDecoration.lineThrough,
-            )),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: !allHidden ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                decoration: !allHidden ? null : TextDecoration.lineThrough,
+              ),
+            ),
           ),
         ),
       ),
@@ -456,13 +452,15 @@ class _ChartLegend extends StatelessWidget {
                   ? Theme.of(context).colorScheme.surfaceContainerHighest
                   : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
             ),
-            child: Text(assetsLabel, style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w600,
-              color: !allHidden
-                  ? Theme.of(context).colorScheme.onSurface
-                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-              decoration: !allHidden ? null : TextDecoration.lineThrough,
-            )),
+            child: Text(
+              assetsLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: !allHidden ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                decoration: !allHidden ? null : TextDecoration.lineThrough,
+              ),
+            ),
           ),
         ),
       ),
@@ -478,22 +476,26 @@ class _ChartLegend extends StatelessWidget {
 
       // Show market value (solid) if present
       if (mkt.isNotEmpty) {
-        widgets.add(_ToggleLegendItem(
-          color: mkt.first.color,
-          label: mkt.first.name,
-          enabled: !hidden.contains(mkt.first.key),
-          onTap: () => onToggle(mkt.first.key),
-        ));
+        widgets.add(
+          _ToggleLegendItem(
+            color: mkt.first.color,
+            label: mkt.first.name,
+            enabled: !hidden.contains(mkt.first.key),
+            onTap: () => onToggle(mkt.first.key),
+          ),
+        );
       }
       // Show invested (dashed) if present
       if (inv.isNotEmpty) {
-        widgets.add(_ToggleLegendItem(
-          color: inv.first.color,
-          label: inv.first.name,
-          dashed: true,
-          enabled: !hidden.contains(inv.first.key),
-          onTap: () => onToggle(inv.first.key),
-        ));
+        widgets.add(
+          _ToggleLegendItem(
+            color: inv.first.color,
+            label: inv.first.name,
+            dashed: true,
+            enabled: !hidden.contains(inv.first.key),
+            onTap: () => onToggle(inv.first.key),
+          ),
+        );
       }
     }
 

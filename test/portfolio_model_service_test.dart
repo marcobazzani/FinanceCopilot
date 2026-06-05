@@ -8,10 +8,10 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/asset_service.dart';
-import 'package:finance_copilot/services/pillar_service.dart';
-import 'package:finance_copilot/services/portfolio_model_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
+import 'package:finance_copilot/services/pillars/pillar_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -202,7 +202,7 @@ void main() {
 
     final migrated = AppDatabase.forTesting(NativeDatabase(File(path)));
     final version = (await migrated.customSelect('PRAGMA user_version').get()).first.read<int>('user_version');
-    expect(version, 43);
+    expect(version, 46);
     final modelTables = await migrated
         .customSelect(
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio_models', 'portfolio_model_items')",

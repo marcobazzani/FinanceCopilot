@@ -5,8 +5,7 @@ class _MonthlyGrid extends ConsumerWidget {
   final String locale;
   final String language;
   final String field; // 'income' or 'expenses'
-  const _MonthlyGrid({required this.data, required this.locale,
-                      required this.language, required this.field});
+  const _MonthlyGrid({required this.data, required this.locale, required this.language, required this.field});
 
   List<String> _localizedMonths() {
     final f = DateFormat('MMM', language);
@@ -17,9 +16,9 @@ class _MonthlyGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
-    final theme  = Theme.of(context);
-    final sym    = currencySymbol(data.baseCurrency);
-    final now    = ref.watch(currentDateProvider);
+    final theme = Theme.of(context);
+    final sym = currencySymbol(data.baseCurrency);
+    final now = ref.watch(currentDateProvider);
 
     final years = data.years;
     final yearLabels = years.map((y) => y.year).toList();
@@ -48,26 +47,29 @@ class _MonthlyGrid extends ConsumerWidget {
             decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest),
             children: [
               _th(s.colMonth),
-              for (final y in yearLabels)
-                _th('$y${y == now.year ? "*" : ""}'),
+              for (final y in yearLabels) _th('$y${y == now.year ? "*" : ""}'),
             ],
           ),
           // Month rows
           for (int m = 1; m <= 12; m++) ...[
-            TableRow(children: [
-              _td(_localizedMonths()[m - 1], bold: true),
-              for (final y in years) ...[
-                Builder(builder: (ctx) {
-                  final v = value(y, m);
-                  final isFuture = v.isNaN;
-                  final isCurrent = y.year == now.year;
-                  return _tdPrivacy(
-                    isFuture ? '\u2014' : '${amtFmt.format(v)} $sym',
-                    dimmed: isCurrent || isFuture,
-                  );
-                }),
+            TableRow(
+              children: [
+                _td(_localizedMonths()[m - 1], bold: true),
+                for (final y in years) ...[
+                  Builder(
+                    builder: (ctx) {
+                      final v = value(y, m);
+                      final isFuture = v.isNaN;
+                      final isCurrent = y.year == now.year;
+                      return _tdPrivacy(
+                        isFuture ? '\u2014' : '${amtFmt.format(v)} $sym',
+                        dimmed: isCurrent || isFuture,
+                      );
+                    },
+                  ),
+                ],
               ],
-            ]),
+            ),
           ],
           // Total row
           TableRow(
@@ -75,11 +77,12 @@ class _MonthlyGrid extends ConsumerWidget {
             children: [
               _td(s.colTotal, bold: true),
               for (final y in years) ...[
-                Builder(builder: (ctx) {
-                  final v = field == 'income' ? y.income : y.expenses;
-                  return _tdPrivacy('${amtFmt.format(v)} $sym',
-                    dimmed: y.year == now.year, bold: true);
-                }),
+                Builder(
+                  builder: (ctx) {
+                    final v = field == 'income' ? y.income : y.expenses;
+                    return _tdPrivacy('${amtFmt.format(v)} $sym', dimmed: y.year == now.year, bold: true);
+                  },
+                ),
               ],
             ],
           ),
@@ -90,25 +93,28 @@ class _MonthlyGrid extends ConsumerWidget {
 
   Widget _th(String text) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                textAlign: TextAlign.right),
+    child: Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+      textAlign: TextAlign.right,
+    ),
   );
 
   Widget _td(String text, {bool bold = false, bool dimmed = false}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    child: Text(text,
-      style: TextStyle(fontWeight: bold ? FontWeight.w600 : null,
-                       fontSize: 12, color: dimmed ? Colors.grey : null),
-      textAlign: TextAlign.right),
+    child: Text(
+      text,
+      style: TextStyle(fontWeight: bold ? FontWeight.w600 : null, fontSize: 12, color: dimmed ? Colors.grey : null),
+      textAlign: TextAlign.right,
+    ),
   );
 
-  Widget _tdPrivacy(String text, {bool bold = false, bool dimmed = false}) =>
-    Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      child: PrivacyText(text,
-        style: TextStyle(fontWeight: bold ? FontWeight.w600 : null,
-                         fontSize: 12, color: dimmed ? Colors.grey : null),
-        textAlign: TextAlign.right,
-      ),
-    );
+  Widget _tdPrivacy(String text, {bool bold = false, bool dimmed = false}) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    child: PrivacyText(
+      text,
+      style: TextStyle(fontWeight: bold ? FontWeight.w600 : null, fontSize: 12, color: dimmed ? Colors.grey : null),
+      textAlign: TextAlign.right,
+    ),
+  );
 }

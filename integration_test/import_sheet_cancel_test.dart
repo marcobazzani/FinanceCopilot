@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 
 import 'helpers/test_app.dart';
@@ -38,17 +38,18 @@ void main() {
 
         // Push ImportScreen pointed at the multi-sheet file.
         final ctx = tester.element(find.byType(Navigator).first);
-        Navigator.of(ctx).push(MaterialPageRoute(
-          builder: (_) => ImportScreen(
-            preselectedTarget: ImportTarget.transaction,
-            initialFilePath: xlsxPath,
+        Navigator.of(ctx).push(
+          MaterialPageRoute(
+            builder: (_) => ImportScreen(
+              preselectedTarget: ImportTarget.transaction,
+              initialFilePath: xlsxPath,
+            ),
           ),
-        ));
+        );
 
         // Let _loadFile + listSheets (isolate) run until the picker appears.
         await pumpFor(tester, const Duration(seconds: 3));
-        expect(find.byType(SimpleDialog), findsOneWidget,
-            reason: 'multi-sheet picker should appear');
+        expect(find.byType(SimpleDialog), findsOneWidget, reason: 'multi-sheet picker should appear');
 
         // Cancel the picker by dismissing the modal barrier (returns null).
         await tester.tapAt(const Offset(20, 20));
@@ -56,8 +57,7 @@ void main() {
 
         // The parsing spinner must be gone — cancelling the sheet
         // selection must not leave the screen permanently stuck.
-        expect(find.byType(CircularProgressIndicator), findsNothing,
-            reason: 'parsing spinner stuck after cancelling the sheet picker');
+        expect(find.byType(CircularProgressIndicator), findsNothing, reason: 'parsing spinner stuck after cancelling the sheet picker');
       } finally {
         await tmpDir.delete(recursive: true);
       }

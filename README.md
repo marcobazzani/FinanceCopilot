@@ -8,21 +8,23 @@ Built with Flutter for **macOS**, **Windows**, and **Android**. All data lives i
 
 ## How does it compare?
 
-|                          | FinanceCopilot | Mint / Monarch | YNAB | Actual Budget | Firefly III | Maybe Finance | GnuCash |
-|--------------------------|:--------------:|:--------------:|:----:|:-------------:|:-----------:|:-------------:|:-------:|
-| Runs fully offline       |       Yes      |       No       |  No  |      Yes      |   Self-host |    Self-host  |   Yes   |
-| No subscription          |       Yes      |       No       |  No  |      Yes      |     Yes     |      Yes      |   Yes   |
-| No server to host        |       Yes      |       n/a      |  n/a |      Yes      |      No     |       No      |   Yes   |
-| Bank accounts + cash     |       Yes      |       Yes      |  Yes |      Yes      |     Yes     |      Yes      |   Yes   |
-| Stocks / ETFs / bonds    |       Yes      |     Limited    |   No |       No      |   Limited   |      Yes      | Limited |
-| ETF composition + TER    |       Yes      |       No       |  No  |       No      |      No     |    Limited    |    No   |
-| ISIN-first matching      |       Yes      |       No       |  No  |       No      |      No     |       No      |    No   |
-| Multi-currency + FX hist |    13 + daily  |     Limited    |   No |     Limited   |     Yes     |      Yes      |   Yes   |
-| EU broker imports tested |       Yes      |       No       |  No  |     Manual    |    Manual   |    Limited    |  Manual |
-| Mobile + desktop         |       Both     |    Web/Mobile  | Both |    Web only   |   Web only  |    Web only   | Desktop |
-| MIT license              |       Yes      |       No       |  No  |      MIT      |    AGPL     |     AGPL      |   GPL   |
+🟢 full · 🟡 partial / limited / self-host / manual · 🔴 none · — not applicable
 
-If FinanceCopilot is missing a feature you actually use, [open an issue](https://github.com/marcobazzani/FinanceCopilot/issues) — happy to discuss.
+|                              | FinanceCopilot | Mint / Monarch | YNAB | Actual Budget | Firefly III | Maybe Finance | GnuCash |
+|------------------------------|:--------------:|:--------------:|:----:|:-------------:|:-----------:|:-------------:|:-------:|
+| Runs fully offline           |       🟢       |       🔴       |  🔴  |      🟢       |  🟡 self-host |  🟡 self-host |   🟢    |
+| No subscription              |       🟢       |  🟡 Mint free  |  🔴  |      🟢       |     🟢      |      🟢       |   🟢    |
+| No server to host            |       🟢       |       —        |  —   |      🟢       |     🔴      |      🔴       |   🟢    |
+| Bank accounts + cash         |       🟢       |       🟢       |  🟢  |      🟢       |     🟢      |      🟢       |   🟢    |
+| Stocks / ETFs / bonds        |       🟢       |       🟡       |  🔴  |      🔴       |     🟡      |      🟢       |   🟡    |
+| ETF composition + TER        |       🟢       |       🔴       |  🔴  |      🔴       |     🔴      |      🟡       |   🔴    |
+| ISIN-first matching          |       🟢       |       🔴       |  🔴  |      🔴       |     🔴      |      🔴       |   🔴    |
+| Multi-currency + FX history  |   🟢 13, daily |       🟡       |  🔴  |     🟡        |     🟢      |      🟢       |   🟢    |
+| CSV / Excel / PDF import     |       🟢       |       🔴       | 🟡 CSV |   🟡 CSV     |   🟡 CSV    |     🟡 CSV    | 🟡 CSV/QIF |
+| Mobile + desktop             |   🟢 both      |  🟡 web/mobile | 🟢 both |  🟡 web     |   🟡 web    |     🟡 web    | 🟡 desktop |
+| Open source                  |     🟢 MIT     |       🔴       |  🔴  |     🟢 MIT    |   🟢 AGPL   |    🟢 AGPL    |  🟢 GPL  |
+
+Ratings reflect each tool's commonly-available configuration as of 2025; self-hosted and paid tiers can change a cell. If a rating looks off or FinanceCopilot is missing a feature you actually use, [open an issue](https://github.com/marcobazzani/FinanceCopilot/issues) — happy to correct it.
 
 
 ## Why
@@ -44,6 +46,8 @@ Period-selectable price-change table (1D/1W/1M/3M/6M/1Y/YTD/All) plus the Totals
 | Desktop | Mobile |
 |---|---|
 | ![History](docs/screenshots/dashboard.png) | ![History (mobile)](docs/screenshots/dashboard_mobile.png) |
+
+The global Wayback controls now let you pin the whole app to a historical date, last month-end, or last year-end so dashboards, assets, and pillars all render from the same point in time.
 
 ### Cash Flow
 Saving vs moving-average chart, expenses vs MA & cash, and velocity. Configurable MA window per chart.
@@ -90,8 +94,12 @@ Each pillar drills into its own objective, history chart, and per-asset allocati
 |---|---|
 | ![Pillar Detail](docs/screenshots/pillar_detail.png) | ![Pillar Detail (mobile)](docs/screenshots/pillar_detail_mobile.png) |
 
+Portfolio Models now sit alongside Pillars: 32 built-in models are preloaded from the catalog, custom models can be created in-app, and each pillar can be linked to a target model to inspect divergence by ISIN, extra holdings, and unresolved items.
+
+From the same flow, rebalance can build either **Sell and buy** or **Buy only** draft transactions with tax estimate, whole-unit execution, live market-data resolution for missing target assets, and an explicit apply step instead of writing trades immediately.
+
 ### Import
-Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.
+Map any bank or broker CSV / Excel / PDF onto Transactions, Asset Events, or Income. PDF bank statements are reconstructed into tables automatically (no per-bank templates). A **Refine rows & columns** panel adds row filters and column splits before mapping; plus ISIN-driven exchange picker, per-row exclude, formula columns, status filtering, and multi-column amount math.
 
 ![Import](docs/screenshots/import.png)
 
@@ -105,14 +113,22 @@ Map any bank or broker CSV / Excel onto Transactions, Asset Events, or Income. I
 
 ### Dashboards
 - **Financial Health** — KPI scoring with Liquidity, Wealth, and Performance & Diversification categories (Net Worth Ratio, Expense Coverage, Savings Rate, Investment Weight, Liquid Asset Ratio, Income-to-Wealth, HHI, weighted TER, …)
-- **History** — combined chart, top movers, smart Totals
+- **History** — combined chart, top movers, smart Totals, plus global historical Wayback controls
 - **Cash Flow** — saving / spending / velocity with configurable MA windows
 - **Allocation** — six donuts + drill-down + concentration metrics (Top 1/3/5, HHI)
 - **Privacy mode** — single-toggle blur on every amount, price, quantity, and target across the app
 
+### Pillars & Portfolio Models
+- Goal-based pillars with target value, progress tracking, per-asset unit allocation, and historical charting
+- 32 built-in portfolio models preloaded from the bundled catalog, split by year / equity band / variant
+- Custom portfolio models with editable ISIN weights
+- Divergence view per pillar: target vs current weight, unmatched model rows, extra holdings, and unresolved holdings
+- Rebalance preview with **Sell and buy** and **Buy only** modes, estimated tax, whole-unit execution, and explicit draft apply
+
 ### Import
-- CSV, XLSX, clipboard
-- Saved column-mapping configs per account
+- CSV, XLSX, PDF, clipboard — PDF statement tables reconstructed automatically (no per-bank templates)
+- **Refine rows & columns** — row filters and column splits applied to the preview before mapping
+- Saved column-mapping configs, scoped per account, intermediary, single asset, or income
 - ISIN exchange picker with auto-lookup
 - Tested against Fineco, Directa, N26, Revolut, Interactive Brokers, and arbitrary custom formats
 - Handles 3-decimal XLSX numerics, locale decimal separators, and multi-column amount math
@@ -150,6 +166,9 @@ Prerequisites: Flutter SDK ^3.8.1, Xcode (macOS), or Visual Studio with Desktop 
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 
+# Verify formatting
+dart format --output=none --set-exit-if-changed lib test integration_test
+
 # macOS
 flutter build macos --release
 
@@ -163,16 +182,26 @@ flutter build apk --release
 ## Run tests
 
 ```bash
-# Unit tests (~720, ~15s)
+# Unit tests (~900, ~20s)
 flutter test
 
-# Integration tests (5 suites, ~3m, requires a running desktop device)
+# Integration tests (4 suites, ~5m, requires a running desktop device)
 flutter test integration_test/all_tests.dart -d macos \
   --dart-define=DB_FILE_NAME=finance_copilot_test.db
 
 # Live market-data smoke test (~1m, requires network)
 flutter test integration_test/live_data_fetch_test.dart -d macos \
   --dart-define=DB_FILE_NAME=finance_copilot_test.db
+```
+
+## Formatting
+
+```bash
+# Apply the repo's locked formatter settings
+dart format lib test integration_test
+
+# Check that formatting is clean without rewriting files
+dart format --output=none --set-exit-if-changed lib test integration_test
 ```
 
 ## Architecture

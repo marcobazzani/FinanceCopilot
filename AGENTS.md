@@ -24,20 +24,89 @@
 - To run a second emulator alongside an existing one, just launch it — don't kill the first. They get sequential ports (5554, 5556, ...).
 - If `am start` or `monkey` fails with "Activity does not exist" on a freshly launched emulator, the emulator image is likely corrupted (e.g. EdXposed or other framework mods). Fix: kill it (`adb -s emulator-XXXX emu kill`), relaunch with `flutter emulators --launch`, and reinstall.
 
-## Windows VM (Parallels)
+## Windows VM (UTM)
 
-- A Parallels "Windows 11" VM runs on this Mac. Use `prlctl exec "Windows 11"` to run commands.
-- Flutter path: `C:\Users\marco\dev\flutter\bin\flutter.bat`
-- Project path: `C:\Users\marco\dev\FinanceCopilot`
-- Build: the Windows project has its own `.env` copy at `C:\Users\marco\dev\FinanceCopilot\.env` — load it into the cmd session via a `for /f` loop before running flutter so Google OAuth dart-defines are populated.
-  ```
-  prlctl exec "Windows 11" cmd /c "cd /d C:\Users\marco\dev\FinanceCopilot && for /f \"usebackq tokens=1,* delims==\" %a in (\".env\") do set %a=%b && C:\Users\marco\dev\flutter\bin\flutter.bat build windows --release --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% --dart-define=GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% --dart-define=DB_FILE_NAME=%DB_FILE_NAME% 2>&1"
-  ```
-- Kill before rebuild: `prlctl exec "Windows 11" cmd /c "taskkill /F /IM FinanceCopilot.exe 2>&1"`
-- **Launch GUI app** — `prlctl exec` runs in a non-interactive service session (Session 0), so use a scheduled task to launch in the user's interactive session:
-  ```
-  prlctl exec "Windows 11" cmd /c "schtasks /Create /TN LaunchFC /TR \"C:\Users\marco\dev\FinanceCopilot\build\windows\x64\runner\Release\FinanceCopilot.exe\" /SC ONCE /ST 00:00 /F /RU marco 2>&1 && schtasks /Run /TN LaunchFC 2>&1 && schtasks /Delete /TN LaunchFC /F 2>&1"
-  ```
+The Windows build runs in a **UTM** virtual machine, controlled from the Mac with the bundled `utmctl` CLI. The commands below use placeholders — substitute your own values:
+
+| Placeholder | Meaning | Example |
+| --- | --- | --- |
+| `<VM>` | UTM VM name (full name, or UUID from `utmctl list`) | `"Windows 11"` |
+| `<USER>` | Windows username | `dev` |
+| `<PROJECT>` | Project checkout path in the guest | `C:\Users\<USER>\dev\FinanceCopilot` |
+| `<FLUTTER>` | Flutter `bin\flutter.bat` path in the guest | `C:\Users\<USER>\dev\flutter\bin\flutter.bat` |
+
+- `utmctl` path (not on PATH): `/Applications/UTM.app/Contents/MacOS/utmctl`
+- The Mac and the guest share the same `origin` git remote, so branches round-trip via GitHub. Find the guest IP with `utmctl ip-address "<VM>"` if you need direct network access.
+
+### Critical `utmctl exec` caveats
+
+- **No stdout/stderr is returned.** `utmctl exec` is fire-and-forget: it launches the process in the guest and returns immediately. It does NOT pipe back output and does NOT return the guest's real exit code (the host always sees exit 0 unless the *launch itself* fails, e.g. binary not found). To see ANY output you MUST redirect it to a file in the guest and pull it back with `utmctl file pull`.
+- **Runs as `nt authority\system` (Session 0), not as `<USER>`.** This means: GUI apps must be launched via the scheduled-task trick (below); and `%APPDATA%`/`$env:APPDATA` resolve to SYSTEM's *own* profile, not the interactive user's — so reads that rely on those env vars come back empty. SYSTEM **can** read the interactive user's profile, but only via the **absolute** `C:\Users\<USER>\...` path. Write helper/log files to a SYSTEM-readable location such as `C:\` (the examples below use `C:\`).
+- **Complex inline PowerShell gets corrupted.** `$variables` inside a `utmctl exec --cmd "powershell -Command \"...\""` are eaten by the host shell → quoting layers. For anything beyond a trivial one-liner, push a `.ps1` and run it with `--cmd "powershell.exe" "-NoProfile" "-ExecutionPolicy" "Bypass" "-File" "C:\script.ps1"`.
+- **`file pull` races a still-open file.** While a command is writing to its redirect target, `file pull` fails with "The process cannot access the file because it is being used by another process." This is the completion signal's inverse: poll `file pull` and treat the lock error as "still running." Append a marker line (e.g. `DONE_EXITCODE=%ERRORLEVEL%`) as the last write so a successful pull containing the marker means "finished."
+
+### Guest `.env`
+
+The guest checkout has its own `.env` at `<PROJECT>\.env`. It must contain the Google OAuth client IDs **and** `DB_FILE_NAME` (e.g. `DB_FILE_NAME=finance_copilot_dev.db`). Always load the full `.env` via the `for /f` loop and pass ALL dart-defines (client id/secret + web + android client ids + DB file name); unset cmd vars expand to their literal `%NAME%` text, which silently produces a wrong build, so never rely on a key being present — verify.
+
+### Sync workflow (uses the `sync` branch)
+
+`sync` is a throwaway branch that mirrors the Mac working copy to the guest. Force-push from the Mac, force-reset on the guest.
+
+1. Push working copy from the Mac:
+   ```
+   git checkout -B sync && git add -A && git commit -m "sync" && git push -f origin sync
+   ```
+2. Pull it in the guest (poll the log until `SYNC_DONE` appears; lock error = still running):
+   ```
+   /Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "cd /d <PROJECT> & git fetch origin > C:\fc_sync.log 2>&1 & git checkout -f sync >> C:\fc_sync.log 2>&1 & git reset --hard origin/sync >> C:\fc_sync.log 2>&1 & echo SYNC_DONE >> C:\fc_sync.log"
+   /Applications/UTM.app/Contents/MacOS/utmctl file pull "<VM>" "C:\fc_sync.log"
+   ```
+
+### Build — MUST use a guest batch file (do NOT use a `&`-chained one-liner)
+
+**Critical bug:** a single-line `cmd /c "... for /f ... do set %a=%b & flutter ... --dart-define=GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% ..."` does NOT work. `cmd` expands every `%VAR%` on the line at **parse time — before the `for` loop runs** — so the dart-defines receive the literal text `%GOOGLE_CLIENT_ID%` (it reaches Google as `client_id=%25GOOGLE_CLIENT_ID%25` → `Error 401: invalid_client`). The build "succeeds" but bakes in placeholders. A `.bat` file is parsed/executed **line by line**, so `%VAR%` on the flutter line expands after the loop has `set` it. Always build via a batch file.
+
+1. Kill any running instance FIRST (a running `FinanceCopilot.exe` locks `WebView2Loader.dll` in the Release dir and the build fails with `MSB3021`/`MSB3027`):
+   ```
+   /Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "taskkill /F /IM FinanceCopilot.exe /T"
+   ```
+2. Use the repo's `tool/win_build.bat` as the guest build script. Edit the `cd` and flutter paths at the top to match your `<PROJECT>`/`<FLUTTER>`, then push it into the guest:
+   ```
+   cat tool/win_build.bat | /Applications/UTM.app/Contents/MacOS/utmctl file push "<VM>" "C:\win_build.bat"
+   ```
+   The script loads `.env`, runs the release build with all dart-defines, redirects to `C:\fc_build.log`, and appends `DONE_EXITCODE=%ERRORLEVEL%` as the completion marker. (Inside a `.bat`, the `for` variable is written `%%a`/`%%b`.)
+3. Run it (fire-and-forget):
+   ```
+   /Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "C:\win_build.bat"
+   ```
+4. Poll (≤10s sleeps): `utmctl file pull "<VM>" "C:\fc_build.log"` until it contains `DONE_EXITCODE=` (or ends with `√ Built ...Release\FinanceCopilot.exe`). A release build takes ~2–4 min. Artifact: `<PROJECT>\build\windows\x64\runner\Release\FinanceCopilot.exe`.
+5. **Verify the credentials baked in** (the placeholder bug is silent). Run a check against the compiled `app.so`; expect `PLACEHOLDER_ABSENT`:
+   ```powershell
+   $t = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes('<PROJECT>\build\windows\x64\runner\Release\data\app.so'))
+   if ($t.Contains('%GOOGLE_CLIENT_ID%')) {'PLACEHOLDER_PRESENT'} else {'PLACEHOLDER_ABSENT'} | Set-Content C:\fc_check.txt
+   ```
+
+### Launch GUI app (scheduled-task trick, required because exec is Session 0/SYSTEM)
+
+```
+/Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "cmd.exe" "/c" "schtasks /Create /TN LaunchFC /TR \"<PROJECT>\build\windows\x64\runner\Release\FinanceCopilot.exe\" /SC ONCE /ST 00:00 /F /RU <USER> & schtasks /Run /TN LaunchFC & schtasks /Delete /TN LaunchFC /F"
+```
+Verify it's running: `utmctl exec ... cmd /c "tasklist > C:\fc_proc.txt 2>&1"` then `utmctl file pull ... fc_proc.txt` and look for `FinanceCopilot.exe` in `Console` session 1.
+
+### Read the app log (the GUI app holds it open for writing)
+
+The Windows log lives at `C:\Users\<USER>\AppData\Roaming\FinanceCopilot\FinanceCopilot\app.log` — note the path is **`FinanceCopilot\FinanceCopilot`** (Flutter's `getApplicationSupportDirectory()` = `%APPDATA%\<OrgName>\<AppName>`), NOT the `net.bazzani.financecopilot` bundle id. Two gotchas:
+- SYSTEM's `%APPDATA%` is not the user's, so use the absolute `C:\Users\<USER>\...` path.
+- The running app keeps the file open, so `Get-Content` returns nothing — must open with `FileShare.ReadWrite`.
+
+Use the repo's `tool/win_read_log.ps1` (handles both). Push and run it, passing the user's absolute log path:
+```
+cat tool/win_read_log.ps1 | /Applications/UTM.app/Contents/MacOS/utmctl file push "<VM>" "C:\win_read_log.ps1"
+/Applications/UTM.app/Contents/MacOS/utmctl exec "<VM>" --cmd "powershell.exe" "-NoProfile" "-ExecutionPolicy" "Bypass" "-File" "C:\win_read_log.ps1" "-Tail" "80" "-LogPath" "C:\Users\<USER>\AppData\Roaming\FinanceCopilot\FinanceCopilot\app.log"
+/Applications/UTM.app/Contents/MacOS/utmctl file pull "<VM>" "C:\fc_applog.txt"
+```
+The script writes the last `-Tail` lines to `C:\fc_applog.txt` and appends `READLOG_DONE` as the completion marker. The same `previous_session.log` and `finance_copilot_*.db` live in that folder.
 
 # Git Workflow
 
@@ -59,7 +128,7 @@
 
 Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
-- Always use `./do-release.sh` from the repo root for releases. It is the release entrypoint; do not hand-run the individual tag/release steps unless the script itself cannot complete. If a pre-release cleanup hook is available, pass it via `--cleanup-cmd` or `PRE_RELEASE_CLEANUP_CMD`.
+- Always use `./tool/do-release.sh` for releases (it `cd`s to the repo root itself, so it can be run from anywhere). It is the release entrypoint; do not hand-run the individual tag/release steps unless the script itself cannot complete. If a pre-release cleanup hook is available, pass it via `--cleanup-cmd` or `PRE_RELEASE_CLEANUP_CMD`.
 - The script accepts `--version`, `--title`, and optional `--merge-pr`, `--notes-file`, `--cleanup-cmd`, `--skip-cleanup`, and `--no-sync-develop`.
 
 0. **Pre-release check**: a working nightly build with `main` merged into `develop` must exist and pass CI before starting the release. Verify with `gh run list --branch develop --limit 1`.
@@ -73,6 +142,8 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
 # Code Quality
 
+- Dart formatting is mandatory. Any Dart file you change is not done until you run `dart format` on the touched files or on `lib test integration_test` when the scope is broad.
+- Formatting regressions must be blocked, not hand-fixed later. The formatter SDK is pinned in `.flutter-version`; use `tool/check_dart_format.sh` as the final formatting check so local runs fail fast if the Flutter/Dart formatter version drifts from CI.
 - Never duplicate code. Extract shared logic into utilities or service methods.
 - Single source of truth: queries, parsing, business logic must be defined once and reused.
 - **Before writing a new widget/util/service method, grep the codebase for existing equivalents.** If one exists, REUSE it. Copy/paste is a regression. When two implementations of the same UI element exist, the older/canonical one wins; the newer collapses into it via shared code.
@@ -86,7 +157,7 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 # UI Consistency
 
 - **Delete affordance** is one canonical pattern across the app: trashcan icon in detail view + swipe-to-delete in lists. Long-press-to-delete is forbidden going forward. Three-dot menus offering delete must be reconciled to the canonical pattern.
-- **Collapsible cards**: chevron + header layout MUST match the Cash Flow tab implementation (`lib/ui/screens/dashboard/cash_flow_tab.dart` part files). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap. Reuse the existing widget — do not re-implement.
+- **Collapsible cards**: chevron + header layout MUST match the Cash Flow tab implementation (`lib/ui/screens/dashboard/cashflow_tab.dart`). Header must NOT change on expand/collapse; expand must scroll smoothly, not snap. Reuse the existing widget — do not re-implement.
 - **Bottom-of-screen "Next" buttons in wizards** MUST share a common navbar widget. Fix consistently across all wizards, never one-by-one.
 - **Empty states** and **error toasts/snackbars** use one shared component each, with consistent placement.
 - Before adding a new widget, grep for existing equivalents. Reuse > re-implement.
@@ -105,7 +176,7 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 # Branch & DB Discipline
 
 - **Before any code edit**: confirm the current branch matches the user's stated target. If unclear, ASK. Do not assume `develop`.
-- **Before launching the app or running integration tests**: confirm `DB_FILE_NAME` matches the intended dev DB. Mixing the dev container DB with the user's real `~/Documents/FinanceCopilot.db` is a top historical failure — never write to the real DB from tests/builds.
+- **Before launching the app or running integration tests**: confirm `DB_FILE_NAME` matches the intended dev DB. Mixing the dev container DB with the user's real production DB (the sandboxed app DB — see "Database & Sandbox" below for the current per-platform path) is a top historical failure — never write to the real DB from tests/builds.
 - Never commit dart-defines or env-specific config to a non-feature branch.
 - When the user references a specific DB path or branch name, that overrides any default — re-confirm before acting.
 
@@ -130,10 +201,11 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - **macOS DB**: `~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application Support/net.bazzani.financecopilot/finance_copilot.db`
 - **macOS logs**: `tail -f ~/Library/Containers/net.bazzani.financecopilot/Data/Library/Application\ Support/net.bazzani.financecopilot/app.log`
 - **macOS OS log**: `log stream --predicate 'subsystem == "net.bazzani.financecopilot"' --level debug`
-- **Windows DB**: `C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\finance_copilot.db`
-- **Windows logs**: `Get-Content C:\Users\marco\AppData\Roaming\net.bazzani.financecopilot\app.log -Wait`
+- **Windows DB**: `%APPDATA%\net.bazzani.financecopilot\finance_copilot.db` (i.e. `C:\Users\<USER>\AppData\Roaming\net.bazzani.financecopilot\finance_copilot.db`)
+- **Windows logs**: `Get-Content $env:APPDATA\net.bazzani.financecopilot\app.log -Wait`
 - **Android logs**: `adb logcat -s flutter`
 - **Previous session log**: `previous_session.log` (same dir as app.log, for bug reports)
+- **Log level**: defaults to INFO. Build/run with `--dart-define=LOG_LEVEL=DEBUG` (aliases: `FINE`/`TRACE`/`FINEST`/`ALL`) to capture `fine()` diagnostics — e.g. the import wizard's `_buildColumnMappings` dump that shows the resolved mappings/autoCalc/revalue-amount-column when an import produces unexpected values. Never add/remove temporary log lines for one-off debugging; log at `fine()` and raise the level instead.
 - Never use `assets.db` in the repo root (stale copy, gitignored).
 
 # Architecture
@@ -143,7 +215,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - The released artifact must be fully self-contained.
 - For reverse engineering websites/APIs: use any tool (curl, Playwright, Python, etc.) for exploration, but the final implementation must be in Dart/Flutter.
 - **Never mention external data sources** (websites, APIs, providers) by name in README, comments, commit messages, CI config, screenshots, alt text, identifiers (class/file/variable names), log messages, doc strings, or user-facing strings. Refer to them generically (e.g. "market data provider", "composition data").
-  - **Functional URL literals are exempt** (host strings in `lib/services/web_market_data_service.dart`, `lib/services/web_page_parser.dart`, `lib/services/composition_service.dart`, and `'Origin'`/`'Referer'` headers): these are operational data — the literal IS the integration point — and replacing them would change which provider we integrate with. Grep hits inside `https://...` URL strings, `host.endsWith(...)` validators, `Origin`/`Referer` headers, and test fixture HTML/URL files are acceptable. New occurrences in those forms are also fine.
+  - **Functional URL literals are exempt** (host strings in `lib/services/market/web_market_data_service.dart`, `lib/services/market/web_page_parser.dart`, `lib/services/market/composition_service.dart`, and `'Origin'`/`'Referer'` headers): these are operational data — the literal IS the integration point — and replacing them would change which provider we integrate with. Grep hits inside `https://...` URL strings, `host.endsWith(...)` validators, `Origin`/`Referer` headers, and test fixture HTML/URL files are acceptable. New occurrences in those forms are also fine.
   - **Test fixtures are exempt**: `test/fixtures/instrument_page_*.html` and URL strings inside test files are functional test data.
   - **Historical migration code is exempt**: SQL strings in `database.dart`'s `onUpgrade` migrations from earlier versions (e.g. v8/v9/v11) reference legacy provider names because they ran on past upgrades; rewriting them would not change persisted DB data and risks divergence from what shipped.
   - Outside those exemptions, the grep `Investing\.com\|InvestingCom\|InvestingPage\|InvestingComService\|investing_com\|investing_page` must return zero hits.
@@ -160,28 +232,69 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/database/tables.dart` — All table definitions
 - `lib/database/providers.dart` — Database provider
 - `lib/services/providers/providers.dart` — Riverpod providers (split into service/stream/computed/app_state)
-- `lib/services/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
-- `lib/services/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
-- `lib/services/market_price_service.dart` — Abstract market price service
-- `lib/services/investing_com_service.dart` — Market price/search/composition provider (WebView + Dio)
-- `lib/services/composition_service.dart` — ETF/stock composition fetcher
-- `lib/services/asset_service.dart` — Asset CRUD
-- `lib/services/asset_event_service.dart` — Asset events (buy/sell/revalue)
-- `lib/services/exchange_rate_service.dart` — FX rates
-- `lib/services/intermediary_service.dart` — Broker/institution grouping
-- `lib/services/income_service.dart` — Income tracking
-- `lib/services/income_adjustment_service.dart` — Income adjustments
-- `lib/services/capex_service.dart` — Depreciation/adjustment schedules
-- `lib/services/buffer_service.dart` — Buffer management
-- `lib/services/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
-- `lib/services/db_transfer_service.dart` — Import/export DB file
-- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into 15 part files)
+- `lib/services/import/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
+- `lib/services/import/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
+- `lib/services/import/import_service.dart` — Import mapping, dedup, balance recompute
+- `lib/services/market/market_price_service.dart` — Abstract market price service
+- `lib/services/market/web_market_data_service.dart` — Market price/search/composition provider (WebView + Dio)
+- `lib/services/market/composition_service.dart` — ETF/stock composition fetcher
+- `lib/services/market/exchange_rate_service.dart` — FX rates
+- `lib/services/domain/asset_service.dart` — Asset CRUD
+- `lib/services/domain/asset_event_service.dart` — Asset events (buy/sell/revalue)
+- `lib/services/domain/intermediary_service.dart` — Broker/institution grouping
+- `lib/services/domain/income_service.dart` — Income tracking
+- `lib/services/domain/extraordinary_event_service.dart` — Extraordinary events / adjustments / depreciation schedules
+- `lib/services/domain/buffer_service.dart` — Buffer management
+- `lib/services/sync/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
+- `lib/services/sync/db_transfer_service.dart` — Import/export DB file
+- `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into part files)
+- `lib/ui/screens/dashboard/cashflow_tab.dart` — Canonical collapsible-card (ExpansionTile) reference
 - `lib/ui/screens/dashboard/health_tab.dart` — Financial Health KPIs
 - `lib/ui/screens/dashboard/totals_table.dart` — Totals with drill-down
-- `lib/ui/screens/allocation_tab.dart` — Portfolio allocation donuts
-- `lib/ui/screens/assets_screen.dart` — Asset list + create dialog
-- `lib/ui/screens/accounts_screen.dart` — Account list
-- `lib/ui/screens/capex_screen.dart` — Adjustments screen
-- `lib/ui/screens/import/import_screen.dart` — CSV import (split into 4 part files)
+- `lib/ui/screens/allocation/allocation_tab.dart` — Portfolio allocation donuts
+- `lib/ui/screens/assets/assets_screen.dart` — Asset list + create dialog
+- `lib/ui/screens/accounts/accounts_screen.dart` — Account list
+- `lib/ui/screens/accounts/capex_screen.dart` — Adjustments screen
+- `lib/ui/screens/import/import_screen.dart` — CSV import (split into part files)
 - `lib/utils/date_parser.dart` — Comprehensive multi-format date parser
+- `lib/utils/formatters.dart` — Locale-aware number/date formatting + `parseFlexibleNumber` (single source of truth for ambiguous-locale number parsing)
 - `lib/version.dart` — Version number
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+| ------ | ---------- |
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

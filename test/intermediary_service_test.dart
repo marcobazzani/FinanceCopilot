@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/intermediary_service.dart';
+import 'package:finance_copilot/services/domain/intermediary_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -100,34 +100,36 @@ void main() {
       final intId = await service.create(name: 'Bank A');
 
       // Create an account linked to the intermediary
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(
-          name: 'Checking',
-          intermediaryId: Value(intId),
-        ),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Checking',
+              intermediaryId: Value(intId),
+            ),
+          );
 
       // Delete the intermediary
       await service.delete(intId);
 
       // Account should still exist but with null intermediaryId
-      final account = await (db.select(db.accounts)
-            ..where((a) => a.id.equals(accountId)))
-          .getSingle();
+      final account = await (db.select(db.accounts)..where((a) => a.id.equals(accountId))).getSingle();
       expect(account.intermediaryId, isNull);
     });
 
     test('refuses to delete an intermediary that still has assets', () async {
       final intId = await service.create(name: 'Broker A');
 
-      await db.into(db.assets).insert(
-        AssetsCompanion.insert(
-          name: 'ETF World',
-          assetType: AssetType.stockEtf,
-          valuationMethod: ValuationMethod.marketPrice,
-          intermediaryId: intId,
-        ),
-      );
+      await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'ETF World',
+              assetType: AssetType.stockEtf,
+              valuationMethod: ValuationMethod.marketPrice,
+              intermediaryId: intId,
+            ),
+          );
 
       // Assets must always have an intermediary (schema v29), so deletion
       // refuses until the user moves the assets elsewhere.
@@ -160,50 +162,50 @@ void main() {
   group('moveAccount', () {
     test('assigns an account to an intermediary', () async {
       final intId = await service.create(name: 'Bank A');
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(name: 'Checking'),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(name: 'Checking'),
+          );
 
       await service.moveAccount(accountId, intId);
 
-      final account = await (db.select(db.accounts)
-            ..where((a) => a.id.equals(accountId)))
-          .getSingle();
+      final account = await (db.select(db.accounts)..where((a) => a.id.equals(accountId))).getSingle();
       expect(account.intermediaryId, intId);
     });
 
     test('unassigns an account from an intermediary', () async {
       final intId = await service.create(name: 'Bank A');
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(
-          name: 'Checking',
-          intermediaryId: Value(intId),
-        ),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Checking',
+              intermediaryId: Value(intId),
+            ),
+          );
 
       await service.moveAccount(accountId, null);
 
-      final account = await (db.select(db.accounts)
-            ..where((a) => a.id.equals(accountId)))
-          .getSingle();
+      final account = await (db.select(db.accounts)..where((a) => a.id.equals(accountId))).getSingle();
       expect(account.intermediaryId, isNull);
     });
 
     test('moves account from one intermediary to another', () async {
       final intId1 = await service.create(name: 'Bank A');
       final intId2 = await service.create(name: 'Bank B');
-      final accountId = await db.into(db.accounts).insert(
-        AccountsCompanion.insert(
-          name: 'Checking',
-          intermediaryId: Value(intId1),
-        ),
-      );
+      final accountId = await db
+          .into(db.accounts)
+          .insert(
+            AccountsCompanion.insert(
+              name: 'Checking',
+              intermediaryId: Value(intId1),
+            ),
+          );
 
       await service.moveAccount(accountId, intId2);
 
-      final account = await (db.select(db.accounts)
-            ..where((a) => a.id.equals(accountId)))
-          .getSingle();
+      final account = await (db.select(db.accounts)..where((a) => a.id.equals(accountId))).getSingle();
       expect(account.intermediaryId, intId2);
     });
   });
@@ -212,40 +214,40 @@ void main() {
     test('assigns an asset to an intermediary', () async {
       final defaultInt = await service.create(name: 'Default');
       final intId = await service.create(name: 'Broker A');
-      final assetId = await db.into(db.assets).insert(
-        AssetsCompanion.insert(
-          name: 'ETF World',
-          assetType: AssetType.stockEtf,
-          valuationMethod: ValuationMethod.marketPrice,
-          intermediaryId: defaultInt,
-        ),
-      );
+      final assetId = await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'ETF World',
+              assetType: AssetType.stockEtf,
+              valuationMethod: ValuationMethod.marketPrice,
+              intermediaryId: defaultInt,
+            ),
+          );
 
       await service.moveAsset(assetId, intId);
 
-      final asset = await (db.select(db.assets)
-            ..where((a) => a.id.equals(assetId)))
-          .getSingle();
+      final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
       expect(asset.intermediaryId, intId);
     });
 
     test('moves asset from one intermediary to another', () async {
       final intId1 = await service.create(name: 'Broker A');
       final intId2 = await service.create(name: 'Broker B');
-      final assetId = await db.into(db.assets).insert(
-        AssetsCompanion.insert(
-          name: 'ETF World',
-          assetType: AssetType.stockEtf,
-          valuationMethod: ValuationMethod.marketPrice,
-          intermediaryId: intId1,
-        ),
-      );
+      final assetId = await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'ETF World',
+              assetType: AssetType.stockEtf,
+              valuationMethod: ValuationMethod.marketPrice,
+              intermediaryId: intId1,
+            ),
+          );
 
       await service.moveAsset(assetId, intId2);
 
-      final asset = await (db.select(db.assets)
-            ..where((a) => a.id.equals(assetId)))
-          .getSingle();
+      final asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
       expect(asset.intermediaryId, intId2);
     });
   });

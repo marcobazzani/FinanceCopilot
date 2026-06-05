@@ -46,9 +46,21 @@ extension _AppShellShareIntent on _AppShellState {
               const SizedBox(height: 8),
               SegmentedButton<ImportTarget>(
                 segments: [
-                  ButtonSegment(value: ImportTarget.transaction, icon: const Icon(Icons.receipt_long, size: 18), label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.assetEvent, icon: const Icon(Icons.trending_up, size: 18), label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12))),
-                  ButtonSegment(value: ImportTarget.income, icon: const Icon(Icons.payments, size: 18), label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12))),
+                  ButtonSegment(
+                    value: ImportTarget.transaction,
+                    icon: const Icon(Icons.receipt_long, size: 18),
+                    label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ImportTarget.assetEvent,
+                    icon: const Icon(Icons.trending_up, size: 18),
+                    label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12)),
+                  ),
+                  ButtonSegment(
+                    value: ImportTarget.income,
+                    icon: const Icon(Icons.payments, size: 18),
+                    label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12)),
+                  ),
                 ],
                 selected: {target},
                 onSelectionChanged: (v) => setSheetState(() => target = v.first),
@@ -88,11 +100,13 @@ extension _AppShellShareIntent on _AppShellState {
     final (selectedTarget, selectedAccountId) = result;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => ImportScreen(
-        initialFilePath: filePath,
-        preselectedTarget: selectedTarget,
-        preselectedAccountId: selectedAccountId,
-      )),
+      MaterialPageRoute(
+        builder: (_) => ImportScreen(
+          initialFilePath: filePath,
+          preselectedTarget: selectedTarget,
+          preselectedAccountId: selectedAccountId,
+        ),
+      ),
     );
   }
 

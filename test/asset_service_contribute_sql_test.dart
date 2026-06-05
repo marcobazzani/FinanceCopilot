@@ -18,8 +18,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/asset_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -32,18 +32,24 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     assetService = AssetService(db);
     eventService = AssetEventService(db);
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
-    assetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'Pension',
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: ValuationMethod.eventDriven,
-          currency: const Value('EUR'),
-          intermediaryId: intermediaryId,
-        ));
+    assetId = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension',
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: ValuationMethod.eventDriven,
+            currency: const Value('EUR'),
+            intermediaryId: intermediaryId,
+          ),
+        );
   });
 
   tearDown(() => db.close());
@@ -86,13 +92,11 @@ void main() {
 
     final stats = await assetService.getStatsForAll();
     expect(stats[assetId], isNotNull);
-    expect(stats[assetId]!.totalInvested, closeTo(292.857, 0.01),
-        reason: 'weighted-avg cost basis of remaining 205 units');
+    expect(stats[assetId]!.totalInvested, closeTo(292.857, 0.01), reason: 'weighted-avg cost basis of remaining 205 units');
     expect(stats[assetId]!.eventCount, 3);
   });
 
-  test('getAverageBuyPrice includes contribute rows with explicit qty/price',
-      () async {
+  test('getAverageBuyPrice includes contribute rows with explicit qty/price', () async {
     // Two contributes with explicit unit pricing (e.g. 401(k) shape):
     // 10 units @ 50.00 + 5 units @ 60.00 → avg = 53.33...
     await eventService.create(

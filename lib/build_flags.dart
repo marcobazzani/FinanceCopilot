@@ -32,5 +32,4 @@ bool get debugChartsEnabled {
   return lower != '0' && lower != 'false' && lower != 'no';
 }
 
-bool get _envHasKey =>
-    Platform.environment.containsKey('DEBUG_CHARTS');
+bool get _envHasKey => Platform.environment.containsKey('DEBUG_CHARTS');

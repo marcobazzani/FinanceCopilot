@@ -25,5 +25,4 @@ class GlobalActionsRegistry {
 
 /// Holds the live registry. Null until the AppShell has mounted; the
 /// global-actions widget renders disabled buttons in that case.
-final globalActionsRegistryProvider =
-    StateProvider<GlobalActionsRegistry?>((ref) => null);
+final globalActionsRegistryProvider = StateProvider<GlobalActionsRegistry?>((ref) => null);

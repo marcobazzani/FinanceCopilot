@@ -55,3 +55,8 @@ android/app/src/main/assets/build_info.txt
 .worktrees/
 android/app/financecopilot-release.keystore
 .claude/worktrees/
+# Added by code-review-graph
+.code-review-graph/
+
+# Local opencode MCP config (machine-specific absolute paths)
+.opencode.json

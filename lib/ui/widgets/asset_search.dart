@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import '../../services/providers/providers.dart';
 import 'isin_url_paste_recovery.dart';
 
@@ -20,9 +20,11 @@ class AssetSearchSection extends StatefulWidget {
   final ValueChanged<ProviderSearchResult> onSelect;
   final String Function(String query)? recoveryCacheKeyBuilder;
   final String? recoveryDefaultExchange;
+
   /// Fires whenever the search returns a fresh list of results (including
   /// the empty-list case). Lets the caller derive sibling listings, etc.
   final ValueChanged<List<ProviderSearchResult>>? onResultsChanged;
+
   /// Fires on every search-field text change (debounced or not).
   final ValueChanged<String>? onQueryChanged;
   const AssetSearchSection({
@@ -128,20 +130,18 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
             )
           else if (_searchCtrl.text.trim().length >= 3)
             Expanded(
-              child: widget.recoveryCacheKeyBuilder != null
-                  && widget.recoveryDefaultExchange != null
-                ? SingleChildScrollView(
-                    child: IsinUrlPasteRecovery(
-                      userQuery: _searchCtrl.text.trim(),
-                      cacheKey:
-                          widget.recoveryCacheKeyBuilder!(_searchCtrl.text.trim()),
-                      defaultExchange: widget.recoveryDefaultExchange!,
-                      onResolved: widget.onSelect,
+              child: widget.recoveryCacheKeyBuilder != null && widget.recoveryDefaultExchange != null
+                  ? SingleChildScrollView(
+                      child: IsinUrlPasteRecovery(
+                        userQuery: _searchCtrl.text.trim(),
+                        cacheKey: widget.recoveryCacheKeyBuilder!(_searchCtrl.text.trim()),
+                        defaultExchange: widget.recoveryDefaultExchange!,
+                        onResolved: widget.onSelect,
+                      ),
+                    )
+                  : Center(
+                      child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
                     ),
-                  )
-                : Center(
-                    child: Text(s.noResultsFound, style: const TextStyle(color: Colors.grey)),
-                  ),
             )
           else
             Expanded(

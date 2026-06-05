@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/app_actions_controller.dart';
+import 'package:finance_copilot/services/app_actions_controller.dart';
 
 /// Wraps a scrollable [child] with a [RefreshIndicator] on Android/iOS so the
 /// user can pull down at the top of the view to trigger the same global

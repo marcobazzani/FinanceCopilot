@@ -46,8 +46,7 @@ Future<void> openBugReporter(
           children: [
             Text(s.ticketerConfirmDesc),
             const SizedBox(height: 12),
-            Text(s.ticketerLoginReminder,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(s.ticketerLoginReminder, style: const TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             TextField(
               controller: descController,
@@ -73,11 +72,8 @@ Future<void> openBugReporter(
         ),
       ),
       actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-        FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.ticketerContinue)),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.ticketerContinue)),
       ],
     ),
   );
@@ -103,27 +99,19 @@ Future<void> openBugReporter(
   String? saveDir;
 
   final saveBaseDir = Directory.systemTemp.path;
-  final timestamp = DateTime.now()
-      .toIso8601String()
-      .replaceAll(':', '-')
-      .split('.')
-      .first;
+  final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
 
   try {
     // Capture screenshot
     if (repaintKey != null) {
-      final boundary = repaintKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
+      final boundary = repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary != null) {
         final image = await boundary.toImage(pixelRatio: 2.0);
-        final byteData =
-            await image.toByteData(format: ui.ImageByteFormat.png);
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
           saveDir = saveBaseDir;
-          final screenshotFile =
-              File(p.join(saveBaseDir, 'fc-bug-$timestamp.png'));
-          await screenshotFile
-              .writeAsBytes(byteData.buffer.asUint8List());
+          final screenshotFile = File(p.join(saveBaseDir, 'fc-bug-$timestamp.png'));
+          await screenshotFile.writeAsBytes(byteData.buffer.asUint8List());
           screenshotPath = screenshotFile.path;
         }
       }
@@ -133,8 +121,7 @@ Future<void> openBugReporter(
     if (logFilePath != null) {
       final logContent = await File(logFilePath!).readAsString();
       final lastStart = logContent.lastIndexOf('--- App started at');
-      final sessionLogs =
-          lastStart >= 0 ? logContent.substring(lastStart) : logContent;
+      final sessionLogs = lastStart >= 0 ? logContent.substring(lastStart) : logContent;
       final logsFile = File(p.join(saveBaseDir, 'fc-bug-$timestamp.log'));
       await logsFile.writeAsString(sessionLogs);
       logsPath = logsFile.path;
@@ -152,17 +139,12 @@ Future<void> openBugReporter(
   if (!context.mounted) return;
 
   // Step 3: Build GitHub issue body & URL
-  final descSection = userDescription.isNotEmpty
-      ? userDescription
-      : '[Describe the issue]';
-  final stepsSection = userSteps.isNotEmpty
-      ? userSteps
-      : '1. ...';
+  final descSection = userDescription.isNotEmpty ? userDescription : '[Describe the issue]';
+  final stepsSection = userSteps.isNotEmpty ? userSteps : '1. ...';
 
   final bodyParts = StringBuffer()
     ..writeln('**Version:** v$appVersionDisplay')
-    ..writeln(
-        '**OS:** ${Platform.operatingSystem} ${Platform.operatingSystemVersion}')
+    ..writeln('**OS:** ${Platform.operatingSystem} ${Platform.operatingSystemVersion}')
     ..writeln()
     ..writeln('**Description:**')
     ..writeln(descSection)
@@ -175,8 +157,7 @@ Future<void> openBugReporter(
   bodyParts.writeln();
 
   final bodyEncoded = Uri.encodeComponent(bodyParts.toString());
-  final titleEncoded = Uri.encodeComponent(
-      'Bug: ${userDescription.length > 60 ? userDescription.substring(0, 60) : userDescription}');
+  final titleEncoded = Uri.encodeComponent('Bug: ${userDescription.length > 60 ? userDescription.substring(0, 60) : userDescription}');
   final issueUrl = Uri.parse(
     'https://github.com/marcobazzani/FinanceCopilot/issues/new?title=$titleEncoded&body=$bodyEncoded',
   );
@@ -212,47 +193,39 @@ Future<void> openBugReporter(
                         borderRadius: BorderRadius.circular(8),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxHeight: 260),
-                          child: Image.file(File(screenshotPath),
-                              fit: BoxFit.contain),
+                          child: Image.file(File(screenshotPath), fit: BoxFit.contain),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.all(6),
-                        child: Icon(Icons.fullscreen, size: 20,
-                            color: Colors.white.withValues(alpha: 0.8)),
+                        child: Icon(Icons.fullscreen, size: 20, color: Colors.white.withValues(alpha: 0.8)),
                       ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 4),
-              Text(s.ticketerTapToPreview,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              Text(s.ticketerTapToPreview, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
               const SizedBox(height: 12),
             ],
             if (saveDir != null) ...[
               Text(s.ticketerFilesSaved, style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               if (screenshotPath != null)
-                Text('  • ${p.basename(screenshotPath)}',
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-              if (logsPath != null)
-                Text('  • ${p.basename(logsPath)}',
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                Text('  • ${p.basename(screenshotPath)}', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+              if (logsPath != null) Text('  • ${p.basename(logsPath)}', style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
-                    child: Text(s.ticketerUploadReminder,
-                        style: const TextStyle(fontStyle: FontStyle.italic)),
+                    child: Text(s.ticketerUploadReminder, style: const TextStyle(fontStyle: FontStyle.italic)),
                   ),
                   if (_canRevealInFileManager) ...[
                     const SizedBox(width: 8),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.folder_open, size: 16),
                       label: Text(s.ticketerRevealFile),
-                      onPressed: () => _revealInFileManager(
-                          screenshotPath ?? logsPath!),
+                      onPressed: () => _revealInFileManager(screenshotPath ?? logsPath!),
                     ),
                   ],
                 ],
@@ -270,25 +243,25 @@ Future<void> openBugReporter(
           },
         ),
         TextButton(
-            onPressed: () {
-              // Clean up temp files
-              if (screenshotPath != null) {
-                File(screenshotPath).delete().ignore();
-              }
-              if (logsPath != null) {
-                File(logsPath).delete().ignore();
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text(s.ticketerClose)),
+          onPressed: () {
+            // Clean up temp files
+            if (screenshotPath != null) {
+              File(screenshotPath).delete().ignore();
+            }
+            if (logsPath != null) {
+              File(logsPath).delete().ignore();
+            }
+            Navigator.pop(ctx);
+          },
+          child: Text(s.ticketerClose),
+        ),
       ],
     ),
   );
 }
 
 /// Whether the current platform supports revealing files in a file manager.
-bool get _canRevealInFileManager =>
-    Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+bool get _canRevealInFileManager => Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
 /// Opens the system file manager with the given file selected.
 Future<void> _revealInFileManager(String filePath) async {
@@ -329,8 +302,10 @@ void _showFullScreenshot(BuildContext context, String path, String bannerText) {
                     const Icon(Icons.info_outline, color: Colors.white, size: 18),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(bannerText,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        bannerText,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close, color: Colors.white),

@@ -1,4 +1,4 @@
-part of '../assets_screen.dart';
+part of 'assets_screen.dart';
 
 class _CreateAssetDialog extends StatefulWidget {
   final WidgetRef ref;
@@ -24,27 +24,29 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     String? isin,
     String? exchange,
   }) {
-    return widget.ref.read(assetServiceProvider).create(
-      name: name,
-      ticker: ticker,
-      isin: isin,
-      exchange: exchange,
-      currency: currency,
-      intermediaryId: intermediaryId,
-      instrumentType: _instrumentType,
-      assetClass: _assetClass,
-      valuationMethod: _unlocked && _valuationMethodOverride != null
-          ? _valuationMethodOverride!
-          : ValuationMethod.marketPrice,
-      assetType: _unlocked ? _assetType : AssetType.stockEtf,
-      ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
-      taxRate: _unlocked ? (() {
-        final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
-        return v == null ? null : v / 100;
-      })() : null,
-      isActive: _unlocked ? _isActive : null,
-      includeInSavings: _unlocked ? _includeInSavings : null,
-    );
+    return widget.ref
+        .read(assetServiceProvider)
+        .create(
+          name: name,
+          ticker: ticker,
+          isin: isin,
+          exchange: exchange,
+          currency: currency,
+          intermediaryId: intermediaryId,
+          instrumentType: _instrumentType,
+          assetClass: _assetClass,
+          valuationMethod: ValuationMethod.marketPrice,
+          assetType: _unlocked ? _assetType : AssetType.stockEtf,
+          ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
+          taxRate: _unlocked
+              ? (() {
+                  final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
+                  return v == null ? null : v / 100;
+                })()
+              : null,
+          isActive: _unlocked ? _isActive : null,
+          includeInSavings: _unlocked ? _includeInSavings : null,
+        );
   }
 
   // Step 1: search state mirrored from AssetSearchSection so step 2 can
@@ -72,15 +74,13 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   // (geographic / sector / asset class breakdown) is edited inline on the
   // Composition panel of the asset detail screen.
   AssetType _assetType = AssetType.stockEtf;
-  ValuationMethod? _valuationMethodOverride;
   final _currencyCtrl = TextEditingController();
   final _terCtrl = TextEditingController();
   final _taxRateCtrl = TextEditingController();
   bool _includeInSavings = true;
   bool _isActive = true;
 
-  String get _locale =>
-      widget.ref.read(appLocaleProvider).value ?? Platform.localeName;
+  String get _locale => widget.ref.read(appLocaleProvider).value ?? Platform.localeName;
 
   @override
   void dispose() {
@@ -92,37 +92,31 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   }
 
   Widget _buildLockToggle(AppStrings s) => IconButton(
-        icon: Icon(_unlocked ? Icons.lock_open : Icons.lock_outline, size: 20),
-        tooltip: _unlocked ? s.assetLockEdit : s.assetUnlockEdit,
-        onPressed: () => setState(() => _unlocked = !_unlocked),
-      );
+    icon: Icon(_unlocked ? Icons.lock_open : Icons.lock_outline, size: 20),
+    tooltip: _unlocked ? s.assetLockEdit : s.assetUnlockEdit,
+    onPressed: () => setState(() => _unlocked = !_unlocked),
+  );
 
-  List<Widget> _buildAdvancedFields(AppStrings s, {required bool showValuation}) {
+  List<Widget> _buildAdvancedFields(AppStrings s) {
     return [
       const Divider(height: 24),
       DropdownButtonFormField<AssetType>(
         initialValue: _assetType,
         decoration: InputDecoration(labelText: s.assetTypeFieldLabel, isDense: true),
         items: AssetType.values
-            .map((t) => DropdownMenuItem(value: t, child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13))))
+            .map(
+              (t) => DropdownMenuItem(
+                value: t,
+                child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13)),
+              ),
+            )
             .toList(),
         onChanged: (v) {
           if (v != null) setState(() => _assetType = v);
         },
       ),
-      if (showValuation) ...[
-        const SizedBox(height: 12),
-        DropdownButtonFormField<ValuationMethod>(
-          initialValue: _valuationMethodOverride,
-          decoration: InputDecoration(labelText: s.valuationMethodFieldLabel, isDense: true),
-          items: ValuationMethod.values
-              .map((m) => DropdownMenuItem(value: m, child: Text(s.valuationMethodLabel(m), style: const TextStyle(fontSize: 13))))
-              .toList(),
-          onChanged: (v) {
-            if (v != null) setState(() => _valuationMethodOverride = v);
-          },
-        ),
-      ],
+      // Valuation method is auto-managed by revalue add/remove (new assets
+      // start market-priced) — no manual control here.
       const SizedBox(height: 12),
       TextField(
         controller: _currencyCtrl,
@@ -217,8 +211,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           widgetRef: widget.ref,
           onSelect: _selectResult,
           recoveryDefaultExchange: _selectedExchange ?? 'Milan',
-          recoveryCacheKeyBuilder: (q) =>
-              _isinShaped(q) ? q.toUpperCase() : q,
+          recoveryCacheKeyBuilder: (q) => _isinShaped(q) ? q.toUpperCase() : q,
           onQueryChanged: (q) => _typedQuery = q,
           onResultsChanged: (rs) => _allResults = rs,
         ),
@@ -245,52 +238,62 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       ),
       content: SingleChildScrollView(
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(r.description, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-          const SizedBox(height: 8),
-          Text(s.symbolLabel(r.symbol), style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          Text(s.typeLabel(r.type), style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          const SizedBox(height: 16),
-          _buildExchangeDropdown(s),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<InstrumentType>(
-                  initialValue: _instrumentType,
-                  decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
-                  hint: const Text('-', style: TextStyle(fontSize: 13)),
-                  items: InstrumentType.values
-                      .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _instrumentType = v);
-                  },
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(r.description, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+            const SizedBox(height: 8),
+            Text(s.symbolLabel(r.symbol), style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            Text(s.typeLabel(r.type), style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            const SizedBox(height: 16),
+            _buildExchangeDropdown(s),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<InstrumentType>(
+                    initialValue: _instrumentType,
+                    decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                    hint: const Text('-', style: TextStyle(fontSize: 13)),
+                    items: InstrumentType.values
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _instrumentType = v);
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<AssetClass>(
-                  initialValue: _assetClass,
-                  decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
-                  hint: const Text('-', style: TextStyle(fontSize: 13)),
-                  items: AssetClass.values
-                      .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _assetClass = v);
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<AssetClass>(
+                    initialValue: _assetClass,
+                    decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                    hint: const Text('-', style: TextStyle(fontSize: 13)),
+                    items: AssetClass.values
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _assetClass = v);
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildIntermediaryPicker(s),
-          if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
-        ],
-      ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildIntermediaryPicker(s),
+            if (_unlocked) ..._buildAdvancedFields(s),
+          ],
+        ),
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
@@ -301,9 +304,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   final exchange = _selectedExchange ?? 'Milan';
                   final defaultCurrency = exchangeCurrency[exchange] ?? baseCurrency;
                   final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
-                  final currency = (_unlocked && overrideCurrency.length == 3)
-                      ? overrideCurrency
-                      : defaultCurrency;
+                  final currency = (_unlocked && overrideCurrency.length == 3) ? overrideCurrency : defaultCurrency;
                   // If the user searched by an ISIN-shaped string, persist it
                   // so price sync can use it as the cache key (otherwise the
                   // ticker — e.g. a bond's "BE000035160=MI" — is not a valid
@@ -338,14 +339,17 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     }
 
     if (byName.isEmpty) {
-      final initial = supportedExchanges.contains(_selectedExchange)
-          ? _selectedExchange
-          : supportedExchanges.first;
+      final initial = supportedExchanges.contains(_selectedExchange) ? _selectedExchange : supportedExchanges.first;
       return DropdownButtonFormField<String>(
         initialValue: initial,
         decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
         items: supportedExchanges
-            .map((name) => DropdownMenuItem(value: name, child: Text(name, style: const TextStyle(fontSize: 13))))
+            .map(
+              (name) => DropdownMenuItem(
+                value: name,
+                child: Text(name, style: const TextStyle(fontSize: 13)),
+              ),
+            )
             .toList(),
         onChanged: (v) {
           if (v != null) setState(() => _selectedExchange = v);
@@ -366,10 +370,12 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       initialValue: initial,
       decoration: InputDecoration(labelText: s.stockExchange, isDense: true),
       items: byName.entries
-          .map((e) => DropdownMenuItem(
-                value: e.key,
-                child: Text(e.key, style: const TextStyle(fontSize: 13)),
-              ))
+          .map(
+            (e) => DropdownMenuItem(
+              value: e.key,
+              child: Text(e.key, style: const TextStyle(fontSize: 13)),
+            ),
+          )
           .toList(),
       onChanged: (v) {
         if (v == null) return;
@@ -404,7 +410,12 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       initialValue: _selectedIntermediaryId,
       decoration: InputDecoration(labelText: s.selectIntermediary, isDense: true),
       items: list
-          .map((i) => DropdownMenuItem(value: i.id, child: Text(i.name, style: const TextStyle(fontSize: 13))))
+          .map(
+            (i) => DropdownMenuItem(
+              value: i.id,
+              child: Text(i.name, style: const TextStyle(fontSize: 13)),
+            ),
+          )
           .toList(),
       onChanged: (v) {
         if (v != null) setState(() => _selectedIntermediaryId = v);
@@ -429,9 +440,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () => Navigator.pop(ctx, nameCtrl.text.trim())
-                  : null,
+              onPressed: nameCtrl.text.trim().isNotEmpty ? () => Navigator.pop(ctx, nameCtrl.text.trim()) : null,
               child: Text(s.create),
             ),
           ],
@@ -455,51 +464,61 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       ),
       content: SingleChildScrollView(
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _manualNameCtrl,
-            decoration: InputDecoration(labelText: s.name),
-            autofocus: true,
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<InstrumentType>(
-                  initialValue: _instrumentType,
-                  decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
-                  hint: const Text('-', style: TextStyle(fontSize: 13)),
-                  items: InstrumentType.values
-                      .map((t) => DropdownMenuItem(value: t, child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13))))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _instrumentType = v);
-                  },
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _manualNameCtrl,
+              decoration: InputDecoration(labelText: s.name),
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<InstrumentType>(
+                    initialValue: _instrumentType,
+                    decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+                    hint: const Text('-', style: TextStyle(fontSize: 13)),
+                    items: InstrumentType.values
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _instrumentType = v);
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: DropdownButtonFormField<AssetClass>(
-                  initialValue: _assetClass,
-                  decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
-                  hint: const Text('-', style: TextStyle(fontSize: 13)),
-                  items: AssetClass.values
-                      .map((c) => DropdownMenuItem(value: c, child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13))))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _assetClass = v);
-                  },
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<AssetClass>(
+                    initialValue: _assetClass,
+                    decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+                    hint: const Text('-', style: TextStyle(fontSize: 13)),
+                    items: AssetClass.values
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _assetClass = v);
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildIntermediaryPicker(s),
-          if (_unlocked) ..._buildAdvancedFields(s, showValuation: true),
-        ],
-      ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildIntermediaryPicker(s),
+            if (_unlocked) ..._buildAdvancedFields(s),
+          ],
+        ),
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
@@ -509,9 +528,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
                   final name = _manualNameCtrl.text.trim();
                   final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
                   final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
-                  final currency = (_unlocked && overrideCurrency.length == 3)
-                      ? overrideCurrency
-                      : baseCurrency;
+                  final currency = (_unlocked && overrideCurrency.length == 3) ? overrideCurrency : baseCurrency;
                   await _createAsset(
                     name: name,
                     intermediaryId: _selectedIntermediaryId!,

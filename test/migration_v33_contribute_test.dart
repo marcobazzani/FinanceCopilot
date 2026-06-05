@@ -29,15 +29,19 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Default'));
-    assetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'Pension',
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: ValuationMethod.eventDriven,
-          intermediaryId: iid,
-          currency: const Value('EUR'),
-        ));
+    assetId = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension',
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: ValuationMethod.eventDriven,
+            intermediaryId: iid,
+            currency: const Value('EUR'),
+          ),
+        );
   });
 
   tearDown(() => db.close());
@@ -59,8 +63,7 @@ void main() {
     );
   }
 
-  test('migration v33 backfill: contribute qty counts toward close_price anchor',
-      () async {
+  test('migration v33 backfill: contribute qty counts toward close_price anchor', () async {
     // 5 monthly contributes (€100 each) leading up to a year-end revalue.
     // After the plan: qty_at_revalue should sum the contribute quantities
     // (synthesized as qty=amount, since these are pension-shape rows).
@@ -107,10 +110,11 @@ void main() {
       "WHERE e.type = 'revalue' AND qty.q > 0",
     );
 
-    final prices = await (db.select(db.marketPrices)
-          ..where((p) => p.assetId.equals(assetId))
-          ..orderBy([(p) => OrderingTerm.asc(p.date)]))
-        .get();
+    final prices =
+        await (db.select(db.marketPrices)
+              ..where((p) => p.assetId.equals(assetId))
+              ..orderBy([(p) => OrderingTerm.asc(p.date)]))
+            .get();
     expect(prices, hasLength(1));
     expect(prices.first.date, DateTime(2024, 6, 30));
     // 5 contributes × 100 quantity = 500 qty-at-revalue.
@@ -118,8 +122,7 @@ void main() {
     expect(prices.first.closePrice, closeTo(1.05, 0.0001));
   });
 
-  test('migration v33 still works for buy-only assets (existing behavior)',
-      () async {
+  test('migration v33 still works for buy-only assets (existing behavior)', () async {
     // Mixed asset: a buy of 10 units @ 100, then a revalue at 1500.
     // close_price = 1500 / 10 = 150.
     await rawInsertEvent(
@@ -155,15 +158,12 @@ void main() {
       "WHERE e.type = 'revalue' AND qty.q > 0",
     );
 
-    final prices = await (db.select(db.marketPrices)
-          ..where((p) => p.assetId.equals(assetId)))
-        .get();
+    final prices = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(assetId))).get();
     expect(prices, hasLength(1));
     expect(prices.first.closePrice, 150.0);
   });
 
-  test('migration v33 skips revalues with qty <= 0 (e.g. revalue-only asset)',
-      () async {
+  test('migration v33 skips revalues with qty <= 0 (e.g. revalue-only asset)', () async {
     // Revalue with no preceding contribute or buy → qty = 0 → skipped.
     await rawInsertEvent(
       type: 'revalue',
@@ -191,9 +191,7 @@ void main() {
       "WHERE e.type = 'revalue' AND qty.q > 0",
     );
 
-    final prices = await (db.select(db.marketPrices)
-          ..where((p) => p.assetId.equals(assetId)))
-        .get();
+    final prices = await (db.select(db.marketPrices)..where((p) => p.assetId.equals(assetId))).get();
     expect(prices, isEmpty);
   });
 }

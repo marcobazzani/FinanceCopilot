@@ -117,15 +117,13 @@ void main() {
 
     test('computeEndDate does not drift across short months', () {
       // 7 monthly steps from Jan 31 -> July 31, not Jul 29.
-      final end = computeEndDate(
-        DateTime(2024, 1, 31), 7, StepFrequency.monthly);
+      final end = computeEndDate(DateTime(2024, 1, 31), 7, StepFrequency.monthly);
       expect(end, DateTime(2024, 7, 31));
     });
 
     test('computeStartDate does not drift across short months', () {
       // 7 monthly steps back from Jul 31 should land on Jan 31, not Jan 29.
-      final start = computeStartDate(
-        DateTime(2024, 7, 31), 7, StepFrequency.monthly);
+      final start = computeStartDate(DateTime(2024, 7, 31), 7, StepFrequency.monthly);
       expect(start, DateTime(2024, 1, 31));
     });
 

@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../database/database.dart';
 import '../../../l10n/app_strings.dart';
-import '../../../services/portfolio_model_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
 import '../../../services/providers/providers.dart';
-import '../../../services/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import '../../../utils/formatters.dart' as fmt;
 import '../../widgets/asset_search.dart';
 

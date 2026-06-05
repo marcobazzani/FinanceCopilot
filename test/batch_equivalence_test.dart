@@ -5,13 +5,14 @@
 /// so that future changes cannot silently diverge (e.g. missing fallback
 /// paths, different date handling, different aggregation precision).
 library;
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/web_market_data_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -26,31 +27,41 @@ void main() {
 
   // ── Helpers ──
 
-  Future<int> createAsset(String name, {
+  Future<int> createAsset(
+    String name, {
     ValuationMethod valuation = ValuationMethod.marketPrice,
   }) async {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-      name: name,
-      assetType: AssetType.stockEtf,
-      valuationMethod: valuation,
-      intermediaryId: iid,
-    ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.stockEtf,
+            valuationMethod: valuation,
+            intermediaryId: iid,
+          ),
+        );
   }
 
   Future<void> insertMarketPrices(int assetId, List<(DateTime, double)> prices) async {
     for (final (date, price) in prices) {
-      await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
-        assetId: assetId,
-        date: date,
-        closePrice: price,
-        currency: 'EUR',
-      ));
+      await db
+          .into(db.marketPrices)
+          .insert(
+            MarketPricesCompanion.insert(
+              assetId: assetId,
+              date: date,
+              closePrice: price,
+              currency: 'EUR',
+            ),
+          );
     }
   }
 
   // Goes through AssetEventService.create so revalue events are
   // materialised into market_prices rows the way they are in production.
-  Future<void> insertEvent(int assetId, {
+  Future<void> insertEvent(
+    int assetId, {
     required DateTime date,
     required EventType type,
     required double amount,
@@ -126,6 +137,81 @@ void main() {
         expect(batch[assetId]![i].key, individual[i].key, reason: 'date[$i]');
         expect(batch[assetId]![i].value, individual[i].value, reason: 'price[$i]');
       }
+    });
+
+    test('asset with NO market prices and NO revalues falls back to buy-event prices', () async {
+      final service = WebMarketDataService(db);
+      final assetId = await createAsset('Buy Only — no revalue, no market_prices');
+
+      // Insert buy events with an explicit price field (the column getPrice()
+      // and our new fallback read from).
+      await AssetEventService(db).create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 15),
+        type: EventType.buy,
+        amount: 1000,
+        quantity: 10,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      await AssetEventService(db).create(
+        assetId: assetId,
+        date: DateTime(2024, 6, 1),
+        type: EventType.buy,
+        amount: 1100,
+        quantity: 10,
+        price: 110.0,
+        currency: 'EUR',
+      );
+
+      // getPrice() returns the last buy price via the fallback path.
+      final currentPrice = await service.getPrice(assetId, DateTime(2025, 1, 1));
+      expect(currentPrice, closeTo(110.0, 0.001), reason: 'getPrice fallback returns last buy price');
+
+      // getPriceHistoryBatch must now expose the full buy-price timeline so
+      // the dashboard history chart is consistent with the portfolio screen.
+      final batch = await service.getPriceHistoryBatch([assetId]);
+      expect(batch[assetId], isNotNull, reason: 'batch must include buy-price fallback');
+      expect(batch[assetId]!.length, 2, reason: 'one entry per buy event');
+      expect(batch[assetId]![0].key, DateTime(2024, 1, 15));
+      expect(batch[assetId]![0].value, closeTo(100.0, 0.001));
+      expect(batch[assetId]![1].key, DateTime(2024, 6, 1));
+      expect(batch[assetId]![1].value, closeTo(110.0, 0.001));
+    });
+
+    test('buy-event fallback same-day tiebreak matches getPrice (last-inserted wins)', () async {
+      final service = WebMarketDataService(db);
+      final assetId = await createAsset('Two buys, same day, different price');
+
+      // Two buys on the same value_date with different prices. getPrice()
+      // returns the last-inserted (highest id) one; the batch fallback, after
+      // the chart's day-keyed collapse, must resolve to the same price.
+      await AssetEventService(db).create(
+        assetId: assetId,
+        date: DateTime(2024, 5, 10),
+        type: EventType.buy,
+        amount: 1000,
+        quantity: 10,
+        price: 100.0,
+        currency: 'EUR',
+      );
+      await AssetEventService(db).create(
+        assetId: assetId,
+        date: DateTime(2024, 5, 10),
+        type: EventType.buy,
+        amount: 1050,
+        quantity: 10,
+        price: 105.0,
+        currency: 'EUR',
+      );
+
+      final currentPrice = await service.getPrice(assetId, DateTime(2025, 1, 1));
+      expect(currentPrice, closeTo(105.0, 0.001), reason: 'getPrice returns last-inserted same-day buy');
+
+      final batch = await service.getPriceHistoryBatch([assetId]);
+      // Day-keyed collapse takes the last list entry; id ASC ordering puts the
+      // highest-id (105.0) buy last, matching getPrice.
+      expect(batch[assetId]!.last.value, closeTo(105.0, 0.001), reason: 'batch same-day price must match getPrice');
     });
 
     test('mix of assets with and without market prices', () async {

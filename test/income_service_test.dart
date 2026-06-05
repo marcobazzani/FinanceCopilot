@@ -3,7 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/income_service.dart';
+import 'package:finance_copilot/services/domain/income_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -142,18 +142,18 @@ void main() {
       final entries = <IncomesCompanion>[
         IncomesCompanion.insert(
           date: DateTime(2024, 1, 15),
-        valueDate: DateTime(2024, 1, 15),
+          valueDate: DateTime(2024, 1, 15),
           amount: 3000,
         ),
         IncomesCompanion.insert(
           date: DateTime(2024, 2, 15),
-        valueDate: DateTime(2024, 2, 15),
+          valueDate: DateTime(2024, 2, 15),
           amount: 3000,
           type: const Value(IncomeType.refund),
         ),
         IncomesCompanion.insert(
           date: DateTime(2024, 3, 15),
-        valueDate: DateTime(2024, 3, 15),
+          valueDate: DateTime(2024, 3, 15),
           amount: 3200,
           currency: const Value('USD'),
         ),
@@ -198,8 +198,7 @@ void main() {
         await db.into(db.incomes).insert(b);
         final all = await service.getAll();
         expect(all, hasLength(2));
-        expect(all[0].amount, 200,
-            reason: 'B has the later valueDate and must come first');
+        expect(all[0].amount, 200, reason: 'B has the later valueDate and must come first');
         expect(all[1].amount, 100);
       });
     });

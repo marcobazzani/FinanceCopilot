@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/web_market_data_service.dart';
+import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import '../../services/providers/providers.dart';
 
 /// Shared empty-state recovery affordance shown when an ISIN/ticker lookup
@@ -163,7 +163,8 @@ class _IsinUrlPasteRecoveryState extends ConsumerState<IsinUrlPasteRecovery> {
               children: [
                 if (_resolving) ...[
                   const SizedBox(
-                    height: 16, width: 16,
+                    height: 16,
+                    width: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   const SizedBox(width: 12),

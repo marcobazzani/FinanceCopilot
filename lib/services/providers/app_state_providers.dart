@@ -52,9 +52,7 @@ final portableLanguageProvider = StateProvider<String>((ref) => 'en');
 /// UI language from AppConfigs, reactive. 'en' (default) or 'it'.
 final appLanguageProvider = StreamProvider<String>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('LANGUAGE')))
-      .watchSingleOrNull()
-      .map((row) => row?.value ?? 'en');
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('LANGUAGE'))).watchSingleOrNull().map((row) => row?.value ?? 'en');
 });
 
 /// Provides the current [AppStrings] instance from portable language setting.
@@ -66,9 +64,7 @@ final appStringsProvider = Provider<AppStrings>((ref) {
 /// Display locale from AppConfigs, reactive. Empty string = system default.
 final appLocaleProvider = StreamProvider<String>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('LOCALE')))
-      .watchSingleOrNull()
-      .map((row) {
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('LOCALE'))).watchSingleOrNull().map((row) {
     final value = row?.value ?? '';
     return value.isEmpty ? Platform.localeName : value;
   });
@@ -77,9 +73,7 @@ final appLocaleProvider = StreamProvider<String>((ref) {
 /// Base currency from AppConfigs, reactive. Defaults to EUR.
 final baseCurrencyProvider = StreamProvider<String>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('BASE_CURRENCY')))
-      .watchSingleOrNull()
-      .map((row) => row?.value ?? 'EUR');
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('BASE_CURRENCY'))).watchSingleOrNull().map((row) => row?.value ?? 'EUR');
 });
 
 /// Default capital-gains tax rate (fraction, 0.26 = 26%). Reactive from
@@ -87,9 +81,7 @@ final baseCurrencyProvider = StreamProvider<String>((ref) {
 /// Per-asset `taxRate` overrides this on a position-by-position basis.
 final defaultTaxRateProvider = StreamProvider<double>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('TAX_RATE')))
-      .watchSingleOrNull()
-      .map((row) {
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('TAX_RATE'))).watchSingleOrNull().map((row) {
     final v = double.tryParse(row?.value ?? '');
     if (v == null) return kDefaultTaxRate;
     return v.clamp(0.0, 1.0);
@@ -100,7 +92,7 @@ final defaultTaxRateProvider = StreamProvider<double>((ref) {
 /// defaults to [kDefaultFireSwrPct] when unset or invalid.
 final fireSwrProvider = StreamProvider<double>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('FIRE_SWR')))
-      .watchSingleOrNull()
-      .map((row) => double.tryParse(row?.value ?? '') ?? kDefaultFireSwrPct);
+  return (db.select(
+    db.appConfigs,
+  )..where((c) => c.key.equals('FIRE_SWR'))).watchSingleOrNull().map((row) => double.tryParse(row?.value ?? '') ?? kDefaultFireSwrPct);
 });

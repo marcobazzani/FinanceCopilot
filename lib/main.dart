@@ -18,15 +18,15 @@ import 'database/providers.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_actions_controller.dart';
 import 'services/app_settings.dart';
-import 'services/import_service.dart';
-import 'services/db_transfer_service.dart';
-import 'services/exchange_rate_service.dart';
-import 'services/google_drive_sync_service.dart';
+import 'services/import/import_service.dart';
+import 'services/sync/db_transfer_service.dart';
+import 'services/market/exchange_rate_service.dart';
+import 'services/sync/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
 import 'utils/formatters.dart' as fmt;
 
-import 'ui/screens/accounts_screen.dart';
-import 'ui/screens/assets_screen.dart';
+import 'ui/screens/accounts/accounts_screen.dart';
+import 'ui/screens/assets/assets_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/pillars/pillars_screen.dart';
@@ -64,7 +64,9 @@ Future<void> main() async {
 }
 
 class FinanceCopilotApp extends ConsumerWidget {
-  const FinanceCopilotApp({super.key});
+  final bool enableStartupSync;
+
+  const FinanceCopilotApp({super.key, this.enableStartupSync = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -109,14 +111,16 @@ class FinanceCopilotApp extends ConsumerWidget {
         bottom: true,
         child: child ?? const SizedBox(),
       ),
-      home: const _SafeAppShell(),
+      home: _SafeAppShell(enableStartupSync: enableStartupSync),
     );
   }
 }
 
 /// Catches errors when opening the DB / building AppShell.
 class _SafeAppShell extends ConsumerWidget {
-  const _SafeAppShell();
+  final bool enableStartupSync;
+
+  const _SafeAppShell({required this.enableStartupSync});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,13 +142,15 @@ class _SafeAppShell extends ConsumerWidget {
         ),
       );
     }
-    return const AppShell();
+    return AppShell(enableStartupSync: enableStartupSync);
   }
 }
 
 /// Adaptive navigation shell: bottom nav on mobile, side rail on desktop.
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key});
+  final bool enableStartupSync;
+
+  const AppShell({super.key, this.enableStartupSync = true});
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
@@ -158,8 +164,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   StreamSubscription? _shareIntentSub;
 
   bool get _isSyncing => ref.read(isManualSyncingProvider);
-  set _isSyncing(bool v) =>
-      ref.read(isManualSyncingProvider.notifier).state = v;
+  set _isSyncing(bool v) => ref.read(isManualSyncingProvider.notifier).state = v;
 
   List<NavigationDestination> _destinations(AppStrings s) => [
     NavigationDestination(icon: const Icon(Icons.dashboard), label: s.navDashboard),
@@ -181,8 +186,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Register global-action callbacks so any screen's AppBar can drive
     // refresh / settings / import-export / file import / network retry.
     Future.microtask(() {
-      ref.read(globalActionsRegistryProvider.notifier).state =
-          GlobalActionsRegistry(
+      ref.read(globalActionsRegistryProvider.notifier).state = GlobalActionsRegistry(
         manualRefresh: _manualRefresh,
         showImportExportDialog: _showImportExportDialog,
         showSettingsDialog: _showSettingsDialog,
@@ -199,7 +203,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           final nowOnline = await monitor.check();
           if (!mounted) return;
           ref.read(networkOnlineProvider.notifier).state = nowOnline;
-          if (nowOnline) _startBackgroundSync();
+          if (nowOnline && widget.enableStartupSync) _startBackgroundSync();
         },
       );
     });
@@ -221,7 +225,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       await _initDriveSync();
       await _checkEmptyDb();
       await _runPendingBalanceRecalc();
-      if (!_showLanding) _startBackgroundSync();
+      if (!_showLanding && widget.enableStartupSync) _startBackgroundSync();
     });
   }
 
@@ -234,17 +238,19 @@ class _AppShellState extends ConsumerState<AppShell> {
     } else if (sync.needsReauth && mounted) {
       _log.info('Drive sync: needs re-auth (use Settings to sign in)');
       final s = ref.read(appStringsProvider);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(s.syncReauthNeeded),
-        duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: s.settingsSyncSignIn,
-          onPressed: () async {
-            final ok = await sync.signIn();
-            if (ok) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
-          },
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(s.syncReauthNeeded),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: s.settingsSyncSignIn,
+            onPressed: () async {
+              final ok = await sync.signIn();
+              if (ok) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
+            },
+          ),
         ),
-      ));
+      );
     }
   }
 
@@ -268,15 +274,19 @@ class _AppShellState extends ConsumerState<AppShell> {
   Future<void> _runPendingBalanceRecalc() async {
     try {
       final db = ref.read(databaseProvider);
-      final flag = await db.customSelect(
-        "SELECT value FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
-      ).getSingleOrNull();
+      final flag = await db
+          .customSelect(
+            "SELECT value FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
+          )
+          .getSingleOrNull();
       if (flag == null) return;
 
       final txService = ref.read(transactionServiceProvider);
-      final configs = await db.customSelect(
-        'SELECT account_id, mappings_json FROM import_configs',
-      ).get();
+      final configs = await db
+          .customSelect(
+            'SELECT account_id, mappings_json FROM import_configs',
+          )
+          .get();
 
       for (final row in configs) {
         final accountId = row.read<int>('account_id');
@@ -325,12 +335,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     return assetCount + accountCount > 0;
   }
 
-
   /// Wire up sync service callbacks needed for the explicit
   /// Backup/Restore-from-Drive operations.
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
-    sync.copyFromAttached =
-        (tmpPath) => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath);
+    sync.copyFromAttached = (tmpPath) => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath);
     sync.onDbReplaced = () {
       if (mounted) {
         _log.info('DB replaced by sync, reloading...');
@@ -397,10 +405,12 @@ class _AppShellState extends ConsumerState<AppShell> {
       try {
         final db = ref.read(databaseProvider);
         final eventService = ref.read(assetEventServiceProvider);
-        final rows = await db.customSelect(
-          "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
-          readsFrom: {db.assetEvents},
-        ).get();
+        final rows = await db
+            .customSelect(
+              "SELECT DISTINCT asset_id FROM asset_events WHERE type = 'revalue'",
+              readsFrom: {db.assetEvents},
+            )
+            .get();
         for (final row in rows) {
           await eventService.resyncRevaluePricesForAsset(row.read<int>('asset_id'));
         }
@@ -486,13 +496,14 @@ class _AppShellState extends ConsumerState<AppShell> {
                           const CircularProgressIndicator(),
                           if (_syncingDrive) ...[
                             const SizedBox(height: 12),
-                            Text(s.settingsSyncSignedIn(sync.userEmail ?? ''),
-                              style: Theme.of(context).textTheme.bodySmall),
+                            Text(s.settingsSyncSignedIn(sync.userEmail ?? ''), style: Theme.of(context).textTheme.bodySmall),
                             const SizedBox(height: 4),
-                            Text(s.landingSyncProgress,
+                            Text(
+                              s.landingSyncProgress,
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              )),
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -522,7 +533,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                               _syncingDrive = false;
                               _showLanding = false;
                             });
-                            _startBackgroundSync();
+                            if (widget.enableStartupSync) _startBackgroundSync();
                           }
                         },
                       ),
@@ -549,7 +560,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                     TextButton(
                       onPressed: () {
                         setState(() => _showLanding = false);
-                        _startBackgroundSync();
+                        if (widget.enableStartupSync) _startBackgroundSync();
                       },
                       child: Text(s.landingStartFresh),
                     ),
@@ -581,114 +592,120 @@ class _AppShellState extends ConsumerState<AppShell> {
     return RepaintBoundary(
       key: _repaintKey,
       child: Scaffold(
-      // Outer AppBar removed: each tab body now carries its own AppBar with
-      // both local actions and the globals from globalAppBarActions().
-      body: isWide
-          ? Row(
-              children: [
-                SizedBox(
-                  width: 180,
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      ..._sidebarItems(s).asMap().entries.map((entry) {
-                        final i = entry.key;
-                        final item = entry.value;
-                        final isSelected = i == _selectedIndex;
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () => setState(() => _selectedIndex = i),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              decoration: isSelected
-                                  ? BoxDecoration(
-                                      border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3)),
-                                      color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
-                                    )
-                                  : null,
-                              child: Row(
-                                children: [
-                                  Icon(item.$1, size: 20, color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    item.$2,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        // Outer AppBar removed: each tab body now carries its own AppBar with
+        // both local actions and the globals from globalAppBarActions().
+        body: isWide
+            ? Row(
+                children: [
+                  SizedBox(
+                    width: 180,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 8),
+                        ..._sidebarItems(s).asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final item = entry.value;
+                          final isSelected = i == _selectedIndex;
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => setState(() => _selectedIndex = i),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                decoration: isSelected
+                                    ? BoxDecoration(
+                                        border: Border(left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3)),
+                                        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                                      )
+                                    : null,
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      item.$1,
+                                      size: 20,
                                       color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      item.$2,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                        color: isSelected
+                                            ? Theme.of(context).colorScheme.primary
+                                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
+                          );
+                        }),
+                        const Spacer(),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8, left: 16),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'v$appVersionDisplay',
+                                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                            ],
                           ),
-                        );
-                      }),
-                      const Spacer(),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8, left: 16),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'v$appVersionDisplay',
-                              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            ),
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              ),
-                            ),
-                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const VerticalDivider(thickness: 1, width: 1),
-                Expanded(child: _body()),
-              ],
-            )
-          : Stack(
-              children: [
-                _body(),
-                Positioned(
-                  left: 8,
-                  bottom: 4,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'v$appVersionDisplay',
-                        style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const VerticalDivider(thickness: 1, width: 1),
+                  Expanded(child: _body()),
+                ],
+              )
+            : Stack(
+                children: [
+                  _body(),
+                  Positioned(
+                    left: 8,
+                    bottom: 4,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'v$appVersionDisplay',
+                          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-      bottomNavigationBar: isWide
-          ? null
-          : NavigationBar(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-              destinations: _destinations(s),
-            ),
-    ));
+                ],
+              ),
+        bottomNavigationBar: isWide
+            ? null
+            : NavigationBar(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+                destinations: _destinations(s),
+              ),
+      ),
+    );
   }
-
 }
 
 /// Locale dropdown options for the settings dialog. Top-level so the

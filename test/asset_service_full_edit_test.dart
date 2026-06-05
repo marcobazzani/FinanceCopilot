@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
 
 /// Pins the "unlock all fields" edit path. The unlocked Edit dialog only
 /// surfaces header attributes that have real read-side consumers in
@@ -30,12 +30,16 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     service = AssetService(db);
-    iid1 = await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Broker A'),
-    );
-    iid2 = await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Broker B'),
-    );
+    iid1 = await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Broker A'),
+        );
+    iid2 = await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Broker B'),
+        );
   });
 
   tearDown(() async => await db.close());
@@ -60,7 +64,7 @@ void main() {
         isActive: const Value(false),
         // Advanced (unlock-only) fields surfaced by the UI
         assetType: const Value(AssetType.bondEtf),
-        valuationMethod: const Value(ValuationMethod.balance),
+        valuationMethod: const Value(ValuationMethod.eventDriven),
         intermediaryId: Value(iid2),
         currency: const Value('USD'),
         taxRate: const Value(0.125),
@@ -79,7 +83,7 @@ void main() {
     expect(out.ter, 0.07);
     expect(out.isActive, isFalse);
     expect(out.assetType, AssetType.bondEtf);
-    expect(out.valuationMethod, ValuationMethod.balance);
+    expect(out.valuationMethod, ValuationMethod.eventDriven);
     expect(out.intermediaryId, iid2);
     expect(out.currency, 'USD');
     expect(out.taxRate, 0.125);

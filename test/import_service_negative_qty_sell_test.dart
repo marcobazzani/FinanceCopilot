@@ -23,8 +23,8 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/asset_service.dart';
-import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -38,7 +38,9 @@ void main() {
     importer = ImportService(db);
     assetService = AssetService(db);
     tempDir = Directory.systemTemp.createTempSync('issue77_');
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Directa'),
         );
   });
@@ -48,8 +50,7 @@ void main() {
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
   });
 
-  test('issue #77: sells with negative qty + type column → net qty must subtract',
-      () async {
+  test('issue #77: sells with negative qty + type column → net qty must subtract', () async {
     // Reporter's exact figures: buys total 399, sells total 199, expected
     // net 200. Source uses negative quantities for sells (Italian-broker
     // convention) AND maps the type column explicitly.
@@ -78,20 +79,17 @@ void main() {
       intermediaryId: intermediaryId,
     );
 
-    expect(result.result.errorRows, 0,
-        reason: 'errors: ${result.result.errors}');
+    expect(result.result.errorRows, 0, reason: 'errors: ${result.result.errors}');
     expect(result.result.importedRows, 5);
 
     final assetId = result.assetsByIsin['IT0000DIRECT']!;
     final stats = (await assetService.getStatsForAll())[assetId]!;
 
     // Hand math: 200 + 100 + 99 − 100 − 99 = 200.
-    expect(stats.totalQuantity, 200,
-        reason: 'buys 399 − sells 199 = 200 effective shares');
+    expect(stats.totalQuantity, 200, reason: 'buys 399 − sells 199 = 200 effective shares');
 
     // Pre-fix observed (bug): -COALESCE(-199, 0) = +199 → net 598.
-    expect(stats.totalQuantity, isNot(598),
-        reason: 'reporter saw 598 (399 + 199) when sells are double-negated');
+    expect(stats.totalQuantity, isNot(598), reason: 'reporter saw 598 (399 + 199) when sells are double-negated');
 
     // Cost basis of the remaining 200 shares is the weighted-average buy
     // price × remaining qty — the sale at 13/14 EUR/share doesn't subtract
@@ -100,12 +98,10 @@ void main() {
     //   total buy qty    = 200 + 100 + 99    = 399
     //   avg cost / share = 4288 / 399        ≈ 10.7469
     //   invested         = 10.7469 × 200     ≈ 2149.37
-    expect(stats.totalInvested, closeTo(2149.37, 0.01),
-        reason: 'weighted-avg cost basis of remaining 200 shares');
+    expect(stats.totalInvested, closeTo(2149.37, 0.01), reason: 'weighted-avg cost basis of remaining 200 shares');
   });
 
-  test('sells with NEGATIVE amount + POSITIVE qty + type — already correct',
-      () async {
+  test('sells with NEGATIVE amount + POSITIVE qty + type — already correct', () async {
     // Same totals as the bug test but qty is positive everywhere; only
     // amount carries the sign. This is the convention several other
     // brokers use (and what the app's own export round-trip produces).
@@ -135,8 +131,7 @@ void main() {
       baseCurrency: 'EUR',
       intermediaryId: intermediaryId,
     );
-    expect(result.result.errorRows, 0,
-        reason: 'errors: ${result.result.errors}');
+    expect(result.result.errorRows, 0, reason: 'errors: ${result.result.errors}');
 
     final assetId = result.assetsByIsin['IT0000POSQTY']!;
     final stats = (await assetService.getStatsForAll())[assetId]!;
@@ -147,8 +142,7 @@ void main() {
     expect(stats.totalInvested, closeTo(2149.37, 0.01));
   });
 
-  test('"From sign (+/-)" detection: no type column, qty negative on sells',
-      () async {
+  test('"From sign (+/-)" detection: no type column, qty negative on sells', () async {
     // Mirror the wizard's "From sign" detection — no `type` column mapped,
     // event type inferred from the qty/amount sign in import_service.dart
     // (`negativeIsBuy = false`). Source uses negative qty for sells. With
@@ -179,8 +173,7 @@ void main() {
       baseCurrency: 'EUR',
       intermediaryId: intermediaryId,
     );
-    expect(result.result.errorRows, 0,
-        reason: 'errors: ${result.result.errors}');
+    expect(result.result.errorRows, 0, reason: 'errors: ${result.result.errors}');
     expect(result.result.importedRows, 5);
 
     final assetId = result.assetsByIsin['IT0000SIGNMD']!;
@@ -188,9 +181,7 @@ void main() {
 
     // Verify the SQL aggregated sells correctly (would have been 598 if the
     // qty.abs() write + ABS() SQL pair were missing).
-    expect(stats.totalQuantity, 200,
-        reason: 'sign-mode inference + qty.abs() must yield correct net');
-    expect(stats.totalInvested, closeTo(2149.37, 0.01),
-        reason: 'weighted-avg cost basis of remaining 200 shares');
+    expect(stats.totalQuantity, 200, reason: 'sign-mode inference + qty.abs() must yield correct net');
+    expect(stats.totalInvested, closeTo(2149.37, 0.01), reason: 'weighted-avg cost basis of remaining 200 shares');
   });
 }

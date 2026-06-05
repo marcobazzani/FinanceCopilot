@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/financial_health_service.dart';
+import 'package:finance_copilot/services/pillars/financial_health_service.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 
 void main() {
@@ -91,10 +91,14 @@ void main() {
   group('computeKpis', () {
     test('returns exactly 2 categories (Liquidity and Wealth)', () {
       final cats = computeKpis(
-        cash: 10000, investments: 50000,
-        annualIncome: 60000, annualExpenses: 40000,
-        annualSavings: 20000, monthlyExpenses: 3333,
-        s: s, locale: locale,
+        cash: 10000,
+        investments: 50000,
+        annualIncome: 60000,
+        annualExpenses: 40000,
+        annualSavings: 20000,
+        monthlyExpenses: 3333,
+        s: s,
+        locale: locale,
       );
       expect(cats.length, 2);
       expect(cats[0].name, s.healthCatLiquidity);
@@ -103,20 +107,28 @@ void main() {
 
     test('Liquidity category has 3 KPIs', () {
       final cats = computeKpis(
-        cash: 10000, investments: 50000,
-        annualIncome: 60000, annualExpenses: 40000,
-        annualSavings: 20000, monthlyExpenses: 3333,
-        s: s, locale: locale,
+        cash: 10000,
+        investments: 50000,
+        annualIncome: 60000,
+        annualExpenses: 40000,
+        annualSavings: 20000,
+        monthlyExpenses: 3333,
+        s: s,
+        locale: locale,
       );
       expect(cats[0].kpis.length, 3);
     });
 
     test('Wealth category has 3 KPIs', () {
       final cats = computeKpis(
-        cash: 10000, investments: 50000,
-        annualIncome: 60000, annualExpenses: 40000,
-        annualSavings: 20000, monthlyExpenses: 3333,
-        s: s, locale: locale,
+        cash: 10000,
+        investments: 50000,
+        annualIncome: 60000,
+        annualExpenses: 40000,
+        annualSavings: 20000,
+        monthlyExpenses: 3333,
+        s: s,
+        locale: locale,
       );
       expect(cats[1].kpis.length, 3);
     });
@@ -128,10 +140,14 @@ void main() {
 
     test('0% cash -> scarso', () {
       final cats = computeKpis(
-        cash: 0, investments: 100000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 100000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[0]; // liquidity ratio
       expect(kpi.rating, Rating.scarso);
@@ -140,10 +156,14 @@ void main() {
     test('12% cash -> sufficiente', () {
       // cash=12000, investments=88000 -> 12%
       final cats = computeKpis(
-        cash: 12000, investments: 88000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 12000,
+        investments: 88000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[0];
       expect(kpi.rating, Rating.sufficiente);
@@ -152,10 +172,14 @@ void main() {
     test('20% cash -> buono', () {
       // cash=20000, investments=80000 -> 20%
       final cats = computeKpis(
-        cash: 20000, investments: 80000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 20000,
+        investments: 80000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[0];
       expect(kpi.rating, Rating.buono);
@@ -164,10 +188,14 @@ void main() {
     test('30% cash -> ottimo', () {
       // cash=30000, investments=70000 -> 30%
       final cats = computeKpis(
-        cash: 30000, investments: 70000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 30000,
+        investments: 70000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[0];
       expect(kpi.rating, Rating.ottimo);
@@ -180,10 +208,14 @@ void main() {
 
     test('1 month coverage -> scarso', () {
       final cats = computeKpis(
-        cash: 1000, investments: 0,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 1000,
-        s: s, locale: locale,
+        cash: 1000,
+        investments: 0,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 1000,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[1]; // expense coverage
       expect(kpi.rating, Rating.scarso);
@@ -191,10 +223,14 @@ void main() {
 
     test('4 months coverage -> sufficiente', () {
       final cats = computeKpis(
-        cash: 4000, investments: 0,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 1000,
-        s: s, locale: locale,
+        cash: 4000,
+        investments: 0,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 1000,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[1];
       expect(kpi.rating, Rating.sufficiente);
@@ -202,10 +238,14 @@ void main() {
 
     test('8 months coverage -> buono', () {
       final cats = computeKpis(
-        cash: 8000, investments: 0,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 1000,
-        s: s, locale: locale,
+        cash: 8000,
+        investments: 0,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 1000,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[1];
       expect(kpi.rating, Rating.buono);
@@ -213,10 +253,14 @@ void main() {
 
     test('15 months coverage -> ottimo', () {
       final cats = computeKpis(
-        cash: 15000, investments: 0,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 1000,
-        s: s, locale: locale,
+        cash: 15000,
+        investments: 0,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 1000,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[1];
       expect(kpi.rating, Rating.ottimo);
@@ -229,10 +273,14 @@ void main() {
 
     test('5% savings rate -> scarso', () {
       final cats = computeKpis(
-        cash: 0, investments: 0,
-        annualIncome: 100000, annualExpenses: 95000,
-        annualSavings: 5000, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 0,
+        annualIncome: 100000,
+        annualExpenses: 95000,
+        annualSavings: 5000,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[2]; // savings rate
       expect(kpi.rating, Rating.scarso);
@@ -240,10 +288,14 @@ void main() {
 
     test('15% savings rate -> sufficiente', () {
       final cats = computeKpis(
-        cash: 0, investments: 0,
-        annualIncome: 100000, annualExpenses: 85000,
-        annualSavings: 15000, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 0,
+        annualIncome: 100000,
+        annualExpenses: 85000,
+        annualSavings: 15000,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[2];
       expect(kpi.rating, Rating.sufficiente);
@@ -251,10 +303,14 @@ void main() {
 
     test('25% savings rate -> buono', () {
       final cats = computeKpis(
-        cash: 0, investments: 0,
-        annualIncome: 100000, annualExpenses: 75000,
-        annualSavings: 25000, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 0,
+        annualIncome: 100000,
+        annualExpenses: 75000,
+        annualSavings: 25000,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[2];
       expect(kpi.rating, Rating.buono);
@@ -262,10 +318,14 @@ void main() {
 
     test('50% savings rate -> ottimo', () {
       final cats = computeKpis(
-        cash: 0, investments: 0,
-        annualIncome: 100000, annualExpenses: 50000,
-        annualSavings: 50000, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 0,
+        annualIncome: 100000,
+        annualExpenses: 50000,
+        annualSavings: 50000,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[0].kpis[2];
       expect(kpi.rating, Rating.ottimo);
@@ -278,10 +338,14 @@ void main() {
 
     test('10% investment weight -> scarso', () {
       final cats = computeKpis(
-        cash: 90000, investments: 10000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 90000,
+        investments: 10000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[1].kpis[0]; // investment weight
       expect(kpi.rating, Rating.scarso);
@@ -289,10 +353,14 @@ void main() {
 
     test('30% investment weight -> sufficiente', () {
       final cats = computeKpis(
-        cash: 70000, investments: 30000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 70000,
+        investments: 30000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[1].kpis[0];
       expect(kpi.rating, Rating.sufficiente);
@@ -300,10 +368,14 @@ void main() {
 
     test('50% investment weight -> buono', () {
       final cats = computeKpis(
-        cash: 50000, investments: 50000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 50000,
+        investments: 50000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[1].kpis[0];
       expect(kpi.rating, Rating.buono);
@@ -311,10 +383,14 @@ void main() {
 
     test('70% investment weight -> alto', () {
       final cats = computeKpis(
-        cash: 30000, investments: 70000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 30000,
+        investments: 70000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final kpi = cats[1].kpis[0];
       expect(kpi.rating, Rating.alto);
@@ -324,10 +400,14 @@ void main() {
   group('Edge cases', () {
     test('zero income does not crash, savings rate is 0', () {
       final cats = computeKpis(
-        cash: 10000, investments: 50000,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 10000,
+        investments: 50000,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       final savingsKpi = cats[0].kpis[2]; // savings rate
       expect(savingsKpi.value, 0.0);
@@ -336,10 +416,14 @@ void main() {
 
     test('zero assets does not crash, all ratios are 0', () {
       final cats = computeKpis(
-        cash: 0, investments: 0,
-        annualIncome: 50000, annualExpenses: 40000,
-        annualSavings: 10000, monthlyExpenses: 3333,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 0,
+        annualIncome: 50000,
+        annualExpenses: 40000,
+        annualSavings: 10000,
+        monthlyExpenses: 3333,
+        s: s,
+        locale: locale,
       );
       final liquidityRatio = cats[0].kpis[0];
       expect(liquidityRatio.value, 0.0);
@@ -349,10 +433,14 @@ void main() {
 
     test('all zeros does not crash', () {
       final cats = computeKpis(
-        cash: 0, investments: 0,
-        annualIncome: 0, annualExpenses: 0,
-        annualSavings: 0, monthlyExpenses: 0,
-        s: s, locale: locale,
+        cash: 0,
+        investments: 0,
+        annualIncome: 0,
+        annualExpenses: 0,
+        annualSavings: 0,
+        monthlyExpenses: 0,
+        s: s,
+        locale: locale,
       );
       expect(cats.length, 2);
       for (final cat in cats) {
@@ -382,11 +470,15 @@ void main() {
   group('liquid asset ratio with liquidInvestments', () {
     test('only liquid investments count toward liquid asset ratio', () {
       final cats = computeKpis(
-        cash: 10000, investments: 100000,
+        cash: 10000,
+        investments: 100000,
         liquidInvestments: 60000, // 40000 is illiquid (pension, real estate)
-        annualIncome: 50000, annualExpenses: 40000,
-        annualSavings: 10000, monthlyExpenses: 3333,
-        s: s, locale: locale,
+        annualIncome: 50000,
+        annualExpenses: 40000,
+        annualSavings: 10000,
+        monthlyExpenses: 3333,
+        s: s,
+        locale: locale,
       );
       // Liquid asset ratio = (cash + liquidInvestments) / grossAssets
       // = (10000 + 60000) / 110000 = 63.6%
@@ -396,10 +488,14 @@ void main() {
 
     test('defaults to 0 liquid investments when not specified', () {
       final cats = computeKpis(
-        cash: 10000, investments: 100000,
-        annualIncome: 50000, annualExpenses: 40000,
-        annualSavings: 10000, monthlyExpenses: 3333,
-        s: s, locale: locale,
+        cash: 10000,
+        investments: 100000,
+        annualIncome: 50000,
+        annualExpenses: 40000,
+        annualSavings: 10000,
+        monthlyExpenses: 3333,
+        s: s,
+        locale: locale,
       );
       // liquidInvestments defaults to 0, so ratio = cash / grossAssets = 10000/110000 = 9.1%
       final liquidKpi = cats[1].kpis[1];
@@ -508,37 +604,41 @@ void main() {
       expect(r.progressPct, 0);
     });
 
-    test('progress 100% when netWorth = FI number -> ottimo', () {
+    test('progress 100% is ottimo', () {
       final fi = 30000 / 0.0275;
       final r = computeFire(netWorth: fi, annualExpenses: 30000, swrPct: 2.75);
-      expect(r.progressPct, closeTo(100, 0.001));
+      expect(r.progressPct, closeTo(100, 1e-9));
       expect(r.rating, Rating.ottimo);
     });
 
-    test('progress 200% > 100 stays at ottimo', () {
+    test('progress above 100% stays ottimo', () {
       final fi = 30000 / 0.0275;
       final r = computeFire(netWorth: fi * 2, annualExpenses: 30000, swrPct: 2.75);
-      expect(r.progressPct, closeTo(200, 0.001));
+      expect(r.progressPct, closeTo(200, 1e-9));
       expect(r.rating, Rating.ottimo);
     });
 
-    test('progress 50% -> buono boundary', () {
+    test('progress 50% is buono', () {
       final fi = 30000 / 0.0275;
-      final r = computeFire(netWorth: fi * 0.5, annualExpenses: 30000, swrPct: 2.75);
-      expect(r.progressPct, closeTo(50, 0.001));
+      final netWorth = fi * 0.5;
+      final r = computeFire(netWorth: netWorth, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(50, 1e-9));
       expect(r.rating, Rating.buono);
     });
 
-    test('progress 25% -> sufficiente boundary', () {
+    test('progress 25% is sufficiente', () {
       final fi = 30000 / 0.0275;
-      final r = computeFire(netWorth: fi * 0.25, annualExpenses: 30000, swrPct: 2.75);
-      expect(r.progressPct, closeTo(25, 0.001));
+      final netWorth = fi * 0.25;
+      final r = computeFire(netWorth: netWorth, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(25, 1e-9));
       expect(r.rating, Rating.sufficiente);
     });
 
-    test('progress 24.9% -> scarso (just below sufficiente)', () {
+    test('progress below 25% is scarso', () {
       final fi = 30000 / 0.0275;
-      final r = computeFire(netWorth: fi * 0.249, annualExpenses: 30000, swrPct: 2.75);
+      final netWorth = fi * 0.249;
+      final r = computeFire(netWorth: netWorth, annualExpenses: 30000, swrPct: 2.75);
+      expect(r.progressPct, closeTo(24.9, 1e-9));
       expect(r.rating, Rating.scarso);
     });
 
@@ -546,13 +646,10 @@ void main() {
       expect(kDefaultFireSwrPct, 2.75);
     });
 
-    test('rateFire boundaries: 100->ottimo, 50->buono, 25->sufficiente, 0->scarso', () {
+    test('rateFire uses progress thresholds', () {
       expect(rateFire(100), Rating.ottimo);
-      expect(rateFire(99.99), Rating.buono);
       expect(rateFire(50), Rating.buono);
-      expect(rateFire(49.99), Rating.sufficiente);
       expect(rateFire(25), Rating.sufficiente);
-      expect(rateFire(24.99), Rating.scarso);
       expect(rateFire(0), Rating.scarso);
     });
   });

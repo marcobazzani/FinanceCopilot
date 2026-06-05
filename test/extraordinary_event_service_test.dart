@@ -3,7 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/extraordinary_event_service.dart';
+import 'package:finance_copilot/services/domain/extraordinary_event_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -225,9 +225,7 @@ void main() {
       expect(await service.getEntries(id), hasLength(3));
       await service.delete(id);
 
-      final remaining = await (db.select(db.extraordinaryEventEntries)
-            ..where((e) => e.eventId.equals(id)))
-          .get();
+      final remaining = await (db.select(db.extraordinaryEventEntries)..where((e) => e.eventId.equals(id))).get();
       expect(remaining, isEmpty);
     });
 
@@ -276,19 +274,19 @@ void main() {
 
       // Edit to instant treatment. Pre-fix: scheduled entries lingered as
       // ghost rows on the event detail timeline.
-      await service.update(id, ExtraordinaryEventsCompanion(
-        treatment: const Value(EventTreatment.instant),
-        stepFrequency: const Value(null),
-        spreadStart: const Value(null),
-        spreadEnd: const Value(null),
-      ));
+      await service.update(
+        id,
+        ExtraordinaryEventsCompanion(
+          treatment: const Value(EventTreatment.instant),
+          stepFrequency: const Value(null),
+          spreadStart: const Value(null),
+          spreadEnd: const Value(null),
+        ),
+      );
 
       final remaining = await service.getEntries(id);
-      final scheduled = remaining
-          .where((e) => e.entryKind == EventEntryKind.scheduled)
-          .toList();
-      expect(scheduled, isEmpty,
-          reason: 'spread→instant must drop the now-irrelevant scheduled entries');
+      final scheduled = remaining.where((e) => e.entryKind == EventEntryKind.scheduled).toList();
+      expect(scheduled, isEmpty, reason: 'spread→instant must drop the now-irrelevant scheduled entries');
     });
   });
 
@@ -366,9 +364,7 @@ void main() {
           eventDate: DateTime(2024, 3, 1),
         );
 
-        final bufferId = await db
-            .into(db.buffers)
-            .insert(BuffersCompanion.insert(name: 'Linked'));
+        final bufferId = await db.into(db.buffers).insert(BuffersCompanion.insert(name: 'Linked'));
         await db
             .into(db.extraordinaryEvents)
             .insert(
@@ -415,9 +411,7 @@ void main() {
         );
         expect(entries.map((e) => e.amount), [-100]);
 
-        final stats = await service
-            .watchStatsForAll(through: DateTime(2024, 2, 29))
-            .first;
+        final stats = await service.watchStatsForAll(through: DateTime(2024, 2, 29)).first;
         expect(stats[visibleId]!.entryCount, 1);
         expect(stats[visibleId]!.totalAllocated, 100);
         final buffered = events.singleWhere((e) => e.name == 'Buffered');
@@ -549,29 +543,36 @@ void main() {
       final bufferId = await service.createLinkedBuffer(id);
 
       // Reimbursement +300 (received from insurance).
-      await db.into(db.bufferTransactions).insert(BufferTransactionsCompanion.insert(
-        bufferId: bufferId,
-        operationDate: DateTime(2024, 2, 1),
-        valueDate: DateTime(2024, 2, 1),
-        amount: 300,
-        balanceAfter: 300,
-        isReimbursement: const Value(true),
-      ));
+      await db
+          .into(db.bufferTransactions)
+          .insert(
+            BufferTransactionsCompanion.insert(
+              bufferId: bufferId,
+              operationDate: DateTime(2024, 2, 1),
+              valueDate: DateTime(2024, 2, 1),
+              amount: 300,
+              balanceAfter: 300,
+              isReimbursement: const Value(true),
+            ),
+          );
       // Refund -300 of the reimbursement (insurance clawback). Net = 0.
-      await db.into(db.bufferTransactions).insert(BufferTransactionsCompanion.insert(
-        bufferId: bufferId,
-        operationDate: DateTime(2024, 3, 1),
-        valueDate: DateTime(2024, 3, 1),
-        amount: -300,
-        balanceAfter: 0,
-        isReimbursement: const Value(true),
-      ));
+      await db
+          .into(db.bufferTransactions)
+          .insert(
+            BufferTransactionsCompanion.insert(
+              bufferId: bufferId,
+              operationDate: DateTime(2024, 3, 1),
+              valueDate: DateTime(2024, 3, 1),
+              amount: -300,
+              balanceAfter: 0,
+              isReimbursement: const Value(true),
+            ),
+          );
 
       await service.generateScheduledEntries(id);
       final entries = await service.getEntries(id);
       // Net reimbursed=0 → full 600 spreads across 6 months → -100/step.
-      expect(entries[0].amount, -100,
-          reason: 'a refund must offset the prior reimbursement, not double-count');
+      expect(entries[0].amount, -100, reason: 'a refund must offset the prior reimbursement, not double-count');
     });
 
     test('reimbursements reduce effective spread amount', () async {
@@ -590,16 +591,18 @@ void main() {
       final bufferId = await service.createLinkedBuffer(id);
 
       // Insert a reimbursement transaction on the buffer.
-      await db.into(db.bufferTransactions).insert(
-        BufferTransactionsCompanion.insert(
-          bufferId: bufferId,
-          operationDate: DateTime(2024, 2, 1),
-          valueDate: DateTime(2024, 2, 1),
-          amount: 300,
-          balanceAfter: 300,
-          isReimbursement: const Value(true),
-        ),
-      );
+      await db
+          .into(db.bufferTransactions)
+          .insert(
+            BufferTransactionsCompanion.insert(
+              bufferId: bufferId,
+              operationDate: DateTime(2024, 2, 1),
+              valueDate: DateTime(2024, 2, 1),
+              amount: 300,
+              balanceAfter: 300,
+              isReimbursement: const Value(true),
+            ),
+          );
 
       // Regenerate to pick up the reimbursement.
       await service.generateScheduledEntries(id);

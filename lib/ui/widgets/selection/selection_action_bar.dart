@@ -39,8 +39,7 @@ class SelectionActionBar<T> extends ConsumerWidget {
       listenable: controller,
       builder: (ctx, _) {
         final count = controller.count;
-        final allVisibleSelected = visibleIds.isNotEmpty &&
-            visibleIds.every(controller.contains);
+        final allVisibleSelected = visibleIds.isNotEmpty && visibleIds.every(controller.contains);
 
         return Material(
           elevation: 8,
@@ -65,9 +64,7 @@ class SelectionActionBar<T> extends ConsumerWidget {
                     ),
                   ),
                   TextButton.icon(
-                    icon: Icon(allVisibleSelected
-                        ? Icons.deselect
-                        : Icons.select_all),
+                    icon: Icon(allVisibleSelected ? Icons.deselect : Icons.select_all),
                     label: Text(allVisibleSelected ? s.deselectAll : s.selectAll),
                     onPressed: visibleIds.isEmpty
                         ? null

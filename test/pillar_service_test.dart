@@ -3,10 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_event_service.dart';
-import 'package:finance_copilot/services/asset_service.dart';
-import 'package:finance_copilot/services/pillar_scope.dart';
-import 'package:finance_copilot/services/pillar_service.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
+import 'package:finance_copilot/services/pillars/pillar_scope.dart';
+import 'package:finance_copilot/services/pillars/pillar_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -20,9 +20,11 @@ void main() {
     pillars = PillarService(db);
     assets = AssetService(db);
     events = AssetEventService(db);
-    iid = await db.into(db.intermediaries).insert(
-      IntermediariesCompanion.insert(name: 'Default'),
-    );
+    iid = await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(name: 'Default'),
+        );
   });
 
   tearDown(() async => db.close());
@@ -117,11 +119,8 @@ void main() {
 
   test('PillarScope sealed variants compare correctly', () {
     expect(const PillarScope.all() == const PillarScope.all(), true);
-    expect(const PillarScope.unassigned() == const PillarScope.unassigned(),
-        true);
-    expect(const PillarScope.pillar('a') == const PillarScope.pillar('a'),
-        true);
-    expect(const PillarScope.pillar('a') == const PillarScope.pillar('b'),
-        false);
+    expect(const PillarScope.unassigned() == const PillarScope.unassigned(), true);
+    expect(const PillarScope.pillar('a') == const PillarScope.pillar('a'), true);
+    expect(const PillarScope.pillar('a') == const PillarScope.pillar('b'), false);
   });
 }

@@ -2,13 +2,14 @@ part of 'import_screen.dart';
 
 extension _ColumnMapperAmountFormula on _ImportScreenState {
   Widget _buildAmountModeButtons(List<String> columns, {required String currentMode}) {
+    final s = ref.read(appStringsProvider);
     Widget modeBtn(String label, IconData icon, String mode) {
       final isActive = currentMode == mode;
       return Tooltip(
         message: switch (mode) {
-          'formula' => 'Combine multiple columns (e.g. Entrate + Uscite)',
-          'balance' => 'Compute amount from balance differences',
-          _ => 'Direct column mapping',
+          'formula' => s.amountModeFormulaTooltip,
+          'balance' => s.amountModeBalanceTooltip,
+          _ => s.amountModeDirectTooltip,
         },
         child: isActive
             ? FilledButton.icon(
@@ -44,11 +45,11 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        modeBtn('Direct', Icons.arrow_forward, 'simple'),
+        modeBtn(s.amountModeDirect, Icons.arrow_forward, 'simple'),
         const SizedBox(width: 4),
-        modeBtn('Formula', Icons.functions, 'formula'),
+        modeBtn(s.amountModeFormula, Icons.functions, 'formula'),
         const SizedBox(width: 4),
-        modeBtn('Balance Δ', Icons.trending_flat, 'balance'),
+        modeBtn(s.amountModeBalance, Icons.trending_flat, 'balance'),
       ],
     );
   }
@@ -72,7 +73,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
               children: [
                 ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
-                  child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+                  child: Text(
+                    s.amountRequired,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14),
+                  ),
                 ),
                 _buildAmountModeButtons(columns, currentMode: mode),
               ],
@@ -103,7 +107,7 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
                   if (_preview != null && _balanceDiffColumn != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Preview: amount = balance[i] − balance[i−1] → ${_balanceDiffPreview()}',
+                      '${s.previewLabel}: amount = balance[i] − balance[i−1] → ${_balanceDiffPreview(s)}',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -123,7 +127,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
         children: [
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
-            child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+            child: Text(
+              s.amountRequired,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14),
+            ),
           ),
           const Icon(Icons.arrow_forward, size: 16),
           const SizedBox(width: 4),
@@ -137,7 +144,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
                 hintText: ref.watch(appStringsProvider).selectColumn,
               ),
               items: [
-                DropdownMenuItem(value: null, child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey))),
+                DropdownMenuItem(
+                  value: null,
+                  child: Text('— ${ref.watch(appStringsProvider).none} —', style: const TextStyle(color: Colors.grey)),
+                ),
                 ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
               ],
               onChanged: (v) => _setState(() => _mappings['amount'] = v),
@@ -187,7 +197,10 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
             children: [
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: narrow ? 90 : 140),
-                child: Text(s.amountRequired, style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14)),
+                child: Text(
+                  s.amountRequired,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: narrow ? 12 : 14),
+                ),
               ),
               _buildAmountModeButtons(columns, currentMode: mode),
             ],
@@ -271,11 +284,11 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
                 if (_preview != null)
                   Expanded(
                     child: Text(
-                      'Preview: ${_preview!.rows.take(3).map((row) {
+                      '${s.previewLabel}: ${_preview!.rows.take(3).map((row) {
                         double sum = 0;
                         for (final t in _amountFormula) {
                           final raw = row[t.sourceColumn] ?? '0';
-                          final v = double.tryParse(raw.replaceAll(RegExp(r'[€\$£¥,]'), '').replaceAll(' ', '')) ?? 0;
+                          final v = fmt.parseFlexibleNumber(raw) ?? 0;
                           sum += t.operator == '-' ? -v : v;
                         }
                         return sum.toStringAsFixed(2);
@@ -293,18 +306,18 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
   }
 
   /// Preview first few balance-diff computed values.
-  String _balanceDiffPreview() {
+  String _balanceDiffPreview(AppStrings s) {
     if (_preview == null || _balanceDiffColumn == null) return '';
     final rows = _preview!.rows;
     final results = <String>[];
     double? prev;
     for (var i = 0; i < rows.length && results.length < 4; i++) {
       final raw = rows[i][_balanceDiffColumn!] ?? '';
-      final val = double.tryParse(raw.replaceAll(RegExp(r'[€\$£¥,]'), '').replaceAll(' ', ''));
+      final val = fmt.parseFlexibleNumber(raw);
       if (val != null && prev != null) {
         results.add((val - prev).toStringAsFixed(2));
       } else if (val != null) {
-        results.add('${val.toStringAsFixed(2)} (first)');
+        results.add('${val.toStringAsFixed(2)} ${s.firstRowLabel}');
       }
       prev = val;
     }

@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/import_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -27,18 +27,24 @@ void main() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     importer = ImportService(db);
     tempDir = Directory.systemTemp.createTempSync('target_asset_test_');
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
-    targetAssetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'Pension Fund',
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: ValuationMethod.eventDriven,
-          currency: const Value('EUR'),
-          intermediaryId: intermediaryId,
-        ));
+    targetAssetId = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'Pension Fund',
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: ValuationMethod.eventDriven,
+            currency: const Value('EUR'),
+            intermediaryId: intermediaryId,
+          ),
+        );
   });
 
   tearDown(() async {
@@ -52,8 +58,7 @@ void main() {
     return f;
   }
 
-  test('targetAssetId routes every row to that asset, no isin needed',
-      () async {
+  test('targetAssetId routes every row to that asset, no isin needed', () async {
     final file = writeCsv('pension.csv', '''
 date,type,amount
 2024-01-31,buy,100.00
@@ -83,8 +88,7 @@ date,type,amount
     expect(events.map((e) => e.assetId), everyElement(targetAssetId));
   });
 
-  test('without targetAssetId AND without isin mapping, request fails',
-      () async {
+  test('without targetAssetId AND without isin mapping, request fails', () async {
     final file = writeCsv('no_isin.csv', '''
 date,type,amount
 2024-01-31,buy,100.00
@@ -145,8 +149,7 @@ date,type,amount,isin
   // single-asset mode): the two features were merged independently, so
   // verify the combinations behave the way the merge plan says they do.
 
-  test('single-asset + Fee bucket: fee rows drop silently, no errors',
-      () async {
+  test('single-asset + Fee bucket: fee rows drop silently, no errors', () async {
     // 2 buy rows + 1 fee row, all routed to the pre-existing pension
     // asset. Fee is a pure no-op in single-asset mode (the pre-pass is
     // gated on targetAssetId == null, and the per-row main loop drops
@@ -173,21 +176,16 @@ date,type,amount
       feeValues: const {'COMMISSION'},
     );
 
-    expect(result.result.importedRows, 2,
-        reason: '2 buy rows imported; the fee row drops silently');
-    expect(result.result.errorRows, 0,
-        reason: 'fee in single-asset mode is by-design no-op, not an error');
-    expect(result.result.attachedFees, 0,
-        reason: 'pre-pass is gated on targetAssetId == null');
-    expect(result.result.unmatchedFees, 0,
-        reason: 'no orderRef → nothing to match → counted as 0, not as orphan');
+    expect(result.result.importedRows, 2, reason: '2 buy rows imported; the fee row drops silently');
+    expect(result.result.errorRows, 0, reason: 'fee in single-asset mode is by-design no-op, not an error');
+    expect(result.result.attachedFees, 0, reason: 'pre-pass is gated on targetAssetId == null');
+    expect(result.result.unmatchedFees, 0, reason: 'no orderRef → nothing to match → counted as 0, not as orphan');
     final events = await db.select(db.assetEvents).get();
     expect(events, hasLength(2));
     expect(events.every((e) => e.type == EventType.buy), isTrue);
   });
 
-  test('single-asset + Revalue: synthesis does NOT fire on revalue rows',
-      () async {
+  test('single-asset + Revalue: synthesis does NOT fire on revalue rows', () async {
     // Pension cash-only synthesis (effectiveQty=amount, price=1.0) is
     // narrowly gated on EventType.buy. A revalue row in the same file
     // must store quantity=null/price=null verbatim, so the
@@ -222,8 +220,7 @@ date,type,amount
     expect(buy.quantity, 100.00, reason: 'effectiveQty=amount');
     expect(buy.price, 1.0, reason: 'effectivePrice=1.0');
     // Revalue stays unsynthesised — the resync uses qty-at-date, not these fields.
-    expect(revalue.quantity, isNull,
-        reason: 'synthesis is gated on EventType.buy; revalue is left as-is');
+    expect(revalue.quantity, isNull, reason: 'synthesis is gated on EventType.buy; revalue is left as-is');
     expect(revalue.price, isNull);
     expect(revalue.amount, 1234.56);
   });

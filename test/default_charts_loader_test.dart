@@ -2,61 +2,59 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/default_charts_loader.dart';
+import 'package:finance_copilot/services/charts/default_charts_loader.dart';
 
 Account _account(int id) => Account(
-      id: id,
-      name: 'Account $id',
-      type: AccountType.bank,
-      currency: 'EUR',
-      institution: '',
-      isActive: true,
-      includeInNetWorth: true,
-      sortOrder: 0,
-      createdAt: DateTime(2024, 1, 1),
-      updatedAt: DateTime(2024, 1, 1),
-    );
+  id: id,
+  name: 'Account $id',
+  type: AccountType.bank,
+  currency: 'EUR',
+  institution: '',
+  isActive: true,
+  includeInNetWorth: true,
+  sortOrder: 0,
+  createdAt: DateTime(2024, 1, 1),
+  updatedAt: DateTime(2024, 1, 1),
+);
 
 Asset _asset({
   required int id,
   required InstrumentType type,
   bool includeInSavings = true,
-}) =>
-    Asset(
-      id: id,
-      intermediaryId: 1,
-      name: 'Asset $id',
-      assetType: AssetType.stockEtf,
-      instrumentType: type,
-      assetClass: AssetClass.equity,
-      assetGroup: '',
-      valuationMethod: ValuationMethod.marketPrice,
-      currency: 'EUR',
-      isActive: true,
-      includeInSavings: includeInSavings,
-      sortOrder: 0,
-      createdAt: DateTime(2024, 1, 1),
-      updatedAt: DateTime(2024, 1, 1),
-    );
+}) => Asset(
+  id: id,
+  intermediaryId: 1,
+  name: 'Asset $id',
+  assetType: AssetType.stockEtf,
+  instrumentType: type,
+  assetClass: AssetClass.equity,
+  assetGroup: '',
+  valuationMethod: ValuationMethod.marketPrice,
+  currency: 'EUR',
+  isActive: true,
+  includeInSavings: includeInSavings,
+  sortOrder: 0,
+  createdAt: DateTime(2024, 1, 1),
+  updatedAt: DateTime(2024, 1, 1),
+);
 
 ExtraordinaryEvent _event({
   required int id,
   required EventDirection direction,
   bool isEphemeral = false,
-}) =>
-    ExtraordinaryEvent(
-      id: id,
-      name: 'Event $id',
-      direction: direction,
-      treatment: EventTreatment.instant,
-      totalAmount: 100,
-      currency: 'EUR',
-      eventDate: DateTime(2024, 6, 1),
-      isActive: true,
-      isEphemeral: isEphemeral,
-      createdAt: DateTime(2024, 1, 1),
-      updatedAt: DateTime(2024, 1, 1),
-    );
+}) => ExtraordinaryEvent(
+  id: id,
+  name: 'Event $id',
+  direction: direction,
+  treatment: EventTreatment.instant,
+  totalAmount: 100,
+  currency: 'EUR',
+  eventDate: DateTime(2024, 6, 1),
+  isActive: true,
+  isEphemeral: isEphemeral,
+  createdAt: DateTime(2024, 1, 1),
+  updatedAt: DateTime(2024, 1, 1),
+);
 
 void main() {
   const loader = DefaultChartsLoader();
@@ -72,8 +70,7 @@ void main() {
       expect(result, hasLength(1));
       expect(result.first.widgetType, 'cash');
       expect(result.first.title, 'Cash');
-      expect(result.first.seriesJson,
-          '[{"type":"account","id":1},{"type":"account","id":2}]');
+      expect(result.first.seriesJson, '[{"type":"account","id":1},{"type":"account","id":2}]');
     });
 
     test('all_market_liquid excludes illiquid types', () {
@@ -87,8 +84,7 @@ void main() {
         ],
         activeEvents: const [],
       );
-      expect(result.first.seriesJson,
-          '[{"type":"asset_market","id":10},{"type":"asset_market","id":12}]');
+      expect(result.first.seriesJson, '[{"type":"asset_market","id":10},{"type":"asset_market","id":12}]');
     });
 
     test('all_market_saving expands only assets flagged for savings', () {
@@ -102,8 +98,7 @@ void main() {
         ],
         activeEvents: const [],
       );
-      expect(result.first.seriesJson,
-          '[{"type":"asset_market","id":10},{"type":"asset_market","id":12}]');
+      expect(result.first.seriesJson, '[{"type":"asset_market","id":10},{"type":"asset_market","id":12}]');
     });
 
     test('ephemeral_inflow_value with sign:-1 emits sign field', () {
@@ -115,8 +110,7 @@ void main() {
           _event(id: 5, direction: EventDirection.inflow, isEphemeral: true),
         ],
       );
-      expect(result.first.seriesJson,
-          '[{"type":"ephemeral_inflow_value","id":5,"sign":-1}]');
+      expect(result.first.seriesJson, '[{"type":"ephemeral_inflow_value","id":5,"sign":-1}]');
     });
 
     test('non_ephemeral_inflow excludes ephemeral events', () {
@@ -129,8 +123,7 @@ void main() {
           _event(id: 6, direction: EventDirection.inflow, isEphemeral: false),
         ],
       );
-      expect(result.first.seriesJson,
-          '[{"type":"income_adj_value","id":6}]');
+      expect(result.first.seriesJson, '[{"type":"income_adj_value","id":6}]');
     });
 
     test('widgetType=price_changes preserved with empty categories', () {

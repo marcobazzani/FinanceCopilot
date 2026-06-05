@@ -42,8 +42,7 @@ void main() {
       expect(find.byType(ImageFiltered), findsNothing);
     });
 
-    testWidgets('wraps arbitrary child in ImageFiltered when private=true',
-        (tester) async {
+    testWidgets('wraps arbitrary child in ImageFiltered when private=true', (tester) async {
       await _pump(
         tester,
         const PrivacyBlur(

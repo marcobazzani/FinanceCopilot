@@ -17,7 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/asset_service.dart';
+import 'package:finance_copilot/services/domain/asset_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -28,16 +28,22 @@ void main() {
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     assetService = AssetService(db);
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Broker'),
         );
-    assetId = await db.into(db.assets).insert(AssetsCompanion.insert(
-          name: 'ACME',
-          assetType: AssetType.stockEtf,
-          valuationMethod: ValuationMethod.marketPrice,
-          currency: const Value('EUR'),
-          intermediaryId: intermediaryId,
-        ));
+    assetId = await db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: 'ACME',
+            assetType: AssetType.stockEtf,
+            valuationMethod: ValuationMethod.marketPrice,
+            currency: const Value('EUR'),
+            intermediaryId: intermediaryId,
+          ),
+        );
   });
 
   tearDown(() => db.close());
@@ -48,18 +54,21 @@ void main() {
     required double amount,
     required double quantity,
   }) async {
-    await db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-          assetId: assetId,
-          date: date,
-          valueDate: date,
-          type: type,
-          amount: amount,
-          quantity: Value(quantity),
-        ));
+    await db
+        .into(db.assetEvents)
+        .insert(
+          AssetEventsCompanion.insert(
+            assetId: assetId,
+            date: date,
+            valueDate: date,
+            type: type,
+            amount: amount,
+            quantity: Value(quantity),
+          ),
+        );
   }
 
-  test('partial sell at profit: cost basis reflects only remaining shares',
-      () async {
+  test('partial sell at profit: cost basis reflects only remaining shares', () async {
     // 100 shares @ €10 (cost 1000), sell 30 @ €12 (proceeds 360).
     // Remaining 70 shares carry cost basis 70 × 10 = 700.
     await insertEvent(
@@ -77,13 +86,16 @@ void main() {
 
     final stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 70);
-    expect(stats.totalInvested, 700,
-        reason: 'avg 10/share × 70 remaining — sale proceeds do not reduce '
-            'invested, the disposed cost does');
+    expect(
+      stats.totalInvested,
+      700,
+      reason:
+          'avg 10/share × 70 remaining — sale proceeds do not reduce '
+          'invested, the disposed cost does',
+    );
   });
 
-  test('partial sell at loss: cost basis still uses weighted-avg',
-      () async {
+  test('partial sell at loss: cost basis still uses weighted-avg', () async {
     // 100 shares @ €10, sell 30 @ €8 (proceeds 240). The loss is realised
     // and out of scope here; remaining 70 still carry 700 cost basis.
     await insertEvent(
@@ -104,8 +116,7 @@ void main() {
     expect(stats.totalInvested, 700);
   });
 
-  test('two buys at different prices then partial sell — weighted-avg',
-      () async {
+  test('two buys at different prices then partial sell — weighted-avg', () async {
     // 200 shares @ €10  → cost 2000
     // 100 shares @ €13  → cost 1300
     //   weighted-avg = 3300 / 300 = 11.0 €/share
@@ -131,12 +142,10 @@ void main() {
 
     final stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 200);
-    expect(stats.totalInvested, 2200,
-        reason: 'avg 11.0 €/share × 200 remaining');
+    expect(stats.totalInvested, 2200, reason: 'avg 11.0 €/share × 200 remaining');
   });
 
-  test("Pietro's case (#77 follow-up): 399 bought, 199 sold, 200 held",
-      () async {
+  test("Pietro's case (#77 follow-up): 399 bought, 199 sold, 200 held", () async {
     // Reporter's exact numbers — three buys totalling 399 shares for 4288,
     // two sells totalling 199 shares. After the fix the user should see
     // the cost basis of the 200 they still hold, not the all-time 4288.
@@ -173,8 +182,12 @@ void main() {
 
     final stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 200);
-    expect(stats.totalInvested, closeTo(2149.37, 0.01),
-        reason: 'avg 4288/399 × 200 — the figure Pietro expects vs the '
-            'pre-fix 4288 that produced a phantom loss');
+    expect(
+      stats.totalInvested,
+      closeTo(2149.37, 0.01),
+      reason:
+          'avg 4288/399 × 200 — the figure Pietro expects vs the '
+          'pre-fix 4288 that produced a phantom loss',
+    );
   });
 }

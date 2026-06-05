@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:finance_copilot/services/pdf_exceptions.dart';
-import 'package:finance_copilot/services/pdf_table_reconstructor.dart';
+import 'package:finance_copilot/services/import/pdf_exceptions.dart';
+import 'package:finance_copilot/services/import/pdf_table_reconstructor.dart';
 
 /// Synthetic-fragment fixtures for [PdfTableReconstructor]. These tests run
 /// without any PDF library — the reconstructor is data-in / data-out, so we
@@ -279,8 +279,7 @@ void main() {
       }
     });
 
-    test(
-        'anchors the date column even when every row has a second '
+    test('anchors the date column even when every row has a second '
         'embedded date in another column', () {
       // Mimics statements where the operation/description column contains
       // dates of its own (e.g. "Wire from John on 12/06/2024"). Old
@@ -295,8 +294,7 @@ void main() {
         frags.add(_f('$day/01/2024', x: 50, y: y));
         // Embedded date inside the description, x varies per row.
         frags.add(_f('Note', x: 120, y: y));
-        frags.add(_f('${(i + 1).toString().padLeft(2, '0')}/06/2023',
-            x: 160 + (i % 2) * 7, y: y));
+        frags.add(_f('${(i + 1).toString().padLeft(2, '0')}/06/2023', x: 160 + (i % 2) * 7, y: y));
         // Amount column.
         frags.add(_f('${(i + 1) * 50}.00', x: 320, y: y));
       }
@@ -309,8 +307,7 @@ void main() {
       }
     });
 
-    test(
-        'pension-statement layout: month-name period column + embedded '
+    test('pension-statement layout: month-name period column + embedded '
         'operation dates + sparse balance produces clean rows', () {
       // Synthetic version of an Italian pension fund statement layout:
       //   Period (Gennaio 2026 split into 2 frags) | Operation (text +
@@ -369,8 +366,7 @@ void main() {
               DateTime.parse(candidate);
               found = true;
             } catch (_) {}
-            if (!found && RegExp(r'^(Gennaio|Febbraio|Marzo|Aprile)\s+2026$')
-                .hasMatch(candidate)) {
+            if (!found && RegExp(r'^(Gennaio|Febbraio|Marzo|Aprile)\s+2026$').hasMatch(candidate)) {
               found = true;
             }
           }
@@ -379,16 +375,13 @@ void main() {
       }
     });
 
-    test(
-        'wrap-merge stops at a closing-balance-only summary row instead '
-        'of swallowing it into the last subtotal', () {
+    test('a closing-balance-only summary row is emitted as its own snapshot '
+        'row, never appended to the last subtotal', () {
       // Pension/account statements often print a closing-position
-      // summary BELOW the last subtotal: "POSIZIONE FINALE 12,345.67"
-      // sitting in the balance column only. The summary line has no
-      // date and no amount in the per-row "amount" band, so the wrap
-      // merger could mistakenly absorb it. We want it dropped (or kept
-      // as its own row), but never appended to the previous subtotal's
-      // cells.
+      // summary BELOW the last subtotal: "CLOSING POSITION 12,345.67"
+      // sitting in the balance column only, with no date. It is emitted as
+      // its own (date-less) snapshot row so the value isn't lost — but it
+      // must never be merged into the previous transaction/subtotal row.
       final frags = <PdfFragment>[];
       // Header.
       frags.add(_f('Date', x: 50, y: 800));
@@ -412,17 +405,19 @@ void main() {
       frags.add(_f('12345.67', x: 470, y: lastY));
 
       final result = PdfTableReconstructor.reconstruct(frags);
-      expect(result.rows.length, equals(6));
-      // The last data row's Description must NOT contain "CLOSING" or
-      // "POSITION", and its Balance must NOT contain "12345.67".
-      final lastRow = result.rows.last;
-      expect(lastRow.any((c) => c.contains('CLOSING')), isFalse);
-      expect(lastRow.any((c) => c.contains('POSITION')), isFalse);
-      expect(lastRow.any((c) => c.contains('12345.67')), isFalse);
+      // 6 transaction rows + 1 emitted snapshot row.
+      expect(result.rows.length, equals(7));
+      // The 6th (last transaction) row must NOT have absorbed the summary.
+      final sixthRow = result.rows[5];
+      expect(sixthRow.any((c) => c.contains('CLOSING')), isFalse);
+      expect(sixthRow.any((c) => c.contains('POSITION')), isFalse);
+      expect(sixthRow.any((c) => c.contains('12345.67')), isFalse);
+      // The 7th row is the snapshot: it carries the closing balance and no date.
+      final snapshot = result.rows.last;
+      expect(snapshot.any((c) => c.contains('12345.67')), isTrue);
     });
 
-    test(
-        'header row with N+1 words above N data columns produces N+1 '
+    test('header row with N+1 words above N data columns produces N+1 '
         'distinct columns (extra header gets a synthetic empty column)', () {
       // Layout mirrors a pension statement: 5 header words but only 4
       // data anchors because one column ("Uscite") is empty for every
@@ -452,13 +447,11 @@ void main() {
       expect(result.rows, hasLength(6));
       for (final row in result.rows) {
         // Debit column (index 3) should always be empty.
-        expect(row[3], equals(''),
-            reason: 'Debit column should be empty across every data row');
+        expect(row[3], equals(''), reason: 'Debit column should be empty across every data row');
       }
     });
 
-    test(
-        'amount anchor skips a sparse right-most numeric column '
+    test('amount anchor skips a sparse right-most numeric column '
         '(running balance only on subtotal rows)', () {
       // Per-row layout: Date | Description | Amount. Every 3rd row is a
       // subtotal which adds a Saldo cell on the far right. The far-right
@@ -480,10 +473,53 @@ void main() {
       expect(result.rows.length, equals(9));
       // Amount column (NOT the sparse balance) must hold every row's value.
       for (var i = 0; i < 9; i++) {
-        final amountCell =
-            result.rows[i].firstWhere((c) => c.contains('.00'), orElse: () => '');
+        final amountCell = result.rows[i].firstWhere((c) => c.contains('.00'), orElse: () => '');
         expect(amountCell, equals('${(i + 1) * 10}.00'));
       }
+    });
+
+    test('opening AND closing date-less position rows are emitted as snapshot '
+        'rows (PPP pension statement)', () {
+      // Real layout: an opening "POSIZIONE INDIVIDUALE" line sits just above
+      // the first dated row and a closing one just below the last subtotal;
+      // both carry only a Saldo value and no date. They must survive parsing
+      // (emitted as their own rows), not be dropped, so the user can map them.
+      final frags = <PdfFragment>[];
+      frags.add(_f('Periodo', x: 50, y: 800));
+      frags.add(_f('Operazione', x: 160, y: 800));
+      frags.add(_f('Entrate', x: 320, y: 800));
+      frags.add(_f('Saldo', x: 480, y: 800));
+      // Opening position above the first data row.
+      frags.add(_f('POSIZIONE INDIVIDUALE 01/01', x: 160, y: 782));
+      frags.add(_f('47.984,24', x: 480, y: 782));
+      final names = {'01': 'Gennaio', '02': 'Febbraio', '03': 'Marzo', '04': 'Aprile', '05': 'Maggio'};
+      var y = 764.0;
+      names.forEach((m, nm) {
+        frags.add(_f('$nm 2026', x: 50, y: y));
+        frags.add(_f('C/Azienda mese $m/2026', x: 160, y: y));
+        frags.add(_f('358,35', x: 330, y: y));
+        y -= 18;
+        frags.add(_f('$nm 2026', x: 50, y: y));
+        frags.add(_f('C/TFR mese $m/2026', x: 160, y: y));
+        frags.add(_f('428,42', x: 330, y: y));
+        y -= 18;
+        frags.add(_f('Totale $nm 2026', x: 50, y: y));
+        frags.add(_f('786,77', x: 330, y: y));
+        frags.add(_f('786,77', x: 480, y: y));
+        y -= 18;
+      });
+      // Closing position below the last subtotal.
+      frags.add(_f('POSIZIONE INDIVIDUALE AL 05/2026', x: 160, y: y));
+      frags.add(_f('52.610,23', x: 480, y: y));
+
+      final result = PdfTableReconstructor.reconstruct(frags);
+      final flat = result.rows.map((r) => r.join(' ')).toList();
+      expect(flat.where((r) => r.contains('47.984,24')), hasLength(1), reason: 'opening position kept');
+      expect(flat.where((r) => r.contains('52.610,23')), hasLength(1), reason: 'closing position kept');
+      // Each snapshot is its own row (date column empty), not merged into a
+      // dated/subtotal row.
+      final opening = result.rows.firstWhere((r) => r.join(' ').contains('47.984,24'));
+      expect(opening.first.trim(), isEmpty, reason: 'snapshot has no date in the Periodo column');
     });
   });
 }

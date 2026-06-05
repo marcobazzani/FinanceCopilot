@@ -111,6 +111,12 @@ void main() {
       expect(parseFlexibleNumber('\$1,234.56'), closeTo(1234.56, 0.001));
     });
 
+    test('strips pound, yen and euro symbols and internal spaces', () {
+      expect(parseFlexibleNumber('£1.234,56'), closeTo(1234.56, 0.001));
+      expect(parseFlexibleNumber('¥1,234.56'), closeTo(1234.56, 0.001));
+      expect(parseFlexibleNumber('€ 1 234,56'), closeTo(1234.56, 0.001));
+    });
+
     test('returns null for empty string', () {
       expect(parseFlexibleNumber(''), isNull);
     });

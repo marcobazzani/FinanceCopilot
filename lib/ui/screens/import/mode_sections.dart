@@ -8,8 +8,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
       children: [
         const SizedBox(height: 8),
         Text(s.balancePerRow, style: const TextStyle(fontWeight: FontWeight.bold)),
-        Text(s.balancePerRowHelp,
-            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(s.balancePerRowHelp, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 8),
         SegmentedButton<String>(
           segments: [
@@ -32,8 +31,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
         const SizedBox(height: 8),
 
         // Column mode: show dropdown to pick balance column
-        if (_balanceMode == 'column')
-          _buildMappingRow('balanceAfter', preview.columns),
+        if (_balanceMode == 'column') _buildMappingRow('balanceAfter', preview.columns),
 
         // Cumulative: just a description
         if (_balanceMode == 'cumulative')
@@ -64,7 +62,10 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                       hintText: s.selectColumn,
                     ),
                     items: [
-                      DropdownMenuItem(value: null, child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey))),
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text('— ${s.none} —', style: const TextStyle(color: Colors.grey)),
+                      ),
                       ...preview.columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
                     onChanged: (v) => _setState(() {
@@ -205,11 +206,15 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                   children: [
                     SizedBox(
                       width: 140,
-                      child: Text(val, style: TextStyle(
-                        fontSize: 13,
-                        color: isUnmapped ? Colors.red.shade300 : null,
-                        fontWeight: isUnmapped ? FontWeight.bold : null,
-                      ), overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        val,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isUnmapped ? Colors.red.shade300 : null,
+                          fontWeight: isUnmapped ? FontWeight.bold : null,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                     ChoiceChip(
                       label: Text(s.buyLabel, style: const TextStyle(fontSize: 11)),
@@ -239,11 +244,9 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                 ),
               );
             }),
-            if (uniqueVals.any((v) =>
-                !_buyValues.contains(v) &&
-                !_sellValues.contains(v) &&
-                !_revalueValues.contains(v) &&
-                !_feeValues.contains(v)))
+            if (uniqueVals.any(
+              (v) => !_buyValues.contains(v) && !_sellValues.contains(v) && !_revalueValues.contains(v) && !_feeValues.contains(v),
+            ))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
@@ -264,12 +267,46 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                 ),
               ),
             ],
+            // Optional amount source for Revalue rows. Appears only when at
+            // least one Type value is bucketed as Revalue. Pension statements
+            // keep the position-snapshot value (Saldo) in a different column
+            // than per-row contributions (Entrate); a Revalue row's amount is
+            // that snapshot. Empty = use the primary amount mapping.
+            if (_revalueValues.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(s.revalueAmountSource, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: (_revalueAmountColumn != null && columns.contains(_revalueAmountColumn)) ? _revalueAmountColumn : null,
+                  decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                  hint: Text(s.revalueAmountSourceHint, style: const TextStyle(fontSize: 12)),
+                  items: [
+                    DropdownMenuItem<String>(value: null, child: Text(s.revalueAmountSourceNone, style: const TextStyle(fontSize: 12))),
+                    ...columns.map(
+                      (c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => _setState(() => _revalueAmountColumn = v),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 4, top: 2),
+                child: Text(
+                  s.revalueAmountSourceHelp,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ],
           ],
         ] else ...[
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(s.signBasedHelp,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            child: Text(s.signBasedHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ),
           // Toggle for cash-flow convention: brokers like Directa export buys
           // with a negative sign (money out). Default keeps the historical
@@ -288,8 +325,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
                 Expanded(
                   child: GestureDetector(
                     onTap: () => _setState(() => _negativeIsBuy = !_negativeIsBuy),
-                    child: Text(s.signBasedNegativeIsBuyLabel,
-                        style: const TextStyle(fontSize: 12)),
+                    child: Text(s.signBasedNegativeIsBuyLabel, style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ],
@@ -322,8 +358,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
           }),
         ),
         const SizedBox(height: 8),
-        if (_feeMode == 'column')
-          _buildMappingRow('commission', columns, required: true),
+        if (_feeMode == 'column') _buildMappingRow('commission', columns, required: true),
         if (_feeMode == 'computed') ...[
           Text(
             'fee = |amount| − quantity × price / exchangeRate',

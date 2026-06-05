@@ -49,19 +49,13 @@ class _FinancialHealthTab extends ConsumerWidget {
         final allData = allDataAsync.value;
         final userCharts = ref.watch(dashboardChartsProvider);
         final activeAssets = assets;
-        final cash = allData == null
-            ? 0.0
-            : _DashboardScreenState.valueForRole('cash', userCharts, allData, activeAssets);
-        final investments = allData == null
-            ? 0.0
-            : _DashboardScreenState.valueForRole('portfolio', userCharts, allData, activeAssets);
+        final cash = allData == null ? 0.0 : _DashboardScreenState.valueForRole('cash', userCharts, allData, activeAssets);
+        final investments = allData == null ? 0.0 : _DashboardScreenState.valueForRole('portfolio', userCharts, allData, activeAssets);
         final liquidInvestments = allData == null
             ? 0.0
             : _DashboardScreenState.valueForRole('liquid_investments', userCharts, allData, activeAssets);
         // After-tax Net Asset Value — drives the FIRE indicator.
-        final netAssetValue = allData == null
-            ? 0.0
-            : _DashboardScreenState.valueForRole('net_asset_value', userCharts, allData, activeAssets);
+        final netAssetValue = allData == null ? 0.0 : _DashboardScreenState.valueForRole('net_asset_value', userCharts, allData, activeAssets);
 
         // Current year for savings/expenses. Rolling 12m for income-to-wealth.
         double annualIncome = 0, annualExpenses = 0, annualSavings = 0, monthlyExpenses = 0;
@@ -84,12 +78,16 @@ class _FinancialHealthTab extends ConsumerWidget {
         }
 
         var categories = computeKpis(
-          cash: cash, investments: investments,
+          cash: cash,
+          investments: investments,
           liquidInvestments: liquidInvestments,
-          annualIncome: annualIncome, rollingIncome: rollingIncome,
+          annualIncome: annualIncome,
+          rollingIncome: rollingIncome,
           annualExpenses: annualExpenses,
-          annualSavings: annualSavings, monthlyExpenses: monthlyExpenses,
-          s: s, locale: locale,
+          annualSavings: annualSavings,
+          monthlyExpenses: monthlyExpenses,
+          s: s,
+          locale: locale,
         );
 
         // ── FIRE KPI: appended to the Wealth category ──
@@ -105,9 +103,7 @@ class _FinancialHealthTab extends ConsumerWidget {
         SmoothedAnnualExpenses? smoothed;
         if (ieData != null && ieData.years.isNotEmpty) {
           final cur = ieData.years.last;
-          final prev = ieData.years.length >= 2
-              ? ieData.years[ieData.years.length - 2]
-              : null;
+          final prev = ieData.years.length >= 2 ? ieData.years[ieData.years.length - 2] : null;
           smoothed = estimateSmoothedAnnualExpenses(
             current: _toEoyYear(cur),
             prev: prev == null ? null : _toEoyYear(prev),
@@ -141,12 +137,13 @@ class _FinancialHealthTab extends ConsumerWidget {
             '= ${amtFmt.format(fire.fiNumber)}',
           );
           lines.add(
-            '${s.fireProgressLabel}: ${amtFmt.format(netWorth)} / '
-            '${amtFmt.format(fire.fiNumber)} '
+            '${s.fireProgressLabel} = ${s.healthCatWealth}\n'
+            '${amtFmt.format(netWorth)} / ${amtFmt.format(fire.fiNumber)} '
             '= ${swrFmt.format(fire.progressPct)}%',
           );
           return lines.join('\n');
         }
+
         final fireKpi = HealthKpi(
           name: s.kpiFireProgress,
           value: fire.insufficientData ? null : fire.progressPct,
@@ -154,10 +151,13 @@ class _FinancialHealthTab extends ConsumerWidget {
           description: fire.insufficientData
               ? s.kpiFireInsufficientData()
               : s.kpiFireDesc(
-                  fire.rating == Rating.ottimo ? 'ottimo'
-                  : fire.rating == Rating.buono ? 'buono'
-                  : fire.rating == Rating.sufficiente ? 'sufficiente'
-                  : 'scarso',
+                  fire.rating == Rating.ottimo
+                      ? 'ottimo'
+                      : fire.rating == Rating.buono
+                      ? 'buono'
+                      : fire.rating == Rating.sufficiente
+                      ? 'sufficiente'
+                      : 'scarso',
                 ),
           formula: fireFormula(),
         );
@@ -191,10 +191,12 @@ class _FinancialHealthTab extends ConsumerWidget {
               if (cat.name != s.healthCatLiquidity) return cat;
               final newKpis = cat.kpis.map((k) {
                 if (k.name != s.kpiSavingsRate) return k;
-                final rich = TextSpan(children: [
-                  TextSpan(text: '${k.formula}\n\n'),
-                  eoySpan,
-                ]);
+                final rich = TextSpan(
+                  children: [
+                    TextSpan(text: '${k.formula}\n\n'),
+                    eoySpan,
+                  ],
+                );
                 return HealthKpi(
                   name: k.name,
                   value: k.value,
@@ -214,13 +216,18 @@ class _FinancialHealthTab extends ConsumerWidget {
         HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
           final data = changes.value;
           if (data == null || data.isEmpty) return HealthKpi(name: name, value: 0, rating: Rating.na);
-          final pairs = data.map((c) => (
-            c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
-            c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
-          )).toList();
+          final pairs = data
+              .map(
+                (c) => (
+                  c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate,
+                  c.todayPrice * c.quantity / c.priceDivisor * c.todayFxRate,
+                ),
+              )
+              .toList();
           final pct = computePriceChangePct(pairs);
           return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
         }
+
         final byPosition = <String, double>{};
         for (final asset in activeAssets) {
           final mv = marketValues[asset.id] ?? 0.0;
@@ -242,11 +249,26 @@ class _FinancialHealthTab extends ConsumerWidget {
           changeKpi(s.kpiToday, todayChanges),
           changeKpi(s.kpiYtd, ytdChanges),
           changeKpi(s.kpiAllTime, allChanges),
-          HealthKpi(name: 'HHI', value: conc.hhi, unit: '', rating: rateHhi(conc.hhi),
-            formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}'),
-          HealthKpi(name: s.healthTer, value: weightedTer, unit: '%',
-            rating: weightedTer <= 0.2 ? Rating.ottimo : weightedTer <= 0.5 ? Rating.buono : weightedTer <= 1.0 ? Rating.sufficiente : Rating.scarso,
-            formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%'),
+          HealthKpi(
+            name: 'HHI',
+            value: conc.hhi,
+            unit: '',
+            rating: rateHhi(conc.hhi),
+            formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}',
+          ),
+          HealthKpi(
+            name: s.healthTer,
+            value: weightedTer,
+            unit: '%',
+            rating: weightedTer <= 0.2
+                ? Rating.ottimo
+                : weightedTer <= 0.5
+                ? Rating.buono
+                : weightedTer <= 1.0
+                ? Rating.sufficiente
+                : Rating.scarso,
+            formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%',
+          ),
         ];
         final perfCategory = KpiCategory(
           name: s.healthPerformance,
@@ -258,79 +280,96 @@ class _FinancialHealthTab extends ConsumerWidget {
         // Overall score includes all categories
         final allKpis = allCategories.expand((c) => c.kpis).toList();
         final ratedKpis = allKpis.where((k) => k.rating != Rating.na).toList();
-        final overallScore = ratedKpis.isEmpty ? 0.0
-            : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
-        final overallRating = overallScore >= 87 ? Rating.ottimo
-            : overallScore >= 62 ? Rating.buono
-            : overallScore >= 37 ? Rating.sufficiente
+        final overallScore = ratedKpis.isEmpty ? 0.0 : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
+        final overallRating = overallScore >= 87
+            ? Rating.ottimo
+            : overallScore >= 62
+            ? Rating.buono
+            : overallScore >= 37
+            ? Rating.sufficiente
             : Rating.scarso;
 
         return MobilePullToRefresh(
           child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Summary row ──
-              _SummarySection(
-                score: overallScore,
-                overallRating: overallRating,
-                categories: allCategories,
-                s: s,
-              ),
-              const SizedBox(height: 24),
-
-              // ── KPI Cards (all categories including Performance & Diversification) ──
-              Text(s.healthKpis, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              for (final cat in allCategories) ...[
-                const SizedBox(height: 16),
-                Text(cat.name, style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                )),
-                const SizedBox(height: 8),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final cards = cat.kpis.map((kpi) => _KpiCard(
-                      kpi: kpi,
-                      pctFmt: pctFmt,
-                      s: s,
-                      onInfoTap: kpi.name == s.kpiFireProgress
-                          ? () => _showFireDialog(
-                                context: context,
-                                ref: ref,
-                                s: s,
-                                locale: locale,
-                                netWorth: netWorth,
-                                annualExpenses: fireExpenses,
-                                smoothed: smoothed,
-                                currentSwr: swrPct,
-                              )
-                          : null,
-                    )).toList();
-                    if (constraints.maxWidth < 680) {
-                      return Column(
-                        children: cards.map((card) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: card,
-                        )).toList(),
-                      );
-                    }
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: cards.map((card) => ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 320),
-                        child: card,
-                      )).toList(),
-                    );
-                  },
+            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Summary row ──
+                _SummarySection(
+                  score: overallScore,
+                  overallRating: overallRating,
+                  categories: allCategories,
+                  s: s,
                 ),
+                const SizedBox(height: 24),
+
+                // ── KPI Cards (all categories including Performance & Diversification) ──
+                Text(s.healthKpis, style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                for (final cat in allCategories) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    cat.name,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final cards = cat.kpis
+                          .map(
+                            (kpi) => _KpiCard(
+                              kpi: kpi,
+                              pctFmt: pctFmt,
+                              s: s,
+                              onInfoTap: kpi.name == s.kpiFireProgress
+                                  ? () => _showFireDialog(
+                                      context: context,
+                                      ref: ref,
+                                      s: s,
+                                      locale: locale,
+                                      netWorth: netWorth,
+                                      annualExpenses: fireExpenses,
+                                      smoothed: smoothed,
+                                      currentSwr: swrPct,
+                                    )
+                                  : null,
+                            ),
+                          )
+                          .toList();
+                      if (constraints.maxWidth < 680) {
+                        return Column(
+                          children: cards
+                              .map(
+                                (card) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: card,
+                                ),
+                              )
+                              .toList(),
+                        );
+                      }
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: cards
+                            .map(
+                              (card) => ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 320),
+                                child: card,
+                              ),
+                            )
+                            .toList(),
+                      );
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
         );
       },
     );
@@ -346,8 +385,10 @@ class _SummarySection extends StatelessWidget {
   final AppStrings s;
 
   const _SummarySection({
-    required this.score, required this.overallRating,
-    required this.categories, required this.s,
+    required this.score,
+    required this.overallRating,
+    required this.categories,
+    required this.s,
   });
 
   @override
@@ -433,22 +474,33 @@ class _ScoreGaugePainter extends CustomPainter {
     // Background arc
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      startAngle, sweepAngle, false,
-      Paint()..color = Colors.grey.shade800..style = PaintingStyle.stroke..strokeWidth = 8..strokeCap = StrokeCap.round,
+      startAngle,
+      sweepAngle,
+      false,
+      Paint()
+        ..color = Colors.grey.shade800
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
     );
 
     // Filled arc
     final fillSweep = sweepAngle * (score / 100).clamp(0, 1);
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      startAngle, fillSweep, false,
-      Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 8..strokeCap = StrokeCap.round,
+      startAngle,
+      fillSweep,
+      false,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _ScoreGaugePainter oldDelegate) =>
-      oldDelegate.score != score || oldDelegate.color != color;
+  bool shouldRepaint(covariant _ScoreGaugePainter oldDelegate) => oldDelegate.score != score || oldDelegate.color != color;
 }
 
 // ── KPI Card ──
@@ -457,6 +509,7 @@ class _KpiCard extends StatefulWidget {
   final HealthKpi kpi;
   final NumberFormat pctFmt;
   final AppStrings s;
+
   /// Optional override for the info icon tap. When set, the default
   /// formula dialog is bypassed.
   final VoidCallback? onInfoTap;
@@ -480,11 +533,7 @@ class _KpiCardState extends State<_KpiCard> {
     final kpi = widget.kpi;
     final theme = Theme.of(context);
 
-    final valueText = kpi.value != null
-        ? (kpi.unit == '%'
-            ? '${widget.pctFmt.format(kpi.value!)}%'
-            : '${kpi.value!.round()}${kpi.unit}')
-        : '-';
+    final valueText = kpi.value != null ? (kpi.unit == '%' ? '${widget.pctFmt.format(kpi.value!)}%' : '${kpi.value!.round()}${kpi.unit}') : '-';
 
     return Card(
       child: Padding(
@@ -574,7 +623,11 @@ class _KpiCardState extends State<_KpiCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    kpi.rating == Rating.scarso ? Icons.error : kpi.rating == Rating.sufficiente ? Icons.warning : Icons.check_circle,
+                    kpi.rating == Rating.scarso
+                        ? Icons.error
+                        : kpi.rating == Rating.sufficiente
+                        ? Icons.warning
+                        : Icons.check_circle,
                     size: 16,
                     color: kpi.rating.color,
                   ),
@@ -643,8 +696,21 @@ class _GaugePainter extends CustomPainter {
 
     // Marker
     final markerX = (w * position).clamp(r, w - r);
-    canvas.drawCircle(Offset(markerX, h / 2), 6, Paint()..color = Colors.white..style = PaintingStyle.fill);
-    canvas.drawCircle(Offset(markerX, h / 2), 6, Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2);
+    canvas.drawCircle(
+      Offset(markerX, h / 2),
+      6,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      Offset(markerX, h / 2),
+      6,
+      Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
   }
 
   @override
@@ -689,9 +755,7 @@ Future<void> _showFireDialog({
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(s.fireDialogIntro,
-                        style: TextStyle(fontSize: 12, height: 1.5,
-                            color: theme.colorScheme.onSurfaceVariant)),
+                    Text(s.fireDialogIntro, style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 16),
                     Form(
                       key: formKey,
@@ -723,7 +787,8 @@ Future<void> _showFireDialog({
                       if (smoothed != null && smoothed.projectedCurrent != null) ...[
                         const SizedBox(height: 2),
                         _FireDialogRow(
-                          label: '  ${s.fireProjectedCurrent}'
+                          label:
+                              '  ${s.fireProjectedCurrent}'
                               '${smoothed.projectionMonths != null ? ' (${smoothed.projectionMonths}m)' : ''}',
                           value: amtFmt.format(smoothed.projectedCurrent!),
                           subtle: true,
@@ -745,9 +810,7 @@ Future<void> _showFireDialog({
                         value: '${swrFmt.format(preview.progressPct)}%',
                       ),
                     ] else
-                      Text(s.kpiFireInsufficientData(),
-                          style: TextStyle(fontSize: 12,
-                              color: theme.colorScheme.onSurfaceVariant)),
+                      Text(s.kpiFireInsufficientData(), style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -758,12 +821,14 @@ Future<void> _showFireDialog({
                   controller.text = swrFmt.format(kDefaultFireSwrPct);
                   setSt(() {});
                   final db = ref.read(databaseProvider);
-                  await db.into(db.appConfigs).insertOnConflictUpdate(
-                    AppConfigsCompanion.insert(
-                      key: 'FIRE_SWR',
-                      value: kDefaultFireSwrPct.toString(),
-                    ),
-                  );
+                  await db
+                      .into(db.appConfigs)
+                      .insertOnConflictUpdate(
+                        AppConfigsCompanion.insert(
+                          key: 'FIRE_SWR',
+                          value: kDefaultFireSwrPct.toString(),
+                        ),
+                      );
                 },
                 child: Text(s.fireResetDefault),
               ),
@@ -773,9 +838,11 @@ Future<void> _showFireDialog({
                   if (formKey.currentState?.validate() != true) return;
                   final n = fmt.parseFlexibleNumber(controller.text)!;
                   final db = ref.read(databaseProvider);
-                  await db.into(db.appConfigs).insertOnConflictUpdate(
-                    AppConfigsCompanion.insert(key: 'FIRE_SWR', value: n.toString()),
-                  );
+                  await db
+                      .into(db.appConfigs)
+                      .insertOnConflictUpdate(
+                        AppConfigsCompanion.insert(key: 'FIRE_SWR', value: n.toString()),
+                      );
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
                 child: Text(s.save),
@@ -786,6 +853,7 @@ Future<void> _showFireDialog({
       );
     },
   );
+  controller.dispose();
 }
 
 class _FireDialogRow extends StatelessWidget {
@@ -803,11 +871,13 @@ class _FireDialogRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(label,
-              style: TextStyle(
-                fontSize: subtle ? 11 : 12,
-                color: theme.colorScheme.onSurfaceVariant,
-              )),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: subtle ? 11 : 12,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         Text(value, style: valStyle),
       ],

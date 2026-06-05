@@ -8,14 +8,13 @@ import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 
 GlobalActionsRegistry _registry({
   Future<void> Function()? onRefresh,
-}) =>
-    GlobalActionsRegistry(
-      manualRefresh: onRefresh ?? () async {},
-      showImportExportDialog: (_) async {},
-      showSettingsDialog: (_) async {},
-      openImportFiles: (_) async {},
-      retryNetwork: () async {},
-    );
+}) => GlobalActionsRegistry(
+  manualRefresh: onRefresh ?? () async {},
+  showImportExportDialog: (_) async {},
+  showSettingsDialog: (_) async {},
+  openImportFiles: (_) async {},
+  retryNetwork: () async {},
+);
 
 Widget _harness({GlobalActionsRegistry? registry}) {
   return ProviderScope(
@@ -46,11 +45,15 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
         var refreshes = 0;
-        await tester.pumpWidget(_harness(
-          registry: _registry(onRefresh: () async {
-            refreshes++;
-          }),
-        ));
+        await tester.pumpWidget(
+          _harness(
+            registry: _registry(
+              onRefresh: () async {
+                refreshes++;
+              },
+            ),
+          ),
+        );
         await tester.pump();
 
         expect(find.byType(RefreshIndicator), findsOneWidget);
@@ -85,11 +88,15 @@ void main() {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       try {
         var refreshes = 0;
-        await tester.pumpWidget(_harness(
-          registry: _registry(onRefresh: () async {
-            refreshes++;
-          }),
-        ));
+        await tester.pumpWidget(
+          _harness(
+            registry: _registry(
+              onRefresh: () async {
+                refreshes++;
+              },
+            ),
+          ),
+        );
         await tester.pump();
 
         expect(find.byType(RefreshIndicator), findsNothing);

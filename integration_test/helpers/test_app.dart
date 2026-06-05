@@ -10,10 +10,11 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/main.dart';
-import 'package:finance_copilot/services/exchange_rate_service.dart';
-import 'package:finance_copilot/services/google_drive_sync_service.dart';
-import 'package:finance_copilot/services/import_service.dart';
-import 'package:finance_copilot/services/market_price_service.dart';
+import 'package:finance_copilot/services/app_settings.dart';
+import 'package:finance_copilot/services/market/exchange_rate_service.dart';
+import 'package:finance_copilot/services/sync/google_drive_sync_service.dart';
+import 'package:finance_copilot/services/import/import_service.dart';
+import 'package:finance_copilot/services/market/market_price_service.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
@@ -23,13 +24,37 @@ class NoOpMarketPriceService extends MarketPriceService {
   NoOpMarketPriceService(super.db);
 
   @override
-  Future<Map<DateTime, double>> fetchHistoricalPrices(
-      String ticker, String currency, DateTime from) async {
+  Future<Map<DateTime, double>> fetchHistoricalPrices(String ticker, String currency, DateTime from) async {
     return {};
   }
 
   @override
   Future<void> syncPrices({bool forceToday = false}) async {}
+}
+
+/// No-op Drive sync service for integration/widget tests.
+///
+/// The real desktop implementation restores persisted OAuth state from
+/// Application Support and may perform network-backed silent sign-in during
+/// app startup. Tests must stay isolated from host auth state.
+class NoOpGoogleDriveSyncService extends GoogleDriveSyncService {
+  @override
+  Future<bool> trySilentSignIn() async => false;
+
+  @override
+  Future<bool> signIn() async => false;
+
+  @override
+  Future<void> signOut() async {}
+}
+
+/// Redirect AppSettings to a fresh temp directory so integration tests never
+/// read desktop auth/session state from the host machine.
+Future<Directory> isolateTestAppSettings() async {
+  AppSettings.resetForTesting();
+  final dir = await Directory.systemTemp.createTemp('fc_settings_test_');
+  AppSettings.testConfigDir = dir;
+  return dir;
 }
 
 /// Pumps the full app with an in-memory database and stubbed services.
@@ -41,12 +66,14 @@ Future<AppDatabase> pumpApp(
   Future<void> Function(AppDatabase db)? seed,
   bool useRealServices = false,
   bool createDbFile = true,
+
   /// Set to false to start with a genuinely empty DB — no Default
   /// intermediary, no `_test_seed` account. The app's landing page WILL
   /// show; tests that opt in must dismiss it (tap "Start fresh").
   bool seedTestState = true,
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
+  await isolateTestAppSettings();
 
   // Create the DB file on disk so the landing page filesystem check passes.
   // (initState checks AppDatabase.dbFile().existsSync() before touching providers)
@@ -61,13 +88,22 @@ Future<AppDatabase> pumpApp(
 
   if (seedTestState) {
     // Seed a default intermediary (required by assets since schema v29).
-    await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(
-      name: 'Default',
-    ));
+    await db
+        .into(db.intermediaries)
+        .insert(
+          IntermediariesCompanion.insert(
+            name: 'Default',
+          ),
+        );
     // Seed a dummy account so the landing page doesn't show (empty DB check).
-    await db.into(db.accounts).insert(AccountsCompanion.insert(
-      name: '_test_seed', sortOrder: const Value(999),
-    ));
+    await db
+        .into(db.accounts)
+        .insert(
+          AccountsCompanion.insert(
+            name: '_test_seed',
+            sortOrder: const Value(999),
+          ),
+        );
   }
 
   if (seed != null) {
@@ -77,8 +113,8 @@ Future<AppDatabase> pumpApp(
   final overrides = [
     // Override DB with in-memory instance
     databaseProvider.overrideWith((ref) => db),
-    // Stub Google Drive sync -- no network in tests
-    googleDriveSyncProvider.overrideWith((ref) => GoogleDriveSyncService()),
+    // Stub Google Drive sync and isolate AppSettings from the host machine.
+    googleDriveSyncProvider.overrideWith((ref) => NoOpGoogleDriveSyncService()),
   ];
 
   if (!useRealServices) {
@@ -111,7 +147,7 @@ Future<AppDatabase> pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: overrides,
-      child: const FinanceCopilotApp(),
+      child: const FinanceCopilotApp(enableStartupSync: false),
     ),
   );
   // Pump frames to build the initial UI.
@@ -178,7 +214,6 @@ Future<FilePreview> parseFixtureNoHeader(
   }
 }
 
-
 /// Navigate to ImportScreen with a pre-parsed preview and optional target.
 /// This tests both the file parser (via parseFixture) and the full UI import flow.
 ///
@@ -196,9 +231,7 @@ Future<void> pushImportScreen(
   int? accountId;
   if (accountName != null) {
     final database = db ?? AppDatabase.forTesting(NativeDatabase.memory());
-    final acc = await (database.select(database.accounts)
-          ..where((a) => a.name.equals(accountName)))
-        .getSingleOrNull();
+    final acc = await (database.select(database.accounts)..where((a) => a.name.equals(accountName))).getSingleOrNull();
     accountId = acc?.id;
   }
   final context = tester.element(find.byType(Navigator).first);
@@ -317,10 +350,14 @@ Future<void> waitForNetwork(WidgetTester tester, {int seconds = 10}) async {
 
 /// Inserts a sample account and returns its id.
 Future<int> seedAccount(AppDatabase db, {String name = 'Test Account'}) async {
-  return db.into(db.accounts).insert(AccountsCompanion.insert(
-        name: name,
-        sortOrder: const Value(1),
-      ));
+  return db
+      .into(db.accounts)
+      .insert(
+        AccountsCompanion.insert(
+          name: name,
+          sortOrder: const Value(1),
+        ),
+      );
 }
 
 /// Inserts a sample asset and returns its id.
@@ -333,19 +370,23 @@ Future<int> seedAsset(
   String? currency,
 }) async {
   final intermediaries = await db.select(db.intermediaries).get();
-  return db.into(db.assets).insert(AssetsCompanion.insert(
-        name: name,
-        assetType: AssetType.stockEtf,
-        instrumentType: const Value(InstrumentType.etf),
-        assetClass: const Value(AssetClass.equity),
-        valuationMethod: ValuationMethod.marketPrice,
-        intermediaryId: intermediaries.first.id,
-        isin: Value(isin),
-        ticker: Value(ticker),
-        exchange: Value(exchange),
-        currency: Value(currency ?? 'EUR'),
-        sortOrder: const Value(1),
-      ));
+  return db
+      .into(db.assets)
+      .insert(
+        AssetsCompanion.insert(
+          name: name,
+          assetType: AssetType.stockEtf,
+          instrumentType: const Value(InstrumentType.etf),
+          assetClass: const Value(AssetClass.equity),
+          valuationMethod: ValuationMethod.marketPrice,
+          intermediaryId: intermediaries.first.id,
+          isin: Value(isin),
+          ticker: Value(ticker),
+          exchange: Value(exchange),
+          currency: Value(currency ?? 'EUR'),
+          sortOrder: const Value(1),
+        ),
+      );
 }
 
 /// Inserts a buy event for an asset.
@@ -358,16 +399,20 @@ Future<int> seedBuyEvent(
   double? price,
   String currency = 'EUR',
 }) async {
-  return db.into(db.assetEvents).insert(AssetEventsCompanion.insert(
-        assetId: assetId,
-        date: date,
-        valueDate: date,
-        type: EventType.buy,
-        amount: amount,
-        quantity: Value(quantity),
-        price: Value(price),
-        currency: Value(currency),
-      ));
+  return db
+      .into(db.assetEvents)
+      .insert(
+        AssetEventsCompanion.insert(
+          assetId: assetId,
+          date: date,
+          valueDate: date,
+          type: EventType.buy,
+          amount: amount,
+          quantity: Value(quantity),
+          price: Value(price),
+          currency: Value(currency),
+        ),
+      );
 }
 
 /// Inserts a market price for an asset.
@@ -378,21 +423,29 @@ Future<void> seedPrice(
   required double price,
   String currency = 'EUR',
 }) async {
-  await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
-        assetId: assetId,
-        date: date,
-        closePrice: price,
-        currency: currency,
-      ));
+  await db
+      .into(db.marketPrices)
+      .insert(
+        MarketPricesCompanion.insert(
+          assetId: assetId,
+          date: date,
+          closePrice: price,
+          currency: currency,
+        ),
+      );
 }
 
 /// Inserts a sample income record and returns its id.
 Future<int> seedIncome(AppDatabase db, {double amount = 1000.0}) async {
-  return db.into(db.incomes).insert(IncomesCompanion.insert(
-        date: DateTime(2025, 1, 15),
-        valueDate: DateTime(2025, 1, 15),
-        amount: amount,
-      ));
+  return db
+      .into(db.incomes)
+      .insert(
+        IncomesCompanion.insert(
+          date: DateTime(2025, 1, 15),
+          valueDate: DateTime(2025, 1, 15),
+          amount: amount,
+        ),
+      );
 }
 
 /// Tap the "Default" intermediary radio in the Confirm step of asset
@@ -461,13 +514,13 @@ Future<void> setMapping(
 ) async {
   final wanted = fieldLabel.toLowerCase();
   Finder labelText() => find.byWidgetPredicate(
-        (w) {
-          if (w is! Text || w.data == null) return false;
-          final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
-          return clean.toLowerCase() == wanted;
-        },
-        description: 'mapping-row Text matching "$fieldLabel" (case-insensitive)',
-      );
+    (w) {
+      if (w is! Text || w.data == null) return false;
+      final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
+      return clean.toLowerCase() == wanted;
+    },
+    description: 'mapping-row Text matching "$fieldLabel" (case-insensitive)',
+  );
   // Scroll the column-mapper ListView until the label is in the tree.
   // The mapper's ListView is the first vertical Scrollable on the
   // ImportScreen route. Try both directions because we don't know
@@ -478,33 +531,59 @@ Future<void> setMapping(
       // Scroll up first (drag-down): brings rows above into view.
       try {
         await tester.scrollUntilVisible(
-          labelText(), -200,
-          scrollable: scrollable.first, maxScrolls: 8,
+          labelText(),
+          -200,
+          scrollable: scrollable.first,
+          maxScrolls: 8,
         );
       } catch (_) {}
       if (labelText().evaluate().isEmpty) {
         // Try downward.
         try {
           await tester.scrollUntilVisible(
-            labelText(), 200,
-            scrollable: scrollable.first, maxScrolls: 8,
+            labelText(),
+            200,
+            scrollable: scrollable.first,
+            maxScrolls: 8,
           );
         } catch (_) {}
       }
     }
   }
-  expect(labelText(), findsWidgets,
-      reason: 'mapping label "$fieldLabel" not found in column mapper');
-  final mappingRow = find.ancestor(
-    of: labelText().first,
-    matching: find.byType(Padding),
-  );
-  Finder dropdown = find.descendant(
-    of: mappingRow.first,
+  expect(labelText(), findsWidgets, reason: 'mapping label "$fieldLabel" not found in column mapper');
+  // The same text can appear in the preview table's column header (e.g. a CSV
+  // column literally named "Amount") AND in the mapping row. The mapping row
+  // is the one whose Padding ancestor contains a column dropdown — pick that
+  // occurrence rather than blindly taking the first match.
+  Finder dropdownForLabel(int i) => find.descendant(
+    of: find.ancestor(of: labelText().at(i), matching: find.byType(Padding)).first,
     matching: find.byType(DropdownButtonFormField<String>),
   );
-  expect(dropdown, findsWidgets,
-      reason: 'no dropdown found in mapping row for "$fieldLabel"');
+  int findMatch() {
+    final n = labelText().evaluate().length;
+    for (var i = 0; i < n; i++) {
+      if (dropdownForLabel(i).evaluate().isNotEmpty) return i;
+    }
+    return -1;
+  }
+
+  var matchIndex = findMatch();
+  // The mapping-row occurrence may live below the preview table (which can
+  // also carry a matching column header). Scroll down to build it if needed.
+  if (matchIndex == -1) {
+    final scrollable = find.byType(Scrollable);
+    for (var s = 0; s < 8 && matchIndex == -1; s++) {
+      try {
+        await tester.drag(scrollable.first, const Offset(0, -250));
+        await longSettle(tester);
+      } catch (_) {
+        break;
+      }
+      matchIndex = findMatch();
+    }
+  }
+  expect(matchIndex, isNot(-1), reason: 'no dropdown found in any mapping row for "$fieldLabel"');
+  final dropdown = dropdownForLabel(matchIndex);
   await tester.ensureVisible(dropdown.first);
   await settle(tester);
   await tester.tap(dropdown.first);
@@ -518,8 +597,7 @@ Future<void> setMapping(
 /// "Current").
 Future<void> setSegmentMode(WidgetTester tester, String optionLabel) async {
   final button = find.text(optionLabel);
-  expect(button, findsWidgets,
-      reason: 'SegmentedButton option "$optionLabel" not found');
+  expect(button, findsWidgets, reason: 'SegmentedButton option "$optionLabel" not found');
   await tester.ensureVisible(button.first);
   await settle(tester);
   await tester.tap(button.first);
@@ -531,8 +609,7 @@ Future<void> setSegmentMode(WidgetTester tester, String optionLabel) async {
 /// be visible.
 Future<void> tapAmountMode(WidgetTester tester, String modeLabel) async {
   final btn = find.widgetWithText(OutlinedButton, modeLabel);
-  expect(btn, findsWidgets,
-      reason: 'amount mode button "$modeLabel" not found');
+  expect(btn, findsWidgets, reason: 'amount mode button "$modeLabel" not found');
   await tester.ensureVisible(btn.first);
   await settle(tester);
   await tester.tap(btn.first);
@@ -556,8 +633,7 @@ Future<void> tapBuySellForValue(
     (w) => w is Text && w.data == value && (w.style?.fontSize ?? 0) >= 13,
     description: 'unique-value Text "$value" (fontSize >= 13)',
   );
-  expect(valueText, findsWidgets,
-      reason: 'unique-value row "$value" not found for type-from-column');
+  expect(valueText, findsWidgets, reason: 'unique-value row "$value" not found for type-from-column');
   // Chip container is a Wrap (was Row before the pension-import merge —
   // switched to Wrap to fit the 4th chip on narrow screens). Fall back to
   // Row for older code paths so the helper stays robust if the layout
@@ -566,14 +642,12 @@ Future<void> tapBuySellForValue(
   if (container.evaluate().isEmpty) {
     container = find.ancestor(of: valueText.first, matching: find.byType(Row));
   }
-  expect(container, findsWidgets,
-      reason: 'no Wrap or Row ancestor for unique-value "$value"');
+  expect(container, findsWidgets, reason: 'no Wrap or Row ancestor for unique-value "$value"');
   final chip = find.descendant(
     of: container.first,
     matching: find.widgetWithText(ChoiceChip, buy ? buyLabel : sellLabel),
   );
-  expect(chip, findsWidgets,
-      reason: 'ChoiceChip "${buy ? buyLabel : sellLabel}" not found in row "$value"');
+  expect(chip, findsWidgets, reason: 'ChoiceChip "${buy ? buyLabel : sellLabel}" not found in row "$value"');
   await tester.ensureVisible(chip.first);
   await settle(tester);
   await tester.tap(chip.first);
@@ -586,8 +660,7 @@ Future<void> tapBuySellForValue(
 /// how the calling widget's generic type was resolved).
 Future<void> selectIntermediary(WidgetTester tester, String name) async {
   final titleText = find.text(name);
-  expect(titleText, findsWidgets,
-      reason: 'intermediary "$name" Text not found in confirm step');
+  expect(titleText, findsWidgets, reason: 'intermediary "$name" Text not found in confirm step');
   // Find the closest RadioListTile ancestor without pinning the generic.
   final tile = find.ancestor(
     of: titleText.first,
@@ -596,8 +669,7 @@ Future<void> selectIntermediary(WidgetTester tester, String name) async {
       description: 'RadioListTile (any generic)',
     ),
   );
-  expect(tile, findsWidgets,
-      reason: 'intermediary radio "$name" not found in confirm step');
+  expect(tile, findsWidgets, reason: 'intermediary radio "$name" not found in confirm step');
   await tester.ensureVisible(tile.first);
   await settle(tester);
   await tester.tap(tile.first);

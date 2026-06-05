@@ -8,13 +8,11 @@ part of 'import_screen.dart';
 // ──────────────────────────────────────────────
 
 extension _QuickConfirmStep on _ImportScreenState {
-
   Widget _buildQuickConfirm(FilePreview preview) {
     final s = ref.watch(appStringsProvider);
 
     // Trigger preview computation once when entering quick confirm
-    if (_txPreview == null && _assetPreview == null && !_previewing &&
-        _target != ImportTarget.income) {
+    if (_txPreview == null && _assetPreview == null && !_previewing && _target != ImportTarget.income) {
       Future.microtask(() => _computePreview());
     }
 
@@ -27,11 +25,15 @@ extension _QuickConfirmStep on _ImportScreenState {
             color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
             child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Row(children: [
-                Icon(Icons.bookmark, size: 18, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Expanded(child: Text(s.savedConfigDetected, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-              ]),
+              child: Row(
+                children: [
+                  Icon(Icons.bookmark, size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(s.savedConfigDetected, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -54,8 +56,7 @@ extension _QuickConfirmStep on _ImportScreenState {
           const SizedBox(height: 16),
 
           // Import preview (balance / asset quantities)
-          if (_target != ImportTarget.income)
-            _buildImportPreview(),
+          if (_target != ImportTarget.income) _buildImportPreview(),
           const SizedBox(height: 16),
 
           // Action buttons
@@ -94,10 +95,20 @@ extension _QuickConfirmStep on _ImportScreenState {
         dataRowMinHeight: 28,
         dataRowMaxHeight: 32,
         columnSpacing: 16,
-        columns: cols.map((c) => DataColumn(label: Text(c, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))).toList(),
-        rows: rows.map((row) => DataRow(
-          cells: cols.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 11)))).toList(),
-        )).toList(),
+        columns: cols
+            .map(
+              (c) => DataColumn(
+                label: Text(c, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            )
+            .toList(),
+        rows: rows
+            .map(
+              (row) => DataRow(
+                cells: cols.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 11)))).toList(),
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -124,10 +135,14 @@ extension _QuickConfirmStep on _ImportScreenState {
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: lines.map((l) => Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Text(l, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-          )).toList(),
+          children: lines
+              .map(
+                (l) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(l, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                ),
+              )
+              .toList(),
         ),
       ),
     );

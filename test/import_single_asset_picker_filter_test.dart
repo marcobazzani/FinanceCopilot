@@ -23,7 +23,9 @@ void main() {
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    intermediaryId = await db.into(db.intermediaries).insert(
+    intermediaryId = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Generali'),
         );
   });
@@ -38,32 +40,38 @@ void main() {
     String? ticker,
     String? isin,
   }) async {
-    return db.into(db.assets).insert(AssetsCompanion.insert(
-          name: name,
-          assetType: AssetType.pension,
-          instrumentType: const Value(InstrumentType.pension),
-          assetClass: const Value(AssetClass.multiAsset),
-          valuationMethod: method,
-          ticker: Value(ticker),
-          isin: Value(isin),
-          currency: const Value('EUR'),
-          intermediaryId: intermediaryId,
-        ));
+    return db
+        .into(db.assets)
+        .insert(
+          AssetsCompanion.insert(
+            name: name,
+            assetType: AssetType.pension,
+            instrumentType: const Value(InstrumentType.pension),
+            assetClass: const Value(AssetClass.multiAsset),
+            valuationMethod: method,
+            ticker: Value(ticker),
+            isin: Value(isin),
+            currency: const Value('EUR'),
+            intermediaryId: intermediaryId,
+          ),
+        );
   }
 
   Future<void> insertMarketPrice(int assetId, DateTime date, double price) async {
-    await db.into(db.marketPrices).insert(MarketPricesCompanion.insert(
-          assetId: assetId,
-          date: date,
-          closePrice: price,
-          currency: 'EUR',
-        ));
+    await db
+        .into(db.marketPrices)
+        .insert(
+          MarketPricesCompanion.insert(
+            assetId: assetId,
+            date: date,
+            closePrice: price,
+            currency: 'EUR',
+          ),
+        );
   }
 
-  test(
-      'event-driven asset is included in the manual-asset filter even when '
-      'it has market_prices entries (re-import case)',
-      () async {
+  test('event-driven asset is included in the manual-asset filter even when '
+      'it has market_prices entries (re-import case)', () async {
     // Mimic an F.P.G.G.-style pension asset that has been imported once.
     // The previous import wrote synthetic price snapshots into market_prices.
     final pensionId = await createAsset(
@@ -87,19 +95,15 @@ void main() {
     // The picker's filter — see column_mapper_step._buildSingleAssetPicker.
     // Use valuationMethod as the source of truth, NOT presence of market
     // prices (which fires a false negative for re-imported pension funds).
-    final manual = assets
-        .where((a) => a.valuationMethod == ValuationMethod.eventDriven)
-        .toList();
+    final manual = assets.where((a) => a.valuationMethod == ValuationMethod.eventDriven).toList();
 
     expect(manual, hasLength(1));
     expect(manual.first.id, equals(pensionId));
     expect(manual.first.name, equals('F.P.G.G.'));
   });
 
-  test(
-      'market-driven asset is excluded from the manual filter even when it '
-      'has zero market_prices entries (e.g. obscure exchange not yet synced)',
-      () async {
+  test('market-driven asset is excluded from the manual filter even when it '
+      'has zero market_prices entries (e.g. obscure exchange not yet synced)', () async {
     final stockId = await createAsset(
       name: 'Obscure Stock',
       method: ValuationMethod.marketPrice,
@@ -107,9 +111,7 @@ void main() {
     );
 
     final assets = await db.select(db.assets).get();
-    final manual = assets
-        .where((a) => a.valuationMethod == ValuationMethod.eventDriven)
-        .toList();
+    final manual = assets.where((a) => a.valuationMethod == ValuationMethod.eventDriven).toList();
 
     expect(manual, isEmpty);
     expect(stockId, isPositive); // prevent unused-variable warning

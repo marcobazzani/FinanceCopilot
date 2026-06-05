@@ -3,7 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
-import 'package:finance_copilot/services/account_service.dart';
+import 'package:finance_copilot/services/domain/account_service.dart';
 
 void main() {
   late AppDatabase db;
@@ -108,32 +108,36 @@ void main() {
       final accountId = await service.create(name: 'WithTx', currency: 'EUR');
 
       // Insert transactions directly
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 100.0,
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 2),
-            valueDate: DateTime(2024, 1, 2),
-            amount: 200.0,
-          ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 1, 1),
+              amount: 100.0,
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 2),
+              valueDate: DateTime(2024, 1, 2),
+              amount: 200.0,
+            ),
+          );
 
       // Verify transactions exist
-      final txBefore = await (db.select(db.transactions)
-            ..where((t) => t.accountId.equals(accountId)))
-          .get();
+      final txBefore = await (db.select(db.transactions)..where((t) => t.accountId.equals(accountId))).get();
       expect(txBefore.length, 2);
 
       // Delete the account
       await service.delete(accountId);
 
       // Verify transactions are gone
-      final txAfter = await (db.select(db.transactions)
-            ..where((t) => t.accountId.equals(accountId)))
-          .get();
+      final txAfter = await (db.select(db.transactions)..where((t) => t.accountId.equals(accountId))).get();
       expect(txAfter, isEmpty);
     });
   });
@@ -152,12 +156,16 @@ void main() {
       final keep = await service.create(name: 'Keep', currency: 'EUR');
 
       for (final id in [a, b, keep]) {
-        await db.into(db.transactions).insert(TransactionsCompanion.insert(
-              accountId: id,
-              operationDate: DateTime(2024, 1, 1),
-              valueDate: DateTime(2024, 1, 1),
-              amount: 100.0,
-            ));
+        await db
+            .into(db.transactions)
+            .insert(
+              TransactionsCompanion.insert(
+                accountId: id,
+                operationDate: DateTime(2024, 1, 1),
+                valueDate: DateTime(2024, 1, 1),
+                amount: 100.0,
+              ),
+            );
       }
 
       final n = await service.deleteMany([a, b]);
@@ -200,20 +208,28 @@ void main() {
     test('returns correct stats with transactions', () async {
       final accountId = await service.create(name: 'Stats', currency: 'EUR');
 
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 10),
-            valueDate: DateTime(2024, 1, 10),
-            amount: 100.0,
-            balanceAfter: const Value(100.0),
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 3, 15),
-            valueDate: DateTime(2024, 3, 15),
-            amount: -50.0,
-            balanceAfter: const Value(50.0),
-          ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              amount: 100.0,
+              balanceAfter: const Value(100.0),
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 3, 15),
+              valueDate: DateTime(2024, 3, 15),
+              amount: -50.0,
+              balanceAfter: const Value(50.0),
+            ),
+          );
 
       final stats = await service.getStatsForAll();
       expect(stats.containsKey(accountId), isTrue);
@@ -228,20 +244,28 @@ void main() {
     test('through date limits count and balance without deleting data', () async {
       final accountId = await service.create(name: 'Wayback', currency: 'EUR');
 
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 1, 10),
-            valueDate: DateTime(2024, 1, 10),
-            amount: 100.0,
-            balanceAfter: const Value(100.0),
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: DateTime(2024, 3, 15),
-            valueDate: DateTime(2024, 3, 15),
-            amount: -50.0,
-            balanceAfter: const Value(50.0),
-          ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 1, 10),
+              valueDate: DateTime(2024, 1, 10),
+              amount: 100.0,
+              balanceAfter: const Value(100.0),
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 3, 15),
+              valueDate: DateTime(2024, 3, 15),
+              amount: -50.0,
+              balanceAfter: const Value(50.0),
+            ),
+          );
 
       final stats = await service.getStatsForAll(through: DateTime(2024, 2, 29));
       final s = stats[accountId]!;
@@ -257,20 +281,28 @@ void main() {
       final id1 = await service.create(name: 'Acc1', currency: 'EUR');
       final id2 = await service.create(name: 'Acc2', currency: 'EUR');
 
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: id1,
-            operationDate: DateTime(2024, 1, 1),
-            valueDate: DateTime(2024, 1, 1),
-            amount: 500.0,
-            balanceAfter: const Value(500.0),
-          ));
-      await db.into(db.transactions).insert(TransactionsCompanion.insert(
-            accountId: id2,
-            operationDate: DateTime(2024, 2, 1),
-            valueDate: DateTime(2024, 2, 1),
-            amount: 200.0,
-            balanceAfter: const Value(200.0),
-          ));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: id1,
+              operationDate: DateTime(2024, 1, 1),
+              valueDate: DateTime(2024, 1, 1),
+              amount: 500.0,
+              balanceAfter: const Value(500.0),
+            ),
+          );
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: id2,
+              operationDate: DateTime(2024, 2, 1),
+              valueDate: DateTime(2024, 2, 1),
+              amount: 200.0,
+              balanceAfter: const Value(200.0),
+            ),
+          );
 
       final stats = await service.getStatsForAll();
       expect(stats.length, 2);

@@ -21,8 +21,7 @@ void main() {
           final text = fmt.amountFormat(locale).format(value);
           final parsed = fmt.tryParseLocalized(text, locale: locale);
           expect(parsed, isNotNull, reason: 'failed to parse "$text" in $locale');
-          expect(parsed, closeTo(value, 1e-9),
-              reason: '$locale round-trip of $value via "$text" returned $parsed');
+          expect(parsed, closeTo(value, 1e-9), reason: '$locale round-trip of $value via "$text" returned $parsed');
         });
       }
     }
