@@ -462,7 +462,7 @@ void main() {
           .into(db.importConfigs)
           .insert(
             ImportConfigsCompanion.insert(
-              accountId: accountId,
+              accountId: Value(accountId),
               skipRows: const Value(0),
               mappingsJson: Value(jsonEncode({'__balanceMode': balanceMode})),
               formulaJson: const Value('[]'),

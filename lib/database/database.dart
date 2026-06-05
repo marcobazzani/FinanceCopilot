@@ -80,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 43;
+  int get schemaVersion => 46;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -713,8 +713,105 @@ class AppDatabase extends _$AppDatabase {
         }
         _log.info('Migration 43: added preferred listing metadata to portfolio model items');
       }
+      if (from < 44) {
+        // Import configs gain scope columns so asset-event (by intermediary /
+        // by single asset) and income imports can persist their mapping,
+        // alongside the original account-scoped transaction configs.
+        // account_id must also become NULLABLE. See _rebuildImportConfigs.
+        await _ensureImportConfigsScoped();
+        _log.info('Migration 44: scoped import_configs');
+      }
+      if (from < 45) {
+        // v44 originally shipped a broken migration that left account_id
+        // NOT NULL (ALTER ADD COLUMN can't relax it), so asset/income configs
+        // failed to insert. Repair any DB that took that path by rebuilding
+        // the table with a nullable account_id. No-op when already correct.
+        await _ensureImportConfigsScoped();
+        _log.info('Migration 45: ensured import_configs.account_id is nullable');
+      }
+      if (from < 46) {
+        // 'balance' was removed from ValuationMethod (it had a UI label but no
+        // implemented behavior). Any asset stored as 'balance' falls back to
+        // the default market-price valuation.
+        await customStatement("UPDATE assets SET valuation_method = 'marketPrice' WHERE valuation_method = 'balance'");
+        _log.info("Migration 46: converted any 'balance' valuation assets to 'marketPrice'");
+      }
     },
   );
+
+  /// Ensure `import_configs` has the scoped shape: nullable account_id plus
+  /// intermediary_id / asset_id / scope. Idempotent — rebuilds the table only
+  /// when account_id is still NOT NULL, otherwise just adds missing columns.
+  /// SQLite can't relax NOT NULL via ALTER, so the rebuild uses the
+  /// create-new → copy → drop → rename dance.
+  Future<void> _ensureImportConfigsScoped() async {
+    final needsRebuild = await _columnIsNotNull('import_configs', 'account_id');
+    if (needsRebuild) {
+      await customStatement('PRAGMA foreign_keys = OFF');
+      try {
+        await customStatement('DROP TABLE IF EXISTS import_configs_new');
+        await customStatement('''
+          CREATE TABLE import_configs_new (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER REFERENCES accounts (id),
+            intermediary_id INTEGER REFERENCES intermediaries (id),
+            asset_id INTEGER REFERENCES assets (id),
+            scope TEXT NOT NULL DEFAULT 'transaction',
+            skip_rows INTEGER NOT NULL DEFAULT 0,
+            mappings_json TEXT NOT NULL DEFAULT '{}',
+            formula_json TEXT NOT NULL DEFAULT '[]',
+            hash_columns_json TEXT NOT NULL DEFAULT '[]',
+            number_locale TEXT,
+            updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+          )
+        ''');
+        // Copy preserving scope/intermediary_id/asset_id when those columns
+        // already exist (broken-v44 DBs have them), else default scope.
+        final hasScope = await _hasColumn('import_configs', 'scope');
+        if (hasScope) {
+          await customStatement('''
+            INSERT INTO import_configs_new
+              (id, account_id, intermediary_id, asset_id, scope, skip_rows, mappings_json, formula_json, hash_columns_json, number_locale, updated_at)
+            SELECT id, account_id, intermediary_id, asset_id,
+                   COALESCE(scope, 'transaction'), skip_rows, mappings_json, formula_json, hash_columns_json, number_locale, updated_at
+            FROM import_configs
+          ''');
+        } else {
+          await customStatement('''
+            INSERT INTO import_configs_new
+              (id, account_id, scope, skip_rows, mappings_json, formula_json, hash_columns_json, number_locale, updated_at)
+            SELECT id, account_id, 'transaction', skip_rows, mappings_json, formula_json, hash_columns_json, number_locale, updated_at
+            FROM import_configs
+          ''');
+        }
+        await customStatement('DROP TABLE import_configs');
+        await customStatement('ALTER TABLE import_configs_new RENAME TO import_configs');
+      } finally {
+        await customStatement('PRAGMA foreign_keys = ON');
+      }
+    } else {
+      if (!await _hasColumn('import_configs', 'intermediary_id')) {
+        await customStatement('ALTER TABLE import_configs ADD COLUMN intermediary_id INTEGER');
+      }
+      if (!await _hasColumn('import_configs', 'asset_id')) {
+        await customStatement('ALTER TABLE import_configs ADD COLUMN asset_id INTEGER');
+      }
+      if (!await _hasColumn('import_configs', 'scope')) {
+        await customStatement("ALTER TABLE import_configs ADD COLUMN scope TEXT NOT NULL DEFAULT 'transaction'");
+      }
+    }
+  }
+
+  /// True when [column] of [table] is declared NOT NULL.
+  Future<bool> _columnIsNotNull(String table, String column) async {
+    final rows = await customSelect('PRAGMA table_info($table)').get();
+    for (final r in rows) {
+      if (r.read<String>('name') == column) {
+        return r.read<int>('notnull') == 1;
+      }
+    }
+    return false;
+  }
 
   Future<bool> _hasColumn(String table, String column) async {
     final rows = await customSelect('PRAGMA table_info($table)').get();

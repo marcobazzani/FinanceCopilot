@@ -623,6 +623,9 @@ class AppStrings {
   String get assetLockEdit => _it ? 'Blocca campi avanzati' : 'Lock advanced fields';
   String get assetTypeFieldLabel => _it ? 'Tipo di asset' : 'Asset type';
   String get valuationMethodFieldLabel => _it ? 'Metodo di valutazione' : 'Valuation method';
+  String get valuationMethodAutoHelp => _it
+      ? 'Automatico: diventa "Manuale (eventi)" quando l\'asset ha una rivalutazione, torna "Prezzo di mercato" quando vengono rimosse tutte.'
+      : 'Automatic: becomes "Event-driven (manual)" when the asset has a revalue, reverts to "Market price" when all are removed.';
   String get taxRateOverrideLabel => _it ? 'Aliquota fiscale (%)' : 'Tax rate (%)';
   String get includeInSavingsLabel => _it ? 'Includi nei risparmi' : 'Include in savings';
   String get currencyFieldLabel => _it ? 'Valuta (3 lettere)' : 'Currency (3 letters)';
@@ -652,7 +655,6 @@ class AppStrings {
   String valuationMethodLabel(ValuationMethod m) => {
     ValuationMethod.marketPrice: _it ? 'Prezzo di mercato' : 'Market price',
     ValuationMethod.eventDriven: _it ? 'Manuale (eventi)' : 'Event-driven (manual)',
-    ValuationMethod.balance: _it ? 'Saldo' : 'Balance',
   }[m]!;
 
   // ── Asset Event Edit ─────────────────────────────────────
@@ -839,7 +841,42 @@ class AppStrings {
   String get first5Rows => _it ? 'Prime 5 righe' : 'First 5 rows';
   String hiddenRows(int n) => _it ? '⋯ $n righe nascoste ⋯' : '⋯ $n rows hidden ⋯';
   String get last5Rows => _it ? 'Ultime 5 righe' : 'Last 5 rows';
+  String get showAllRows => _it ? 'Mostra tutte' : 'Show all';
+  String get showLessRows => _it ? 'Mostra meno' : 'Show less';
   String get addColumn => _it ? 'Aggiungi colonna' : 'Add column';
+
+  // ── Refine rows & columns panel (import wizard) ──
+  String get refineRowsColumns => _it ? 'Affina righe e colonne' : 'Refine rows & columns';
+  String get refineRowsColumnsHelp =>
+      _it ? 'Filtra le righe e dividi le colonne prima di mappare' : 'Filter rows and split columns before mapping';
+  String get rowFilters => _it ? 'Filtri righe' : 'Row filters';
+  String get rowFiltersHelp => _it ? 'Mantieni solo le righe che soddisfano queste condizioni' : 'Keep only rows that satisfy these conditions';
+  String get addFilter => _it ? 'Aggiungi filtro' : 'Add filter';
+  String get columnSplits => _it ? 'Dividi colonne' : 'Column splits';
+  String get columnSplitsHelp => _it
+      ? 'Dividi una colonna in nuove colonne mappabili. Un nome per ogni parte; lascia vuoto per saltare (es. ",,periodo").'
+      : 'Split a column into new mappable columns. One name per part; leave blank to skip a part (e.g. ",,period").';
+  String get addSplit => _it ? 'Aggiungi divisione' : 'Add split';
+  String get splitByWhitespace => _it ? 'Spazi' : 'Whitespace';
+  String get splitByDelimiter => _it ? 'Delimitatore' : 'Delimiter';
+  String get splitByRegex => _it ? 'Regex' : 'Regex';
+  String get newColumnNames => _it ? 'Nomi nuove colonne (separati da virgola)' : 'New column names (comma-separated)';
+  String get splitPreviewLabel => _it ? 'Risultato' : 'Result';
+  String get splitNoMatch => _it ? 'nessuna riga corrisponde' : 'no rows match';
+  String get splitDelimiter => _it ? 'Delimitatore' : 'Delimiter';
+  String get splitPattern => _it ? 'Espressione (gruppi di cattura)' : 'Pattern (capture groups)';
+  String get matchAll => _it ? 'Tutte' : 'All';
+  String get matchAny => _it ? 'Qualsiasi' : 'Any';
+  String get filterOpContains => _it ? 'contiene' : 'contains';
+  String get filterOpNotContains => _it ? 'non contiene' : 'does not contain';
+  String get filterOpEquals => _it ? 'uguale a' : 'equals';
+  String get filterOpNotEquals => _it ? 'diverso da' : 'not equals';
+  String get filterOpMatches => _it ? 'corrisponde (regex)' : 'matches (regex)';
+  String get filterOpNotMatches => _it ? 'non corrisponde (regex)' : 'does not match (regex)';
+  String filteredRowCount(int kept, int total) => _it ? '$kept di $total righe mantenute' : '$kept of $total rows kept';
+  String get missingDateMapping => _it ? 'Mappa la colonna data prima di importare' : 'Map the date column before importing';
+  String get missingValueDateMapping => _it ? 'Mappa la colonna data valuta prima di importare' : 'Map the value-date column before importing';
+  String get missingAmountMapping => _it ? 'Mappa la colonna importo prima di importare' : 'Map the amount column before importing';
   String get balancePerRow => _it ? 'Saldo per riga' : 'Balance per row';
   String get balancePerRowHelp => _it ? 'Come calcolare il saldo per ogni transazione' : 'How to compute balanceAfter for each transaction';
   String get balanceFromColumn => _it ? 'Da colonna' : 'From column';
@@ -891,7 +928,6 @@ class AppStrings {
   String get createAccount => _it ? 'Crea conto' : 'Create Account';
   String get newAccount => _it ? '+ Nuovo conto' : '+ New Account';
   String get createAsset => _it ? 'Crea attività' : 'Create Asset';
-
   // ── Import Result ───────────────────────────────────────
   String get importComplete => _it ? 'Importazione completata' : 'Import Complete';
   String get totalRowsLabel => _it ? 'Righe totali' : 'Total rows';
@@ -959,6 +995,13 @@ class AppStrings {
   String get orderRefHelp => _it
       ? 'Opzionale: con la colonna mappata, le commissioni vengono unite alla transazione corrispondente. Senza, vengono ignorate.'
       : 'Optional: when mapped, fees are folded into the matching trade. Without it, fees are dropped.';
+
+  String get revalueAmountSource => _it ? 'Importo per le righe Rivalutazione' : 'Amount for Revalue rows';
+  String get revalueAmountSourceHint => _it ? 'Usa la mappatura importo principale' : 'Use the primary amount mapping';
+  String get revalueAmountSourceNone => _it ? '— Importo principale —' : '— Primary amount —';
+  String get revalueAmountSourceHelp => _it
+      ? 'Le righe Rivalutazione (es. posizione individuale) leggono l\'importo da questa colonna (es. Saldo) invece che dalla colonna importo principale.'
+      : 'Revalue rows (e.g. position snapshot) read their amount from this column (e.g. Balance) instead of the primary amount column.';
 
   // ── Allocation ───────────────────────────────────────────
   String get noMarketValues => _it ? 'Nessun valore di mercato disponibile.' : 'No market values available.';

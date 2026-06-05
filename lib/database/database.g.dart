@@ -8548,12 +8548,50 @@ class $ImportConfigsTable extends ImportConfigs with TableInfo<$ImportConfigsTab
   late final GeneratedColumn<int> accountId = GeneratedColumn<int>(
     'account_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES accounts (id)',
     ),
+  );
+  static const VerificationMeta _intermediaryIdMeta = const VerificationMeta(
+    'intermediaryId',
+  );
+  @override
+  late final GeneratedColumn<int> intermediaryId = GeneratedColumn<int>(
+    'intermediary_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES intermediaries (id)',
+    ),
+  );
+  static const VerificationMeta _assetIdMeta = const VerificationMeta(
+    'assetId',
+  );
+  @override
+  late final GeneratedColumn<int> assetId = GeneratedColumn<int>(
+    'asset_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES assets (id)',
+    ),
+  );
+  static const VerificationMeta _scopeMeta = const VerificationMeta('scope');
+  @override
+  late final GeneratedColumn<String> scope = GeneratedColumn<String>(
+    'scope',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('transaction'),
   );
   static const VerificationMeta _skipRowsMeta = const VerificationMeta(
     'skipRows',
@@ -8630,6 +8668,9 @@ class $ImportConfigsTable extends ImportConfigs with TableInfo<$ImportConfigsTab
   List<GeneratedColumn> get $columns => [
     id,
     accountId,
+    intermediaryId,
+    assetId,
+    scope,
     skipRows,
     mappingsJson,
     formulaJson,
@@ -8657,8 +8698,27 @@ class $ImportConfigsTable extends ImportConfigs with TableInfo<$ImportConfigsTab
         _accountIdMeta,
         accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
       );
-    } else if (isInserting) {
-      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('intermediary_id')) {
+      context.handle(
+        _intermediaryIdMeta,
+        intermediaryId.isAcceptableOrUnknown(
+          data['intermediary_id']!,
+          _intermediaryIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('asset_id')) {
+      context.handle(
+        _assetIdMeta,
+        assetId.isAcceptableOrUnknown(data['asset_id']!, _assetIdMeta),
+      );
+    }
+    if (data.containsKey('scope')) {
+      context.handle(
+        _scopeMeta,
+        scope.isAcceptableOrUnknown(data['scope']!, _scopeMeta),
+      );
     }
     if (data.containsKey('skip_rows')) {
       context.handle(
@@ -8724,6 +8784,18 @@ class $ImportConfigsTable extends ImportConfigs with TableInfo<$ImportConfigsTab
       accountId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}account_id'],
+      ),
+      intermediaryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}intermediary_id'],
+      ),
+      assetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}asset_id'],
+      ),
+      scope: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scope'],
       )!,
       skipRows: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -8760,7 +8832,15 @@ class $ImportConfigsTable extends ImportConfigs with TableInfo<$ImportConfigsTab
 
 class ImportConfig extends DataClass implements Insertable<ImportConfig> {
   final int id;
-  final int accountId;
+
+  /// Scope key. Exactly one of accountId / intermediaryId / assetId is set
+  /// for a scoped config; all three are NULL for the single global income
+  /// config (distinguished by [scope] = 'income'). [scope] disambiguates:
+  /// 'transaction' | 'assetByIsin' | 'assetSingle' | 'income'.
+  final int? accountId;
+  final int? intermediaryId;
+  final int? assetId;
+  final String scope;
   final int skipRows;
   final String mappingsJson;
   final String formulaJson;
@@ -8772,7 +8852,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
   final DateTime updatedAt;
   const ImportConfig({
     required this.id,
-    required this.accountId,
+    this.accountId,
+    this.intermediaryId,
+    this.assetId,
+    required this.scope,
     required this.skipRows,
     required this.mappingsJson,
     required this.formulaJson,
@@ -8784,7 +8867,16 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
-    map['account_id'] = Variable<int>(accountId);
+    if (!nullToAbsent || accountId != null) {
+      map['account_id'] = Variable<int>(accountId);
+    }
+    if (!nullToAbsent || intermediaryId != null) {
+      map['intermediary_id'] = Variable<int>(intermediaryId);
+    }
+    if (!nullToAbsent || assetId != null) {
+      map['asset_id'] = Variable<int>(assetId);
+    }
+    map['scope'] = Variable<String>(scope);
     map['skip_rows'] = Variable<int>(skipRows);
     map['mappings_json'] = Variable<String>(mappingsJson);
     map['formula_json'] = Variable<String>(formulaJson);
@@ -8799,7 +8891,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
   ImportConfigsCompanion toCompanion(bool nullToAbsent) {
     return ImportConfigsCompanion(
       id: Value(id),
-      accountId: Value(accountId),
+      accountId: accountId == null && nullToAbsent ? const Value.absent() : Value(accountId),
+      intermediaryId: intermediaryId == null && nullToAbsent ? const Value.absent() : Value(intermediaryId),
+      assetId: assetId == null && nullToAbsent ? const Value.absent() : Value(assetId),
+      scope: Value(scope),
       skipRows: Value(skipRows),
       mappingsJson: Value(mappingsJson),
       formulaJson: Value(formulaJson),
@@ -8816,7 +8911,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return ImportConfig(
       id: serializer.fromJson<int>(json['id']),
-      accountId: serializer.fromJson<int>(json['accountId']),
+      accountId: serializer.fromJson<int?>(json['accountId']),
+      intermediaryId: serializer.fromJson<int?>(json['intermediaryId']),
+      assetId: serializer.fromJson<int?>(json['assetId']),
+      scope: serializer.fromJson<String>(json['scope']),
       skipRows: serializer.fromJson<int>(json['skipRows']),
       mappingsJson: serializer.fromJson<String>(json['mappingsJson']),
       formulaJson: serializer.fromJson<String>(json['formulaJson']),
@@ -8830,7 +8928,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
-      'accountId': serializer.toJson<int>(accountId),
+      'accountId': serializer.toJson<int?>(accountId),
+      'intermediaryId': serializer.toJson<int?>(intermediaryId),
+      'assetId': serializer.toJson<int?>(assetId),
+      'scope': serializer.toJson<String>(scope),
       'skipRows': serializer.toJson<int>(skipRows),
       'mappingsJson': serializer.toJson<String>(mappingsJson),
       'formulaJson': serializer.toJson<String>(formulaJson),
@@ -8842,7 +8943,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
 
   ImportConfig copyWith({
     int? id,
-    int? accountId,
+    Value<int?> accountId = const Value.absent(),
+    Value<int?> intermediaryId = const Value.absent(),
+    Value<int?> assetId = const Value.absent(),
+    String? scope,
     int? skipRows,
     String? mappingsJson,
     String? formulaJson,
@@ -8851,7 +8955,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     DateTime? updatedAt,
   }) => ImportConfig(
     id: id ?? this.id,
-    accountId: accountId ?? this.accountId,
+    accountId: accountId.present ? accountId.value : this.accountId,
+    intermediaryId: intermediaryId.present ? intermediaryId.value : this.intermediaryId,
+    assetId: assetId.present ? assetId.value : this.assetId,
+    scope: scope ?? this.scope,
     skipRows: skipRows ?? this.skipRows,
     mappingsJson: mappingsJson ?? this.mappingsJson,
     formulaJson: formulaJson ?? this.formulaJson,
@@ -8863,6 +8970,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     return ImportConfig(
       id: data.id.present ? data.id.value : this.id,
       accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      intermediaryId: data.intermediaryId.present ? data.intermediaryId.value : this.intermediaryId,
+      assetId: data.assetId.present ? data.assetId.value : this.assetId,
+      scope: data.scope.present ? data.scope.value : this.scope,
       skipRows: data.skipRows.present ? data.skipRows.value : this.skipRows,
       mappingsJson: data.mappingsJson.present ? data.mappingsJson.value : this.mappingsJson,
       formulaJson: data.formulaJson.present ? data.formulaJson.value : this.formulaJson,
@@ -8877,6 +8987,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
     return (StringBuffer('ImportConfig(')
           ..write('id: $id, ')
           ..write('accountId: $accountId, ')
+          ..write('intermediaryId: $intermediaryId, ')
+          ..write('assetId: $assetId, ')
+          ..write('scope: $scope, ')
           ..write('skipRows: $skipRows, ')
           ..write('mappingsJson: $mappingsJson, ')
           ..write('formulaJson: $formulaJson, ')
@@ -8891,6 +9004,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
   int get hashCode => Object.hash(
     id,
     accountId,
+    intermediaryId,
+    assetId,
+    scope,
     skipRows,
     mappingsJson,
     formulaJson,
@@ -8904,6 +9020,9 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
       (other is ImportConfig &&
           other.id == this.id &&
           other.accountId == this.accountId &&
+          other.intermediaryId == this.intermediaryId &&
+          other.assetId == this.assetId &&
+          other.scope == this.scope &&
           other.skipRows == this.skipRows &&
           other.mappingsJson == this.mappingsJson &&
           other.formulaJson == this.formulaJson &&
@@ -8914,7 +9033,10 @@ class ImportConfig extends DataClass implements Insertable<ImportConfig> {
 
 class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
   final Value<int> id;
-  final Value<int> accountId;
+  final Value<int?> accountId;
+  final Value<int?> intermediaryId;
+  final Value<int?> assetId;
+  final Value<String> scope;
   final Value<int> skipRows;
   final Value<String> mappingsJson;
   final Value<String> formulaJson;
@@ -8924,6 +9046,9 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
   const ImportConfigsCompanion({
     this.id = const Value.absent(),
     this.accountId = const Value.absent(),
+    this.intermediaryId = const Value.absent(),
+    this.assetId = const Value.absent(),
+    this.scope = const Value.absent(),
     this.skipRows = const Value.absent(),
     this.mappingsJson = const Value.absent(),
     this.formulaJson = const Value.absent(),
@@ -8933,17 +9058,23 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
   });
   ImportConfigsCompanion.insert({
     this.id = const Value.absent(),
-    required int accountId,
+    this.accountId = const Value.absent(),
+    this.intermediaryId = const Value.absent(),
+    this.assetId = const Value.absent(),
+    this.scope = const Value.absent(),
     this.skipRows = const Value.absent(),
     this.mappingsJson = const Value.absent(),
     this.formulaJson = const Value.absent(),
     this.hashColumnsJson = const Value.absent(),
     this.numberLocale = const Value.absent(),
     this.updatedAt = const Value.absent(),
-  }) : accountId = Value(accountId);
+  });
   static Insertable<ImportConfig> custom({
     Expression<int>? id,
     Expression<int>? accountId,
+    Expression<int>? intermediaryId,
+    Expression<int>? assetId,
+    Expression<String>? scope,
     Expression<int>? skipRows,
     Expression<String>? mappingsJson,
     Expression<String>? formulaJson,
@@ -8954,6 +9085,9 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (accountId != null) 'account_id': accountId,
+      if (intermediaryId != null) 'intermediary_id': intermediaryId,
+      if (assetId != null) 'asset_id': assetId,
+      if (scope != null) 'scope': scope,
       if (skipRows != null) 'skip_rows': skipRows,
       if (mappingsJson != null) 'mappings_json': mappingsJson,
       if (formulaJson != null) 'formula_json': formulaJson,
@@ -8965,7 +9099,10 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
 
   ImportConfigsCompanion copyWith({
     Value<int>? id,
-    Value<int>? accountId,
+    Value<int?>? accountId,
+    Value<int?>? intermediaryId,
+    Value<int?>? assetId,
+    Value<String>? scope,
     Value<int>? skipRows,
     Value<String>? mappingsJson,
     Value<String>? formulaJson,
@@ -8976,6 +9113,9 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     return ImportConfigsCompanion(
       id: id ?? this.id,
       accountId: accountId ?? this.accountId,
+      intermediaryId: intermediaryId ?? this.intermediaryId,
+      assetId: assetId ?? this.assetId,
+      scope: scope ?? this.scope,
       skipRows: skipRows ?? this.skipRows,
       mappingsJson: mappingsJson ?? this.mappingsJson,
       formulaJson: formulaJson ?? this.formulaJson,
@@ -8993,6 +9133,15 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     }
     if (accountId.present) {
       map['account_id'] = Variable<int>(accountId.value);
+    }
+    if (intermediaryId.present) {
+      map['intermediary_id'] = Variable<int>(intermediaryId.value);
+    }
+    if (assetId.present) {
+      map['asset_id'] = Variable<int>(assetId.value);
+    }
+    if (scope.present) {
+      map['scope'] = Variable<String>(scope.value);
     }
     if (skipRows.present) {
       map['skip_rows'] = Variable<int>(skipRows.value);
@@ -9020,6 +9169,9 @@ class ImportConfigsCompanion extends UpdateCompanion<ImportConfig> {
     return (StringBuffer('ImportConfigsCompanion(')
           ..write('id: $id, ')
           ..write('accountId: $accountId, ')
+          ..write('intermediaryId: $intermediaryId, ')
+          ..write('assetId: $assetId, ')
+          ..write('scope: $scope, ')
           ..write('skipRows: $skipRows, ')
           ..write('mappingsJson: $mappingsJson, ')
           ..write('formulaJson: $formulaJson, ')
@@ -13491,6 +13643,26 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.importConfigs,
+    aliasName: $_aliasNameGenerator(
+      db.intermediaries.id,
+      db.importConfigs.intermediaryId,
+    ),
+  );
+
+  $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
+    final manager = $$ImportConfigsTableTableManager(
+      $_db,
+      $_db.importConfigs,
+    ).filter((f) => f.intermediaryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_importConfigsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$IntermediariesTableFilterComposer extends Composer<_$AppDatabase, $IntermediariesTable> {
@@ -13571,6 +13743,30 @@ class $$IntermediariesTableFilterComposer extends Composer<_$AppDatabase, $Inter
           }) => $$AssetsTableFilterComposer(
             $db: $db,
             $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> importConfigsRefs(
+    Expression<bool> Function($$ImportConfigsTableFilterComposer f) f,
+  ) {
+    final $$ImportConfigsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.importConfigs,
+      getReferencedColumn: (t) => t.intermediaryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportConfigsTableFilterComposer(
+            $db: $db,
+            $table: $db.importConfigs,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
@@ -13689,6 +13885,30 @@ class $$IntermediariesTableAnnotationComposer extends Composer<_$AppDatabase, $I
     );
     return f(composer);
   }
+
+  Expression<T> importConfigsRefs<T extends Object>(
+    Expression<T> Function($$ImportConfigsTableAnnotationComposer a) f,
+  ) {
+    final $$ImportConfigsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.importConfigs,
+      getReferencedColumn: (t) => t.intermediaryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportConfigsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.importConfigs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$IntermediariesTableTableManager
@@ -13704,7 +13924,11 @@ class $$IntermediariesTableTableManager
           $$IntermediariesTableUpdateCompanionBuilder,
           (Intermediary, $$IntermediariesTableReferences),
           Intermediary,
-          PrefetchHooks Function({bool accountsRefs, bool assetsRefs})
+          PrefetchHooks Function({
+            bool accountsRefs,
+            bool assetsRefs,
+            bool importConfigsRefs,
+          })
         > {
   $$IntermediariesTableTableManager(
     _$AppDatabase db,
@@ -13756,48 +13980,68 @@ class $$IntermediariesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({accountsRefs = false, assetsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (accountsRefs) db.accounts,
-                if (assetsRefs) db.assets,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (accountsRefs)
-                    await $_getPrefetchedData<Intermediary, $IntermediariesTable, Account>(
-                      currentTable: table,
-                      referencedTable: $$IntermediariesTableReferences._accountsRefsTable(db),
-                      managerFromTypedResult: (p0) => $$IntermediariesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).accountsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
-                        (e) => e.intermediaryId == item.id,
-                      ),
-                      typedResults: items,
-                    ),
-                  if (assetsRefs)
-                    await $_getPrefetchedData<Intermediary, $IntermediariesTable, Asset>(
-                      currentTable: table,
-                      referencedTable: $$IntermediariesTableReferences._assetsRefsTable(db),
-                      managerFromTypedResult: (p0) => $$IntermediariesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).assetsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
-                        (e) => e.intermediaryId == item.id,
-                      ),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({
+                accountsRefs = false,
+                assetsRefs = false,
+                importConfigsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (accountsRefs) db.accounts,
+                    if (assetsRefs) db.assets,
+                    if (importConfigsRefs) db.importConfigs,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (accountsRefs)
+                        await $_getPrefetchedData<Intermediary, $IntermediariesTable, Account>(
+                          currentTable: table,
+                          referencedTable: $$IntermediariesTableReferences._accountsRefsTable(db),
+                          managerFromTypedResult: (p0) => $$IntermediariesTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).accountsRefs,
+                          referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
+                            (e) => e.intermediaryId == item.id,
+                          ),
+                          typedResults: items,
+                        ),
+                      if (assetsRefs)
+                        await $_getPrefetchedData<Intermediary, $IntermediariesTable, Asset>(
+                          currentTable: table,
+                          referencedTable: $$IntermediariesTableReferences._assetsRefsTable(db),
+                          managerFromTypedResult: (p0) => $$IntermediariesTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).assetsRefs,
+                          referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
+                            (e) => e.intermediaryId == item.id,
+                          ),
+                          typedResults: items,
+                        ),
+                      if (importConfigsRefs)
+                        await $_getPrefetchedData<Intermediary, $IntermediariesTable, ImportConfig>(
+                          currentTable: table,
+                          referencedTable: $$IntermediariesTableReferences._importConfigsRefsTable(db),
+                          managerFromTypedResult: (p0) => $$IntermediariesTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).importConfigsRefs,
+                          referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
+                            (e) => e.intermediaryId == item.id,
+                          ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -13814,7 +14058,11 @@ typedef $$IntermediariesTableProcessedTableManager =
       $$IntermediariesTableUpdateCompanionBuilder,
       (Intermediary, $$IntermediariesTableReferences),
       Intermediary,
-      PrefetchHooks Function({bool accountsRefs, bool assetsRefs})
+      PrefetchHooks Function({
+        bool accountsRefs,
+        bool assetsRefs,
+        bool importConfigsRefs,
+      })
     >;
 typedef $$AccountsTableCreateCompanionBuilder =
     AccountsCompanion Function({
@@ -16187,6 +16435,23 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
     );
   }
 
+  static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.importConfigs,
+    aliasName: $_aliasNameGenerator(db.assets.id, db.importConfigs.assetId),
+  );
+
+  $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
+    final manager = $$ImportConfigsTableTableManager(
+      $_db,
+      $_db.importConfigs,
+    ).filter((f) => f.assetId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_importConfigsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$IncomesTable, List<Income>> _incomesRefsTable(
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
@@ -16451,6 +16716,30 @@ class $$AssetsTableFilterComposer extends Composer<_$AppDatabase, $AssetsTable> 
           }) => $$MarketPricesTableFilterComposer(
             $db: $db,
             $table: $db.marketPrices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> importConfigsRefs(
+    Expression<bool> Function($$ImportConfigsTableFilterComposer f) f,
+  ) {
+    final $$ImportConfigsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.importConfigs,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportConfigsTableFilterComposer(
+            $db: $db,
+            $table: $db.importConfigs,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
@@ -16834,6 +17123,30 @@ class $$AssetsTableAnnotationComposer extends Composer<_$AppDatabase, $AssetsTab
     return f(composer);
   }
 
+  Expression<T> importConfigsRefs<T extends Object>(
+    Expression<T> Function($$ImportConfigsTableAnnotationComposer a) f,
+  ) {
+    final $$ImportConfigsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.importConfigs,
+      getReferencedColumn: (t) => t.assetId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportConfigsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.importConfigs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> incomesRefs<T extends Object>(
     Expression<T> Function($$IncomesTableAnnotationComposer a) f,
   ) {
@@ -16925,6 +17238,7 @@ class $$AssetsTableTableManager
             bool assetEventsRefs,
             bool assetSnapshotsRefs,
             bool marketPricesRefs,
+            bool importConfigsRefs,
             bool incomesRefs,
             bool assetCompositionsRefs,
             bool pillarAssetsRefs,
@@ -17049,6 +17363,7 @@ class $$AssetsTableTableManager
                 assetEventsRefs = false,
                 assetSnapshotsRefs = false,
                 marketPricesRefs = false,
+                importConfigsRefs = false,
                 incomesRefs = false,
                 assetCompositionsRefs = false,
                 pillarAssetsRefs = false,
@@ -17059,6 +17374,7 @@ class $$AssetsTableTableManager
                     if (assetEventsRefs) db.assetEvents,
                     if (assetSnapshotsRefs) db.assetSnapshots,
                     if (marketPricesRefs) db.marketPrices,
+                    if (importConfigsRefs) db.importConfigs,
                     if (incomesRefs) db.incomes,
                     if (assetCompositionsRefs) db.assetCompositions,
                     if (pillarAssetsRefs) db.pillarAssets,
@@ -17136,6 +17452,20 @@ class $$AssetsTableTableManager
                           ),
                           typedResults: items,
                         ),
+                      if (importConfigsRefs)
+                        await $_getPrefetchedData<Asset, $AssetsTable, ImportConfig>(
+                          currentTable: table,
+                          referencedTable: $$AssetsTableReferences._importConfigsRefsTable(db),
+                          managerFromTypedResult: (p0) => $$AssetsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).importConfigsRefs,
+                          referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
+                            (e) => e.assetId == item.id,
+                          ),
+                          typedResults: items,
+                        ),
                       if (incomesRefs)
                         await $_getPrefetchedData<Asset, $AssetsTable, Income>(
                           currentTable: table,
@@ -17203,6 +17533,7 @@ typedef $$AssetsTableProcessedTableManager =
         bool assetEventsRefs,
         bool assetSnapshotsRefs,
         bool marketPricesRefs,
+        bool importConfigsRefs,
         bool incomesRefs,
         bool assetCompositionsRefs,
         bool pillarAssetsRefs,
@@ -20078,7 +20409,10 @@ typedef $$AppConfigsTableProcessedTableManager =
 typedef $$ImportConfigsTableCreateCompanionBuilder =
     ImportConfigsCompanion Function({
       Value<int> id,
-      required int accountId,
+      Value<int?> accountId,
+      Value<int?> intermediaryId,
+      Value<int?> assetId,
+      Value<String> scope,
       Value<int> skipRows,
       Value<String> mappingsJson,
       Value<String> formulaJson,
@@ -20089,7 +20423,10 @@ typedef $$ImportConfigsTableCreateCompanionBuilder =
 typedef $$ImportConfigsTableUpdateCompanionBuilder =
     ImportConfigsCompanion Function({
       Value<int> id,
-      Value<int> accountId,
+      Value<int?> accountId,
+      Value<int?> intermediaryId,
+      Value<int?> assetId,
+      Value<String> scope,
       Value<int> skipRows,
       Value<String> mappingsJson,
       Value<String> formulaJson,
@@ -20109,14 +20446,53 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     $_aliasNameGenerator(db.importConfigs.accountId, db.accounts.id),
   );
 
-  $$AccountsTableProcessedTableManager get accountId {
-    final $_column = $_itemColumn<int>('account_id')!;
-
+  $$AccountsTableProcessedTableManager? get accountId {
+    final $_column = $_itemColumn<int>('account_id');
+    if ($_column == null) return null;
     final manager = $$AccountsTableTableManager(
       $_db,
       $_db.accounts,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_accountIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
+    $_aliasNameGenerator(
+      db.importConfigs.intermediaryId,
+      db.intermediaries.id,
+    ),
+  );
+
+  $$IntermediariesTableProcessedTableManager? get intermediaryId {
+    final $_column = $_itemColumn<int>('intermediary_id');
+    if ($_column == null) return null;
+    final manager = $$IntermediariesTableTableManager(
+      $_db,
+      $_db.intermediaries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_intermediaryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
+    $_aliasNameGenerator(db.importConfigs.assetId, db.assets.id),
+  );
+
+  $$AssetsTableProcessedTableManager? get assetId {
+    final $_column = $_itemColumn<int>('asset_id');
+    if ($_column == null) return null;
+    final manager = $$AssetsTableTableManager(
+      $_db,
+      $_db.assets,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_assetIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -20134,6 +20510,11 @@ class $$ImportConfigsTableFilterComposer extends Composer<_$AppDatabase, $Import
   });
   ColumnFilters<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scope => $composableBuilder(
+    column: $table.scope,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -20188,6 +20569,50 @@ class $$ImportConfigsTableFilterComposer extends Composer<_$AppDatabase, $Import
     );
     return composer;
   }
+
+  $$IntermediariesTableFilterComposer get intermediaryId {
+    final $$IntermediariesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableFilterComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AssetsTableFilterComposer get assetId {
+    final $$AssetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableFilterComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ImportConfigsTableOrderingComposer extends Composer<_$AppDatabase, $ImportConfigsTable> {
@@ -20200,6 +20625,11 @@ class $$ImportConfigsTableOrderingComposer extends Composer<_$AppDatabase, $Impo
   });
   ColumnOrderings<int> get id => $composableBuilder(
     column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scope => $composableBuilder(
+    column: $table.scope,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -20254,6 +20684,50 @@ class $$ImportConfigsTableOrderingComposer extends Composer<_$AppDatabase, $Impo
     );
     return composer;
   }
+
+  $$IntermediariesTableOrderingComposer get intermediaryId {
+    final $$IntermediariesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableOrderingComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AssetsTableOrderingComposer get assetId {
+    final $$AssetsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableOrderingComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ImportConfigsTableAnnotationComposer extends Composer<_$AppDatabase, $ImportConfigsTable> {
@@ -20265,6 +20739,8 @@ class $$ImportConfigsTableAnnotationComposer extends Composer<_$AppDatabase, $Im
     super.$removeJoinBuilderFromRootComposer,
   });
   GeneratedColumn<int> get id => $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get scope => $composableBuilder(column: $table.scope, builder: (column) => column);
 
   GeneratedColumn<int> get skipRows => $composableBuilder(column: $table.skipRows, builder: (column) => column);
 
@@ -20311,6 +20787,50 @@ class $$ImportConfigsTableAnnotationComposer extends Composer<_$AppDatabase, $Im
     );
     return composer;
   }
+
+  $$IntermediariesTableAnnotationComposer get intermediaryId {
+    final $$IntermediariesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.intermediaryId,
+      referencedTable: $db.intermediaries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$IntermediariesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.intermediaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AssetsTableAnnotationComposer get assetId {
+    final $$AssetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.assetId,
+      referencedTable: $db.assets,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AssetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.assets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$ImportConfigsTableTableManager
@@ -20326,7 +20846,11 @@ class $$ImportConfigsTableTableManager
           $$ImportConfigsTableUpdateCompanionBuilder,
           (ImportConfig, $$ImportConfigsTableReferences),
           ImportConfig,
-          PrefetchHooks Function({bool accountId})
+          PrefetchHooks Function({
+            bool accountId,
+            bool intermediaryId,
+            bool assetId,
+          })
         > {
   $$ImportConfigsTableTableManager(_$AppDatabase db, $ImportConfigsTable table)
     : super(
@@ -20339,7 +20863,10 @@ class $$ImportConfigsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                Value<int> accountId = const Value.absent(),
+                Value<int?> accountId = const Value.absent(),
+                Value<int?> intermediaryId = const Value.absent(),
+                Value<int?> assetId = const Value.absent(),
+                Value<String> scope = const Value.absent(),
                 Value<int> skipRows = const Value.absent(),
                 Value<String> mappingsJson = const Value.absent(),
                 Value<String> formulaJson = const Value.absent(),
@@ -20349,6 +20876,9 @@ class $$ImportConfigsTableTableManager
               }) => ImportConfigsCompanion(
                 id: id,
                 accountId: accountId,
+                intermediaryId: intermediaryId,
+                assetId: assetId,
+                scope: scope,
                 skipRows: skipRows,
                 mappingsJson: mappingsJson,
                 formulaJson: formulaJson,
@@ -20359,7 +20889,10 @@ class $$ImportConfigsTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                required int accountId,
+                Value<int?> accountId = const Value.absent(),
+                Value<int?> intermediaryId = const Value.absent(),
+                Value<int?> assetId = const Value.absent(),
+                Value<String> scope = const Value.absent(),
                 Value<int> skipRows = const Value.absent(),
                 Value<String> mappingsJson = const Value.absent(),
                 Value<String> formulaJson = const Value.absent(),
@@ -20369,6 +20902,9 @@ class $$ImportConfigsTableTableManager
               }) => ImportConfigsCompanion.insert(
                 id: id,
                 accountId: accountId,
+                intermediaryId: intermediaryId,
+                assetId: assetId,
+                scope: scope,
                 skipRows: skipRows,
                 mappingsJson: mappingsJson,
                 formulaJson: formulaJson,
@@ -20384,7 +20920,7 @@ class $$ImportConfigsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({accountId = false}) {
+          prefetchHooksCallback: ({accountId = false, intermediaryId = false, assetId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -20414,6 +20950,26 @@ class $$ImportConfigsTableTableManager
                               )
                               as T;
                     }
+                    if (intermediaryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.intermediaryId,
+                                referencedTable: $$ImportConfigsTableReferences._intermediaryIdTable(db),
+                                referencedColumn: $$ImportConfigsTableReferences._intermediaryIdTable(db).id,
+                              )
+                              as T;
+                    }
+                    if (assetId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.assetId,
+                                referencedTable: $$ImportConfigsTableReferences._assetIdTable(db),
+                                referencedColumn: $$ImportConfigsTableReferences._assetIdTable(db).id,
+                              )
+                              as T;
+                    }
 
                     return state;
                   },
@@ -20438,7 +20994,11 @@ typedef $$ImportConfigsTableProcessedTableManager =
       $$ImportConfigsTableUpdateCompanionBuilder,
       (ImportConfig, $$ImportConfigsTableReferences),
       ImportConfig,
-      PrefetchHooks Function({bool accountId})
+      PrefetchHooks Function({
+        bool accountId,
+        bool intermediaryId,
+        bool assetId,
+      })
     >;
 typedef $$IncomesTableCreateCompanionBuilder =
     IncomesCompanion Function({

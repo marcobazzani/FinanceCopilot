@@ -766,7 +766,8 @@ class ImportService {
             .into(_db.importConfigs)
             .insert(
               ImportConfigsCompanion.insert(
-                accountId: accountId,
+                accountId: Value(accountId),
+                scope: const Value('transaction'),
                 numberLocale: Value(override),
               ),
             );

@@ -64,7 +64,7 @@ void main() {
         isActive: const Value(false),
         // Advanced (unlock-only) fields surfaced by the UI
         assetType: const Value(AssetType.bondEtf),
-        valuationMethod: const Value(ValuationMethod.balance),
+        valuationMethod: const Value(ValuationMethod.eventDriven),
         intermediaryId: Value(iid2),
         currency: const Value('USD'),
         taxRate: const Value(0.125),
@@ -83,7 +83,7 @@ void main() {
     expect(out.ter, 0.07);
     expect(out.isActive, isFalse);
     expect(out.assetType, AssetType.bondEtf);
-    expect(out.valuationMethod, ValuationMethod.balance);
+    expect(out.valuationMethod, ValuationMethod.eventDriven);
     expect(out.intermediaryId, iid2);
     expect(out.currency, 'USD');
     expect(out.taxRate, 0.125);

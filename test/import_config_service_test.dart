@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/import/import_config_service.dart';
 
 void main() {
@@ -164,6 +165,115 @@ void main() {
       expect(jsonDecode(config!.mappingsJson), isEmpty);
       expect(jsonDecode(config.formulaJson), isEmpty);
       expect(jsonDecode(config.hashColumnsJson), isEmpty);
+    });
+  });
+
+  group('scoped configs (intermediary / asset / income)', () {
+    late int intermediaryId;
+    late int assetId;
+
+    setUp(() async {
+      intermediaryId = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Broker'));
+      assetId = await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'Pension',
+              assetType: AssetType.pension,
+              valuationMethod: ValuationMethod.eventDriven,
+              intermediaryId: intermediaryId,
+            ),
+          );
+    });
+
+    test('intermediary-scoped save/get round-trips', () async {
+      await service.saveScoped(
+        scope: ImportConfigScope.assetByIsin,
+        intermediaryId: intermediaryId,
+        skipRows: 3,
+        mappings: {'isin': 'ISIN', '__typeMode': 'column'},
+        formula: [],
+        hashColumns: [],
+        numberLocale: 'en_US',
+      );
+      final c = await service.getByIntermediary(intermediaryId);
+      expect(c, isNotNull);
+      expect(c!.scope, 'assetByIsin');
+      expect(c.intermediaryId, intermediaryId);
+      expect(c.accountId, isNull);
+      expect(c.assetId, isNull);
+      expect(c.skipRows, 3);
+      expect(c.numberLocale, 'en_US');
+    });
+
+    test('asset-scoped (single asset) save/get round-trips', () async {
+      await service.saveScoped(
+        scope: ImportConfigScope.assetSingle,
+        assetId: assetId,
+        skipRows: 0,
+        mappings: {'amount': 'Entrate', '__revalueAmountColumn': 'Saldo', '__revalueValues': '["POSIZIONE INDIVIDUALE"]'},
+        formula: [],
+        hashColumns: [],
+        numberLocale: 'it_IT',
+      );
+      final c = await service.getByAsset(assetId);
+      expect(c, isNotNull);
+      expect(c!.scope, 'assetSingle');
+      expect(c.assetId, assetId);
+      expect(c.intermediaryId, isNull);
+      final m = jsonDecode(c.mappingsJson) as Map<String, dynamic>;
+      expect(m['__revalueAmountColumn'], 'Saldo');
+      expect(m['__revalueValues'], '["POSIZIONE INDIVIDUALE"]');
+    });
+
+    test('income-scoped (global, no key) save/get round-trips', () async {
+      await service.saveScoped(
+        scope: ImportConfigScope.income,
+        skipRows: 1,
+        mappings: {'date': 'Data', 'amount': 'Netto'},
+        formula: [],
+        hashColumns: [],
+      );
+      final c = await service.getIncome();
+      expect(c, isNotNull);
+      expect(c!.scope, 'income');
+      expect(c.accountId, isNull);
+      expect(c.intermediaryId, isNull);
+      expect(c.assetId, isNull);
+    });
+
+    test('income upsert updates the single global row, never duplicates', () async {
+      await service.saveScoped(scope: ImportConfigScope.income, skipRows: 1, mappings: {}, formula: [], hashColumns: []);
+      await service.saveScoped(scope: ImportConfigScope.income, skipRows: 9, mappings: {'date': 'X'}, formula: [], hashColumns: []);
+      final c = await service.getIncome();
+      expect(c!.skipRows, 9);
+      final all = await db.select(db.importConfigs).get();
+      expect(all.where((r) => r.scope == 'income'), hasLength(1));
+    });
+
+    test('scopes are isolated — same asset/intermediary/account do not collide', () async {
+      // account and asset/intermediary configs coexist independently.
+      await service.save(accountId: accountId, skipRows: 1, mappings: {'date': 'acct'}, formula: [], hashColumns: []);
+      await service.saveScoped(
+        scope: ImportConfigScope.assetByIsin,
+        intermediaryId: intermediaryId,
+        skipRows: 2,
+        mappings: {'date': 'inter'},
+        formula: [],
+        hashColumns: [],
+      );
+      await service.saveScoped(
+        scope: ImportConfigScope.assetSingle,
+        assetId: assetId,
+        skipRows: 3,
+        mappings: {'date': 'asset'},
+        formula: [],
+        hashColumns: [],
+      );
+
+      expect((await service.getByAccount(accountId))!.skipRows, 1);
+      expect((await service.getByIntermediary(intermediaryId))!.skipRows, 2);
+      expect((await service.getByAsset(assetId))!.skipRows, 3);
     });
   });
 }

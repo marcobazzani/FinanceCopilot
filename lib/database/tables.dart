@@ -87,7 +87,7 @@ AssetClass defaultAssetClassFor(InstrumentType inst) => switch (inst) {
   _ => AssetClass.equity,
 };
 
-enum ValuationMethod { marketPrice, eventDriven, balance }
+enum ValuationMethod { marketPrice, eventDriven }
 
 enum EventType {
   buy,
@@ -348,7 +348,15 @@ class Incomes extends Table {
 /// Stores per-account import configuration (column mappings, skip rows, etc.)
 class ImportConfigs extends Table {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get accountId => integer().references(Accounts, #id)();
+
+  /// Scope key. Exactly one of accountId / intermediaryId / assetId is set
+  /// for a scoped config; all three are NULL for the single global income
+  /// config (distinguished by [scope] = 'income'). [scope] disambiguates:
+  /// 'transaction' | 'assetByIsin' | 'assetSingle' | 'income'.
+  IntColumn get accountId => integer().nullable().references(Accounts, #id)();
+  IntColumn get intermediaryId => integer().nullable().references(Intermediaries, #id)();
+  IntColumn get assetId => integer().nullable().references(Assets, #id)();
+  TextColumn get scope => text().withDefault(const Constant('transaction'))();
   IntColumn get skipRows => integer().withDefault(const Constant(0))();
   TextColumn get mappingsJson => text().withDefault(const Constant('{}'))(); // JSON: {targetField: sourceColumn}
   TextColumn get formulaJson => text().withDefault(const Constant('[]'))(); // JSON: [{operator, sourceColumn}]
