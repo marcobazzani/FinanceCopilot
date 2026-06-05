@@ -269,39 +269,52 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
     // Effective total: the real (filtered) count when we have the full set;
     // the parser's total otherwise.
     final effectiveTotal = usingFull ? source.length : totalRows;
-    // "Show all" is offered whenever the collapsed view doesn't already show
-    // every row — either because the parser capped the sample (effectiveTotal
-    // > source.length) or because we're slicing a >10 source into first/last 5.
+    // The collapsed view shows everything only when the source IS the whole
+    // set AND it's small (≤10). Otherwise the middle is hidden: either the
+    // parser capped to first-5/last-5 (source.length 10, effectiveTotal more)
+    // or we're slicing a >10 full set.
     final collapsedShowsAll = source.length <= 10 && effectiveTotal <= source.length;
     final hasMore = !_showAllPreviewRows && (!collapsedShowsAll || _loadingTransformedFull);
+    final hiddenCount = effectiveTotal - 10;
 
-    // Build the displayed row list. null entries are the ellipsis separator.
+    // Build the displayed row list. null entries are the separator band.
     final List<Map<String, String>?> display;
     if (_showAllPreviewRows) {
       // Showing every row. Prefer the lazily-loaded _showAllRows (capped path),
       // else the full transformed set, else the in-memory source.
       final all = _showAllRows ?? (usingFull ? source : null) ?? source;
       display = List<Map<String, String>?>.from(all);
-    } else if (source.length <= 10) {
+    } else if (collapsedShowsAll) {
+      // Small, complete set: show every row, no separator.
       display = List<Map<String, String>?>.from(source);
     } else {
+      // Middle hidden: first 5 + separator band + last 5. For the capped
+      // sample `source` is already exactly the first-5 + last-5 of the file.
       display = [
         ...source.take(5),
-        null, // ellipsis separator
+        null, // separator band
         ...source.skip(source.length - 5),
       ];
     }
 
     DataRow buildRow(Map<String, String>? row) {
       if (row == null) {
+        // Separator: a tinted band spanning the table, labelled with the
+        // hidden-row count, so it clearly reads as a divider (not a row).
+        final label = '⋯  ${s.hiddenRows(hiddenCount)}  ⋯';
         return DataRow(
+          color: WidgetStateProperty.all(Colors.grey.withValues(alpha: 0.12)),
           cells: List.generate(
             columns.length,
             (i) => DataCell(
-              i == 0
-                  ? Text(
-                      s.hiddenRows(source.length - 10),
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+              // Repeat the centred label in the middle column for visibility;
+              // other cells stay empty so the band reads as one divider.
+              i == (columns.length ~/ 2)
+                  ? Center(
+                      child: Text(
+                        label,
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontStyle: FontStyle.italic),
+                      ),
                     )
                   : const SizedBox.shrink(),
             ),
