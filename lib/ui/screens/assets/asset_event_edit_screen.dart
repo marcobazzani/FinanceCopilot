@@ -193,7 +193,12 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Event type — show only relevant types
+            // Event type — show only relevant types.
+            // Locked when editing: an event's type defines its semantics
+            // (buy/sell = qty×price, revalue = total position value).
+            // Switching it in place corrupts the position (stale qty/price
+            // get reinterpreted as a revalue amount). To change type, delete
+            // and recreate. Passing onChanged=null disables the dropdown.
             DropdownButtonFormField<EventType>(
               initialValue: _eventType,
               decoration: InputDecoration(
@@ -205,11 +210,13 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
                 EventType.sell,
                 EventType.revalue,
               ].map((t) => DropdownMenuItem(value: t, child: Text(t.name))).toList(),
-              onChanged: (v) {
-                setState(() => _eventType = v!);
-                _onFieldChanged();
-                if (!_isRevalue) _fetchAssetPrice();
-              },
+              onChanged: _isEditing
+                  ? null
+                  : (v) {
+                      setState(() => _eventType = v!);
+                      _onFieldChanged();
+                      if (!_isRevalue) _fetchAssetPrice();
+                    },
             ),
             const SizedBox(height: 12),
 

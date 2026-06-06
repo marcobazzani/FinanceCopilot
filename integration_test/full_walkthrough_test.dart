@@ -788,16 +788,21 @@ void main() {
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 8b.i: drive AssetEventEditScreen end-to-end via UI — create →
-    // edit (switch to revalue) → delete. Locale-agnostic values (whole
+    // edit (type LOCKED) → delete. Locale-agnostic values (whole
     // integers) so fmt.tryParseLocalized succeeds whether the test
     // process's Platform.localeName is en_US, it_IT, etc.
     //
-    // Covers ~220 of 245 lines in asset_event_edit_screen.dart (the
-    // dropdown, qty×price auto-amount, currency switch + FX fetch,
-    // revalue branch that hides qty/price, save (insert + update),
-    // delete-confirm dialog).
+    // The event type is immutable once an event exists — switching a buy
+    // into a revalue in place reinterprets the stale qty/price as a revalue
+    // amount and corrupts the position. So in edit mode the type dropdown is
+    // disabled (onChanged == null); this step asserts that lock and that the
+    // event stays a buy across the edit.
+    //
+    // Covers the dropdown (create-enabled / edit-locked), qty×price
+    // auto-amount, currency switch + FX fetch, save (insert + update),
+    // delete-confirm dialog.
     // ─────────────────────────────────────────────────────────────────────
-    _step('8b.i. AssetEventEditScreen UI — create + edit (revalue) + delete');
+    _step('8b.i. AssetEventEditScreen UI — create + edit (type locked) + delete');
     await tester.tap(find.text('Assets').first);
     await longSettle(tester);
     // Pick the asset whose visible name matches a row in the list. We try
@@ -853,51 +858,57 @@ void main() {
         }
       }
 
-      // ── EDIT: reopen newest event row, switch to revalue ──
+      // ── EDIT: reopen newest event row; type must be LOCKED ──
       // The newest event renders at the top of the list — tap its row.
       // ListTile rows are inside Card widgets; find the first event-type
       // chip text and walk up.
+      //
+      // This step is best-effort UI coverage: on some emulators tapping the
+      // chip doesn't land on the edit screen (the FAB may surface a fresh
+      // create screen, whose dropdown is intentionally enabled). The strict
+      // create=enabled / edit=locked invariant is pinned deterministically in
+      // test/ui/asset_event_edit_type_lock_test.dart. Here we only assert the
+      // lock once we've CONFIRMED we're on the edit screen — signalled by the
+      // edit-only AppBar delete icon (asset_event_edit_screen.dart) — so the
+      // walkthrough never false-fails on a create-screen dropdown.
       final buyChip = find.text('buy');
       if (buyChip.evaluate().isNotEmpty) {
         await tester.tap(buyChip.first);
         await longSettle(tester);
-        // Open the type dropdown and pick revalue.
         final typeDropdown = find.byType(DropdownButtonFormField<EventType>);
-        if (typeDropdown.evaluate().isNotEmpty) {
+        final inEditScreen = find.byIcon(Icons.delete_outline).evaluate().isNotEmpty;
+        if (inEditScreen && typeDropdown.evaluate().isNotEmpty) {
+          final dropdownWidget = tester.widget<DropdownButtonFormField<EventType>>(typeDropdown.first);
+          expect(
+            dropdownWidget.onChanged,
+            isNull,
+            reason: 'event type dropdown must be disabled (locked) when editing an existing event',
+          );
+          // Tapping it must NOT open a menu — the revalue option stays absent.
           await tester.tap(typeDropdown.first);
           await longSettle(tester);
-          // Soft-guard: on Android the dropdown may not have opened (a
-          // focused text field can absorb the tap), in which case
-          // .last would throw "Bad state: No element".
-          final revalueOption = find.text('revalue');
-          if (revalueOption.evaluate().isEmpty) {
-            _step('   ⚠ skipping 8b.i revalue edit — option not in dropdown');
-          } else {
-            await tester.tap(revalueOption.last);
+          expect(
+            find.text('revalue').evaluate().isEmpty,
+            isTrue,
+            reason: 'locked type dropdown must not surface other type options',
+          );
+          // Save unchanged — the event must remain a buy.
+          final saveEdit = find.byType(FilledButton);
+          if (saveEdit.evaluate().isNotEmpty) {
+            await tester.ensureVisible(saveEdit.first);
+            await tester.tap(saveEdit.first);
             await longSettle(tester);
-            // After switching to revalue: qty/price/commission/currency hide.
-            // The amount field is now the editable one ("Current value").
-            final revalueFields = find.byType(TextFormField);
-            // date(0), amount(1), notes(2) after the type switch.
-            if (revalueFields.evaluate().length >= 2) {
-              await tester.enterText(revalueFields.at(1), '1500');
-              await settle(tester);
-            }
-            final saveEdit = find.byType(FilledButton);
-            if (saveEdit.evaluate().isNotEmpty) {
-              await tester.ensureVisible(saveEdit.first);
-              await tester.tap(saveEdit.first);
-              await longSettle(tester);
-              _step('   ✓ edited to revalue (amount=1500)');
-            }
+            _step('   ✓ edit: type dropdown locked, event still a buy');
           }
+        } else {
+          _step('   ⚠ skipping 8b.i edit-lock assert — edit screen not reached');
         }
       }
 
-      // ── DELETE: reopen the event we just revalued, tap AppBar delete ──
-      final revalueChip = find.text('revalue');
-      if (revalueChip.evaluate().isNotEmpty) {
-        await tester.tap(revalueChip.first);
+      // ── DELETE: reopen the buy event, tap AppBar delete ──
+      final deleteChip = find.text('buy');
+      if (deleteChip.evaluate().isNotEmpty) {
+        await tester.tap(deleteChip.first);
         await longSettle(tester);
         final deleteIcon = find.byIcon(Icons.delete_outline);
         if (deleteIcon.evaluate().isNotEmpty) {
@@ -910,7 +921,7 @@ void main() {
           if (confirmBtn.evaluate().isNotEmpty) {
             await tester.tap(confirmBtn.last);
             await longSettle(tester);
-            _step('   ✓ revalue event deleted via UI');
+            _step('   ✓ buy event deleted via UI');
           }
         }
       }
