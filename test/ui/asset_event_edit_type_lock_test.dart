@@ -26,10 +26,14 @@ void main() {
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    final iid = await db.into(db.intermediaries).insert(
+    final iid = await db
+        .into(db.intermediaries)
+        .insert(
           IntermediariesCompanion.insert(name: 'Default'),
         );
-    final assetId = await db.into(db.assets).insert(
+    final assetId = await db
+        .into(db.assets)
+        .insert(
           AssetsCompanion.insert(
             name: 'VWCE',
             assetType: AssetType.stockEtf,
@@ -40,7 +44,9 @@ void main() {
           ),
         );
     asset = await (db.select(db.assets)..where((a) => a.id.equals(assetId))).getSingle();
-    final eventId = await db.into(db.assetEvents).insert(
+    final eventId = await db
+        .into(db.assetEvents)
+        .insert(
           AssetEventsCompanion.insert(
             assetId: assetId,
             date: DateTime(2024, 3, 15),
@@ -105,7 +111,8 @@ void main() {
     expect(
       typeDropdown(tester).onChanged,
       isNull,
-      reason: 'type must be immutable when editing an existing event '
+      reason:
+          'type must be immutable when editing an existing event '
           '(buy->revalue in place corrupts the position)',
     );
     await teardownTree(tester);

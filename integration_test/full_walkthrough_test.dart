@@ -862,14 +862,22 @@ void main() {
       // The newest event renders at the top of the list — tap its row.
       // ListTile rows are inside Card widgets; find the first event-type
       // chip text and walk up.
+      //
+      // This step is best-effort UI coverage: on some emulators tapping the
+      // chip doesn't land on the edit screen (the FAB may surface a fresh
+      // create screen, whose dropdown is intentionally enabled). The strict
+      // create=enabled / edit=locked invariant is pinned deterministically in
+      // test/ui/asset_event_edit_type_lock_test.dart. Here we only assert the
+      // lock once we've CONFIRMED we're on the edit screen — signalled by the
+      // edit-only AppBar delete icon (asset_event_edit_screen.dart) — so the
+      // walkthrough never false-fails on a create-screen dropdown.
       final buyChip = find.text('buy');
       if (buyChip.evaluate().isNotEmpty) {
         await tester.tap(buyChip.first);
         await longSettle(tester);
-        // The type dropdown must be disabled in edit mode (onChanged == null),
-        // so an existing buy can never be flipped into a revalue in place.
         final typeDropdown = find.byType(DropdownButtonFormField<EventType>);
-        if (typeDropdown.evaluate().isNotEmpty) {
+        final inEditScreen = find.byIcon(Icons.delete_outline).evaluate().isNotEmpty;
+        if (inEditScreen && typeDropdown.evaluate().isNotEmpty) {
           final dropdownWidget = tester.widget<DropdownButtonFormField<EventType>>(typeDropdown.first);
           expect(
             dropdownWidget.onChanged,
@@ -892,6 +900,8 @@ void main() {
             await longSettle(tester);
             _step('   ✓ edit: type dropdown locked, event still a buy');
           }
+        } else {
+          _step('   ⚠ skipping 8b.i edit-lock assert — edit screen not reached');
         }
       }
 
