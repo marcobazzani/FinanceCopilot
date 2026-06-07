@@ -1,7 +1,10 @@
 name: finance_copilot
 description: "Personal wealth management app — replaces MoneyHistory.xlsx"
 publish_to: 'none'
-version: 0.2.0+2
+# Placeholder only — the real version is injected at build time from the git
+# tag via CI (--build-name/--build-number). Never bump this by hand; local/dev
+# builds intentionally report 0.0.0 so they are obviously not a release.
+version: 0.0.0+1
 
 environment:
   sdk: ^3.8.1

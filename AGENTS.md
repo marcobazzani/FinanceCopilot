@@ -128,6 +128,12 @@ The script writes the last `-Tail` lines to `C:\fc_applog.txt` and appends `READ
 
 Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 
+**Single source of truth = the git tag. Never bump versions by hand** (not `lib/version.dart`, not `pubspec.yaml`, not `android/local.properties`). On a `vX.Y.Z` tag, CI injects the version everywhere:
+- `lib/version.dart` `appVersion` is rewritten in-place (in-app display version).
+- Native build version (Android `versionName`/`versionCode`, macOS/Windows) is set via `flutter build --build-name=X.Y.Z --build-number=<run_number>`.
+
+`pubspec.yaml` stays at the placeholder `0.0.0+1` and `android/local.properties` carries no `flutter.versionName`/`flutter.versionCode` lines, so local/dev builds intentionally report `0.0.0` (obviously not a release). If a stale `flutter.versionName=...` reappears in `local.properties` (Flutter sometimes caches it), delete those two lines — do not edit them.
+
 - Always use `./tool/do-release.sh` for releases (it `cd`s to the repo root itself, so it can be run from anywhere). It is the release entrypoint; do not hand-run the individual tag/release steps unless the script itself cannot complete. If a pre-release cleanup hook is available, pass it via `--cleanup-cmd` or `PRE_RELEASE_CLEANUP_CMD`.
 - The script accepts `--version`, `--title`, and optional `--merge-pr`, `--notes-file`, `--cleanup-cmd`, `--skip-cleanup`, and `--no-sync-develop`.
 
