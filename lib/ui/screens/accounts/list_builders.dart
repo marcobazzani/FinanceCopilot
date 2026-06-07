@@ -11,57 +11,36 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     }
 
     final txById = <int, Transaction>{for (final t in filtered) t.id: t};
-    final transferOfTx = <int, _TransferEntry>{};
 
-    // Bucket by (day, currency, |amount in cents|).
-    final buckets = <String, ({List<Transaction> pos, List<Transaction> neg})>{};
-    for (final t in filtered) {
-      if (t.amount == 0) continue;
-      final cents = (t.amount.abs() * 100).round();
-      final k = '${dayKey(t.valueDate)}|${t.currency}|$cents';
-      final bucket = buckets[k] ?? (pos: <Transaction>[], neg: <Transaction>[]);
-      if (t.amount > 0) {
-        bucket.pos.add(t);
-      } else {
-        bucket.neg.add(t);
-      }
-      buckets[k] = bucket;
+    // Deterministic pairing (cross-account transfers first, then same-account
+    // no-ops) lives in a pure, unit-tested helper.
+    final pairing = pairTransactions(filtered, dayKey);
+    final transferOfTx = <int, _TransferEntry>{};
+    for (final p in pairing.transfers) {
+      final entry = _TransferEntry(inflow: txById[p.inflowId]!, outflow: txById[p.outflowId]!);
+      transferOfTx[p.inflowId] = entry;
+      transferOfTx[p.outflowId] = entry;
     }
-    for (final bucket in buckets.values) {
-      final pos = bucket.pos;
-      final neg = bucket.neg;
-      if (pos.isEmpty || neg.isEmpty) continue;
-      // Greedy pair: each positive consumes the first available negative
-      // belonging to a different account.
-      final consumedNeg = <int>{};
-      for (final p in pos) {
-        Transaction? match;
-        for (final n in neg) {
-          if (consumedNeg.contains(n.id)) continue;
-          if (n.accountId == p.accountId) continue;
-          match = n;
-          break;
-        }
-        if (match == null) continue;
-        consumedNeg.add(match.id);
-        final pair = _TransferEntry(inflow: p, outflow: match);
-        transferOfTx[p.id] = pair;
-        transferOfTx[match.id] = pair;
-      }
+    final noOpOfTx = <int, _NoOpEntry>{};
+    for (final p in pairing.noOps) {
+      final entry = _NoOpEntry(inflow: txById[p.inflowId]!, outflow: txById[p.outflowId]!);
+      noOpOfTx[p.inflowId] = entry;
+      noOpOfTx[p.outflowId] = entry;
     }
 
     final result = <_Entry>[];
-    final emitted = <_TransferEntry>{};
+    final emitted = <_Entry>{};
     for (final t in filtered) {
-      final pair = transferOfTx[t.id];
-      if (pair != null) {
-        if (emitted.add(pair)) result.add(pair);
+      final transfer = transferOfTx[t.id];
+      final noOp = noOpOfTx[t.id];
+      if (transfer != null) {
+        if (emitted.add(transfer)) result.add(transfer);
+      } else if (noOp != null) {
+        if (emitted.add(noOp)) result.add(noOp);
       } else {
         result.add(_TxEntry(t));
       }
     }
-    // Silence the unused warning for txById in release builds.
-    assert(txById.isNotEmpty);
     return result;
   }
 
@@ -73,7 +52,9 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     required dynamic dateFmt,
     required Map<int, String> accountNameById,
     required AppStrings s,
+    String? adjustedLabel,
   }) {
+    final isCancelled = tx.status == TransactionStatus.cancelled;
     final tile = ListTile(
       dense: true,
       leading: CircleAvatar(
@@ -85,11 +66,55 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
           color: isPositive ? Colors.green : Colors.red,
         ),
       ),
-      title: Text(
-        tx.description.isNotEmpty ? tx.description : s.noDescription,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 14),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              tx.description.isNotEmpty ? tx.description : s.noDescription,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                decoration: isCancelled ? TextDecoration.lineThrough : null,
+                color: isCancelled ? Theme.of(context).disabledColor : null,
+              ),
+            ),
+          ),
+          if (isCancelled) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                s.cancelledLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+            ),
+          ],
+          if (adjustedLabel != null) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                adjustedLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
       subtitle: _isReadOnly
           ? Row(
@@ -124,8 +149,9 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
             '${isPositive ? '+' : ''}${rowAmtFmt.format(tx.amount)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
+              color: isCancelled ? Theme.of(context).disabledColor : (isPositive ? Colors.green.shade700 : Colors.red.shade700),
               fontSize: 14,
+              decoration: isCancelled ? TextDecoration.lineThrough : null,
             ),
           ),
           if (!_isReadOnly) ...[

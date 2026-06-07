@@ -172,6 +172,39 @@ final extraordinaryEventStatsProvider = StreamProvider<Map<int, ExtraordinaryEve
   return ref.watch(extraordinaryEventServiceProvider).watchStatsForAll(through: through);
 });
 
+/// Aggregated adjustment inputs for the read-only All-Accounts view:
+/// active events + their entries + buffer reimbursements, grouped by event id.
+/// Reactive on the events stream so it rebuilds when adjustments change.
+final adjustmentInputsProvider = FutureProvider<AdjustmentInputs>((ref) async {
+  final events = await ref.watch(extraordinaryEventsProvider.future);
+  final db = ref.watch(databaseProvider);
+  final entriesByEvent = <int, List<ExtraordinaryEventEntry>>{};
+  final reimbByEvent = <int, List<BufferTransaction>>{};
+  for (final e in events) {
+    entriesByEvent[e.id] = await (db.select(db.extraordinaryEventEntries)..where((t) => t.eventId.equals(e.id))).get();
+    if (e.bufferId != null) {
+      reimbByEvent[e.id] =
+          await (db.select(db.bufferTransactions)
+                ..where((t) => t.bufferId.equals(e.bufferId!))
+                ..where((t) => t.isReimbursement.equals(true)))
+              .get();
+    }
+  }
+  return AdjustmentInputs(events: events, entriesByEvent: entriesByEvent, reimbursementsByEvent: reimbByEvent);
+});
+
+/// Plain bag of adjustment inputs (see [adjustmentInputsProvider]).
+class AdjustmentInputs {
+  final List<ExtraordinaryEvent> events;
+  final Map<int, List<ExtraordinaryEventEntry>> entriesByEvent;
+  final Map<int, List<BufferTransaction>> reimbursementsByEvent;
+  const AdjustmentInputs({
+    required this.events,
+    required this.entriesByEvent,
+    required this.reimbursementsByEvent,
+  });
+}
+
 // ── Income stream providers ──
 
 final incomesProvider = StreamProvider<List<Income>>((ref) {

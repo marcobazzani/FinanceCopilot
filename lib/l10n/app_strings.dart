@@ -682,6 +682,13 @@ class AppStrings {
   String get fullDescription => _it ? 'Descrizione completa' : 'Full Description';
   String get balanceAfter => _it ? 'Saldo successivo' : 'Balance After';
   String get statusLabel => _it ? 'Stato' : 'Status';
+  String get cancelledLabel => _it ? 'Annullata' : 'Cancelled';
+  String get noOpLabel => _it ? 'Compensata' : 'No-op';
+  String adjustedForLabel(String name) => _it ? 'Rettifica: $name' : 'Adjusted: $name';
+  String reimbForLabel(String name) => _it ? 'Rimborso $name' : '$name reimb.';
+  String savingForLabel(String name) => _it ? 'Risparmio per $name' : 'Saving for $name';
+  String financedForLabel(String name) => _it ? 'Finanziato: $name' : 'Financed: $name';
+  String get adjustmentBadge => _it ? 'Rettifica' : 'Adjustment';
   String get createTransaction => _it ? 'Crea transazione' : 'Create Transaction';
   String get deleteTransactionTitle => _it ? 'Elimina transazione?' : 'Delete Transaction?';
 

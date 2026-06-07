@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:finance_copilot/ui/screens/accounts/entry_pairing.dart';
+import 'package:finance_copilot/ui/screens/accounts/adjustment_items.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
@@ -85,6 +87,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
             for (final a in (ref.watch(accountsProvider).value ?? const <Account>[])) a.id: a.name,
           }
         : const <int, String>{};
+
+    // Adjustment inputs (extraordinary events) — only used in All-accounts mode
+    // to annotate matching transactions and materialize "Saving for X" rows,
+    // mirroring the dashboard NAV adjustment composition.
+    final adjInputs = _isReadOnly ? ref.watch(adjustmentInputsProvider).value : null;
 
     return ListenableBuilder(
       listenable: _selection,
@@ -205,11 +212,53 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     // same day, same currency, equal & opposite amounts, on
                     // different accounts. The two legs collapse into one row and
                     // are excluded from income/expense totals.
-                    final entries = _buildEntries(
+                    final txEntries = _buildEntries(
                       filtered: filtered,
                       detectTransfers: _isReadOnly,
                       dayKey: dayKey,
                     );
+
+                    // Resolve extraordinary-event adjustments against the
+                    // transactions (All-accounts only): annotate matching
+                    // anchor/reimbursement txns (excluded from totals) and
+                    // materialize "Saving for X" rows (included), mirroring NAV.
+                    final AdjustmentResolution? adj = (_isReadOnly && adjInputs != null)
+                        ? resolveAdjustments(
+                            events: adjInputs.events,
+                            entriesByEvent: adjInputs.entriesByEvent,
+                            reimbursementsByEvent: adjInputs.reimbursementsByEvent,
+                            transactions: filtered,
+                            dayKey: dayKey,
+                            adjustedLabel: s.adjustedForLabel,
+                            reimbLabel: s.reimbForLabel,
+                            savingForLabel: s.savingForLabel,
+                            financedLabel: s.financedForLabel,
+                          )
+                        : null;
+                    final annotatedTxIds = adj?.annotatedTxIds ?? const <int, String>{};
+
+                    // Merge synthetic "Saving for X" rows into the entry stream.
+                    // txEntries already arrive newest-first (valueDate desc, id
+                    // desc) from the provider — preserve that exactly. Only when
+                    // saving rows exist do we merge them in by date (desc),
+                    // inserting each before the first older entry so existing
+                    // same-day order is untouched.
+                    final savingEntries = <_AdjustmentEntry>[
+                      if (adj != null)
+                        for (final item in adj.savingItems) _AdjustmentEntry(date: item.date, amount: item.amount, eventName: item.eventName),
+                    ];
+                    final List<_Entry> entries;
+                    if (savingEntries.isEmpty) {
+                      entries = txEntries;
+                    } else {
+                      final merged = List<_Entry>.of(txEntries);
+                      for (final se in savingEntries) {
+                        var idx = merged.indexWhere((e) => e.valueDate.isBefore(se.valueDate));
+                        if (idx < 0) idx = merged.length;
+                        merged.insert(idx, se);
+                      }
+                      entries = merged;
+                    }
 
                     // Pre-compute per-day/per-month income/expense totals, grouped
                     // by currency so mixed-currency views can show one line per
@@ -231,8 +280,20 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
                     for (final e in entries) {
                       if (e is _TxEntry) {
+                        // Cancelled transactions never moved money — show them
+                        // (struck-through) but exclude from income/expense totals.
+                        if (e.tx.status == TransactionStatus.cancelled) continue;
+                        // Adjustment-linked transactions (anchor / reimbursement)
+                        // are accounted for via the adjustment mechanism (NAV),
+                        // not as cashflow — show but exclude from totals.
+                        if (annotatedTxIds.containsKey(e.tx.id)) continue;
                         accumulate(dayTotals, dayKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
                         accumulate(monthTotals, monthKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
+                      } else if (e is _AdjustmentEntry) {
+                        // Synthetic "Saving for X" rows DO count, mirroring NAV's
+                        // distribution of the spread over time (currency = base EUR).
+                        accumulate(dayTotals, dayKey(e.valueDate), 'EUR', e.amount);
+                        accumulate(monthTotals, monthKey(e.valueDate), 'EUR', e.amount);
                       }
                     }
                     return MobilePullToRefresh(
@@ -257,6 +318,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               dateFmt: dateFmt,
                               accountNameById: accountNameById,
                               s: s,
+                              adjustedLabel: annotatedTxIds[tx.id],
                             );
                           }
 
@@ -268,6 +330,16 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               s: s,
                               legTileBuilder: buildSingleTxTile,
                             );
+                          } else if (entry is _NoOpEntry) {
+                            body = _NoOpTile(
+                              entry: entry,
+                              accountNameById: accountNameById,
+                              locale: locale,
+                              s: s,
+                              legTileBuilder: buildSingleTxTile,
+                            );
+                          } else if (entry is _AdjustmentEntry) {
+                            body = _AdjustmentTile(entry: entry, locale: locale, s: s);
                           } else {
                             body = buildSingleTxTile((entry as _TxEntry).tx);
                           }
