@@ -198,6 +198,13 @@ jobs:
             VERSION="0.0.0-${GITHUB_SHA::7}"
             echo "channel=nightly" >> "$GITHUB_OUTPUT"
           fi
+          # Android versionName: strip any pre-release suffix (e.g. -dev / -sha)
+          # so it is a clean dotted version; versionCode must be a strictly
+          # increasing integer, so derive it from the run number.
+          BUILD_NAME="${VERSION%%-*}"
+          BUILD_NUMBER="${{ github.run_number }}"
+          echo "build_name=$BUILD_NAME" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           # Rewrite the appVersion constant in-place (not committed)
           python3 -c "
           import re, pathlib
@@ -232,6 +239,8 @@ jobs:
         run: |
           sed -i'' -e '/integration_test\/fixtures/d' pubspec.yaml
           flutter build ${{ matrix.platform }} --release \
+            --build-name=${{ steps.channel.outputs.build_name }} \
+            --build-number=${{ steps.channel.outputs.build_number }} \
             --dart-define=COMMIT_SHA=${{ github.sha }} \
             --dart-define=CHANNEL=${{ steps.channel.outputs.channel }} \
             --dart-define=DB_FILE_NAME=finance_copilot.db \
