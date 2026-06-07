@@ -984,6 +984,13 @@ class ImportService {
         final included = balanceFilterInclude == null || balanceFilterInclude.isEmpty || balanceFilterInclude.contains(filterVal);
         if (included) {
           balanceCents += toCents(rows[i].amount);
+        } else {
+          // Excluded from the balance == not a real movement (cancelled/
+          // declined). Mark it so downstream views can show it struck-through
+          // and exclude it from amount-based totals. Balance is intentionally
+          // left as the carried running value (it did not move money), and an
+          // explicit status-column mapping, if any, is not overridden.
+          rows[i].status ??= TransactionStatus.cancelled;
         }
         rows[i].balanceAfter = fromCents(balanceCents);
       }
@@ -1000,7 +1007,12 @@ class _ParsedTransactionRow {
   final String description;
   final double? balanceAfterFromColumn;
   final String currency;
-  final TransactionStatus? status;
+
+  /// Mutable: filtered balance mode sets this to [TransactionStatus.cancelled]
+  /// for rows whose filter value is excluded from the balance, so an
+  /// excluded ("not real") row is also marked cancelled. Defaults to the
+  /// explicit status-column mapping (if any), else null → DB default settled.
+  TransactionStatus? status;
   final Map<String, String> rawMetadata;
   final String? hash;
   final String? filterColumnValue;

@@ -391,6 +391,13 @@ void main() {
       expect(byDesc['excluded'], 0.0, reason: 'excluded tx not counted, balance stays 0');
       expect(byDesc['included'], 100.0, reason: 'first included tx');
       expect(byDesc['included2'], 175.0, reason: 'second included tx adds to running total');
+
+      // The excluded row never moved the balance → it must also be marked
+      // cancelled, consistent with the importer's filtered-mode behavior.
+      final byStatus = {for (final tx in txs) tx.description: tx.status};
+      expect(byStatus['excluded'], TransactionStatus.cancelled);
+      expect(byStatus['included'], TransactionStatus.settled);
+      expect(byStatus['included2'], TransactionStatus.settled);
     });
   });
 

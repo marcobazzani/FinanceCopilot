@@ -206,7 +206,7 @@ void main() {
   });
 
   group('DB merge column intersection', () {
-    test('schema version is 46 after the current migration chain', () async {
+    test('schema version is 47 after the current migration chain', () async {
       // v36 added Pillars + PillarAssets. v37 dropped
       // pillars.reference_portfolio. v38 dropped pillars.emoji. v39 dropped
       // assets.yahoo_ticker + registered_events. v40 renamed legacy
@@ -219,9 +219,10 @@ void main() {
       // v44 added scope/intermediary_id/asset_id to import_configs.
       // v45 made import_configs.account_id nullable (rebuild).
       // v46 dropped ValuationMethod.balance (assets converted to marketPrice).
+      // v47 marked cancelled transactions from filtered import configs.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 46);
+      expect(version, 47);
     });
 
     test('dashboard_charts table is gone', () async {
