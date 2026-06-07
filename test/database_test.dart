@@ -6,6 +6,10 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 
 void main() {
+  // Suppress the Drift "multiple databases" warning that fires when a test
+  // intentionally opens a second in-memory DB instance.
+  setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
+
   late AppDatabase db;
 
   setUp(() {
@@ -212,6 +216,66 @@ void main() {
                 ..where((t) => t.importHash.equals(hash)))
               .get();
       expect(duplicate, hasLength(1)); // Would skip this row on re-import
+    });
+  });
+
+  group('Orphaned transaction purge', () {
+    test('purge removes transactions with no matching account', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Fineco'));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 6, 1),
+              valueDate: DateTime(2024, 6, 1),
+              amount: -20.0,
+            ),
+          );
+
+      // Insert an orphan bypassing FK.
+      await db.customStatement('PRAGMA foreign_keys = OFF');
+      await db.customStatement(
+        'INSERT INTO transactions (account_id, operation_date, value_date, amount, description, currency, tags) '
+        "VALUES (88888, strftime('%s','2024-06-01'), strftime('%s','2024-06-01'), -77.0, 'orphan', 'EUR', '[]')",
+      );
+      await db.customStatement('PRAGMA foreign_keys = ON');
+
+      final before = await db.customSelect('SELECT COUNT(*) AS cnt FROM transactions').getSingle();
+      expect(before.read<int>('cnt'), 2, reason: 'orphan inserted');
+
+      // Run the same SQL the startup beforeOpen hook runs.
+      final deleted = await db.customUpdate(
+        'DELETE FROM transactions WHERE account_id NOT IN (SELECT id FROM accounts)',
+        updates: {db.transactions},
+        updateKind: UpdateKind.delete,
+      );
+      expect(deleted, 1, reason: 'exactly one orphan removed');
+
+      final after = await db.select(db.transactions).get();
+      expect(after, hasLength(1));
+      expect(after.first.amount, -20.0);
+    });
+
+    test('purge is a no-op when all transactions have valid accounts', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'KBC'));
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accountId,
+              operationDate: DateTime(2024, 3, 10),
+              valueDate: DateTime(2024, 3, 10),
+              amount: 1000.0,
+            ),
+          );
+      final deleted = await db.customUpdate(
+        'DELETE FROM transactions WHERE account_id NOT IN (SELECT id FROM accounts)',
+        updates: {db.transactions},
+        updateKind: UpdateKind.delete,
+      );
+      expect(deleted, 0);
+      expect(await db.select(db.transactions).get(), hasLength(1));
     });
   });
 }

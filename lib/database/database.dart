@@ -737,7 +737,26 @@ class AppDatabase extends _$AppDatabase {
         _log.info("Migration 46: converted any 'balance' valuation assets to 'marketPrice'");
       }
     },
+    beforeOpen: (details) async {
+      await _purgeOrphanedTransactions();
+    },
   );
+
+  /// Purge transactions whose account_id no longer exists in the accounts table.
+  ///
+  /// This can accumulate from past import bugs or repeated re-imports under
+  /// different account IDs. Safe to run on every startup — a foreign-key
+  /// violation would be far more expensive to diagnose than this DELETE.
+  Future<void> _purgeOrphanedTransactions() async {
+    final deleted = await customUpdate(
+      'DELETE FROM transactions WHERE account_id NOT IN (SELECT id FROM accounts)',
+      updates: {transactions},
+      updateKind: UpdateKind.delete,
+    );
+    if (deleted > 0) {
+      _log.warning('Purged $deleted orphaned transaction(s) with no matching account');
+    }
+  }
 
   /// Ensure `import_configs` has the scoped shape: nullable account_id plus
   /// intermediary_id / asset_id / scope. Idempotent — rebuilds the table only
