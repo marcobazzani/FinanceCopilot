@@ -131,6 +131,48 @@ double pixelToChartY({
   return (minY: newMinY, maxY: newMaxY);
 }
 
+/// Min/max of the y-values of [spots] whose x falls within the visible
+/// `[xMin, xMax]` window. To keep a line that enters/leaves the window
+/// bounded sensibly, the points immediately straddling each edge are also
+/// considered (so the visible segment — which may cross an edge between two
+/// far-apart samples — is fully contained).
+///
+/// Returns null when there is nothing to bound (no spots, or none near the
+/// window). Callers fall back to the full-range or a default in that case.
+///
+/// This is the fix for "the chart is squeezed by an old spike that's no
+/// longer visible": the y-axis must reflect the data in view, not the whole
+/// dataset.
+({double minY, double maxY})? autoYBoundsInVisibleX(
+  Iterable<FlSpot> spots,
+  double xMin,
+  double xMax,
+) {
+  double? lo, hi;
+  // Track the nearest sample just outside each edge so a segment spanning the
+  // edge is included.
+  FlSpot? leftEdge, rightEdge;
+  for (final s in spots) {
+    if (s.x < xMin) {
+      if (leftEdge == null || s.x > leftEdge.x) leftEdge = s;
+      continue;
+    }
+    if (s.x > xMax) {
+      if (rightEdge == null || s.x < rightEdge.x) rightEdge = s;
+      continue;
+    }
+    lo = lo == null ? s.y : min(lo, s.y);
+    hi = hi == null ? s.y : max(hi, s.y);
+  }
+  for (final e in [leftEdge, rightEdge]) {
+    if (e == null) continue;
+    lo = lo == null ? e.y : min(lo, e.y);
+    hi = hi == null ? e.y : max(hi, e.y);
+  }
+  if (lo == null || hi == null) return null;
+  return (minY: lo, maxY: hi);
+}
+
 // ════════════════════════════════════════════════════
 // Drag/pinch/pan/wheel zoom wrapper
 // ════════════════════════════════════════════════════
@@ -575,26 +617,38 @@ class UnifiedChart extends StatelessWidget {
     final rightVisible = visible.where((s) => s.rightAxis).toList();
     final hasDualAxis = rightVisible.isNotEmpty;
 
-    // Left Y range (left series + total)
-    final leftY = [
-      if (showTotal) ...totalSpots.map((s) => s.y),
-      ...leftVisible.expand((s) => s.spots.map((p) => p.y)),
+    // Visible X window — the y-axis must auto-fit the data CURRENTLY IN VIEW,
+    // not the whole dataset. Otherwise an old out-of-view spike (e.g. the
+    // first MA point) squeezes the recent, visible data flat.
+    final visXMin = zoomMinX ?? 0;
+    final visXMax = zoomMaxX ?? totalDays;
+
+    // Left Y range (left series + total), bounded to the visible X window.
+    final leftSpotsForBounds = <FlSpot>[
+      if (showTotal) ...totalSpots,
+      ...leftVisible.expand((s) => s.spots),
     ];
-    final leftAutoMin = leftY.isEmpty ? 0.0 : leftY.reduce(min);
-    final leftAutoMax = leftY.isEmpty ? 100.0 : leftY.reduce(max);
+    final leftBounds = autoYBoundsInVisibleX(leftSpotsForBounds, visXMin, visXMax);
+    final leftAutoMin = leftBounds?.minY ?? 0.0;
+    final leftAutoMax = leftBounds?.maxY ?? 100.0;
     final leftAutoRange = leftAutoMax - leftAutoMin;
     final chartMinY = zoomMinY ?? (leftAutoRange > 0 ? leftAutoMin - leftAutoRange * 0.05 : leftAutoMin - 100);
     final chartMaxY = zoomMaxY ?? (leftAutoRange > 0 ? leftAutoMax + leftAutoRange * 0.05 : leftAutoMax + 100);
     final chartRange = chartMaxY - chartMinY;
     final yRange = chartRange;
 
-    // Right Y range (natural scale, not zoomed — always shows full range)
+    // Right Y range (natural scale, not zoomed), bounded to the visible X
+    // window so the secondary axis also fits what's on screen.
     double rightNatMin = 0, rightNatMax = 1;
     if (hasDualAxis) {
-      final rightY = rightVisible.expand((s) => s.spots.map((p) => p.y)).toList();
-      if (rightY.isNotEmpty) {
-        rightNatMin = rightY.reduce(min);
-        rightNatMax = rightY.reduce(max);
+      final rightBounds = autoYBoundsInVisibleX(
+        rightVisible.expand((s) => s.spots),
+        visXMin,
+        visXMax,
+      );
+      if (rightBounds != null) {
+        rightNatMin = rightBounds.minY;
+        rightNatMax = rightBounds.maxY;
       }
     }
     final rightNatRange = (rightNatMax - rightNatMin).abs().clamp(1e-9, double.infinity);
@@ -644,8 +698,8 @@ class UnifiedChart extends StatelessWidget {
       );
     }
 
-    final xMin = zoomMinX ?? 0;
-    final xMax = zoomMaxX ?? totalDays;
+    final xMin = visXMin;
+    final xMax = visXMax;
     final xRange = xMax - xMin;
 
     return LineChart(
