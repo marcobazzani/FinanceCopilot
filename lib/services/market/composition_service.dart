@@ -356,8 +356,30 @@ class CompositionService {
     return entries;
   }
 
-  /// Detect the real asset class from the provider's Investment focus field.
-  /// Returns labels like "Stock ETF", "Bond ETF", "Commodity ETF", "Gold ETC", "Money Market ETF".
+  /// Maps a substring found in the provider's free-text "Investment focus"
+  /// field to an internal asset-class label. This is an explicit, documented
+  /// table over UNCONTROLLED provider prose — order matters (first match
+  /// wins), so more specific terms come first. A value matching nothing is
+  /// surfaced (logged) and left unclassified rather than guessed into a
+  /// generic bucket.
+  static const _assetClassKeywordMap = <String, String>{
+    'money market': 'Money Market ETF',
+    'precious metal': 'Gold ETC',
+    'gold': 'Gold ETC',
+    'commodit': 'Commodity ETF',
+    'bond': 'Bond ETF',
+    'government': 'Bond ETF',
+    'fixed income': 'Bond ETF',
+    'equity': 'Stock ETF',
+    'stock': 'Stock ETF',
+  };
+
+  /// Detect the asset class from the provider's Investment focus field.
+  /// Returns labels like "Stock ETF", "Bond ETF", "Commodity ETF", "Gold ETC",
+  /// "Money Market ETF" — or `null` when the focus text matches no known
+  /// keyword. We do NOT silently fall back to a generic "ETF": an unmapped
+  /// focus is logged so the keyword table can be extended, and no (possibly
+  /// wrong) assetclass entry is stored.
   String? _detectAssetClass(Document doc) {
     var focus = doc.querySelector('[data-testid="tl_etf-basics_value_investment-focus"]')?.text.trim().toLowerCase();
     focus ??= doc
@@ -370,37 +392,42 @@ class CompositionService {
         .toLowerCase();
     if (focus == null) return null;
 
-    if (focus.contains('money market')) return 'Money Market ETF';
-    if (focus.contains('precious metal') || focus.contains('gold')) return 'Gold ETC';
-    if (focus.contains('commodit')) return 'Commodity ETF';
-    if (focus.contains('bond') || focus.contains('government') || focus.contains('fixed income')) return 'Bond ETF';
-    if (focus.contains('equity') || focus.contains('stock')) return 'Stock ETF';
-    return 'ETF';
+    for (final entry in _assetClassKeywordMap.entries) {
+      if (focus.contains(entry.key)) return entry.value;
+    }
+    _log.warning(
+      '_detectAssetClass: unmapped investment focus "$focus" - leaving asset class unset (extend _assetClassKeywordMap if this recurs)',
+    );
+    return null;
   }
 
+  /// Known geography terms used to tell a country/region apart from a sector
+  /// in the comma-separated "Investment focus" field. Explicit, documented
+  /// table over uncontrolled provider prose.
+  static const _geoTerms = {
+    'world',
+    'global',
+    'europe',
+    'usa',
+    'us',
+    'united states',
+    'asia',
+    'emerging',
+    'japan',
+    'china',
+    'uk',
+    'eurozone',
+    'north america',
+    'latin america',
+    'africa',
+    'pacific',
+    'developed',
+    'frontier',
+  };
+
   bool _isGeographic(String text) {
-    const geoTerms = {
-      'world',
-      'global',
-      'europe',
-      'usa',
-      'us',
-      'united states',
-      'asia',
-      'emerging',
-      'japan',
-      'china',
-      'uk',
-      'eurozone',
-      'north america',
-      'latin america',
-      'africa',
-      'pacific',
-      'developed',
-      'frontier',
-    };
     final lower = text.toLowerCase();
-    return geoTerms.any((t) => lower.contains(t));
+    return _geoTerms.any((t) => lower.contains(t));
   }
 
   // ── Individual Stocks: stock-data provider ────────────────
@@ -609,6 +636,18 @@ class CompositionService {
 
     return null;
   }
+
+  /// Test seam: detect the asset class from a raw provider HTML string via
+  /// the same explicit keyword map used during a real sync. Returns null when
+  /// the "Investment focus" field matches no known keyword (no silent generic
+  /// fallback).
+  @visibleForTesting
+  String? detectAssetClassFromHtml(String html) => _detectAssetClass(parse(html));
+
+  /// Test seam: whether a free-text fragment is recognised as a geography via
+  /// the explicit [_geoTerms] table.
+  @visibleForTesting
+  bool isGeographicTerm(String text) => _isGeographic(text);
 
   // ── Shared helpers ────────────────────────────────────────
 

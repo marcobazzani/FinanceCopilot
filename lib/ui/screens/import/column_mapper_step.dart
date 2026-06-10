@@ -77,7 +77,6 @@ extension _ColumnMapperStep on _ImportScreenState {
                     for (final f in _requiredFields) {
                       _mappings[f] = null;
                     }
-                    if (preview != null) _autoMap(preview.columns);
                   });
                   // Income has no per-target key — load its single global
                   // config as soon as the user picks the Income target.

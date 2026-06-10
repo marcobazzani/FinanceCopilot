@@ -785,6 +785,10 @@ class AppStrings {
   String get incomeTypeIncome => _it ? 'Reddito' : 'Income';
   String get incomeTypeRefund => _it ? 'Rimborso' : 'Refund';
   String get incomeTypePensionContribution => _it ? 'Contributo previdenziale' : 'Pension contribution';
+  String get incomeTypeDetection => _it ? 'Rilevamento tipo di reddito' : 'Income Type Detection';
+  String get mapIncomeTypes =>
+      _it ? 'Mappa valori in Reddito / Rimborso / Contributo previdenziale:' : 'Map values to Income / Refund / Pension contribution:';
+  String get incomeTypeAllRequired => _it ? 'Assegna ogni valore a un tipo.' : 'Tag every value with a type.';
   String get flagAsIncomeTooltip => _it ? 'Segna come reddito' : 'Flag as Income';
   String get flagAsIncomeTitle => _it ? 'Segna come reddito' : 'Flag as Income';
   String get incomeFlaggedSnack => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';

@@ -336,6 +336,97 @@ extension _ColumnMapperModeSections on _ImportScreenState {
     );
   }
 
+  /// Build the income-type tagging section for income imports. When a `type`
+  /// column is mapped, every distinct value must be tagged into exactly one of
+  /// Income / Refund / Pension contribution via chips — no keyword guessing.
+  /// The tags become the `incomeValues`/`refundValues`/
+  /// `pensionContributionValues` sets passed to `importIncomes`.
+  Widget _buildIncomeTypeSection(List<String> columns) {
+    final s = ref.watch(appStringsProvider);
+    final typeCol = _mappings['type'];
+    if (typeCol != null && !_fullUniqueValues.containsKey(typeCol)) {
+      _loadFullUniqueValues(typeCol);
+    }
+    final uniqueVals = typeCol != null ? (_fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol)) : <String>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(s.incomeTypeDetection, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        const SizedBox(height: 4),
+        _buildMappingRow('type', columns),
+        if (typeCol != null && uniqueVals.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(s.mapIncomeTypes, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const SizedBox(height: 4),
+          ...uniqueVals.map((val) {
+            final isIncome = _incomeValues.contains(val);
+            final isRefund = _refundValues.contains(val);
+            final isPension = _pensionContributionValues.contains(val);
+            final isUnmapped = !isIncome && !isRefund && !isPension;
+            // Tagging is exclusive: picking one chip clears the others.
+            void tag(Set<String> target, bool currently) => _setState(() {
+              _incomeValues.remove(val);
+              _refundValues.remove(val);
+              _pensionContributionValues.remove(val);
+              if (!currently) target.add(val);
+            });
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 4,
+                runSpacing: 4,
+                children: [
+                  SizedBox(
+                    width: 140,
+                    child: Text(
+                      val,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isUnmapped ? Colors.red.shade300 : null,
+                        fontWeight: isUnmapped ? FontWeight.bold : null,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  ChoiceChip(
+                    label: Text(s.incomeTypeIncome, style: const TextStyle(fontSize: 11)),
+                    selected: isIncome,
+                    onSelected: (_) => tag(_incomeValues, isIncome),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  ChoiceChip(
+                    label: Text(s.incomeTypeRefund, style: const TextStyle(fontSize: 11)),
+                    selected: isRefund,
+                    onSelected: (_) => tag(_refundValues, isRefund),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  ChoiceChip(
+                    label: Text(s.incomeTypePensionContribution, style: const TextStyle(fontSize: 11)),
+                    selected: isPension,
+                    onSelected: (_) => tag(_pensionContributionValues, isPension),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
+              ),
+            );
+          }),
+          if (uniqueVals.any(
+            (v) => !_incomeValues.contains(v) && !_refundValues.contains(v) && !_pensionContributionValues.contains(v),
+          ))
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                s.incomeTypeAllRequired,
+                style: TextStyle(fontSize: 12, color: Colors.red.shade300),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
   /// Build the fee computation mode selector for asset imports.
   Widget _buildFeeModeSection(List<String> columns) {
     final s = ref.watch(appStringsProvider);

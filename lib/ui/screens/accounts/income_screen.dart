@@ -70,70 +70,15 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     };
   }
 
-  Future<void> _handlePaste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text == null || data!.text!.trim().isEmpty) return;
-
-    final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
-    final lines = data.text!.trim().split('\n');
-    final entries = <IncomesCompanion>[];
-
-    // Skip header row if it looks like one
-    final startIdx = lines.isNotEmpty && _isHeaderRow(lines.first) ? 1 : 0;
-
-    for (var idx = startIdx; idx < lines.length; idx++) {
-      final line = lines[idx];
-      // Support both tab-separated and semicolon-separated
-      final parts = line.contains('\t') ? line.split('\t') : line.split(RegExp(r'[;]'));
-      if (parts.length < 2) continue;
-
-      final dateStr = parts[0].trim();
-      final amountStr = parts[1].trim();
-      final typeStr = parts.length > 2 ? parts[2].trim().toLowerCase() : '';
-      final currency = parts.length > 3 ? parts[3].trim().toUpperCase() : baseCurrency;
-
-      // Skip rows with empty amount
-      if (amountStr.isEmpty) continue;
-
-      final date = _tryParseDate(dateStr);
-      if (date == null) continue;
-
-      final amount = _parseItalianNumber(amountStr);
-      if (amount == null) continue;
-
-      final IncomeType type;
-      if (typeStr.contains('rimborso') || typeStr.contains('refund')) {
-        type = IncomeType.refund;
-      } else if (typeStr.contains('previdenza') || typeStr.contains('contributo') || typeStr.contains('pension')) {
-        type = IncomeType.pensionContribution;
-      } else {
-        type = IncomeType.income;
-      }
-
-      entries.add(
-        IncomesCompanion.insert(
-          date: date,
-          valueDate: date,
-          amount: amount,
-          type: Value(type),
-          currency: Value(currency),
-        ),
-      );
-    }
-
-    if (entries.isEmpty) {
-      if (mounted) {
-        final s = ref.read(appStringsProvider);
-        showInfoSnack(context, s.noValidRowsClipboard);
-      }
-      return;
-    }
-
-    await ref.read(incomeServiceProvider).bulkCreate(entries);
-    if (mounted) {
-      final s = ref.read(appStringsProvider);
-      showInfoSnack(context, s.pastedIncomeRecords(entries.length));
-    }
+  /// Cmd/Ctrl+V opens the import wizard pre-targeted to Income. The wizard's
+  /// "Paste from clipboard" button + column-mapping + type-tag chips give the
+  /// SAME experience as a file import — no bespoke parsing or keyword type
+  /// guessing here (that lived in a now-removed heuristic).
+  void _handlePaste() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ImportScreen(preselectedTarget: ImportTarget.income)),
+    );
   }
 
   @override
@@ -458,11 +403,4 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   }
 
   DateTime? _tryParseDate(String text) => fmt.parseFlexibleDate(text);
-
-  double? _parseItalianNumber(String text) => fmt.parseFlexibleNumber(text);
-
-  bool _isHeaderRow(String line) {
-    final lower = line.toLowerCase();
-    return lower.contains('data') && (lower.contains('stipend') || lower.contains('amount') || lower.contains('tipo'));
-  }
 }

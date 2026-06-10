@@ -186,7 +186,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   List<String> get _optionalFields => switch (_target) {
     ImportTarget.transaction => ['currency', 'status'],
     ImportTarget.assetEvent => _assetImportMode == 'historic' ? ['description'] : ['date', 'exchangeRate', 'description'],
-    ImportTarget.income => ['type', 'currency'],
+    ImportTarget.income => ['currency'],
   };
 
   // Multi-column mappings for optional fields: field -> [col1, col2, ...]
@@ -213,6 +213,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _typeMode = 'column';
   final Set<String> _buyValues = {};
   final Set<String> _sellValues = {};
+
+  // Income type tagging — populated from the wizard's chip UI when an income
+  // import maps a `type` column. Each distinct value must be tagged into
+  // exactly one bucket (Income / Refund / Pension contribution). No keyword
+  // guessing — see `importIncomes` in lib/services/import/import_service.dart.
+  final Set<String> _incomeValues = {};
+  final Set<String> _refundValues = {};
+  final Set<String> _pensionContributionValues = {};
 
   /// Type-column values that mark a row as an external fee (e.g.
   /// "Commissioni" in Directa exports). When the user also maps an
@@ -342,7 +350,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // The previously-loaded full row sets are stale after a transform change.
       _showAllRows = null;
       _transformedFullRows = null;
-      _autoMap(_preview!.columns);
       _reconcileTypeTags();
     });
     if (_savedConfig != null) _applySavedConfig(restoreTransforms: false);
@@ -374,6 +381,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _sellValues.clear();
       _revalueValues.clear();
       _feeValues.clear();
+      _incomeValues.clear();
+      _refundValues.clear();
+      _pensionContributionValues.clear();
       return;
     }
     // Prune against the FULL value set when it's loaded; otherwise fall back
@@ -385,6 +395,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _sellValues.removeWhere((v) => !current.contains(v));
     _revalueValues.removeWhere((v) => !current.contains(v));
     _feeValues.removeWhere((v) => !current.contains(v));
+    _incomeValues.removeWhere((v) => !current.contains(v));
+    _refundValues.removeWhere((v) => !current.contains(v));
+    _pensionContributionValues.removeWhere((v) => !current.contains(v));
   }
 
   /// Toggle the preview's "Show all rows" mode. Turning it ON lazily loads the
@@ -495,7 +508,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (widget.testPreview != null) {
       _rawPreview = widget.testPreview;
       _preview = widget.testPreview;
-      _autoMap(widget.testPreview!.columns);
       // Mirror production _loadFile: apply any saved config for the
       // preselected account so quick-confirm renders when available.
       Future.microtask(() => _loadSavedConfig(widget.testPreview!.columns));
@@ -614,7 +626,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
-        _autoMap(_preview!.columns);
       });
       // Load saved config if we have a preselected account
       await _loadSavedConfig(preview.columns);
@@ -658,46 +669,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     setState(() => _selectedSheet = selected);
   }
 
-  /// Try to auto-map columns by matching common names.
-  void _autoMap(List<String> columns) {
-    final lowerCols = {for (final c in columns) c.toLowerCase(): c};
-
-    /// Try to map a target field by trying a list of common column names.
-    void tryMap(String field, List<String> keys) {
-      for (final key in keys) {
-        if (lowerCols.containsKey(key)) {
-          _mappings[field] = lowerCols[key];
-          return;
-        }
-      }
-    }
-
-    // Shared
-    tryMap('date', ['data_operazione', 'operation_date', 'date', 'data', 'data di inizio']);
-    tryMap('valueDate', ['data_valuta', 'data valuta', 'value_date', 'value date']);
-    // If no value date column found, default to same as operation date
-    if (_mappings['valueDate'] == null) _sameSettlementDate = true;
-    tryMap('description', ['description', 'descrizione', 'causale', 'memo', 'note', 'notes', 'oggetto', 'dettagli']);
-
-    if (_target == ImportTarget.transaction) {
-      tryMap('amount', ['amount', 'importo', 'entrate', 'uscite', 'controvalore']);
-    } else if (_target == ImportTarget.income) {
-      tryMap('amount', ['amount', 'importo', 'stipendio', 'netto', 'salary', 'net']);
-      tryMap('type', ['type', 'tipo', 'description', 'descrizione']);
-      tryMap('currency', ['currency', 'valuta', 'divisa']);
-    } else {
-      // Asset event fields
-      tryMap('isin', ['isin', 'codice isin', 'isin code']);
-      tryMap('type', ['type', 'tipo', 'operazione', 'buy/sell', 'operation']);
-      tryMap('quantity', ['quantity', 'quantità', 'quantita', 'qty', 'nominale']);
-      tryMap('price', ['price', 'prezzo', 'corso', 'prezzo unitario', 'unit price']);
-      tryMap('currency', ['currency', 'valuta', 'divisa', 'ccy']);
-      tryMap('exchangeRate', ['exchange rate', 'cambio', 'tasso di cambio', 'fx rate', 'tasso']);
-      tryMap('amount', ['amount', 'controvalore', 'equivalent value', 'importo', 'total', 'entrate', 'uscite']);
-      tryMap('commission', ['fee', 'commission', 'commissione', 'commissioni', 'spese']);
-    }
-  }
-
+  /// Re-parse the loaded file after a skip-rows / sheet change.
   Future<void> _reparseFile() async {
     if (_filePath == null) return;
     _log.info('_reparseFile: re-parsing with skipRows=$_skipRows, sheet=$_selectedSheet');
@@ -728,10 +700,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
-        _autoMap(_preview!.columns);
       });
 
-      // Re-apply saved config on top of auto-map
+      // Re-apply saved config on top of the cleared mappings
       if (_savedConfig != null) {
         _applySavedConfig();
       }
@@ -774,7 +745,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         for (final f in _requiredFields) {
           _mappings[f] = null;
         }
-        _autoMap(_preview!.columns);
       });
     } catch (e) {
       setState(() {
@@ -1010,6 +980,27 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _revalueAmountColumn = (revCol != null && currentCols.contains(revCol)) ? revCol : null;
       }
 
+      // Restore income-type tag sets, pruned against the current Type column
+      // values (same guard as the asset path).
+      if (_target == ImportTarget.income) {
+        final typeCol = _mappings['type'];
+        final fullVals = typeCol != null ? _fullUniqueValues[typeCol] : null;
+        final canPrune = typeCol != null && fullVals != null;
+        final validTypeVals = (canPrune ? fullVals : const <String>[]).toSet();
+        void restoreIncomeTagSet(Set<String> target, String key) {
+          target.clear();
+          if (savedMappings[key] != null) {
+            for (final v in (jsonDecode(savedMappings[key] as String) as List<dynamic>).cast<String>()) {
+              if (!canPrune || validTypeVals.contains(v)) target.add(v);
+            }
+          }
+        }
+
+        restoreIncomeTagSet(_incomeValues, '__incomeValues');
+        restoreIncomeTagSet(_refundValues, '__refundValues');
+        restoreIncomeTagSet(_pensionContributionValues, '__pensionContributionValues');
+      }
+
       _log.info(
         '_applySavedConfig: result - mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms',
       );
@@ -1091,6 +1082,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       if (_revalueAmountColumn != null) mappingsToSave['__revalueAmountColumn'] = _revalueAmountColumn;
       mappingsToSave['__feeMode'] = _feeMode; // column | computed
       if (_autoCalcAmount) mappingsToSave['__autoCalcAmount'] = 'true';
+    }
+    // Save income-type tag sets so income imports round-trip.
+    if (_target == ImportTarget.income) {
+      if (_incomeValues.isNotEmpty) mappingsToSave['__incomeValues'] = jsonEncode(_incomeValues.toList());
+      if (_refundValues.isNotEmpty) mappingsToSave['__refundValues'] = jsonEncode(_refundValues.toList());
+      if (_pensionContributionValues.isNotEmpty) {
+        mappingsToSave['__pensionContributionValues'] = jsonEncode(_pensionContributionValues.toList());
+      }
     }
 
     await ref
@@ -1212,6 +1211,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         // that's an explicit design choice — no extra gate here.
       }
     }
+    // Income with a mapped type column: every distinct value must be tagged
+    // into exactly one of Income / Refund / Pension contribution. An untagged
+    // value would fail loudly at import (and a mis-typed refund would inflate
+    // income totals), so gate it here.
+    if (_target == ImportTarget.income && _mappings['type'] != null) {
+      final typeCol = _mappings['type']!;
+      final uniqueVals = _fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol);
+      if (uniqueVals.isNotEmpty) {
+        final allMapped = uniqueVals.every(
+          (v) => _incomeValues.contains(v) || _refundValues.contains(v) || _pensionContributionValues.contains(v),
+        );
+        if (!allMapped) return false;
+      }
+    }
     return true;
   }
 
@@ -1261,6 +1274,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _negativeIsBuy = false;
     _revalueValues.clear();
     _revalueAmountColumn = null;
+    _incomeValues.clear();
+    _refundValues.clear();
+    _pensionContributionValues.clear();
     _assetEventMode = 'byIsin';
     _singleAssetTargetId = null;
     _isinLookupResults = null;

@@ -15,6 +15,7 @@ import 'package:integration_test/integration_test.dart';
 import 'asset_unlock_edit_test.dart' as asset_unlock_edit;
 import 'full_walkthrough_test.dart' as full_walkthrough;
 import 'import_sheet_cancel_test.dart' as import_sheet_cancel;
+import 'income_saved_config_restore_test.dart' as income_saved_config_restore;
 import 'legacy_migration_test.dart' as legacy_migration;
 
 void main() {
@@ -23,4 +24,5 @@ void main() {
   legacy_migration.main();
   asset_unlock_edit.main();
   import_sheet_cancel.main();
+  income_saved_config_restore.main();
 }
