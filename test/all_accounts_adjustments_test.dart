@@ -224,4 +224,30 @@ void main() {
     final res = run(events: [ev], entries: {}, reimbs: {}, txs: [wrongDate, wrongAmt]);
     expect(res.annotatedTxIds, isEmpty);
   });
+
+  test('deterministic: among equal candidates the lowest-id tx is consumed, once', () async {
+    // Two identical-looking outflows the same day/amount; one event anchor and
+    // one scheduled entry also matching. The anchor must consume the lowest id,
+    // the entry the next; each tx consumed at most once. Pins the ordering the
+    // index-based matcher must preserve regardless of input order.
+    final ev = await insEvent(name: 'Dup', dir: EventDirection.outflow, total: 100, date: DateTime(2025, 1, 1));
+    final t1 = await insTx(-100, DateTime(2025, 1, 1), 'first');
+    final t2 = await insTx(-100, DateTime(2025, 1, 1), 'second');
+    final entry = await insEntry(ev.id, DateTime(2025, 1, 1), -100, EventEntryKind.manual);
+
+    // Feed reversed to prove order-independence.
+    final res = run(
+      events: [ev],
+      entries: {
+        ev.id: [entry],
+      },
+      reimbs: {},
+      txs: [t2, t1],
+    );
+
+    expect(res.annotatedTxIds[t1.id], 'Adjusted: Dup', reason: 'anchor consumes lowest id');
+    expect(res.annotatedTxIds[t2.id], 'Adjusted: Dup', reason: 'entry consumes the remaining one');
+    expect(res.annotatedTxIds.length, 2);
+    expect(res.savingItems, isEmpty, reason: 'both entries matched real txns');
+  });
 }

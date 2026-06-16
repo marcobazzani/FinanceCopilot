@@ -59,17 +59,30 @@ AdjustmentResolution resolveAdjustments({
   required AdjLabel savingForLabel,
   required AdjLabel financedLabel,
 }) {
-  // Index transactions by (dayKey, cents) → list, split by sign, for exact
-  // matching. Each tx may be consumed at most once.
+  // Pre-index transactions by (dayKey, cents, sign) once, each bucket sorted
+  // by id ascending. Matching then pops the first non-consumed candidate —
+  // O(n) to build + O(1) per lookup, instead of a full O(n) scan per lookup
+  // (which janks on large accounts). Behavior is identical to the previous
+  // scan: deterministic first-match by id, each tx consumed at most once.
+  final byKey = <String, List<Transaction>>{};
+  for (final t in transactions) {
+    if (t.amount == 0) continue;
+    final cents = (t.amount.abs() * 100).round();
+    final key = '${dayKey(t.valueDate)}|$cents|${t.amount > 0 ? 1 : 0}';
+    (byKey[key] ??= <Transaction>[]).add(t);
+  }
+  for (final list in byKey.values) {
+    list.sort((a, b) => a.id.compareTo(b.id));
+  }
+
   final consumed = <int>{};
-  List<Transaction> candidates(int dk, int cents, {required bool positive}) {
-    return transactions.where((t) {
-      if (consumed.contains(t.id)) return false;
-      if (t.amount == 0) return false;
-      if (positive != (t.amount > 0)) return false;
-      if (dayKey(t.valueDate) != dk) return false;
-      return (t.amount.abs() * 100).round() == cents;
-    }).toList()..sort((a, b) => a.id.compareTo(b.id));
+  Transaction? matchOne(int dk, int cents, {required bool positive}) {
+    final list = byKey['$dk|$cents|${positive ? 1 : 0}'];
+    if (list == null) return null;
+    for (final t in list) {
+      if (!consumed.contains(t.id)) return t;
+    }
+    return null;
   }
 
   final annotated = <int, String>{};
@@ -80,20 +93,18 @@ AdjustmentResolution resolveAdjustments({
 
     // Anchor → existing tx (positive for inflow, negative for outflow).
     final anchorCents = (e.totalAmount.abs() * 100).round();
-    final anchorMatches = candidates(dayKey(e.eventDate), anchorCents, positive: !isOutflow);
-    if (anchorMatches.isNotEmpty) {
-      final t = anchorMatches.first;
-      consumed.add(t.id);
-      annotated[t.id] = adjustedLabel(e.name);
+    final anchor = matchOne(dayKey(e.eventDate), anchorCents, positive: !isOutflow);
+    if (anchor != null) {
+      consumed.add(anchor.id);
+      annotated[anchor.id] = adjustedLabel(e.name);
     }
 
     // Buffer reimbursements → existing positive tx (the partner paying us back).
     for (final r in reimbursementsByEvent[e.id] ?? const <BufferTransaction>[]) {
       if (!r.isReimbursement) continue;
       final rc = (r.amount.abs() * 100).round();
-      final m = candidates(dayKey(r.valueDate), rc, positive: true);
-      if (m.isNotEmpty) {
-        final t = m.first;
+      final t = matchOne(dayKey(r.valueDate), rc, positive: true);
+      if (t != null) {
         consumed.add(t.id);
         annotated[t.id] = reimbLabel(e.name);
       }
@@ -110,9 +121,8 @@ AdjustmentResolution resolveAdjustments({
     final entryMatchesPositive = !isOutflow && !e.isEphemeral;
     for (final en in entriesByEvent[e.id] ?? const <ExtraordinaryEventEntry>[]) {
       final cents = (en.amount.abs() * 100).round();
-      final m = candidates(dayKey(en.date), cents, positive: entryMatchesPositive);
-      if (m.isNotEmpty) {
-        final t = m.first;
+      final t = matchOne(dayKey(en.date), cents, positive: entryMatchesPositive);
+      if (t != null) {
         consumed.add(t.id);
         annotated[t.id] = (e.isEphemeral && !isOutflow) ? financedLabel(e.name) : adjustedLabel(e.name);
       } else if (en.entryKind == EventEntryKind.scheduled) {

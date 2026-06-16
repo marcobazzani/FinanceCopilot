@@ -692,6 +692,37 @@ class AppStrings {
   String get createTransaction => _it ? 'Crea transazione' : 'Create Transaction';
   String get deleteTransactionTitle => _it ? 'Elimina transazione?' : 'Delete Transaction?';
 
+  // ── Account-detail ledger filter ─────────────────────────
+  String get filterTitle => _it ? 'Filtri' : 'Filters';
+  String get filterNone => _it ? 'Nessun filtro' : 'No filters';
+  String get filterType => _it ? 'Tipo' : 'Type';
+  String get filterShowOnly => _it ? 'Mostra solo' : 'Show only';
+  String get filterHide => _it ? 'Nascondi' : 'Hide';
+  String get filterKindInflow => _it ? 'Entrate' : 'Inflows';
+  String get filterKindOutflow => _it ? 'Uscite' : 'Outflows';
+  String get filterKindNoOp => _it ? 'Compensate' : 'No-ops';
+  String get filterKindCancelled => _it ? 'Annullate' : 'Cancelled';
+  String get filterKindTransfer => _it ? 'Trasferimenti' : 'Transfers';
+  String get filterKindAdjustment => _it ? 'Rettifiche' : 'Adjustments';
+  String get filterDateRange => _it ? 'Periodo' : 'Date range';
+  String get filterDateStart => _it ? 'Data inizio' : 'Start date';
+  String get filterDateEnd => _it ? 'Data fine' : 'End date';
+  String get filterToday => _it ? 'Oggi' : 'Today';
+  String get filterAmountRange => _it ? 'Importo' : 'Amount';
+  String get filterAnyAmount => _it ? 'Qualsiasi importo' : 'Any amount';
+  String get filterAmountMin => _it ? 'Min' : 'Min';
+  String get filterAmountMax => _it ? 'Max' : 'Max';
+  String get filterAmountDirBoth => _it ? 'Entrambi' : 'Both';
+  String get filterAmountInside => _it ? 'Dentro' : 'Inside';
+  String get filterAmountOutside => _it ? 'Fuori' : 'Outside';
+  String get filterTextSection => _it ? 'Testo' : 'Text';
+  String get filterTextContains => _it ? 'Contiene' : 'Contains';
+  String get filterTextExcludes => _it ? 'Non contiene' : "Doesn't contain";
+  String get filterClearAll => _it ? 'Azzera filtri' : 'Clear filters';
+  String get filterApply => _it ? 'Applica' : 'Apply';
+  String get filterAnyDate => _it ? 'Qualsiasi data' : 'Any date';
+  String filterActiveCount(int n) => _it ? '$n filtri attivi' : '$n filters active';
+
   // ── Capex / Adjustments ──────────────────────────────────
 
   // ── Capex Detail ─────────────────────────────────────────

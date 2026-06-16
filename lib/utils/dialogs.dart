@@ -176,9 +176,27 @@ Future<void> showManageIntermediariesDialog(BuildContext context, WidgetRef ref)
   );
 }
 
-Future<DateTime?> pickDate(BuildContext context, DateTime initial, {int firstYear = 1990}) => showDatePicker(
+/// The app's canonical single-date picker.
+///
+/// [helpText] sets the dialog header (e.g. "Start date" / "End date") so a
+/// caller running two picks in sequence can tell them apart. [locale] forces
+/// the picker (and its keyboard-input parsing/formatting) to the app locale
+/// instead of the device locale. [initialEntryMode] lets a caller open
+/// straight into keyboard-input mode — far faster than calendar navigation
+/// when the target date is months/years away from today.
+Future<DateTime?> pickDate(
+  BuildContext context,
+  DateTime initial, {
+  int firstYear = 1990,
+  String? helpText,
+  Locale? locale,
+  DatePickerEntryMode initialEntryMode = DatePickerEntryMode.calendar,
+}) => showDatePicker(
   context: context,
   initialDate: initial,
   firstDate: DateTime(firstYear),
   lastDate: DateTime(2100),
+  helpText: helpText,
+  locale: locale,
+  initialEntryMode: initialEntryMode,
 );
