@@ -59,7 +59,10 @@ jobs:
         include:
           - os: macos-14
             device: macos
-          - os: windows-latest
+          # Pinned to windows-2022: windows-latest moved to an MSVC (14.51)
+          # that removed <experimental/coroutine>, which flutter_inappwebview_windows
+          # still uses (error C2338/STL1011). 2022's VS toolchain still ships it.
+          - os: windows-2022
             device: windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
@@ -158,7 +161,10 @@ jobs:
           - os: macos-latest
             platform: macos
             artifact: FinanceCopilot-macos
-          - os: windows-latest
+          # Pinned to windows-2022 (see integration-test note): avoids the
+          # MSVC 14.51 <experimental/coroutine> removal that breaks
+          # flutter_inappwebview_windows on windows-latest.
+          - os: windows-2022
             platform: windows
             artifact: FinanceCopilot-windows
           - os: ubuntu-latest
