@@ -141,7 +141,12 @@ jobs:
           api-level: 34
           arch: x86_64
           profile: pixel_6
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          # swangle_indirect (ANGLE software renderer) instead of
+          # swiftshader_indirect: the latest emulator engine the runner installs
+          # regressed SwiftShader with "Failed to find ColorBuffer" errors that
+          # broke the heavy import UI test (full_walkthrough). SwANGLE is
+          # Google's recommended headless CI renderer and avoids that path.
+          emulator-options: -no-snapshot-save -no-window -gpu swangle_indirect -noaudio -no-boot-anim
           emulator-boot-timeout: 300
           script: flutter test integration_test/all_tests.dart --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true 2>&1 | tee /tmp/android_test_output.txt; grep -qE '(All tests passed|tests passed\.)' /tmp/android_test_output.txt && touch /tmp/android_tests_passed; true
 
