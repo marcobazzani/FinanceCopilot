@@ -29,6 +29,7 @@ List<Widget> globalAppBarActions(
   final globals = width < 600
       ? const <Widget>[_GlobalActionsOverflow()]
       : const <Widget>[
+          _AiChatAction(),
           _PrivacyAction(),
           _WaybackAction(),
           _NetworkRetryAction(),
@@ -162,6 +163,21 @@ List<PopupMenuEntry<String>> _waybackMenuItems(
   ];
 }
 
+class _AiChatAction extends ConsumerWidget {
+  const _AiChatAction();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = ref.watch(aiChatVisibleProvider);
+    final s = ref.watch(appStringsProvider);
+    return IconButton(
+      icon: const Icon(Icons.psychology_outlined),
+      color: open ? Theme.of(context).colorScheme.primary : null,
+      tooltip: s.aiChatTitle,
+      onPressed: () => ref.read(aiChatVisibleProvider.notifier).state = !open,
+    );
+  }
+}
+
 class _PrivacyAction extends ConsumerWidget {
   const _PrivacyAction();
   @override
@@ -267,6 +283,8 @@ class _GlobalActionsOverflow extends ConsumerWidget {
       icon: const Icon(Icons.more_vert),
       onSelected: (action) async {
         switch (action) {
+          case 'aiChat':
+            ref.read(aiChatVisibleProvider.notifier).state = !ref.read(aiChatVisibleProvider);
           case 'privacy':
             ref.read(privacyModeProvider.notifier).state = !isPrivate;
           case 'reset':
@@ -287,6 +305,16 @@ class _GlobalActionsOverflow extends ConsumerWidget {
         }
       },
       itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'aiChat',
+          child: Row(
+            children: [
+              const Icon(Icons.psychology_outlined),
+              const SizedBox(width: 12),
+              Text(s.aiChatTitle),
+            ],
+          ),
+        ),
         PopupMenuItem(
           value: 'privacy',
           child: Row(

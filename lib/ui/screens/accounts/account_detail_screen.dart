@@ -11,6 +11,7 @@ import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/accounts/entry_pairing.dart';
 import 'package:finance_copilot/ui/screens/accounts/adjustment_items.dart';
 import 'package:finance_copilot/ui/screens/accounts/transaction_filter.dart';
+import 'package:finance_copilot/ui/widgets/ai_view_context.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
@@ -62,10 +63,16 @@ class AccountDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<AccountDetailScreen> createState() => _AccountDetailScreenState();
 }
 
-class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
+class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> with AiViewContextState {
   final _searchCtrl = TextEditingController();
   TransactionFilter _filter = TransactionFilter.none;
   final _selection = SelectionController<int>();
+
+  @override
+  String? get aiDetailContext =>
+      'The user is viewing the "${widget.account.name}" account ledger — its '
+      'transactions (income/expense movements) with running balances. Scope '
+      'queries to this account when answering about what is shown.';
 
   // Memoized result of the (pure) entry pipeline. _composeEntries is O(n) over
   // the transactions and runs on every build — and the build runs on every

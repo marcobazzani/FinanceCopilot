@@ -18,6 +18,12 @@ extension _AppShellSettingsDialog on _AppShellState {
     );
     final taxFormKey = GlobalKey<FormState>();
 
+    final aiConfig = ref.read(aiConfigProvider).value;
+    final aiKeyCtrl = TextEditingController(text: aiConfig?.apiKey ?? '');
+    final aiModelCtrl = TextEditingController(text: aiConfig?.model ?? '');
+    final aiRegionCtrl = TextEditingController(text: aiConfig?.region ?? '');
+    final aiEndpointCtrl = TextEditingController(text: aiConfig?.endpoint ?? '');
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -151,6 +157,61 @@ extension _AppShellSettingsDialog on _AppShellState {
                   const SizedBox(height: 16),
                   const Divider(),
                   const SizedBox(height: 4),
+                  Text(s.aiSettingsTitle, style: Theme.of(ctx).textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<AiProvider>(
+                    initialValue: AiProvider.bedrock,
+                    decoration: InputDecoration(labelText: s.aiProvider),
+                    items: const [
+                      DropdownMenuItem(value: AiProvider.bedrock, child: Text('AWS Bedrock')),
+                    ],
+                    onChanged: (_) {},
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: aiKeyCtrl,
+                    obscureText: true,
+                    decoration: InputDecoration(labelText: s.aiApiKey),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: aiModelCtrl,
+                    decoration: InputDecoration(labelText: s.aiModel, hintText: 'eu.anthropic.claude-sonnet-4-6'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: aiRegionCtrl,
+                    decoration: InputDecoration(labelText: s.aiRegion, hintText: 'eu-central-1'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: aiEndpointCtrl,
+                    decoration: InputDecoration(labelText: s.aiEndpoint, helperText: s.aiEndpointHelp),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    s.aiPrivacyNote,
+                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.bolt, size: 18),
+                      label: Text(s.aiTest),
+                      onPressed: () => _testAiConnection(
+                        ctx,
+                        s,
+                        apiKey: aiKeyCtrl.text,
+                        model: aiModelCtrl.text,
+                        region: aiRegionCtrl.text,
+                        endpoint: aiEndpointCtrl.text,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Expanded(
@@ -203,6 +264,18 @@ extension _AppShellSettingsDialog on _AppShellState {
                     .insertOnConflictUpdate(
                       AppConfigsCompanion.insert(key: 'TAX_RATE', value: taxFraction.toString()),
                     );
+                // AI assistant provider config.
+                for (final entry in <String, String>{
+                  AiConfig.keyProvider: AiProvider.bedrock.name,
+                  AiConfig.keyApiKey: aiKeyCtrl.text.trim(),
+                  AiConfig.keyModel: aiModelCtrl.text.trim(),
+                  AiConfig.keyRegion: aiRegionCtrl.text.trim(),
+                  AiConfig.keyEndpoint: aiEndpointCtrl.text.trim(),
+                }.entries) {
+                  await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: entry.key, value: entry.value));
+                }
+                // Force the AI service to rebuild with the new config/connection.
+                ref.invalidate(aiChatServiceProvider);
                 await AppSettings.setLanguage(selectedLanguage);
                 ref.read(portableLanguageProvider.notifier).state = selectedLanguage;
                 _log.info('Settings saved: currency=$selectedCurrency, locale=$selectedLocale, lang=$selectedLanguage, tax=$taxFraction');
@@ -214,5 +287,44 @@ extension _AppShellSettingsDialog on _AppShellState {
         ),
       ),
     );
+  }
+
+  /// Minimal connectivity check: builds a temporary agent from the in-dialog
+  /// field values and sends a one-word prompt (no tools). Surfaces success or
+  /// the provider error via a snackbar.
+  Future<void> _testAiConnection(
+    BuildContext ctx,
+    AppStrings s, {
+    required String apiKey,
+    required String model,
+    required String region,
+    required String endpoint,
+  }) async {
+    final trimmedEndpoint = endpoint.trim();
+    final config = AiConfig(
+      provider: AiProvider.bedrock,
+      apiKey: apiKey.trim(),
+      model: model.trim(),
+      region: region.trim(),
+      endpoint: trimmedEndpoint.isEmpty ? null : trimmedEndpoint,
+    );
+    if (!config.isConfigured) {
+      showInfoSnack(ctx, s.aiFillFields);
+      return;
+    }
+    showInfoSnack(ctx, s.aiTesting);
+    try {
+      final agent = BedrockConverseAgent(config);
+      final answer = await agent.run(
+        'Reply with the single word OK.',
+        systemPrompt: 'You are a connectivity test. Reply with the single word OK.',
+        tools: const [],
+      );
+      if (ctx.mounted) {
+        showInfoSnack(ctx, answer.text.trim().isNotEmpty ? s.aiTestOk : s.aiTestFailed('empty response'));
+      }
+    } catch (e) {
+      if (ctx.mounted) showInfoSnack(ctx, s.aiTestFailed(e));
+    }
   }
 }

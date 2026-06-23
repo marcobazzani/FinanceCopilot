@@ -9,6 +9,7 @@ import 'package:finance_copilot/services/pillars/pillar_performance.dart';
 import 'package:finance_copilot/services/pillars/pillar_service.dart';
 import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../widgets/ai_view_context.dart';
 import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
@@ -33,13 +34,40 @@ class PillarDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<PillarDetailScreen> createState() => _PillarDetailScreenState();
 }
 
-class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with SingleTickerProviderStateMixin {
+class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with SingleTickerProviderStateMixin, AiViewContextState {
   late final TabController _tabController;
+  int _lastTab = 0;
+
+  @override
+  String? get aiDetailContext {
+    final pillars = ref.read(pillarsProvider).value;
+    final name = pillars?.where((p) => p.id == widget.pillarId).firstOrNull?.name;
+    final who = (name != null && name.isNotEmpty) ? '"$name" pillar' : 'a portfolio pillar';
+    final onAssets = _tabController.index == 1;
+    final tab = onAssets ? 'Assets Overview' : 'Overview';
+    final tabDesc = onAssets
+        ? 'The Assets Overview tab (currently active) shows allocation donuts '
+              '(geographic, sector, asset class, instrument type, currency), top '
+              'holdings, concentration risk (HHI) and investment costs (TER).'
+        : 'The Overview tab (currently active) shows the pillar\'s target value, '
+              'current value vs. target, and allocation vs. the chosen portfolio '
+              'model (rebalancing).';
+    return 'The user is on the "$tab" tab of the $who detail (a goal bucket '
+        'grouping specific holdings). $tabDesc See the pillars and pillar_assets '
+        'tables for its composition.';
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // Keep the AI context in sync with the active tab.
+    _tabController.addListener(() {
+      if (_tabController.index != _lastTab) {
+        _lastTab = _tabController.index;
+        updateAiContext();
+      }
+    });
   }
 
   @override
