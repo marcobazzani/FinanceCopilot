@@ -45,6 +45,32 @@ List<FlSpot> computeVelocity(List<FlSpot> dense) {
   return result;
 }
 
+/// Projects a trailing-rate series (e.g. velocity) past real "today" by holding
+/// the value at [x] constant for all later points.
+///
+/// A trailing 365-day velocity computed over a flat, carried-forward future
+/// replays the historical curve from a year earlier (`S(t−365)`), producing a
+/// misleading rise/sawtooth for a *projected* rate. Holding the last real value
+/// flat instead means "current rate carried forward" — the line still extends
+/// to the future date (not truncated), just without the trailing-window replay.
+/// Points at/before [x] are unchanged; if nothing is at/before [x] (e.g. a past
+/// wayback date), the series is returned unchanged.
+List<FlSpot> holdFlatAfter(List<FlSpot> spots, double x) {
+  double? holdY;
+  for (final s in spots) {
+    if (s.x <= x) {
+      holdY = s.y;
+    } else {
+      break;
+    }
+  }
+  if (holdY == null) return spots;
+  return [
+    for (final s in spots)
+      if (s.x <= x) s else FlSpot(s.x, holdY),
+  ];
+}
+
 /// Build spending spots: cumulative sum of negative daily deltas of the saving
 /// series (mirrors Excel's "Uscite cumulate" = cumsum of MIN(0, daily_P&L)).
 /// Output spots share the same X axis (days from firstDate) as saving spots.

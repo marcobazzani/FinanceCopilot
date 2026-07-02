@@ -8,6 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:finance_copilot/ui/screens/accounts/entry_pairing.dart';
+import 'package:finance_copilot/ui/screens/accounts/adjustment_items.dart';
+import 'package:finance_copilot/ui/screens/accounts/transaction_filter.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
@@ -25,6 +28,7 @@ part 'list_widgets.dart';
 part 'list_builders.dart';
 part 'transaction_actions.dart';
 part 'balance_dialog.dart';
+part 'filter_bar.dart';
 
 final _log = getLogger('AccountDetailScreen');
 
@@ -60,8 +64,36 @@ class AccountDetailScreen extends ConsumerStatefulWidget {
 
 class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   final _searchCtrl = TextEditingController();
-  String _searchQuery = '';
+  TransactionFilter _filter = TransactionFilter.none;
   final _selection = SelectionController<int>();
+
+  // Memoized result of the (pure) entry pipeline. _composeEntries is O(n) over
+  // the transactions and runs on every build — and the build runs on every
+  // selection change too. On large accounts (10k+ rows) recomputing twice per
+  // frame janks the UI, so we cache by the identity of the inputs that affect
+  // the result and only recompute when one of them actually changes. The
+  // filter (search text + structured filter) lives entirely in _filter now, so
+  // a change always yields a new instance and busts the cache by identity.
+  List<Transaction>? _memoTxns;
+  TransactionFilter? _memoFilter;
+  AdjustmentInputs? _memoAdj;
+  ({List<_Entry> entries, Map<int, String> annotatedTxIds})? _memoComposed;
+
+  ({List<_Entry> entries, Map<int, String> annotatedTxIds}) _composeEntriesCached(
+    List<Transaction> transactions, {
+    required AdjustmentInputs? adjInputs,
+    required AppStrings s,
+  }) {
+    if (_memoComposed != null && identical(_memoTxns, transactions) && identical(_memoFilter, _filter) && identical(_memoAdj, adjInputs)) {
+      return _memoComposed!;
+    }
+    final result = _composeEntries(transactions, adjInputs: adjInputs, s: s);
+    _memoTxns = transactions;
+    _memoFilter = _filter;
+    _memoAdj = adjInputs;
+    _memoComposed = result;
+    return result;
+  }
 
   @override
   void dispose() {
@@ -86,20 +118,28 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
           }
         : const <int, String>{};
 
+    // Adjustment inputs (extraordinary events). Used in BOTH views: anchor /
+    // reimbursement / financed adjustments are tied to real transactions
+    // (which belong to a specific account), so they annotate matching rows in
+    // single-account view too. Synthetic "Saving for X" spread rows have no
+    // account and are materialized ONLY in the merged All-accounts view.
+    final adjInputs = ref.watch(adjustmentInputsProvider).value;
+
     return ListenableBuilder(
       listenable: _selection,
       builder: (lbCtx, _) {
-        // Filtered ids snapshot for the action bar's "select all".
+        // Ids eligible for selection ("select all" in the action bar). Only
+        // meaningful in single-account view (read-only mode has no selection).
+        // Derived from the SAME composed entry list that drives the rendered
+        // list, so selection never includes hidden or collapsed rows. Only
+        // standalone transaction rows render as selectable items.
         List<int> visibleIds = const [];
         txStream.whenData((transactions) {
-          final filtered = _searchQuery.isEmpty
-              ? transactions
-              : transactions.where((t) {
-                  return t.description.toLowerCase().contains(_searchQuery) ||
-                      (t.descriptionFull?.toLowerCase().contains(_searchQuery) ?? false) ||
-                      t.amount.toString().contains(_searchQuery);
-                }).toList();
-          visibleIds = filtered.map((t) => t.id).toList();
+          final composed = _composeEntriesCached(transactions, adjInputs: adjInputs, s: s);
+          visibleIds = [
+            for (final e in composed.entries)
+              if (e is _TxEntry) e.tx.id,
+          ];
         });
         _selection.setOrderedIds(visibleIds);
 
@@ -161,35 +201,47 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     prefixIcon: const Icon(Icons.search),
                     border: const OutlineInputBorder(),
                     isDense: true,
-                    suffixIcon: _searchQuery.isNotEmpty
+                    suffixIcon: _filter.containsText.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear),
                             onPressed: () {
                               _searchCtrl.clear();
-                              setState(() => _searchQuery = '');
+                              setState(() => _filter = _filter.copyWith(containsText: ''));
                             },
                           )
                         : null,
                   ),
-                  onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                  onChanged: (v) => setState(() => _filter = _filter.copyWith(containsText: v)),
+                ),
+              ),
+              // Structured filter bar: kind chips + date range + amount range.
+              // Transfer/Adjustment chips only in the merged All-accounts view.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _LedgerFilterBar(
+                  filter: _filter,
+                  showTransfer: _isReadOnly,
+                  showAdjustment: (adjInputs?.events.isNotEmpty ?? false),
+                  locale: locale,
+                  s: s,
+                  onChanged: (f) => setState(() {
+                    _filter = f;
+                    // Keep the search box in sync when contains-text is changed
+                    // from the sheet, a pill removal, or clear-all.
+                    if (_searchCtrl.text != f.containsText) {
+                      _searchCtrl.text = f.containsText;
+                    }
+                  }),
                 ),
               ),
               // Transaction list
               Expanded(
                 child: txStream.when(
                   data: (transactions) {
-                    final filtered = _searchQuery.isEmpty
-                        ? transactions
-                        : transactions.where((t) {
-                            return t.description.toLowerCase().contains(_searchQuery) ||
-                                (t.descriptionFull?.toLowerCase().contains(_searchQuery) ?? false) ||
-                                t.amount.toString().contains(_searchQuery);
-                          }).toList();
-
-                    if (filtered.isEmpty) {
+                    if (transactions.isEmpty) {
                       return Center(
                         child: Text(
-                          transactions.isEmpty ? s.noTransactionsImport : s.noMatchingTransactions,
+                          s.noTransactionsImport,
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Colors.grey),
                         ),
@@ -201,15 +253,23 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
                     int monthKey(DateTime d) => d.year * 12 + (d.month - 1);
 
-                    // In All-accounts mode, detect inter-account transfers:
-                    // same day, same currency, equal & opposite amounts, on
-                    // different accounts. The two legs collapse into one row and
-                    // are excluded from income/expense totals.
-                    final entries = _buildEntries(
-                      filtered: filtered,
-                      detectTransfers: _isReadOnly,
-                      dayKey: dayKey,
-                    );
+                    // Single source of truth: search + collapse + adjustments +
+                    // structured filter (see _composeEntries). Cached so it runs
+                    // at most once per (txns, query, filter, adjInputs) change —
+                    // not twice per build, and not on selection-only rebuilds.
+                    final composed = _composeEntriesCached(transactions, adjInputs: adjInputs, s: s);
+                    final entries = composed.entries;
+                    final annotatedTxIds = composed.annotatedTxIds;
+
+                    if (entries.isEmpty) {
+                      return Center(
+                        child: Text(
+                          s.noMatchingTransactions,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.grey),
+                        ),
+                      );
+                    }
 
                     // Pre-compute per-day/per-month income/expense totals, grouped
                     // by currency so mixed-currency views can show one line per
@@ -231,8 +291,20 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
                     for (final e in entries) {
                       if (e is _TxEntry) {
+                        // Cancelled transactions never moved money — show them
+                        // (struck-through) but exclude from income/expense totals.
+                        if (e.tx.status == TransactionStatus.cancelled) continue;
+                        // Adjustment-linked transactions (anchor / reimbursement)
+                        // are accounted for via the adjustment mechanism (NAV),
+                        // not as cashflow — show but exclude from totals.
+                        if (annotatedTxIds.containsKey(e.tx.id)) continue;
                         accumulate(dayTotals, dayKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
                         accumulate(monthTotals, monthKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
+                      } else if (e is _AdjustmentEntry) {
+                        // Synthetic "Saving for X" rows DO count, mirroring NAV's
+                        // distribution of the spread over time (currency = base EUR).
+                        accumulate(dayTotals, dayKey(e.valueDate), 'EUR', e.amount);
+                        accumulate(monthTotals, monthKey(e.valueDate), 'EUR', e.amount);
                       }
                     }
                     return MobilePullToRefresh(
@@ -257,6 +329,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               dateFmt: dateFmt,
                               accountNameById: accountNameById,
                               s: s,
+                              adjustedLabel: annotatedTxIds[tx.id],
                             );
                           }
 
@@ -268,6 +341,16 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               s: s,
                               legTileBuilder: buildSingleTxTile,
                             );
+                          } else if (entry is _NoOpEntry) {
+                            body = _NoOpTile(
+                              entry: entry,
+                              accountNameById: accountNameById,
+                              locale: locale,
+                              s: s,
+                              legTileBuilder: buildSingleTxTile,
+                            );
+                          } else if (entry is _AdjustmentEntry) {
+                            body = _AdjustmentTile(entry: entry, locale: locale, s: s);
                           } else {
                             body = buildSingleTxTile((entry as _TxEntry).tx);
                           }

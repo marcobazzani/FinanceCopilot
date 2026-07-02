@@ -154,6 +154,8 @@ class AppStrings {
   String get waybackReset => _it ? 'Usa oggi' : 'Use today';
   String get waybackLastEndOfMonth => _it ? 'Fine mese scorso' : 'Last end of month';
   String get waybackLastEndOfYear => _it ? 'Fine anno scorso' : 'Last end of year';
+  String get waybackNextEndOfMonth => _it ? 'Fine mese corrente' : 'Next end of month';
+  String get waybackNextEndOfYear => _it ? 'Fine anno corrente' : 'Next end of year';
   String get waybackCustom => _it ? 'Personalizzata...' : 'Custom...';
   String get tooltipRefreshPrices => _it ? 'Aggiorna prezzi di mercato' : 'Refresh Market Prices';
   String get tooltipSettings => _it ? 'Impostazioni' : 'Settings';
@@ -682,8 +684,46 @@ class AppStrings {
   String get fullDescription => _it ? 'Descrizione completa' : 'Full Description';
   String get balanceAfter => _it ? 'Saldo successivo' : 'Balance After';
   String get statusLabel => _it ? 'Stato' : 'Status';
+  String get cancelledLabel => _it ? 'Annullata' : 'Cancelled';
+  String get noOpLabel => _it ? 'Compensata' : 'No-op';
+  String adjustedForLabel(String name) => _it ? 'Rettifica: $name' : 'Adjusted: $name';
+  String reimbForLabel(String name) => _it ? 'Rimborso $name' : '$name reimb.';
+  String savingForLabel(String name) => _it ? 'Risparmio per $name' : 'Saving for $name';
+  String financedForLabel(String name) => _it ? 'Finanziato: $name' : 'Financed: $name';
+  String get adjustmentBadge => _it ? 'Rettifica' : 'Adjustment';
   String get createTransaction => _it ? 'Crea transazione' : 'Create Transaction';
   String get deleteTransactionTitle => _it ? 'Elimina transazione?' : 'Delete Transaction?';
+
+  // ── Account-detail ledger filter ─────────────────────────
+  String get filterTitle => _it ? 'Filtri' : 'Filters';
+  String get filterNone => _it ? 'Nessun filtro' : 'No filters';
+  String get filterType => _it ? 'Tipo' : 'Type';
+  String get filterShowOnly => _it ? 'Mostra solo' : 'Show only';
+  String get filterHide => _it ? 'Nascondi' : 'Hide';
+  String get filterKindInflow => _it ? 'Entrate' : 'Inflows';
+  String get filterKindOutflow => _it ? 'Uscite' : 'Outflows';
+  String get filterKindNoOp => _it ? 'Compensate' : 'No-ops';
+  String get filterKindCancelled => _it ? 'Annullate' : 'Cancelled';
+  String get filterKindTransfer => _it ? 'Trasferimenti' : 'Transfers';
+  String get filterKindAdjustment => _it ? 'Rettifiche' : 'Adjustments';
+  String get filterDateRange => _it ? 'Periodo' : 'Date range';
+  String get filterDateStart => _it ? 'Data inizio' : 'Start date';
+  String get filterDateEnd => _it ? 'Data fine' : 'End date';
+  String get filterToday => _it ? 'Oggi' : 'Today';
+  String get filterAmountRange => _it ? 'Importo' : 'Amount';
+  String get filterAnyAmount => _it ? 'Qualsiasi importo' : 'Any amount';
+  String get filterAmountMin => _it ? 'Min' : 'Min';
+  String get filterAmountMax => _it ? 'Max' : 'Max';
+  String get filterAmountDirBoth => _it ? 'Entrambi' : 'Both';
+  String get filterAmountInside => _it ? 'Dentro' : 'Inside';
+  String get filterAmountOutside => _it ? 'Fuori' : 'Outside';
+  String get filterTextSection => _it ? 'Testo' : 'Text';
+  String get filterTextContains => _it ? 'Contiene' : 'Contains';
+  String get filterTextExcludes => _it ? 'Non contiene' : "Doesn't contain";
+  String get filterClearAll => _it ? 'Azzera filtri' : 'Clear filters';
+  String get filterApply => _it ? 'Applica' : 'Apply';
+  String get filterAnyDate => _it ? 'Qualsiasi data' : 'Any date';
+  String filterActiveCount(int n) => _it ? '$n filtri attivi' : '$n filters active';
 
   // ── Capex / Adjustments ──────────────────────────────────
 
@@ -778,6 +818,10 @@ class AppStrings {
   String get incomeTypeIncome => _it ? 'Reddito' : 'Income';
   String get incomeTypeRefund => _it ? 'Rimborso' : 'Refund';
   String get incomeTypePensionContribution => _it ? 'Contributo previdenziale' : 'Pension contribution';
+  String get incomeTypeDetection => _it ? 'Rilevamento tipo di reddito' : 'Income Type Detection';
+  String get mapIncomeTypes =>
+      _it ? 'Mappa valori in Reddito / Rimborso / Contributo previdenziale:' : 'Map values to Income / Refund / Pension contribution:';
+  String get incomeTypeAllRequired => _it ? 'Assegna ogni valore a un tipo.' : 'Tag every value with a type.';
   String get flagAsIncomeTooltip => _it ? 'Segna come reddito' : 'Flag as Income';
   String get flagAsIncomeTitle => _it ? 'Segna come reddito' : 'Flag as Income';
   String get incomeFlaggedSnack => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';

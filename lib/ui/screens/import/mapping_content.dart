@@ -142,6 +142,11 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 const SizedBox(height: 12),
                 _buildFeeModeSection(columns),
               ],
+              // Income-type tagging section
+              if (_target == ImportTarget.income) ...[
+                const SizedBox(height: 12),
+                _buildIncomeTypeSection(columns),
+              ],
               const SizedBox(height: 12),
               // Optional fields
               Text(s.optional, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),

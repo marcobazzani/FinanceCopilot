@@ -189,6 +189,87 @@ Date,Amount,Desc
     });
   });
 
+  group('Filtered balance mode — cancelled status', () {
+    // Revolut-style export: a "State" column where only some values count
+    // toward the running balance. Rows whose State is NOT in the include set
+    // (e.g. "OPERAZIONE ANNULLATA") are cancelled — they must NOT move the
+    // balance AND must be marked status=cancelled.
+    const stateCsv = '''
+Date,Amount,Description,State
+15/01/2024,-100.00,Coffee,COMPLETATO
+16/01/2024,-507.68,Tires,OPERAZIONE ANNULLATA
+17/01/2024,-50.00,Lunch,COMPLETATO
+''';
+
+    Future<(AppDatabase, List<Transaction>)> runFilteredImport() async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Revolut'));
+      final file = writeCsv('revolut.csv', stateCsv);
+      final preview = await importer.parseFile(file.path);
+      await importer.importTransactions(
+        preview: preview,
+        mappings: [
+          const ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          const ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+          const ColumnMapping(sourceColumn: 'Description', targetField: 'description'),
+        ],
+        accountId: accountId,
+        balanceMode: 'filtered',
+        balanceFilterColumn: 'State',
+        balanceFilterInclude: {'COMPLETATO', 'In sospeso'},
+      );
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      return (db, txs);
+    }
+
+    test('PIN: balance math is unchanged — excluded rows do not move the running balance', () async {
+      final (_, txs) = await runFilteredImport();
+      expect(txs, hasLength(3));
+      final byDesc = {for (final t in txs) t.description: t};
+      // Coffee: -100 from 0 => -100
+      expect(byDesc['Coffee']!.balanceAfter, -100.00);
+      // Tires (ANNULLATA): excluded from balance — running balance stays -100
+      expect(byDesc['Tires']!.balanceAfter, -100.00);
+      // Lunch: -50 => -150 (the cancelled -507.68 never applied)
+      expect(byDesc['Lunch']!.balanceAfter, -150.00);
+    });
+
+    test('excluded (not-in-include-set) rows are marked status=cancelled', () async {
+      final (_, txs) = await runFilteredImport();
+      final byDesc = {for (final t in txs) t.description: t};
+      expect(byDesc['Tires']!.status, TransactionStatus.cancelled);
+    });
+
+    test('included rows stay settled', () async {
+      final (_, txs) = await runFilteredImport();
+      final byDesc = {for (final t in txs) t.description: t};
+      expect(byDesc['Coffee']!.status, TransactionStatus.settled);
+      expect(byDesc['Lunch']!.status, TransactionStatus.settled);
+    });
+
+    test('PIN: cumulative mode unaffected — no row is cancelled, balance cumulative', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Fineco'));
+      final file = writeCsv('fineco.csv', '''
+Date,Amount,Description
+15/01/2024,-100.00,A
+16/01/2024,-50.00,B
+''');
+      final preview = await importer.parseFile(file.path);
+      await importer.importTransactions(
+        preview: preview,
+        mappings: [
+          const ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          const ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+          const ColumnMapping(sourceColumn: 'Description', targetField: 'description'),
+        ],
+        accountId: accountId,
+      );
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      expect(txs.map((t) => t.status), everyElement(TransactionStatus.settled));
+      expect(txs[0].balanceAfter, -100.00);
+      expect(txs[1].balanceAfter, -150.00);
+    });
+  });
+
   group('Date parsing', () {
     test('handles dd/MM/yyyy format', () async {
       final file = writeCsv('dates.csv', '''

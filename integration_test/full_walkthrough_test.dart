@@ -656,6 +656,7 @@ void main() {
     await setMapping(tester, 'Quantity', 'quantity');
     await setMapping(tester, 'Price', 'price');
     await setMapping(tester, 'Currency', 'currency');
+    await setMapping(tester, 'Amount', 'amount');
     await setMapping(tester, 'Exchange Rate', 'price'); // dummy mapping; no real FX column in fixture
     // Type-from-column: map 'Buy' value → buy chip, 'Sell' value → sell chip.
     await setMapping(tester, 'Type', 'type');
@@ -1185,6 +1186,10 @@ void main() {
     });
     await pushImportScreen(tester, preview: incomePreview, target: ImportTarget.income);
     await longSettle(tester);
+    // Auto-map was removed: map the income columns explicitly. The income.xlsx
+    // fixture has only Date + Amount (no type column → no type tagging needed).
+    await setMapping(tester, 'Operation Date', 'Date');
+    await setMapping(tester, 'Amount', 'Amount');
     if (find.text('Next').evaluate().isNotEmpty) {
       await tester.tap(find.text('Next'));
       await longSettle(tester);

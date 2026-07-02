@@ -35,11 +35,18 @@ class PillarDetailScreen extends ConsumerStatefulWidget {
 
 class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  int _lastTab = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.index != _lastTab) {
+        _lastTab = _tabController.index;
+        setState(() {});
+      }
+    });
   }
 
   @override

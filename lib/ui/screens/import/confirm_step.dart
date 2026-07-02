@@ -701,6 +701,9 @@ extension _ConfirmStep on _ImportScreenState {
           mappings: mappings,
           defaultCurrency: baseCurrency,
           onProgress: onProgress,
+          incomeValues: _incomeValues.isNotEmpty ? _incomeValues : null,
+          refundValues: _refundValues.isNotEmpty ? _refundValues : null,
+          pensionContributionValues: _pensionContributionValues.isNotEmpty ? _pensionContributionValues : null,
           numberLocaleOverride: _selectedNumberLocale,
           appLocale: appLocale,
         );

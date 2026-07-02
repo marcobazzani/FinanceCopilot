@@ -1,67 +1,156 @@
 part of 'account_detail_screen.dart';
 
 extension _AccountDetailListBuilders on _AccountDetailScreenState {
+  /// Single source of truth for the rendered ledger: applies text search,
+  /// collapses no-op/transfer pairs, resolves event adjustments, merges
+  /// synthetic saving rows (merged view only), then applies the structured
+  /// kind/date/amount filter. Used by both the rendered list and the
+  /// selection ("select all") id snapshot so they never diverge.
+  ({List<_Entry> entries, Map<int, String> annotatedTxIds}) _composeEntries(
+    List<Transaction> transactions, {
+    required AdjustmentInputs? adjInputs,
+    required AppStrings s,
+  }) {
+    int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+
+    // Text constraints (contains / doesn't-contain) apply to the raw
+    // transactions before pairing/collapsing, over the same searchable fields
+    // as before (description + full description + amount).
+    final searched = !_filter.hasTextFilter
+        ? transactions
+        : transactions.where((t) {
+            return _filter.textMatches('${t.description} ${t.descriptionFull ?? ''} ${t.amount}');
+          }).toList();
+
+    final txEntries = _buildEntries(
+      filtered: searched,
+      detectTransfers: _isReadOnly,
+      detectNoOps: true,
+      dayKey: dayKey,
+    );
+
+    final AdjustmentResolution? adj = (adjInputs != null)
+        ? resolveAdjustments(
+            events: adjInputs.events,
+            entriesByEvent: adjInputs.entriesByEvent,
+            reimbursementsByEvent: adjInputs.reimbursementsByEvent,
+            transactions: searched,
+            dayKey: dayKey,
+            adjustedLabel: s.adjustedForLabel,
+            reimbLabel: s.reimbForLabel,
+            savingForLabel: s.savingForLabel,
+            financedLabel: s.financedForLabel,
+          )
+        : null;
+    final annotatedTxIds = adj?.annotatedTxIds ?? const <int, String>{};
+
+    // Synthetic "Saving for X" spread rows: merged All-accounts view only
+    // (no account). Insert by date (desc), preserving same-day order.
+    final savingEntries = <_AdjustmentEntry>[
+      if (adj != null && _isReadOnly)
+        for (final item in adj.savingItems) _AdjustmentEntry(date: item.date, amount: item.amount, eventName: item.eventName),
+    ];
+    final List<_Entry> allEntries;
+    if (savingEntries.isEmpty) {
+      allEntries = txEntries;
+    } else {
+      final merged = List<_Entry>.of(txEntries);
+      for (final se in savingEntries) {
+        var idx = merged.indexWhere((e) => e.valueDate.isBefore(se.valueDate));
+        if (idx < 0) idx = merged.length;
+        merged.insert(idx, se);
+      }
+      allEntries = merged;
+    }
+
+    // Kind/date/amount filtering runs on the composed rows (text was already
+    // applied above). Skip the pass entirely when no per-row filter is set.
+    final entries = _filter.hasRowFilter
+        ? allEntries.where((e) => _filter.matches(_entryKinds(e, annotatedTxIds), e.valueDate, _entryAmount(e))).toList()
+        : allEntries;
+
+    return (entries: entries, annotatedTxIds: annotatedTxIds);
+  }
+
+  /// Classifies a display [_Entry] to its set of [EntryKind]s for filtering.
+  /// Collapsed pairs are a single kind; a standalone transaction carries its
+  /// sign/cancelled kinds plus [EntryKind.adjustment] when annotated (an
+  /// adjustment may itself be an inflow or an outflow).
+  Set<EntryKind> _entryKinds(_Entry e, Map<int, String> annotatedTxIds) {
+    return switch (e) {
+      _TransferEntry() => {EntryKind.transfer},
+      _NoOpEntry() => {EntryKind.noOp},
+      // Synthetic saving rows ARE adjustments and also count as an in/outflow
+      // by sign (they distribute the spread over time).
+      _AdjustmentEntry(:final amount) => {
+        EntryKind.adjustment,
+        if (amount > 0) EntryKind.inflow else if (amount < 0) EntryKind.outflow,
+      },
+      _TxEntry(:final tx) => {
+        ...classifyTransactionKinds(tx),
+        if (annotatedTxIds.containsKey(tx.id)) EntryKind.adjustment,
+      },
+    };
+  }
+
+  /// The representative amount used for amount-range filtering. Collapsed
+  /// pairs use their absolute pair amount; single rows use the signed amount.
+  double _entryAmount(_Entry e) {
+    return switch (e) {
+      _TransferEntry(:final absAmount) => absAmount,
+      _NoOpEntry(:final absAmount) => absAmount,
+      _AdjustmentEntry(:final amount) => amount,
+      _TxEntry(:final tx) => tx.amount,
+    };
+  }
+
   List<_Entry> _buildEntries({
     required List<Transaction> filtered,
     required bool detectTransfers,
+    required bool detectNoOps,
     required int Function(DateTime) dayKey,
   }) {
-    if (!detectTransfers || filtered.length < 2) {
+    if ((!detectTransfers && !detectNoOps) || filtered.length < 2) {
       return [for (final t in filtered) _TxEntry(t)];
     }
 
     final txById = <int, Transaction>{for (final t in filtered) t.id: t};
-    final transferOfTx = <int, _TransferEntry>{};
 
-    // Bucket by (day, currency, |amount in cents|).
-    final buckets = <String, ({List<Transaction> pos, List<Transaction> neg})>{};
-    for (final t in filtered) {
-      if (t.amount == 0) continue;
-      final cents = (t.amount.abs() * 100).round();
-      final k = '${dayKey(t.valueDate)}|${t.currency}|$cents';
-      final bucket = buckets[k] ?? (pos: <Transaction>[], neg: <Transaction>[]);
-      if (t.amount > 0) {
-        bucket.pos.add(t);
-      } else {
-        bucket.neg.add(t);
+    // Deterministic pairing (cross-account transfers first, then same-account
+    // no-ops) lives in a pure, unit-tested helper. Transfers require two
+    // accounts' data, so they are only applied in the merged All-Accounts
+    // view; no-ops are same-account and apply in single-account view too.
+    final pairing = pairTransactions(filtered, dayKey);
+    final transferOfTx = <int, _TransferEntry>{};
+    if (detectTransfers) {
+      for (final p in pairing.transfers) {
+        final entry = _TransferEntry(inflow: txById[p.inflowId]!, outflow: txById[p.outflowId]!);
+        transferOfTx[p.inflowId] = entry;
+        transferOfTx[p.outflowId] = entry;
       }
-      buckets[k] = bucket;
     }
-    for (final bucket in buckets.values) {
-      final pos = bucket.pos;
-      final neg = bucket.neg;
-      if (pos.isEmpty || neg.isEmpty) continue;
-      // Greedy pair: each positive consumes the first available negative
-      // belonging to a different account.
-      final consumedNeg = <int>{};
-      for (final p in pos) {
-        Transaction? match;
-        for (final n in neg) {
-          if (consumedNeg.contains(n.id)) continue;
-          if (n.accountId == p.accountId) continue;
-          match = n;
-          break;
-        }
-        if (match == null) continue;
-        consumedNeg.add(match.id);
-        final pair = _TransferEntry(inflow: p, outflow: match);
-        transferOfTx[p.id] = pair;
-        transferOfTx[match.id] = pair;
+    final noOpOfTx = <int, _NoOpEntry>{};
+    if (detectNoOps) {
+      for (final p in pairing.noOps) {
+        final entry = _NoOpEntry(inflow: txById[p.inflowId]!, outflow: txById[p.outflowId]!);
+        noOpOfTx[p.inflowId] = entry;
+        noOpOfTx[p.outflowId] = entry;
       }
     }
 
     final result = <_Entry>[];
-    final emitted = <_TransferEntry>{};
+    final emitted = <_Entry>{};
     for (final t in filtered) {
-      final pair = transferOfTx[t.id];
-      if (pair != null) {
-        if (emitted.add(pair)) result.add(pair);
+      final transfer = transferOfTx[t.id];
+      final noOp = noOpOfTx[t.id];
+      if (transfer != null) {
+        if (emitted.add(transfer)) result.add(transfer);
+      } else if (noOp != null) {
+        if (emitted.add(noOp)) result.add(noOp);
       } else {
         result.add(_TxEntry(t));
       }
     }
-    // Silence the unused warning for txById in release builds.
-    assert(txById.isNotEmpty);
     return result;
   }
 
@@ -73,7 +162,9 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     required dynamic dateFmt,
     required Map<int, String> accountNameById,
     required AppStrings s,
+    String? adjustedLabel,
   }) {
+    final isCancelled = tx.status == TransactionStatus.cancelled;
     final tile = ListTile(
       dense: true,
       leading: CircleAvatar(
@@ -85,11 +176,55 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
           color: isPositive ? Colors.green : Colors.red,
         ),
       ),
-      title: Text(
-        tx.description.isNotEmpty ? tx.description : s.noDescription,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 14),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              tx.description.isNotEmpty ? tx.description : s.noDescription,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                decoration: isCancelled ? TextDecoration.lineThrough : null,
+                color: isCancelled ? Theme.of(context).disabledColor : null,
+              ),
+            ),
+          ),
+          if (isCancelled) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                s.cancelledLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+              ),
+            ),
+          ],
+          if (adjustedLabel != null) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.tertiaryContainer,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                adjustedLabel,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
       subtitle: _isReadOnly
           ? Row(
@@ -124,8 +259,9 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
             '${isPositive ? '+' : ''}${rowAmtFmt.format(tx.amount)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: isPositive ? Colors.green.shade700 : Colors.red.shade700,
+              color: isCancelled ? Theme.of(context).disabledColor : (isPositive ? Colors.green.shade700 : Colors.red.shade700),
               fontSize: 14,
+              decoration: isCancelled ? TextDecoration.lineThrough : null,
             ),
           ),
           if (!_isReadOnly) ...[

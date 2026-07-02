@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart';
@@ -262,6 +263,51 @@ void main() {
       );
       // Far-pan moves the window up freely; no upper clamp.
       expect(r.minY, greaterThan(1000));
+    });
+  });
+
+  group('autoYBoundsInVisibleX', () {
+    // The fix for "chart squeezed by an out-of-view spike": Y must auto-fit
+    // the data inside the visible X window, ignoring old extremes.
+    final spots = [
+      const FlSpot(0, 1131), // huge early spike (e.g. first MA point)
+      const FlSpot(50, 120),
+      const FlSpot(100, 90),
+      const FlSpot(200, 110),
+      const FlSpot(300, 100),
+    ];
+
+    test('ignores an out-of-view spike, fits the visible window', () {
+      // Visible window 60..310 excludes the 1131 spike at x=0.
+      final b = autoYBoundsInVisibleX(spots, 60, 310)!;
+      // In-window samples: 90,110,100 → plus the straddling left edge (x=50 → 120).
+      expect(b.minY, 90);
+      expect(b.maxY, 120);
+    });
+
+    test('full window includes the spike', () {
+      final b = autoYBoundsInVisibleX(spots, 0, 300)!;
+      expect(b.minY, 90);
+      expect(b.maxY, 1131);
+    });
+
+    test('straddling edges are included so a crossing segment stays bounded', () {
+      // Window 120..180 has NO sample strictly inside; the two straddling
+      // samples (x=100 y=90 and x=200 y=110) bound it.
+      final b = autoYBoundsInVisibleX(spots, 120, 180)!;
+      expect(b.minY, 90);
+      expect(b.maxY, 110);
+    });
+
+    test('returns null when there are no spots', () {
+      expect(autoYBoundsInVisibleX(const <FlSpot>[], 0, 100), isNull);
+    });
+
+    test('window entirely left of all data still bounds via nearest right edge', () {
+      final b = autoYBoundsInVisibleX(spots, -100, -10)!;
+      // Only the right-straddling sample (x=0, y=1131) is near.
+      expect(b.minY, 1131);
+      expect(b.maxY, 1131);
     });
   });
 }

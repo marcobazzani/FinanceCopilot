@@ -15,6 +15,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
 import 'database/providers.dart';
+import 'app_shell/app_navigator.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_actions_controller.dart';
 import 'services/app_settings.dart';
@@ -77,6 +78,7 @@ class FinanceCopilotApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'FinanceCopilot',
+      navigatorKey: rootNavigatorKey,
       debugShowCheckedModeBanner: false,
       locale: appLocale,
       supportedLocales: const [
@@ -106,11 +108,7 @@ class FinanceCopilotApp extends ConsumerWidget {
       // Apply bottom safe area globally so Android gesture/nav bar never
       // covers content (Next buttons, bottom sheets, etc.). SafeArea consumes
       // the MediaQuery padding so descendant NavigationBars won't double-pad.
-      builder: (context, child) => SafeArea(
-        top: false,
-        bottom: true,
-        child: child ?? const SizedBox(),
-      ),
+      builder: (context, child) => SafeArea(top: false, bottom: true, child: child ?? const SizedBox()),
       home: _SafeAppShell(enableStartupSync: enableStartupSync),
     );
   }
@@ -468,6 +466,11 @@ class _AppShellState extends ConsumerState<AppShell> {
     };
   }
 
+  /// Switches the active tab.
+  void _selectView(int i) {
+    setState(() => _selectedIndex = i);
+  }
+
   Widget _buildLandingPage() {
     final s = ref.watch(appStringsProvider);
     final sync = ref.read(googleDriveSyncProvider);
@@ -609,7 +612,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           return Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              onTap: () => setState(() => _selectedIndex = i),
+                              onTap: () => _selectView(i),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 decoration: isSelected
@@ -700,7 +703,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             ? null
             : NavigationBar(
                 selectedIndex: _selectedIndex,
-                onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+                onDestinationSelected: _selectView,
                 destinations: _destinations(s),
               ),
       ),

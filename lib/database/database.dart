@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -80,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 46;
+  int get schemaVersion => 47;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -736,6 +738,15 @@ class AppDatabase extends _$AppDatabase {
         await customStatement("UPDATE assets SET valuation_method = 'marketPrice' WHERE valuation_method = 'balance'");
         _log.info("Migration 46: converted any 'balance' valuation assets to 'marketPrice'");
       }
+      if (from < 47) {
+        // Retro-fix transactions that were imported under a 'filtered' balance
+        // config: rows whose filter-column value is NOT in the config's
+        // include set never moved the balance, but were stored status=settled
+        // (the importer only set status from an explicit status-column mapping,
+        // which these sources don't have). Mark them cancelled. Status-only —
+        // balance_after is intentionally NOT touched (it is already correct).
+        await _migrateCancelledFromFilteredConfigs();
+      }
     },
     beforeOpen: (details) async {
       await _purgeOrphanedTransactions();
@@ -768,6 +779,94 @@ class AppDatabase extends _$AppDatabase {
         // (e.g. another connection holds a lock).
         _log.warning('VACUUM after orphan purge failed (harmless): $e');
       }
+    }
+  }
+
+  /// Migration 47: mark transactions cancelled when they were imported under a
+  /// `filtered` balance config and their filter-column value is NOT in the
+  /// config's include set. These rows never moved the balance but were stored
+  /// status=settled. Status-only — `balance_after` is left untouched.
+  ///
+  /// Deterministic: uses exact set membership against the saved
+  /// `__balanceFilterInclude`, never phrase/regex matching. Idempotent.
+  @visibleForTesting
+  Future<void> runMigrateCancelledFromFilteredConfigs() => _migrateCancelledFromFilteredConfigs();
+
+  Future<void> _migrateCancelledFromFilteredConfigs() async {
+    // Read transaction-scoped import configs.
+    final configRows = await customSelect(
+      "SELECT account_id, mappings_json FROM import_configs "
+      "WHERE account_id IS NOT NULL AND scope = 'transaction'",
+    ).get();
+
+    var totalFlipped = 0;
+    for (final cfg in configRows) {
+      final accountId = cfg.read<int>('account_id');
+      Map<String, dynamic> mappings;
+      try {
+        mappings = jsonDecode(cfg.read<String>('mappings_json')) as Map<String, dynamic>;
+      } catch (_) {
+        continue; // unparseable config — skip rather than guess
+      }
+      if (mappings['__balanceMode'] != 'filtered') continue;
+      final filterColumn = mappings['__balanceFilterColumn'] as String?;
+      if (filterColumn == null || filterColumn.isEmpty) continue;
+
+      // `__balanceFilterInclude` is stored as a JSON-encoded string list.
+      final includeRaw = mappings['__balanceFilterInclude'];
+      final include = <String>{};
+      if (includeRaw is String && includeRaw.isNotEmpty) {
+        try {
+          for (final v in jsonDecode(includeRaw) as List) {
+            include.add(v.toString());
+          }
+        } catch (_) {
+          continue;
+        }
+      } else if (includeRaw is List) {
+        for (final v in includeRaw) {
+          include.add(v.toString());
+        }
+      }
+      // Empty include set means "include everything" (mirrors the importer);
+      // nothing to cancel.
+      if (include.isEmpty) continue;
+
+      // For each settled transaction on this account, read its filter value
+      // from raw_metadata and flip to cancelled when not in the include set.
+      final txRows = await customSelect(
+        "SELECT id, raw_metadata FROM transactions "
+        "WHERE account_id = ? AND status = 'settled' AND raw_metadata IS NOT NULL",
+        variables: [Variable.withInt(accountId)],
+      ).get();
+
+      final toCancel = <int>[];
+      for (final t in txRows) {
+        Map<String, dynamic> meta;
+        try {
+          meta = jsonDecode(t.read<String>('raw_metadata')) as Map<String, dynamic>;
+        } catch (_) {
+          continue; // no parseable metadata — leave untouched (no guessing)
+        }
+        if (!meta.containsKey(filterColumn)) continue;
+        final value = (meta[filterColumn] ?? '').toString().trim();
+        if (!include.contains(value)) {
+          toCancel.add(t.read<int>('id'));
+        }
+      }
+
+      for (final id in toCancel) {
+        await customUpdate(
+          "UPDATE transactions SET status = 'cancelled' WHERE id = ?",
+          variables: [Variable.withInt(id)],
+          updates: {transactions},
+          updateKind: UpdateKind.update,
+        );
+      }
+      totalFlipped += toCancel.length;
+    }
+    if (totalFlipped > 0) {
+      _log.info('Migration 47: marked $totalFlipped transaction(s) cancelled from filtered import configs');
     }
   }
 

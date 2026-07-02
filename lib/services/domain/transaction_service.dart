@@ -181,6 +181,10 @@ class TransactionService {
 
     int balanceCents = 0;
     final updates = <int, double?>{};
+    // Filtered mode: rows whose filter value is excluded never moved the
+    // balance and are cancelled. Keep status consistent with the importer so
+    // a standalone recalc and a fresh import agree.
+    final statusUpdates = <int, TransactionStatus>{};
     final balanceColumn = savedMappings['balanceAfter'] as String?;
     final filterColumn = savedMappings['__balanceFilterColumn'] as String?;
     final filterInclude = <String>{};
@@ -211,6 +215,8 @@ class TransactionService {
         final included = filterInclude.isEmpty || filterInclude.contains(filterVal);
         if (included) {
           balanceCents += toCents(tx.amount);
+        } else if (tx.status != TransactionStatus.cancelled) {
+          statusUpdates[tx.id] = TransactionStatus.cancelled;
         }
         newBalance = fromCents(balanceCents);
       }
@@ -223,7 +229,20 @@ class TransactionService {
     if (updates.isNotEmpty) {
       await batchUpdateBalances(updates);
     }
-    _log.info('recalculateBalances: account=$accountId, mode=$balanceMode, updated=${updates.length}/${sorted.length}');
+    if (statusUpdates.isNotEmpty) {
+      await _db.batch((batch) {
+        for (final entry in statusUpdates.entries) {
+          batch.update(
+            _db.transactions,
+            TransactionsCompanion(status: Value(entry.value)),
+            where: (t) => t.id.equals(entry.key),
+          );
+        }
+      });
+    }
+    _log.info(
+      'recalculateBalances: account=$accountId, mode=$balanceMode, updated=${updates.length}/${sorted.length}, cancelled=${statusUpdates.length}',
+    );
     return updates.length;
   }
 

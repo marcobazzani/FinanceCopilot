@@ -1,14 +1,12 @@
-// T2 — `_parseEventType` aliases for revalue/contribute event types.
+// T2 — `_parseEventType` classification for revalue/contribute event types.
 //
-// Tested via the public path `importAssetEventsGrouped`: a tiny CSV with
-// rows whose `type` column carries pension-shaped labels (TOTALEP,
-// POSIZIONE, CONTRIBUTO, BEITRAG, plus a user-override) drives the
-// import. We assert each row produces the expected EventType in the DB.
-//
-// Why public-path testing rather than poking _parseEventType directly:
-// the function is private, the value sets are passed through as
-// parameters, and the regression we care about is "the wizard's chip
-// labels actually classify rows correctly" — that's what this exercises.
+// Built-in keyword aliases (TOTALEP/POSIZIONE/CONTRIBUTO/BEITRAG/VENDITA/…)
+// were REMOVED: asset-event type is now purely explicit — the user's wizard
+// chip tags (buyValues/sellValues/revalueValues/feeValues/contributeValues)
+// plus a literal enum-name match (buy/sell/revalue). Any other value fails
+// loudly. These tests exercise that via the public path
+// `importAssetEventsGrouped`: untagged pension labels throw; the same labels
+// classify correctly once tagged.
 
 import 'dart:io';
 
@@ -62,8 +60,10 @@ void main() {
     return f;
   }
 
-  group('event-type aliases through importAssetEventsGrouped', () {
-    test('built-in TOTALEP / POSIZIONE alias to revalue', () async {
+  group('event-type classification through importAssetEventsGrouped', () {
+    test('untagged pension labels (TOTALEP / POSIZIONE) throw — no built-in alias', () async {
+      // The built-in keyword aliases were removed: a position-snapshot label
+      // must be tagged as revalue via the wizard chips, or it fails loudly.
       final file = writeCsv('aliases.csv', '''
 date,type,amount,description
 2024-12-31,TOTALEP,1000.00,Year-end position
@@ -84,6 +84,36 @@ date,type,amount,description
         targetAssetId: targetAssetId,
       );
 
+      // The literal `buy` row imports (direct enum match); the two untagged
+      // pension labels fail loudly.
+      expect(result.result.errorRows, 2);
+      final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
+      expect(events, hasLength(1));
+      expect(events[0].type, EventType.buy);
+    });
+
+    test('tagged TOTALEP / POSIZIONE classify as revalue via revalueValues', () async {
+      final file = writeCsv('aliases.csv', '''
+date,type,amount,description
+2024-12-31,TOTALEP,1000.00,Year-end position
+2024-06-30,POSIZIONE,800.00,Mid-year position
+2024-03-15,buy,100.00,Lump-sum buy
+''');
+      final preview = await importer.parseFile(file.path);
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+          ColumnMapping(sourceColumn: 'description', targetField: 'description'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+        targetAssetId: targetAssetId,
+        revalueValues: const {'TOTALEP', 'POSIZIONE'},
+      );
+
       expect(result.result.errorRows, 0);
       final events = await (db.select(db.assetEvents)..orderBy([(e) => OrderingTerm.asc(e.valueDate)])).get();
       expect(events, hasLength(3));
@@ -96,7 +126,7 @@ date,type,amount,description
       expect(events[2].amount, 1000.00);
     });
 
-    test('built-in CONTRIBUTO / BEITRAG / CONTRIBUTION alias to contribute', () async {
+    test('untagged CONTRIBUTO / BEITRAG throw — must be tagged via contributeValues', () async {
       final file = writeCsv('contrib.csv', '''
 date,type,amount
 2024-01-15,CONTRIBUTO,100.00
@@ -114,6 +144,32 @@ date,type,amount
         baseCurrency: 'EUR',
         intermediaryId: intermediaryId,
         targetAssetId: targetAssetId,
+      );
+
+      // No built-in alias: all three fail loudly until tagged.
+      expect(result.result.errorRows, 3);
+      expect(result.result.importedRows, 0);
+    });
+
+    test('tagged contribution labels classify as buy via contributeValues', () async {
+      final file = writeCsv('contrib.csv', '''
+date,type,amount
+2024-01-15,CONTRIBUTO,100.00
+2024-02-15,BEITRAG,200.00
+2024-03-15,CONTRIBUTION,300.00
+''');
+      final preview = await importer.parseFile(file.path);
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+        targetAssetId: targetAssetId,
+        contributeValues: const {'CONTRIBUTO', 'BEITRAG', 'CONTRIBUTION'},
       );
 
       expect(result.result.errorRows, 0);
@@ -177,6 +233,54 @@ date,type,amount
       expect(result.result.errorRows, 1);
       expect(result.result.importedRows, 0);
       expect(result.result.errors.first, contains('DIVIDEND'));
+    });
+  });
+
+  group('removed buy/sell language aliases no longer auto-classify', () {
+    // Pins the deletion of the hardcoded multi-language alias dictionaries
+    // (VENDITA/ACQUISTO/VERKAUF/ACHAT/VENTE/COMPRA/S/V/B/A/…). These words
+    // used to classify without any user tag; now they must be tagged or they
+    // fail loudly. Literal enum names (buy/sell/revalue) still classify.
+    Future<ImportResult> runType(String typeValue, {Set<String>? buyValues, Set<String>? sellValues}) async {
+      final file = writeCsv('alias_$typeValue.csv', '''
+date,type,amount
+2024-01-15,$typeValue,100.00
+''');
+      final preview = await importer.parseFile(file.path);
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+        baseCurrency: 'EUR',
+        intermediaryId: intermediaryId,
+        targetAssetId: targetAssetId,
+        buyValues: buyValues,
+        sellValues: sellValues,
+      );
+      return result.result;
+    }
+
+    for (final alias in ['VENDITA', 'ACQUISTO', 'VERKAUF', 'ACHAT', 'VENTE', 'COMPRA', 'S', 'V', 'B', 'A']) {
+      test('"$alias" is no longer auto-classified → fails loudly', () async {
+        final r = await runType(alias);
+        expect(r.importedRows, 0, reason: '"$alias" must not auto-classify without a tag');
+        expect(r.errorRows, 1);
+        expect(r.errors.first, contains(alias));
+      });
+    }
+
+    test('literal enum names still classify (buy / sell / revalue)', () async {
+      expect((await runType('buy')).importedRows, 1);
+      expect((await runType('sell')).importedRows, 1);
+      expect((await runType('revalue')).importedRows, 1);
+    });
+
+    test('a removed alias classifies once tagged via buyValues/sellValues', () async {
+      expect((await runType('VENDITA', sellValues: const {'VENDITA'})).importedRows, 1);
+      expect((await runType('ACQUISTO', buyValues: const {'ACQUISTO'})).importedRows, 1);
     });
   });
 }

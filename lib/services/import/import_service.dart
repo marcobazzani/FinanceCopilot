@@ -490,11 +490,26 @@ class ImportService {
   /// Returns the import result plus a map of created/reused asset IDs by ISIN.
 
   /// Import rows as Income records.
+  ///
+  /// When a `type` column is mapped, every distinct value MUST be tagged via
+  /// the wizard chips into exactly one of [incomeValues] / [refundValues] /
+  /// [pensionContributionValues]. An untagged/unknown value fails loudly
+  /// (row skipped + error) — there is no keyword guessing and no silent
+  /// fallback to plain income, because a mis-typed refund would silently
+  /// inflate income totals. When no `type` column is mapped, every row is
+  /// [IncomeType.income].
   Future<ImportResult> importIncomes({
     required FilePreview preview,
     required List<ColumnMapping> mappings,
     required String defaultCurrency,
     void Function(int processed, int total)? onProgress,
+
+    /// Type-column values the user tagged as plain income / refund / pension
+    /// contribution via the wizard chips. Matched exactly (normalized) — no
+    /// substring or keyword inference.
+    Set<String>? incomeValues,
+    Set<String>? refundValues,
+    Set<String>? pensionContributionValues,
 
     /// User's per-import locale choice. Persisted to the
     /// `IMPORT_INCOME_LOCALE` AppConfigs key when non-null.
@@ -541,9 +556,13 @@ class ImportService {
         valueDate ??= date;
         final typeStr = typeMapping != null ? (_resolveMapping(typeMapping, row) ?? '') : '';
         final currency = currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? defaultCurrency) : defaultCurrency;
-        final type = typeStr.toLowerCase().contains('rimborso') || typeStr.toLowerCase().contains('refund')
-            ? IncomeType.refund
-            : IncomeType.income;
+        final type = _resolveIncomeType(
+          typeStr,
+          hasTypeColumn: typeMapping != null,
+          incomeValues: incomeValues,
+          refundValues: refundValues,
+          pensionContributionValues: pensionContributionValues,
+        );
 
         companions.add(
           IncomesCompanion.insert(
@@ -839,6 +858,37 @@ class ImportService {
     }
   }
 
+  /// Normalize a type-column cell value (or a user's chip tag) for matching:
+  /// trim, upper-case, and collapse spaces to underscores. Single source of
+  /// truth shared by income- and asset-event type resolution so a multi-word
+  /// tag (e.g. "POSIZIONE INDIVIDUALE") matches the same-normalized cell.
+  String _normalizeTypeValue(String v) => v.trim().toUpperCase().replaceAll(' ', '_');
+
+  /// Resolve an income row's [IncomeType] from its type-column value using
+  /// ONLY the user's explicit wizard-chip tags — no keyword/substring guess.
+  ///
+  /// - No type column mapped ([hasTypeColumn] false): always
+  ///   [IncomeType.income].
+  /// - A value tagged into one of the sets resolves to that type.
+  /// - Any other (untagged) value throws — the wizard gate normally prevents
+  ///   this, but a loud failure here guards against a mis-typed refund
+  ///   silently inflating income totals.
+  IncomeType _resolveIncomeType(
+    String s, {
+    required bool hasTypeColumn,
+    Set<String>? incomeValues,
+    Set<String>? refundValues,
+    Set<String>? pensionContributionValues,
+  }) {
+    if (!hasTypeColumn) return IncomeType.income;
+    final normalized = _normalizeTypeValue(s);
+    bool tagged(Set<String>? set) => set != null && set.any((v) => _normalizeTypeValue(v) == normalized);
+    if (tagged(incomeValues)) return IncomeType.income;
+    if (tagged(refundValues)) return IncomeType.refund;
+    if (tagged(pensionContributionValues)) return IncomeType.pensionContribution;
+    throw FormatException('Untagged income type "$s" (normalized: "$normalized")');
+  }
+
   /// Returns `null` when the row is an external fee row (the type value
   /// matched [feeValues] — e.g. "Commissioni" / "Bollo" in cash-flow-style
   /// broker exports). Fee rows are handled by the caller's two-pass loop
@@ -859,41 +909,26 @@ class ImportService {
     /// lean (3 types) and avoids two SQL paths everywhere.
     Set<String>? contributeValues,
   }) {
-    final normalized = s.trim().toUpperCase().replaceAll(' ', '_');
-    // Normalize the user's tagged values the SAME way as the cell value so a
-    // tag containing spaces (e.g. "POSIZIONE INDIVIDUALE") matches the
-    // space→underscore-normalized cell. Without this, any multi-word tag
-    // would silently never match and fall through to "Unknown event type".
-    String norm(String v) => v.trim().toUpperCase().replaceAll(' ', '_');
+    final normalized = _normalizeTypeValue(s);
     // Custom user-defined mappings take priority — wizard chip tags win
     // over built-in aliases so users can override surprising defaults.
-    if (feeValues != null && feeValues.any((v) => norm(v) == normalized)) return null;
-    if (buyValues != null && buyValues.any((v) => norm(v) == normalized)) return EventType.buy;
-    if (sellValues != null && sellValues.any((v) => norm(v) == normalized)) return EventType.sell;
-    if (revalueValues != null && revalueValues.any((v) => norm(v) == normalized)) return EventType.revalue;
-    if (contributeValues != null && contributeValues.any((v) => norm(v) == normalized)) return EventType.buy;
-    // Direct enum match
+    // Tagged values are normalized the SAME way as the cell value so a tag
+    // containing spaces (e.g. "POSIZIONE INDIVIDUALE") matches the
+    // space→underscore-normalized cell.
+    if (feeValues != null && feeValues.any((v) => _normalizeTypeValue(v) == normalized)) return null;
+    if (buyValues != null && buyValues.any((v) => _normalizeTypeValue(v) == normalized)) return EventType.buy;
+    if (sellValues != null && sellValues.any((v) => _normalizeTypeValue(v) == normalized)) return EventType.sell;
+    if (revalueValues != null && revalueValues.any((v) => _normalizeTypeValue(v) == normalized)) return EventType.revalue;
+    if (contributeValues != null && contributeValues.any((v) => _normalizeTypeValue(v) == normalized)) return EventType.buy;
+    // Direct enum match (literal BUY / SELL / REVALUE in the cell).
     final direct = EventType.values.where((e) => e.name.toUpperCase() == normalized).firstOrNull;
     if (direct != null) return direct;
-    // Common aliases per language / source format. Pension-statement
-    // dialect (TOTALEP, POSIZIONE, CONTRIBUTO, BEITRAG, COTISATION) is
-    // included so common formats classify correctly without the user
-    // having to tag every label via the wizard chips.
-    const sellAliases = {'SELL', 'VENDITA', 'VENDI', 'S', 'V', 'VERKAUF', 'VENTE'};
-    const buyAliases = {
-      'BUY', 'ACQUISTO', 'COMPRA', 'B', 'A', 'KAUF', 'ACHAT',
-      // Contribute-flavored words collapse to buy.
-      'CONTRIBUTE', 'CONTRIBUTO', 'CONTRIBUTION', 'BEITRAG', 'COTISATION',
-    };
-    const revalueAliases = {'REVALUE', 'REVAL', 'POSITION', 'POSIZIONE', 'TOTALEP', 'TOTALE_PERIODO', 'BALANCE', 'SALDO'};
-    if (sellAliases.contains(normalized)) return EventType.sell;
-    if (buyAliases.contains(normalized)) return EventType.buy;
-    if (revalueAliases.contains(normalized)) return EventType.revalue;
-    // Unknown type — fail loudly so the user knows to either add a custom
-    // buyValues/sellValues/revalueValues mapping via the wizard, or omit
-    // the type column. The previous silent fallback to BUY turned
-    // dividends/taxes/transfers into phantom buys and inflated the
-    // asset's cost basis.
+    // Unknown type — fail loudly so the user knows to tag this value via the
+    // wizard chips (buy/sell/revalue/fee) or omit the type column. There are
+    // NO built-in keyword aliases: type classification is purely explicit
+    // (user tags + literal enum names). A silent guess could mis-type rows —
+    // e.g. turning dividends/taxes/transfers into phantom buys and inflating
+    // the asset's cost basis.
     throw FormatException('Unknown event type "$s" (normalized: "$normalized")');
   }
 
@@ -984,6 +1019,13 @@ class ImportService {
         final included = balanceFilterInclude == null || balanceFilterInclude.isEmpty || balanceFilterInclude.contains(filterVal);
         if (included) {
           balanceCents += toCents(rows[i].amount);
+        } else {
+          // Excluded from the balance == not a real movement (cancelled/
+          // declined). Mark it so downstream views can show it struck-through
+          // and exclude it from amount-based totals. Balance is intentionally
+          // left as the carried running value (it did not move money), and an
+          // explicit status-column mapping, if any, is not overridden.
+          rows[i].status ??= TransactionStatus.cancelled;
         }
         rows[i].balanceAfter = fromCents(balanceCents);
       }
@@ -1000,7 +1042,12 @@ class _ParsedTransactionRow {
   final String description;
   final double? balanceAfterFromColumn;
   final String currency;
-  final TransactionStatus? status;
+
+  /// Mutable: filtered balance mode sets this to [TransactionStatus.cancelled]
+  /// for rows whose filter value is excluded from the balance, so an
+  /// excluded ("not real") row is also marked cancelled. Defaults to the
+  /// explicit status-column mapping (if any), else null → DB default settled.
+  TransactionStatus? status;
   final Map<String, String> rawMetadata;
   final String? hash;
   final String? filterColumnValue;

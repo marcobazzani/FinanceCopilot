@@ -52,6 +52,98 @@ void main() {
     },
   );
 
+  group('nextCfSolveAction (managed challenge on API paths)', () {
+    // Regression: the provider moved the Cloudflare challenge off the api-host
+    // root page (which now loads unchallenged, yielding no cf_clearance) onto
+    // the /api/financialdata/... paths themselves. The solve loop must probe
+    // the API and, when the probe is blocked, navigate top-level to the API
+    // URL — a fetch() can never pass a managed challenge.
+
+    test('challenge interstitial still running -> wait', () {
+      expect(
+        nextCfSolveAction(
+          title: 'Just a moment...',
+          host: 'api.investing.com',
+          probeStatus: null,
+          challengeNavStarted: false,
+        ),
+        CfSolveAction.wait,
+      );
+    });
+
+    test('bounced to www host -> navigate back to api host', () {
+      expect(
+        nextCfSolveAction(
+          title: 'Markets',
+          host: kProviderHost,
+          probeStatus: null,
+          challengeNavStarted: false,
+        ),
+        CfSolveAction.goToApiHost,
+      );
+    });
+
+    test('API probe 200 -> solved', () {
+      expect(
+        nextCfSolveAction(
+          title: '',
+          host: 'api.investing.com',
+          probeStatus: 200,
+          challengeNavStarted: false,
+        ),
+        CfSolveAction.solved,
+      );
+    });
+
+    test('unchallenged root page but API probe 403 -> start challenge navigation', () {
+      expect(
+        nextCfSolveAction(
+          title: '',
+          host: 'api.investing.com',
+          probeStatus: 403,
+          challengeNavStarted: false,
+        ),
+        CfSolveAction.startChallengeNav,
+      );
+    });
+
+    test('probe JS error (-1) -> start challenge navigation', () {
+      expect(
+        nextCfSolveAction(
+          title: null,
+          host: 'api.investing.com',
+          probeStatus: -1,
+          challengeNavStarted: false,
+        ),
+        CfSolveAction.startChallengeNav,
+      );
+    });
+
+    test('probe still blocked after challenge nav -> wait (no nav loop)', () {
+      expect(
+        nextCfSolveAction(
+          title: '',
+          host: 'api.investing.com',
+          probeStatus: 403,
+          challengeNavStarted: true,
+        ),
+        CfSolveAction.wait,
+      );
+    });
+
+    test('probe 200 after challenge nav -> solved', () {
+      expect(
+        nextCfSolveAction(
+          title: '',
+          host: 'api.investing.com',
+          probeStatus: 200,
+          challengeNavStarted: true,
+        ),
+        CfSolveAction.solved,
+      );
+    });
+  });
+
   test('non-JSON Dio API response falls back to JS fetch', () async {
     final dio = Dio();
     dio.interceptors.add(
