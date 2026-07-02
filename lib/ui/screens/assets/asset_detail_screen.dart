@@ -20,7 +20,6 @@ import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/assets/asset_detail_charts_provider.dart';
 import 'package:finance_copilot/ui/screens/assets/asset_event_edit_screen.dart';
 import 'package:finance_copilot/ui/screens/pillars/pillar_detail_screen.dart';
-import 'package:finance_copilot/ui/widgets/ai_view_context.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
 import 'package:finance_copilot/ui/widgets/asset_search.dart';
@@ -45,18 +44,8 @@ class AssetDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<AssetDetailScreen> createState() => _AssetDetailScreenState();
 }
 
-class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> with AiViewContextState {
+class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
   final _selection = SelectionController<int>();
-
-  @override
-  String? get aiDetailContext {
-    final a = widget.asset;
-    final tags = [a.ticker, a.isin].whereType<String>().where((t) => t.isNotEmpty).join(' / ');
-    return 'The user is viewing the detail of asset "${a.name}"${tags.isEmpty ? '' : ' ($tags)'} — '
-        'invested amount, current market value, gain/loss, price history and '
-        'buy/sell/revalue events. See assets / asset_events / asset_snapshots for '
-        'asset id ${a.id}.';
-  }
 
   @override
   void dispose() {

@@ -154,6 +154,8 @@ class AppStrings {
   String get waybackReset => _it ? 'Usa oggi' : 'Use today';
   String get waybackLastEndOfMonth => _it ? 'Fine mese scorso' : 'Last end of month';
   String get waybackLastEndOfYear => _it ? 'Fine anno scorso' : 'Last end of year';
+  String get waybackNextEndOfMonth => _it ? 'Fine mese corrente' : 'Next end of month';
+  String get waybackNextEndOfYear => _it ? 'Fine anno corrente' : 'Next end of year';
   String get waybackCustom => _it ? 'Personalizzata...' : 'Custom...';
   String get tooltipRefreshPrices => _it ? 'Aggiorna prezzi di mercato' : 'Refresh Market Prices';
   String get tooltipSettings => _it ? 'Impostazioni' : 'Settings';
@@ -242,38 +244,6 @@ class AppStrings {
       ? 'Il database e stato esportato. Tutti i dati verranno eliminati definitivamente.'
       : 'Your database has been exported. All data will be permanently deleted.';
   String get settingsWipeConfirm => _it ? 'Cancella definitivamente' : 'Delete Permanently';
-
-  // ── AI Assistant ───────────────────────────────────────
-  String get aiSettingsTitle => _it ? 'Assistente IA' : 'AI Assistant';
-  String get aiProvider => _it ? 'Provider' : 'Provider';
-  String get aiApiKey => _it ? 'Chiave API' : 'API key';
-  String get aiModel => _it ? 'Modello' : 'Model';
-  String get aiRegion => _it ? 'Regione' : 'Region';
-  String get aiEndpoint => _it ? 'Endpoint (opzionale)' : 'Endpoint (optional)';
-  String get aiEndpointHelp => _it ? "Lascia vuoto per usare l'endpoint AWS regionale." : 'Leave blank to use the regional AWS endpoint.';
-  String get aiPrivacyNote => _it
-      ? 'Le domande inviano i dati finanziari corrispondenti al provider configurato.'
-      : 'Questions send the matching financial data to your configured provider.';
-  String get aiTest => _it ? 'Prova' : 'Test';
-  String get aiTesting => _it ? 'Verifica…' : 'Testing…';
-  String get aiTestOk => _it ? 'Connessione riuscita' : 'Connection OK';
-  String aiTestFailed(Object e) => _it ? 'Prova fallita: $e' : 'Test failed: $e';
-  String get aiFillFields => _it ? 'Inserisci chiave, modello e regione/endpoint.' : 'Enter key, model and region/endpoint.';
-
-  String get aiChatTitle => _it ? "Chiedi all'IA" : 'Ask AI';
-  String get aiChatHint => _it ? 'Chiedi sulle tue finanze…' : 'Ask about your finances…';
-  String get aiChatEmpty => _it
-      ? 'Fai una domanda sulle tue finanze, ad es. "Dove ho speso di più il mese scorso?"'
-      : 'Ask a question about your finances, e.g. "Where did I spend the most last month?"';
-  String get aiNotConfigured =>
-      _it ? "Configura un provider IA nelle Impostazioni per usare l'assistente." : 'Configure an AI provider in Settings to use the assistant.';
-  String get aiOpenSettings => _it ? 'Apri Impostazioni' : 'Open Settings';
-  String get aiShowSql => _it ? 'Mostra SQL / dati' : 'Show SQL / data';
-  String get aiThinking => _it ? 'Sto pensando…' : 'Thinking…';
-  String get aiSend => _it ? 'Invia' : 'Send';
-  String aiRowCount(int n) => _it ? '$n righe' : '$n rows';
-  String get aiClearChat => _it ? 'Cancella conversazione' : 'Clear chat';
-  String get aiCloseChat => _it ? 'Chiudi' : 'Close';
 
   // ── Google Drive Sync ──────────────────────────────────
   String get settingsGoogleDrive => _it ? 'Google Drive Sync' : 'Google Drive Sync';

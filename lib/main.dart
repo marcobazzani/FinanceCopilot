@@ -17,8 +17,6 @@ import 'database/database.dart';
 import 'database/providers.dart';
 import 'app_shell/app_navigator.dart';
 import 'l10n/app_strings.dart';
-import 'services/ai/ai_provider_config.dart';
-import 'services/ai/bedrock_converse_client.dart';
 import 'services/app_actions_controller.dart';
 import 'services/app_settings.dart';
 import 'services/import/import_service.dart';
@@ -29,7 +27,6 @@ import 'services/providers/providers.dart';
 import 'utils/formatters.dart' as fmt;
 
 import 'ui/screens/accounts/accounts_screen.dart';
-import 'ui/screens/ai/ai_chat_panel.dart';
 import 'ui/screens/assets/assets_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/import/import_screen.dart';
@@ -111,40 +108,7 @@ class FinanceCopilotApp extends ConsumerWidget {
       // Apply bottom safe area globally so Android gesture/nav bar never
       // covers content (Next buttons, bottom sheets, etc.). SafeArea consumes
       // the MediaQuery padding so descendant NavigationBars won't double-pad.
-      // The AI chat overlay is rendered HERE (above the Navigator) so it floats
-      // over every route — including pushed detail screens — instead of being
-      // covered by them. It carries its own Overlay for tooltips/text-selection.
-      builder: (context, child) => Stack(
-        children: [
-          SafeArea(top: false, bottom: true, child: child ?? const SizedBox()),
-          Consumer(
-            builder: (ctx, ref, _) {
-              if (!ref.watch(aiChatVisibleProvider)) return const SizedBox.shrink();
-              final media = MediaQuery.sizeOf(ctx);
-              final isWide = media.width >= 600;
-              final w = isWide ? 400.0 : media.width - 24;
-              final h = (media.height * 0.7).clamp(380.0, 660.0);
-              return SafeArea(
-                child: Align(
-                  alignment: Alignment.bottomRight,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: w,
-                      height: h,
-                      child: Overlay(
-                        initialEntries: [
-                          OverlayEntry(builder: (_) => const AiChatPanel()),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+      builder: (context, child) => SafeArea(top: false, bottom: true, child: child ?? const SizedBox()),
       home: _SafeAppShell(enableStartupSync: enableStartupSync),
     );
   }
@@ -502,17 +466,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     };
   }
 
-  /// Switches the active tab and publishes the (stable English) view name to
-  /// [currentViewProvider] so the AI assistant knows where the user is.
+  /// Switches the active tab.
   void _selectView(int i) {
     setState(() => _selectedIndex = i);
-    ref.read(currentViewProvider.notifier).state = switch (i) {
-      0 => 'Dashboard',
-      1 => 'Accounts',
-      2 => 'Assets',
-      3 => 'Pillars',
-      _ => 'Dashboard',
-    };
   }
 
   Widget _buildLandingPage() {
