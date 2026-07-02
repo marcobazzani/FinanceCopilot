@@ -87,12 +87,18 @@ Future<void> _handleWaybackAction(
       ref.read(waybackDateProvider.notifier).state = lastCompletedMonthEnd(realToday);
     case 'yearEnd':
       ref.read(waybackDateProvider.notifier).state = lastCompletedYearEnd(realToday);
+    case 'nextMonthEnd':
+      ref.read(waybackDateProvider.notifier).state = nextMonthEnd(realToday);
+    case 'nextYearEnd':
+      ref.read(waybackDateProvider.notifier).state = nextYearEnd(realToday);
     case 'custom':
       final picked = await showDatePicker(
         context: context,
         initialDate: selectedDate ?? realToday,
         firstDate: DateTime(1970),
-        lastDate: realToday,
+        // Allow forward time-travel ("wayforward") up to 10 years ahead, so the
+        // user can project future-dated scheduled events / saving plans.
+        lastDate: DateTime(realToday.year + 10, 12, 31),
         locale: Locale(localeTag.split(RegExp('[-_]')).first),
       );
       if (picked != null) {
@@ -139,6 +145,26 @@ List<PopupMenuEntry<String>> _waybackMenuItems(
           const Icon(Icons.event),
           const SizedBox(width: 12),
           Text(s.waybackLastEndOfYear),
+        ],
+      ),
+    ),
+    PopupMenuItem(
+      value: 'nextMonthEnd',
+      child: Row(
+        children: [
+          const Icon(Icons.fast_forward),
+          const SizedBox(width: 12),
+          Text(s.waybackNextEndOfMonth),
+        ],
+      ),
+    ),
+    PopupMenuItem(
+      value: 'nextYearEnd',
+      child: Row(
+        children: [
+          const Icon(Icons.event_available),
+          const SizedBox(width: 12),
+          Text(s.waybackNextEndOfYear),
         ],
       ),
     ),
@@ -272,6 +298,8 @@ class _GlobalActionsOverflow extends ConsumerWidget {
           case 'reset':
           case 'monthEnd':
           case 'yearEnd':
+          case 'nextMonthEnd':
+          case 'nextYearEnd':
           case 'custom':
             await _handleWaybackAction(context, ref, action);
           case 'retryNetwork':

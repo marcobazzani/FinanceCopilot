@@ -154,6 +154,8 @@ class AppStrings {
   String get waybackReset => _it ? 'Usa oggi' : 'Use today';
   String get waybackLastEndOfMonth => _it ? 'Fine mese scorso' : 'Last end of month';
   String get waybackLastEndOfYear => _it ? 'Fine anno scorso' : 'Last end of year';
+  String get waybackNextEndOfMonth => _it ? 'Fine mese corrente' : 'Next end of month';
+  String get waybackNextEndOfYear => _it ? 'Fine anno corrente' : 'Next end of year';
   String get waybackCustom => _it ? 'Personalizzata...' : 'Custom...';
   String get tooltipRefreshPrices => _it ? 'Aggiorna prezzi di mercato' : 'Refresh Market Prices';
   String get tooltipSettings => _it ? 'Impostazioni' : 'Settings';

@@ -21,4 +21,19 @@ void main() {
     expect(lastCompletedYearEnd(DateTime(2026, 5, 30)), DateTime(2025, 12, 31));
     expect(lastCompletedYearEnd(DateTime(2026, 1, 1)), DateTime(2025, 12, 31));
   });
+
+  test('nextMonthEnd returns the current month end (wayforward)', () {
+    expect(nextMonthEnd(DateTime(2026, 5, 15)), DateTime(2026, 5, 31));
+    expect(nextMonthEnd(DateTime(2026, 2, 1)), DateTime(2026, 2, 28));
+    expect(nextMonthEnd(DateTime(2024, 2, 1)), DateTime(2024, 2, 29)); // leap
+    expect(nextMonthEnd(DateTime(2026, 12, 10)), DateTime(2026, 12, 31)); // year wrap
+    // On a month-end the result is that same day.
+    expect(nextMonthEnd(DateTime(2026, 4, 30)), DateTime(2026, 4, 30));
+  });
+
+  test('nextYearEnd returns the current year end (wayforward)', () {
+    expect(nextYearEnd(DateTime(2026, 5, 30)), DateTime(2026, 12, 31));
+    expect(nextYearEnd(DateTime(2026, 1, 1)), DateTime(2026, 12, 31));
+    expect(nextYearEnd(DateTime(2026, 12, 31)), DateTime(2026, 12, 31));
+  });
 }

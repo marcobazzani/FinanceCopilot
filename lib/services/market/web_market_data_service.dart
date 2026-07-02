@@ -46,6 +46,44 @@ const _exchangeSynonyms = <String, List<String>>{
   'Tokyo': ['Tokyo'],
 };
 
+/// What the CF-solve loop should do after a page finished loading in the
+/// headless WebView. Pure decision logic, extracted for testability.
+enum CfSolveAction {
+  /// Challenge interstitial is still running — do nothing and wait.
+  wait,
+
+  /// We were bounced to the www host — navigate back to the api host.
+  goToApiHost,
+
+  /// The API probe succeeded — extract cookies and finish.
+  solved,
+
+  /// The API is challenge-protected — navigate top-level to the API URL
+  /// (a real navigation can pass the managed challenge; a fetch() cannot).
+  startChallengeNav,
+}
+
+/// Decides the next step of the Cloudflare solve loop.
+///
+/// The provider hardened its bot protection: the api-host root page is no
+/// longer challenged, but `/api/financialdata/...` paths serve a Cloudflare
+/// *managed challenge* (`cf-mitigated: challenge`). A JS `fetch()` can never
+/// pass that challenge — only a top-level navigation can — so when the probe
+/// comes back 403 we navigate the WebView to the API URL itself.
+@visibleForTesting
+CfSolveAction nextCfSolveAction({
+  required String? title,
+  required String? host,
+  required int? probeStatus,
+  required bool challengeNavStarted,
+}) {
+  if (title != null && title.contains('Just a moment')) return CfSolveAction.wait;
+  if (host == kProviderHost) return CfSolveAction.goToApiHost;
+  if (probeStatus == 200) return CfSolveAction.solved;
+  if (!challengeNavStarted) return CfSolveAction.startChallengeNav;
+  return CfSolveAction.wait;
+}
+
 /// Fetches historical prices from the market data provider.
 ///
 /// Uses a headless WebView to solve Cloudflare challenges, then makes
@@ -145,7 +183,7 @@ class WebMarketDataService extends MarketPriceService {
           if (_cfUserAgent.isNotEmpty) headers['User-Agent'] = _cfUserAgent;
           if (_cfCookieStr.isNotEmpty) headers['Cookie'] = _cfCookieStr;
           await _dio.get(
-            '$kProviderApiBase/api/financialdata/historical/46925?startDate=2026-04-01&endDate=2026-04-02&interval=Daily',
+            _probeApiUrl,
             options: Options(headers: headers, validateStatus: (s) => s != null && s < 400),
           );
           _log.info('Dio probe: OK - using Dio for API calls');
@@ -172,6 +210,42 @@ class WebMarketDataService extends MarketPriceService {
   /// lifecycle can be verified without a real headless WebView.
   Future<bool> ensureWebViewForTest() => _ensureWebView();
 
+  /// A small real API request used to (a) probe whether this JS/Dio context
+  /// can reach the API and (b) trigger the managed challenge via top-level
+  /// navigation. cid 46925 is a liquid, always-available instrument.
+  String get _probeApiUrl {
+    final now = DateTime.now();
+    final from = now.subtract(const Duration(days: 7));
+    return '$kProviderApiBase/api/financialdata/historical/46925'
+        '?start-date=${formatYmd(from)}&end-date=${formatYmd(now)}'
+        '&time-frame=Daily&add-missing-rows=false';
+  }
+
+  /// Runs a same-origin fetch() of [_probeApiUrl] inside the WebView and
+  /// returns the HTTP status (or null on JS/timeout errors).
+  Future<int?> _jsProbeStatus(InAppWebViewController controller) async {
+    try {
+      final result = await controller
+          .callAsyncJavaScript(
+            functionBody:
+                '''
+          try {
+            const r = await fetch('$_probeApiUrl', { headers: { 'domain-id': 'www' } });
+            return r.status;
+          } catch (e) { return -1; }
+        ''',
+          )
+          .timeout(const Duration(seconds: 15));
+      final v = result?.value;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return null;
+    } catch (e) {
+      _log.fine('_jsProbeStatus: $e');
+      return null;
+    }
+  }
+
   Future<bool> _solveHeadless() async {
     _log.info('Solving CF via headless WebView...');
     if (_webView != null) {
@@ -184,37 +258,90 @@ class WebMarketDataService extends MarketPriceService {
     _dioBlocked = false; // reset — will probe after solve
     final completer = Completer<bool>();
     Timer? timeout;
-    bool navigatedToApi = false;
+    Timer? cookiePoll;
+    bool challengeNavStarted = false;
+    bool handling = false;
+
+    Future<void> finish(InAppWebViewController controller) async {
+      if (completer.isCompleted) return;
+      timeout?.cancel();
+      cookiePoll?.cancel();
+      await _onCfSolved(controller);
+      completer.complete(true);
+    }
+
+    // Top-level navigation to the API URL: a real navigation can pass the
+    // managed challenge that now protects /api/financialdata/... paths,
+    // where a fetch() cannot.
+    Future<void> startChallengeNav(InAppWebViewController controller) async {
+      challengeNavStarted = true;
+      _log.info('API is challenge-protected, navigating to API URL to solve...');
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(_probeApiUrl)));
+      // Fallback for platforms where the final JSON response does not render
+      // as a page (no onLoadStop, e.g. Android treats it as a download):
+      // detect challenge completion via the clearance cookie, then hop back
+      // to the api root to restore a same-origin JS context for fetches.
+      cookiePoll = Timer.periodic(const Duration(seconds: 1), (_) async {
+        if (completer.isCompleted) {
+          cookiePoll?.cancel();
+          return;
+        }
+        try {
+          final cookies = await CookieManager.instance().getCookies(url: WebUri('$kProviderApiBase/'));
+          if (cookies.any((c) => c.name == 'cf_clearance')) {
+            cookiePoll?.cancel();
+            _log.info('cf_clearance obtained, returning to api root...');
+            await controller.loadUrl(
+              urlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
+            );
+          }
+        } catch (_) {}
+      });
+    }
+
     _webView = HeadlessInAppWebView(
       // Start on the api host so subsequent fetch() calls are same-origin.
       initialUrlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
       initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
       onLoadStop: (controller, url) async {
-        if (completer.isCompleted) return;
-        final title = await controller.getTitle();
-        final urlStr = url?.toString() ?? '';
-        _log.fine('CF headless onLoadStop: url=$urlStr title=$title');
+        if (completer.isCompleted || handling) return;
+        handling = true;
+        try {
+          final title = await controller.getTitle();
+          _log.fine('CF headless onLoadStop: url=$url title=$title');
 
-        // If CF challenge is still running, wait
-        if (title != null && title.contains('Just a moment')) return;
+          // Only probe when the decision needs it (not on challenge pages).
+          final needsProbe = !(title?.contains('Just a moment') ?? false) && url?.host != kProviderHost;
+          final probeStatus = needsProbe ? await _jsProbeStatus(controller) : null;
 
-        // If we landed on www (redirect), navigate to api for same-origin
-        if (urlStr.contains(kProviderHost) && !navigatedToApi) {
-          navigatedToApi = true;
-          _log.info('CF solved on www, navigating to api host for same-origin...');
-          await controller.loadUrl(
-            urlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
-          );
-          return;
+          switch (nextCfSolveAction(
+            title: title,
+            host: url?.host,
+            probeStatus: probeStatus,
+            challengeNavStarted: challengeNavStarted,
+          )) {
+            case CfSolveAction.wait:
+              if (challengeNavStarted && probeStatus != null) {
+                _log.warning('CF solve: API probe still $probeStatus after challenge nav');
+              }
+            case CfSolveAction.goToApiHost:
+              _log.info('Landed on www, navigating to api host for same-origin...');
+              await controller.loadUrl(
+                urlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
+              );
+            case CfSolveAction.solved:
+              await finish(controller);
+            case CfSolveAction.startChallengeNav:
+              await startChallengeNav(controller);
+          }
+        } finally {
+          handling = false;
         }
-
-        await _onCfSolved(controller);
-        timeout?.cancel();
-        completer.complete(true);
       },
     );
     timeout = Timer(const Duration(seconds: 30), () async {
       _log.warning('CF headless timed out');
+      cookiePoll?.cancel();
       try {
         await _webView?.dispose();
       } catch (_) {}
