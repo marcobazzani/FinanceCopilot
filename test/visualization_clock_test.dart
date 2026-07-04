@@ -36,4 +36,32 @@ void main() {
     expect(nextYearEnd(DateTime(2026, 1, 1)), DateTime(2026, 12, 31));
     expect(nextYearEnd(DateTime(2026, 12, 31)), DateTime(2026, 12, 31));
   });
+
+  test('durationUntilNextDay counts down to just after the next midnight', () {
+    // 00:43 -> 23h17m until midnight, +1s guard.
+    expect(
+      durationUntilNextDay(DateTime(2026, 7, 2, 0, 43)),
+      const Duration(hours: 23, minutes: 17, seconds: 1),
+    );
+    // Just before midnight.
+    expect(
+      durationUntilNextDay(DateTime(2026, 7, 2, 23, 59, 30)),
+      const Duration(seconds: 31),
+    );
+    // Exactly at midnight -> a full day (+1s) to the next one.
+    expect(
+      durationUntilNextDay(DateTime(2026, 7, 2, 0, 0, 0)),
+      const Duration(days: 1, seconds: 1),
+    );
+    // Always strictly positive and within a day (+ the 1s guard).
+    for (final now in [
+      DateTime(2026, 1, 1, 0, 0, 1),
+      DateTime(2026, 6, 15, 12, 34, 56),
+      DateTime(2024, 2, 29, 18, 0),
+    ]) {
+      final d = durationUntilNextDay(now);
+      expect(d.inMilliseconds, greaterThan(0));
+      expect(d, lessThanOrEqualTo(const Duration(days: 1, seconds: 1)));
+    }
+  });
 }

@@ -379,6 +379,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     if (_isSyncing) return;
     _isSyncing = true;
     try {
+      // Re-evaluate "today" so a refresh triggered after a day boundary clears
+      // a stale daily-change figure immediately (the provider also rolls over
+      // on its own midnight timer; this makes the user's action instant).
+      ref.invalidate(currentDateProvider);
       // Update network status indicator
       final online = await ref.read(networkMonitorProvider).check();
       ref.read(networkOnlineProvider.notifier).state = online;
