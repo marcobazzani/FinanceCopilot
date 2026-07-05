@@ -19,10 +19,25 @@ final privacyModeProvider = StateProvider<bool>((ref) => false);
 final waybackDateProvider = StateProvider<DateTime?>((ref) => null);
 
 /// Current date for user-facing read/display logic.
+///
+/// Recomputes automatically just after the next local midnight (via a
+/// self-scheduled timer) so day-boundary-sensitive views — today's change,
+/// YTD, chart cutoffs — roll over without an app restart. Previously this
+/// captured [DateTime.now] once at first read and went stale across midnight,
+/// leaving "today's change" showing yesterday's movement until relaunch.
+/// When a wayback override is set the date is pinned and no timer is armed.
 final currentDateProvider = Provider<DateTime>((ref) {
   final override = ref.watch(waybackDateProvider);
-  return dateOnly(override ?? DateTime.now());
+  if (override != null) return dateOnly(override);
+  final now = ref.watch(nowProvider)();
+  final timer = Timer(durationUntilNextDay(now), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  return dateOnly(now);
 });
+
+/// Wall-clock source. Overridable in tests so the day-rollover behaviour can be
+/// exercised deterministically; production always uses [DateTime.now].
+final nowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 /// Labels (chart titles) that have already triggered the ATH celebration
 /// overlay during this app session. Used to prevent the dashboard rebuild
