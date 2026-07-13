@@ -247,7 +247,12 @@ class _ObjectiveCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(s.pillarObjective, style: Theme.of(context).textTheme.titleMedium),
+            // Title: "Objective" for standard pillars; "Value & Performance"
+            // for virtual portfolios (which have no target).
+            Text(
+              pillar.kind == PillarKind.virtual ? s.pillarValueAndPerformance : s.pillarObjective,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             PrivacyText(s.pillarValue('${fmt.amountFormat(locale).format(value)} $baseCurrency')),
             if (hasTarget) ...[

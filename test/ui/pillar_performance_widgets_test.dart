@@ -103,6 +103,8 @@ Widget _testApp({
       appLocaleProvider.overrideWith((ref) => Stream.value('en')),
       baseCurrencyProvider.overrideWithValue(const AsyncData('EUR')),
       pillarsProvider.overrideWithValue(AsyncData([pillar])),
+      standardPillarsProvider.overrideWithValue(AsyncData([pillar])),
+      virtualPortfoliosProvider.overrideWithValue(const AsyncData([])),
       activeAssetsProvider.overrideWithValue(const AsyncData([])),
       assetsProvider.overrideWithValue(const AsyncData([])),
       pillarAssetsProvider.overrideWithValue(const AsyncData([])),

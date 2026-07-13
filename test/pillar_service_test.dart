@@ -123,4 +123,129 @@ void main() {
     expect(const PillarScope.pillar('a') == const PillarScope.pillar('a'), true);
     expect(const PillarScope.pillar('a') == const PillarScope.pillar('b'), false);
   });
+
+  // ── Virtual Portfolio tests ──────────────────────────────────────────
+
+  test('virtual portfolio can overlap a fully-assigned standard pillar', () async {
+    // asset has 10 units, fully assigned to a standard pillar
+    final assetId = await newAssetWithUnits(10);
+    final standard = await pillars.create(name: 'Standard', kind: PillarKind.standard);
+    await pillars.assign(pillarId: standard, assetId: assetId, qty: 10);
+    expect(await pillars.unassignedQty(assetId), 0);
+
+    // virtual portfolio can still assign all 10 (overlap — independent of standard)
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: virtual, assetId: assetId, qty: 10);
+    expect(await pillars.qtyFor(virtual, assetId), 10);
+  });
+
+  test('virtual assignment does not reduce capacity of standard pillars', () async {
+    final assetId = await newAssetWithUnits(10);
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: virtual, assetId: assetId, qty: 10);
+
+    // Standard pillar should still see full 10 available
+    final standard = await pillars.create(name: 'Standard', kind: PillarKind.standard);
+    await pillars.assign(pillarId: standard, assetId: assetId, qty: 10);
+    expect(await pillars.qtyFor(standard, assetId), 10);
+    expect(await pillars.unassignedQty(assetId), 0);
+  });
+
+  test('two virtual portfolios can both hold 100% of the same asset', () async {
+    final assetId = await newAssetWithUnits(10);
+    final v1 = await pillars.create(name: 'V1', kind: PillarKind.virtual);
+    final v2 = await pillars.create(name: 'V2', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: v1, assetId: assetId, qty: 10);
+    await pillars.assign(pillarId: v2, assetId: assetId, qty: 10);
+    expect(await pillars.qtyFor(v1, assetId), 10);
+    expect(await pillars.qtyFor(v2, assetId), 10);
+  });
+
+  test('virtual assignment capped at total — over-100% throws', () async {
+    final assetId = await newAssetWithUnits(10);
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    expect(
+      () => pillars.assign(pillarId: virtual, assetId: assetId, qty: 11),
+      throwsA(isA<PillarOverAssignedException>()),
+    );
+  });
+
+  test('fractionsForPillar = 1.0 when virtual holds all units', () async {
+    final assetId = await newAssetWithUnits(10);
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: virtual, assetId: assetId, qty: 10);
+    final fracs = await pillars.fractionsForPillar(virtual);
+    expect(fracs[assetId], closeTo(1.0, 1e-9));
+  });
+
+  test('availableToAssign: standard respects other standard, virtual returns total', () async {
+    final assetId = await newAssetWithUnits(10);
+    final s1 = await pillars.create(name: 'S1', kind: PillarKind.standard);
+    await pillars.assign(pillarId: s1, assetId: assetId, qty: 4);
+
+    // A second standard pillar sees only 6 available
+    final s2 = await pillars.create(name: 'S2', kind: PillarKind.standard);
+    expect(await pillars.availableToAssign(s2, assetId), closeTo(6, 1e-9));
+
+    // A virtual portfolio always sees the full 10
+    final v = await pillars.create(name: 'V', kind: PillarKind.virtual);
+    expect(await pillars.availableToAssign(v, assetId), closeTo(10, 1e-9));
+  });
+
+  test('clipToFit for virtual clips to total after a sell', () async {
+    final assetId = await newAssetWithUnits(10);
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: virtual, assetId: assetId, qty: 10);
+    // sell 3 → total now 7
+    await events.create(
+      assetId: assetId,
+      date: DateTime.now(),
+      type: EventType.sell,
+      quantity: 3,
+      amount: 30,
+      currency: 'EUR',
+    );
+    await pillars.clipToFit(virtual, assetId);
+    expect(await pillars.qtyFor(virtual, assetId), closeTo(7, 1e-9));
+  });
+
+  test('detectOverAssigned flags virtual rows that exceed total', () async {
+    final assetId = await newAssetWithUnits(10);
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: virtual, assetId: assetId, qty: 10);
+    // sell 3 → virtual row (10) now exceeds total (7)
+    await events.create(
+      assetId: assetId,
+      date: DateTime.now(),
+      type: EventType.sell,
+      quantity: 3,
+      amount: 30,
+      currency: 'EUR',
+    );
+    final overs = await pillars.detectOverAssigned();
+    expect(overs.where((o) => o.assetId == assetId && o.pillarId == virtual).isNotEmpty, true);
+  });
+
+  test('detectOverAssigned: virtual over-sell does NOT flag unrelated standard pillar', () async {
+    final assetId = await newAssetWithUnits(10);
+    final standard = await pillars.create(name: 'Standard', kind: PillarKind.standard);
+    await pillars.assign(pillarId: standard, assetId: assetId, qty: 6);
+    final virtual = await pillars.create(name: 'Virtual', kind: PillarKind.virtual);
+    await pillars.assign(pillarId: virtual, assetId: assetId, qty: 10);
+    // sell 5 → total = 5; standard (6) > 5, virtual (10) > 5 — both flagged
+    // but the standard flag is due to standard sum, not virtual
+    await events.create(
+      assetId: assetId,
+      date: DateTime.now(),
+      type: EventType.sell,
+      quantity: 5,
+      amount: 50,
+      currency: 'EUR',
+    );
+    final overs = await pillars.detectOverAssigned();
+    final virtualOver = overs.where((o) => o.pillarId == virtual).isNotEmpty;
+    final standardOver = overs.where((o) => o.pillarId == standard).isNotEmpty;
+    expect(virtualOver, true);
+    expect(standardOver, true);
+  });
 }

@@ -29,7 +29,7 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this)
+    _tabController = TabController(length: 3, vsync: this)
       ..addListener(() {
         if (!_tabController.indexIsChanging) setState(() {});
       });
@@ -44,12 +44,8 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
-    final pillarsAsync = ref.watch(pillarsProvider);
-    final assignmentsAsync = ref.watch(pillarAssetsProvider);
-    final performanceAsync = ref.watch(pillarPerformanceSnapshotsProvider);
-    final unassignedFracs = ref.watch(unassignedFractionProvider).value ?? {};
-    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
-    final locale = ref.watch(appLocaleProvider).value ?? 'en';
+    final standardAsync = ref.watch(standardPillarsProvider);
+    final virtualAsync = ref.watch(virtualPortfoliosProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -60,9 +56,10 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
           local: _tabController.index == 0
               ? [
                   _RebalanceToolbarMenu(
-                    pillarsAsync: pillarsAsync,
+                    // Rebalance menu only shows standard pillars (virtual are per-portfolio only).
+                    pillarsAsync: standardAsync,
                     onSelected: (choice) async {
-                      final fallbackPillarId = pillarsAsync.value?.isNotEmpty == true ? pillarsAsync.value!.first.id : null;
+                      final fallbackPillarId = standardAsync.value?.isNotEmpty == true ? standardAsync.value!.first.id : null;
                       await showDialog(
                         context: context,
                         builder: (_) => RebalancePreviewDialog(
@@ -79,93 +76,43 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
           controller: _tabController,
           tabs: [
             Tab(text: s.pillarTabPillars),
+            Tab(text: s.pillarTabVirtualPortfolios),
             Tab(text: s.pillarTabPortfolioModels),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: _tabController.index == 0 ? s.pillarCreateTitle : s.portfolioModelCreateTitle,
-        onPressed: () => _tabController.index == 0 ? _openCreateDialog(context, ref) : _openModelDialog(context),
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: switch (_tabController.index) {
+        0 => FloatingActionButton(
+          tooltip: s.pillarCreateTitle,
+          onPressed: () => _openCreateDialog(context, PillarKind.standard),
+          child: const Icon(Icons.add),
+        ),
+        1 => FloatingActionButton(
+          tooltip: s.virtualPortfolioCreateTitle,
+          onPressed: () => _openCreateDialog(context, PillarKind.virtual),
+          child: const Icon(Icons.add),
+        ),
+        _ => FloatingActionButton(
+          tooltip: s.portfolioModelCreateTitle,
+          onPressed: () => _openModelDialog(context),
+          child: const Icon(Icons.add),
+        ),
+      },
       body: TabBarView(
         controller: _tabController,
         children: [
-          pillarsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('$e')),
-            data: (pillars) {
-              final assignments = assignmentsAsync.value ?? const [];
-              final performanceByPillar = performanceAsync.value ?? const <String, PillarPerformanceSnapshot>{};
-
-              double valueOfUnassigned() {
-                final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
-                double total = 0;
-                unassignedFracs.forEach((assetId, frac) {
-                  final mv = marketValues[assetId] ?? 0;
-                  total += mv * frac;
-                });
-                return total;
-              }
-
-              int assetCount(String id) => assignments.where((x) => x.pillarId == id).length;
-
-              if (pillars.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.view_quilt_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        const SizedBox(height: 16),
-                        Text(s.pillarsEmptyTitle, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          icon: const Icon(Icons.add),
-                          label: Text(s.pillarsEmptyCta),
-                          onPressed: () => _openCreateDialog(context, ref),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }
-
-              final unassignedValue = valueOfUnassigned();
-
-              return ListView(
-                padding: const EdgeInsets.all(8),
-                children: [
-                  for (final p in pillars)
-                    _PillarCard(
-                      pillar: p,
-                      performance: performanceByPillar[p.id],
-                      assetCount: assetCount(p.id),
-                      baseCurrency: baseCurrency,
-                      locale: locale,
-                    ),
-                  if (unassignedValue > 0)
-                    _UnassignedCard(
-                      value: unassignedValue,
-                      assetCount: unassignedFracs.values.where((f) => f > 0).length,
-                      baseCurrency: baseCurrency,
-                      locale: locale,
-                    ),
-                ],
-              );
-            },
-          ),
+          _PillarList(pillarsAsync: standardAsync, kind: PillarKind.standard),
+          _PillarList(pillarsAsync: virtualAsync, kind: PillarKind.virtual),
           const _PortfolioModelsTab(),
         ],
       ),
     );
   }
 
-  Future<void> _openCreateDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _openCreateDialog(BuildContext context, PillarKind kind) async {
     await showDialog(
       context: context,
-      builder: (_) => const PillarCreateDialog(),
+      builder: (_) => PillarCreateDialog(kind: kind),
     );
   }
 
@@ -173,6 +120,101 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
     await showDialog(
       context: context,
       builder: (_) => const PortfolioModelDialog(),
+    );
+  }
+}
+
+/// Shared list body for both the Pillars tab and the Virtual Portfolios tab.
+/// [kind] controls the empty-state copy and whether the Unassigned card is shown.
+class _PillarList extends ConsumerWidget {
+  final AsyncValue<List<Pillar>> pillarsAsync;
+  final PillarKind kind;
+
+  const _PillarList({required this.pillarsAsync, required this.kind});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final assignmentsAsync = ref.watch(pillarAssetsProvider);
+    final performanceAsync = ref.watch(pillarPerformanceSnapshotsProvider);
+    final unassignedFracs = ref.watch(unassignedFractionProvider).value ?? {};
+    final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
+    final locale = ref.watch(appLocaleProvider).value ?? 'en';
+
+    return pillarsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('$e')),
+      data: (pillars) {
+        final assignments = assignmentsAsync.value ?? const [];
+        final performanceByPillar = performanceAsync.value ?? const <String, PillarPerformanceSnapshot>{};
+
+        int assetCount(String id) => assignments.where((x) => x.pillarId == id).length;
+
+        if (pillars.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    kind == PillarKind.virtual ? Icons.folder_special_outlined : Icons.view_quilt_outlined,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    kind == PillarKind.virtual ? s.virtualPortfoliosEmptyTitle : s.pillarsEmptyTitle,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: Text(kind == PillarKind.virtual ? s.virtualPortfoliosEmptyCta : s.pillarsEmptyCta),
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => PillarCreateDialog(kind: kind),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        // Unassigned card only makes sense for standard pillars (the partition model).
+        final showUnassigned = kind == PillarKind.standard;
+        double unassignedValue = 0;
+        int unassignedCount = 0;
+        if (showUnassigned) {
+          final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
+          unassignedFracs.forEach((assetId, frac) {
+            unassignedValue += (marketValues[assetId] ?? 0) * frac;
+          });
+          unassignedCount = unassignedFracs.values.where((f) => f > 0).length;
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(8),
+          children: [
+            for (final p in pillars)
+              _PillarCard(
+                pillar: p,
+                performance: performanceByPillar[p.id],
+                assetCount: assetCount(p.id),
+                baseCurrency: baseCurrency,
+                locale: locale,
+              ),
+            if (showUnassigned && unassignedValue > 0)
+              _UnassignedCard(
+                value: unassignedValue,
+                assetCount: unassignedCount,
+                baseCurrency: baseCurrency,
+                locale: locale,
+              ),
+          ],
+        );
+      },
     );
   }
 }

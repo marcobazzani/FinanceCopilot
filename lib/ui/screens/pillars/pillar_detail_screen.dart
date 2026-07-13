@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../database/database.dart';
+import '../../../database/tables.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../models/dashboard_chart.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
@@ -116,7 +117,9 @@ class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with Si
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: Text(s.delete),
-                    content: Text(s.pillarDeleteConfirm),
+                    content: Text(
+                      p.kind == PillarKind.virtual ? s.virtualPortfolioDeleteConfirm : s.pillarDeleteConfirm,
+                    ),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
                       FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
@@ -174,16 +177,20 @@ class _PillarAssetsOverviewTab extends ConsumerWidget {
 class _AssetRowState {
   final int assetId;
   final double total;
-  final double otherAssigned;
+
+  /// Maximum qty that can be assigned to this pillar for this asset.
+  /// Kind-aware: standard = total − other standard assignments;
+  /// virtual = total (each virtual portfolio is independent).
+  final double available;
   double current;
   _AssetRowState({
     required this.assetId,
     required this.total,
-    required this.otherAssigned,
+    required this.available,
     required this.current,
   });
-  double get maxAvailable => total - otherAssigned;
-  double get maxPercent => total <= 0 ? 0 : (maxAvailable / total * 100).clamp(0.0, 100.0);
+  double get maxAvailable => available;
+  double get maxPercent => total <= 0 ? 0 : (available / total * 100).clamp(0.0, 100.0);
   double get currentPercent => total <= 0 ? 0 : (current / total * 100).clamp(0.0, 100.0);
 }
 

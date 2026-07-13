@@ -33,12 +33,13 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
       final total = await svc.totalQuantity(a.id);
       if (total <= 0) continue;
       final current = await svc.qtyFor(widget.pillarId, a.id);
-      final unassigned = await svc.unassignedQty(a.id);
-      final otherAssigned = total - unassigned - current;
+      // availableToAssign is kind-aware: standard → total − other standard
+      // assigned; virtual → total (independent per-portfolio cap).
+      final available = await svc.availableToAssign(widget.pillarId, a.id);
       out[a.id] = _AssetRowState(
         assetId: a.id,
         total: total,
-        otherAssigned: otherAssigned < 0 ? 0 : otherAssigned,
+        available: available,
         current: current,
       );
     }
