@@ -10,7 +10,13 @@ import '../../../utils/formatters.dart' as fmt;
 
 class PillarCreateDialog extends ConsumerStatefulWidget {
   final Pillar? existing;
-  const PillarCreateDialog({super.key, this.existing});
+
+  /// When creating a new pillar, specifies whether it is a standard partition
+  /// pillar or a virtual (overlapping) portfolio. Ignored in edit mode
+  /// (the kind of an existing pillar is never changed).
+  final PillarKind kind;
+
+  const PillarCreateDialog({super.key, this.existing, this.kind = PillarKind.standard});
 
   @override
   ConsumerState<PillarCreateDialog> createState() => _PillarCreateDialogState();
@@ -21,6 +27,10 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
   late final TextEditingController _target;
   late String _currency;
   String? _portfolioModelId;
+
+  /// The effective kind: use the existing pillar's kind in edit mode,
+  /// otherwise use the kind passed to the dialog.
+  PillarKind get _kind => widget.existing?.kind ?? widget.kind;
 
   @override
   void initState() {
@@ -53,8 +63,14 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
     final locale = ref.watch(appLocaleProvider).value ?? 'en';
     final modelsAsync = ref.watch(portfolioModelsProvider);
     final isEdit = widget.existing != null;
+    final isVirtual = _kind == PillarKind.virtual;
+
+    final title = isEdit
+        ? (isVirtual ? s.virtualPortfolioEditTitle : s.pillarEditTitle)
+        : (isVirtual ? s.virtualPortfolioCreateTitle : s.pillarCreateTitle);
+
     return AlertDialog(
-      title: Text(isEdit ? s.pillarEditTitle : s.pillarCreateTitle),
+      title: Text(title),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -65,36 +81,39 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
               autofocus: true,
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _target,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(labelText: s.pillarFieldTargetValue),
+            // Objective (target value + currency) is only shown for standard pillars.
+            if (!isVirtual) ...[
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: _target,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(labelText: s.pillarFieldTargetValue),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 1,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _currency,
-                    decoration: InputDecoration(labelText: s.pillarFieldTargetCurrency),
-                    items: const [
-                      DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-                      DropdownMenuItem(value: 'USD', child: Text('USD')),
-                      DropdownMenuItem(value: 'GBP', child: Text('GBP')),
-                      DropdownMenuItem(value: 'CHF', child: Text('CHF')),
-                    ],
-                    onChanged: (v) {
-                      if (v != null) setState(() => _currency = v);
-                    },
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 1,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _currency,
+                      decoration: InputDecoration(labelText: s.pillarFieldTargetCurrency),
+                      items: const [
+                        DropdownMenuItem(value: 'EUR', child: Text('EUR')),
+                        DropdownMenuItem(value: 'USD', child: Text('USD')),
+                        DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+                        DropdownMenuItem(value: 'CHF', child: Text('CHF')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _currency = v);
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
             modelsAsync.when(
               loading: () => const LinearProgressIndicator(),
               error: (e, _) => Text(s.error(e)),
@@ -135,7 +154,9 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
     final name = _name.text.trim();
     if (name.isEmpty) return;
     final svc = ref.read(pillarServiceProvider);
-    final targetTxt = _target.text.trim();
+    final isVirtual = _kind == PillarKind.virtual;
+    // Virtual portfolios never have a target value.
+    final targetTxt = isVirtual ? '' : _target.text.trim();
     final target = targetTxt.isEmpty ? null : fmt.tryParseLocalized(targetTxt, locale: locale);
     if (widget.existing == null) {
       await svc.create(
@@ -143,6 +164,7 @@ class _PillarCreateDialogState extends ConsumerState<PillarCreateDialog> {
         targetValue: target,
         targetCurrency: _currency,
         portfolioModelId: _portfolioModelId,
+        kind: _kind,
       );
     } else {
       await svc.update(

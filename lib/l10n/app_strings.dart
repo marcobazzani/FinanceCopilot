@@ -83,6 +83,17 @@ class AppStrings {
   String get pillarPickPillar => _it ? 'Scegli pilastro' : 'Pick pillar';
   String get pillarTabPillars => _it ? 'Pilastri' : 'Pillars';
   String get pillarTabPortfolioModels => _it ? 'Modelli' : 'Portfolio Models';
+  String get pillarTabVirtualPortfolios => _it ? 'Portafogli virtuali' : 'Virtual Portfolios';
+
+  // ── Virtual Portfolios ─────────────────────────────────
+  String get virtualPortfolioCreateTitle => _it ? 'Nuovo portafoglio virtuale' : 'New virtual portfolio';
+  String get virtualPortfolioEditTitle => _it ? 'Modifica portafoglio virtuale' : 'Edit virtual portfolio';
+  String get virtualPortfoliosEmptyTitle => _it ? 'Nessun portafoglio virtuale' : 'No virtual portfolios yet';
+  String get virtualPortfoliosEmptyCta => _it ? 'Crea il tuo primo portafoglio virtuale' : 'Create your first virtual portfolio';
+  String get virtualPortfolioDeleteConfirm => _it
+      ? 'Eliminare questo portafoglio virtuale? Le assegnazioni verranno rimosse.'
+      : 'Delete this virtual portfolio? Assignments will be removed.';
+  String get pillarValueAndPerformance => _it ? 'Valore e rendimento' : 'Value & Performance';
   String get portfolioModelsBuiltIn => _it ? 'Predefiniti' : 'Built-in';
   String get portfolioModelsCustom => _it ? 'Personalizzati' : 'Custom';
   String get portfolioModelsEmpty => _it ? 'Nessun modello' : 'No models yet';

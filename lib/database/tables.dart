@@ -119,6 +119,12 @@ enum EventEntryKind { scheduled, manual, reimbursement }
 
 enum PortfolioModelVariant { full, mini, custom }
 
+/// Discriminates between a real partition-based pillar (standard) and an
+/// overlapping virtual portfolio (virtual). Virtual portfolios share the same
+/// table and service but are exempt from the SUM-of-assigned ≤ total-holding
+/// invariant that governs standard pillars.
+enum PillarKind { standard, virtual }
+
 // ──────────────────────────────────────────────
 // Tables
 // ──────────────────────────────────────────────
@@ -462,10 +468,17 @@ class PortfolioModelItems extends Table {
 
 /// Pillar = a named bucket of asset units with an optional objective
 /// (portfolio model + target value). One asset's units can be split
-/// across multiple pillars; the leftover is the implicit "Unassigned" pillar.
+/// across multiple standard pillars; the leftover is the implicit "Unassigned"
+/// pillar. Virtual portfolios (kind == virtual) are exempt from the
+/// partition invariant: the same units can overlap across any number of virtual
+/// portfolios and real pillars simultaneously, capped only at 100% of the
+/// actual holding per virtual portfolio.
 class Pillars extends Table {
   TextColumn get id => text()(); // UUIDv7
   TextColumn get name => text().withLength(min: 1, max: 200)();
+
+  /// standard: partition-based; virtual: overlapping (no Objective).
+  TextColumn get kind => textEnum<PillarKind>().withDefault(const Constant('standard'))();
   RealColumn get targetValue => real().nullable()();
   TextColumn get targetCurrency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   TextColumn get portfolioModelId => text().nullable().references(PortfolioModels, #id, onDelete: KeyAction.setNull)();

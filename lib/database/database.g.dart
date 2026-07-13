@@ -12726,6 +12726,15 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<PillarKind, String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('standard'),
+  ).withConverter<PillarKind>($PillarsTable.$converterkind);
   static const VerificationMeta _targetValueMeta = const VerificationMeta(
     'targetValue',
   );
@@ -12807,6 +12816,7 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
   List<GeneratedColumn> get $columns => [
     id,
     name,
+    kind,
     targetValue,
     targetCurrency,
     portfolioModelId,
@@ -12901,6 +12911,12 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      kind: $PillarsTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
       targetValue: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}target_value'],
@@ -12932,11 +12948,16 @@ class $PillarsTable extends Pillars with TableInfo<$PillarsTable, Pillar> {
   $PillarsTable createAlias(String alias) {
     return $PillarsTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<PillarKind, String, String> $converterkind = const EnumNameConverter<PillarKind>(PillarKind.values);
 }
 
 class Pillar extends DataClass implements Insertable<Pillar> {
   final String id;
   final String name;
+
+  /// standard: partition-based; virtual: overlapping (no Objective).
+  final PillarKind kind;
   final double? targetValue;
   final String targetCurrency;
   final String? portfolioModelId;
@@ -12946,6 +12967,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
   const Pillar({
     required this.id,
     required this.name,
+    required this.kind,
     this.targetValue,
     required this.targetCurrency,
     this.portfolioModelId,
@@ -12958,6 +12980,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    {
+      map['kind'] = Variable<String>($PillarsTable.$converterkind.toSql(kind));
+    }
     if (!nullToAbsent || targetValue != null) {
       map['target_value'] = Variable<double>(targetValue);
     }
@@ -12975,6 +13000,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     return PillarsCompanion(
       id: Value(id),
       name: Value(name),
+      kind: Value(kind),
       targetValue: targetValue == null && nullToAbsent ? const Value.absent() : Value(targetValue),
       targetCurrency: Value(targetCurrency),
       portfolioModelId: portfolioModelId == null && nullToAbsent ? const Value.absent() : Value(portfolioModelId),
@@ -12992,6 +13018,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     return Pillar(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      kind: $PillarsTable.$converterkind.fromJson(
+        serializer.fromJson<String>(json['kind']),
+      ),
       targetValue: serializer.fromJson<double?>(json['targetValue']),
       targetCurrency: serializer.fromJson<String>(json['targetCurrency']),
       portfolioModelId: serializer.fromJson<String?>(json['portfolioModelId']),
@@ -13006,6 +13035,9 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'kind': serializer.toJson<String>(
+        $PillarsTable.$converterkind.toJson(kind),
+      ),
       'targetValue': serializer.toJson<double?>(targetValue),
       'targetCurrency': serializer.toJson<String>(targetCurrency),
       'portfolioModelId': serializer.toJson<String?>(portfolioModelId),
@@ -13018,6 +13050,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
   Pillar copyWith({
     String? id,
     String? name,
+    PillarKind? kind,
     Value<double?> targetValue = const Value.absent(),
     String? targetCurrency,
     Value<String?> portfolioModelId = const Value.absent(),
@@ -13027,6 +13060,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
   }) => Pillar(
     id: id ?? this.id,
     name: name ?? this.name,
+    kind: kind ?? this.kind,
     targetValue: targetValue.present ? targetValue.value : this.targetValue,
     targetCurrency: targetCurrency ?? this.targetCurrency,
     portfolioModelId: portfolioModelId.present ? portfolioModelId.value : this.portfolioModelId,
@@ -13038,6 +13072,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     return Pillar(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      kind: data.kind.present ? data.kind.value : this.kind,
       targetValue: data.targetValue.present ? data.targetValue.value : this.targetValue,
       targetCurrency: data.targetCurrency.present ? data.targetCurrency.value : this.targetCurrency,
       portfolioModelId: data.portfolioModelId.present ? data.portfolioModelId.value : this.portfolioModelId,
@@ -13052,6 +13087,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
     return (StringBuffer('Pillar(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('kind: $kind, ')
           ..write('targetValue: $targetValue, ')
           ..write('targetCurrency: $targetCurrency, ')
           ..write('portfolioModelId: $portfolioModelId, ')
@@ -13066,6 +13102,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
   int get hashCode => Object.hash(
     id,
     name,
+    kind,
     targetValue,
     targetCurrency,
     portfolioModelId,
@@ -13079,6 +13116,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
       (other is Pillar &&
           other.id == this.id &&
           other.name == this.name &&
+          other.kind == this.kind &&
           other.targetValue == this.targetValue &&
           other.targetCurrency == this.targetCurrency &&
           other.portfolioModelId == this.portfolioModelId &&
@@ -13090,6 +13128,7 @@ class Pillar extends DataClass implements Insertable<Pillar> {
 class PillarsCompanion extends UpdateCompanion<Pillar> {
   final Value<String> id;
   final Value<String> name;
+  final Value<PillarKind> kind;
   final Value<double?> targetValue;
   final Value<String> targetCurrency;
   final Value<String?> portfolioModelId;
@@ -13100,6 +13139,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
   const PillarsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.kind = const Value.absent(),
     this.targetValue = const Value.absent(),
     this.targetCurrency = const Value.absent(),
     this.portfolioModelId = const Value.absent(),
@@ -13111,6 +13151,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
   PillarsCompanion.insert({
     required String id,
     required String name,
+    this.kind = const Value.absent(),
     this.targetValue = const Value.absent(),
     this.targetCurrency = const Value.absent(),
     this.portfolioModelId = const Value.absent(),
@@ -13123,6 +13164,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
   static Insertable<Pillar> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? kind,
     Expression<double>? targetValue,
     Expression<String>? targetCurrency,
     Expression<String>? portfolioModelId,
@@ -13134,6 +13176,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (kind != null) 'kind': kind,
       if (targetValue != null) 'target_value': targetValue,
       if (targetCurrency != null) 'target_currency': targetCurrency,
       if (portfolioModelId != null) 'portfolio_model_id': portfolioModelId,
@@ -13147,6 +13190,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
   PillarsCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<PillarKind>? kind,
     Value<double?>? targetValue,
     Value<String>? targetCurrency,
     Value<String?>? portfolioModelId,
@@ -13158,6 +13202,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     return PillarsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      kind: kind ?? this.kind,
       targetValue: targetValue ?? this.targetValue,
       targetCurrency: targetCurrency ?? this.targetCurrency,
       portfolioModelId: portfolioModelId ?? this.portfolioModelId,
@@ -13176,6 +13221,11 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(
+        $PillarsTable.$converterkind.toSql(kind.value),
+      );
     }
     if (targetValue.present) {
       map['target_value'] = Variable<double>(targetValue.value);
@@ -13206,6 +13256,7 @@ class PillarsCompanion extends UpdateCompanion<Pillar> {
     return (StringBuffer('PillarsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('kind: $kind, ')
           ..write('targetValue: $targetValue, ')
           ..write('targetCurrency: $targetCurrency, ')
           ..write('portfolioModelId: $portfolioModelId, ')
@@ -23626,6 +23677,7 @@ typedef $$PillarsTableCreateCompanionBuilder =
     PillarsCompanion Function({
       required String id,
       required String name,
+      Value<PillarKind> kind,
       Value<double?> targetValue,
       Value<String> targetCurrency,
       Value<String?> portfolioModelId,
@@ -23638,6 +23690,7 @@ typedef $$PillarsTableUpdateCompanionBuilder =
     PillarsCompanion Function({
       Value<String> id,
       Value<String> name,
+      Value<PillarKind> kind,
       Value<double?> targetValue,
       Value<String> targetCurrency,
       Value<String?> portfolioModelId,
@@ -23705,6 +23758,11 @@ class $$PillarsTableFilterComposer extends Composer<_$AppDatabase, $PillarsTable
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<PillarKind, PillarKind, String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   ColumnFilters<double> get targetValue => $composableBuilder(
@@ -23797,6 +23855,11 @@ class $$PillarsTableOrderingComposer extends Composer<_$AppDatabase, $PillarsTab
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get targetValue => $composableBuilder(
     column: $table.targetValue,
     builder: (column) => ColumnOrderings(column),
@@ -23856,6 +23919,8 @@ class $$PillarsTableAnnotationComposer extends Composer<_$AppDatabase, $PillarsT
   GeneratedColumn<String> get id => $composableBuilder(column: $table.id, builder: (column) => column);
 
   GeneratedColumn<String> get name => $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<PillarKind, String> get kind => $composableBuilder(column: $table.kind, builder: (column) => column);
 
   GeneratedColumn<double> get targetValue => $composableBuilder(
     column: $table.targetValue,
@@ -23947,6 +24012,7 @@ class $$PillarsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<PillarKind> kind = const Value.absent(),
                 Value<double?> targetValue = const Value.absent(),
                 Value<String> targetCurrency = const Value.absent(),
                 Value<String?> portfolioModelId = const Value.absent(),
@@ -23957,6 +24023,7 @@ class $$PillarsTableTableManager
               }) => PillarsCompanion(
                 id: id,
                 name: name,
+                kind: kind,
                 targetValue: targetValue,
                 targetCurrency: targetCurrency,
                 portfolioModelId: portfolioModelId,
@@ -23969,6 +24036,7 @@ class $$PillarsTableTableManager
               ({
                 required String id,
                 required String name,
+                Value<PillarKind> kind = const Value.absent(),
                 Value<double?> targetValue = const Value.absent(),
                 Value<String> targetCurrency = const Value.absent(),
                 Value<String?> portfolioModelId = const Value.absent(),
@@ -23979,6 +24047,7 @@ class $$PillarsTableTableManager
               }) => PillarsCompanion.insert(
                 id: id,
                 name: name,
+                kind: kind,
                 targetValue: targetValue,
                 targetCurrency: targetCurrency,
                 portfolioModelId: portfolioModelId,

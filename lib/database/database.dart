@@ -82,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 47;
+  int get schemaVersion => 48;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -746,6 +746,14 @@ class AppDatabase extends _$AppDatabase {
         // which these sources don't have). Mark them cancelled. Status-only —
         // balance_after is intentionally NOT touched (it is already correct).
         await _migrateCancelledFromFilteredConfigs();
+      }
+      if (from < 48) {
+        if (!await _hasColumn('pillars', 'kind')) {
+          await customStatement(
+            "ALTER TABLE pillars ADD COLUMN kind TEXT NOT NULL DEFAULT 'standard'",
+          );
+        }
+        _log.info('Migration 48: added pillars.kind (default standard)');
       }
     },
     beforeOpen: (details) async {

@@ -966,7 +966,10 @@ class PortfolioRebalanceService {
         if (pillarId == null) return Future.value(const <Pillar>[]);
         return (_db.select(_db.pillars)..where((p) => p.id.equals(pillarId))).get();
       case PortfolioRebalanceScopeKind.allAssociatedPillars:
-        return (_db.select(_db.pillars)..where((p) => p.portfolioModelId.isNotNull())).get();
+        // Exclude virtual portfolios from the batch scope: they overlap real
+        // holdings and including them would double-count buy/sell trades.
+        // Virtual portfolios can still be rebalanced individually via currentPillar.
+        return (_db.select(_db.pillars)..where((p) => p.portfolioModelId.isNotNull() & p.kind.equalsValue(PillarKind.standard))).get();
     }
   }
 

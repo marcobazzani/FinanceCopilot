@@ -27,6 +27,26 @@ final pillarsProvider = StreamProvider<List<Pillar>>((ref) {
   return ref.watch(pillarServiceProvider).watchAll();
 });
 
+/// Only standard (partition-based) pillars.
+final standardPillarsProvider = StreamProvider<List<Pillar>>((ref) {
+  return ref
+      .watch(pillarServiceProvider)
+      .watchAll()
+      .map(
+        (list) => list.where((p) => p.kind == PillarKind.standard).toList(),
+      );
+});
+
+/// Only virtual portfolios (overlap-based, no Objective).
+final virtualPortfoliosProvider = StreamProvider<List<Pillar>>((ref) {
+  return ref
+      .watch(pillarServiceProvider)
+      .watchAll()
+      .map(
+        (list) => list.where((p) => p.kind == PillarKind.virtual).toList(),
+      );
+});
+
 final pillarAssetsProvider = StreamProvider<List<PillarAsset>>((ref) {
   return ref.watch(pillarServiceProvider).watchAllAssignments();
 });
