@@ -13,6 +13,7 @@ library;
 import 'package:integration_test/integration_test.dart';
 
 import 'asset_unlock_edit_test.dart' as asset_unlock_edit;
+import 'appbar_mobile_overflow_test.dart' as appbar_mobile_overflow;
 import 'full_walkthrough_test.dart' as full_walkthrough;
 import 'import_sheet_cancel_test.dart' as import_sheet_cancel;
 import 'income_saved_config_restore_test.dart' as income_saved_config_restore;
@@ -27,4 +28,5 @@ void main() {
   import_sheet_cancel.main();
   income_saved_config_restore.main();
   ledger_filter.main();
+  appbar_mobile_overflow.main();
 }

@@ -306,7 +306,8 @@ Future<void> tapAppBarAction(WidgetTester tester, String label) async {
   // tapping rather than requiring it to be hit-testable up front.
   final entry = find.text(label);
   if (entry.evaluate().isEmpty) {
-    fail('AppBar action "$label" not present in the overflow menu.');
+    final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList();
+    fail('AppBar action "$label" not present in the overflow menu. On-screen texts: $texts');
   }
   await tester.ensureVisible(entry.first);
   await longSettle(tester);
