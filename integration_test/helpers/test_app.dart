@@ -301,10 +301,15 @@ Future<void> tapAppBarAction(WidgetTester tester, String label) async {
   }
   await tester.tap(overflow.first);
   await longSettle(tester);
-  final entry = find.text(label).hitTestable();
+  // The overflow menu may hold many entries (globals + all screen-local
+  // actions) and scroll, so match by presence and scroll it into view before
+  // tapping rather than requiring it to be hit-testable up front.
+  final entry = find.text(label);
   if (entry.evaluate().isEmpty) {
-    fail('AppBar action "$label" not found in the overflow menu.');
+    fail('AppBar action "$label" not present in the overflow menu.');
   }
+  await tester.ensureVisible(entry.first);
+  await longSettle(tester);
   await tester.tap(entry.first);
   await longSettle(tester);
 }

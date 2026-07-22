@@ -151,6 +151,46 @@ void main() {
       expect(find.byIcon(Icons.settings), findsOneWidget);
       expect(find.byIcon(Icons.more_vert), findsOneWidget);
     });
+
+    testWidgets('phone overflow with many local actions: a deep entry is present '
+        'and reachable via ensureVisible (mirrors account_detail on Android)', (tester) async {
+      // Short viewport so the overflow menu (many locals + globals) must scroll,
+      // reproducing the CI case where a lower entry was not hit-testable up front.
+      tester.view.physicalSize = const Size(400, 320);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      var deepTapped = 0;
+      await tester.pumpWidget(
+        _harness(
+          width: 400,
+          local: [
+            for (var i = 0; i < 6; i++)
+              AppBarAction(
+                icon: Icons.circle,
+                tooltip: 'Local $i',
+                onPressed: () {
+                  if (i == 5) deepTapped++;
+                },
+              ),
+          ],
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      // The deep entry exists in the (scrollable) menu but need not be
+      // hit-testable before scrolling it into view.
+      final deep = find.text('Local 5');
+      expect(deep, findsWidgets);
+      await tester.ensureVisible(deep.first);
+      await tester.pumpAndSettle();
+      await tester.tap(deep.first);
+      await tester.pumpAndSettle();
+      expect(deepTapped, 1);
+    });
   });
 
   group('local submenu actions', () {
