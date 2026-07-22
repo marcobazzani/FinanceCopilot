@@ -321,16 +321,21 @@ Future<void> tapAppBarAction(WidgetTester tester, String label) async {
 /// a prior transition hasn't settled on the slow CI emulator — this pops back
 /// to the shell first so the NavigationBar is present, then taps the label.
 Future<void> tapBottomNavTab(WidgetTester tester, String tab) async {
-  for (var i = 0; i < 6; i++) {
+  // Return to the shell so the NavigationBar is present. Pop any pushed route
+  // and settle every iteration (polling), so a slow transition on CI still
+  // resolves before we give up.
+  for (var i = 0; i < 10; i++) {
     if (find.text(tab).evaluate().isNotEmpty) break;
     final back = find.byType(BackButton).hitTestable();
-    if (back.evaluate().isEmpty) break;
-    await tester.tap(back.first);
+    if (back.evaluate().isNotEmpty) {
+      await tester.tap(back.first);
+    }
     await longSettle(tester);
   }
   final dest = find.text(tab);
   if (dest.evaluate().isEmpty) {
-    fail('Bottom-nav tab "$tab" not found (could not return to the shell).');
+    final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList();
+    fail('Bottom-nav tab "$tab" not found (could not return to the shell). On-screen texts: $texts');
   }
   await tester.tap(dest.first);
   await longSettle(tester);
