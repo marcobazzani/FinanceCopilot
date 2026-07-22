@@ -151,38 +151,38 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               ref,
               local: [
                 if (!_isReadOnly) ...[
-                  IconButton(
-                    icon: const Icon(Icons.file_upload),
+                  AppBarAction(
+                    icon: Icons.file_upload,
                     tooltip: s.tooltipImportFile,
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => ImportScreen(preselectedAccountId: widget.account.id)),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.account_balance_wallet),
+                  AppBarAction(
+                    icon: Icons.account_balance_wallet,
                     tooltip: s.tooltipRecalcBalance,
                     onPressed: () => _showBalanceDialog(context),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.add),
+                  AppBarAction(
+                    icon: Icons.add,
                     tooltip: s.tooltipAddTransaction,
                     onPressed: () => _addTransaction(),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.edit),
+                  AppBarAction(
+                    icon: Icons.edit,
                     tooltip: s.tooltipEditAccount,
                     onPressed: () => _editAccount(context),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_sweep),
+                  AppBarAction(
+                    icon: Icons.delete_sweep,
                     tooltip: s.tooltipWipeTransactions,
                     onPressed: () => _confirmWipeTransactions(context),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: s.tooltipDeleteAccount,
+                  AppBarAction(
+                    icon: Icons.delete_outline,
                     color: Colors.red,
+                    tooltip: s.tooltipDeleteAccount,
                     onPressed: () => _confirmDeleteAccount(context),
                   ),
                 ],

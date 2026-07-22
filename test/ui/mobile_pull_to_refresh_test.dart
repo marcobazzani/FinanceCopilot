@@ -13,6 +13,7 @@ GlobalActionsRegistry _registry({
   showImportExportDialog: (_) async {},
   showSettingsDialog: (_) async {},
   openImportFiles: (_) async {},
+  openSupport: (_) async {},
   retryNetwork: () async {},
 );
 
