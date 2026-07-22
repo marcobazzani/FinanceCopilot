@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/screens/accounts/account_detail_screen.dart';
 
@@ -28,6 +29,21 @@ void main() {
     await longSettle(tester);
 
     final accId = await seedAccount(db, name: 'Revolut');
+    // Seed transactions so the detail renders rows — each row has its own
+    // PopupMenuButton (default Icons.more_vert), which must NOT be mistaken for
+    // the AppBar overflow when tapping a screen-local action.
+    for (var i = 0; i < 5; i++) {
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(
+              accountId: accId,
+              operationDate: DateTime(2025, 6, i + 1),
+              valueDate: DateTime(2025, 6, i + 1),
+              amount: -10.0 - i,
+            ),
+          );
+    }
     final acc = await (db.select(db.accounts)..where((a) => a.id.equals(accId))).getSingle();
 
     final ctx = tester.element(find.byType(Navigator).first);

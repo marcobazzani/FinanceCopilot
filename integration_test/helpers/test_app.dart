@@ -295,19 +295,20 @@ Future<void> tapAppBarAction(WidgetTester tester, String label) async {
     await longSettle(tester);
     return;
   }
-  final overflow = find.byIcon(Icons.more_vert).hitTestable();
+  // Open the AppBar overflow. Scope the search to the AppBar: list rows have
+  // their own PopupMenuButton that also defaults to Icons.more_vert, so an
+  // unscoped finder could open a row menu instead of the global overflow.
+  final overflow = find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.more_vert)).hitTestable();
   if (overflow.evaluate().isEmpty) {
-    fail('AppBar action "$label" not found: no visible button and no overflow menu.');
+    fail('AppBar action "$label" not found: no visible button and no AppBar overflow.');
   }
   await tester.tap(overflow.first);
   await longSettle(tester);
-  // The overflow menu may hold many entries (globals + all screen-local
-  // actions) and scroll, so match by presence and scroll it into view before
-  // tapping rather than requiring it to be hit-testable up front.
+  // The overflow can hold many entries (globals + all screen-local actions) and
+  // scroll, so match by presence and scroll it into view before tapping.
   final entry = find.text(label);
   if (entry.evaluate().isEmpty) {
-    final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList();
-    fail('AppBar action "$label" not present in the overflow menu. On-screen texts: $texts');
+    fail('AppBar action "$label" not present in the overflow menu.');
   }
   await tester.ensureVisible(entry.first);
   await longSettle(tester);
