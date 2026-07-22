@@ -282,65 +282,6 @@ Future<void> longSettle(WidgetTester tester) async {
   }
 }
 
-/// Taps an AppBar action by its [label] (the button tooltip on wide layouts,
-/// the menu-item label on phones). On narrow layouts the global and
-/// screen-local actions collapse into the overflow (`more_vert`) menu, so when
-/// the action isn't directly hit-testable this opens the overflow first and
-/// taps the labelled entry. Works unchanged on desktop (direct button) and
-/// phone (overflow) widths.
-Future<void> tapAppBarAction(WidgetTester tester, String label) async {
-  final direct = find.byTooltip(label).hitTestable();
-  if (direct.evaluate().isNotEmpty) {
-    await tester.tap(direct.first);
-    await longSettle(tester);
-    return;
-  }
-  // Open the AppBar overflow. Scope the search to the AppBar: list rows have
-  // their own PopupMenuButton that also defaults to Icons.more_vert, so an
-  // unscoped finder could open a row menu instead of the global overflow.
-  final overflow = find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.more_vert)).hitTestable();
-  if (overflow.evaluate().isEmpty) {
-    fail('AppBar action "$label" not found: no visible button and no AppBar overflow.');
-  }
-  await tester.tap(overflow.first);
-  await longSettle(tester);
-  // The overflow can hold many entries (globals + all screen-local actions) and
-  // scroll, so match by presence and scroll it into view before tapping.
-  final entry = find.text(label);
-  if (entry.evaluate().isEmpty) {
-    fail('AppBar action "$label" not present in the overflow menu.');
-  }
-  await tester.ensureVisible(entry.first);
-  await longSettle(tester);
-  await tester.tap(entry.first);
-  await longSettle(tester);
-}
-
-/// Navigates to a root bottom-nav [tab] (e.g. 'Accounts', 'Assets'). If a
-/// pushed route (detail/import screen) is still on top — which can happen when
-/// a prior transition hasn't settled on the slow CI emulator — this pops back
-/// to the shell first so the NavigationBar is present, then taps the label.
-Future<void> tapBottomNavTab(WidgetTester tester, String tab) async {
-  // Return to the shell so the NavigationBar is present. Pop any pushed route
-  // and settle every iteration (polling), so a slow transition on CI still
-  // resolves before we give up.
-  for (var i = 0; i < 10; i++) {
-    if (find.text(tab).evaluate().isNotEmpty) break;
-    final back = find.byType(BackButton).hitTestable();
-    if (back.evaluate().isNotEmpty) {
-      await tester.tap(back.first);
-    }
-    await longSettle(tester);
-  }
-  final dest = find.text(tab);
-  if (dest.evaluate().isEmpty) {
-    final texts = find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList();
-    fail('Bottom-nav tab "$tab" not found (could not return to the shell). On-screen texts: $texts');
-  }
-  await tester.tap(dest.first);
-  await longSettle(tester);
-}
-
 /// Long live-pump: yields the test clock to runAsync (so real Futures —
 /// HTTP, timers, isolate work — can complete) AND pumps frames between
 /// each yield, so the on-screen window keeps animating during long

@@ -25,12 +25,9 @@ class AppBarSubAction {
 
 /// A screen-specific ("local") AppBar action.
 ///
-/// On wide layouts (≥ 600 px) it renders as an [IconButton] (or a
-/// [PopupMenuButton] when [submenu] is non-empty); on narrow layouts it
-/// collapses into the overflow menu as a labelled item, using [tooltip] as the
-/// label. A [submenu] entry opens a modal on mobile instead of a nested menu.
-/// Passing a typed action (rather than a raw [IconButton]) is what lets the
-/// overflow present locals as menu entries on phones.
+/// Renders as an [IconButton] (or a [PopupMenuButton] when [submenu] is
+/// non-empty). Local actions stay visible on every screen size; on phones the
+/// global cluster folds into the overflow to make room, not the locals.
 class AppBarAction {
   const AppBarAction({
     required this.icon,
@@ -96,9 +93,13 @@ Widget _localActionWidget(AppBarAction a) {
 /// Layout:
 /// - Wide (≥ 600 px): all globals as icon buttons, with the screen's local
 ///   actions prepended as icon buttons and a thin separator between the groups.
-/// - Narrow (< 600 px): only refresh, import/export, settings, and support stay
-///   visible as icon buttons; every other global **and** all local actions
-///   collapse into a single overflow menu so nothing gets clipped off the AppBar.
+/// - Narrow (< 600 px):
+///   - Screens WITHOUT local actions (the main tabs): refresh, import/export,
+///     settings and support stay visible as icon buttons; the remaining globals
+///     (privacy, time-travel, network-retry, import-file) live in the overflow.
+///   - Screens WITH local actions (detail screens): the local actions stay
+///     visible and every global collapses into the single overflow — there
+///     isn't room for both the locals and the global icons on a phone.
 List<Widget> globalAppBarActions(
   BuildContext context,
   WidgetRef ref, {
@@ -106,12 +107,22 @@ List<Widget> globalAppBarActions(
 }) {
   final width = MediaQuery.sizeOf(context).width;
   if (width < 600) {
+    if (local.isEmpty) {
+      // Main tab screens: the primary globals stay visible, the rest fold in.
+      return const [
+        _RefreshAction(),
+        _ImportExportAction(),
+        _SettingsAction(),
+        _SupportAction(),
+        _GlobalActionsOverflow(),
+      ];
+    }
+    // Detail screens: keep the local actions visible and fold ALL globals into
+    // the single overflow (the pre-existing behaviour).
     return [
-      const _RefreshAction(),
-      const _ImportExportAction(),
-      const _SettingsAction(),
-      const _SupportAction(),
-      _GlobalActionsOverflow(localActions: local),
+      for (final a in local) _localActionWidget(a),
+      const _Separator(),
+      const _GlobalActionsOverflow(includeAllGlobals: true),
     ];
   }
   const globals = <Widget>[
@@ -139,31 +150,6 @@ class _Separator extends StatelessWidget {
     padding: EdgeInsets.symmetric(horizontal: 4),
     child: VerticalDivider(width: 1, indent: 12, endIndent: 12, thickness: 1),
   );
-}
-
-/// Shows an [AppBarAction] submenu as a modal (mobile equivalent of the
-/// desktop [PopupMenuButton]), then runs the chosen entry's callback.
-Future<void> _showSubActionModal(
-  BuildContext context,
-  String title,
-  List<AppBarSubAction> subs,
-) async {
-  final chosen = await showDialog<int>(
-    context: context,
-    builder: (_) => SimpleDialog(
-      title: Text(title),
-      children: [
-        for (final (i, sub) in subs.indexed) ...[
-          if (sub.dividerBefore) const Divider(),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, i),
-            child: Text(sub.label),
-          ),
-        ],
-      ],
-    ),
-  );
-  if (chosen != null) subs[chosen].onSelected();
 }
 
 /// Shows the wayback machine picker as a modal dialog.
@@ -442,34 +428,25 @@ class _ImportFileAction extends ConsumerWidget {
   }
 }
 
-/// Overflow menu shown on mobile (width < 600). Holds every global that is not
-/// always-visible (privacy, wayback, network retry, import file) plus all of
-/// the screen's [localActions], rendered as labelled menu entries.
+/// Overflow ("⋮") menu. By default it holds the non-primary globals (privacy,
+/// time-travel, network-retry, import-file). On detail screens the local
+/// actions occupy the visible slots, so [includeAllGlobals] also folds in
+/// refresh, import/export, settings and support — keeping every global reachable.
 class _GlobalActionsOverflow extends ConsumerWidget {
-  const _GlobalActionsOverflow({this.localActions = const []});
+  const _GlobalActionsOverflow({this.includeAllGlobals = false});
 
-  final List<AppBarAction> localActions;
+  final bool includeAllGlobals;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final reg = ref.watch(globalActionsRegistryProvider);
     final isPrivate = ref.watch(privacyModeProvider);
     final online = ref.watch(networkOnlineProvider);
+    final isSyncing = ref.watch(isManualSyncingProvider);
     final s = ref.watch(appStringsProvider);
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert),
       onSelected: (action) async {
-        if (action.startsWith('local:')) {
-          final a = localActions[int.parse(action.substring('local:'.length))];
-          if (a.hasSubmenu) {
-            if (context.mounted) {
-              await _showSubActionModal(context, a.tooltip, a.submenu);
-            }
-          } else {
-            a.onPressed?.call();
-          }
-          return;
-        }
         switch (action) {
           case 'privacy':
             ref.read(privacyModeProvider.notifier).state = !isPrivate;
@@ -477,30 +454,19 @@ class _GlobalActionsOverflow extends ConsumerWidget {
             if (context.mounted) await _showWaybackModal(context, ref);
           case 'retryNetwork':
             await reg?.retryNetwork();
+          case 'refresh':
+            await reg?.manualRefresh();
+          case 'importExport':
+            if (context.mounted) await reg?.showImportExportDialog(context);
+          case 'settings':
+            if (context.mounted) await reg?.showSettingsDialog(context);
+          case 'support':
+            if (context.mounted) await reg?.openSupport(context);
           case 'importFile':
             if (context.mounted) await reg?.openImportFiles(context);
         }
       },
       itemBuilder: (_) => [
-        // Screen-local actions first, mirroring the desktop order (locals then
-        // globals), followed by a divider when both groups are present.
-        for (final (i, a) in localActions.indexed)
-          PopupMenuItem(
-            value: 'local:$i',
-            enabled: a.isEnabled,
-            child: Row(
-              children: [
-                Icon(a.icon, color: a.color),
-                const SizedBox(width: 12),
-                Text(a.tooltip),
-                if (a.hasSubmenu) ...[
-                  const Spacer(),
-                  const Icon(Icons.chevron_right),
-                ],
-              ],
-            ),
-          ),
-        if (localActions.isNotEmpty) const PopupMenuDivider(),
         PopupMenuItem(
           value: 'privacy',
           child: Row(
@@ -532,6 +498,49 @@ class _GlobalActionsOverflow extends ConsumerWidget {
               ],
             ),
           ),
+        if (includeAllGlobals) ...[
+          PopupMenuItem(
+            value: 'refresh',
+            enabled: !isSyncing,
+            child: Row(
+              children: [
+                const Icon(Icons.refresh),
+                const SizedBox(width: 12),
+                Text(s.tooltipRefreshPrices),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'importExport',
+            child: Row(
+              children: [
+                const Icon(Icons.import_export),
+                const SizedBox(width: 12),
+                Text(s.tooltipImportExportDb),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'settings',
+            child: Row(
+              children: [
+                const Icon(Icons.settings),
+                const SizedBox(width: 12),
+                Text(s.tooltipSettings),
+              ],
+            ),
+          ),
+          PopupMenuItem(
+            value: 'support',
+            child: Row(
+              children: [
+                const Icon(Icons.support_agent),
+                const SizedBox(width: 12),
+                Text(s.support),
+              ],
+            ),
+          ),
+        ],
         PopupMenuItem(
           value: 'importFile',
           child: Row(

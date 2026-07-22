@@ -24,7 +24,7 @@ Widget _harness({
   return ProviderScope(
     overrides: [
       globalActionsRegistryProvider.overrideWith((ref) => registry ?? _registry()),
-      // Avoid touching the DB-backed locale stream and the day-rollover Timer.
+      // Avoid the DB-backed locale stream and the day-rollover Timer.
       appLocaleProvider.overrideWith((ref) => Stream.value('en')),
       currentDateProvider.overrideWithValue(DateTime(2026, 6, 30)),
     ],
@@ -50,55 +50,71 @@ void main() {
     await initializeDateFormatting();
   });
 
-  group('globalAppBarActions layout', () {
-    testWidgets('mobile (<600) keeps refresh/import-export/settings visible and '
-        'folds local actions into the overflow menu', (tester) async {
-      var edited = 0;
-      var deleted = 0;
-      await tester.pumpWidget(
-        _harness(
-          width: 400,
-          local: [
-            AppBarAction(icon: Icons.edit, tooltip: 'EditThing', onPressed: () => edited++),
-            AppBarAction(
-              icon: Icons.delete_outline,
-              color: Colors.red,
-              tooltip: 'DeleteThing',
-              onPressed: () => deleted++,
-            ),
-          ],
-        ),
-      );
+  group('phone layout (< 600)', () {
+    testWidgets('main tab screen (no local actions): refresh/import-export/'
+        'settings/support are visible; the rest are in the overflow', (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_harness(width: 400));
       await tester.pump();
 
-      // The three always-visible globals plus support and the overflow button.
+      // Primary globals visible as icons.
       expect(find.byIcon(Icons.refresh), findsOneWidget);
       expect(find.byIcon(Icons.import_export), findsOneWidget);
       expect(find.byIcon(Icons.settings), findsOneWidget);
       expect(find.byIcon(Icons.support_agent), findsOneWidget);
       expect(find.byIcon(Icons.more_vert), findsOneWidget);
 
-      // Locals are NOT top-level icons on mobile (they live in the overflow).
-      expect(find.byIcon(Icons.edit), findsNothing);
-      expect(find.byIcon(Icons.delete_outline), findsNothing);
+      // Non-primary globals are NOT top-level icons (they live in the overflow).
+      expect(find.byIcon(Icons.visibility), findsNothing); // privacy
+      expect(find.byIcon(Icons.history_toggle_off), findsNothing); // wayback
+      expect(find.byIcon(Icons.file_upload), findsNothing); // import file
 
-      // Open the overflow: locals appear as labelled entries, alongside the
-      // remaining globals (e.g. the wayback machine).
+      // They appear once the overflow is opened.
       await tester.tap(find.byIcon(Icons.more_vert));
       await tester.pumpAndSettle();
-      expect(find.text('EditThing'), findsOneWidget);
-      expect(find.text('DeleteThing'), findsOneWidget);
       expect(find.text('Wayback Machine'), findsOneWidget);
-
-      // Selecting a folded local runs its callback.
-      await tester.tap(find.text('EditThing'));
-      await tester.pumpAndSettle();
-      expect(edited, 1);
-      expect(deleted, 0);
     });
 
-    testWidgets('desktop (>=600) renders all globals and locals as icon buttons '
-        'with no overflow menu', (tester) async {
+    testWidgets('detail screen (has local actions): locals stay visible, ALL '
+        'globals fold into the overflow', (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        _harness(
+          width: 400,
+          local: [
+            AppBarAction(icon: Icons.edit, tooltip: 'EditThing', onPressed: () {}),
+            AppBarAction(
+              icon: Icons.delete_outline,
+              color: Colors.red,
+              tooltip: 'DeleteThing',
+              onPressed: () {},
+            ),
+          ],
+        ),
+      );
+      await tester.pump();
+
+      // Local actions remain visible icons.
+      expect(find.byIcon(Icons.edit), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+      expect(find.byIcon(Icons.more_vert), findsOneWidget);
+
+      // Globals are folded away — not top-level icons on a detail screen —
+      // but the overflow button is present so they remain reachable.
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      expect(find.byIcon(Icons.settings), findsNothing);
+      expect(find.byIcon(Icons.support_agent), findsNothing);
+      expect(find.byIcon(Icons.import_export), findsNothing);
+      expect(find.byIcon(Icons.visibility), findsNothing);
+    });
+  });
+
+  group('desktop layout (>= 600)', () {
+    testWidgets('all globals and local actions render as icon buttons, no overflow', (tester) async {
       await tester.pumpWidget(
         _harness(
           width: 900,
@@ -108,135 +124,35 @@ void main() {
       await tester.pump();
 
       expect(find.byIcon(Icons.more_vert), findsNothing);
-      // Local action stays an icon button.
-      expect(find.byIcon(Icons.edit), findsOneWidget);
-      // Full global cluster is visible as icons.
+      expect(find.byIcon(Icons.edit), findsOneWidget); // local
       expect(find.byIcon(Icons.refresh), findsOneWidget);
-      expect(find.byIcon(Icons.settings), findsOneWidget);
       expect(find.byIcon(Icons.import_export), findsOneWidget);
+      expect(find.byIcon(Icons.settings), findsOneWidget);
+      expect(find.byIcon(Icons.support_agent), findsOneWidget);
       expect(find.byIcon(Icons.file_upload), findsOneWidget);
       expect(find.byIcon(Icons.visibility), findsOneWidget); // privacy
       expect(find.byIcon(Icons.history_toggle_off), findsOneWidget); // wayback
-      expect(find.byIcon(Icons.support_agent), findsOneWidget); // support
     });
+  });
 
-    testWidgets('the Support action is always visible (mobile + desktop) and '
-        'invokes openSupport', (tester) async {
+  group('support action', () {
+    testWidgets('visible on a phone main screen and invokes openSupport', (tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       var opened = 0;
-      // Mobile: support stays a top-level icon alongside refresh/settings.
       await tester.pumpWidget(
         _harness(width: 400, registry: _registry(onSupport: (_) async => opened++)),
       );
       await tester.pump();
-      expect(find.byIcon(Icons.support_agent), findsOneWidget);
       await tester.tap(find.byIcon(Icons.support_agent));
       await tester.pump();
       expect(opened, 1);
-
-      // Desktop: still a top-level icon.
-      await tester.pumpWidget(
-        _harness(width: 900, registry: _registry(onSupport: (_) async => opened++)),
-      );
-      await tester.pump();
-      expect(find.byIcon(Icons.support_agent), findsOneWidget);
-    });
-
-    testWidgets('no local actions on mobile still shows the overflow for the '
-        'remaining globals', (tester) async {
-      await tester.pumpWidget(_harness(width: 400));
-      await tester.pump();
-
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-      expect(find.byIcon(Icons.import_export), findsOneWidget);
-      expect(find.byIcon(Icons.settings), findsOneWidget);
-      expect(find.byIcon(Icons.more_vert), findsOneWidget);
-    });
-
-    testWidgets('phone overflow with many local actions: a deep entry is present '
-        'and reachable via ensureVisible (mirrors account_detail on Android)', (tester) async {
-      // Short viewport so the overflow menu (many locals + globals) must scroll,
-      // reproducing the CI case where a lower entry was not hit-testable up front.
-      tester.view.physicalSize = const Size(400, 320);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
-
-      var deepTapped = 0;
-      await tester.pumpWidget(
-        _harness(
-          width: 400,
-          local: [
-            for (var i = 0; i < 6; i++)
-              AppBarAction(
-                icon: Icons.circle,
-                tooltip: 'Local $i',
-                onPressed: () {
-                  if (i == 5) deepTapped++;
-                },
-              ),
-          ],
-        ),
-      );
-      await tester.pump();
-
-      await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pumpAndSettle();
-
-      // The deep entry exists in the (scrollable) menu but need not be
-      // hit-testable before scrolling it into view.
-      final deep = find.text('Local 5');
-      expect(deep, findsWidgets);
-      await tester.ensureVisible(deep.first);
-      await tester.pumpAndSettle();
-      await tester.tap(deep.first);
-      await tester.pumpAndSettle();
-      expect(deepTapped, 1);
     });
   });
 
-  group('local submenu actions', () {
-    testWidgets('mobile: a submenu action opens a modal listing its choices', (tester) async {
-      var allTapped = 0;
-      var p1Tapped = 0;
-      await tester.pumpWidget(
-        _harness(
-          width: 400,
-          local: [
-            AppBarAction(
-              icon: Icons.balance,
-              tooltip: 'Rebalance',
-              submenu: [
-                AppBarSubAction(label: 'All', onSelected: () => allTapped++),
-                AppBarSubAction(
-                  label: 'Pillar 1',
-                  dividerBefore: true,
-                  onSelected: () => p1Tapped++,
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-      await tester.pump();
-
-      await tester.tap(find.byIcon(Icons.more_vert));
-      await tester.pumpAndSettle();
-      // Submenu action is a single labelled entry with a chevron affordance.
-      expect(find.text('Rebalance'), findsOneWidget);
-      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
-
-      await tester.tap(find.text('Rebalance'));
-      await tester.pumpAndSettle();
-      // The modal lists both choices.
-      expect(find.text('All'), findsOneWidget);
-      expect(find.text('Pillar 1'), findsOneWidget);
-
-      await tester.tap(find.text('Pillar 1'));
-      await tester.pumpAndSettle();
-      expect(p1Tapped, 1);
-      expect(allTapped, 0);
-    });
-
-    testWidgets('desktop: a submenu action renders as a PopupMenuButton', (tester) async {
+  group('local submenu action', () {
+    testWidgets('renders as a PopupMenuButton and dispatches the chosen entry', (tester) async {
       var allTapped = 0;
       await tester.pumpWidget(
         _harness(
@@ -252,12 +168,9 @@ void main() {
       );
       await tester.pump();
 
-      // Rendered inline (no global overflow), tapping the icon opens the menu.
-      expect(find.byIcon(Icons.more_vert), findsNothing);
       await tester.tap(find.byIcon(Icons.balance));
       await tester.pumpAndSettle();
       expect(find.text('All'), findsOneWidget);
-
       await tester.tap(find.text('All'));
       await tester.pumpAndSettle();
       expect(allTapped, 1);
@@ -290,14 +203,11 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.history_toggle_off));
       await tester.pumpAndSettle();
-
-      // Modal presents the scope choices (English strings).
       expect(find.text('Last end of month'), findsOneWidget);
       expect(find.text('Custom...'), findsOneWidget);
 
       await tester.tap(find.text('Last end of month'));
       await tester.pumpAndSettle();
-
       expect(container.read(waybackDateProvider), isNotNull);
     });
   });

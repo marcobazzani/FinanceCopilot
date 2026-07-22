@@ -94,7 +94,7 @@ void main() {
     // 6c70ce6.
     // ─────────────────────────────────────────────────────────────────────
     _step('2. Accounts → Manage Intermediaries → add Default');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     await tester.tap(find.byIcon(Icons.business));
     await longSettle(tester);
@@ -280,7 +280,7 @@ void main() {
     await longSettle(tester);
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    await pumpFor(tester, const Duration(seconds: 60));
+    await pumpFor(tester, const Duration(seconds: 30));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -434,7 +434,7 @@ void main() {
     // branches (account_detail_screen.dart was 27.5%).
     // ─────────────────────────────────────────────────────────────────────
     _step('6c. account_detail search bar — type, clear');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     await tester.tap(find.text('Fineco').first);
     await longSettle(tester);
@@ -471,7 +471,7 @@ void main() {
     // render, but the read-only render path itself is exercised either way.
     // ─────────────────────────────────────────────────────────────────────
     _step('6d. All-accounts entry — read-only union view');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     final allAccountsTile = find.text('All accounts');
     if (allAccountsTile.evaluate().isNotEmpty) {
@@ -517,15 +517,25 @@ void main() {
     // and save. Exercises the form's full code path.
     // ─────────────────────────────────────────────────────────────────────
     _step('6b. Manual transaction via UI — every field');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     await tester.tap(find.text('Revolut').first);
     await longSettle(tester);
-    // Target the AppBar "Add Transaction" action by its tooltip/label.
-    // On phones the screen-local actions collapse into the overflow menu, so
-    // tapAppBarAction opens it first; on desktop it taps the visible button.
+    // Target the AppBar "Add Transaction" button by its tooltip — using
+    // `find.byIcon(Icons.add).first` is fragile because the assets/pillars
+    // FABs and accounts-empty-state CTA all use Icons.add too, and after
+    // a navigation glitch `.first` could resolve to one of those.
     final s = AppStrings.en;
-    await tapAppBarAction(tester, s.tooltipAddTransaction);
+    final addTx = find.byTooltip(s.tooltipAddTransaction).hitTestable();
+    expect(
+      addTx,
+      findsOneWidget,
+      reason:
+          'AccountDetailScreen should show "Add Transaction" button — '
+          'navigation to Revolut detail likely failed.',
+    );
+    await tester.tap(addTx);
+    await longSettle(tester);
 
     // TransactionEditScreen is open. The form has 6 TextFormFields in
     // order: date (read-only date-picker), amount, description,
@@ -661,7 +671,7 @@ void main() {
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     // Wait for the result screen — Android CI XLSX parse can take >3 s.
-    await pumpFor(tester, const Duration(seconds: 60));
+    await pumpFor(tester, const Duration(seconds: 30));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -721,7 +731,7 @@ void main() {
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     // Wait for the result screen — Android CI XLSX parse can take >3 s.
-    await pumpFor(tester, const Duration(seconds: 60));
+    await pumpFor(tester, const Duration(seconds: 30));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -794,7 +804,7 @@ void main() {
     // delete-confirm dialog.
     // ─────────────────────────────────────────────────────────────────────
     _step('8b.i. AssetEventEditScreen UI — create + edit (type locked) + delete');
-    await tapBottomNavTab(tester, 'Assets');
+    await tester.tap(find.text('Assets').first);
     await longSettle(tester);
     // Pick the asset whose visible name matches a row in the list. We try
     // both ticker and full name because the list shows the name; tapping
@@ -986,7 +996,7 @@ void main() {
     // the user into the confirm step, and let them create the asset.
     // ─────────────────────────────────────────────────────────────────────
     _step('8d. URL-paste recovery — create asset for unindexed bond');
-    await tapBottomNavTab(tester, 'Assets');
+    await tester.tap(find.text('Assets').first);
     await longSettle(tester);
     // Open the create-asset dialog via the FAB.
     final addFab = find.byIcon(Icons.add);
@@ -1201,7 +1211,7 @@ void main() {
     // type from default to 'salary', change amount, save.
     // ─────────────────────────────────────────────────────────────────────
     _step('9b. Income inline edit dialog via UI');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     if (find.text('Income').evaluate().isNotEmpty) {
       await tester.tap(find.text('Income'));
@@ -1444,7 +1454,7 @@ void main() {
     // direction segmented button, treatment segmented, name, amount,
     // currency dropdown, save.
     _step('10g. Instant outflow Plumber via EventEditScreen UI');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     await tester.tap(find.text('Adjustments'));
     await longSettle(tester);
@@ -1632,7 +1642,7 @@ void main() {
     }
 
     _step('11. Dashboard nav → History tab');
-    await tapBottomNavTab(tester, 'Dashboard');
+    await tester.tap(find.text('Dashboard').first);
     await longSettle(tester);
     // Dashboard's default is Health (tab 0). Tap History to open it,
     // which renders the price_changes widget that mounts
@@ -1868,7 +1878,7 @@ void main() {
     // manually" → fill name + instrument + class + intermediary).
     // ─────────────────────────────────────────────────────────────────────
     _step('11A. Assets nav → manual asset create dialog');
-    await tapBottomNavTab(tester, 'Assets');
+    await tester.tap(find.text('Assets').first);
     await longSettle(tester);
     // Tap the "+" FAB.
     final addAssetFab = find.byWidgetPredicate(
@@ -2167,26 +2177,29 @@ void main() {
     // (account_detail_screen.dart was 31.6%)
     // ─────────────────────────────────────────────────────────────────────
     _step('11E. Accounts → Fineco → balance recalc dialog');
-    await tapBottomNavTab(tester, 'Accounts');
+    await tester.tap(find.text('Accounts').first);
     await longSettle(tester);
     if (find.text('Fineco').evaluate().isNotEmpty) {
       await tester.tap(find.text('Fineco').first);
       await longSettle(tester);
-      // Recalc trigger is an AppBar local action (Icons.account_balance_wallet);
-      // on phones it lives in the overflow menu, so route through the helper.
-      await tapAppBarAction(tester, s.tooltipRecalcBalance);
-      // Recalc dialog open. Switch to filtered mode if available.
-      final filteredOption = find.text('filtered');
-      if (filteredOption.evaluate().isNotEmpty) {
-        await tester.tap(filteredOption.first);
+      // Recalc trigger uses Icons.account_balance_wallet in the AppBar.
+      final calcBtn = find.byIcon(Icons.account_balance_wallet);
+      if (calcBtn.evaluate().isNotEmpty) {
+        await tester.tap(calcBtn.first);
         await longSettle(tester);
+        // Recalc dialog open. Switch to filtered mode if available.
+        final filteredOption = find.text('filtered');
+        if (filteredOption.evaluate().isNotEmpty) {
+          await tester.tap(filteredOption.first);
+          await longSettle(tester);
+        }
+        // Cancel to avoid wiping balances.
+        if (find.text('Cancel').evaluate().isNotEmpty) {
+          await tester.tap(find.text('Cancel').last);
+          await longSettle(tester);
+        }
+        _step('   ✓ recalc dialog opened');
       }
-      // Cancel to avoid wiping balances.
-      if (find.text('Cancel').evaluate().isNotEmpty) {
-        await tester.tap(find.text('Cancel').last);
-        await longSettle(tester);
-      }
-      _step('   ✓ recalc dialog opened');
       // Back to account list.
       while (find.byType(BackButton).evaluate().isNotEmpty) {
         await tester.tap(find.byType(BackButton).first);
@@ -2271,7 +2284,7 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     _step('14A. Income tab — long-press first income to enter selection');
     if (find.text('Accounts').evaluate().isNotEmpty) {
-      await tapBottomNavTab(tester, 'Accounts');
+      await tester.tap(find.text('Accounts').first);
       await longSettle(tester);
       if (find.text('Income').evaluate().isNotEmpty) {
         await tester.tap(find.text('Income'));
@@ -2304,7 +2317,7 @@ void main() {
     _step('15A. Pillars nav → empty state');
     final pillarService = PillarService(db);
     expect(await pillarService.getAll(), isEmpty);
-    await tapBottomNavTab(tester, 'Pillars');
+    await tester.tap(find.text('Pillars').first);
     await longSettle(tester);
     expect(find.text('Create your first pillar'), findsOneWidget, reason: 'empty-state CTA visible on a fresh Pillars tab');
     await tester.tap(find.widgetWithText(Tab, 'Portfolio Models'));
@@ -2492,8 +2505,8 @@ void main() {
     // Re-enter detail to test delete.
     await tester.tap(find.text('Retirement').first);
     await longSettle(tester);
-    // Delete pillar via the AppBar trash action (in the overflow on phones).
-    await tapAppBarAction(tester, s.delete);
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await longSettle(tester);
     if (find.widgetWithText(FilledButton, 'Delete').evaluate().isNotEmpty) {
       await tester.tap(find.widgetWithText(FilledButton, 'Delete').last);
       await longSettle(tester);
