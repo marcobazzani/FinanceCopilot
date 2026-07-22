@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
+import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/screens/assets/asset_detail_screen.dart';
 
 import 'helpers/test_app.dart';
@@ -33,10 +34,8 @@ void main() {
     );
     await longSettle(tester);
 
-    // Open edit dialog.
-    final editBtn = find.byIcon(Icons.edit).first;
-    await tester.tap(editBtn);
-    await longSettle(tester);
+    // Open edit dialog via the AppBar edit action (in the overflow on phones).
+    await tapAppBarAction(tester, AppStrings.en.tooltipEditAsset);
 
     // Locked default: lock_outline icon is visible; advanced labels are not.
     expect(find.byIcon(Icons.lock_outline), findsOneWidget, reason: 'edit dialog should open in locked state');

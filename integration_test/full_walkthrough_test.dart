@@ -521,21 +521,11 @@ void main() {
     await longSettle(tester);
     await tester.tap(find.text('Revolut').first);
     await longSettle(tester);
-    // Target the AppBar "Add Transaction" button by its tooltip — using
-    // `find.byIcon(Icons.add).first` is fragile because the assets/pillars
-    // FABs and accounts-empty-state CTA all use Icons.add too, and after
-    // a navigation glitch `.first` could resolve to one of those.
+    // Target the AppBar "Add Transaction" action by its tooltip/label.
+    // On phones the screen-local actions collapse into the overflow menu, so
+    // tapAppBarAction opens it first; on desktop it taps the visible button.
     final s = AppStrings.en;
-    final addTx = find.byTooltip(s.tooltipAddTransaction).hitTestable();
-    expect(
-      addTx,
-      findsOneWidget,
-      reason:
-          'AccountDetailScreen should show "Add Transaction" button — '
-          'navigation to Revolut detail likely failed.',
-    );
-    await tester.tap(addTx);
-    await longSettle(tester);
+    await tapAppBarAction(tester, s.tooltipAddTransaction);
 
     // TransactionEditScreen is open. The form has 6 TextFormFields in
     // order: date (read-only date-picker), amount, description,
@@ -2182,24 +2172,21 @@ void main() {
     if (find.text('Fineco').evaluate().isNotEmpty) {
       await tester.tap(find.text('Fineco').first);
       await longSettle(tester);
-      // Recalc trigger uses Icons.account_balance_wallet in the AppBar.
-      final calcBtn = find.byIcon(Icons.account_balance_wallet);
-      if (calcBtn.evaluate().isNotEmpty) {
-        await tester.tap(calcBtn.first);
+      // Recalc trigger is an AppBar local action (Icons.account_balance_wallet);
+      // on phones it lives in the overflow menu, so route through the helper.
+      await tapAppBarAction(tester, s.tooltipRecalcBalance);
+      // Recalc dialog open. Switch to filtered mode if available.
+      final filteredOption = find.text('filtered');
+      if (filteredOption.evaluate().isNotEmpty) {
+        await tester.tap(filteredOption.first);
         await longSettle(tester);
-        // Recalc dialog open. Switch to filtered mode if available.
-        final filteredOption = find.text('filtered');
-        if (filteredOption.evaluate().isNotEmpty) {
-          await tester.tap(filteredOption.first);
-          await longSettle(tester);
-        }
-        // Cancel to avoid wiping balances.
-        if (find.text('Cancel').evaluate().isNotEmpty) {
-          await tester.tap(find.text('Cancel').last);
-          await longSettle(tester);
-        }
-        _step('   ✓ recalc dialog opened');
       }
+      // Cancel to avoid wiping balances.
+      if (find.text('Cancel').evaluate().isNotEmpty) {
+        await tester.tap(find.text('Cancel').last);
+        await longSettle(tester);
+      }
+      _step('   ✓ recalc dialog opened');
       // Back to account list.
       while (find.byType(BackButton).evaluate().isNotEmpty) {
         await tester.tap(find.byType(BackButton).first);
@@ -2505,8 +2492,8 @@ void main() {
     // Re-enter detail to test delete.
     await tester.tap(find.text('Retirement').first);
     await longSettle(tester);
-    await tester.tap(find.byIcon(Icons.delete_outline).first);
-    await longSettle(tester);
+    // Delete pillar via the AppBar trash action (in the overflow on phones).
+    await tapAppBarAction(tester, s.delete);
     if (find.widgetWithText(FilledButton, 'Delete').evaluate().isNotEmpty) {
       await tester.tap(find.widgetWithText(FilledButton, 'Delete').last);
       await longSettle(tester);

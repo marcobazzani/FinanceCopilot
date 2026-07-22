@@ -282,6 +282,33 @@ Future<void> longSettle(WidgetTester tester) async {
   }
 }
 
+/// Taps an AppBar action by its [label] (the button tooltip on wide layouts,
+/// the menu-item label on phones). On narrow layouts the global and
+/// screen-local actions collapse into the overflow (`more_vert`) menu, so when
+/// the action isn't directly hit-testable this opens the overflow first and
+/// taps the labelled entry. Works unchanged on desktop (direct button) and
+/// phone (overflow) widths.
+Future<void> tapAppBarAction(WidgetTester tester, String label) async {
+  final direct = find.byTooltip(label).hitTestable();
+  if (direct.evaluate().isNotEmpty) {
+    await tester.tap(direct.first);
+    await longSettle(tester);
+    return;
+  }
+  final overflow = find.byIcon(Icons.more_vert).hitTestable();
+  if (overflow.evaluate().isEmpty) {
+    fail('AppBar action "$label" not found: no visible button and no overflow menu.');
+  }
+  await tester.tap(overflow.first);
+  await longSettle(tester);
+  final entry = find.text(label).hitTestable();
+  if (entry.evaluate().isEmpty) {
+    fail('AppBar action "$label" not found in the overflow menu.');
+  }
+  await tester.tap(entry.first);
+  await longSettle(tester);
+}
+
 /// Long live-pump: yields the test clock to runAsync (so real Futures —
 /// HTTP, timers, isolate work — can complete) AND pumps frames between
 /// each yield, so the on-screen window keeps animating during long
