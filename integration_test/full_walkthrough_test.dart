@@ -94,7 +94,7 @@ void main() {
     // 6c70ce6.
     // ─────────────────────────────────────────────────────────────────────
     _step('2. Accounts → Manage Intermediaries → add Default');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     await tester.tap(find.byIcon(Icons.business));
     await longSettle(tester);
@@ -434,7 +434,7 @@ void main() {
     // branches (account_detail_screen.dart was 27.5%).
     // ─────────────────────────────────────────────────────────────────────
     _step('6c. account_detail search bar — type, clear');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     await tester.tap(find.text('Fineco').first);
     await longSettle(tester);
@@ -471,7 +471,7 @@ void main() {
     // render, but the read-only render path itself is exercised either way.
     // ─────────────────────────────────────────────────────────────────────
     _step('6d. All-accounts entry — read-only union view');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     final allAccountsTile = find.text('All accounts');
     if (allAccountsTile.evaluate().isNotEmpty) {
@@ -517,7 +517,7 @@ void main() {
     // and save. Exercises the form's full code path.
     // ─────────────────────────────────────────────────────────────────────
     _step('6b. Manual transaction via UI — every field');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     await tester.tap(find.text('Revolut').first);
     await longSettle(tester);
@@ -794,7 +794,7 @@ void main() {
     // delete-confirm dialog.
     // ─────────────────────────────────────────────────────────────────────
     _step('8b.i. AssetEventEditScreen UI — create + edit (type locked) + delete');
-    await tester.tap(find.text('Assets').first);
+    await tapBottomNavTab(tester, 'Assets');
     await longSettle(tester);
     // Pick the asset whose visible name matches a row in the list. We try
     // both ticker and full name because the list shows the name; tapping
@@ -986,7 +986,7 @@ void main() {
     // the user into the confirm step, and let them create the asset.
     // ─────────────────────────────────────────────────────────────────────
     _step('8d. URL-paste recovery — create asset for unindexed bond');
-    await tester.tap(find.text('Assets').first);
+    await tapBottomNavTab(tester, 'Assets');
     await longSettle(tester);
     // Open the create-asset dialog via the FAB.
     final addFab = find.byIcon(Icons.add);
@@ -1201,7 +1201,7 @@ void main() {
     // type from default to 'salary', change amount, save.
     // ─────────────────────────────────────────────────────────────────────
     _step('9b. Income inline edit dialog via UI');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     if (find.text('Income').evaluate().isNotEmpty) {
       await tester.tap(find.text('Income'));
@@ -1444,7 +1444,7 @@ void main() {
     // direction segmented button, treatment segmented, name, amount,
     // currency dropdown, save.
     _step('10g. Instant outflow Plumber via EventEditScreen UI');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     await tester.tap(find.text('Adjustments'));
     await longSettle(tester);
@@ -1632,7 +1632,7 @@ void main() {
     }
 
     _step('11. Dashboard nav → History tab');
-    await tester.tap(find.text('Dashboard').first);
+    await tapBottomNavTab(tester, 'Dashboard');
     await longSettle(tester);
     // Dashboard's default is Health (tab 0). Tap History to open it,
     // which renders the price_changes widget that mounts
@@ -1868,7 +1868,7 @@ void main() {
     // manually" → fill name + instrument + class + intermediary).
     // ─────────────────────────────────────────────────────────────────────
     _step('11A. Assets nav → manual asset create dialog');
-    await tester.tap(find.text('Assets').first);
+    await tapBottomNavTab(tester, 'Assets');
     await longSettle(tester);
     // Tap the "+" FAB.
     final addAssetFab = find.byWidgetPredicate(
@@ -2167,7 +2167,7 @@ void main() {
     // (account_detail_screen.dart was 31.6%)
     // ─────────────────────────────────────────────────────────────────────
     _step('11E. Accounts → Fineco → balance recalc dialog');
-    await tester.tap(find.text('Accounts').first);
+    await tapBottomNavTab(tester, 'Accounts');
     await longSettle(tester);
     if (find.text('Fineco').evaluate().isNotEmpty) {
       await tester.tap(find.text('Fineco').first);
@@ -2271,7 +2271,7 @@ void main() {
     // ─────────────────────────────────────────────────────────────────────
     _step('14A. Income tab — long-press first income to enter selection');
     if (find.text('Accounts').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Accounts').first);
+      await tapBottomNavTab(tester, 'Accounts');
       await longSettle(tester);
       if (find.text('Income').evaluate().isNotEmpty) {
         await tester.tap(find.text('Income'));
@@ -2304,7 +2304,7 @@ void main() {
     _step('15A. Pillars nav → empty state');
     final pillarService = PillarService(db);
     expect(await pillarService.getAll(), isEmpty);
-    await tester.tap(find.text('Pillars').first);
+    await tapBottomNavTab(tester, 'Pillars');
     await longSettle(tester);
     expect(find.text('Create your first pillar'), findsOneWidget, reason: 'empty-state CTA visible on a fresh Pillars tab');
     await tester.tap(find.widgetWithText(Tab, 'Portfolio Models'));

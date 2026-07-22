@@ -316,6 +316,26 @@ Future<void> tapAppBarAction(WidgetTester tester, String label) async {
   await longSettle(tester);
 }
 
+/// Navigates to a root bottom-nav [tab] (e.g. 'Accounts', 'Assets'). If a
+/// pushed route (detail/import screen) is still on top — which can happen when
+/// a prior transition hasn't settled on the slow CI emulator — this pops back
+/// to the shell first so the NavigationBar is present, then taps the label.
+Future<void> tapBottomNavTab(WidgetTester tester, String tab) async {
+  for (var i = 0; i < 6; i++) {
+    if (find.text(tab).evaluate().isNotEmpty) break;
+    final back = find.byType(BackButton).hitTestable();
+    if (back.evaluate().isEmpty) break;
+    await tester.tap(back.first);
+    await longSettle(tester);
+  }
+  final dest = find.text(tab);
+  if (dest.evaluate().isEmpty) {
+    fail('Bottom-nav tab "$tab" not found (could not return to the shell).');
+  }
+  await tester.tap(dest.first);
+  await longSettle(tester);
+}
+
 /// Long live-pump: yields the test clock to runAsync (so real Futures —
 /// HTTP, timers, isolate work — can complete) AND pumps frames between
 /// each yield, so the on-screen window keeps animating during long
