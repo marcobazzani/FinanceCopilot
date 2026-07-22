@@ -280,7 +280,7 @@ void main() {
     await longSettle(tester);
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-    await pumpFor(tester, const Duration(seconds: 30));
+    await pumpFor(tester, const Duration(seconds: 60));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -661,7 +661,7 @@ void main() {
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     // Wait for the result screen — Android CI XLSX parse can take >3 s.
-    await pumpFor(tester, const Duration(seconds: 30));
+    await pumpFor(tester, const Duration(seconds: 60));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
@@ -721,7 +721,7 @@ void main() {
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
     await tester.tap(find.widgetWithText(FilledButton, 'Import'));
     // Wait for the result screen — Android CI XLSX parse can take >3 s.
-    await pumpFor(tester, const Duration(seconds: 30));
+    await pumpFor(tester, const Duration(seconds: 60));
     while (find.byType(BackButton).evaluate().isNotEmpty) {
       await tester.tap(find.byType(BackButton).first);
       await settle(tester);
