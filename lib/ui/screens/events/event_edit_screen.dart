@@ -15,15 +15,32 @@ import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show
 /// Create / edit an ExtraordinaryEvent. Handles all four quadrants of the
 /// direction × treatment matrix via two segmented controls at the top.
 ///
-/// For treatment=spread the three legacy CAPEX spread modes are preserved:
-///   backward:   spread from [spreadStart] → eventDate (save before purchase)
-///   forward:    spread from eventDate → [spreadEnd] (pay off after purchase)
-///   startSteps: spread from [spreadStart] for N steps
-enum _SpreadMode { backward, forward, startSteps }
-
+/// For treatment=spread the schedule is defined by a frequency + step count.
+/// The window always ENDS on [eventDate] and starts `stepCount` steps earlier
+/// (frequency × steps, going backwards) — i.e. the amount is amortized over
+/// the N periods leading up to the event. Example: 12 monthly steps → the
+/// spread starts one year before the event date.
 class EventEditScreen extends ConsumerStatefulWidget {
   final ExtraordinaryEvent? event;
-  const EventEditScreen({super.key, this.event});
+
+  // Optional seeds for new-event creation (all ignored when [event] is set).
+  final String? seedName;
+  final double? seedAmount;
+  final String? seedCurrency;
+  final DateTime? seedDate;
+  final EventDirection? seedDirection;
+  final EventTreatment? seedTreatment;
+
+  const EventEditScreen({
+    super.key,
+    this.event,
+    this.seedName,
+    this.seedAmount,
+    this.seedCurrency,
+    this.seedDate,
+    this.seedDirection,
+    this.seedTreatment,
+  });
 
   @override
   ConsumerState<EventEditScreen> createState() => _EventEditScreenState();
@@ -41,8 +58,6 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   late String _currency;
   late StepFrequency _stepFrequency;
   late DateTime _eventDate;
-  late DateTime _boundaryDate;
-  late _SpreadMode _spreadMode;
   late bool _isEphemeral;
 
   bool get _canBeEphemeral => _direction == EventDirection.inflow && _treatment == EventTreatment.instant;
@@ -50,59 +65,52 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   bool get _isEditing => widget.event != null;
   String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
 
-  DateTime get _spreadStart => switch (_spreadMode) {
-    _SpreadMode.backward => _boundaryDate,
-    _SpreadMode.startSteps => _boundaryDate,
-    _SpreadMode.forward => _eventDate,
-  };
+  /// Parsed step count, clamped to at least 1.
+  int get _stepCount {
+    final n = int.tryParse(_stepsCtrl.text);
+    return (n == null || n < 1) ? 1 : n;
+  }
 
-  DateTime get _spreadEnd => switch (_spreadMode) {
-    _SpreadMode.backward => _eventDate,
-    _SpreadMode.forward => _boundaryDate,
-    _SpreadMode.startSteps => () {
-      final steps = int.tryParse(_stepsCtrl.text);
-      if (steps == null || steps < 1) return _boundaryDate;
-      return schedule_math.computeEndDate(_boundaryDate, steps, _stepFrequency);
-    }(),
-  };
+  /// The spread window covers the [_stepCount] periods immediately BEFORE the
+  /// event: it starts `stepCount` steps back (frequency × steps) and the final
+  /// step lands one period before the event date. Example: 12 monthly steps →
+  /// starts one year before the event, 12 entries in total.
+  DateTime get _spreadStart => schedule_math.stepBack(_eventDate, _stepCount, _stepFrequency);
+  DateTime get _spreadEnd => schedule_math.stepBack(_eventDate, 1, _stepFrequency);
 
   @override
   void initState() {
     super.initState();
     final e = widget.event;
-    _nameCtrl = TextEditingController(text: e?.name ?? '');
     final initLocale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+    // When creating a new event the optional seed params pre-populate the form
+    // (e.g. when launched from "Spread spending" on a transaction). Seeds are
+    // ignored entirely when editing an existing event.
+    final seedName = e == null ? widget.seedName : null;
+    final seedAmount = e == null ? widget.seedAmount : null;
+    _nameCtrl = TextEditingController(text: e?.name ?? seedName ?? '');
     _amountCtrl = TextEditingController(
-      text: e != null ? fmt.amountFormat(initLocale).format(e.totalAmount) : '',
+      text: e != null
+          ? fmt.amountFormat(initLocale).format(e.totalAmount)
+          : seedAmount != null
+          ? fmt.amountFormat(initLocale).format(seedAmount)
+          : '',
     );
     _stepsCtrl = TextEditingController(text: '12');
     _notesCtrl = TextEditingController(text: e?.notes ?? '');
-    _currency = e?.currency ?? _baseCurrency;
-    _direction = e?.direction ?? EventDirection.outflow;
-    _treatment = e?.treatment ?? EventTreatment.instant;
+    _currency = e?.currency ?? widget.seedCurrency ?? _baseCurrency;
+    _direction = e?.direction ?? widget.seedDirection ?? EventDirection.outflow;
+    _treatment = e?.treatment ?? widget.seedTreatment ?? EventTreatment.instant;
     _stepFrequency = e?.stepFrequency ?? StepFrequency.monthly;
-    _eventDate = e?.eventDate ?? DateTime.now();
+    _eventDate = e?.eventDate ?? widget.seedDate ?? DateTime.now();
     _isEphemeral = e?.isEphemeral ?? false;
 
-    // Infer spread mode from stored spread window (when editing spread events).
-    if (e != null && e.treatment == EventTreatment.spread && e.spreadStart != null && e.spreadEnd != null) {
-      final evNorm = DateTime(e.eventDate.year, e.eventDate.month, e.eventDate.day);
-      final startNorm = DateTime(e.spreadStart!.year, e.spreadStart!.month, e.spreadStart!.day);
-      final endNorm = DateTime(e.spreadEnd!.year, e.spreadEnd!.month, e.spreadEnd!.day);
-      if (startNorm == evNorm) {
-        _spreadMode = _SpreadMode.forward;
-        _boundaryDate = e.spreadEnd!;
-      } else if (endNorm == evNorm) {
-        _spreadMode = _SpreadMode.backward;
-        _boundaryDate = e.spreadStart!;
-      } else {
-        _spreadMode = _SpreadMode.startSteps;
-        _boundaryDate = e.spreadStart!;
-        _stepsCtrl.text = schedule_math.computeStepDates(e.spreadStart!, e.spreadEnd!, e.stepFrequency!).length.toString();
-      }
-    } else {
-      _spreadMode = _SpreadMode.forward;
-      _boundaryDate = DateTime.now().add(const Duration(days: 365));
+    // When editing a spread event, reconstruct the step count from the stored
+    // window so the UI shows the same number of steps (the window is otherwise
+    // recomputed from eventDate + frequency × steps on save).
+    if (e != null && e.treatment == EventTreatment.spread && e.spreadStart != null && e.spreadEnd != null && e.stepFrequency != null) {
+      final n = schedule_math.computeStepDates(e.spreadStart!, e.spreadEnd!, e.stepFrequency!).length;
+      if (n > 0) _stepsCtrl.text = n.toString();
     }
   }
 
@@ -329,41 +337,12 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                       onChanged: (v) => setState(() => _stepFrequency = v ?? StepFrequency.monthly),
                     ),
                     const SizedBox(height: 12),
-                    SegmentedButton<_SpreadMode>(
-                      segments: [
-                        ButtonSegment(value: _SpreadMode.backward, label: Text(s.spreadModeBackward)),
-                        ButtonSegment(value: _SpreadMode.forward, label: Text(s.spreadModeForward)),
-                        ButtonSegment(value: _SpreadMode.startSteps, label: Text(s.spreadModeStartSteps)),
-                      ],
-                      selected: {_spreadMode},
-                      onSelectionChanged: (set) => setState(() => _spreadMode = set.first),
+                    TextFormField(
+                      controller: _stepsCtrl,
+                      decoration: InputDecoration(labelText: s.stepCountLabel),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() {}),
                     ),
-                    const SizedBox(height: 12),
-                    if (_spreadMode == _SpreadMode.backward || _spreadMode == _SpreadMode.startSteps)
-                      InkWell(
-                        onTap: () => _pickDate(_boundaryDate, (d) => _boundaryDate = d),
-                        child: InputDecorator(
-                          decoration: InputDecoration(labelText: s.spreadStartLabel),
-                          child: Text(dateFmt.format(_boundaryDate)),
-                        ),
-                      ),
-                    if (_spreadMode == _SpreadMode.forward)
-                      InkWell(
-                        onTap: () => _pickDate(_boundaryDate, (d) => _boundaryDate = d),
-                        child: InputDecorator(
-                          decoration: InputDecoration(labelText: s.spreadEndLabel),
-                          child: Text(dateFmt.format(_boundaryDate)),
-                        ),
-                      ),
-                    if (_spreadMode == _SpreadMode.startSteps) ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _stepsCtrl,
-                        decoration: InputDecoration(labelText: s.stepCountLabel),
-                        keyboardType: TextInputType.number,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ],
                     // Preview
                     if (previewDates.isNotEmpty && perStep != null) ...[
                       const SizedBox(height: 16),

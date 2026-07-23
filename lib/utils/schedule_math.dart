@@ -62,3 +62,12 @@ DateTime computeStartDate(DateTime end, int stepCount, StepFrequency freq) {
   final anchor = DateTime(end.year, end.month, end.day);
   return _stepN(anchor, -(stepCount - 1), freq);
 }
+
+/// Step [anchor] backwards by [steps] periods of [freq] (i.e. advance by
+/// −[steps]). steps=0 returns the normalized anchor. Used to derive a spread
+/// window that ends just before an event: the amortization covers the N
+/// periods leading up to [anchor].
+DateTime stepBack(DateTime anchor, int steps, StepFrequency freq) {
+  final a = DateTime(anchor.year, anchor.month, anchor.day);
+  return _stepN(a, -steps, freq);
+}

@@ -60,3 +60,6 @@ android/app/financecopilot-release.keystore
 
 # Local opencode MCP config (machine-specific absolute paths)
 .opencode.json
+
+# Local scratch/log dir for build & test output
+tmp/
