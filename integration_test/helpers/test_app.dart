@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -257,14 +258,15 @@ const _slowTests = bool.fromEnvironment('SLOW_TESTS');
 // smoothly during settle/longSettle/pumpFor. With 50ms frames the
 // progress indicators stuttered visibly on the macOS test driver.
 const _frameMs = _slowTests ? 33 : 16;
-// SLOW_TESTS durations are sized for CI's Android emulator, which is markedly
-// slower than when this suite was first written: route-pop animations plus the
-// stream-driven screen rebuilds behind them regularly exceed the old 600ms, so
-// the back-navigation loops (`while (BackButton) { tap; settle; }`) could read
-// an empty finder mid-transition and stop before reaching the shell. Give them
-// generous headroom so the walkthrough stays reliable on the slow emulator.
-const _settleMs = _slowTests ? 1200 : 100;
-const _longSettleMs = _slowTests ? 3000 : 250;
+// The GitHub Android emulator is far slower than the desktop runners: route-pop
+// animations plus the stream-driven screen rebuilds behind them exceed the old
+// 600ms settle, so the back-navigation loops (`while (BackButton) { tap; settle }`)
+// could read an empty finder mid-transition and stop before reaching the shell.
+// Give Android extra headroom; keep macOS/Windows lean so they stay within the
+// 25-minute integration step timeout (Android's job has no such tight limit).
+final _isSlowDevice = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+final _settleMs = !_slowTests ? 100 : (_isSlowDevice ? 1500 : 600);
+final _longSettleMs = !_slowTests ? 250 : (_isSlowDevice ? 3500 : 1500);
 
 /// Pump frames at ~60fps to let the widget tree rebuild after
 /// navigation/tap. Use instead of pumpAndSettle() which hangs on
