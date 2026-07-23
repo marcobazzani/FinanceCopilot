@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -257,8 +258,14 @@ const _slowTests = bool.fromEnvironment('SLOW_TESTS');
 // smoothly during settle/longSettle/pumpFor. With 50ms frames the
 // progress indicators stuttered visibly on the macOS test driver.
 const _frameMs = _slowTests ? 33 : 16;
-const _settleMs = _slowTests ? 600 : 100;
-const _longSettleMs = _slowTests ? 1500 : 250;
+// The GitHub Android emulator is slower than the desktop runners and needs a
+// little more settle time for route-pop + stream-rebuild transitions, but only
+// modestly: the 8b.i navigation is made robust by an explicit pop-to-shell loop
+// in the walkthrough, so these don't need to be large (an earlier 1500/3500ms
+// bump pushed the Android job past 80 minutes). Keep macOS/Windows at baseline.
+final _isSlowDevice = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+final _settleMs = !_slowTests ? 100 : (_isSlowDevice ? 800 : 600);
+final _longSettleMs = !_slowTests ? 250 : (_isSlowDevice ? 2000 : 1500);
 
 /// Pump frames at ~60fps to let the widget tree rebuild after
 /// navigation/tap. Use instead of pumpAndSettle() which hangs on

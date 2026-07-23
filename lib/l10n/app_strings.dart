@@ -1179,7 +1179,7 @@ class AppStrings {
   String get noNetworkRetry => _it ? 'Nessuna rete - tocca per riprovare' : 'No network - tap to retry';
 
   // ── Bug Reporter / Ticketer ────────────────────────────
-  String get ticketerTitle => _it ? 'Segnala un bug' : 'Report a Bug';
+  String get support => _it ? 'Supporto' : 'Support';
   String get ticketerConfirmDesc => _it
       ? 'Questa operazione:\n• Nasconderà gli importi\n• Catturerà uno screenshot\n• Raccoglierà i log della sessione\n• Aprirà una segnalazione GitHub nel browser'
       : 'This will:\n• Hide amounts\n• Take a screenshot\n• Collect session logs\n• Open a GitHub issue in your browser';

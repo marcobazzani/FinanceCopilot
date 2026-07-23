@@ -33,9 +33,9 @@ Future<void> openBugReporter(
     builder: (ctx) => AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.bug_report),
+          const Icon(Icons.support_agent),
           const SizedBox(width: 8),
-          Text(s.ticketerTitle),
+          Text(s.support),
         ],
       ),
       content: ConstrainedBox(
@@ -172,7 +172,7 @@ Future<void> openBugReporter(
         children: [
           const Icon(Icons.check_circle, color: Colors.green),
           const SizedBox(width: 8),
-          Text(s.ticketerTitle),
+          Text(s.support),
         ],
       ),
       content: ConstrainedBox(

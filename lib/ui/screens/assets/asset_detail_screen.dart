@@ -79,23 +79,24 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
               context,
               ref,
               local: [
-                IconButton(
-                  icon: const Icon(Icons.view_quilt_outlined),
+                AppBarAction(
+                  icon: Icons.view_quilt_outlined,
                   tooltip: s.pillarAssignToTitle,
                   onPressed: () => _pickPillarThenEdit(context, ref, asset.id),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.edit),
+                AppBarAction(
+                  icon: Icons.edit,
                   tooltip: s.tooltipEditAsset,
                   onPressed: () => _editAsset(context, ref),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_sweep),
+                AppBarAction(
+                  icon: Icons.delete_sweep,
                   tooltip: s.tooltipWipeEvents,
                   onPressed: () => _confirmWipeEvents(context, ref),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                AppBarAction(
+                  icon: Icons.delete_outline,
+                  color: Colors.red,
                   tooltip: s.tooltipDeleteAsset,
                   onPressed: () => _confirmDeleteAsset(context, ref),
                 ),

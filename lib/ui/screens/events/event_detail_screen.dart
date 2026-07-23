@@ -63,8 +63,8 @@ class _DetailBody extends ConsumerWidget {
           context,
           ref,
           local: [
-            IconButton(
-              icon: const Icon(Icons.edit),
+            AppBarAction(
+              icon: Icons.edit,
               tooltip: s.edit,
               onPressed: () => Navigator.push(
                 context,
@@ -72,8 +72,8 @@ class _DetailBody extends ConsumerWidget {
               ),
             ),
             if (isSpread)
-              IconButton(
-                icon: const Icon(Icons.refresh),
+              AppBarAction(
+                icon: Icons.refresh,
                 tooltip: s.regenerateEntries,
                 onPressed: () async {
                   await ref.read(extraordinaryEventServiceProvider).generateScheduledEntries(event.id);
@@ -82,8 +82,9 @@ class _DetailBody extends ConsumerWidget {
                   }
                 },
               ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
+            AppBarAction(
+              icon: Icons.delete_outline,
+              color: Colors.red,
               tooltip: s.delete,
               onPressed: () => _confirmDelete(context, ref),
             ),
