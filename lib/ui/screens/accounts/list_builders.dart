@@ -282,7 +282,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
                       ],
                     ),
                   )
-                else
+                else ...[
                   PopupMenuItem(
                     value: 'flag_adjustment',
                     child: Row(
@@ -293,10 +293,22 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
                       ],
                     ),
                   ),
+                  PopupMenuItem(
+                    value: 'spread_spending',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.timeline, size: 18),
+                        const SizedBox(width: 8),
+                        Text(s.spreadSpendingMenu),
+                      ],
+                    ),
+                  ),
+                ],
               ],
               onSelected: (v) {
                 if (v == 'flag_income') _flagAsIncome(tx);
                 if (v == 'flag_adjustment') _flagAsAdjustment(tx);
+                if (v == 'spread_spending') _createSpreadSpending(tx);
               },
             ),
           ],

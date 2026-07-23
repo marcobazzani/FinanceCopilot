@@ -46,6 +46,30 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     }
   }
 
+  /// Open the event-create form pre-seeded for an outflow/spread ("spread
+  /// spending") event. The form is pre-populated with the transaction's amount,
+  /// currency, date, and description so the user only needs to confirm the
+  /// spread window.  Because [resolveAdjustments] matches the anchor by
+  /// (dayKey(eventDate), |totalAmount| cents, negative), keeping the pre-filled
+  /// date and amount ensures the raw bank transaction is automatically
+  /// excluded from All-Accounts totals and replaced by the synthetic saving
+  /// schedule rows — no double-count.
+  Future<void> _createSpreadSpending(Transaction tx) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EventEditScreen(
+          seedName: tx.description,
+          seedAmount: tx.amount.abs(),
+          seedCurrency: tx.currency,
+          seedDate: tx.valueDate,
+          seedDirection: EventDirection.outflow,
+          seedTreatment: EventTreatment.spread,
+        ),
+      ),
+    );
+  }
+
   /// Mark a NEGATIVE transaction as a manual adjustment against an Inflow
   /// `ExtraordinaryEvent`. The user picks the inflow record (best-match
   /// proposed by smallest |valueDate − eventDate|, currency-equal first).

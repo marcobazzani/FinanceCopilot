@@ -773,11 +773,6 @@ class AppStrings {
   String get notesOptional => _it ? 'Note (opzionale)' : 'Notes (optional)';
   String get stepFrequencyLabel => _it ? 'Frequenza' : 'Frequency';
   String get stepCountLabel => _it ? 'Numero passi' : 'Step count';
-  String get spreadStartLabel => _it ? 'Inizio dilazione' : 'Spread start';
-  String get spreadEndLabel => _it ? 'Fine dilazione' : 'Spread end';
-  String get spreadModeBackward => _it ? 'Risparmia prima' : 'Save before';
-  String get spreadModeForward => _it ? 'Paga dopo' : 'Pay after';
-  String get spreadModeStartSteps => _it ? 'Da data + passi' : 'From date + steps';
   String spreadPreview(int n, String amt) => _it ? '$n passi × $amt' : '$n steps × $amt';
   String get freqWeekly => _it ? 'Settimanale' : 'Weekly';
   String get freqMonthly => _it ? 'Mensile' : 'Monthly';
@@ -836,6 +831,7 @@ class AppStrings {
   String get flagAsIncomeTooltip => _it ? 'Segna come reddito' : 'Flag as Income';
   String get flagAsIncomeTitle => _it ? 'Segna come reddito' : 'Flag as Income';
   String get incomeFlaggedSnack => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
+  String get spreadSpendingMenu => _it ? 'Spalma spesa' : 'Spread spending';
   String get flagAsAdjustmentTooltip => _it ? 'Segna come rettifica' : 'Mark as adjustment';
   String get flagAsAdjustmentTitle => _it ? 'Segna come rettifica' : 'Mark as adjustment';
   String get flagAsAdjustmentInflow => _it ? 'Entrata di riferimento' : 'Reference inflow';

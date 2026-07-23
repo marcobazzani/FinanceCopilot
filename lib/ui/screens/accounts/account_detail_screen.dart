@@ -15,6 +15,7 @@ import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 import 'package:finance_copilot/ui/screens/events/transaction_edit_screen.dart';
+import 'package:finance_copilot/ui/screens/events/event_edit_screen.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';

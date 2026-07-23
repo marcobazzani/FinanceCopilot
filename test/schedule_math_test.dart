@@ -76,6 +76,47 @@ void main() {
     });
   });
 
+  group('stepBack — spread window going backwards from an event', () {
+    test('N monthly steps back = N months earlier', () {
+      expect(stepBack(DateTime(2025, 3, 15), 12, StepFrequency.monthly), DateTime(2024, 3, 15));
+      expect(stepBack(DateTime(2025, 3, 15), 1, StepFrequency.monthly), DateTime(2025, 2, 15));
+    });
+
+    test('0 steps returns the normalized anchor (time stripped)', () {
+      expect(stepBack(DateTime(2025, 3, 15, 9, 30), 0, StepFrequency.monthly), DateTime(2025, 3, 15));
+    });
+
+    test('weekly steps back subtract 7 days each', () {
+      expect(stepBack(DateTime(2025, 3, 15), 3, StepFrequency.weekly), DateTime(2025, 2, 22));
+    });
+
+    test('quarterly and yearly step back', () {
+      expect(stepBack(DateTime(2025, 4, 1), 2, StepFrequency.quarterly), DateTime(2024, 10, 1));
+      expect(stepBack(DateTime(2025, 6, 15), 4, StepFrequency.yearly), DateTime(2021, 6, 15));
+    });
+
+    test('12 monthly steps start exactly one year before the event', () {
+      // Pins the user-facing rule: "12 steps -> 1 year earlier".
+      expect(stepBack(DateTime(2025, 3, 26), 12, StepFrequency.monthly), DateTime(2024, 3, 26));
+    });
+
+    // The spread-spending UI derives its window as
+    //   [stepBack(event, N) .. stepBack(event, 1)]
+    // and generates one scheduled entry per computeStepDates() point. That must
+    // be EXACTLY N points (so per-step = total / N matches the "N steps" input),
+    // and every point must fall strictly before the event date.
+    test('window [stepBack(event,N) .. stepBack(event,1)] yields exactly N dates, all before the event', () {
+      final event = DateTime(2025, 3, 26);
+      for (final n in [1, 3, 12, 24]) {
+        final start = stepBack(event, n, StepFrequency.monthly);
+        final end = stepBack(event, 1, StepFrequency.monthly);
+        final dates = computeStepDates(start, end, StepFrequency.monthly);
+        expect(dates.length, n, reason: '$n monthly steps must yield $n dates');
+        expect(dates.every((d) => d.isBefore(event)), isTrue, reason: 'all steps fall before the event');
+      }
+    });
+  });
+
   group('month-end anchor preservation (no drift)', () {
     // Iterating addMonthsClamped step-by-step would drift Jan 31 ->
     // Feb 29 -> Mar 29 -> Apr 29 ... once Feb shrinks the day, every later
