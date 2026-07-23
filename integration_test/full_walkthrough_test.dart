@@ -804,6 +804,21 @@ void main() {
     // delete-confirm dialog.
     // ─────────────────────────────────────────────────────────────────────
     _step('8b.i. AssetEventEditScreen UI — create + edit (type locked) + delete');
+    // On the CI Android emulator the preceding import can leave a route on top,
+    // so the shell's "Assets" tab isn't present. Pop back to the shell (with
+    // full settles) before tapping it; dump the screen if we still can't.
+    for (var i = 0; i < 8 && find.text('Assets').evaluate().isEmpty; i++) {
+      final back = find.byType(BackButton).hitTestable();
+      if (back.evaluate().isNotEmpty) {
+        await tester.tap(back.first);
+      }
+      await longSettle(tester);
+    }
+    if (find.text('Assets').evaluate().isEmpty) {
+      final onScreen = find.byType(Text).evaluate().map((e) => (e.widget as Text).data).whereType<String>().toList();
+      final hasBack = find.byType(BackButton).evaluate().isNotEmpty;
+      fail('8b.i: "Assets" tab not found (hasBackButton=$hasBack). On-screen: $onScreen');
+    }
     await tester.tap(find.text('Assets').first);
     await longSettle(tester);
     // Pick the asset whose visible name matches a row in the list. We try
