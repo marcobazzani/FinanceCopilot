@@ -194,6 +194,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             MaterialPageRoute(builder: (_) => const ImportScreen()),
           );
         },
+        openSupport: (ctx) => openBugReporter(ctx, ref, repaintKey: _repaintKey, enablePrivacy: true),
         retryNetwork: () async {
           if (!mounted) return;
           final monitor = ref.read(networkMonitorProvider);
@@ -588,6 +589,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
+  /// Version label shown at the bottom of the shell (wide sidebar footer and
+  /// narrow overlay corner). The Support affordance lives in the global action
+  /// bar via [globalAppBarActions], not here.
+  Widget _versionLabel(BuildContext context) => Text(
+    'v$appVersionDisplay',
+    style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+  );
+
   @override
   Widget build(BuildContext context) {
     // Show landing page without any toolbar/navigation
@@ -652,23 +661,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                         const Spacer(),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8, left: 16),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'v$appVersionDisplay',
-                                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              ),
-                              const SizedBox(width: 4),
-                              GestureDetector(
-                                onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.click,
-                                  child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                ),
-                              ),
-                            ],
-                          ),
+                          child: _versionLabel(context),
                         ),
                       ],
                     ),
@@ -683,23 +676,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                   Positioned(
                     left: 8,
                     bottom: 4,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'v$appVersionDisplay',
-                          style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () => openBugReporter(context, ref, repaintKey: _repaintKey, enablePrivacy: true),
-                          child: MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: Icon(Icons.bug_report, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: _versionLabel(context),
                   ),
                 ],
               ),
