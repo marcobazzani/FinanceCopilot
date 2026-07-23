@@ -257,8 +257,14 @@ const _slowTests = bool.fromEnvironment('SLOW_TESTS');
 // smoothly during settle/longSettle/pumpFor. With 50ms frames the
 // progress indicators stuttered visibly on the macOS test driver.
 const _frameMs = _slowTests ? 33 : 16;
-const _settleMs = _slowTests ? 600 : 100;
-const _longSettleMs = _slowTests ? 1500 : 250;
+// SLOW_TESTS durations are sized for CI's Android emulator, which is markedly
+// slower than when this suite was first written: route-pop animations plus the
+// stream-driven screen rebuilds behind them regularly exceed the old 600ms, so
+// the back-navigation loops (`while (BackButton) { tap; settle; }`) could read
+// an empty finder mid-transition and stop before reaching the shell. Give them
+// generous headroom so the walkthrough stays reliable on the slow emulator.
+const _settleMs = _slowTests ? 1200 : 100;
+const _longSettleMs = _slowTests ? 3000 : 250;
 
 /// Pump frames at ~60fps to let the widget tree rebuild after
 /// navigation/tap. Use instead of pumpAndSettle() which hangs on
