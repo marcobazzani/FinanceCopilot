@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/legacy.dart';
 
 /// Top-level handlers exposed by the AppShell so that any screen's AppBar
 /// can drive the global actions (refresh, settings, import/export, import
-/// file, support, network retry) regardless of whether it sits inside the
-/// shell or has been pushed as a full-screen route.
+/// file, network retry) regardless of whether it sits inside the shell or
+/// has been pushed as a full-screen route.
 ///
 /// Wired in `_AppShellState.initState` via [globalActionsRegistryProvider].
 class GlobalActionsRegistry {
@@ -12,7 +12,6 @@ class GlobalActionsRegistry {
   final Future<void> Function(BuildContext context) showImportExportDialog;
   final Future<void> Function(BuildContext context) showSettingsDialog;
   final Future<void> Function(BuildContext context) openImportFiles;
-  final Future<void> Function(BuildContext context) openSupport;
   final Future<void> Function() retryNetwork;
 
   const GlobalActionsRegistry({
@@ -20,7 +19,6 @@ class GlobalActionsRegistry {
     required this.showImportExportDialog,
     required this.showSettingsDialog,
     required this.openImportFiles,
-    required this.openSupport,
     required this.retryNetwork,
   });
 }

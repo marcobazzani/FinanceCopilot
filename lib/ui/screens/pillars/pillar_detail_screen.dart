@@ -82,8 +82,8 @@ class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with Si
           context,
           ref,
           local: [
-            AppBarAction(
-              icon: Icons.balance,
+            IconButton(
+              icon: const Icon(Icons.balance),
               tooltip: s.rebalance,
               onPressed: () async {
                 await showDialog(
@@ -95,8 +95,8 @@ class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with Si
                 );
               },
             ),
-            AppBarAction(
-              icon: Icons.edit,
+            IconButton(
+              icon: const Icon(Icons.edit),
               tooltip: s.edit,
               onPressed: () async {
                 final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;
@@ -107,9 +107,8 @@ class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with Si
                 );
               },
             ),
-            AppBarAction(
-              icon: Icons.delete_outline,
-              color: Colors.red,
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
               tooltip: s.delete,
               onPressed: () async {
                 final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;

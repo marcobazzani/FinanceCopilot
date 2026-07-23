@@ -53,7 +53,24 @@ class _PillarsScreenState extends ConsumerState<PillarsScreen> with SingleTicker
         actions: globalAppBarActions(
           context,
           ref,
-          local: _tabController.index == 0 ? [_rebalanceAction(context, s, standardAsync)] : const [],
+          local: _tabController.index == 0
+              ? [
+                  _RebalanceToolbarMenu(
+                    // Rebalance menu only shows standard pillars (virtual are per-portfolio only).
+                    pillarsAsync: standardAsync,
+                    onSelected: (choice) async {
+                      final fallbackPillarId = standardAsync.value?.isNotEmpty == true ? standardAsync.value!.first.id : null;
+                      await showDialog(
+                        context: context,
+                        builder: (_) => RebalancePreviewDialog(
+                          pillarId: choice.pillarId ?? fallbackPillarId!,
+                          initialScopeKind: choice.scopeKind,
+                        ),
+                      );
+                    },
+                  ),
+                ]
+              : const [],
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -315,49 +332,52 @@ class _UnassignedCard extends ConsumerWidget {
   }
 }
 
-/// Builds the toolbar rebalance action. On desktop it renders as a menu of
-/// scopes ("all" + one per standard pillar); on mobile it folds into the global
-/// overflow and opens the same choices as a modal. Disabled when there are no
-/// standard pillars. Virtual portfolios are excluded (they rebalance per-portfolio).
-AppBarAction _rebalanceAction(
-  BuildContext context,
-  AppStrings s,
-  AsyncValue<List<Pillar>> pillarsAsync,
-) {
-  final pillars = pillarsAsync.value ?? const <Pillar>[];
+class _RebalanceChoice {
+  final String? pillarId;
+  final PortfolioRebalanceScopeKind scopeKind;
 
-  void openPreview(String pillarId, PortfolioRebalanceScopeKind scope) {
-    showDialog(
-      context: context,
-      builder: (_) => RebalancePreviewDialog(pillarId: pillarId, initialScopeKind: scope),
+  const _RebalanceChoice.current(this.pillarId) : scopeKind = PortfolioRebalanceScopeKind.currentPillar;
+  const _RebalanceChoice.all() : pillarId = null, scopeKind = PortfolioRebalanceScopeKind.allAssociatedPillars;
+}
+
+class _RebalanceToolbarMenu extends ConsumerWidget {
+  final AsyncValue<List<Pillar>> pillarsAsync;
+  final ValueChanged<_RebalanceChoice> onSelected;
+
+  const _RebalanceToolbarMenu({
+    required this.pillarsAsync,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final pillars = pillarsAsync.value ?? const <Pillar>[];
+    if (pillars.isEmpty) {
+      return IconButton(
+        tooltip: s.rebalance,
+        icon: const Icon(Icons.balance),
+        onPressed: null,
+      );
+    }
+    return PopupMenuButton<_RebalanceChoice>(
+      tooltip: s.rebalance,
+      icon: const Icon(Icons.balance),
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        PopupMenuItem<_RebalanceChoice>(
+          value: const _RebalanceChoice.all(),
+          child: Text(s.rebalanceScopeAll),
+        ),
+        const PopupMenuDivider(),
+        for (final pillar in pillars)
+          PopupMenuItem<_RebalanceChoice>(
+            value: _RebalanceChoice.current(pillar.id),
+            child: Text(pillar.name),
+          ),
+      ],
     );
   }
-
-  return AppBarAction(
-    icon: Icons.balance,
-    tooltip: s.rebalance,
-    // Disabled (no onPressed, no submenu) when there are no pillars to rebalance.
-    submenu: pillars.isEmpty
-        ? const []
-        : [
-            AppBarSubAction(
-              label: s.rebalanceScopeAll,
-              onSelected: () => openPreview(
-                pillars.first.id,
-                PortfolioRebalanceScopeKind.allAssociatedPillars,
-              ),
-            ),
-            for (final (i, pillar) in pillars.indexed)
-              AppBarSubAction(
-                label: pillar.name,
-                dividerBefore: i == 0,
-                onSelected: () => openPreview(
-                  pillar.id,
-                  PortfolioRebalanceScopeKind.currentPillar,
-                ),
-              ),
-          ],
-  );
 }
 
 class _PortfolioModelsTab extends ConsumerWidget {
