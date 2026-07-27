@@ -1,48 +1,35 @@
 part of 'account_detail_screen.dart';
 
 extension _AccountDetailTransactionActions on _AccountDetailScreenState {
+  /// Turn a POSITIVE transaction into income. A single inflow is often a mix
+  /// (salary + expense refund + pension contribution), so the user allocates
+  /// each slice in [showIncomeSplitDialog] and one `Income` row per non-zero
+  /// slice is written. The dialog only returns balanced plans, so the recorded
+  /// rows always add up to the transaction amount.
   Future<void> _flagAsIncome(Transaction tx) async {
     final s = ref.read(appStringsProvider);
-    var selectedType = IncomeType.income;
 
-    String typeLabel(IncomeType t) => switch (t) {
-      IncomeType.income => s.incomeTypeIncome,
-      IncomeType.refund => s.incomeTypeRefund,
-      IncomeType.pensionContribution => s.incomeTypePensionContribution,
-    };
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.flagAsIncomeTitle),
-          content: DropdownButtonFormField<IncomeType>(
-            initialValue: selectedType,
-            decoration: InputDecoration(labelText: s.incomeTypeLabel),
-            items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(typeLabel(t)))).toList(),
-            onChanged: (v) => setDialogState(() => selectedType = v!),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
-          ],
-        ),
-      ),
+    final entries = await showIncomeSplitDialog(
+      context,
+      title: s.flagAsIncomeTitle,
+      total: tx.amount,
+      currency: tx.currency,
     );
-
-    if (confirmed != true) return;
+    if (entries == null || entries.isEmpty) return;
 
     await ref
         .read(incomeServiceProvider)
-        .create(
+        .createSplit(
           date: tx.valueDate,
-          amount: tx.amount,
-          type: selectedType,
           currency: tx.currency,
+          entries: entries,
         );
 
     if (mounted) {
-      showInfoSnack(context, s.incomeFlaggedSnack);
+      showInfoSnack(
+        context,
+        entries.length == 1 ? s.incomeFlaggedSnack : s.incomeFlaggedSplitSnack(entries.length),
+      );
     }
   }
 

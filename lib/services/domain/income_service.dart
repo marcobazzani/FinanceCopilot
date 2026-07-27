@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/income_split.dart';
 import 'package:finance_copilot/utils/logger.dart';
 
 final _log = getLogger('IncomeService');
@@ -57,6 +58,32 @@ class IncomeService {
             currency: Value(currency),
           ),
         );
+  }
+
+  /// Persist a single inflow split across several [IncomeType]s as one row per
+  /// non-zero slice, in ONE batch so a partial split can never be written.
+  ///
+  /// Used by "Flag as Income" on a bank transaction: the same date, currency
+  /// and (optional) source asset apply to every slice.
+  Future<void> createSplit({
+    required DateTime date,
+    required String currency,
+    required List<IncomeSplitEntry> entries,
+    int? assetId,
+  }) async {
+    if (entries.isEmpty) return;
+    _log.info('createSplit: date=$date, currency=$currency, slices=${entries.length}');
+    await bulkCreate([
+      for (final entry in entries)
+        IncomesCompanion.insert(
+          date: date,
+          valueDate: date,
+          amount: entry.amount,
+          type: Value(entry.type),
+          currency: Value(currency),
+          assetId: Value(assetId),
+        ),
+    ]);
   }
 
   Future<bool> update(int id, IncomesCompanion companion) async {

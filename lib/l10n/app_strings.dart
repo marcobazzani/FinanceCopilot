@@ -824,6 +824,14 @@ class AppStrings {
   String get incomeTypeIncome => _it ? 'Reddito' : 'Income';
   String get incomeTypeRefund => _it ? 'Rimborso' : 'Refund';
   String get incomeTypePensionContribution => _it ? 'Contributo previdenziale' : 'Pension contribution';
+
+  /// Single source of truth for the user-visible name of an [IncomeType].
+  /// Every screen showing an income type must go through this.
+  String incomeTypeName(IncomeType type) => switch (type) {
+    IncomeType.income => incomeTypeIncome,
+    IncomeType.refund => incomeTypeRefund,
+    IncomeType.pensionContribution => incomeTypePensionContribution,
+  };
   String get incomeTypeDetection => _it ? 'Rilevamento tipo di reddito' : 'Income Type Detection';
   String get mapIncomeTypes =>
       _it ? 'Mappa valori in Reddito / Rimborso / Contributo previdenziale:' : 'Map values to Income / Refund / Pension contribution:';
@@ -831,6 +839,13 @@ class AppStrings {
   String get flagAsIncomeTooltip => _it ? 'Segna come reddito' : 'Flag as Income';
   String get flagAsIncomeTitle => _it ? 'Segna come reddito' : 'Flag as Income';
   String get incomeFlaggedSnack => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
+  String incomeFlaggedSplitSnack(int n) => _it ? 'Aggiunte $n voci di reddito' : 'Added $n income entries';
+  String get incomeSplitHint => _it
+      ? 'Suddividi l\'importo tra i tipi. La somma deve corrispondere al totale.'
+      : 'Split the amount across types. The parts must add up to the total.';
+  String get incomeSplitAssignRemainder => _it ? 'Assegna il rimanente' : 'Assign the remaining amount';
+  String get incomeSplitInvalidAmount => _it ? 'Importo non valido' : 'Invalid amount';
+  String get incomeSplitOverAllocated => _it ? 'Eccedenza: ' : 'Over by: ';
   String get spreadSpendingMenu => _it ? 'Spalma spesa' : 'Spread spending';
   String get flagAsAdjustmentTooltip => _it ? 'Segna come rettifica' : 'Mark as adjustment';
   String get flagAsAdjustmentTitle => _it ? 'Segna come rettifica' : 'Mark as adjustment';

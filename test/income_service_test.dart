@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/domain/income_service.dart';
+import 'package:finance_copilot/utils/income_split.dart';
 
 void main() {
   late AppDatabase db;
@@ -201,6 +202,79 @@ void main() {
         expect(all[0].amount, 200, reason: 'B has the later valueDate and must come first');
         expect(all[1].amount, 100);
       });
+    });
+  });
+  group('createSplit — one inflow across several types', () {
+    test('writes one row per slice sharing date, valueDate and currency', () async {
+      await service.createSplit(
+        date: DateTime(2024, 6, 15),
+        currency: 'CHF',
+        entries: const [
+          IncomeSplitEntry(IncomeType.income, 1500),
+          IncomeSplitEntry(IncomeType.refund, 200),
+          IncomeSplitEntry(IncomeType.pensionContribution, 300),
+        ],
+      );
+
+      final all = await service.getAll();
+      expect(all, hasLength(3));
+      expect(all.map((i) => i.type).toSet(), IncomeType.values.toSet());
+      expect(all.every((i) => i.currency == 'CHF'), isTrue);
+      expect(all.every((i) => i.date == DateTime(2024, 6, 15)), isTrue);
+      expect(all.every((i) => i.valueDate == DateTime(2024, 6, 15)), isTrue);
+      expect(all.every((i) => i.assetId == null), isTrue);
+      // Total is preserved exactly — the split never loses or invents money.
+      expect(all.fold<double>(0, (sum, i) => sum + i.amount), closeTo(2000, 1e-9));
+    });
+
+    test('slice amounts land on the matching type', () async {
+      await service.createSplit(
+        date: DateTime(2024, 1, 31),
+        currency: 'EUR',
+        entries: const [
+          IncomeSplitEntry(IncomeType.income, 1234.56),
+          IncomeSplitEntry(IncomeType.pensionContribution, 65.44),
+        ],
+      );
+
+      final all = await service.getAll();
+      final byType = {for (final i in all) i.type: i.amount};
+      expect(byType[IncomeType.income], closeTo(1234.56, 1e-9));
+      expect(byType[IncomeType.pensionContribution], closeTo(65.44, 1e-9));
+      expect(byType.containsKey(IncomeType.refund), isFalse);
+    });
+
+    test('propagates assetId to every slice when provided', () async {
+      final iid = await db.into(db.intermediaries).insert(IntermediariesCompanion.insert(name: 'Fund manager'));
+      final assetId = await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'Pension fund',
+              assetType: AssetType.pension,
+              valuationMethod: ValuationMethod.eventDriven,
+              intermediaryId: iid,
+            ),
+          );
+
+      await service.createSplit(
+        date: DateTime(2024, 3, 1),
+        currency: 'EUR',
+        assetId: assetId,
+        entries: const [
+          IncomeSplitEntry(IncomeType.pensionContribution, 100),
+          IncomeSplitEntry(IncomeType.income, 50),
+        ],
+      );
+
+      final all = await service.getAll();
+      expect(all, hasLength(2));
+      expect(all.every((i) => i.assetId == assetId), isTrue);
+    });
+
+    test('empty slice list writes nothing', () async {
+      await service.createSplit(date: DateTime(2024, 3, 1), currency: 'EUR', entries: const []);
+      expect(await service.getAll(), isEmpty);
     });
   });
 }

@@ -8,7 +8,6 @@ import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/import/import_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
-import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
@@ -36,14 +35,6 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     _focusNode.dispose();
     _selection.dispose();
     super.dispose();
-  }
-
-  String _typeLabel(AppStrings s, IncomeType type) {
-    return switch (type) {
-      IncomeType.income => s.incomeTypeIncome,
-      IncomeType.refund => s.incomeTypeRefund,
-      IncomeType.pensionContribution => s.incomeTypePensionContribution,
-    };
   }
 
   IconData _typeIcon(IncomeType type) {
@@ -151,7 +142,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            '${dateFmt.format(income.valueDate)} · ${_typeLabel(s, income.type)}',
+                            '${dateFmt.format(income.valueDate)} · ${s.incomeTypeName(income.type)}',
                           ),
                           trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           onTap: () => _showEditDialog(context, income),
@@ -234,7 +225,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 DropdownButtonFormField<IncomeType>(
                   initialValue: type,
                   decoration: InputDecoration(labelText: s.incomeTypeLabel),
-                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t)))).toList(),
+                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(s.incomeTypeName(t)))).toList(),
                   onChanged: (v) => setDialogState(() => type = v!),
                 ),
                 const SizedBox(height: 8),
@@ -314,7 +305,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                 DropdownButtonFormField<IncomeType>(
                   initialValue: type,
                   decoration: InputDecoration(labelText: s.incomeTypeLabel),
-                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(_typeLabel(s, t)))).toList(),
+                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(s.incomeTypeName(t)))).toList(),
                   onChanged: (v) => setDialogState(() => type = v!),
                 ),
                 const SizedBox(height: 8),
