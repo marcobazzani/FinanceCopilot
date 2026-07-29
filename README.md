@@ -148,9 +148,12 @@ Map any bank or broker CSV / Excel / PDF onto Transactions, Asset Events, or Inc
 
 ```bash
 brew tap marcobazzani/financecopilot
+brew trust marcobazzani/financecopilot      # required on Homebrew 6+
 brew install --cask financecopilot          # stable
 brew install --cask financecopilot-nightly  # latest develop
 ```
+
+> Homebrew 6 refuses to load casks from third-party taps until you trust them (`Refusing to load cask … from untrusted tap`). `brew trust <tap>` covers both casks and future upgrades; use `brew trust --cask marcobazzani/financecopilot/financecopilot-nightly` to trust a single cask instead. See [Tap Trust](https://docs.brew.sh/Tap-Trust).
 
 ### Direct download
 
