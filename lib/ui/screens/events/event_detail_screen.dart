@@ -328,14 +328,33 @@ class _DetailBody extends ConsumerWidget {
     final s = ref.read(appStringsProvider);
     final entry = await _promptAmountDescDate(context, ref, title: s.addEventEntryTitle);
     if (entry == null) return;
-    await ref
-        .read(extraordinaryEventServiceProvider)
-        .addManualEntry(
-          eventId: event.id,
-          date: entry.date,
-          amount: entry.amount,
-          description: entry.desc,
-        );
+    final service = ref.read(extraordinaryEventServiceProvider);
+    // Same-day, same-amount manual entries are usually an accidental re-add;
+    // confirm rather than block (identical entries can be legitimate).
+    final duplicates = await service.countIdenticalManualEntries(
+      eventId: event.id,
+      date: entry.date,
+      amount: entry.amount,
+    );
+    if (duplicates > 0) {
+      if (!context.mounted) return;
+      final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+      final amtFmt = fmt.currencyFormat(locale, event.currency);
+      final addAnyway = await showConfirmDialog(
+        context,
+        title: s.duplicateAdjustmentTitle,
+        content: s.duplicateAdjustmentBody(duplicates, amtFmt.format(entry.amount.abs())),
+        confirmLabel: s.addAnyway,
+        cancelLabel: s.cancel,
+      );
+      if (!addAnyway) return;
+    }
+    await service.addManualEntry(
+      eventId: event.id,
+      date: entry.date,
+      amount: entry.amount,
+      description: entry.desc,
+    );
   }
 
   Future<void> _addReimbursement(BuildContext context, WidgetRef ref) async {

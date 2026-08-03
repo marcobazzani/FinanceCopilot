@@ -854,6 +854,15 @@ class AppStrings {
       _it ? 'Verrà aggiunta una rettifica di +$amount all\'entrata selezionata.' : 'A +$amount adjustment will be added to the selected inflow.';
   String get noInflowEventsAvailable => _it ? 'Nessuna entrata straordinaria disponibile' : 'No inflow events available';
   String get adjustmentFlaggedSnack => _it ? 'Rettifica registrata sull\'entrata' : 'Adjustment recorded on inflow';
+  String get duplicateAdjustmentTitle => _it ? 'Rettifica già presente' : 'Adjustment already exists';
+  String duplicateAdjustmentBody(int count, String amount) => _it
+      ? (count == 1
+            ? 'Esiste già una rettifica di $amount in questa data su questa entrata. Aggiungerne un\'altra?'
+            : 'Esistono già $count rettifiche di $amount in questa data su questa entrata. Aggiungerne un\'altra?')
+      : (count == 1
+            ? 'An adjustment of $amount already exists on this date for this inflow. Add another?'
+            : '$count adjustments of $amount already exist on this date for this inflow. Add another?');
+  String get addAnyway => _it ? 'Aggiungi comunque' : 'Add anyway';
   String get invalidDateOrAmount => _it ? 'Data o importo non valido' : 'Invalid date or amount';
   String get deleteIncomeTitle => _it ? 'Elimina reddito?' : 'Delete Income?';
   String deleteIncomeConfirm(String amt, String cur, String d) => _it ? 'Eliminare $amt $cur del $d?' : 'Delete $amt $cur from $d?';

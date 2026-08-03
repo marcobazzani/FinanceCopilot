@@ -127,14 +127,34 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
 
     if (confirmed != true) return;
 
-    await ref
-        .read(extraordinaryEventServiceProvider)
-        .addManualEntry(
-          eventId: selectedId,
-          date: tx.valueDate,
-          amount: tx.amount.abs(),
-          description: tx.description,
-        );
+    // An identical manual entry on the same day is usually an accidental
+    // re-click (the badge used to appear only after a restart, which made
+    // repeat clicks likely). Two identical same-day drawdowns are legitimate
+    // though, so confirm rather than block.
+    final service = ref.read(extraordinaryEventServiceProvider);
+    final duplicates = await service.countIdenticalManualEntries(
+      eventId: selectedId,
+      date: tx.valueDate,
+      amount: tx.amount.abs(),
+    );
+    if (duplicates > 0) {
+      if (!mounted) return;
+      final addAnyway = await showConfirmDialog(
+        context,
+        title: s.duplicateAdjustmentTitle,
+        content: s.duplicateAdjustmentBody(duplicates, amtFmt.format(tx.amount.abs())),
+        confirmLabel: s.addAnyway,
+        cancelLabel: s.cancel,
+      );
+      if (!addAnyway) return;
+    }
+
+    await service.addManualEntry(
+      eventId: selectedId,
+      date: tx.valueDate,
+      amount: tx.amount.abs(),
+      description: tx.description,
+    );
 
     if (mounted) {
       showInfoSnack(context, s.adjustmentFlaggedSnack);
