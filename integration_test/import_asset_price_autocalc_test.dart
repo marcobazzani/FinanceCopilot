@@ -50,19 +50,21 @@ void main() {
     await setSegmentMode(tester, 'Historic');
 
     // ── 1. No false `*` on the fields the gate never checks ───────────────
-    for (final label in ['Price', 'Exchange Rate', 'Quantity', 'Currency']) {
+    // Assert on each row's EXACT rendered label via mapperLabelText, which
+    // scrolls the row into view first. A bare `expect(find.text('Price *'),
+    // findsNothing)` would pass vacuously on any window short enough to leave
+    // the row unbuilt — the mapper is a ListView.
+    for (final field in ['Quantity', 'Price', 'Currency', 'Exchange Rate']) {
       expect(
-        find.text('$label *'),
-        findsNothing,
-        reason: '"$label" must not be starred — _canProceedToConfirm() does not enforce it (issue #96)',
+        await mapperLabelText(tester, field),
+        field,
+        reason: '"$field" must not be starred — _canProceedToConfirm() does not enforce it (issue #96)',
       );
     }
-    // The rows are still there, just unstarred.
-    expect(find.text('Price'), findsWidgets, reason: 'Price mapping row should still render');
-    expect(find.text('Exchange Rate'), findsWidgets, reason: 'Exchange Rate mapping row should still render');
     // The genuinely enforced ones keep their `*`.
-    expect(find.text('Operation Date *'), findsWidgets, reason: 'date IS enforced');
-    expect(find.text('ISIN *'), findsWidgets, reason: 'ISIN IS enforced in byIsin mode');
+    for (final field in ['Operation Date', 'ISIN']) {
+      expect(await mapperLabelText(tester, field), '$field *', reason: '$field IS enforced by the gate');
+    }
 
     // ── 2. Next is reachable without price / exchange rate ────────────────
     await setMapping(tester, 'Operation Date', 'date');
@@ -82,6 +84,7 @@ void main() {
 
     // ── 3. Derive the price from amount / quantity ────────────────────────
     final toggleLabel = find.text('Auto calc from amount');
+    await scrollMapperTo(tester, toggleLabel);
     expect(toggleLabel, findsOneWidget, reason: 'price auto-calc toggle should sit on the Price row');
     await tester.ensureVisible(toggleLabel);
     await settle(tester);
@@ -92,7 +95,9 @@ void main() {
     await tester.tap(toggle.first);
     await longSettle(tester);
     // The dropdown is replaced by the formula label while derived.
-    expect(find.text('amount / quantity'), findsOneWidget, reason: 'derived Price row should show its formula');
+    final formula = find.text('amount / quantity');
+    await scrollMapperTo(tester, formula);
+    expect(formula, findsOneWidget, reason: 'derived Price row should show its formula');
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Next'));
     await tester.tap(find.widgetWithText(FilledButton, 'Next'));

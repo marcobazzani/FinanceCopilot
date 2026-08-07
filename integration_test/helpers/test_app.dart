@@ -326,6 +326,72 @@ Future<void> pumpUntilFound(
   }
 }
 
+/// Star-insensitive finder for a column-mapper row label: `Quantity` matches
+/// both `Quantity` and the required-marked `Quantity *`. [caseSensitive] off
+/// also matches a preview-table column header of the same name — fine for
+/// [setMapping] (which then disambiguates on the dropdown), wrong when you
+/// need the mapping row's own label.
+Finder mapperLabelFinder(String fieldLabel, {bool caseSensitive = false}) {
+  final wanted = caseSensitive ? fieldLabel.trim() : fieldLabel.toLowerCase();
+  return find.byWidgetPredicate(
+    (w) {
+      if (w is! Text || w.data == null) return false;
+      final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
+      return (caseSensitive ? clean : clean.toLowerCase()) == wanted;
+    },
+    description:
+        'mapping-row Text matching "$fieldLabel"'
+        '${caseSensitive ? '' : ' (case-insensitive)'}',
+  );
+}
+
+/// Scroll the column-mapper ListView until [finder] has a match, trying both
+/// directions because the caller doesn't know whether the row sits above or
+/// below the current viewport.
+///
+/// Mapper rows live in a ListView, so a row outside the viewport is not in the
+/// widget tree AT ALL. Anything asserting on a row must scroll first —
+/// otherwise `findsNothing` passes vacuously and `findsWidgets` fails on a
+/// short window (which is exactly how the CI runners differ from a maximised
+/// desktop window).
+Future<void> scrollMapperTo(WidgetTester tester, Finder finder) async {
+  if (finder.evaluate().isNotEmpty) return;
+  final scrollable = find.byType(Scrollable);
+  if (scrollable.evaluate().isEmpty) return;
+  for (final delta in [-200.0, 200.0]) {
+    try {
+      await tester.scrollUntilVisible(finder, delta, scrollable: scrollable.first, maxScrolls: 8);
+    } catch (_) {}
+    if (finder.evaluate().isNotEmpty) return;
+  }
+}
+
+/// The label of [fieldLabel]'s mapping row exactly as rendered — including the
+/// trailing ` *` when the wizard marks the field as required. Scrolls the row
+/// into view first, so the result reflects the real label rather than the
+/// viewport.
+///
+/// Matches case-sensitively and prefers the occurrence sitting next to a
+/// column dropdown, so a same-named preview-table column header (fixtures use
+/// lowercase `price`, `currency`, …) can't be mistaken for the row label.
+Future<String> mapperLabelText(WidgetTester tester, String fieldLabel) async {
+  final finder = mapperLabelFinder(fieldLabel, caseSensitive: true);
+  await scrollMapperTo(tester, finder);
+  expect(finder, findsWidgets, reason: 'mapping row "$fieldLabel" not found in the column mapper');
+  final n = finder.evaluate().length;
+  for (var i = 0; i < n; i++) {
+    final hasDropdown = find
+        .descendant(
+          of: find.ancestor(of: finder.at(i), matching: find.byType(Padding)).first,
+          matching: find.byType(DropdownButtonFormField<String>),
+        )
+        .evaluate()
+        .isNotEmpty;
+    if (hasDropdown) return (finder.at(i).evaluate().first.widget as Text).data!;
+  }
+  return (finder.evaluate().first.widget as Text).data!;
+}
+
 /// Bounded smart scroll that never enters the over-scroll bounce
 /// zone. Each iteration picks the largest vertically-scrollable
 /// widget currently in the tree (so chart gesture-detector
@@ -542,43 +608,9 @@ Future<void> setMapping(
   String columnName,
 ) async {
   final wanted = fieldLabel.toLowerCase();
-  Finder labelText() => find.byWidgetPredicate(
-    (w) {
-      if (w is! Text || w.data == null) return false;
-      final clean = w.data!.replaceAll(RegExp(r'\s*\*\s*$'), '').trim();
-      return clean.toLowerCase() == wanted;
-    },
-    description: 'mapping-row Text matching "$fieldLabel" (case-insensitive)',
-  );
+  Finder labelText() => mapperLabelFinder(wanted);
   // Scroll the column-mapper ListView until the label is in the tree.
-  // The mapper's ListView is the first vertical Scrollable on the
-  // ImportScreen route. Try both directions because we don't know
-  // whether the row is above or below the current viewport.
-  if (labelText().evaluate().isEmpty) {
-    final scrollable = find.byType(Scrollable);
-    if (scrollable.evaluate().isNotEmpty) {
-      // Scroll up first (drag-down): brings rows above into view.
-      try {
-        await tester.scrollUntilVisible(
-          labelText(),
-          -200,
-          scrollable: scrollable.first,
-          maxScrolls: 8,
-        );
-      } catch (_) {}
-      if (labelText().evaluate().isEmpty) {
-        // Try downward.
-        try {
-          await tester.scrollUntilVisible(
-            labelText(),
-            200,
-            scrollable: scrollable.first,
-            maxScrolls: 8,
-          );
-        } catch (_) {}
-      }
-    }
-  }
+  await scrollMapperTo(tester, labelText());
   expect(labelText(), findsWidgets, reason: 'mapping label "$fieldLabel" not found in column mapper');
   // The same text can appear in the preview table's column header (e.g. a CSV
   // column literally named "Amount") AND in the mapping row. The mapping row
