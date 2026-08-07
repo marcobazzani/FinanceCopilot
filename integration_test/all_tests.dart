@@ -14,6 +14,7 @@ import 'package:integration_test/integration_test.dart';
 
 import 'asset_unlock_edit_test.dart' as asset_unlock_edit;
 import 'full_walkthrough_test.dart' as full_walkthrough;
+import 'import_asset_price_autocalc_test.dart' as import_asset_price_autocalc;
 import 'import_sheet_cancel_test.dart' as import_sheet_cancel;
 import 'income_saved_config_restore_test.dart' as income_saved_config_restore;
 import 'ledger_filter_test.dart' as ledger_filter;
@@ -25,6 +26,7 @@ void main() {
   legacy_migration.main();
   asset_unlock_edit.main();
   import_sheet_cancel.main();
+  import_asset_price_autocalc.main();
   income_saved_config_restore.main();
   ledger_filter.main();
 }

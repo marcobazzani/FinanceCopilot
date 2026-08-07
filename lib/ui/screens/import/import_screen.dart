@@ -166,6 +166,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   AssetEventImportPreview? _assetPreview;
   bool _previewing = false;
 
+  /// Fields the wizard actually ENFORCES before you can proceed — they get a
+  /// bold `*` and a "Required" hint. Keep this in sync with
+  /// [_canProceedToConfirm]: a label that promises a constraint the gate does
+  /// not enforce sends users off to edit their source file for nothing
+  /// (issue #96 — Price and Exchange Rate were starred but never checked).
   List<String> get _requiredFields => switch (_target) {
     ImportTarget.transaction => ['date', 'valueDate', 'amount', 'description'],
     // Asset event imports come in two flavors:
@@ -174,20 +179,33 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     //   - singleAsset (pension funds, manual holdings): every row routes
     //     to one pre-existing asset chosen by the user, no ISIN needed,
     //     unit columns are optional (cash-only contributes auto-fill).
-    ImportTarget.assetEvent =>
-      _assetEventMode == 'singleAsset'
-          ? <String>[]
-          : (_assetImportMode == 'historic'
-                ? ['date', 'isin', 'quantity', 'price', 'currency', 'exchangeRate']
-                : ['isin', 'quantity', 'price', 'currency']),
+    ImportTarget.assetEvent => _assetEventMode == 'singleAsset' ? <String>[] : ['date', 'isin'],
     ImportTarget.income => ['date', 'amount'],
   };
+
+  /// Asset-event fields that are strongly RECOMMENDED but not enforced: the
+  /// import succeeds without them (`price`/`exchangeRate` stay NULL, currency
+  /// falls back to the base currency). Rendered in the same position as the
+  /// required block so the mapper's layout is unchanged — just without the
+  /// misleading `*`.
+  List<String> get _recommendedFields {
+    if (_target != ImportTarget.assetEvent || _assetEventMode == 'singleAsset') return const [];
+    return _assetImportMode == 'historic' ? ['quantity', 'price', 'currency', 'exchangeRate'] : ['quantity', 'price', 'currency'];
+  }
 
   List<String> get _optionalFields => switch (_target) {
     ImportTarget.transaction => ['currency', 'status'],
     ImportTarget.assetEvent => _assetImportMode == 'historic' ? ['description'] : ['date', 'exchangeRate', 'description'],
     ImportTarget.income => ['currency'],
   };
+
+  /// Reset the mapping dropdowns for every field the mapper renders in the
+  /// required/recommended block. Called after a (re)parse or a target change.
+  void _seedMappingKeys() {
+    for (final f in [..._requiredFields, ..._recommendedFields]) {
+      _mappings[f] = null;
+    }
+  }
 
   // Multi-column mappings for optional fields: field -> [col1, col2, ...]
   final Map<String, List<String>> _multiMappings = {};
@@ -208,6 +226,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   // Auto-calculate amount as quantity * price for asset events
   bool _autoCalcAmount = false;
+
+  // Auto-calculate price as amount / quantity for asset events (issue #96 —
+  // broker exports that report only Quantity + Amount). Mutually exclusive
+  // with [_autoCalcAmount]: deriving both would be circular.
+  bool _autoCalcPrice = false;
 
   // Type detection: 'column' (map from CSV with custom values), 'sign' (infer from qty/amount sign)
   String _typeMode = 'column';
@@ -623,9 +646,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _clearFullPreviewCache();
         _fullIsinSummary = null;
         _parsing = false;
-        for (final f in _requiredFields) {
-          _mappings[f] = null;
-        }
+        _seedMappingKeys();
       });
       // Load saved config if we have a preselected account
       await _loadSavedConfig(preview.columns);
@@ -697,9 +718,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _mappings.clear();
         _amountFormula.clear();
 
-        for (final f in _requiredFields) {
-          _mappings[f] = null;
-        }
+        _seedMappingKeys();
       });
 
       // Re-apply saved config on top of the cleared mappings
@@ -742,9 +761,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _mappings.clear();
         _amountFormula.clear();
 
-        for (final f in _requiredFields) {
-          _mappings[f] = null;
-        }
+        _seedMappingKeys();
       });
     } catch (e) {
       setState(() {
@@ -952,6 +969,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         // both are set (auto-calc then silently produced 0 for cash-only
         // pension rows that have no qty/price).
         _autoCalcAmount = _mappings['amount'] == null && savedMappings['__autoCalcAmount'] == 'true';
+        // Same rule for the price derivation (issue #96): a mapped price
+        // column always wins, and the two auto-calcs can't both be on.
+        _autoCalcPrice = !_autoCalcAmount && _mappings['price'] == null && savedMappings['__autoCalcPrice'] == 'true';
 
         final typeCol = _mappings['type'];
         // Prune a restored tag only when we can confirm its value is absent
@@ -1082,6 +1102,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       if (_revalueAmountColumn != null) mappingsToSave['__revalueAmountColumn'] = _revalueAmountColumn;
       mappingsToSave['__feeMode'] = _feeMode; // column | computed
       if (_autoCalcAmount) mappingsToSave['__autoCalcAmount'] = 'true';
+      if (_autoCalcPrice) mappingsToSave['__autoCalcPrice'] = 'true';
     }
     // Save income-type tag sets so income imports round-trip.
     if (_target == ImportTarget.income) {
@@ -1316,7 +1337,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     // amounts). Kept permanently at fine() so it's hidden in normal runs but
     // available without a rebuild.
     _log.fine(
-      '_buildColumnMappings: _mappings=$_mappings autoCalc=$_autoCalcAmount revalueAmtCol=$_revalueAmountColumn '
+      '_buildColumnMappings: _mappings=$_mappings autoCalc=$_autoCalcAmount autoCalcPrice=$_autoCalcPrice '
+      'revalueAmtCol=$_revalueAmountColumn '
       'built=${mappings.map((m) => '${m.targetField}<-${m.sourceColumn ?? (m.isMultiColumn
               ? "multi${m.multiColumns}"
               : m.isFormula

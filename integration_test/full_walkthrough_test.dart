@@ -2362,7 +2362,13 @@ void main() {
     await tester.tap(find.text('Retirement').first);
     await longSettle(tester);
     // The detail body renders one Slider per asset that has units > 0.
+    // `_OverviewView._load()` awaits three service queries PER asset before
+    // it drops `_loading`, on top of the chart + performance providers, so on
+    // a DB this size the first frame lands well after longSettle's fixed
+    // budget. Wait for the list rather than racing it — the expect below is
+    // unchanged and still fails if the sliders never arrive.
     final sliders = find.byType(Slider);
+    await pumpUntilFound(tester, sliders);
     expect(sliders, findsAtLeast(1), reason: 'asset slider list should render in the overview');
 
     _step('15D. Service-level assign(50%) round-trips through PillarService');

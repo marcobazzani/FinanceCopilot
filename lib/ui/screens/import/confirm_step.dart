@@ -736,6 +736,7 @@ extension _ConfirmStep on _ImportScreenState {
           appLocale: appLocale,
           targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
           revalueAmountColumn: _revalueValues.isNotEmpty ? _revalueAmountColumn : null,
+          autoCalcPrice: _autoCalcPrice,
         );
         result = assetResult.result;
       }

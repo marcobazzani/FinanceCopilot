@@ -304,6 +304,28 @@ Future<void> pumpFor(WidgetTester tester, Duration total) async {
   }
 }
 
+/// Pump — yielding real time so awaited provider/service work can land —
+/// until [finder] matches at least one widget, or [timeout] expires.
+///
+/// Deliberately does NOT assert: the caller's own `expect` still decides
+/// pass/fail, so this removes a race without weakening the check. Use it
+/// instead of a blind [pumpFor] when a screen's body is gated on several
+/// awaited futures whose cost scales with the seeded DB (e.g. the pillar
+/// overview issues three service queries per asset before its first frame,
+/// which can overrun [longSettle]'s fixed budget on a large walkthrough DB).
+Future<void> pumpUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final end = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(end)) {
+    if (finder.evaluate().isNotEmpty) return;
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
+    await tester.pump(const Duration(milliseconds: _frameMs));
+  }
+}
+
 /// Bounded smart scroll that never enters the over-scroll bounce
 /// zone. Each iteration picks the largest vertically-scrollable
 /// widget currently in the tree (so chart gesture-detector

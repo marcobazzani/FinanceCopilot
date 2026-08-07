@@ -27,114 +27,64 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
               if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic') _buildMappingRow('date', columns, required: true),
               if (_target == ImportTarget.transaction)
                 _buildAmountFormulaRow(columns, s)
-              else if (_target == ImportTarget.assetEvent) ...[
-                // Amount: either from column or auto-calculated
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_autoCalcAmount)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 100,
-                              child: Text(
-                                s.amount,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                            const Icon(Icons.arrow_forward, size: 16),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                s.qtyTimesPrice,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontStyle: FontStyle.italic,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      _buildMappingRow('amount', columns),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: _autoCalcAmount,
-                          onChanged: (v) => _setState(() {
-                            _autoCalcAmount = v ?? false;
-                            if (_autoCalcAmount) _mappings['amount'] = null;
-                          }),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        Text(s.autoCalc, style: const TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ],
-                ),
-              ] else
+              else if (_target == ImportTarget.assetEvent)
+                // Amount: either from a column or derived as quantity x price.
+                _buildDerivedFieldRow(
+                  field: 'amount',
+                  columns: columns,
+                  derived: _autoCalcAmount,
+                  formulaLabel: s.qtyTimesPrice,
+                  toggleLabel: s.autoCalc,
+                  onToggle: (v) {
+                    _autoCalcAmount = v;
+                    if (v) {
+                      _mappings['amount'] = null;
+                      // Deriving both would be circular.
+                      _autoCalcPrice = false;
+                    }
+                  },
+                )
+              else
                 _buildMappingRow('amount', columns, required: true),
               // Value date: either mapped or same as operation date (transactions only)
-              if (_target == ImportTarget.transaction) ...[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_sameSettlementDate)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
-                              child: Text(
-                                '${s.fieldLabel('valueDate')} *',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                            const Icon(Icons.arrow_forward, size: 16),
-                            const SizedBox(width: 8),
-                            Text(
-                              '= ${s.fieldLabel('date')}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontStyle: FontStyle.italic,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      _buildMappingRow('valueDate', columns, required: true),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: _sameSettlementDate,
-                          onChanged: (v) => _setState(() {
-                            _sameSettlementDate = v ?? false;
-                            if (_sameSettlementDate) _mappings['valueDate'] = null;
-                          }),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        Text(s.sameAsOperationDate, style: const TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ],
+              if (_target == ImportTarget.transaction)
+                _buildDerivedFieldRow(
+                  field: 'valueDate',
+                  columns: columns,
+                  derived: _sameSettlementDate,
+                  formulaLabel: '= ${s.fieldLabel('date')}',
+                  toggleLabel: s.sameAsOperationDate,
+                  required: true,
+                  onToggle: (v) {
+                    _sameSettlementDate = v;
+                    if (v) _mappings['valueDate'] = null;
+                  },
                 ),
-              ],
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount' && f != 'valueDate')
                   .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
+              // Recommended (never enforced — see `_recommendedFields`). Price
+              // can be derived from amount / quantity for exports that carry
+              // no per-unit price column (issue #96).
+              ..._recommendedFields.map(
+                (f) => f == 'price'
+                    ? _buildDerivedFieldRow(
+                        field: 'price',
+                        columns: columns,
+                        derived: _autoCalcPrice,
+                        formulaLabel: s.amountDivQty,
+                        toggleLabel: s.autoCalcFromAmount,
+                        onToggle: (v) {
+                          _autoCalcPrice = v;
+                          if (v) {
+                            _mappings['price'] = null;
+                            // Deriving both would be circular.
+                            _autoCalcAmount = false;
+                          }
+                        },
+                      )
+                    : _buildMappingRow(f, columns),
+              ),
               // Type detection + Fee section for asset events
               if (_target == ImportTarget.assetEvent) ...[
                 const SizedBox(height: 12),
@@ -218,7 +168,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
             Text(
               _assetEventMode == 'singleAsset'
                   ? s.singleAssetHelp
-                  : (_assetImportMode == 'historic' ? s.dateExchangeRequired : s.dateDefaultsToday),
+                  : (_assetImportMode == 'historic' ? s.dateHistoricFromFile : s.dateDefaultsToday),
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ],
@@ -371,6 +321,70 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
     );
   }
 
+  /// A mapping row whose value can either come from a source column or be
+  /// DERIVED from the other mapped fields. While [derived] is true the column
+  /// dropdown is replaced by an italic formula label and the field's mapping
+  /// stays cleared.
+  ///
+  /// Shared by Amount (`= quantity x price`), Price (`= amount / quantity`)
+  /// and Value date (`= operation date`) so all three render identically
+  /// instead of each hand-rolling the same label/checkbox layout.
+  Widget _buildDerivedFieldRow({
+    required String field,
+    required List<String> columns,
+    required bool derived,
+    required String formulaLabel,
+    required String toggleLabel,
+    required void Function(bool value) onToggle,
+    bool required = false,
+  }) {
+    final s = ref.watch(appStringsProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (derived)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width < 400 ? 90 : 140),
+                  child: Text(
+                    '${s.fieldLabel(field)}${required ? ' *' : ''}',
+                    style: TextStyle(
+                      fontWeight: required ? FontWeight.bold : FontWeight.normal,
+                      fontSize: MediaQuery.sizeOf(context).width < 400 ? 12 : 14,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.arrow_forward, size: 16),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    formulaLabel,
+                    style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.grey.shade600),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          _buildMappingRow(field, columns, required: required),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: derived,
+              onChanged: (v) => _setState(() => onToggle(v ?? false)),
+              visualDensity: VisualDensity.compact,
+            ),
+            Text(toggleLabel, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildMappingRow(String field, List<String> columns, {bool required = false, bool multiColumn = false}) {
     final s = ref.watch(appStringsProvider);
     final multiCols = _multiMappings[field] ?? [];
@@ -421,10 +435,14 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                     ],
                     onChanged: (v) => _setState(() {
                       _mappings[field] = v;
-                      // Mapping an explicit amount column and "Auto calc"
-                      // (amount = qty × price) are mutually exclusive — turn
-                      // auto-calc off so they can't silently conflict.
-                      if (field == 'amount' && v != null) _autoCalcAmount = false;
+                      // Mapping an explicit column and its "Auto calc" toggle
+                      // are mutually exclusive — turn the derivation off so
+                      // they can't silently conflict. A mapped column always
+                      // wins over a derived value.
+                      if (v != null) {
+                        if (field == 'amount') _autoCalcAmount = false;
+                        if (field == 'price') _autoCalcPrice = false;
+                      }
                     }),
                   ),
                 ),

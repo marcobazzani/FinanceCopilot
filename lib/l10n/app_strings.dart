@@ -1039,10 +1039,13 @@ class AppStrings {
   String get modeLabel => _it ? 'Modalità: ' : 'Mode: ';
   String get modeHistoric => _it ? 'Storico' : 'Historic';
   String get modeCurrent => _it ? 'Attuale' : 'Current';
-  String get dateExchangeRequired => _it ? 'Data e tasso di cambio obbligatori' : 'Date & exchange rate required';
+  String get dateHistoricFromFile =>
+      _it ? 'Data dal file; prezzo e tasso di cambio se presenti' : 'Date from the file; price and exchange rate if present';
   String get dateDefaultsToday => _it ? 'La data predefinita è oggi, tasso auto-recuperato' : 'Date defaults to today, rate auto-fetched';
   String get qtyTimesPrice => _it ? 'quantità x prezzo' : 'quantity x price';
+  String get amountDivQty => _it ? 'importo / quantità' : 'amount / quantity';
   String get autoCalc => _it ? 'Auto calc' : 'Auto calc';
+  String get autoCalcFromAmount => _it ? 'Auto calc da importo' : 'Auto calc from amount';
   String get combineMultipleColumns => _it ? 'Combina più colonne' : 'Combine multiple columns';
   String get useSingleColumn => _it ? 'Usa colonna singola' : 'Use single column';
   String get sepLabel => 'Sep:';
