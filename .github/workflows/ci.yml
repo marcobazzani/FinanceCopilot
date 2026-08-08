@@ -103,17 +103,33 @@ jobs:
         timeout-minutes: 10
         run: flutter test integration_test/provider_search_contract_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 
-      # NOT continue-on-error. It used to be, and that is precisely how a
-      # completely broken price pipeline shipped: this suite was red for weeks
-      # (0/12 assets priced, because it seeds assets with no cached cid and so
-      # depends on search) and nobody saw it, until a user reported "Instrument
-      # not found" for a mainstream ETF. See #97. A red job here now means the
-      # nightly does not publish, which is the intended behaviour: a build that
-      # cannot fetch prices is not worth shipping.
+      # Blocking (it used to be continue-on-error, and that is precisely how a
+      # completely broken price pipeline shipped: the suite was red for weeks
+      # and nobody looked, until a user reported "Instrument not found" for a
+      # mainstream ETF — see #97).
+      #
+      # Retried once, because the provider intermittently rate-limits or
+      # re-challenges a CI runner: a blocked runner reports 0/12 priced, which
+      # on a single attempt is indistinguishable from a genuinely broken
+      # pipeline. Two consecutive failures is a signal, one is noise. The
+      # targeted search contract test above stays single-shot — it is the cheap,
+      # specific guard for the regression class that actually shipped.
       - name: Run live data fetch test
         if: matrix.device == 'macos'
-        timeout-minutes: 10
-        run: flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
+        timeout-minutes: 25
+        run: |
+          for attempt in 1 2; do
+            echo "::group::live data fetch — attempt $attempt"
+            if flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::live data fetch attempt $attempt failed; the provider may be throttling this runner"
+            if [ "$attempt" = 1 ]; then sleep 90; fi
+          done
+          echo "::error::live data fetch failed twice — the price pipeline is broken or the provider is unreachable"
+          exit 1
 
   integration-test-android:
     if: "!startsWith(github.ref, 'refs/tags/v')"
