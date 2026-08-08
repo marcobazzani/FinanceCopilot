@@ -462,33 +462,39 @@ class CompositionService {
   // ── Mutual/Pension Funds: provider ──────────────────
 
   Future<List<_Entry>> _fetchFundFromProvider(Asset asset) async {
-    // First, find the fund URL via the provider search API
+    // First, find the fund URL via the provider search.
+    //
+    // This used to be a second, hand-rolled copy of the search call against
+    // `api/search/v2/search`, reading `quotes` over a plain Dio client. That
+    // endpoint is dead (it answers 200 with an empty payload) and the plain
+    // client has no Cloudflare cookies, so it 403'd on every startup and logged
+    // a warning for every fund the user holds. Delegate to the one search
+    // implementation instead — it owns the current endpoint and the CF path.
     final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
     _log.fine('fetchFund: ${asset.name} - searching the provider for "$searchTerm"');
 
+    if (_providerService == null) {
+      _log.fine('fetchFund: ${asset.name} - no provider service wired, skipping');
+      return [];
+    }
+
     String? fundUrl;
     try {
-      final searchUrl =
-          '$kProviderApiBase/api/search/v2/search'
-          '?q=${Uri.encodeComponent(searchTerm)}';
-      final searchResp = await _dio.get(
-        searchUrl,
-        options: Options(
-          headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
-          responseType: ResponseType.json,
-        ),
-      );
-      final quotes = (searchResp.data as Map<String, dynamic>)['quotes'] as List? ?? [];
-      if (quotes.isNotEmpty) {
-        fundUrl = quotes[0]['url'] as String?;
-      }
+      final results = await _providerService.search(searchTerm);
+      fundUrl = results.map((r) => r.url).firstWhere((u) => u != null && u.isNotEmpty, orElse: () => null);
     } catch (e) {
       _log.warning('fetchFund: search failed for ${asset.name}: $e');
       return [];
     }
 
-    if (fundUrl == null || fundUrl.isEmpty) return [];
+    if (fundUrl == null || fundUrl.isEmpty) {
+      _log.info('fetchFund: ${asset.name} - no fund page found, no composition available');
+      return [];
+    }
 
+    // Search hits can carry a `?cid=` suffix; the holdings page is derived from
+    // the path, so drop the query before building the URLs below.
+    fundUrl = fundUrl.split('?').first;
     final baseFundUrl = '$kProviderBase${fundUrl.replaceAll(RegExp(r'/$'), '')}';
 
     // Fetch main fund page for expenses/TER

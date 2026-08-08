@@ -74,9 +74,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                     _savedConfig = null;
                     _mappings.clear();
                     _amountFormula.clear();
-                    for (final f in _requiredFields) {
-                      _mappings[f] = null;
-                    }
+                    _seedMappingKeys();
                   });
                   // Income has no per-target key — load its single global
                   // config as soon as the user picks the Income target.

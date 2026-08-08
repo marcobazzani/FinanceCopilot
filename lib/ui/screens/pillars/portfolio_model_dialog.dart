@@ -169,20 +169,19 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
         final s = ref.read(appStringsProvider);
         return AlertDialog(
           title: Text(s.searchAssetTitle),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: AssetSearchSection(
-              widgetRef: ref,
-              onSelect: (result) {
-                Navigator.of(dialogContext).pop((
-                  result: result,
-                  query: typedQuery,
-                ));
-              },
-              recoveryDefaultExchange: 'Milan',
-              recoveryCacheKeyBuilder: (q) => _kIsinRegex.hasMatch(q.toUpperCase()) ? q.toUpperCase() : q,
-              onQueryChanged: (q) => typedQuery = q.trim(),
-            ),
+          // Width is owned by AssetSearchSection: AlertDialog measures its
+          // content intrinsically, so the section imposes a tight width.
+          content: AssetSearchSection(
+            widgetRef: ref,
+            onSelect: (result) {
+              Navigator.of(dialogContext).pop((
+                result: result,
+                query: typedQuery,
+              ));
+            },
+            recoveryDefaultExchange: 'Milan',
+            recoveryCacheKeyBuilder: (q) => _kIsinRegex.hasMatch(q.toUpperCase()) ? q.toUpperCase() : q,
+            onQueryChanged: (q) => typedQuery = q.trim(),
           ),
           actions: [
             TextButton(

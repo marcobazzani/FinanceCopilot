@@ -177,12 +177,9 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     });
   }
 
-  /// Derive instrument type + asset class from the provider's typeName.
-  /// The `type` field looks like "Stocks - Milano" or "ETFs - Milano".
-  static (InstrumentType, AssetClass) _classifyFromType(String type) {
-    final prefix = type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
-    return classifyFromProviderType(prefix);
-  }
+  /// Derive instrument type + asset class from the provider's `type` field
+  /// (e.g. "Equities", "etf", or the legacy "Stocks - Milano").
+  static (InstrumentType, AssetClass) _classifyFromType(String type) => classifyFromProviderType(type);
 
   static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
   static bool _isinShaped(String s) => _kIsinRegex.hasMatch(s.toUpperCase());
@@ -205,16 +202,15 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
       title: Text(s.newAssetTitle),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: AssetSearchSection(
-          widgetRef: widget.ref,
-          onSelect: _selectResult,
-          recoveryDefaultExchange: _selectedExchange ?? 'Milan',
-          recoveryCacheKeyBuilder: (q) => _isinShaped(q) ? q.toUpperCase() : q,
-          onQueryChanged: (q) => _typedQuery = q,
-          onResultsChanged: (rs) => _allResults = rs,
-        ),
+      // Width is owned by AssetSearchSection: AlertDialog measures its
+      // content intrinsically, so the section imposes a tight width.
+      content: AssetSearchSection(
+        widgetRef: widget.ref,
+        onSelect: _selectResult,
+        recoveryDefaultExchange: _selectedExchange ?? 'Milan',
+        recoveryCacheKeyBuilder: (q) => _isinShaped(q) ? q.toUpperCase() : q,
+        onQueryChanged: (q) => _typedQuery = q,
+        onResultsChanged: (rs) => _allResults = rs,
       ),
       actions: [
         TextButton(

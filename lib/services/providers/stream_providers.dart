@@ -194,23 +194,39 @@ final extraordinaryEventStatsProvider = StreamProvider<Map<int, ExtraordinaryEve
 
 /// Aggregated adjustment inputs for the read-only All-Accounts view:
 /// active events + their entries + buffer reimbursements, grouped by event id.
-/// Reactive on the events stream so it rebuilds when adjustments change.
-final adjustmentInputsProvider = FutureProvider<AdjustmentInputs>((ref) async {
-  final events = await ref.watch(extraordinaryEventsProvider.future);
+///
+/// Driven by [ExtraordinaryEventService.watchAdjustmentRevision] so it rebuilds
+/// on writes to the events, entries, AND buffer-transactions tables. It
+/// previously keyed off `extraordinaryEventsProvider` alone, which is a select
+/// over `extraordinary_events`; adding an entry — exactly what "mark as
+/// adjustment" does — never re-emitted, so the ledger badge and the day/month
+/// totals exclusion stayed stale until the app was restarted.
+///
+/// A `StreamProvider` rather than a `FutureProvider`: `AsyncValue` is identical
+/// across both, so consumers reading `.value` need no change.
+final adjustmentInputsProvider = StreamProvider<AdjustmentInputs>((ref) {
+  final through = ref.watch(waybackDateProvider);
+  final service = ref.watch(extraordinaryEventServiceProvider);
   final db = ref.watch(databaseProvider);
-  final entriesByEvent = <int, List<ExtraordinaryEventEntry>>{};
-  final reimbByEvent = <int, List<BufferTransaction>>{};
-  for (final e in events) {
-    entriesByEvent[e.id] = await (db.select(db.extraordinaryEventEntries)..where((t) => t.eventId.equals(e.id))).get();
-    if (e.bufferId != null) {
-      reimbByEvent[e.id] =
-          await (db.select(db.bufferTransactions)
-                ..where((t) => t.bufferId.equals(e.bufferId!))
-                ..where((t) => t.isReimbursement.equals(true)))
-              .get();
+
+  return service.watchAdjustmentRevision().asyncMap((_) async {
+    final events = await service.getAll(through: through);
+    final entriesByEvent = <int, List<ExtraordinaryEventEntry>>{};
+    final reimbByEvent = <int, List<BufferTransaction>>{};
+    for (final e in events) {
+      // NOTE: entries are intentionally NOT bounded by `through` here, matching
+      // the previous behaviour. Tightening that is a separate change.
+      entriesByEvent[e.id] = await (db.select(db.extraordinaryEventEntries)..where((t) => t.eventId.equals(e.id))).get();
+      if (e.bufferId != null) {
+        reimbByEvent[e.id] =
+            await (db.select(db.bufferTransactions)
+                  ..where((t) => t.bufferId.equals(e.bufferId!))
+                  ..where((t) => t.isReimbursement.equals(true)))
+                .get();
+      }
     }
-  }
-  return AdjustmentInputs(events: events, entriesByEvent: entriesByEvent, reimbursementsByEvent: reimbByEvent);
+    return AdjustmentInputs(events: events, entriesByEvent: entriesByEvent, reimbursementsByEvent: reimbByEvent);
+  });
 });
 
 /// Plain bag of adjustment inputs (see [adjustmentInputsProvider]).

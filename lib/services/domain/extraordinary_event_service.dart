@@ -56,6 +56,32 @@ class ExtraordinaryEventService {
 
   Stream<List<ExtraordinaryEvent>> watchAll({DateTime? through}) => _activeEvents(through: through).watch();
 
+  /// Tables that together define an adjustment's ledger-visible state.
+  Set<TableInfo<Table, dynamic>> get _adjustmentTables => {
+    _db.extraordinaryEvents,
+    _db.extraordinaryEventEntries,
+    _db.bufferTransactions,
+  };
+
+  /// Emits once on subscribe, then on every write to the events, entries, or
+  /// buffer-transactions tables.
+  ///
+  /// Consumers that need events AND their entries (the All-Accounts ledger,
+  /// the stats map) cannot key off `watchAll()`: that stream is a select over
+  /// `extraordinary_events` only, so writing an *entry* — which is exactly
+  /// what "mark as adjustment" does — never re-emits. The badge and the
+  /// totals exclusion then stayed stale for the whole session and only
+  /// appeared after a restart.
+  ///
+  /// Note `readsFrom` is only honoured by `.watch()`; declaring it on a
+  /// one-shot `.get()` is inert. Hence this dedicated trigger, driven by a
+  /// `.watch()`, rather than a `readsFrom` bolted onto the inner loads.
+  ///
+  /// `customSelect(...).watch()` is used in preference to
+  /// `db.tableUpdates(...)` because the latter does not emit on subscribe,
+  /// which would leave the first frame with no data.
+  Stream<void> watchAdjustmentRevision() => _db.customSelect('SELECT 1', readsFrom: _adjustmentTables).watch();
+
   Future<List<ExtraordinaryEvent>> getAll({DateTime? through}) => _activeEvents(through: through).get();
 
   Future<ExtraordinaryEvent> getById(int id) {
@@ -239,6 +265,42 @@ class ExtraordinaryEventService {
   // ── Manual entry CRUD (instant treatment primarily; also available for spread) ──
   // The user-supplied [amount] is positive; we sign it based on event direction.
 
+  /// How many `manual` entries this event already has on the same day for the
+  /// same magnitude. Compared at cent precision and day granularity, so a
+  /// time-of-day difference or float noise never hides a duplicate.
+  /// Description is deliberately excluded — the user may retype it.
+  ///
+  /// Reported rather than enforced: two identical same-day drawdowns ARE
+  /// legitimate (`resolveAdjustments` consumes each transaction at most once,
+  /// so two identical entries correctly match two identical transactions).
+  /// Callers use this to ask for confirmation, never to hard-block.
+  Future<int> countIdenticalManualEntries({
+    required int eventId,
+    required DateTime date,
+    required double amount,
+  }) async {
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEndExclusive = dayStart.add(const Duration(days: 1));
+    final cents = (amount.abs() * 100).round();
+    final result = await _db
+        .customSelect(
+          'SELECT COUNT(*) AS cnt FROM extraordinary_event_entries '
+          'WHERE event_id = ? AND entry_kind = ? '
+          'AND date >= ? AND date < ? '
+          'AND CAST(ROUND(ABS(amount) * 100) AS INTEGER) = ?',
+          variables: [
+            Variable.withInt(eventId),
+            Variable.withString(EventEntryKind.manual.name),
+            Variable.withInt(dayStart.millisecondsSinceEpoch ~/ 1000),
+            Variable.withInt(dayEndExclusive.millisecondsSinceEpoch ~/ 1000),
+            Variable.withInt(cents),
+          ],
+          readsFrom: {_db.extraordinaryEventEntries},
+        )
+        .getSingle();
+    return result.read<int>('cnt');
+  }
+
   Future<int> addManualEntry({
     required int eventId,
     required DateTime date,
@@ -299,9 +361,14 @@ class ExtraordinaryEventService {
   Stream<Map<int, ExtraordinaryEventStats>> watchStatsForAll({
     DateTime? through,
   }) {
-    final eventStream = (_db.select(_db.extraordinaryEvents)..where((e) => e.isActive.equals(true))).watch();
-
-    return eventStream.asyncMap((events) async {
+    // Driven by the multi-table trigger, not by a select over
+    // `extraordinary_events`: allocated/remaining are derived from the entries
+    // and buffer tables, so keying off the events table alone left these
+    // figures stale until the next restart whenever an entry was added or
+    // deleted. (`readsFrom` on the inner one-shot `.get()`s below cannot help
+    // — it is only honoured by `.watch()`.)
+    return watchAdjustmentRevision().asyncMap((_) async {
+      var events = await (_db.select(_db.extraordinaryEvents)..where((e) => e.isActive.equals(true))).get();
       final endExclusive = _throughEndExclusive(through);
       if (endExclusive != null) {
         events = events.where((e) => e.eventDate.isBefore(endExclusive)).toList();

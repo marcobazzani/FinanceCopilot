@@ -14,25 +14,6 @@ class PillarAllocationData {
   });
 }
 
-/// Asset IDs that have at least one row in `market_prices`.
-///
-/// Source-of-truth for "this asset has external market data". Used by the
-/// import wizard's single-asset target picker, which excludes any asset
-/// already covered by the market data provider — those should flow value through the
-/// market-price path, not through manual contribute/revalue events. The
-/// query is cheap (covered by the market_prices PK index) and rebuilds
-/// only when rows are inserted/deleted.
-final assetIdsWithMarketPricesProvider = FutureProvider<Set<int>>((ref) async {
-  final db = ref.watch(databaseProvider);
-  final rows = await db
-      .customSelect(
-        'SELECT DISTINCT asset_id FROM market_prices',
-        readsFrom: {db.marketPrices},
-      )
-      .get();
-  return rows.map((r) => r.read<int>('asset_id')).toSet();
-});
-
 /// Account stats with balances converted to base currency using live rates.
 final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
   final accounts = await ref.watch(accountsProvider.future);

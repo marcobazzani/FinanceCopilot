@@ -51,6 +51,19 @@ class AssetEventImportPreview {
   });
 }
 
+/// Amount for a row whose amount column is unmapped — the wizard's "Auto calc"
+/// derives it from quantity x price. Bonds are quoted as a percentage of face
+/// value, so the money amount divides by 100.
+///
+/// Shared by the real import and the dry-run preview: the preview used to
+/// ignore `price` entirely and infer buy/sell from the quantity sign alone, so
+/// it could classify a row differently from the import it was previewing.
+/// Returns 0 when either input is missing — never a guess.
+double autoCalcAmountFor({required double? qty, required double? price, required bool isBond}) {
+  if (qty == null || price == null) return 0;
+  return isBond ? qty * price / 100 : qty * price;
+}
+
 extension AssetImportFlow on ImportService {
   Future<AssetImportResult> importAssetEventsGrouped({
     required FilePreview preview,
@@ -119,13 +132,24 @@ extension AssetImportFlow on ImportService {
     /// the snapshot, not the (empty) contribution cell. Mirrors the
     /// `awk`-style "use column 6 for total rows, column 5 otherwise".
     String? revalueAmountColumn,
+
+    /// Opt-in inverse of the Amount auto-calc: derive the per-unit `price`
+    /// from `amount` and `quantity` when the source has no price column
+    /// (issue #96 — several broker exports report only Quantity + Amount).
+    /// Explicit rather than implicit-on-unmapped because the derived price
+    /// absorbs any commission baked into `amount`, so it is an approximation
+    /// of the execution price and must be a user decision.
+    bool autoCalcPrice = false,
   }) async {
     await _setLocaleForIntermediary(
       intermediaryId: intermediaryId,
       override: numberLocaleOverride,
       appLocale: appLocale,
     );
-    _log.info('importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
+    _log.info(
+      'importAssetEventsGrouped: ${preview.totalRows} rows, ${mappings.length} mappings, '
+      'locale=$_activeLocale, autoCalcPrice=$autoCalcPrice',
+    );
     final mappingByField = {for (final m in mappings) m.targetField: m};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
@@ -380,10 +404,8 @@ extension AssetImportFlow on ImportService {
           } else {
             amount = _parseAmount(amountStr);
           }
-        } else if (qty != null && price != null) {
-          amount = isBond ? qty * price / 100 : qty * price;
         } else {
-          amount = 0;
+          amount = autoCalcAmountFor(qty: qty, price: price, isBond: isBond);
         }
         final rate = exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null;
 
@@ -454,6 +476,28 @@ extension AssetImportFlow on ImportService {
             targetAsset?.valuationMethod == ValuationMethod.eventDriven) {
           effectiveQty = amount;
           effectivePrice = 1.0;
+        }
+
+        // Price auto-calc (issue #96) — exact inverse of the Amount auto-calc
+        // above (`amount = qty * price / bondDivisor`), and the same formula
+        // the revalue anchor uses in `resyncRevaluePricesForAsset`
+        // (`amount / qty * bondDivisor`). Without it, exports that carry only
+        // Quantity + Amount leave `price` NULL, which drops the position from
+        // `getAverageBuyPrice` (it filters on `price IS NOT NULL`).
+        //
+        // Buy/sell only: a revalue's amount is a TOTAL position snapshot, not
+        // `qty * price`, and `rescaleBondEventAmounts` depends on that
+        // invariant holding for the rows it rescales.
+        //
+        // Never invent a value: a missing/zero quantity or a zero amount
+        // leaves the price NULL instead of writing a meaningless 0.
+        if (autoCalcPrice &&
+            effectivePrice == null &&
+            (eventType == EventType.buy || eventType == EventType.sell) &&
+            effectiveQty != null &&
+            effectiveQty != 0 &&
+            amount != 0) {
+          effectivePrice = amount.abs() / effectiveQty.abs() * (isBond ? 100 : 1);
         }
 
         // External-row fee takes precedence over inline/computed:
@@ -748,6 +792,7 @@ extension AssetImportFlow on ImportService {
     final typeMapping = mappingByField['type'];
     final qtyMapping = mappingByField['quantity'];
     final amountMapping = mappingByField['amount'];
+    final previewPriceMapping = mappingByField['price'];
     final currencyMapping = mappingByField['currency'];
     final orderRefMapping = mappingByField['orderRef'];
     final dateMapping = mappingByField['date'];
@@ -801,7 +846,14 @@ extension AssetImportFlow on ImportService {
         }
 
         final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
-        final amount = amountMapping != null ? _tryParseAmount(_resolveMapping(amountMapping, row)) : null;
+        // Mirror the import's Auto-calc: with no amount column the amount comes
+        // from quantity x price, and its SIGN decides buy vs sell below. The
+        // bond divisor is irrelevant here (it cannot flip a sign) so instrument
+        // types are not looked up for the dry run.
+        final price = previewPriceMapping != null ? _tryParseAmount(_resolveMapping(previewPriceMapping, row)) : null;
+        final amount = amountMapping != null
+            ? _tryParseAmount(_resolveMapping(amountMapping, row))
+            : autoCalcAmountFor(qty: qty, price: price, isBond: false);
 
         // Determine event type
         final EventType eventType;

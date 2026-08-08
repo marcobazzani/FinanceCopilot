@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart';
 import 'package:finance_copilot/services/import/import_service.dart';
 import 'package:finance_copilot/services/market/isin_lookup_service.dart';
 
@@ -580,6 +581,219 @@ Date,Amount
       expect(events.length, 1);
       // Bond: amount = qty * price / 100 = 10 * 98.50 / 100 = 9.85
       expect(events.first.amount, closeTo(9.85, 0.001));
+    });
+  });
+
+  // Issue #96: broker exports that report only Quantity + Amount (no per-unit
+  // price column). The wizard never blocked on the missing price, but the
+  // events landed with price = NULL, which silently excluded them from
+  // `getAverageBuyPrice` (it filters on `price IS NOT NULL`).
+  group('Asset event import — price auto-calc (issue #96)', () {
+    /// Same shape as the outer `makeAssetPreview` but the price column is
+    /// absent entirely, mirroring the real broker export.
+    FilePreview makePricelessPreview(List<List<String>> rows) => FilePreview(
+      columns: ['date', 'isin', 'quantity', 'currency', 'amount'],
+      rows: rows
+          .map(
+            (r) => {'date': r[0], 'isin': r[1], 'quantity': r[2], 'currency': r[3], 'amount': r[4]},
+          )
+          .toList(),
+      totalRows: rows.length,
+    );
+
+    const pricelessMappings = [
+      ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+      ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+      ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+      ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+      ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+    ];
+
+    Future<List<AssetEvent>> runImport({
+      required List<List<String>> rows,
+      bool autoCalcPrice = false,
+      List<ColumnMapping> mappings = pricelessMappings,
+      FilePreview? preview,
+      Set<String>? revalueValues,
+    }) async {
+      final result = await importer.importAssetEventsGrouped(
+        preview: preview ?? makePricelessPreview(rows),
+        mappings: mappings,
+        baseCurrency: 'EUR',
+        intermediaryId: defaultIntermediaryId,
+        autoCalcPrice: autoCalcPrice,
+        revalueValues: revalueValues,
+      );
+      expect(result.result.errors, isEmpty);
+      return db.select(db.assetEvents).get();
+    }
+
+    test('price stays null when auto-calc is off (unchanged default)', () async {
+      final events = await runImport(
+        rows: [
+          ['2024-01-15', 'IE00B4L5Y983', '10', 'EUR', '-1005.00'],
+        ],
+      );
+      expect(events.single.price, isNull);
+      expect(events.single.quantity, 10.0);
+      expect(events.single.amount, -1005.0);
+    });
+
+    test('auto-calc derives price as |amount| / |quantity|', () async {
+      final events = await runImport(
+        rows: [
+          ['2024-01-15', 'IE00B4L5Y983', '10', 'EUR', '-1005.00'],
+        ],
+        autoCalcPrice: true,
+      );
+      expect(events.single.price, closeTo(100.50, 0.0001));
+      // Amount is untouched — only the derived price is added.
+      expect(events.single.amount, -1005.0);
+    });
+
+    test('derived price is positive for a negative-quantity sell', () async {
+      final events = await runImport(
+        rows: [
+          ['2024-01-15', 'IE00B4L5Y983', '-4', 'EUR', '400.00'],
+        ],
+        autoCalcPrice: true,
+      );
+      expect(events.single.type, EventType.sell);
+      expect(events.single.quantity, 4.0);
+      expect(events.single.price, closeTo(100.0, 0.0001));
+    });
+
+    test('a mapped price column always wins over auto-calc', () async {
+      // Price column says 99.00 while amount/qty implies 100.50 — the file's
+      // own price must survive, never the derived approximation.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'quantity', 'price', 'currency', 'amount'],
+        rows: [
+          {'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'quantity': '10', 'price': '99.00', 'currency': 'EUR', 'amount': '-1005.00'},
+        ],
+        totalRows: 1,
+      );
+      final events = await runImport(
+        rows: const [],
+        preview: preview,
+        autoCalcPrice: true,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'price', targetField: 'price'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+      );
+      expect(events.single.price, closeTo(99.00, 0.0001));
+    });
+
+    test('bond auto-calc re-applies the percent-of-face divisor', () async {
+      await db
+          .into(db.assets)
+          .insert(
+            AssetsCompanion.insert(
+              name: 'Italian BTP',
+              assetType: AssetType.stockEtf,
+              instrumentType: const Value(InstrumentType.bond),
+              assetClass: const Value(AssetClass.fixedIncome),
+              valuationMethod: ValuationMethod.marketPrice,
+              isin: const Value('XS1234567890'),
+              intermediaryId: defaultIntermediaryId,
+            ),
+          );
+      // Bond amount = qty * price / 100 → price = amount / qty * 100.
+      // 10 units at 98.50% of face = 9.85 of money.
+      final events = await runImport(
+        rows: [
+          ['2024-06-15', 'XS1234567890', '10', 'EUR', '-9.85'],
+        ],
+        autoCalcPrice: true,
+      );
+      expect(events.single.price, closeTo(98.50, 0.001));
+    });
+
+    test('auto-calc leaves price null rather than inventing one', () async {
+      // Zero quantity (division by zero) and zero amount (would write a
+      // meaningless 0.0 price) must both fall through to NULL.
+      final events = await runImport(
+        rows: [
+          ['2024-01-15', 'IE00B4L5Y983', '0', 'EUR', '-1005.00'],
+          ['2024-01-16', 'IE00B4L5Y983', '10', 'EUR', '0'],
+        ],
+        autoCalcPrice: true,
+      );
+      expect(events.map((e) => e.price), everyElement(isNull));
+    });
+
+    test('auto-calc skips price when quantity is unmapped', () async {
+      final events = await runImport(
+        rows: [
+          ['2024-01-15', 'IE00B4L5Y983', '10', 'EUR', '-1005.00'],
+        ],
+        autoCalcPrice: true,
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+      );
+      expect(events.single.price, isNull);
+    });
+
+    test('auto-calc never sets a price on a revalue row', () async {
+      // A revalue's amount is a TOTAL position snapshot, not qty * price;
+      // deriving a unit price from it would break the invariant that
+      // `rescaleBondEventAmounts` relies on for buy/sell rows.
+      final preview = FilePreview(
+        columns: ['date', 'isin', 'type', 'quantity', 'currency', 'amount'],
+        rows: [
+          {'date': '2024-01-15', 'isin': 'IE00B4L5Y983', 'type': 'Buy', 'quantity': '10', 'currency': 'EUR', 'amount': '-1005.00'},
+          {'date': '2024-06-30', 'isin': 'IE00B4L5Y983', 'type': 'Total', 'quantity': '10', 'currency': 'EUR', 'amount': '1100.00'},
+        ],
+        totalRows: 2,
+      );
+      final events = await runImport(
+        rows: const [],
+        preview: preview,
+        autoCalcPrice: true,
+        revalueValues: {'Total'},
+        mappings: const [
+          ColumnMapping(sourceColumn: 'date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'isin', targetField: 'isin'),
+          ColumnMapping(sourceColumn: 'type', targetField: 'type'),
+          ColumnMapping(sourceColumn: 'quantity', targetField: 'quantity'),
+          ColumnMapping(sourceColumn: 'currency', targetField: 'currency'),
+          ColumnMapping(sourceColumn: 'amount', targetField: 'amount'),
+        ],
+      );
+      final buy = events.firstWhere((e) => e.type == EventType.buy);
+      final revalue = events.firstWhere((e) => e.type == EventType.revalue);
+      expect(buy.price, closeTo(100.50, 0.0001));
+      expect(revalue.price, isNull);
+    });
+
+    // 10 units at 100 then 10 at 110 → weighted average 105. Positive amounts
+    // so the default sign convention classifies both rows as buys.
+    const avgRows = [
+      ['2024-01-15', 'IE00B4L5Y983', '10', 'EUR', '1000.00'],
+      ['2024-02-15', 'IE00B4L5Y983', '10', 'EUR', '1100.00'],
+    ];
+
+    test('without a price column the average buy price is unavailable', () async {
+      await runImport(rows: avgRows);
+      final assetId = (await db.select(db.assets).getSingle()).id;
+      // Every row is filtered out by `price IS NOT NULL`.
+      expect(await AssetEventService(db).getAverageBuyPrice(assetId), isNull);
+    });
+
+    test('derived price restores the weighted average buy price', () async {
+      await runImport(rows: avgRows, autoCalcPrice: true);
+      final assetId = (await db.select(db.assets).getSingle()).id;
+      // (10 * 100 + 10 * 110) / 20 = 105
+      expect(await AssetEventService(db).getAverageBuyPrice(assetId), closeTo(105.0, 0.0001));
     });
   });
 

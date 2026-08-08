@@ -16,6 +16,26 @@ class PillarOverAssignedException implements Exception {
   String toString() => 'Pillar over-assign: asset $assetId requested $requested, available $available';
 }
 
+/// Per-asset quantities for one pillar, as returned by
+/// [PillarService.quantitiesForPillar].
+///
+/// * [total] — the real holding (buys minus sells).
+/// * [current] — units already assigned to this pillar.
+/// * [available] — the cap for this pillar: the full holding for a virtual
+///   portfolio (overlap model), or the holding minus what other standard
+///   pillars hold (partition model). Never negative.
+class PillarAssetQuantities {
+  final double total;
+  final double current;
+  final double available;
+
+  const PillarAssetQuantities({
+    required this.total,
+    required this.current,
+    required this.available,
+  });
+}
+
 class PillarService {
   final AppDatabase _db;
   PillarService(this._db);
@@ -157,6 +177,80 @@ class PillarService {
     final otherStandard = await _sumStandardAssigned(assetId, excludePillarId: pillarId);
     final available = total - otherStandard;
     return available < 0 ? 0 : available;
+  }
+
+  /// Everything the pillar detail screen needs for one pillar, in a fixed
+  /// number of queries instead of one round trip per asset.
+  ///
+  /// Per-asset this used to be `totalQuantity` + `qtyFor` + `availableToAssign`
+  /// (itself `getById` + `_totalQuantity` + `_sumStandardAssigned`) — five
+  /// queries each, sequentially, before the screen could render its first
+  /// frame. Four aggregate queries now cover any number of assets.
+  ///
+  /// Semantics are identical to calling [totalQuantity], [qtyFor] and
+  /// [availableToAssign] per asset; `test/pillar_service_batch_test.dart` pins
+  /// that equivalence. Assets with no events are returned with zeroes so
+  /// callers can tell "no holding" from "not asked about".
+  Future<Map<int, PillarAssetQuantities>> quantitiesForPillar(
+    String pillarId,
+    Iterable<int> assetIds,
+  ) async {
+    final ids = assetIds.toSet();
+    if (ids.isEmpty) return const {};
+
+    final pillar = await getById(pillarId);
+    final isVirtual = pillar == null || pillar.kind == PillarKind.virtual;
+
+    // 1. Total holding per asset (buys add, sells subtract).
+    final totals = <int, double>{};
+    final totalRows = await _db
+        .customSelect(
+          'SELECT asset_id, COALESCE(SUM(CASE WHEN type = ? THEN quantity '
+          'WHEN type = ? THEN -quantity ELSE 0 END), 0) AS qty '
+          'FROM asset_events WHERE quantity IS NOT NULL GROUP BY asset_id',
+          variables: [Variable.withString('buy'), Variable.withString('sell')],
+        )
+        .get();
+    for (final row in totalRows) {
+      totals[row.read<int>('asset_id')] = row.read<double>('qty');
+    }
+
+    // 2. This pillar's own assignments.
+    final current = <int, double>{};
+    final own = await (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId))).get();
+    for (final row in own) {
+      current[row.assetId] = row.quantity;
+    }
+
+    // 3. Assignments held by OTHER standard pillars — the partition cap.
+    //    Skipped entirely for virtual portfolios, whose cap is the full
+    //    holding (overlap model).
+    final otherStandard = <int, double>{};
+    if (!isVirtual) {
+      final query = _db.selectOnly(_db.pillarAssets)
+        ..join([innerJoin(_db.pillars, _db.pillars.id.equalsExp(_db.pillarAssets.pillarId))])
+        ..addColumns([_db.pillarAssets.assetId, _db.pillarAssets.quantity.sum()])
+        ..where(_db.pillars.kind.equalsValue(PillarKind.standard))
+        ..where(_db.pillarAssets.pillarId.equals(pillarId).not())
+        ..groupBy([_db.pillarAssets.assetId]);
+      final rows = await query.get();
+      for (final row in rows) {
+        otherStandard[row.read(_db.pillarAssets.assetId)!] = row.read(_db.pillarAssets.quantity.sum()) ?? 0.0;
+      }
+    }
+
+    return {
+      for (final id in ids)
+        id: () {
+          final total = totals[id] ?? 0.0;
+          final available = isVirtual ? total : total - (otherStandard[id] ?? 0.0);
+          return PillarAssetQuantities(
+            total: total,
+            current: current[id] ?? 0.0,
+            available: available < 0 ? 0 : available,
+          );
+        }(),
+    };
   }
 
   /// Assign `qty` units of [assetId] to [pillarId]. Pass qty=0 to remove.

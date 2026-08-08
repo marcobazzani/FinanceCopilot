@@ -381,16 +381,15 @@ class _EditAssetDialogState extends State<_EditAssetDialog> {
     final s = widget.ref.read(appStringsProvider);
     return AlertDialog(
       title: Text(s.searchAssetTitle),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: AssetSearchSection(
-          widgetRef: widget.ref,
-          onSelect: _selectResult,
-          recoveryDefaultExchange: widget.asset.exchange ?? 'Milan',
-          recoveryCacheKeyBuilder: (q) => widget.asset.isin?.isNotEmpty == true
-              ? widget.asset.isin!
-              : (widget.asset.ticker?.isNotEmpty == true ? widget.asset.ticker! : q.toUpperCase()),
-        ),
+      // Width is owned by AssetSearchSection: AlertDialog measures its
+      // content intrinsically, so the section imposes a tight width.
+      content: AssetSearchSection(
+        widgetRef: widget.ref,
+        onSelect: _selectResult,
+        recoveryDefaultExchange: widget.asset.exchange ?? 'Milan',
+        recoveryCacheKeyBuilder: (q) => widget.asset.isin?.isNotEmpty == true
+            ? widget.asset.isin!
+            : (widget.asset.ticker?.isNotEmpty == true ? widget.asset.ticker! : q.toUpperCase()),
       ),
       actions: [
         TextButton(

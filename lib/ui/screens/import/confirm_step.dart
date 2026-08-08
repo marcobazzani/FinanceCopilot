@@ -648,6 +648,15 @@ extension _ConfirmStep on _ImportScreenState {
       _setState(() => _error = missing);
       return;
     }
+    // The mapping check above says nothing about the import TARGET, and
+    // _executeImport is the single entry point for both the full and the quick
+    // flow. Without this, `intermediaryId: _selectedIntermediaryId!` below is a
+    // null-check crash instead of a message the user can act on.
+    if (_target == ImportTarget.assetEvent && _selectedIntermediaryId == null) {
+      _log.warning('_executeImport: blocked — asset import with no intermediary selected');
+      _setState(() => _error = ref.read(appStringsProvider).selectIntermediary);
+      return;
+    }
     _setState(() {
       _importing = true;
       _importedSoFar = 0;
@@ -731,11 +740,12 @@ extension _ConfirmStep on _ImportScreenState {
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
           rateService: ref.read(exchangeRateServiceProvider),
           baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-          intermediaryId: _selectedIntermediaryId!, // gated by _canImport
+          intermediaryId: _selectedIntermediaryId!, // non-null: gated by _canImport AND re-checked in _executeImport
           numberLocaleOverride: _selectedNumberLocale,
           appLocale: appLocale,
           targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
           revalueAmountColumn: _revalueValues.isNotEmpty ? _revalueAmountColumn : null,
+          autoCalcPrice: _autoCalcPrice,
         );
         result = assetResult.result;
       }

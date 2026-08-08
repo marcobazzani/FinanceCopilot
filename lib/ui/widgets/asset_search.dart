@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -40,6 +41,9 @@ class AssetSearchSection extends StatefulWidget {
   @override
   State<AssetSearchSection> createState() => _AssetSearchSectionState();
 }
+
+/// Preferred dialog width for the section; clamped down on narrow screens.
+const _maxWidth = 400.0;
 
 class _AssetSearchSectionState extends State<AssetSearchSection> {
   final _searchCtrl = TextEditingController();
@@ -86,7 +90,17 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
   @override
   Widget build(BuildContext context) {
     final s = widget.widgetRef.read(appStringsProvider);
+    // TIGHT width, deliberately not a loose `maxWidth` constraint: every call
+    // site is an AlertDialog, and AlertDialog measures its content's intrinsic
+    // width. The results list below is a shrink-wrapping viewport that cannot
+    // report intrinsics (it would have to build every child), so a loose
+    // constraint made the dialog throw the moment a search returned results.
+    // Sizing here rather than at each call site keeps the three dialogs
+    // (create asset, edit asset, portfolio model) from drifting apart again.
+    // Dialogs inset 40px per side, so never ask for more than is available.
+    final available = MediaQuery.sizeOf(context).width - 80;
     return SizedBox(
+      width: available <= 0 ? _maxWidth : math.min(_maxWidth, available),
       height: 350,
       child: Column(
         mainAxisSize: MainAxisSize.min,

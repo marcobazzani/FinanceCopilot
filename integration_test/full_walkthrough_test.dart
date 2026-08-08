@@ -2362,7 +2362,13 @@ void main() {
     await tester.tap(find.text('Retirement').first);
     await longSettle(tester);
     // The detail body renders one Slider per asset that has units > 0.
+    // `_OverviewView._load()` awaits three service queries PER asset before
+    // it drops `_loading`, on top of the chart + performance providers, so on
+    // a DB this size the first frame lands well after longSettle's fixed
+    // budget. Wait for the list rather than racing it — the expect below is
+    // unchanged and still fails if the sliders never arrive.
     final sliders = find.byType(Slider);
+    await pumpUntilFound(tester, sliders);
     expect(sliders, findsAtLeast(1), reason: 'asset slider list should render in the overview');
 
     _step('15D. Service-level assign(50%) round-trips through PillarService');
@@ -2460,13 +2466,26 @@ void main() {
       contributionAmount: 10,
     );
     final eventsBeforeDraft = await (db.select(db.assetEvents)..where((e) => e.assetId.equals(targetAssetId!))).get();
-    if (buyOnlyDraft.rows.isNotEmpty) {
+    // `applyDraft` skips placeholder rows by design, and whether the first row
+    // is a placeholder depends on the LIVE price of whichever asset the
+    // eligibility scan above picked versus the 10-unit contribution. Selecting
+    // rows with `rows.isNotEmpty` + `take(1)` therefore asserted "+1 event" for
+    // a row set that can legitimately be placeholder-only — it passed only when
+    // live data happened to cooperate. The model already exposes the right
+    // concept as `hasExecutableTrades`.
+    final executableRows = buyOnlyDraft.rows.where((r) => !r.isPlaceholder).toList();
+    expect(
+      buyOnlyDraft.hasExecutableTrades,
+      executableRows.isNotEmpty,
+      reason: 'hasExecutableTrades must agree with the rows it summarises',
+    );
+    if (executableRows.isNotEmpty) {
       await rebalanceService.applyDraft(
         PortfolioRebalanceDraft(
           mode: buyOnlyDraft.mode,
           scope: buyOnlyDraft.scope,
           baseCurrency: buyOnlyDraft.baseCurrency,
-          rows: buyOnlyDraft.rows.take(1).toList(),
+          rows: executableRows.take(1).toList(),
           unresolved: buyOnlyDraft.unresolved,
           availableCashBase: buyOnlyDraft.availableCashBase,
           targetBuyBase: buyOnlyDraft.targetBuyBase,
@@ -2483,11 +2502,14 @@ void main() {
       expect(eventsAfterDraft.length, eventsBeforeDraft.length + 1);
       _step('   ✓ buy-only draft applied after explicit service call');
     } else {
+      // Placeholder-only (or empty) draft: applying it must write nothing. This
+      // is the stronger half of the invariant — a preview stays a preview.
+      await rebalanceService.applyDraft(buyOnlyDraft, AssetEventService(db), date: DateTime(2026, 1, 15));
       expect(
         await (db.select(db.assetEvents)..where((e) => e.assetId.equals(targetAssetId!))).get(),
         hasLength(eventsBeforeDraft.length),
       );
-      _step('   ✓ no draft rows generated; no events inserted');
+      _step('   ✓ no executable draft rows; applying wrote no events');
     }
 
     _step('15E. Over-assign refused: PillarOverAssignedException');

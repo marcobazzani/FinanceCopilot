@@ -824,6 +824,14 @@ class AppStrings {
   String get incomeTypeIncome => _it ? 'Reddito' : 'Income';
   String get incomeTypeRefund => _it ? 'Rimborso' : 'Refund';
   String get incomeTypePensionContribution => _it ? 'Contributo previdenziale' : 'Pension contribution';
+
+  /// Single source of truth for the user-visible name of an [IncomeType].
+  /// Every screen showing an income type must go through this.
+  String incomeTypeName(IncomeType type) => switch (type) {
+    IncomeType.income => incomeTypeIncome,
+    IncomeType.refund => incomeTypeRefund,
+    IncomeType.pensionContribution => incomeTypePensionContribution,
+  };
   String get incomeTypeDetection => _it ? 'Rilevamento tipo di reddito' : 'Income Type Detection';
   String get mapIncomeTypes =>
       _it ? 'Mappa valori in Reddito / Rimborso / Contributo previdenziale:' : 'Map values to Income / Refund / Pension contribution:';
@@ -831,6 +839,13 @@ class AppStrings {
   String get flagAsIncomeTooltip => _it ? 'Segna come reddito' : 'Flag as Income';
   String get flagAsIncomeTitle => _it ? 'Segna come reddito' : 'Flag as Income';
   String get incomeFlaggedSnack => _it ? 'Transazione aggiunta al reddito' : 'Transaction added to income';
+  String incomeFlaggedSplitSnack(int n) => _it ? 'Aggiunte $n voci di reddito' : 'Added $n income entries';
+  String get incomeSplitHint => _it
+      ? 'Suddividi l\'importo tra i tipi. La somma deve corrispondere al totale.'
+      : 'Split the amount across types. The parts must add up to the total.';
+  String get incomeSplitAssignRemainder => _it ? 'Assegna il rimanente' : 'Assign the remaining amount';
+  String get incomeSplitInvalidAmount => _it ? 'Importo non valido' : 'Invalid amount';
+  String get incomeSplitOverAllocated => _it ? 'Eccedenza: ' : 'Over by: ';
   String get spreadSpendingMenu => _it ? 'Spalma spesa' : 'Spread spending';
   String get flagAsAdjustmentTooltip => _it ? 'Segna come rettifica' : 'Mark as adjustment';
   String get flagAsAdjustmentTitle => _it ? 'Segna come rettifica' : 'Mark as adjustment';
@@ -839,6 +854,15 @@ class AppStrings {
       _it ? 'Verrà aggiunta una rettifica di +$amount all\'entrata selezionata.' : 'A +$amount adjustment will be added to the selected inflow.';
   String get noInflowEventsAvailable => _it ? 'Nessuna entrata straordinaria disponibile' : 'No inflow events available';
   String get adjustmentFlaggedSnack => _it ? 'Rettifica registrata sull\'entrata' : 'Adjustment recorded on inflow';
+  String get duplicateAdjustmentTitle => _it ? 'Rettifica già presente' : 'Adjustment already exists';
+  String duplicateAdjustmentBody(int count, String amount) => _it
+      ? (count == 1
+            ? 'Esiste già una rettifica di $amount in questa data su questa entrata. Aggiungerne un\'altra?'
+            : 'Esistono già $count rettifiche di $amount in questa data su questa entrata. Aggiungerne un\'altra?')
+      : (count == 1
+            ? 'An adjustment of $amount already exists on this date for this inflow. Add another?'
+            : '$count adjustments of $amount already exist on this date for this inflow. Add another?');
+  String get addAnyway => _it ? 'Aggiungi comunque' : 'Add anyway';
   String get invalidDateOrAmount => _it ? 'Data o importo non valido' : 'Invalid date or amount';
   String get deleteIncomeTitle => _it ? 'Elimina reddito?' : 'Delete Income?';
   String deleteIncomeConfirm(String amt, String cur, String d) => _it ? 'Eliminare $amt $cur del $d?' : 'Delete $amt $cur from $d?';
@@ -1015,10 +1039,13 @@ class AppStrings {
   String get modeLabel => _it ? 'Modalità: ' : 'Mode: ';
   String get modeHistoric => _it ? 'Storico' : 'Historic';
   String get modeCurrent => _it ? 'Attuale' : 'Current';
-  String get dateExchangeRequired => _it ? 'Data e tasso di cambio obbligatori' : 'Date & exchange rate required';
+  String get dateHistoricFromFile =>
+      _it ? 'Data dal file; prezzo e tasso di cambio se presenti' : 'Date from the file; price and exchange rate if present';
   String get dateDefaultsToday => _it ? 'La data predefinita è oggi, tasso auto-recuperato' : 'Date defaults to today, rate auto-fetched';
   String get qtyTimesPrice => _it ? 'quantità x prezzo' : 'quantity x price';
+  String get amountDivQty => _it ? 'importo / quantità' : 'amount / quantity';
   String get autoCalc => _it ? 'Auto calc' : 'Auto calc';
+  String get autoCalcFromAmount => _it ? 'Auto calc da importo' : 'Auto calc from amount';
   String get combineMultipleColumns => _it ? 'Combina più colonne' : 'Combine multiple columns';
   String get useSingleColumn => _it ? 'Usa colonna singola' : 'Use single column';
   String get sepLabel => 'Sep:';

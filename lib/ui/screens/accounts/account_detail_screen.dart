@@ -18,6 +18,7 @@ import 'package:finance_copilot/ui/screens/events/transaction_edit_screen.dart';
 import 'package:finance_copilot/ui/screens/events/event_edit_screen.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
+import 'package:finance_copilot/ui/widgets/income_split_dialog.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';

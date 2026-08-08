@@ -70,10 +70,16 @@ extension _QuickConfirmStep on _ImportScreenState {
                 label: Text(s.letMeEdit),
                 onPressed: () => _setState(() => _isQuickMode = false),
               ),
+              // Same gate as the full Confirm step. Quick mode used to call
+              // _executeImport unconditionally, relying only on
+              // _missingMappingReason() — which checks the column mappings but
+              // NOT the import target, so `intermediaryId: _selectedIntermediaryId!`
+              // downstream was a null-check crash waiting for a state where the
+              // target is unset rather than a message the user can act on.
               FilledButton.icon(
                 icon: const Icon(Icons.check),
                 label: Text(s.importButton),
-                onPressed: _executeImport,
+                onPressed: _canImport(_target == ImportTarget.assetEvent, _target == ImportTarget.income) ? _executeImport : null,
               ),
             ],
           ),

@@ -20,8 +20,17 @@ final _log = getLogger('WebMarketDataService');
 /// change which provider we integrate with.
 const kProviderHost = 'www.investing.com';
 const kProviderApiHost = 'api.investing.com';
+
+/// Instrument search lives on its own host. The legacy
+/// `api/search/v2/search` endpoint still answers 200 but its `quotes` array
+/// is permanently empty, so every lookup silently returned nothing: new
+/// assets could not be created and imports could not resolve a name or cid
+/// (already-resolved assets kept pricing from their cached cid, which is why
+/// the breakage stayed invisible). See the search contract test.
+const kProviderSearchHost = 'endpoints.investing.com';
 const kProviderBase = 'https://$kProviderHost';
 const kProviderApiBase = 'https://$kProviderApiHost';
+const kProviderSearchBase = 'https://$kProviderSearchHost';
 
 /// the market data provider exchange name mapping.
 /// Synonyms accepted when filtering search results by exchange. Keys are
@@ -472,6 +481,14 @@ class WebMarketDataService extends MarketPriceService {
   /// fingerprinting on Windows), switches permanently to JS fetch via headless
   /// WebView for the rest of the session.
   Future<Map<String, dynamic>?> _webViewFetch(String url, {String domainId = 'www'}) async {
+    // The [jsFetchOverride] test seam replaces the transport wholesale, so
+    // there is no WebView to get ready and no Cloudflare challenge to solve.
+    // Without this, any test driving a caller of this method (e.g. `search`)
+    // would just get null from the readiness gate.
+    if (_jsFetchOverride != null) {
+      return _fetchViaJsFetch(url, domainId: domainId).timeout(_requestTimeout, onTimeout: () => null);
+    }
+
     // Ensure WebView is ready (solves CF, caches cookies, probes Dio)
     if (!_isWebViewReady) {
       final ok = await _ensureWebView().timeout(_webViewReadyTimeout, onTimeout: () => false);
@@ -537,36 +554,36 @@ class WebMarketDataService extends MarketPriceService {
   /// Search the market data provider for any query (name, ISIN, ticker, fund ID).
   /// Searches both international (www) and Italian (it) domains, merges results.
   /// Type names always come from the English (www) domain for consistent classification.
+  /// Build the instrument-search URL for [query]. Exposed so the contract
+  /// test can assert the app and the test agree on the endpoint.
+  @visibleForTesting
+  static String searchUrlFor(String query) =>
+      '$kProviderSearchBase/pd-instruments/v1/instruments/search'
+      '?query=${Uri.encodeComponent(query)}&domain_id=$_searchDomainId';
+
+  /// Catalogue id for the instrument-search endpoint. `1` is the
+  /// international catalogue and already covers Italian bonds and funds, so
+  /// one call replaces the legacy www + it domain pair.
+  static const _searchDomainId = 1;
+
   Future<List<ProviderSearchResult>> search(String query) async {
-    final url = '$kProviderApiBase/api/search/v2/search?q=${Uri.encodeComponent(query)}';
+    final url = searchUrlFor(query);
 
     _log.info('search: $query');
 
-    // Search via _webViewFetch (Dio or JS depending on _dioBlocked)
+    // Via _webViewFetch (Dio or in-page JS depending on _dioBlocked) because
+    // the endpoint sits behind the same Cloudflare challenge as the rest.
     final results = <int, ProviderSearchResult>{};
     try {
-      final wwwData = await _webViewFetch(url, domainId: 'www');
-      final wwwQuotes = (wwwData?['quotes'] as List?) ?? [];
-      for (final q in wwwQuotes) {
-        final r = _parseSearchResult(q);
-        results[r.cid] = r;
+      final data = await _webViewFetch(url, domainId: 'www');
+      final instruments = (data?['instruments'] as List?) ?? const [];
+      for (final entry in instruments) {
+        final r = _parseSearchResult(entry);
+        if (r == null) continue;
+        results.putIfAbsent(r.cid, () => r);
       }
     } catch (e) {
-      _log.warning('search: www domain failed: $e');
-    }
-
-    // Also search Italian domain for local instruments (bonds, funds)
-    try {
-      final itData = await _webViewFetch(url, domainId: 'it');
-      final itQuotes = (itData?['quotes'] as List?) ?? [];
-      for (final q in itQuotes) {
-        final r = _parseSearchResult(q);
-        if (!results.containsKey(r.cid)) {
-          results[r.cid] = r;
-        }
-      }
-    } catch (e) {
-      _log.warning('search: it domain failed: $e');
+      _log.warning('search: failed for $query: $e');
     }
 
     _log.info('search: got ${results.length} results for $query');
@@ -1005,17 +1022,38 @@ class WebMarketDataService extends MarketPriceService {
     }
   }
 
-  static ProviderSearchResult _parseSearchResult(dynamic q) {
-    final exchange = (q['exchange'] as String?) ?? '';
-    final typeName = (q['typeName'] as String?) ?? (q['type'] as String?) ?? '';
+  /// Parse one entry of the instrument-search response, or null when the entry
+  /// carries no usable instrument id.
+  ///
+  /// Every fallback below is load-bearing — the payload differs per instrument
+  /// class:
+  ///  * `symbol` is ABSENT for currency pairs; `display_symbol`/`short_name`
+  ///    hold "EUR/USD" there, and the FX cid lookup matches on that string.
+  ///  * `type` is lowercase singular for most classes (`etf`, `bond`, `fund`,
+  ///    `currency`) but plural title-case for equities (`Equities`), so
+  ///    classification must go through [normaliseProviderType].
+  ///  * `ISIN` is returned directly. The legacy endpoint never was, which is
+  ///    why [resolveListingsByIsin] had to fetch the instrument page just to
+  ///    verify a match; it can now short-circuit.
+  static ProviderSearchResult? _parseSearchResult(dynamic entry) {
+    if (entry is! Map) return null;
+    final cid = entry['id'];
+    if (cid is! int) return null;
+    String field(String key) => (entry[key] as String?)?.trim() ?? '';
+    String firstOf(List<String> keys) => keys.map(field).firstWhere((v) => v.isNotEmpty, orElse: () => '');
+
+    final symbol = firstOf(['symbol', 'display_symbol', 'short_name']);
+    final isin = field('ISIN');
+    final link = field('link');
     return ProviderSearchResult(
-      cid: q['id'] as int,
-      description: (q['description'] as String?) ?? '',
-      symbol: (q['symbol'] as String?) ?? '',
-      exchange: exchange,
-      flag: (q['flag'] as String?) ?? '',
-      type: typeName.isNotEmpty ? typeName : exchange,
-      url: q['url'] as String?,
+      cid: cid,
+      description: firstOf(['long_name', 'short_name']),
+      symbol: symbol,
+      exchange: field('exchange_short_name'),
+      flag: field('country'),
+      type: field('type'),
+      url: link.isEmpty ? null : link,
+      isin: isin.isEmpty ? null : isin,
     );
   }
 
@@ -1540,6 +1578,65 @@ class WebMarketDataService extends MarketPriceService {
     });
   }
 
+  /// True when [asset] never got a real name from the provider — an import
+  /// that could not resolve the instrument leaves the raw identifier as the
+  /// display name (e.g. an asset literally called "IE00BSPLC413").
+  ///
+  /// Deliberately narrow: anything the user could have typed themselves is
+  /// left alone, so a backfill can never overwrite a hand-picked name.
+  @visibleForTesting
+  static bool hasUnresolvedName(Asset asset) {
+    final name = asset.name.trim();
+    if (name.isEmpty) return true;
+    final isin = asset.isin?.trim() ?? '';
+    final ticker = asset.ticker?.trim() ?? '';
+    return (isin.isNotEmpty && name.toUpperCase() == isin.toUpperCase()) || (ticker.isNotEmpty && name.toUpperCase() == ticker.toUpperCase());
+  }
+
+  /// Give a real name (and ticker/exchange, when missing) to assets still
+  /// displaying their raw ISIN.
+  ///
+  /// Search used to be broken provider-side, so imports created assets with no
+  /// resolvable metadata. Once search works again the cid resolves from the
+  /// ISIN and prices flow, but the ISIN stayed on screen as the name forever
+  /// because nothing ever revisited it. Runs as part of the price sync, which
+  /// is already the moment the app reconciles assets with the provider.
+  Future<void> _backfillUnresolvedNames(List<Asset> assets) async {
+    final pending = assets.where(hasUnresolvedName).where((a) => (a.isin?.isNotEmpty ?? false) || (a.ticker?.isNotEmpty ?? false)).toList();
+    if (pending.isEmpty) return;
+    _log.info('backfillNames: ${pending.length} assets still named after their raw identifier');
+
+    await _runBatched(pending, _maxConcurrency, (asset) async {
+      final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker!;
+      try {
+        final results = await search(searchTerm);
+        if (results.isEmpty) {
+          _log.info('backfillNames: no listing for $searchTerm, leaving the name as-is');
+          return;
+        }
+        // Prefer the asset's own exchange so a multi-listed instrument keeps
+        // its ticker for the venue the user actually holds it on.
+        final match =
+            results.where((r) => _canonicalExchange(r.exchange) == _canonicalExchange(asset.exchange)).firstOrNull ??
+            results.firstWhere((r) => r.description.isNotEmpty, orElse: () => results.first);
+        if (match.description.isEmpty) return;
+
+        await (db.update(db.assets)..where((a) => a.id.equals(asset.id))).write(
+          AssetsCompanion(
+            name: Value(match.description),
+            // Only fill blanks here: an existing ticker/exchange came from the
+            // broker statement and is more authoritative than a search hit.
+            ticker: (asset.ticker?.isEmpty ?? true) && match.symbol.isNotEmpty ? Value(match.symbol) : const Value.absent(),
+            exchange: (asset.exchange?.isEmpty ?? true) && match.exchange.isNotEmpty ? Value(match.exchange) : const Value.absent(),
+          ),
+        );
+        _log.info('backfillNames: $searchTerm -> "${match.description}" (${match.exchange})');
+      } catch (e) {
+        _log.warning('backfillNames: failed for $searchTerm: $e');
+      }
+    });
+  }
+
   /// Max concurrent HTTP requests to the market data provider to avoid rate-limiting.
   static const _maxConcurrency = 3;
 
@@ -1567,8 +1664,10 @@ class WebMarketDataService extends MarketPriceService {
 
       final now = DateTime.now();
 
-      // Step 0: Backfill missing URLs for assets with cached CIDs
+      // Step 0: Backfill missing URLs for assets with cached CIDs, and give a
+      // real name to assets still showing their raw ISIN.
       await _backfillMissingUrls(assets);
+      await _backfillUnresolvedNames(assets);
 
       // Step 1: Resolve CIDs in parallel (search API doesn't need CF cookies)
       final candidates = <(Asset, String)>[]; // (asset, searchTerm)
