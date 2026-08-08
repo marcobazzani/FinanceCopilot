@@ -23,10 +23,7 @@ class IsinExchangeOption {
   });
 
   /// Derive instrument type + asset class from the provider's typeName.
-  (InstrumentType, AssetClass) get classification {
-    final prefix = typeName.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), '');
-    return classifyFromProviderType(prefix);
-  }
+  (InstrumentType, AssetClass) get classification => classifyFromProviderType(typeName);
 }
 
 /// Result of an ISIN lookup: all available exchange listings.

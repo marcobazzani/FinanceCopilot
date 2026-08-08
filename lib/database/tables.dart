@@ -73,9 +73,28 @@ const _providerTypeMap = <String, (InstrumentType, AssetClass)>{
   'criptovaluta': (InstrumentType.crypto, AssetClass.crypto),
 };
 
+/// Normalise a raw provider instrument-type string to the lowercase singular
+/// prefix used by [_providerTypeMap].
+///
+/// The provider is not internally consistent: most classes come back lowercase
+/// singular (`etf`, `bond`, `fund`, `currency`), equities come back plural
+/// title-case (`Equities`), and the legacy search endpoint returned compound
+/// values like `Stocks - Milano`. A naive trailing-`s` strip turns `equities`
+/// into `equitie`, which is absent from the map and silently classified every
+/// stock as an ETF — hence the explicit `ies` → `y` rule.
+String normaliseProviderType(String raw) {
+  final first = raw.toLowerCase().split(RegExp(r'[\s\-]')).first.trim();
+  if (first.endsWith('ies')) return '${first.substring(0, first.length - 3)}y';
+  if (first.endsWith('s')) return first.substring(0, first.length - 1);
+  return first;
+}
+
 /// Classify instrument type + asset class from a provider type string.
-/// [prefix] should be lowercase, singular (e.g. "etf", "stock", "bond").
-(InstrumentType, AssetClass) classifyFromProviderType(String prefix) => _providerTypeMap[prefix] ?? (InstrumentType.etf, AssetClass.equity);
+/// Accepts the raw provider value (e.g. "Equities", "ETFs - Milano", "bond");
+/// normalisation goes through [normaliseProviderType] so every call site
+/// shares one rule.
+(InstrumentType, AssetClass) classifyFromProviderType(String raw) =>
+    _providerTypeMap[normaliseProviderType(raw)] ?? (InstrumentType.etf, AssetClass.equity);
 
 /// Default asset class for a given instrument type.
 /// Used when external classification is unavailable.

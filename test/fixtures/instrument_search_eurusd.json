@@ -1,0 +1,29 @@
+{
+  "instruments": [
+    {
+      "active": true,
+      "cfd": true,
+      "client_type": "Currency",
+      "country": "Euro Zone",
+      "country_id": 72,
+      "currency_code": "USD",
+      "currency_id": 12,
+      "decimal_places": 4,
+      "display_symbol": "EUR/USD",
+      "exchange_id": 1002,
+      "exchange_short_name": "Real-time Currencies",
+      "id": 1,
+      "link": "/currencies/eur-usd",
+      "long_name": "Euro US Dollar",
+      "one_year_change": -0.7,
+      "only_daily_updates": false,
+      "open": false,
+      "parent_id": 0,
+      "realtime": true,
+      "short_name": "EUR/USD",
+      "type": "currency"
+    }
+  ],
+  "next_page_cursor": null,
+  "total": 2
+}

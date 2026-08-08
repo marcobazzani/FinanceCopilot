@@ -1,0 +1,33 @@
+{
+  "instruments": [
+    {
+      "ISIN": "IT0003128367",
+      "active": true,
+      "average_volume_3_M": 19161880,
+      "cfd": false,
+      "client_type": "Stock",
+      "country": "Italy",
+      "country_id": 10,
+      "currency_code": "EUR",
+      "currency_id": 17,
+      "decimal_places": 3,
+      "display_symbol": "ENEI",
+      "exchange_id": 6,
+      "exchange_short_name": "Milan",
+      "id": 6963,
+      "link": "/equities/enel",
+      "long_name": "Enel",
+      "market_link": "/markets/italy",
+      "one_year_change": 29.07,
+      "only_daily_updates": false,
+      "open": false,
+      "parent_id": 0,
+      "realtime": true,
+      "short_name": "Enel",
+      "symbol": "ENEI",
+      "type": "Equities"
+    }
+  ],
+  "next_page_cursor": null,
+  "total": 1
+}

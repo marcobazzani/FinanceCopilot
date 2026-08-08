@@ -682,9 +682,7 @@ class PortfolioRebalanceService {
       final fxRate = currency == baseCurrency ? 1.0 : await _rates.getRate(currency, baseCurrency, asOf);
       if (fxRate == null || fxRate <= 0) continue;
 
-      final classification = classifyFromProviderType(
-        candidate.type.toLowerCase().split(' ').first.replaceAll(RegExp(r's$'), ''),
-      );
+      final classification = classifyFromProviderType(candidate.type);
       final createSpec = PortfolioRebalanceAutoCreateSpec(
         isin: normaliseIsin(isin),
         ticker: candidate.symbol,
