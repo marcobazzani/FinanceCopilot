@@ -28,19 +28,23 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
     final svc = ref.read(pillarServiceProvider);
     final assets = await ref.read(activeAssetsProvider.future);
     final marketValues = await ref.read(assetMarketValuesProvider.future);
+    // One batched call instead of five queries per asset: the per-asset loop
+    // meant 65 sequential round trips on a 13-asset portfolio before the first
+    // frame could render, which is why this screen used to sit on a spinner for
+    // seconds. `quantitiesForPillar` is kind-aware exactly like
+    // availableToAssign was (standard → total − other standard assigned;
+    // virtual → total), and test/pillar_service_batch_test.dart pins the
+    // equivalence.
+    final quantities = await svc.quantitiesForPillar(widget.pillarId, assets.map((a) => a.id));
     final out = <int, _AssetRowState>{};
     for (final a in assets) {
-      final total = await svc.totalQuantity(a.id);
-      if (total <= 0) continue;
-      final current = await svc.qtyFor(widget.pillarId, a.id);
-      // availableToAssign is kind-aware: standard → total − other standard
-      // assigned; virtual → total (independent per-portfolio cap).
-      final available = await svc.availableToAssign(widget.pillarId, a.id);
+      final q = quantities[a.id];
+      if (q == null || q.total <= 0) continue;
       out[a.id] = _AssetRowState(
         assetId: a.id,
-        total: total,
-        available: available,
-        current: current,
+        total: q.total,
+        available: q.available,
+        current: q.current,
       );
     }
     final ordered = out.keys.toList()
