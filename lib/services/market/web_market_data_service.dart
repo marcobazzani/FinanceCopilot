@@ -1578,6 +1578,65 @@ class WebMarketDataService extends MarketPriceService {
     });
   }
 
+  /// True when [asset] never got a real name from the provider — an import
+  /// that could not resolve the instrument leaves the raw identifier as the
+  /// display name (e.g. an asset literally called "IE00BSPLC413").
+  ///
+  /// Deliberately narrow: anything the user could have typed themselves is
+  /// left alone, so a backfill can never overwrite a hand-picked name.
+  @visibleForTesting
+  static bool hasUnresolvedName(Asset asset) {
+    final name = asset.name.trim();
+    if (name.isEmpty) return true;
+    final isin = asset.isin?.trim() ?? '';
+    final ticker = asset.ticker?.trim() ?? '';
+    return (isin.isNotEmpty && name.toUpperCase() == isin.toUpperCase()) || (ticker.isNotEmpty && name.toUpperCase() == ticker.toUpperCase());
+  }
+
+  /// Give a real name (and ticker/exchange, when missing) to assets still
+  /// displaying their raw ISIN.
+  ///
+  /// Search used to be broken provider-side, so imports created assets with no
+  /// resolvable metadata. Once search works again the cid resolves from the
+  /// ISIN and prices flow, but the ISIN stayed on screen as the name forever
+  /// because nothing ever revisited it. Runs as part of the price sync, which
+  /// is already the moment the app reconciles assets with the provider.
+  Future<void> _backfillUnresolvedNames(List<Asset> assets) async {
+    final pending = assets.where(hasUnresolvedName).where((a) => (a.isin?.isNotEmpty ?? false) || (a.ticker?.isNotEmpty ?? false)).toList();
+    if (pending.isEmpty) return;
+    _log.info('backfillNames: ${pending.length} assets still named after their raw identifier');
+
+    await _runBatched(pending, _maxConcurrency, (asset) async {
+      final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker!;
+      try {
+        final results = await search(searchTerm);
+        if (results.isEmpty) {
+          _log.info('backfillNames: no listing for $searchTerm, leaving the name as-is');
+          return;
+        }
+        // Prefer the asset's own exchange so a multi-listed instrument keeps
+        // its ticker for the venue the user actually holds it on.
+        final match =
+            results.where((r) => _canonicalExchange(r.exchange) == _canonicalExchange(asset.exchange)).firstOrNull ??
+            results.firstWhere((r) => r.description.isNotEmpty, orElse: () => results.first);
+        if (match.description.isEmpty) return;
+
+        await (db.update(db.assets)..where((a) => a.id.equals(asset.id))).write(
+          AssetsCompanion(
+            name: Value(match.description),
+            // Only fill blanks here: an existing ticker/exchange came from the
+            // broker statement and is more authoritative than a search hit.
+            ticker: (asset.ticker?.isEmpty ?? true) && match.symbol.isNotEmpty ? Value(match.symbol) : const Value.absent(),
+            exchange: (asset.exchange?.isEmpty ?? true) && match.exchange.isNotEmpty ? Value(match.exchange) : const Value.absent(),
+          ),
+        );
+        _log.info('backfillNames: $searchTerm -> "${match.description}" (${match.exchange})');
+      } catch (e) {
+        _log.warning('backfillNames: failed for $searchTerm: $e');
+      }
+    });
+  }
+
   /// Max concurrent HTTP requests to the market data provider to avoid rate-limiting.
   static const _maxConcurrency = 3;
 
@@ -1605,8 +1664,10 @@ class WebMarketDataService extends MarketPriceService {
 
       final now = DateTime.now();
 
-      // Step 0: Backfill missing URLs for assets with cached CIDs
+      // Step 0: Backfill missing URLs for assets with cached CIDs, and give a
+      // real name to assets still showing their raw ISIN.
       await _backfillMissingUrls(assets);
+      await _backfillUnresolvedNames(assets);
 
       // Step 1: Resolve CIDs in parallel (search API doesn't need CF cookies)
       final candidates = <(Asset, String)>[]; // (asset, searchTerm)
