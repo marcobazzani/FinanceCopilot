@@ -51,6 +51,19 @@ class AssetEventImportPreview {
   });
 }
 
+/// Amount for a row whose amount column is unmapped — the wizard's "Auto calc"
+/// derives it from quantity x price. Bonds are quoted as a percentage of face
+/// value, so the money amount divides by 100.
+///
+/// Shared by the real import and the dry-run preview: the preview used to
+/// ignore `price` entirely and infer buy/sell from the quantity sign alone, so
+/// it could classify a row differently from the import it was previewing.
+/// Returns 0 when either input is missing — never a guess.
+double autoCalcAmountFor({required double? qty, required double? price, required bool isBond}) {
+  if (qty == null || price == null) return 0;
+  return isBond ? qty * price / 100 : qty * price;
+}
+
 extension AssetImportFlow on ImportService {
   Future<AssetImportResult> importAssetEventsGrouped({
     required FilePreview preview,
@@ -391,10 +404,8 @@ extension AssetImportFlow on ImportService {
           } else {
             amount = _parseAmount(amountStr);
           }
-        } else if (qty != null && price != null) {
-          amount = isBond ? qty * price / 100 : qty * price;
         } else {
-          amount = 0;
+          amount = autoCalcAmountFor(qty: qty, price: price, isBond: isBond);
         }
         final rate = exchangeRateMapping != null ? _tryParseAmount(_resolveMapping(exchangeRateMapping, row)) : null;
 
@@ -781,6 +792,7 @@ extension AssetImportFlow on ImportService {
     final typeMapping = mappingByField['type'];
     final qtyMapping = mappingByField['quantity'];
     final amountMapping = mappingByField['amount'];
+    final previewPriceMapping = mappingByField['price'];
     final currencyMapping = mappingByField['currency'];
     final orderRefMapping = mappingByField['orderRef'];
     final dateMapping = mappingByField['date'];
@@ -834,7 +846,14 @@ extension AssetImportFlow on ImportService {
         }
 
         final qty = qtyMapping != null ? _tryParseAmount(_resolveMapping(qtyMapping, row)) : null;
-        final amount = amountMapping != null ? _tryParseAmount(_resolveMapping(amountMapping, row)) : null;
+        // Mirror the import's Auto-calc: with no amount column the amount comes
+        // from quantity x price, and its SIGN decides buy vs sell below. The
+        // bond divisor is irrelevant here (it cannot flip a sign) so instrument
+        // types are not looked up for the dry run.
+        final price = previewPriceMapping != null ? _tryParseAmount(_resolveMapping(previewPriceMapping, row)) : null;
+        final amount = amountMapping != null
+            ? _tryParseAmount(_resolveMapping(amountMapping, row))
+            : autoCalcAmountFor(qty: qty, price: price, isBond: false);
 
         // Determine event type
         final EventType eventType;
