@@ -103,9 +103,15 @@ jobs:
         timeout-minutes: 10
         run: flutter test integration_test/provider_search_contract_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 
+      # NOT continue-on-error. It used to be, and that is precisely how a
+      # completely broken price pipeline shipped: this suite was red for weeks
+      # (0/12 assets priced, because it seeds assets with no cached cid and so
+      # depends on search) and nobody saw it, until a user reported "Instrument
+      # not found" for a mainstream ETF. See #97. A red job here now means the
+      # nightly does not publish, which is the intended behaviour: a build that
+      # cannot fetch prices is not worth shipping.
       - name: Run live data fetch test
         if: matrix.device == 'macos'
-        continue-on-error: true
         timeout-minutes: 10
         run: flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db --dart-define=SLOW_TESTS=true
 

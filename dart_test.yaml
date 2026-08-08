@@ -1,0 +1,10 @@
+# Declares the tags used by the test suites, so `flutter test` stops warning
+# "A tag was used that wasn't specified in dart_test.yaml".
+#
+# `live` marks suites that make REAL network calls to the market data provider
+# (integration_test/live_data_fetch_test.dart and
+# integration_test/provider_search_contract_test.dart). They are run explicitly
+# by their own CI steps, never as part of the offline suites.
+tags:
+  live:
+    description: Hits the real market data provider over the network.
