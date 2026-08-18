@@ -32,6 +32,11 @@ class _AssetSliderRow extends StatelessWidget {
     final percent = row.currentPercent;
     final maxPct = row.maxPercent;
     final disabled = maxPct <= 0;
+    // A cap below 100% means other STANDARD pillars already hold part of the
+    // position (they partition it; virtual portfolios overlap and always cap at
+    // 100%). Say how much is elsewhere, otherwise the slider just looks stuck.
+    final elsewhere = row.total - row.available;
+    final maxLabel = elsewhere > 1e-9 ? s.pillarMaxPercentElsewhere(maxPct.round(), qf.format(elsewhere)) : s.pillarMaxPercent(maxPct.round());
     final pf = NumberFormat.percentPattern(locale)..maximumFractionDigits = 1;
     final sliceValue = row.total <= 0 ? 0.0 : assetMarketValue * (row.current / row.total);
     return Padding(
@@ -103,13 +108,17 @@ class _AssetSliderRow extends StatelessWidget {
             // Units held and the slice value are position size (masked); the
             // "max N%" cap is a share of the holding, not its magnitude, so it
             // stays readable.
-            child: Row(
+            // Wrap, not Row: the max-label can carry the "units in other
+            // pillars" explanation and a fixed row overflowed on narrow cards,
+            // which hides the very text that was added to explain the cap.
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 PrivacyText(
                   '${s.pillarUnitsOf(qf.format(row.current), qf.format(row.total))} · ${amf.format(sliceValue)} $baseCurrency',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                Text(' · ${s.pillarMaxPercent(maxPct.round())}', style: Theme.of(context).textTheme.bodySmall),
+                Text(' · $maxLabel', style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
@@ -327,7 +336,10 @@ class _PerformanceRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: Text(label, style: style)),
-        if (maskedValue != null) PrivacyText(maskedValue!, style: style),
+        if (maskedValue != null)
+          Flexible(
+            child: PrivacyText(maskedValue!, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
         if (maskedValue != null && plainValue != null) Text(' · ', style: style),
         if (plainValue != null) Text(plainValue!, style: style),
       ],

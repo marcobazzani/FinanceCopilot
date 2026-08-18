@@ -47,12 +47,21 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
         current: q.current,
       );
     }
-    final ordered = out.keys.toList()
-      ..sort((aId, bId) {
-        final aV = marketValues[aId] ?? 0;
-        final bV = marketValues[bId] ?? 0;
-        return bV.compareTo(aV);
-      });
+    // Display order is decided when the screen OPENS and then kept stable.
+    //
+    // Two reasons it must not be recomputed from live values:
+    //  * it may never depend on `current`, which a slider mutates on every drag
+    //    frame — re-sorting mid-drag relocated the row (each carries a
+    //    ValueKey) out from under the user's finger;
+    //  * every commit re-runs this load via the `pillarAssetsProvider` listener,
+    //    so even a `current`-free sort would reshuffle the list the moment a
+    //    slider is released.
+    // Assets that appeared since the last load are appended, largest holding
+    // first, so a reload never reorders what is already on screen.
+    final known = _orderedAssetIds.where(out.containsKey).toList();
+    final fresh = out.keys.where((id) => !known.contains(id)).toList()
+      ..sort((aId, bId) => (marketValues[bId] ?? 0).compareTo(marketValues[aId] ?? 0));
+    final ordered = [...known, ...fresh];
     if (!mounted) return;
     setState(() {
       _rows = out;
@@ -145,11 +154,13 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
       }
       visibleRows.add(r);
     }
-    visibleRows.sort((a, b) {
-      final aValue = (marketValues[a.assetId] ?? 0) * (a.total <= 0 ? 0 : a.current / a.total);
-      final bValue = (marketValues[b.assetId] ?? 0) * (b.total <= 0 ? 0 : b.current / b.total);
-      return bValue.compareTo(aValue);
-    });
+    // Deliberately NOT sorted here. The rows used to be re-sorted on every
+    // build by their slice value, which is derived from `row.current` — the
+    // value a slider mutates continuously while being dragged. Re-sorting
+    // mid-drag moved the row (each has a ValueKey, so Flutter relocates the
+    // widget) out from under the user's finger and handed the rest of the
+    // gesture to a different asset. Order is decided once in `_load` and stays
+    // put; see the comment there.
 
     final fractions = _liveFractions();
     final livePerformance = allAsync.value == null

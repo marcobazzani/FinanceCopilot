@@ -238,7 +238,8 @@ class _PillarCard extends ConsumerWidget {
               const SizedBox(height: 4),
               // Progress toward the target is a percentage (shape); the target
               // amount itself is money and stays masked.
-              Row(
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text('${(progress! * 100).toStringAsFixed(0)}% · ', style: Theme.of(context).textTheme.bodySmall),
                   PrivacyText(s.pillarTarget(fmtCur.format(pillar.targetValue)), style: Theme.of(context).textTheme.bodySmall),
@@ -281,7 +282,10 @@ class _ValueAndCount extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    // Wrap so a long amount plus the asset count degrades to a second line
+    // instead of overflowing the ListTile subtitle.
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency'),
         Text(' · ${s.pillarAssetCount(assetCount)}'),

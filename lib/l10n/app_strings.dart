@@ -80,6 +80,11 @@ class AppStrings {
   String get pillarSearchAssets => _it ? 'Cerca asset…' : 'Search assets…';
   String pillarUnitsOf(String n, String total) => _it ? '$n di $total unità' : '$n of $total units';
   String pillarMaxPercent(int p) => _it ? 'max $p%' : 'max $p%';
+
+  /// Why the cap is below 100%: standard pillars partition a holding, so units
+  /// already assigned to another standard pillar are unavailable here. Without
+  /// naming the reason, a "max 97%" slider looks broken.
+  String pillarMaxPercentElsewhere(int p, String qty) => _it ? 'max $p% · $qty unità in altri pillar' : 'max $p% · $qty units in other pillars';
   String get pillarPickPillar => _it ? 'Scegli pilastro' : 'Pick pillar';
   String get pillarTabPillars => _it ? 'Pilastri' : 'Pillars';
   String get pillarTabPortfolioModels => _it ? 'Modelli' : 'Portfolio Models';
