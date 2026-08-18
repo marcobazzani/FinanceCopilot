@@ -141,6 +141,49 @@ void main() {
     expect(await PillarService(db).qtyFor(pillarId, big), 0, reason: 'BIG must not have been touched');
   });
 
+  testWidgets('opens ranked by slice in THIS pillar, not by holding size', (tester) async {
+    // The XEON case from the report: an asset held entirely by another standard
+    // pillar contributes 0 here, so it must sink to the bottom — even though it
+    // is by far the largest position overall. Ranking by holding size put it at
+    // the top of a pillar it contributes nothing to.
+    final big = await seedAsset(ticker: 'BIG', qty: 100);
+    final small = await seedAsset(ticker: 'SMALL', qty: 100);
+    final other = await PillarService(db).create(name: 'Elsewhere');
+    await PillarService(db).assign(pillarId: other, assetId: big, qty: 100);
+    final pillarId = await PillarService(db).create(name: 'Retirement');
+    await PillarService(db).assign(pillarId: pillarId, assetId: small, qty: 100);
+    final pillars = [(await PillarService(db).getById(pillarId))!, (await PillarService(db).getById(other))!];
+    final assets = await db.select(db.assets).get();
+
+    await tester.pumpWidget(
+      harness(pillarId: pillarId, marketValues: {big: 100000, small: 10000}, assets: assets, pillars: pillars),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      rowOrder(tester, ['BIG', 'SMALL']),
+      ['SMALL', 'BIG'],
+      reason: 'SMALL contributes 10000 to this pillar, BIG contributes nothing',
+    );
+  });
+
+  testWidgets('with nothing assigned yet, opens ranked by holding size', (tester) async {
+    // Every slice is 0 on a fresh pillar, so the tie-break decides — otherwise
+    // the list would open in whatever order the map happened to yield.
+    final big = await seedAsset(ticker: 'BIG', qty: 100);
+    final small = await seedAsset(ticker: 'SMALL', qty: 100);
+    final pillarId = await PillarService(db).create(name: 'Retirement');
+    final pillar = (await PillarService(db).getById(pillarId))!;
+    final assets = await db.select(db.assets).get();
+
+    await tester.pumpWidget(
+      harness(pillarId: pillarId, marketValues: {big: 100000, small: 10000}, assets: assets, pillars: [pillar]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(rowOrder(tester, ['BIG', 'SMALL']), ['BIG', 'SMALL']);
+  });
+
   testWidgets('a cap below 100% says how many units sit in other pillars', (tester) async {
     // Mirrors the real report: 129 units held, 3.87 assigned to another
     // standard pillar, so this pillar caps at 97%.

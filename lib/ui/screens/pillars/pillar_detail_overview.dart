@@ -47,20 +47,33 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
         current: q.current,
       );
     }
-    // Display order is decided when the screen OPENS and then kept stable.
+    // Display order is decided when the screen OPENS and then FROZEN.
     //
-    // Two reasons it must not be recomputed from live values:
-    //  * it may never depend on `current`, which a slider mutates on every drag
-    //    frame — re-sorting mid-drag relocated the row (each carries a
-    //    ValueKey) out from under the user's finger;
-    //  * every commit re-runs this load via the `pillarAssetsProvider` listener,
-    //    so even a `current`-free sort would reshuffle the list the moment a
-    //    slider is released.
-    // Assets that appeared since the last load are appended, largest holding
-    // first, so a reload never reorders what is already on screen.
+    // The ranking is what the screen is about: how much each asset contributes
+    // to THIS pillar, largest first. Total holding value only breaks ties, so a
+    // pillar with nothing assigned yet still opens in a sensible order — and an
+    // asset held entirely by other pillars sinks to the bottom instead of
+    // heading the list with a 0 slice.
+    //
+    // Frozen, because the slice is derived from `current`, which a slider
+    // mutates on every drag frame: re-ranking mid-drag relocated the row (each
+    // carries a ValueKey) out from under the user's finger and handed the rest
+    // of the gesture to another asset. Commits also re-run this load via the
+    // `pillarAssetsProvider` listener, so recomputing here would reshuffle the
+    // list the moment a slider is released. Assets already on screen keep their
+    // position; ones that appeared since are ranked and appended.
+    double sliceOf(int id) {
+      final r = out[id]!;
+      return (marketValues[id] ?? 0) * (r.total <= 0 ? 0 : r.current / r.total);
+    }
+
     final known = _orderedAssetIds.where(out.containsKey).toList();
     final fresh = out.keys.where((id) => !known.contains(id)).toList()
-      ..sort((aId, bId) => (marketValues[bId] ?? 0).compareTo(marketValues[aId] ?? 0));
+      ..sort((aId, bId) {
+        final bySlice = sliceOf(bId).compareTo(sliceOf(aId));
+        if (bySlice != 0) return bySlice;
+        return (marketValues[bId] ?? 0).compareTo(marketValues[aId] ?? 0);
+      });
     final ordered = [...known, ...fresh];
     if (!mounted) return;
     setState(() {
