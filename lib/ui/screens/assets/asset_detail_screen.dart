@@ -209,7 +209,11 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                                   ],
                                   if (ev.price != null) ...[
                                     const SizedBox(width: 8),
-                                    PrivacyText('@ ${ev.price!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                    // Execution price is public market data —
+                                    // identical for anyone who traded that day,
+                                    // so it stays readable. The quantity above
+                                    // is what reveals the position size.
+                                    Text('@ ${ev.price!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                   ],
                                 ],
                               ),

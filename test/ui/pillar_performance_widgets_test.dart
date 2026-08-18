@@ -81,7 +81,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Retirement'), findsOneWidget);
-    expect(find.textContaining('Abs 200.00 EUR (20.0%)'), findsOneWidget);
+    // The absolute return is rendered as two widgets, not one string: the
+    // amount is masked in privacy mode while the percentage stays readable, so
+    // they cannot share a Text. Assert the parts, not the concatenation.
+    expect(find.textContaining('Abs'), findsOneWidget);
+    // Two widgets legitimately show this amount (the pillar value and the
+    // absolute return), so match loosely here; the percentage below is unique.
+    expect(find.textContaining('200.00 EUR'), findsWidgets);
+    expect(find.textContaining('(20.0%)'), findsOneWidget);
     expect(find.textContaining('TWRR 18.0%'), findsOneWidget);
     expect(find.textContaining('CAGR 17.0%'), findsOneWidget);
     expect(find.text('Unassigned'), findsNothing);

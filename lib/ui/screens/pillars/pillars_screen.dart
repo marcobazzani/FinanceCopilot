@@ -231,26 +231,22 @@ class _PillarCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
+            _ValueAndCount(value: value, baseCurrency: baseCurrency, assetCount: assetCount, locale: locale, s: s),
             if (pillar.targetValue != null && pillar.targetValue! > 0) ...[
               const SizedBox(height: 6),
               LinearProgressIndicator(value: progress),
               const SizedBox(height: 4),
-              PrivacyText(
-                '${(progress! * 100).toStringAsFixed(0)}% · ${s.pillarTarget(fmtCur.format(pillar.targetValue))}',
-                style: Theme.of(context).textTheme.bodySmall,
+              // Progress toward the target is a percentage (shape); the target
+              // amount itself is money and stays masked.
+              Row(
+                children: [
+                  Text('${(progress! * 100).toStringAsFixed(0)}% · ', style: Theme.of(context).textTheme.bodySmall),
+                  PrivacyText(s.pillarTarget(fmtCur.format(pillar.targetValue)), style: Theme.of(context).textTheme.bodySmall),
+                ],
               ),
             ],
             const SizedBox(height: 4),
-            PrivacyText(
-              _pillarPerformanceSummary(
-                s: s,
-                locale: locale,
-                baseCurrency: baseCurrency,
-                snapshot: performance,
-              ),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            _PerformanceSummary(s: s, locale: locale, baseCurrency: baseCurrency, snapshot: performance),
           ],
         ),
         trailing: const Icon(Icons.chevron_right),
@@ -266,28 +262,80 @@ class _PillarCard extends ConsumerWidget {
   }
 }
 
-String _pillarPerformanceSummary({
-  required AppStrings s,
-  required String locale,
-  required String baseCurrency,
-  required PillarPerformanceSnapshot? snapshot,
-}) {
-  if (snapshot == null) {
-    return '${s.pillarAbsoluteReturnShort} — · ${s.pillarTwrrShort} — · ${s.pillarCagrShort} —';
+/// Pillar value plus how many assets it holds. The value is position size and
+/// is masked; the asset count is a count of entities and stays readable.
+class _ValueAndCount extends StatelessWidget {
+  final double value;
+  final String baseCurrency;
+  final int assetCount;
+  final String locale;
+  final AppStrings s;
+
+  const _ValueAndCount({
+    required this.value,
+    required this.baseCurrency,
+    required this.assetCount,
+    required this.locale,
+    required this.s,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency'),
+        Text(' · ${s.pillarAssetCount(assetCount)}'),
+      ],
+    );
   }
-  final amountFormat = fmt.amountFormat(locale);
-  final percentFormat = NumberFormat.percentPattern(locale)
-    ..minimumFractionDigits = 1
-    ..maximumFractionDigits = 1;
-  final absAmount = (snapshot.marketValue == 0 && snapshot.netInvested == 0)
-      ? '—'
-      : '${amountFormat.format(snapshot.absoluteReturnAmount)} $baseCurrency';
-  final absPct = snapshot.absoluteReturnPct == null ? '—' : percentFormat.format(snapshot.absoluteReturnPct);
-  final twrr = snapshot.twrr == null ? '—' : percentFormat.format(snapshot.twrr);
-  final cagr = snapshot.cagr == null ? '—' : percentFormat.format(snapshot.cagr);
-  return '${s.pillarAbsoluteReturnShort} $absAmount ($absPct) · '
-      '${s.pillarTwrrShort} $twrr · '
-      '${s.pillarCagrShort} $cagr';
+}
+
+/// Absolute return / TWRR / CAGR on one line. Only the return AMOUNT is masked;
+/// the three percentages are shape, and blurring them to protect one number hid
+/// exactly what privacy mode is supposed to keep visible.
+class _PerformanceSummary extends StatelessWidget {
+  final AppStrings s;
+  final String locale;
+  final String baseCurrency;
+  final PillarPerformanceSnapshot? snapshot;
+
+  const _PerformanceSummary({
+    required this.s,
+    required this.locale,
+    required this.baseCurrency,
+    required this.snapshot,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    final snap = snapshot;
+    if (snap == null) {
+      return Text('${s.pillarAbsoluteReturnShort} — · ${s.pillarTwrrShort} — · ${s.pillarCagrShort} —', style: style);
+    }
+    final percentFormat = NumberFormat.percentPattern(locale)
+      ..minimumFractionDigits = 1
+      ..maximumFractionDigits = 1;
+    final absAmount = (snap.marketValue == 0 && snap.netInvested == 0)
+        ? '—'
+        : '${fmt.amountFormat(locale).format(snap.absoluteReturnAmount)} $baseCurrency';
+    final absPct = snap.absoluteReturnPct == null ? '—' : percentFormat.format(snap.absoluteReturnPct);
+    final twrr = snap.twrr == null ? '—' : percentFormat.format(snap.twrr);
+    final cagr = snap.cagr == null ? '—' : percentFormat.format(snap.cagr);
+    return Row(
+      children: [
+        Text('${s.pillarAbsoluteReturnShort} ', style: style),
+        PrivacyText(absAmount, style: style),
+        Expanded(
+          child: Text(
+            ' ($absPct) · ${s.pillarTwrrShort} $twrr · ${s.pillarCagrShort} $cagr',
+            style: style,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _UnassignedCard extends ConsumerWidget {
@@ -309,7 +357,7 @@ class _UnassignedCard extends ConsumerWidget {
       child: ListTile(
         leading: const Icon(Icons.help_outline, size: 28),
         title: Text(s.pillarUnassigned),
-        subtitle: PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
+        subtitle: _ValueAndCount(value: value, baseCurrency: baseCurrency, assetCount: assetCount, locale: locale, s: s),
       ),
     );
   }

@@ -134,34 +134,38 @@ class _AssetTile extends StatelessWidget {
                   ),
                 if (stats != null && stats!.totalQuantity != 0) ...[
                   const SizedBox(height: 2),
-                  // Quantity reveals position size — blur the whole
-                  // price×quantity line in privacy mode.
-                  PrivacyBlur(
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          if (marketValue != null) ...[
-                            TextSpan(
-                              text: amtFormat.format(marketValue! / stats!.totalQuantity),
-                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
-                            ),
-                            if (asset.currency != baseCurrency)
-                              TextSpan(
-                                text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
-                                style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
-                              ),
-                            TextSpan(
-                              text: '  ×  ',
-                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
-                            ),
-                          ],
+                  // `price x quantity`: the unit price is public market data and
+                  // stays readable; only the quantity is masked, because with a
+                  // public price it is what reveals the size of the position.
+                  // Blurring the whole line (as this used to) hid the price too.
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (marketValue != null)
+                        Text.rich(
                           TextSpan(
-                            text: qtyFormat.format(stats!.totalQuantity),
-                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                            children: [
+                              TextSpan(
+                                text: amtFormat.format(marketValue! / stats!.totalQuantity),
+                                style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                              ),
+                              if (asset.currency != baseCurrency)
+                                TextSpan(
+                                  text: ' ${asset.currency}→${currencySymbol(baseCurrency)}',
+                                  style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400, fontSize: 10),
+                                ),
+                              TextSpan(
+                                text: '  ×  ',
+                                style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade400),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                      PrivacyText(
+                        qtyFormat.format(stats!.totalQuantity),
+                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
                       ),
-                    ),
+                    ],
                   ),
                 ],
                 if (!asset.isActive) ...[
@@ -236,13 +240,22 @@ class _AssetTile extends StatelessWidget {
     final isPositive = gain >= 0;
     final color = isPositive ? Colors.green : Colors.red;
     final arrow = isPositive ? '\u25B2' : '\u25BC'; // ▲ ▼
-    return PrivacyText(
-      '$arrow ${amtFormat.format(gain.abs())} (${pct.abs().toStringAsFixed(1)}%)',
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: color,
-        fontWeight: FontWeight.w600,
-        fontSize: 11,
-      ),
+    final style = theme.textTheme.labelSmall?.copyWith(
+      color: color,
+      fontWeight: FontWeight.w600,
+      fontSize: 11,
+    );
+    // The gain in currency is position size (masked); the direction arrow and
+    // the percentage describe shape and stay readable — the whole point of
+    // privacy mode is that you can still see you are up 12% without showing
+    // how much money that is.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$arrow ', style: style),
+        PrivacyText(amtFormat.format(gain.abs()), style: style),
+        Text(' (${pct.abs().toStringAsFixed(1)}%)', style: style),
+      ],
     );
   }
 
