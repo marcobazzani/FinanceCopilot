@@ -26,8 +26,21 @@ import 'helpers/test_app.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  /// True when [finder]'s widget sits inside a privacy blur.
-  bool isBlurred(Finder finder) => find.ancestor(of: finder, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
+  /// True when [finder]'s widget is rendered inside a privacy wrapper.
+  ///
+  /// Keyed on `PrivacyText`/`PrivacyBlur` rather than on `ImageFiltered`:
+  /// ImageFiltered is NOT exclusive to privacy mode. Android's overscroll
+  /// stretch installs a shader-based one, so a global
+  /// `find.byType(ImageFiltered)` assertion passed on macOS and failed on the
+  /// Android emulator, for a reason that had nothing to do with privacy.
+  bool insidePrivacyWrapper(Finder finder) =>
+      find.ancestor(of: finder, matching: find.byType(PrivacyBlur)).evaluate().isNotEmpty ||
+      find.ancestor(of: finder, matching: find.byType(PrivacyText)).evaluate().isNotEmpty;
+
+  /// How many blurs are actually installed BY a privacy wrapper.
+  int privacyBlurCount() =>
+      find.descendant(of: find.byType(PrivacyText), matching: find.byType(ImageFiltered)).evaluate().length +
+      find.descendant(of: find.byType(PrivacyBlur), matching: find.byType(ImageFiltered)).evaluate().length;
 
   testWidgets('privacy mode masks quantity and value but not the unit price', (tester) async {
     await pumpApp(
@@ -84,33 +97,35 @@ void main() {
 
     // The `×` separator lives on the unit-price line of the tile.
     final priceLine = find.textContaining('×');
-    debugPrint(
-      'DIAG priceLine=${priceLine.evaluate().length} '
-      'privacyTexts=${find.byType(PrivacyText).evaluate().length} '
-      'blurs=${find.byType(ImageFiltered).evaluate().length}',
-    );
     expect(priceLine, findsWidgets, reason: 'asset tile should render the price × quantity line');
 
-    // ── Privacy OFF: nothing is blurred ───────────────────────────────────
-    expect(find.byType(ImageFiltered), findsNothing, reason: 'nothing should be blurred before enabling privacy');
+    // ── Privacy OFF: no privacy wrapper is blurring ───────────────────────
+    expect(privacyBlurCount(), 0, reason: 'nothing should be masked before enabling privacy');
 
-    // ── Turn privacy on via the global toolbar action ─────────────────────
-    final toggle = find.byIcon(Icons.visibility_off).evaluate().isNotEmpty ? find.byIcon(Icons.visibility_off) : find.byIcon(Icons.visibility);
-    expect(toggle, findsWidgets, reason: 'privacy toggle should be in the global app bar');
-    await tester.tap(toggle.first);
+    // ── Turn privacy on the way the app exposes it ────────────────────────
+    // Wide layouts put the toggle straight in the app bar; phones collapse the
+    // global actions into an overflow PopupMenuButton, so tapping a bar icon
+    // finds nothing there. Privacy off renders Icons.visibility in both.
+    final barToggle = find.widgetWithIcon(IconButton, Icons.visibility);
+    if (barToggle.evaluate().isNotEmpty) {
+      await tester.tap(barToggle.first);
+    } else {
+      final overflow = find.byType(PopupMenuButton<String>);
+      expect(overflow, findsWidgets, reason: 'a phone layout should collapse the global actions into an overflow menu');
+      await tester.tap(overflow.first);
+      await longSettle(tester);
+      final item = find.byIcon(Icons.visibility);
+      expect(item, findsWidgets, reason: 'the overflow menu should offer the privacy toggle');
+      await tester.tap(item.first);
+    }
     await longSettle(tester);
 
-    // Something must be masked, otherwise the assertions below are vacuous.
-    expect(find.byType(ImageFiltered), findsWidgets, reason: 'privacy mode should blur the position figures');
-    expect(
-      find.descendant(of: find.byType(PrivacyText), matching: find.byType(ImageFiltered)),
-      findsWidgets,
-      reason: 'PrivacyText should be blurring in privacy mode',
-    );
+    // Something must be masked, otherwise the assertion below is vacuous.
+    expect(privacyBlurCount(), greaterThan(0), reason: 'privacy mode should mask the position figures');
 
     // ── The public half stays readable ────────────────────────────────────
     expect(
-      isBlurred(priceLine.first),
+      insidePrivacyWrapper(priceLine.first),
       isFalse,
       reason: 'the unit price is public market data and must stay readable in privacy mode',
     );
