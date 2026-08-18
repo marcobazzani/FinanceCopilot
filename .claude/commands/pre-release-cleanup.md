@@ -113,17 +113,24 @@ NEVER add `// removed` markers or backwards-compat shims.
 `grep -rEn -i "investing|yahoo|google\\.finance|<other provider names>" README* CHANGELOG* lib/ test/ integration_test/ tool/ .github/ ios/ android/ macos/ windows/ linux/ web/` — must return zero hits. Replace any with generic terms ("market data provider", "composition data"). Also check screenshots' alt text and OG metadata.
 
 ## Phase 10 — Privacy masking audit
-Privacy mode works by blurring whatever is wrapped in `PrivacyText` / `PrivacyBlur` (currently `lib/ui/widgets/privacy_text.dart`; find it by role if renamed), so the whole invariant lives at the call sites. BOTH directions are violations:
+Privacy mode blurs whatever is wrapped in `PrivacyText` / `PrivacyBlur` (currently `lib/ui/widgets/privacy_text.dart`; find it by role if renamed), so the whole invariant lives at the call sites — and it has TWO failure directions, one of which looks harmless on screen.
 
-1. **Every absolute money figure must be masked.** Balances, market values, cost basis, income/expense amounts, contributions, fees, projections — anywhere in `lib/ui/` that renders a currency amount must sit inside `PrivacyText`/`PrivacyBlur`. The easy-to-miss carriers: `TextSpan`/rich-text bodies, `SelectableText` (worse than a plain leak — the number is copyable), KPI/info dialogs, chart labels, axis and tooltip values, table cells, and any string that interpolates an amount together with other text.
-2. **Relative figures must stay readable.** Percentages, ratings, ratios, counts, dates and unit values (months, years) must NOT be wrapped. Blurring them defeats the purpose of the mode: the user wants to keep reading allocation and health while hiding the money.
+The mode hides **the size of the user's position**, not public market facts. Sort every number rendered in `lib/ui/` into three buckets:
+
+1. **Position size — must be MASKED.** Balances, market value, invested / cost basis, income, expenses, contributions, commissions paid, net worth, projections, adjustments — **and quantities of units or shares held**. A quantity has no currency symbol, which is exactly why it gets forgotten, but the unit price is public: `quantity` on its own tells the reader what the position is worth.
+2. **Public market data — must stay READABLE.** Unit price, the execution price of a trade, last close, 52-week range, per-unit change, TER, exchange rates. Identical for every user regardless of holding size, and precisely the analysis the mode is supposed to preserve. Masking these is a real finding, not a harmless extra.
+3. **Shape — must stay READABLE.** Percentages, allocation weights, ratios, ratings, savings rate, counts of entities, dates and durations. Composition, not magnitude.
+
+Deciding question for anything ambiguous: *would this number be identical for someone holding one share and someone holding a thousand?* Identical → market data, leave it. Scales with the holding → mask it.
 
 Method:
-- Enumerate the money formatters in use (`amountFormat`, `fmtAmt`, currency-symbol interpolation, …) across `lib/ui/` and prove every hit is wrapped.
-- Enumerate every `PrivacyText`/`PrivacyBlur` call site and prove none of them contains a percentage, rating or count.
-- Beware whole-subtree wrapping: blurring an entire `Card`/dialog to satisfy (1) is the usual way (2) gets broken.
+- Enumerate the money formatters in use (`amountFormat`, `fmtAmt`, currency-symbol interpolation, …) across `lib/ui/` and prove every hit is wrapped. Include the carriers that hide amounts inside other text: `TextSpan` / rich-text bodies, `SelectableText` (worse than a plain leak — the number is copyable), KPI and info dialogs, chart labels, axis and tooltip values, table cells.
+- Enumerate every place a **quantity** is rendered (`quantity`, `qty`, units/shares) and prove it is wrapped. This is the bucket that gets missed, because it carries no currency symbol.
+- Enumerate every `PrivacyText` / `PrivacyBlur` call site and prove none of them wraps bucket 2 or 3. Over-masking is a finding: report and unwrap.
+- Check products are not reconstructable: wherever a row, formula or tooltip renders `quantity x price = value`, the quantity and the value must be masked and the price left visible. Masking only the total lets the reader multiply it back.
+- Beware whole-subtree wrapping: blurring an entire `Card`, dialog or table to cover one amount is the usual way both directions break at once.
 
-Every fix needs a widget test that toggles the privacy provider and asserts, in the same test, that the amount is blurred AND the percentage is not — the "%" half of the rule regresses silently, because nothing looks broken when too much is blurred.
+Every fix needs a widget test that toggles the privacy provider and asserts, in the SAME test, that a bucket-1 figure is blurred AND a bucket-2 or bucket-3 figure is not. Nothing looks wrong on screen when too much is blurred, so a test that only checks the masking half will happily pass on an over-masked screen.
 
 ## Phase 11 — Bug hunt loop (until exhausted)
 Loop until a full pass yields no new findings:
