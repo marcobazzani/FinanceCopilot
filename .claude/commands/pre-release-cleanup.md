@@ -112,7 +112,20 @@ NEVER add `// removed` markers or backwards-compat shims.
 ## Phase 9 — External provider name leak check
 `grep -rEn -i "investing|yahoo|google\\.finance|<other provider names>" README* CHANGELOG* lib/ test/ integration_test/ tool/ .github/ ios/ android/ macos/ windows/ linux/ web/` — must return zero hits. Replace any with generic terms ("market data provider", "composition data"). Also check screenshots' alt text and OG metadata.
 
-## Phase 10 — Bug hunt loop (until exhausted)
+## Phase 10 — Privacy masking audit
+Privacy mode works by blurring whatever is wrapped in `PrivacyText` / `PrivacyBlur` (currently `lib/ui/widgets/privacy_text.dart`; find it by role if renamed), so the whole invariant lives at the call sites. BOTH directions are violations:
+
+1. **Every absolute money figure must be masked.** Balances, market values, cost basis, income/expense amounts, contributions, fees, projections — anywhere in `lib/ui/` that renders a currency amount must sit inside `PrivacyText`/`PrivacyBlur`. The easy-to-miss carriers: `TextSpan`/rich-text bodies, `SelectableText` (worse than a plain leak — the number is copyable), KPI/info dialogs, chart labels, axis and tooltip values, table cells, and any string that interpolates an amount together with other text.
+2. **Relative figures must stay readable.** Percentages, ratings, ratios, counts, dates and unit values (months, years) must NOT be wrapped. Blurring them defeats the purpose of the mode: the user wants to keep reading allocation and health while hiding the money.
+
+Method:
+- Enumerate the money formatters in use (`amountFormat`, `fmtAmt`, currency-symbol interpolation, …) across `lib/ui/` and prove every hit is wrapped.
+- Enumerate every `PrivacyText`/`PrivacyBlur` call site and prove none of them contains a percentage, rating or count.
+- Beware whole-subtree wrapping: blurring an entire `Card`/dialog to satisfy (1) is the usual way (2) gets broken.
+
+Every fix needs a widget test that toggles the privacy provider and asserts, in the same test, that the amount is blurred AND the percentage is not — the "%" half of the rule regresses silently, because nothing looks broken when too much is blurred.
+
+## Phase 11 — Bug hunt loop (until exhausted)
 Loop until a full pass yields no new findings:
 1. Re-read recent diffs from this session.
 2. Run analyzer + all four test suites; investigate every warning/info.
@@ -131,14 +144,14 @@ Loop until a full pass yields no new findings:
    b. Fix the code, NOT the test.
    c. Re-run all four suites — must be green.
 
-## Phase 11 — Overreach review
+## Phase 12 — Overreach review
 Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For every new file, abstraction, parameter, or class:
 - Is there a current call site that strictly needs it? If no → inline or revert.
 - Does it duplicate something Phase 2 missed? If yes → collapse.
 - Is it more complex than the simplest thing that works? If yes → simplify.
 "keep it simple", "fit my requests in the current app" — these are non-negotiable.
 
-## Phase 12 — Verify & report
+## Phase 13 — Verify & report
 - Run all four suites — must be green.
 - Compute LoC delta vs baseline.
 - Print a final report:
