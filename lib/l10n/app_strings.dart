@@ -403,6 +403,8 @@ class AppStrings {
   String get dashAssets => _it ? 'Attività' : 'Assets';
   String get dashPriceChanges => _it ? 'Variazioni prezzo' : 'Price Changes';
   String get dashNoPriceData => _it ? 'Nessun dato di prezzo disponibile' : 'No price data available';
+  String dashDefaultPeriodSet(String period) => _it ? 'Periodo predefinito impostato su $period' : 'Default period set to $period';
+  String get dashDefaultPeriodMarker => _it ? 'Periodo predefinito' : 'Default period';
   String get dashTotals => _it ? 'Totali' : 'Totals';
   String get dashCash => _it ? 'Liquidità' : 'Cash';
   String get dashSaving => _it ? 'Risparmi' : 'Saving';

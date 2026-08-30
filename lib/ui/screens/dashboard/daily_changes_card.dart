@@ -22,22 +22,38 @@ enum _SortCol { name, pct, valueDiff, marketValue }
 enum _SortDir { asc, desc, none }
 
 class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
-  static const _units = ['d', 'w', 'm', 'y', 'YTD', 'All'];
+  static const _units = ['d', 'w', 'm', 'y', 'WTD', 'MTD', 'YTD', 'All'];
+  // Units with no numeric multiplier: they anchor to the start of a calendar
+  // period (or a fixed epoch), so the number field is disabled for them.
+  static const _specialUnits = {'WTD', 'MTD', 'YTD', 'All'};
   late final TextEditingController _numberController;
   _SortCol _sortCol = _SortCol.name;
   _SortDir _sortDir = _SortDir.asc;
 
-  int get _number => ref.read(_priceChangeNumberProvider);
-  set _number(int v) => ref.read(_priceChangeNumberProvider.notifier).state = v;
-  String get _unit => ref.read(_priceChangeUnitProvider);
-  set _unit(String v) => ref.read(_priceChangeUnitProvider.notifier).state = v;
+  // Effective values: session override (this run) wins; else the persisted
+  // default from AppConfigs; else the built-in fallback. Validated against
+  // [_units] so a stale/unknown persisted unit can't select a missing chip.
+  int get _number => ref.read(_priceChangeNumberOverrideProvider) ?? ref.read(defaultPriceChangeNumberProvider).value ?? 1;
+  set _number(int v) => ref.read(_priceChangeNumberOverrideProvider.notifier).state = v;
+  String get _unit {
+    final override = ref.read(_priceChangeUnitOverrideProvider);
+    if (override != null) return override;
+    final persisted = ref.read(defaultPriceChangeUnitProvider).value;
+    return (persisted != null && _units.contains(persisted)) ? persisted : 'd';
+  }
+
+  set _unit(String v) => ref.read(_priceChangeUnitOverrideProvider.notifier).state = v;
+
+  /// The persisted default unit to mark with a pin, or null when unset/unknown.
+  String? get _markedUnit {
+    final persisted = ref.read(defaultPriceChangeUnitProvider).value;
+    return (persisted != null && _units.contains(persisted)) ? persisted : null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _numberController = TextEditingController(
-      text: ref.read(_priceChangeNumberProvider).toString(),
-    );
+    _numberController = TextEditingController(text: _number.toString());
   }
 
   @override
@@ -90,31 +106,38 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     return sorted;
   }
 
-  bool get _isSpecialUnit => _unit == 'YTD' || _unit == 'All';
+  bool get _isSpecialUnit => _specialUnits.contains(_unit);
 
-  DateTime _referenceDate(DateTime today) {
-    return switch (_unit) {
-      'd' => today.subtract(Duration(days: _number)),
-      'w' => today.subtract(Duration(days: _number * 7)),
-      'm' => DateTime(today.year, today.month - _number, today.day),
-      'y' => DateTime(today.year - _number, today.month, today.day),
-      'YTD' => DateTime(today.year, 1, 1),
-      'All' => DateTime(2000, 1, 1),
-      _ => today.subtract(const Duration(days: 1)),
-    };
-  }
+  DateTime _referenceDate(DateTime today) => priceChangeReferenceDate(
+    today: today,
+    unit: _unit,
+    number: _number,
+    firstDayOfWeekIndex: MaterialLocalizations.of(context).firstDayOfWeekIndex,
+  );
 
   @override
   Widget build(BuildContext context) {
-    // Watch providers to rebuild when period changes
-    ref.watch(_priceChangeNumberProvider);
-    ref.watch(_priceChangeUnitProvider);
+    // Watch overrides + persisted defaults so the card rebuilds when the period
+    // changes this session OR when a long-press persists a new default.
+    ref.watch(_priceChangeNumberOverrideProvider);
+    ref.watch(_priceChangeUnitOverrideProvider);
+    ref.watch(defaultPriceChangeUnitProvider);
+    // When the persisted default number resolves/changes and the user hasn't
+    // overridden it this session, reflect it in the spinner (after build, so we
+    // never mutate a controller mid-build). Special units keep the field empty.
+    ref.listen(defaultPriceChangeNumberProvider, (_, next) {
+      if (ref.read(_priceChangeNumberOverrideProvider) != null) return;
+      if (_specialUnits.contains(_unit)) return;
+      final text = (next.value ?? 1).toString();
+      if (_numberController.text != text) _numberController.text = text;
+    });
     final today = ref.watch(currentDateProvider);
     final s = ref.watch(appStringsProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate(today)));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
     final symbol = currencySymbol(widget.baseCurrency);
+    final markedUnit = _markedUnit;
 
     return Card(
       child: Padding(
@@ -186,22 +209,54 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                   ),
                   ..._units.map((u) {
                     final selected = u == _unit;
-                    return ChoiceChip(
-                      label: Text(u),
-                      selected: selected,
-                      onSelected: (_) => setState(() {
-                        _unit = u;
-                        if (_isSpecialUnit) {
-                          _numberController.text = '';
-                        } else if (_numberController.text.isEmpty) {
-                          _number = 1;
-                          _numberController.text = '1';
-                        }
-                      }),
-                      labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: EdgeInsets.zero,
+                    final isDefault = u == markedUnit;
+                    return GestureDetector(
+                      // Long-press persists this period as the default for next
+                      // launch (tap still just selects it for this session).
+                      onLongPress: () async {
+                        final number = _number;
+                        await savePriceChangePeriodDefault(ref.read(databaseProvider), unit: u, number: number);
+                        setState(() {
+                          _unit = u;
+                          if (_isSpecialUnit) {
+                            _numberController.text = '';
+                          } else if (_numberController.text.isEmpty) {
+                            _number = 1;
+                            _numberController.text = '1';
+                          }
+                        });
+                        if (!context.mounted) return;
+                        showInfoSnack(context, s.dashDefaultPeriodSet(u));
+                      },
+                      child: ChoiceChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(u),
+                            if (isDefault) ...[
+                              const SizedBox(width: 3),
+                              Semantics(
+                                label: s.dashDefaultPeriodMarker,
+                                child: Icon(Icons.push_pin, size: 9, color: theme.colorScheme.primary),
+                              ),
+                            ],
+                          ],
+                        ),
+                        selected: selected,
+                        onSelected: (_) => setState(() {
+                          _unit = u;
+                          if (_isSpecialUnit) {
+                            _numberController.text = '';
+                          } else if (_numberController.text.isEmpty) {
+                            _number = 1;
+                            _numberController.text = '1';
+                          }
+                        }),
+                        labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: EdgeInsets.zero,
+                      ),
                     );
                   }),
                 ];

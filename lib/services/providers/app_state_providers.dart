@@ -111,3 +111,37 @@ final fireSwrProvider = StreamProvider<double>((ref) {
     db.appConfigs,
   )..where((c) => c.key.equals('FIRE_SWR'))).watchSingleOrNull().map((row) => double.tryParse(row?.value ?? '') ?? kDefaultFireSwrPct);
 });
+
+// ── Price-change period default (persisted via long-press on the selector) ──
+
+/// AppConfigs keys for the user's preferred default price-change period.
+const kDefaultPriceChangeUnitKey = 'DEFAULT_PRICE_CHANGE_UNIT';
+const kDefaultPriceChangeNumberKey = 'DEFAULT_PRICE_CHANGE_NUMBER';
+
+/// Persisted default price-change unit ('d','w','m','y','WTD','MTD','YTD','All'),
+/// or null when the user has never set one. Reactive from AppConfigs. The
+/// dashboard card validates the value against its known units and falls back to
+/// 'd' for display; null here also means "show no default marker".
+final defaultPriceChangeUnitProvider = StreamProvider<String?>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(
+    db.appConfigs,
+  )..where((c) => c.key.equals(kDefaultPriceChangeUnitKey))).watchSingleOrNull().map((row) => row?.value);
+});
+
+/// Persisted default price-change multiplier, or null when unset or invalid
+/// (non-numeric / <= 0). Reactive from AppConfigs; the card falls back to 1.
+final defaultPriceChangeNumberProvider = StreamProvider<int?>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.appConfigs)..where((c) => c.key.equals(kDefaultPriceChangeNumberKey))).watchSingleOrNull().map((row) {
+    final v = int.tryParse(row?.value ?? '');
+    return (v == null || v <= 0) ? null : v;
+  });
+});
+
+/// Persist the price-change period the user long-pressed as the new default.
+/// Overwrites any existing default (key is the primary key, so no duplicates).
+Future<void> savePriceChangePeriodDefault(AppDatabase db, {required String unit, required int number}) async {
+  await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: kDefaultPriceChangeUnitKey, value: unit));
+  await db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: kDefaultPriceChangeNumberKey, value: number.toString()));
+}

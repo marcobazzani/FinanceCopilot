@@ -226,3 +226,43 @@ bool isEphemeralInflowSeriesKey(String key) => key.startsWith('ephemeral_inflow_
 
 bool isAdjustmentSeriesKey(String key) =>
     isOutflowAdjustmentSeriesKey(key) || isIncomeAdjustmentSeriesKey(key) || isEphemeralInflowSeriesKey(key);
+
+/// Reference ("compare-against") date for the price-change period selector.
+///
+/// Mirrors the chip semantics: the relative units (`d`, `w`, `m`, `y`) step
+/// back by [number]; the "to-date" units anchor to the start of the current
+/// week (`WTD`), month (`MTD`), or year (`YTD`); `All` reaches back to a fixed
+/// epoch. [firstDayOfWeekIndex] follows `MaterialLocalizations` (0 = Sunday …
+/// 6 = Saturday) so `WTD` honours the active locale's first day of week
+/// (Monday for it/de/fr/es/en_GB, Sunday for en_US).
+DateTime priceChangeReferenceDate({
+  required DateTime today,
+  required String unit,
+  required int number,
+  required int firstDayOfWeekIndex,
+}) {
+  switch (unit) {
+    case 'd':
+      return today.subtract(Duration(days: number));
+    case 'w':
+      return today.subtract(Duration(days: number * 7));
+    case 'm':
+      return DateTime(today.year, today.month - number, today.day);
+    case 'y':
+      return DateTime(today.year - number, today.month, today.day);
+    case 'WTD':
+      // Days elapsed since the locale's first day of week. DateTime.weekday is
+      // Mon=1..Sun=7; `% 7` maps it onto the Sun=0..Sat=6 scale used by
+      // MaterialLocalizations.firstDayOfWeekIndex.
+      final daysSinceWeekStart = (today.weekday % 7 - firstDayOfWeekIndex + 7) % 7;
+      return DateTime(today.year, today.month, today.day).subtract(Duration(days: daysSinceWeekStart));
+    case 'MTD':
+      return DateTime(today.year, today.month, 1);
+    case 'YTD':
+      return DateTime(today.year, 1, 1);
+    case 'All':
+      return DateTime(2000, 1, 1);
+    default:
+      return today.subtract(const Duration(days: 1));
+  }
+}

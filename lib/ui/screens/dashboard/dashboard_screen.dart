@@ -17,6 +17,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/asset_value_math.dart';
 import '../../../utils/chart_math.dart' as chart_math;
+import '../../../utils/dialogs.dart';
 import '../../../utils/formatters.dart' as fmt;
 
 import '../../../database/database.dart';
