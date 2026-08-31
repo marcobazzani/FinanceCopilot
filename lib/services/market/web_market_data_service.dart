@@ -1450,7 +1450,7 @@ class WebMarketDataService extends MarketPriceService {
 
     final url =
         '$kProviderApiBase/api/financialdata/historical/$cid'
-        '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
+        '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=true';
 
     _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
 
