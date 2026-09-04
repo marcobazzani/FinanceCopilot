@@ -230,8 +230,10 @@ bool isAdjustmentSeriesKey(String key) =>
 /// Reference ("compare-against") date for the price-change period selector.
 ///
 /// Mirrors the chip semantics: the relative units (`d`, `w`, `m`, `y`) step
-/// back by [number]; the "to-date" units anchor to the start of the current
-/// week (`WTD`), month (`MTD`), or year (`YTD`); `All` reaches back to a fixed
+/// back by [number]; the "to-date" units anchor to the last close BEFORE the
+/// start of the current week (`WTD`), month (`MTD`), or year (`YTD`) — the
+/// prior period's close — so the first day of a period compares against the
+/// previous period's end rather than itself; `All` reaches back to a fixed
 /// epoch. [firstDayOfWeekIndex] follows `MaterialLocalizations` (0 = Sunday …
 /// 6 = Saturday) so `WTD` honours the active locale's first day of week
 /// (Monday for it/de/fr/es/en_GB, Sunday for en_US).
@@ -255,11 +257,17 @@ DateTime priceChangeReferenceDate({
       // Mon=1..Sun=7; `% 7` maps it onto the Sun=0..Sat=6 scale used by
       // MaterialLocalizations.firstDayOfWeekIndex.
       final daysSinceWeekStart = (today.weekday % 7 - firstDayOfWeekIndex + 7) % 7;
-      return DateTime(today.year, today.month, today.day).subtract(Duration(days: daysSinceWeekStart));
+      // Anchor to the day BEFORE the week start so getPrice("on or before")
+      // resolves to the previous week's close (the week-start day itself read 0).
+      return DateTime(today.year, today.month, today.day).subtract(Duration(days: daysSinceWeekStart + 1));
     case 'MTD':
-      return DateTime(today.year, today.month, 1);
+      // Day before the 1st = last day of the previous month, so the base is the
+      // previous month's close (anchoring to the 1st made day 1 of the month read 0).
+      return DateTime(today.year, today.month, 1).subtract(const Duration(days: 1));
     case 'YTD':
-      return DateTime(today.year, 1, 1);
+      // Dec 31 of the previous year, so the base is the prior year's close
+      // (anchoring to Jan 1 made the first trading day of the year read 0).
+      return DateTime(today.year, 1, 1).subtract(const Duration(days: 1));
     case 'All':
       return DateTime(2000, 1, 1);
     default:

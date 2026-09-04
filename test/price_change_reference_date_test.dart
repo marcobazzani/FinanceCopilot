@@ -43,10 +43,10 @@ void main() {
       );
     });
 
-    test('YTD anchors to Jan 1 (midnight)', () {
+    test('YTD anchors to the prior year-end (Dec 31 of previous year)', () {
       expect(
         priceChangeReferenceDate(today: wed, unit: 'YTD', number: 1, firstDayOfWeekIndex: 1),
-        DateTime(2024, 1, 1),
+        DateTime(2023, 12, 31),
       );
     });
 
@@ -66,58 +66,58 @@ void main() {
   });
 
   group('priceChangeReferenceDate — MTD', () {
-    test('anchors to the first of the current month (midnight)', () {
+    test('anchors to the prior month-end (last day of the previous month)', () {
       expect(
         priceChangeReferenceDate(today: wed, unit: 'MTD', number: 1, firstDayOfWeekIndex: 1),
-        DateTime(2024, 3, 1),
+        DateTime(2024, 2, 29), // Feb 2024 is a leap month
       );
     });
 
-    test('on the 1st, anchors to that same day (independent of week start)', () {
+    test('on the 1st, anchors to the prior month-end (not the same day)', () {
       final first = DateTime(2024, 3, 1, 9);
       expect(
         priceChangeReferenceDate(today: first, unit: 'MTD', number: 1, firstDayOfWeekIndex: 0),
-        DateTime(2024, 3, 1),
+        DateTime(2024, 2, 29),
       );
     });
   });
 
   group('priceChangeReferenceDate — WTD honours the locale first day of week', () {
-    test('Monday-start locale (index 1): Wednesday → that Monday', () {
+    test('Monday-start locale (index 1): Wednesday → day before that Monday', () {
       expect(
         priceChangeReferenceDate(today: wed, unit: 'WTD', number: 1, firstDayOfWeekIndex: 1),
-        DateTime(2024, 3, 11), // Monday
+        DateTime(2024, 3, 10), // Sunday before the week's Monday (prior week close)
       );
     });
 
-    test('Sunday-start locale (index 0): Wednesday → the preceding Sunday', () {
+    test('Sunday-start locale (index 0): Wednesday → day before that Sunday', () {
       expect(
         priceChangeReferenceDate(today: wed, unit: 'WTD', number: 1, firstDayOfWeekIndex: 0),
-        DateTime(2024, 3, 10), // Sunday
+        DateTime(2024, 3, 9), // Saturday before the week's Sunday (prior week close)
       );
     });
 
-    test('on a Sunday, Monday-start reaches back 6 days to that Monday', () {
+    test('on a Sunday, Monday-start reaches back to the day before that Monday', () {
       final sun = DateTime(2024, 3, 17, 8); // Sunday
       expect(
         priceChangeReferenceDate(today: sun, unit: 'WTD', number: 1, firstDayOfWeekIndex: 1),
-        DateTime(2024, 3, 11), // previous Monday
+        DateTime(2024, 3, 10), // day before that Monday (prior week close)
       );
     });
 
-    test('on a Sunday, Sunday-start anchors to that same day (midnight)', () {
+    test('on a Sunday, Sunday-start anchors to the day before (prior week close)', () {
       final sun = DateTime(2024, 3, 17, 8);
       expect(
         priceChangeReferenceDate(today: sun, unit: 'WTD', number: 1, firstDayOfWeekIndex: 0),
-        DateTime(2024, 3, 17),
+        DateTime(2024, 3, 16),
       );
     });
 
-    test('on the week-start day itself, returns that day at midnight', () {
+    test('on the week-start day itself, returns the day before (prior week close)', () {
       final mon = DateTime(2024, 3, 11, 15); // Monday
       expect(
         priceChangeReferenceDate(today: mon, unit: 'WTD', number: 1, firstDayOfWeekIndex: 1),
-        DateTime(2024, 3, 11),
+        DateTime(2024, 3, 10),
       );
     });
   });
