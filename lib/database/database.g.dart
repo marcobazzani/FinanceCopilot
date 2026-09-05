@@ -4219,6 +4219,17 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _exchangeRateBaseMeta = const VerificationMeta(
+    'exchangeRateBase',
+  );
+  @override
+  late final GeneratedColumn<String> exchangeRateBase = GeneratedColumn<String>(
+    'exchange_rate_base',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _commissionMeta = const VerificationMeta(
     'commission',
   );
@@ -4305,6 +4316,7 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
     amount,
     currency,
     exchangeRate,
+    exchangeRateBase,
     commission,
     taxWithheld,
     source,
@@ -4384,6 +4396,15 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
         exchangeRate.isAcceptableOrUnknown(
           data['exchange_rate']!,
           _exchangeRateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('exchange_rate_base')) {
+      context.handle(
+        _exchangeRateBaseMeta,
+        exchangeRateBase.isAcceptableOrUnknown(
+          data['exchange_rate_base']!,
+          _exchangeRateBaseMeta,
         ),
       );
     }
@@ -4486,6 +4507,10 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
         DriftSqlType.double,
         data['${effectivePrefix}exchange_rate'],
       ),
+      exchangeRateBase: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}exchange_rate_base'],
+      ),
       commission: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}commission'],
@@ -4536,6 +4561,22 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
   final double amount;
   final String currency;
   final double? exchangeRate;
+
+  /// The base currency [exchangeRate] was quoted against.
+  ///
+  /// [exchangeRate] expresses "units of [currency] per one base currency"
+  /// (consumers divide by it to reach base), so its meaning depends entirely
+  /// on WHICH base currency was configured when it was stored. Without this
+  /// column a rate resolved against a EUR base would be silently reused
+  /// after the user switches to a GBP base, producing a wrong conversion.
+  ///
+  /// NULL means "quoted against the currently-configured base" — the state
+  /// of every row written before this column existed, and of rows written
+  /// while the base has never changed. On a base-currency change, rows with
+  /// a rate are stamped with the OUTGOING base (see
+  /// `AssetEventService.stampExchangeRateBase`) so they are preserved but no
+  /// longer trusted for the new base.
+  final String? exchangeRateBase;
   final double? commission;
   final double? taxWithheld;
   final String? source;
@@ -4554,6 +4595,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     required this.amount,
     required this.currency,
     this.exchangeRate,
+    this.exchangeRateBase,
     this.commission,
     this.taxWithheld,
     this.source,
@@ -4584,6 +4626,9 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     map['currency'] = Variable<String>(currency);
     if (!nullToAbsent || exchangeRate != null) {
       map['exchange_rate'] = Variable<double>(exchangeRate);
+    }
+    if (!nullToAbsent || exchangeRateBase != null) {
+      map['exchange_rate_base'] = Variable<String>(exchangeRateBase);
     }
     if (!nullToAbsent || commission != null) {
       map['commission'] = Variable<double>(commission);
@@ -4619,6 +4664,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       amount: Value(amount),
       currency: Value(currency),
       exchangeRate: exchangeRate == null && nullToAbsent ? const Value.absent() : Value(exchangeRate),
+      exchangeRateBase: exchangeRateBase == null && nullToAbsent ? const Value.absent() : Value(exchangeRateBase),
       commission: commission == null && nullToAbsent ? const Value.absent() : Value(commission),
       taxWithheld: taxWithheld == null && nullToAbsent ? const Value.absent() : Value(taxWithheld),
       source: source == null && nullToAbsent ? const Value.absent() : Value(source),
@@ -4647,6 +4693,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       amount: serializer.fromJson<double>(json['amount']),
       currency: serializer.fromJson<String>(json['currency']),
       exchangeRate: serializer.fromJson<double?>(json['exchangeRate']),
+      exchangeRateBase: serializer.fromJson<String?>(json['exchangeRateBase']),
       commission: serializer.fromJson<double?>(json['commission']),
       taxWithheld: serializer.fromJson<double?>(json['taxWithheld']),
       source: serializer.fromJson<String?>(json['source']),
@@ -4672,6 +4719,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       'amount': serializer.toJson<double>(amount),
       'currency': serializer.toJson<String>(currency),
       'exchangeRate': serializer.toJson<double?>(exchangeRate),
+      'exchangeRateBase': serializer.toJson<String?>(exchangeRateBase),
       'commission': serializer.toJson<double?>(commission),
       'taxWithheld': serializer.toJson<double?>(taxWithheld),
       'source': serializer.toJson<String?>(source),
@@ -4693,6 +4741,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     double? amount,
     String? currency,
     Value<double?> exchangeRate = const Value.absent(),
+    Value<String?> exchangeRateBase = const Value.absent(),
     Value<double?> commission = const Value.absent(),
     Value<double?> taxWithheld = const Value.absent(),
     Value<String?> source = const Value.absent(),
@@ -4711,6 +4760,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     amount: amount ?? this.amount,
     currency: currency ?? this.currency,
     exchangeRate: exchangeRate.present ? exchangeRate.value : this.exchangeRate,
+    exchangeRateBase: exchangeRateBase.present ? exchangeRateBase.value : this.exchangeRateBase,
     commission: commission.present ? commission.value : this.commission,
     taxWithheld: taxWithheld.present ? taxWithheld.value : this.taxWithheld,
     source: source.present ? source.value : this.source,
@@ -4731,6 +4781,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       amount: data.amount.present ? data.amount.value : this.amount,
       currency: data.currency.present ? data.currency.value : this.currency,
       exchangeRate: data.exchangeRate.present ? data.exchangeRate.value : this.exchangeRate,
+      exchangeRateBase: data.exchangeRateBase.present ? data.exchangeRateBase.value : this.exchangeRateBase,
       commission: data.commission.present ? data.commission.value : this.commission,
       taxWithheld: data.taxWithheld.present ? data.taxWithheld.value : this.taxWithheld,
       source: data.source.present ? data.source.value : this.source,
@@ -4754,6 +4805,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
           ..write('amount: $amount, ')
           ..write('currency: $currency, ')
           ..write('exchangeRate: $exchangeRate, ')
+          ..write('exchangeRateBase: $exchangeRateBase, ')
           ..write('commission: $commission, ')
           ..write('taxWithheld: $taxWithheld, ')
           ..write('source: $source, ')
@@ -4777,6 +4829,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     amount,
     currency,
     exchangeRate,
+    exchangeRateBase,
     commission,
     taxWithheld,
     source,
@@ -4799,6 +4852,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
           other.amount == this.amount &&
           other.currency == this.currency &&
           other.exchangeRate == this.exchangeRate &&
+          other.exchangeRateBase == this.exchangeRateBase &&
           other.commission == this.commission &&
           other.taxWithheld == this.taxWithheld &&
           other.source == this.source &&
@@ -4819,6 +4873,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
   final Value<double> amount;
   final Value<String> currency;
   final Value<double?> exchangeRate;
+  final Value<String?> exchangeRateBase;
   final Value<double?> commission;
   final Value<double?> taxWithheld;
   final Value<String?> source;
@@ -4837,6 +4892,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     this.amount = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchangeRate = const Value.absent(),
+    this.exchangeRateBase = const Value.absent(),
     this.commission = const Value.absent(),
     this.taxWithheld = const Value.absent(),
     this.source = const Value.absent(),
@@ -4856,6 +4912,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     required double amount,
     this.currency = const Value.absent(),
     this.exchangeRate = const Value.absent(),
+    this.exchangeRateBase = const Value.absent(),
     this.commission = const Value.absent(),
     this.taxWithheld = const Value.absent(),
     this.source = const Value.absent(),
@@ -4879,6 +4936,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     Expression<double>? amount,
     Expression<String>? currency,
     Expression<double>? exchangeRate,
+    Expression<String>? exchangeRateBase,
     Expression<double>? commission,
     Expression<double>? taxWithheld,
     Expression<String>? source,
@@ -4898,6 +4956,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
       if (amount != null) 'amount': amount,
       if (currency != null) 'currency': currency,
       if (exchangeRate != null) 'exchange_rate': exchangeRate,
+      if (exchangeRateBase != null) 'exchange_rate_base': exchangeRateBase,
       if (commission != null) 'commission': commission,
       if (taxWithheld != null) 'tax_withheld': taxWithheld,
       if (source != null) 'source': source,
@@ -4919,6 +4978,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     Value<double>? amount,
     Value<String>? currency,
     Value<double?>? exchangeRate,
+    Value<String?>? exchangeRateBase,
     Value<double?>? commission,
     Value<double?>? taxWithheld,
     Value<String?>? source,
@@ -4938,6 +4998,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,
       exchangeRate: exchangeRate ?? this.exchangeRate,
+      exchangeRateBase: exchangeRateBase ?? this.exchangeRateBase,
       commission: commission ?? this.commission,
       taxWithheld: taxWithheld ?? this.taxWithheld,
       source: source ?? this.source,
@@ -4983,6 +5044,9 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     if (exchangeRate.present) {
       map['exchange_rate'] = Variable<double>(exchangeRate.value);
     }
+    if (exchangeRateBase.present) {
+      map['exchange_rate_base'] = Variable<String>(exchangeRateBase.value);
+    }
     if (commission.present) {
       map['commission'] = Variable<double>(commission.value);
     }
@@ -5020,6 +5084,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
           ..write('amount: $amount, ')
           ..write('currency: $currency, ')
           ..write('exchangeRate: $exchangeRate, ')
+          ..write('exchangeRateBase: $exchangeRateBase, ')
           ..write('commission: $commission, ')
           ..write('taxWithheld: $taxWithheld, ')
           ..write('source: $source, ')
@@ -17602,6 +17667,7 @@ typedef $$AssetEventsTableCreateCompanionBuilder =
       required double amount,
       Value<String> currency,
       Value<double?> exchangeRate,
+      Value<String?> exchangeRateBase,
       Value<double?> commission,
       Value<double?> taxWithheld,
       Value<String?> source,
@@ -17622,6 +17688,7 @@ typedef $$AssetEventsTableUpdateCompanionBuilder =
       Value<double> amount,
       Value<String> currency,
       Value<double?> exchangeRate,
+      Value<String?> exchangeRateBase,
       Value<double?> commission,
       Value<double?> taxWithheld,
       Value<String?> source,
@@ -17703,6 +17770,11 @@ class $$AssetEventsTableFilterComposer extends Composer<_$AppDatabase, $AssetEve
 
   ColumnFilters<double> get exchangeRate => $composableBuilder(
     column: $table.exchangeRate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get exchangeRateBase => $composableBuilder(
+    column: $table.exchangeRateBase,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17817,6 +17889,11 @@ class $$AssetEventsTableOrderingComposer extends Composer<_$AppDatabase, $AssetE
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get exchangeRateBase => $composableBuilder(
+    column: $table.exchangeRateBase,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get commission => $composableBuilder(
     column: $table.commission,
     builder: (column) => ColumnOrderings(column),
@@ -17904,6 +17981,11 @@ class $$AssetEventsTableAnnotationComposer extends Composer<_$AppDatabase, $Asse
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get exchangeRateBase => $composableBuilder(
+    column: $table.exchangeRateBase,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get commission => $composableBuilder(
     column: $table.commission,
     builder: (column) => column,
@@ -17988,6 +18070,7 @@ class $$AssetEventsTableTableManager
                 Value<double> amount = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<double?> exchangeRate = const Value.absent(),
+                Value<String?> exchangeRateBase = const Value.absent(),
                 Value<double?> commission = const Value.absent(),
                 Value<double?> taxWithheld = const Value.absent(),
                 Value<String?> source = const Value.absent(),
@@ -18006,6 +18089,7 @@ class $$AssetEventsTableTableManager
                 amount: amount,
                 currency: currency,
                 exchangeRate: exchangeRate,
+                exchangeRateBase: exchangeRateBase,
                 commission: commission,
                 taxWithheld: taxWithheld,
                 source: source,
@@ -18026,6 +18110,7 @@ class $$AssetEventsTableTableManager
                 required double amount,
                 Value<String> currency = const Value.absent(),
                 Value<double?> exchangeRate = const Value.absent(),
+                Value<String?> exchangeRateBase = const Value.absent(),
                 Value<double?> commission = const Value.absent(),
                 Value<double?> taxWithheld = const Value.absent(),
                 Value<String?> source = const Value.absent(),
@@ -18044,6 +18129,7 @@ class $$AssetEventsTableTableManager
                 amount: amount,
                 currency: currency,
                 exchangeRate: exchangeRate,
+                exchangeRateBase: exchangeRateBase,
                 commission: commission,
                 taxWithheld: taxWithheld,
                 source: source,

@@ -548,6 +548,10 @@ extension AssetImportFlow on ImportService {
             price: Value(effectivePrice),
             currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
             exchangeRate: Value(rate),
+            // An imported rate is quoted against the base currency this
+            // import ran under; stamp it so a later base change preserves it
+            // without reusing it for the new base.
+            exchangeRateBase: Value(rate == null ? null : baseCurrency),
             commission: Value(commission),
             notes: Value(descMapping != null ? _resolveMapping(descMapping, row) : null),
             rawMetadata: Value(jsonEncode(rawMetadata)),
@@ -609,74 +613,104 @@ extension AssetImportFlow on ImportService {
       (byAsset[c.assetId.value] ??= []).add(c);
     }
 
-    if (isSpot) {
-      // Spot import: scope wipe to the assets we just touched. In
-      // ISIN-grouped mode that's everything under this intermediary
-      // (existing behavior). In single-asset mode (`targetAssetId`)
-      // it's that one asset only — re-importing a pension statement
-      // must NOT wipe events on unrelated assets that happen to share
-      // the intermediary.
-      if (targetAssetId != null) {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id = ?',
-          variables: [Variable.withInt(targetAssetId)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: spot wipe targetAssetId $targetAssetId - deleted $totalDeleted events');
-      } else {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id IN '
-          '(SELECT id FROM assets WHERE intermediary_id = ?)',
-          variables: [Variable.withInt(intermediaryId)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
-      }
-    } else {
-      // Transaction import: date-based wipe-and-replace. Scope to the
-      // single asset in single-asset mode; otherwise to the
-      // intermediary's assets.
-      final globalOldest = companions.map((c) => c.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
-      final globalCutoff = DateTime(globalOldest.year, globalOldest.month, globalOldest.day);
-      final cutoffEpoch = globalCutoff.millisecondsSinceEpoch ~/ 1000;
-      if (targetAssetId != null) {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
-          variables: [Variable.withInt(targetAssetId), Variable.withInt(cutoffEpoch)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: targetAssetId $targetAssetId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
-      } else {
-        totalDeleted = await _db.customUpdate(
-          'DELETE FROM asset_events WHERE asset_id IN '
-          '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
-          variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch)],
-          updates: {_db.assetEvents},
-        );
-        _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff)}');
-      }
-    }
+    // Cutoff for the date-based (non-spot) wipe, hoisted so the mirrored
+    // pension-income wipe below can reuse the EXACT same boundary as the
+    // asset-events wipe — see the income-mirror comment for why this
+    // matters. Null for spot imports, which wipe unconditionally.
+    DateTime? globalCutoff;
+    int? cutoffEpoch;
 
-    _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
-    await _db.batch((batch) {
-      batch.insertAll(_db.assetEvents, companions);
-    });
+    // Delete the replaced range (asset events + their mirrored pension
+    // income rows) and insert every replacement row in ONE transaction.
+    // Without this, a bad row that fails a DB-level constraint at
+    // insert time could throw after a delete had already committed on
+    // its own, permanently wiping data the failed insert never replaced
+    // — the same class of bug fixed for transaction imports in
+    // ImportService.importTransactions.
+    await _db.transaction(() async {
+      if (isSpot) {
+        // Spot import: scope wipe to the assets we just touched. In
+        // ISIN-grouped mode that's everything under this intermediary
+        // (existing behavior). In single-asset mode (`targetAssetId`)
+        // it's that one asset only — re-importing a pension statement
+        // must NOT wipe events on unrelated assets that happen to share
+        // the intermediary.
+        if (targetAssetId != null) {
+          totalDeleted = await _db.customUpdate(
+            'DELETE FROM asset_events WHERE asset_id = ?',
+            variables: [Variable.withInt(targetAssetId)],
+            updates: {_db.assetEvents},
+          );
+          _log.info('importAssetEventsGrouped: spot wipe targetAssetId $targetAssetId - deleted $totalDeleted events');
+        } else {
+          totalDeleted = await _db.customUpdate(
+            'DELETE FROM asset_events WHERE asset_id IN '
+            '(SELECT id FROM assets WHERE intermediary_id = ?)',
+            variables: [Variable.withInt(intermediaryId)],
+            updates: {_db.assetEvents},
+          );
+          _log.info('importAssetEventsGrouped: spot wipe intermediary $intermediaryId - deleted $totalDeleted events');
+        }
+      } else {
+        // Transaction import: date-based wipe-and-replace. Scope to the
+        // single asset in single-asset mode; otherwise to the
+        // intermediary's assets.
+        final globalOldest = companions.map((c) => c.date.value).reduce((a, b) => a.isBefore(b) ? a : b);
+        globalCutoff = DateTime(globalOldest.year, globalOldest.month, globalOldest.day);
+        cutoffEpoch = globalCutoff!.millisecondsSinceEpoch ~/ 1000;
+        if (targetAssetId != null) {
+          totalDeleted = await _db.customUpdate(
+            'DELETE FROM asset_events WHERE asset_id = ? AND date >= ?',
+            variables: [Variable.withInt(targetAssetId), Variable.withInt(cutoffEpoch!)],
+            updates: {_db.assetEvents},
+          );
+          _log.info('importAssetEventsGrouped: targetAssetId $targetAssetId - deleted $totalDeleted events from ${formatYmd(globalCutoff!)}');
+        } else {
+          totalDeleted = await _db.customUpdate(
+            'DELETE FROM asset_events WHERE asset_id IN '
+            '(SELECT id FROM assets WHERE intermediary_id = ?) AND date >= ?',
+            variables: [Variable.withInt(intermediaryId), Variable.withInt(cutoffEpoch!)],
+            updates: {_db.assetEvents},
+          );
+          _log.info('importAssetEventsGrouped: intermediary $intermediaryId - deleted $totalDeleted events from ${formatYmd(globalCutoff!)}');
+        }
+      }
 
-    // Mirror pension-contribution income rows. Wipe any prior rows
-    // attached to this asset (idempotent re-imports); then bulk-insert
-    // the new ones. Scoped by `(asset_id, type='pensionContribution')`
-    // so unrelated income entries on the same intermediary stay intact.
-    if (incomeCompanions.isNotEmpty && targetAssetId != null) {
-      final wiped = await _db.customUpdate(
-        "DELETE FROM incomes WHERE asset_id = ? AND type = 'pensionContribution'",
-        variables: [Variable.withInt(targetAssetId)],
-        updates: {_db.incomes},
-      );
+      _log.info('importAssetEventsGrouped: batch-inserting ${companions.length} events (deleted $totalDeleted old)');
       await _db.batch((batch) {
-        batch.insertAll(_db.incomes, incomeCompanions);
+        batch.insertAll(_db.assetEvents, companions);
       });
-      _log.info('importAssetEventsGrouped: pension-contribution income rows: wiped=$wiped, inserted=${incomeCompanions.length}');
-    }
+
+      // Mirror pension-contribution income rows. Wipe prior rows attached to
+      // this asset (idempotent re-imports) using the SAME cutoff as the
+      // asset-events wipe above, then bulk-insert the new ones. Scoped by
+      // `(asset_id, type='pensionContribution')` so unrelated income entries
+      // on the same intermediary stay intact.
+      //
+      // Using the same cutoff (rather than wiping unconditionally) matters
+      // for partial re-imports: importing March alone after Jan+Feb were
+      // already imported must delete only March's income mirror rows —
+      // wiping ALL of them here would erase Jan/Feb's contribution history
+      // from the income ledger even though their asset events (correctly
+      // scoped to the cutoff above) were left untouched.
+      if (incomeCompanions.isNotEmpty && targetAssetId != null) {
+        final wiped = cutoffEpoch == null
+            ? await _db.customUpdate(
+                "DELETE FROM incomes WHERE asset_id = ? AND type = 'pensionContribution'",
+                variables: [Variable.withInt(targetAssetId)],
+                updates: {_db.incomes},
+              )
+            : await _db.customUpdate(
+                "DELETE FROM incomes WHERE asset_id = ? AND type = 'pensionContribution' AND date >= ?",
+                variables: [Variable.withInt(targetAssetId), Variable.withInt(cutoffEpoch!)],
+                updates: {_db.incomes},
+              );
+        await _db.batch((batch) {
+          batch.insertAll(_db.incomes, incomeCompanions);
+        });
+        _log.info('importAssetEventsGrouped: pension-contribution income rows: wiped=$wiped, inserted=${incomeCompanions.length}');
+      }
+    });
 
     // Materialize revalue events into `market_prices` for every touched
     // asset. The batch insert above bypasses AssetEventService.create's
@@ -696,7 +730,10 @@ extension AssetImportFlow on ImportService {
       _log.info('importAssetEventsGrouped: resynced market_prices for ${assetIdsToResync.length} asset(s)');
     }
 
-    // Fill missing exchange rates from historical data
+    // Fill missing exchange rates from historical data. Strictly a FILL:
+    // rows that already carry a rate are left alone, because that value is
+    // user- or broker-supplied data (see the `exchangeRateBase` doc in
+    // `tables.dart`) and a derived rate must never overwrite it.
     if (rateService != null) {
       var filled = 0;
       for (final assetId in byAsset.keys) {
@@ -706,7 +743,9 @@ extension AssetImportFlow on ImportService {
         for (final ev in events) {
           final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
           if (rate != null) {
-            await (_db.update(_db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
+            await (_db.update(_db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+              AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+            );
             filled++;
           }
         }

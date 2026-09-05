@@ -221,9 +221,11 @@ void main() {
       // v46 dropped ValuationMethod.balance (assets converted to marketPrice).
       // v47 marked cancelled transactions from filtered import configs.
       // v48 added pillars.kind (standard vs virtual portfolios).
+      // v49 added asset_events.exchange_rate_base (which base currency a
+      // stored exchange_rate was quoted against).
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 48);
+      expect(version, 49);
     });
 
     test('dashboard_charts table is gone', () async {

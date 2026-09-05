@@ -188,6 +188,20 @@ extension _AppShellSettingsDialog on _AppShellState {
                 if (taxFormKey.currentState?.validate() != true) return;
                 final taxPct = fmt.parseFlexibleNumber(taxRateCtrl.text)!;
                 final taxFraction = (taxPct / 100).clamp(0.0, 1.0);
+                final currencyChanged = selectedCurrency != baseCurrency;
+                if (currencyChanged) {
+                  // Stored asset-event exchange rates are quoted against the
+                  // base currency in force when they were written, but carry
+                  // no record of which one. Stamp the OUTGOING base onto the
+                  // unattributed ones BEFORE the new base is persisted: the
+                  // rates (including ones the user typed or a broker file
+                  // supplied) are preserved, and consumers stop trusting them
+                  // for the new base instead of silently misapplying them.
+                  final stamped = await ref.read(assetEventServiceProvider).stampExchangeRateBase(baseCurrency);
+                  _log.info(
+                    'Base currency changing $baseCurrency -> $selectedCurrency: stamped $stamped exchange rate(s) as $baseCurrency-quoted',
+                  );
+                }
                 await db
                     .into(db.appConfigs)
                     .insertOnConflictUpdate(

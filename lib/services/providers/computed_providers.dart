@@ -51,12 +51,15 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
 
 /// Asset stats with totalInvested converted to base currency.
 ///
-/// Same semantic as [AssetStats.totalInvested] — weighted-average cost basis
+/// Same semantic as [AssetStats.totalInvested] — moving-average cost basis
 /// of currently-held shares — but computed in the user's base currency. For
 /// foreign-currency assets each buy is converted at its own historical FX
 /// rate (so a position bought when EUR/USD was very different from today
-/// keeps the contemporaneous cost), then the weighted-avg base-currency
-/// cost is multiplied by the remaining quantity.
+/// keeps the contemporaneous cost), then run through the same
+/// moving-average-cost pool as [AssetService._computeAssetStats]: a sell
+/// removes quantity at the pool's current average, and a full liquidation
+/// resets the pool so a later re-buy starts fresh instead of blending in a
+/// disposed lot's price.
 final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
@@ -83,17 +86,22 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
     }
   }
 
-  // Foreign-currency assets: convert each buy at its own FX rate, then
-  // apply the weighted-avg × remaining-qty formula in base currency.
+  // Foreign-currency assets: convert each buy at its own FX rate, then walk
+  // the events in chronological order through a moving-average-cost pool.
   if (foreignAssetIds.isNotEmpty) {
     final allEvents = await eventService.getByAssets(foreignAssetIds, through: waybackDate);
     for (final asset in assets) {
       final events = allEvents[asset.id];
       if (events == null || events.isEmpty) continue;
 
-      var buyAmountBase = 0.0;
-      var buyQty = 0.0;
-      var unresolved = false;
+      // getByAssets orders DESC by valueDate for display purposes; the
+      // moving-average pool below requires ascending chronological order
+      // (oldest first), with id as a same-day tiebreak.
+      final ordered = events.toList()
+        ..sort((a, b) {
+          final byDate = a.valueDate.compareTo(b.valueDate);
+          return byDate != 0 ? byDate : a.id.compareTo(b.id);
+        });
 
       // Convert one event amount from event.currency → baseCurrency, using
       // the same fallback ladder as before (stored rate → historical rate →
@@ -101,13 +109,24 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
       // total cannot be trusted, mark unresolved.
       Future<double?> convertToBase(double amount, AssetEvent ev) async {
         if (ev.currency == baseCurrency) return amount;
-        if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
+        // Only reuse a stored rate that was quoted against the CURRENT base
+        // (see AssetEventService.isExchangeRateUsableFor) — a rate belonging
+        // to a previous base is preserved data, not a usable conversion.
+        if (AssetEventService.isExchangeRateUsableFor(ev, baseCurrency)) {
           return amount / ev.exchangeRate!;
         }
         final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
         if (rate != null && rate > 0) {
-          if (waybackDate == null) {
-            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          // Only FILL a missing rate — never overwrite one that is already
+          // stored. A stored rate is user- or broker-supplied data (and after
+          // a base change, data quoted against the previous base); clobbering
+          // it with a derived value would destroy it just as surely as
+          // deleting it. Re-resolving is cheap: getRate is a local lookup in
+          // the exchange_rates table, no network.
+          if (waybackDate == null && ev.exchangeRate == null) {
+            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+              AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+            );
           }
           return amount / rate;
         }
@@ -115,15 +134,45 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
         return rateService.convertLive(amount, ev.currency, baseCurrency);
       }
 
-      for (final ev in events) {
-        if (ev.type != EventType.buy) continue;
-        final amtBase = await convertToBase(ev.amount.abs(), ev);
-        if (amtBase == null) {
-          unresolved = true;
-          break;
+      var poolCostBase = 0.0;
+      var poolQty = 0.0;
+      var cashOnlyCostBase = 0.0;
+      var unresolved = false;
+
+      for (final ev in ordered) {
+        if (ev.type != EventType.buy && ev.type != EventType.sell) continue;
+        final qty = (ev.quantity ?? 0).abs();
+        if (ev.type == EventType.buy) {
+          final amtBase = await convertToBase(ev.amount.abs(), ev);
+          if (amtBase == null) {
+            unresolved = true;
+            break;
+          }
+          if (qty > 0) {
+            poolCostBase += amtBase;
+            poolQty += qty;
+          } else {
+            // Cash-only contribution: no quantity to attach a unit cost to,
+            // so it is tracked separately and added to the result rather
+            // than dropped. Mirrors AssetService._computeAssetStats.
+            cashOnlyCostBase += amtBase;
+          }
+        } else {
+          // Sell: remove at the pool's CURRENT average cost — mirrors
+          // AssetService._computeAssetStats so a full liquidation resets
+          // the pool instead of blending a disposed lot into a re-opened
+          // position.
+          if (poolQty > 0 && qty > 0) {
+            final avg = poolCostBase / poolQty;
+            final removedQty = qty > poolQty ? poolQty : qty;
+            poolCostBase -= avg * removedQty;
+            poolQty -= removedQty;
+            if (poolQty <= 1e-9) {
+              poolCostBase = 0;
+              poolQty = 0;
+            }
+          }
         }
-        buyAmountBase += amtBase;
-        buyQty += (ev.quantity ?? 0).abs();
       }
 
       if (unresolved) {
@@ -132,16 +181,10 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
       }
 
       final remainingQty = stats[asset.id]?.totalQuantity ?? 0;
-      double invested;
-      if (buyQty <= 0) {
-        // Cash-only events (no per-share qty) — gross fallback in base.
-        invested = buyAmountBase;
-      } else if (remainingQty <= 0) {
-        invested = 0;
-      } else {
-        invested = (buyAmountBase / buyQty) * remainingQty;
-      }
-      result[asset.id] = invested;
+      // Same composition as AssetService._computeAssetStats: the per-share
+      // pool (zeroed once every share is sold) plus cash-only contributions,
+      // which share sales don't affect.
+      result[asset.id] = (remainingQty <= 0 ? 0.0 : poolCostBase) + cashOnlyCostBase;
     }
   }
   return result;
@@ -433,15 +476,21 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
   for (final ev in events) {
     if (ev.currency == baseCurrency) {
       result[ev.id] = ev.amount;
-    } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
-      // Stored rate is BASE/ASSET, so divide to get base currency amount
+    } else if (AssetEventService.isExchangeRateUsableFor(ev, baseCurrency)) {
+      // Stored rate is BASE/ASSET, so divide to get base currency amount.
+      // Only a rate quoted against the current base is usable — one stamped
+      // with a previous base is preserved data, not a conversion factor.
       result[ev.id] = ev.amount / ev.exchangeRate!;
     } else {
       final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
       if (rate != null && rate > 0) {
         result[ev.id] = ev.amount / rate;
-        if (waybackDate == null) {
-          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
+        // Fill only — never overwrite a stored (user/broker-supplied, or
+        // previous-base) rate with a derived one. See convertToBase above.
+        if (waybackDate == null && ev.exchangeRate == null) {
+          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+            AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+          );
         }
       } else {
         // Live fallback. Skip the event if no rate is available — the UI

@@ -281,51 +281,69 @@ class GoogleDriveSyncService {
   /// Explicit "Backup to Drive": uploads the local DB, overwriting any
   /// existing remote file. Used by the manual Backup-to-Drive button.
   /// Throws on auth/network errors.
+  ///
+  /// Uploads a `VACUUM INTO` snapshot (via [createSnapshot]) rather than
+  /// the live DB file: streaming the live file directly could capture a
+  /// torn copy mid-write (background price sync, an in-progress import,
+  /// etc.) — the upload "succeeds" but silently replaces a good remote
+  /// backup with an inconsistent one.
   Future<DriveFileInfo> backupToDrive() async {
     if (_driveApi == null) throw StateError('not_signed_in');
-    final localPath = await _localDbPath;
-    final file = File(localPath);
-    if (!file.existsSync()) throw StateError('local_db_missing');
-
-    final metadata = drive.File()
-      ..name = dbFileName
-      ..appProperties = {
-        'deviceId': _deviceId,
-        'deviceName': Platform.localHostname,
-      };
-
-    final existing = await getRemoteInfo();
-    final media = drive.Media(file.openRead(), file.lengthSync());
-    final drive.File uploaded;
-    if (existing != null) {
-      uploaded = await _driveApi!.files.update(
-        metadata,
-        existing.fileId,
-        uploadMedia: media,
-        $fields: 'id,modifiedTime,size,appProperties',
-      );
-      _log.info('backupToDrive: updated remote DB (${file.lengthSync()} bytes)');
-    } else {
-      metadata.parents = ['appDataFolder'];
-      uploaded = await _driveApi!.files.create(
-        metadata,
-        uploadMedia: media,
-        $fields: 'id,modifiedTime,size,appProperties',
-      );
-      _log.info('backupToDrive: created remote DB (${file.lengthSync()} bytes)');
+    final snapshot = createSnapshot;
+    if (snapshot == null) {
+      throw StateError('createSnapshot callback is not wired — cannot back up safely');
     }
+    final snapshotPath = await snapshot();
+    final file = File(snapshotPath);
+    try {
+      if (!file.existsSync()) throw StateError('snapshot_missing');
 
-    final info = DriveFileInfo(
-      fileId: uploaded.id!,
-      modifiedTime: uploaded.modifiedTime ?? DateTime.now().toUtc(),
-      size: int.tryParse(uploaded.size ?? '0') ?? file.lengthSync(),
-      deviceId: uploaded.appProperties?['deviceId'],
-      deviceName: uploaded.appProperties?['deviceName'],
-    );
-    // Track the actual remote modifiedTime, never local clock.
-    await AppSettings.set('lastSyncTime', info.modifiedTime.toIso8601String());
-    await AppSettings.set('syncDirty', 'false');
-    return info;
+      final metadata = drive.File()
+        ..name = dbFileName
+        ..appProperties = {
+          'deviceId': _deviceId,
+          'deviceName': Platform.localHostname,
+        };
+
+      final existing = await getRemoteInfo();
+      final media = drive.Media(file.openRead(), file.lengthSync());
+      final drive.File uploaded;
+      if (existing != null) {
+        uploaded = await _driveApi!.files.update(
+          metadata,
+          existing.fileId,
+          uploadMedia: media,
+          $fields: 'id,modifiedTime,size,appProperties',
+        );
+        _log.info('backupToDrive: updated remote DB (${file.lengthSync()} bytes)');
+      } else {
+        metadata.parents = ['appDataFolder'];
+        uploaded = await _driveApi!.files.create(
+          metadata,
+          uploadMedia: media,
+          $fields: 'id,modifiedTime,size,appProperties',
+        );
+        _log.info('backupToDrive: created remote DB (${file.lengthSync()} bytes)');
+      }
+
+      final info = DriveFileInfo(
+        fileId: uploaded.id!,
+        modifiedTime: uploaded.modifiedTime ?? DateTime.now().toUtc(),
+        size: int.tryParse(uploaded.size ?? '0') ?? file.lengthSync(),
+        deviceId: uploaded.appProperties?['deviceId'],
+        deviceName: uploaded.appProperties?['deviceName'],
+      );
+      // Track the actual remote modifiedTime, never local clock.
+      await AppSettings.set('lastSyncTime', info.modifiedTime.toIso8601String());
+      await AppSettings.set('syncDirty', 'false');
+      return info;
+    } finally {
+      try {
+        await file.delete();
+      } catch (e) {
+        _log.warning('backupToDrive: failed to delete snapshot tmp file (harmless): $e');
+      }
+    }
   }
 
   /// Explicit "Restore from Drive": downloads the remote DB and merges it
@@ -344,6 +362,14 @@ class GoogleDriveSyncService {
   }
 
   // ── Download ──────────────────────────────────────
+
+  /// Create a transactionally-consistent snapshot of the local DB at a
+  /// fresh temp path (via SQLite `VACUUM INTO`) and return that path. The
+  /// app shell wires this to `AppDatabase.snapshotToTempFile` — mirrors
+  /// [copyFromAttached] so this service doesn't need a direct database
+  /// dependency. Used by [backupToDrive] so the upload never reads the
+  /// live DB file directly.
+  Future<String> Function()? createSnapshot;
 
   /// Copy the contents of the downloaded tmp database into the currently open
   /// drift instance via `ATTACH DATABASE`. The app shell wires this up with

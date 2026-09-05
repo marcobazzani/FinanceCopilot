@@ -4,9 +4,9 @@ import 'dart:typed_data';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as xl;
 import 'package:flutter/foundation.dart' show compute;
-import 'package:intl/intl.dart';
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/services/import/import_service.dart' show FilePreview;
 import 'package:finance_copilot/services/import/pdf_exceptions.dart';
@@ -78,7 +78,10 @@ FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
 /// the import locale so that downstream `parseAmount` (locale-aware) can
 /// round-trip the value. Without this, a double like 7707.97 emitted as
 /// "7707.97" gets misparsed by it_IT's NumberFormat (which treats '.' as
-/// thousands separator) into 770797.
+/// thousands separator) into 770797. [amt.formatAmountLossless] preserves
+/// full precision — plain `NumberFormat.decimalPattern` rounds to 3
+/// fraction digits, silently truncating e.g. a small quantity or a
+/// high-precision FX rate.
 String _xlsCellToString(dynamic value, {String? numberLocale}) {
   double? doubleValue;
   if (value is xl.DoubleCellValue) {
@@ -92,7 +95,7 @@ String _xlsCellToString(dynamic value, {String? numberLocale}) {
   }
   if (doubleValue != null) {
     if (numberLocale != null) {
-      return NumberFormat.decimalPattern(numberLocale).format(doubleValue);
+      return amt.formatAmountLossless(doubleValue, locale: numberLocale);
     }
     return doubleValue.toString();
   }

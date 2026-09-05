@@ -948,8 +948,12 @@ class PortfolioRebalanceService {
   Future<double?> _eventAmountBase(AssetEvent event, String baseCurrency) async {
     final amount = event.amount.abs();
     if (event.currency == baseCurrency) return amount;
-    final stored = event.exchangeRate;
-    if (stored != null && stored > 0) return amount / stored;
+    // Only a rate quoted against the current base converts correctly; one
+    // stamped with a previous base is preserved data (see
+    // AssetEventService.isExchangeRateUsableFor).
+    if (AssetEventService.isExchangeRateUsableFor(event, baseCurrency)) {
+      return amount / event.exchangeRate!;
+    }
     final baseToEvent = await _rates.getRate(baseCurrency, event.currency, event.valueDate);
     if (baseToEvent != null && baseToEvent > 0) return amount / baseToEvent;
     final eventToBase = await _rates.getRate(event.currency, baseCurrency, event.valueDate);

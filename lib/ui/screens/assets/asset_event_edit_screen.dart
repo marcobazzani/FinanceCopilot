@@ -450,6 +450,10 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
           price: drift.Value(price),
           currency: drift.Value(_currency),
           exchangeRate: drift.Value(exchangeRate),
+          // The rate the user typed is quoted against the base currency
+          // shown next to the field. Stamp it so a later base-currency
+          // change keeps the value without reusing it for the new base.
+          exchangeRateBase: drift.Value(exchangeRate == null ? null : _baseCurrency),
           commission: drift.Value(commission),
           notes: drift.Value(_notesCtrl.text.isNotEmpty ? _notesCtrl.text : null),
         ),
@@ -468,6 +472,7 @@ class _AssetEventEditScreenState extends ConsumerState<AssetEventEditScreen> {
         price: price,
         currency: _currency,
         exchangeRate: exchangeRate,
+        exchangeRateBase: _baseCurrency,
         commission: commission,
         notes: _notesCtrl.text.isNotEmpty ? _notesCtrl.text : null,
       );

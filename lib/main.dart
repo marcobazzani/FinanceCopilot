@@ -338,6 +338,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   /// Backup/Restore-from-Drive operations.
   void _wireSyncCallbacks(GoogleDriveSyncService sync) {
     sync.copyFromAttached = (tmpPath) => ref.read(databaseProvider).mergeFromAttachedDb(tmpPath);
+    sync.createSnapshot = () => ref.read(databaseProvider).snapshotToTempFile();
     sync.onDbReplaced = () {
       if (mounted) {
         _log.info('DB replaced by sync, reloading...');

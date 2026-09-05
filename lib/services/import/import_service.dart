@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
-import 'package:intl/intl.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
@@ -245,24 +244,32 @@ class ImportService {
     return _formatAmount(result);
   }
 
-  /// Format a numeric result so it round-trips through `_parseAmount`. Plain
-  /// `toString()` always emits '.' as decimal — which it_IT (and other EU
-  /// locales) then re-parse as a thousands separator, multiplying the value.
-  String _formatAmount(double v) => NumberFormat.decimalPattern(_activeLocale).format(v);
+  /// Format a numeric result so it round-trips through `_parseAmount`,
+  /// without rounding away precision. See [amt.formatAmountLossless].
+  String _formatAmount(double v) => amt.formatAmountLossless(v, locale: _activeLocale);
 
   /// Re-parse the underlying file when the preview's `numberLocale` no
   /// longer matches `_activeLocale`. Only matters for XLSX (numeric cells
-  /// are formatted at parse time). CSV/clipboard text is locale-agnostic
-  /// at the row-string level, so it's a no-op there.
+  /// are formatted at parse time): a cell's stringified value depends on
+  /// which locale was active when it was parsed, so a locale change must
+  /// re-derive it. CSV/clipboard text is locale-agnostic at the row-string
+  /// level — those cells are the RAW text the user pasted or a bank
+  /// exported, already in whatever format the source used — so it's a
+  /// true no-op there. Re-interpreting a dot-decimal-shaped CSV/clipboard
+  /// value as if it were a serialized double would corrupt a genuine
+  /// thousands-separated number (e.g. it_IT "1.234" meaning 1234, not the
+  /// fraction 1.234).
   ///
-  /// If the source file is unavailable (e.g. integration tests that copy
-  /// to a tmp dir and delete it), fall back to re-formatting the in-memory
-  /// row strings: numeric-looking dot-decimal values get rewritten in the
-  /// active locale's format. CSV columns with text content are never
-  /// numeric-shaped so this is safe.
+  /// If an XLSX/XLS source file is unavailable (e.g. integration tests
+  /// that copy to a tmp dir and delete it), fall back to re-formatting the
+  /// in-memory row strings: numeric-looking dot-decimal values get
+  /// rewritten in the active locale's format. This fallback is only safe
+  /// for XLSX/XLS — never reached for CSV/clipboard, which return above.
   Future<FilePreview> _ensurePreviewLocale(FilePreview preview) async {
     if (preview.numberLocale == _activeLocale) return preview;
-    if (preview.filePath == null) return _reformatPreviewInPlace(preview);
+    // Clipboard (no filePath) and non-XLSX files (CSV/TSV/PDF) are
+    // locale-agnostic at the row-string level — nothing to re-derive.
+    if (preview.filePath == null) return preview;
     final ext = preview.filePath!.toLowerCase().split('.').last;
     if (ext != 'xlsx' && ext != 'xls') return preview;
     if (!await File(preview.filePath!).exists()) {
@@ -277,14 +284,16 @@ class ImportService {
   /// (e.g. "7707.97", "-42.5") so they round-trip through the active
   /// locale's parser. Invariant: only digits, optional sign, exactly one
   /// dot — that's the shape XLSX cells produce when no locale is given.
+  /// Only called for XLSX/XLS previews (see [_ensurePreviewLocale]) — CSV
+  /// and clipboard text never reach this method, so a genuine
+  /// thousands-separated CSV cell is never mistaken for a serialized double.
   static final _dotDecimal = RegExp(r'^-?\d+\.\d+$');
   FilePreview _reformatPreviewInPlace(FilePreview preview) {
-    final fmt = NumberFormat.decimalPattern(_activeLocale);
     final newRows = preview.rows.map((row) {
       final out = <String, String>{};
       row.forEach((k, v) {
         if (_dotDecimal.hasMatch(v)) {
-          out[k] = fmt.format(double.parse(v));
+          out[k] = amt.formatAmountLossless(double.parse(v), locale: _activeLocale);
         } else {
           out[k] = v;
         }
@@ -418,7 +427,6 @@ class ImportService {
             csvIndex: i,
           ),
         );
-        imported++;
       } catch (e, stack) {
         errorCount++;
         errors.add('Skipped line ${i + 1}: $e');
@@ -431,48 +439,105 @@ class ImportService {
       return ImportResult(totalRows: preview.totalRows, importedRows: 0, errorRows: errorCount, errors: errors);
     }
 
-    // Find the oldest date in the parsed rows
-    final oldestDate = parsedRows.map((r) => r.date).reduce((a, b) => a.isBefore(b) ? a : b);
+    // Pre-validate every parsed row against the DB's own column
+    // constraints (nullability, text length, etc.) BEFORE the destructive
+    // delete below. Some constraints — e.g. a mapped currency column that
+    // isn't exactly 3 characters — are only enforced by Drift at insert
+    // time, past the per-row parse step above. Without this pass, the
+    // delete could commit and the insert then fail, permanently wiping
+    // the account's prior transactions for the replaced range while
+    // inserting nothing to replace them. A row that fails here is skipped
+    // exactly like a parse error — good rows still import.
+    final validRows = <_ParsedTransactionRow>[];
+    final rejectedDates = <DateTime>[];
+    for (final r in parsedRows) {
+      final verification = _db.transactions.validateIntegrity(_buildTransactionCompanion(r, accountId), isInserting: true);
+      if (verification.dataValid) {
+        validRows.add(r);
+        continue;
+      }
+      errorCount++;
+      rejectedDates.add(r.date);
+      try {
+        verification.throwIfInvalid(r);
+      } on InvalidDataException catch (e) {
+        errors.add('Skipped line ${r.csvIndex + 1}: ${e.message}');
+        _log.warning('importTransactions: line ${r.csvIndex + 1} failed DB validation: ${e.message}');
+      }
+    }
+
+    if (validRows.isEmpty) {
+      return ImportResult(totalRows: preview.totalRows, importedRows: 0, errorRows: errorCount, errors: errors);
+    }
+
+    // Find the oldest date among the rows that will actually be inserted.
+    final oldestDate = validRows.map((r) => r.date).reduce((a, b) => a.isBefore(b) ? a : b);
     final cutoffEpoch = DateTime(oldestDate.year, oldestDate.month, oldestDate.day).millisecondsSinceEpoch ~/ 1000;
+
+    // A rejected row that falls INSIDE the replaced range is unreplaceable
+    // data loss waiting to happen: the delete below would remove the
+    // previously-stored copy of that transaction, and nothing would be
+    // inserted in its place. Wiping the range is only safe when the file is
+    // a complete record of it.
+    //
+    // Refuse the whole replacement in that case — touching nothing at all is
+    // the only outcome that cannot destroy a transaction the user still has.
+    // The errors already list the offending lines, so the user can fix the
+    // file and re-import. When the range holds no rows yet there is nothing
+    // to lose, so the good rows still import.
+    //
+    // Note this deliberately keys off DB-validation rejections only. Rows
+    // that fail the earlier PARSE step are tolerated as before: those are
+    // typically not transactions at all (footers, totals, blank lines), and
+    // treating them as missing data would refuse most real bank exports.
+    final rejectedInReplacedRange = rejectedDates.any(
+      (d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000 >= cutoffEpoch,
+    );
+    if (rejectedInReplacedRange) {
+      final existingInRange = await _countTransactionsFrom(accountId, cutoffEpoch);
+      if (existingInRange > 0) {
+        final msg =
+            'Aborted: ${rejectedDates.length} row(s) could not be stored, so replacing '
+            '${formatYmd(oldestDate)} onward would have deleted $existingInRange existing '
+            'transaction(s) without replacing them. Nothing was changed — fix the rows '
+            'listed above and re-import.';
+        errors.add(msg);
+        _log.severe('importTransactions: $msg');
+        return ImportResult(totalRows: preview.totalRows, importedRows: 0, errorRows: errorCount, errors: errors);
+      }
+    }
 
     // Seed cumulative balance from the true pre-cutoff sum so newly inserted
     // rows continue from the existing account balance instead of restarting at 0.
     final preCutoffBalance = await _preCutoffBalance(accountId, cutoffEpoch, balanceMode: balanceMode);
 
     // Compute balanceAfter
-    _computeBalances(parsedRows, balanceMode, balanceFilterInclude, preCutoffBalance);
+    _computeBalances(validRows, balanceMode, balanceFilterInclude, preCutoffBalance);
 
-    // Delete all DB rows for this account from oldest CSV date onward
-    final deleted = await _db.customUpdate(
-      'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?',
-      variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-      updates: {_db.transactions},
-    );
-    _log.info('importTransactions: deleted $deleted rows from ${formatYmd(oldestDate)} onward');
+    final companions = validRows.map((r) => _buildTransactionCompanion(r, accountId)).toList();
 
-    // Report parsing complete, starting DB write
-    onProgress?.call(preview.rows.length, preview.rows.length);
+    // Delete the replaced range and insert every replacement row in ONE
+    // transaction: every row was already validated above, so this batch
+    // is expected to succeed in full. If something still throws here
+    // (an unexpected DB-level error, not a bad row), the transaction
+    // rolls back the delete too rather than leaving the range wiped with
+    // nothing inserted — the exception propagates to the caller, which
+    // already surfaces import failures to the user.
+    var deleted = 0;
+    await _db.transaction(() async {
+      deleted = await _db.customUpdate(
+        'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?',
+        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+        updates: {_db.transactions},
+      );
+      _log.info('importTransactions: deleted $deleted rows from ${formatYmd(oldestDate)} onward');
 
-    // Batch insert all parsed rows
-    final companions = parsedRows
-        .map(
-          (r) => TransactionsCompanion.insert(
-            accountId: accountId,
-            operationDate: r.date,
-            valueDate: r.valueDate ?? r.date,
-            amount: r.amount,
-            description: Value(r.description),
-            balanceAfter: Value(r.balanceAfter),
-            currency: Value(r.currency),
-            status: r.status != null ? Value(r.status!) : const Value.absent(),
-            rawMetadata: Value(jsonEncode(r.rawMetadata)),
-          ),
-        )
-        .toList();
+      // Report parsing complete, starting DB write
+      onProgress?.call(preview.rows.length, preview.rows.length);
 
-    _log.info('importTransactions: batch-inserting ${companions.length} rows');
-    await _db.batch((batch) {
-      batch.insertAll(_db.transactions, companions);
+      _log.info('importTransactions: batch-inserting ${companions.length} rows');
+      await _db.batch((batch) => batch.insertAll(_db.transactions, companions));
+      imported += companions.length;
     });
 
     _log.info('importTransactions: done - imported=$imported, deleted=$deleted, errors=$errorCount');
@@ -482,6 +547,36 @@ class ImportService {
       deletedRows: deleted,
       errorRows: errorCount,
       errors: errors,
+    );
+  }
+
+  /// Count the account's existing transactions from [cutoffEpoch] onward —
+  /// i.e. exactly the rows a wipe-and-replace import is about to delete.
+  Future<int> _countTransactionsFrom(int accountId, int cutoffEpoch) async {
+    final row = await _db
+        .customSelect(
+          'SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ? AND operation_date >= ?',
+          variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+          readsFrom: {_db.transactions},
+        )
+        .getSingle();
+    return row.read<int>('cnt');
+  }
+
+  /// Build the `Transactions` companion for one parsed row. Shared by the
+  /// pre-insert validation pass and the final batch insert so both use
+  /// identical column mapping.
+  TransactionsCompanion _buildTransactionCompanion(_ParsedTransactionRow r, int accountId) {
+    return TransactionsCompanion.insert(
+      accountId: accountId,
+      operationDate: r.date,
+      valueDate: r.valueDate ?? r.date,
+      amount: r.amount,
+      description: Value(r.description),
+      balanceAfter: Value(r.balanceAfter),
+      currency: Value(r.currency),
+      status: r.status != null ? Value(r.status!) : const Value.absent(),
+      rawMetadata: Value(jsonEncode(r.rawMetadata)),
     );
   }
 

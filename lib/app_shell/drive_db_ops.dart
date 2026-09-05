@@ -48,7 +48,7 @@ extension _AppShellDriveDbOps on _AppShellState {
     );
     if (action == null || !context.mounted) return;
     if (action == 'export') {
-      final path = await DbTransferService.exportDb();
+      final path = await DbTransferService.exportDb(ref.read(databaseProvider));
       if (path != null && context.mounted) {
         showInfoSnack(context, s.settingsExportSuccess);
       }
@@ -183,7 +183,7 @@ extension _AppShellDriveDbOps on _AppShellState {
       );
       if (action == null) return;
       if (action == 'export') {
-        final exported = await DbTransferService.exportDb();
+        final exported = await DbTransferService.exportDb(db);
         if (exported == null) return; // cancelled
       }
     }
@@ -205,7 +205,7 @@ extension _AppShellDriveDbOps on _AppShellState {
     final s = ref.read(appStringsProvider);
 
     // Force export first
-    final exported = await DbTransferService.exportDb();
+    final exported = await DbTransferService.exportDb(ref.read(databaseProvider));
     if (exported == null) {
       // User cancelled the export — abort wipe
       if (context.mounted) {

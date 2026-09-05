@@ -391,17 +391,24 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         lastPrice = priceMap[dayKey]!;
       }
       if (!started) continue;
-      if (lastPrice != null && cumQuantity > 0) {
-        // Batch lookup; fall back to async resolver for EUR cross-rates.
-        // If neither yields a rate, skip the spot rather than plot a value
-        // computed with an implicit 1.0 FX rate.
-        final fxRate = lookupFx(asset.currency, dayKey) ?? await rates.getRate(asset.currency, dayKey);
-        if (fxRate == null) continue;
-        final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
-        final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
-        spots.add(FlSpot(x, cumQuantity * lastPrice / bondDiv * fxRate));
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
+      if (cumQuantity <= 0) {
+        // Position fully closed (bought then fully sold). This is an exact,
+        // known-zero value — independent of price/FX availability — so it
+        // must still be emitted. Without it, buildTotalSpots' carry-forward
+        // would keep plotting the last pre-sale market value forever.
+        spots.add(FlSpot(x, 0.0));
+        continue;
       }
+      if (lastPrice == null) continue;
+      // Batch lookup; fall back to async resolver for EUR cross-rates.
+      // If neither yields a rate, skip the spot rather than plot a value
+      // computed with an implicit 1.0 FX rate.
+      final fxRate = lookupFx(asset.currency, dayKey) ?? await rates.getRate(asset.currency, dayKey);
+      if (fxRate == null) continue;
+      final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+      spots.add(FlSpot(x, cumQuantity * lastPrice / bondDiv * fxRate));
     }
 
     // Use same color as invested counterpart

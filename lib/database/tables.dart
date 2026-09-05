@@ -254,6 +254,22 @@ class AssetEvents extends Table {
   RealColumn get amount => real()();
   TextColumn get currency => text().withLength(min: 3, max: 3).withDefault(const Constant('EUR'))();
   RealColumn get exchangeRate => real().nullable()();
+
+  /// The base currency [exchangeRate] was quoted against.
+  ///
+  /// [exchangeRate] expresses "units of [currency] per one base currency"
+  /// (consumers divide by it to reach base), so its meaning depends entirely
+  /// on WHICH base currency was configured when it was stored. Without this
+  /// column a rate resolved against a EUR base would be silently reused
+  /// after the user switches to a GBP base, producing a wrong conversion.
+  ///
+  /// NULL means "quoted against the currently-configured base" — the state
+  /// of every row written before this column existed, and of rows written
+  /// while the base has never changed. On a base-currency change, rows with
+  /// a rate are stamped with the OUTGOING base (see
+  /// `AssetEventService.stampExchangeRateBase`) so they are preserved but no
+  /// longer trusted for the new base.
+  TextColumn get exchangeRateBase => text().nullable()();
   RealColumn get commission => real().nullable()();
   RealColumn get taxWithheld => real().nullable()();
   TextColumn get source => text().nullable()();

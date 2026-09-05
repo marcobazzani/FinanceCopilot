@@ -159,56 +159,127 @@ class AssetService {
   // first/last date use value_date per CLAUDE.md (canonical "money moved"
   // date for display). operation_date is only for import dedup.
   //
+  // total_invested is computed by walking each asset's events in
+  // chronological order and maintaining a running weighted-average cost
+  // pool (see [_computeAssetStats]) rather than a single all-time SQL
+  // aggregate. A global aggregate (SUM(buy)/SUM(buyQty) × remainingQty)
+  // is only correct when the position never fully closes: once every share
+  // is sold, any later re-buy must start a fresh pool at its own price —
+  // blending it with the disposed lot's cost produces a phantom average
+  // (e.g. buy 1@100, sell it, buy 1@200 must show cost 200, not 150).
+
+  SimpleSelectStatement<$AssetEventsTable, AssetEvent> _statsEventsQuery({DateTime? through}) {
+    final query = _db.select(_db.assetEvents)
+      ..orderBy([
+        (e) => OrderingTerm.asc(e.valueDate),
+        (e) => OrderingTerm.asc(e.id),
+      ]);
+    final endExclusive = _throughEndExclusive(through);
+    if (endExclusive != null) {
+      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
+    }
+    return query;
+  }
+
+  static DateTime? _throughEndExclusive(DateTime? through) {
+    if (through == null) return null;
+    return DateTime(through.year, through.month, through.day).add(const Duration(days: 1));
+  }
+
+  /// Group already chronologically-sorted events by asset and reduce each
+  /// group to its [AssetStats] via [_computeAssetStats].
+  static Map<int, AssetStats> _computeStatsFromEvents(List<AssetEvent> events) {
+    final byAsset = <int, List<AssetEvent>>{};
+    for (final e in events) {
+      byAsset.putIfAbsent(e.assetId, () => []).add(e);
+    }
+    return {for (final entry in byAsset.entries) entry.key: _computeAssetStats(entry.value)};
+  }
+
+  /// Reduce one asset's events (already ordered by valueDate, then id) to
+  /// its aggregated [AssetStats].
+  ///
+  /// Cost basis walks the events in order, maintaining a running
+  /// weighted-average pool of (cost, quantity):
+  ///  - a buy with a per-share quantity adds its amount and quantity to the
+  ///    pool;
+  ///  - a sell removes quantity at the pool's CURRENT average cost (the
+  ///    weighted-average inventory method — a sell never changes the
+  ///    average cost of what remains, only the pool's size);
+  ///  - when the pool's quantity reaches zero the position is fully closed:
+  ///    cost resets to zero, so a later re-buy starts a brand-new pool
+  ///    instead of being blended with the disposed lot's price.
+  //
   // ABS(quantity): event.type encodes direction; the source row's sign on
   // quantity is irrelevant. Some broker exports (Directa, Fineco, IB-style)
-  // store sells with negative quantity. Without ABS, `-COALESCE(-199, 0)`
-  // adds +199 instead of subtracting 199. See issue #77.
+  // store sells with negative quantity. See issue #77.
   //
-  // total_invested is computed at the Dart layer (not in SQL) so that
-  // the weighted-average × remaining-qty cost basis can fall back to
-  // the gross buy sum when no per-share quantity is available — see
-  // [_rowToStats] for the branching. The SQL exposes the three raw
-  // aggregates needed for the calculation.
-  static String _statsSql({required bool bounded}) =>
-      'SELECT asset_id, COUNT(*) AS cnt, '
-      'MIN(value_date) AS first_date, MAX(value_date) AS last_date, '
-      "SUM(CASE WHEN type = 'buy' THEN ABS(amount) ELSE 0 END) AS total_buy_amount, "
-      "SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) ELSE 0 END) AS total_buy_qty, "
-      "SUM(CASE WHEN type = 'buy' THEN ABS(COALESCE(quantity, 0)) "
-      "         WHEN type = 'sell' THEN -ABS(COALESCE(quantity, 0)) "
-      '         ELSE 0 END) AS total_qty '
-      'FROM asset_events '
-      '${bounded ? 'WHERE value_date < ? ' : ''}'
-      'GROUP BY asset_id';
+  // Buys that carry NO per-share quantity (cash-only events — pension
+  // contribute via the A3 fallback, manual entries without qty) can't join a
+  // per-share pool: there is no quantity to attach a unit cost to. Their
+  // gross amount is tracked separately in [cashOnlyCost] and ADDED to the
+  // result, so an asset that mixes both shapes reports the full amount the
+  // user put in. Dropping it whenever some other buy happened to carry a
+  // quantity would silently understate invested capital (a 100 contribution
+  // followed by a 200 two-share buy must report 300, not 200).
+  static AssetStats _computeAssetStats(List<AssetEvent> events) {
+    var eventCount = 0;
+    DateTime? firstDate;
+    DateTime? lastDate;
 
-  static AssetStats _rowToStats(QueryRow row) {
-    final totalBuyAmount = row.read<double>('total_buy_amount');
-    final totalBuyQty = row.read<double>('total_buy_qty');
-    final remainingQty = row.read<double>('total_qty');
+    var poolCost = 0.0;
+    var poolQty = 0.0;
+    var cashOnlyCost = 0.0;
+    var remainingQty = 0.0;
 
-    // Weighted-average cost basis of the currently-held shares.
-    // Three branches, each with a distinct intuition:
-    //  - No per-share qty on any buy → cash-only event (pension contribute
-    //    via A3 fallback, manual entries without qty). Weighted-avg can't
-    //    be computed; report the gross buy sum, which matches the user's
-    //    expectation for those assets ("how much I deposited").
-    //  - Position is fully closed (remainingQty ≤ 0). No cost basis to
-    //    report — the unrealized P&L on a zero position is zero.
-    //  - Normal case: weighted-avg buy price × shares still held.
-    final double totalInvested;
-    if (totalBuyQty <= 0) {
-      totalInvested = totalBuyAmount;
-    } else if (remainingQty <= 0) {
-      totalInvested = 0;
-    } else {
-      final avgCost = totalBuyAmount / totalBuyQty;
-      totalInvested = avgCost * remainingQty;
+    for (final e in events) {
+      eventCount++;
+      if (firstDate == null || e.valueDate.isBefore(firstDate)) firstDate = e.valueDate;
+      if (lastDate == null || e.valueDate.isAfter(lastDate)) lastDate = e.valueDate;
+
+      if (e.type == EventType.buy) {
+        final qty = (e.quantity ?? 0).abs();
+        final amount = e.amount.abs();
+        remainingQty += qty;
+        if (qty > 0) {
+          poolCost += amount;
+          poolQty += qty;
+        } else {
+          cashOnlyCost += amount;
+        }
+      } else if (e.type == EventType.sell) {
+        final qty = (e.quantity ?? 0).abs();
+        remainingQty -= qty;
+        if (poolQty > 0 && qty > 0) {
+          final avgCost = poolCost / poolQty;
+          final removedQty = qty > poolQty ? poolQty : qty;
+          poolCost -= avgCost * removedQty;
+          poolQty -= removedQty;
+          // Clamp instead of letting floating-point remainders survive a
+          // full liquidation as a near-zero residue.
+          if (poolQty <= 1e-9) {
+            poolCost = 0;
+            poolQty = 0;
+          }
+        }
+      }
+      // Other event types (revalue) don't affect quantity or cost basis,
+      // but still count toward eventCount/first/lastDate above.
     }
 
+    // Cost basis of what is still held = the per-share pool (already reduced
+    // for every sell) plus any cash-only contributions. Selling every share
+    // zeroes the per-share side — the unrealized P&L on a closed position is
+    // zero — while cash-only contributions are unaffected by share sales and
+    // keep counting. A purely cash-only asset therefore reports its gross
+    // contributions, and a purely share-based one its pool, with no special
+    // casing needed for either.
+    final totalInvested = (remainingQty <= 0 ? 0.0 : poolCost) + cashOnlyCost;
+
     return AssetStats(
-      eventCount: row.read<int>('cnt'),
-      firstDate: row.readNullable<DateTime>('first_date'),
-      lastDate: row.readNullable<DateTime>('last_date'),
+      eventCount: eventCount,
+      firstDate: firstDate,
+      lastDate: lastDate,
       totalInvested: totalInvested,
       totalQuantity: remainingQty,
     );
@@ -216,37 +287,12 @@ class AssetService {
 
   /// Get aggregated stats for all assets from their events.
   Future<Map<int, AssetStats>> getStatsForAll({DateTime? through}) async {
-    final rows = await _db
-        .customSelect(
-          _statsSql(bounded: through != null),
-          variables: _throughVars(through),
-          readsFrom: {_db.assetEvents},
-        )
-        .get();
-    return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
+    final events = await _statsEventsQuery(through: through).get();
+    return _computeStatsFromEvents(events);
   }
 
   /// Stream of aggregated stats for all assets, updates on event changes.
   Stream<Map<int, AssetStats>> watchStatsForAll({DateTime? through}) {
-    return _db
-        .customSelect(
-          _statsSql(bounded: through != null),
-          variables: _throughVars(through),
-          readsFrom: {_db.assetEvents},
-        )
-        .watch()
-        .map((rows) {
-          return {for (final row in rows) row.read<int>('asset_id'): _rowToStats(row)};
-        });
-  }
-
-  static List<Variable<int>> _throughVars(DateTime? through) {
-    if (through == null) return const [];
-    final endExclusive = DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
-    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
+    return _statsEventsQuery(through: through).watch().map(_computeStatsFromEvents);
   }
 }

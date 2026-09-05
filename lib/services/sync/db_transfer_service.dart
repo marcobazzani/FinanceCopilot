@@ -18,31 +18,39 @@ class DbTransferService {
   }
 
   /// Export the internal DB to a user-chosen location.
+  ///
+  /// Exports a `VACUUM INTO` snapshot (see [AppDatabase.snapshotToTempFile])
+  /// rather than the live DB file: reading the live file directly could
+  /// capture a torn copy mid-write (background price sync, an in-progress
+  /// import, etc.), producing an export that looks fine but is silently
+  /// inconsistent. The snapshot's bytes are passed to [FilePicker.saveFile]
+  /// so this also works on Android/iOS, where the plugin performs the
+  /// actual write itself and requires `bytes` up front — a bare
+  /// `saveFile(...)` call without `bytes` throws on those platforms.
+  ///
   /// Returns the export path on success, null if cancelled.
-  static Future<String?> exportDb() async {
-    final path = await dbPath;
-    final file = File(path);
-    if (!await file.exists()) {
-      _log.warning('exportDb: DB file not found at $path');
-      return null;
-    }
-
-    final result = await FilePicker.saveFile(
-      dialogTitle: 'Export Database',
-      fileName: 'FinanceCopilot.db',
-      type: FileType.any,
-    );
-    if (result == null) return null;
-
+  static Future<String?> exportDb(AppDatabase db) async {
+    final snapshotPath = await db.snapshotToTempFile();
     try {
-      final target = File(result);
-      if (await target.exists()) await target.delete();
-      await file.copy(result);
+      final bytes = await File(snapshotPath).readAsBytes();
+      final result = await FilePicker.saveFile(
+        dialogTitle: 'Export Database',
+        fileName: 'FinanceCopilot.db',
+        type: FileType.any,
+        bytes: bytes,
+      );
+      if (result == null) return null;
       _log.info('exportDb: exported to $result');
       return result;
     } catch (e) {
-      _log.severe('exportDb: failed to copy: $e');
+      _log.severe('exportDb: failed to export: $e');
       rethrow;
+    } finally {
+      try {
+        await File(snapshotPath).delete();
+      } catch (e) {
+        _log.warning('exportDb: failed to delete snapshot tmp file (harmless): $e');
+      }
     }
   }
 

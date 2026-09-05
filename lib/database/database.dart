@@ -82,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 48;
+  int get schemaVersion => 49;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -755,6 +755,18 @@ class AppDatabase extends _$AppDatabase {
         }
         _log.info('Migration 48: added pillars.kind (default standard)');
       }
+      if (from < 49) {
+        // asset_events.exchange_rate is "units of event currency per one base
+        // currency", but carried no record of WHICH base it was quoted
+        // against — so switching base currency silently reused rates that
+        // belonged to the old base. Existing rows are left NULL, which reads
+        // as "quoted against the current base": correct, because a base
+        // change is exactly what stamps the outgoing base onto them.
+        if (!await _hasColumn('asset_events', 'exchange_rate_base')) {
+          await customStatement('ALTER TABLE asset_events ADD COLUMN exchange_rate_base TEXT NULL');
+        }
+        _log.info('Migration 49: added asset_events.exchange_rate_base');
+      }
     },
     beforeOpen: (details) async {
       await _purgeOrphanedTransactions();
@@ -1110,6 +1122,39 @@ class AppDatabase extends _$AppDatabase {
         _log.warning('mergeFromAttachedDb: DETACH failed (harmless): $e');
       }
     }
+  }
+
+  /// Create a transactionally-consistent, standalone snapshot of this
+  /// database at [destinationPath] using SQLite's `VACUUM INTO`.
+  ///
+  /// Unlike copying the live `.db` file byte-for-byte, this is safe to run
+  /// while other connections (background price sync, the app's own writes)
+  /// are reading/writing: SQLite guarantees the output is a complete,
+  /// self-consistent copy as of the moment the statement runs. A raw file
+  /// copy cannot make that guarantee for either journal mode — a commit
+  /// landing mid-copy can hand back a file whose pages span two different
+  /// database states, silently corrupting the exported/backed-up copy
+  /// while leaving the live database untouched.
+  ///
+  /// `VACUUM INTO` refuses to overwrite an existing file, so
+  /// [destinationPath] must not already exist; [snapshotToTempFile] picks
+  /// a fresh path for callers that don't need a specific destination.
+  Future<void> vacuumInto(String destinationPath) async {
+    final escaped = destinationPath.replaceAll("'", "''");
+    await customStatement("VACUUM INTO '$escaped'");
+  }
+
+  /// Snapshot this database (see [vacuumInto]) to a fresh file in the
+  /// system temp directory and return its path. Callers are responsible
+  /// for deleting the file once they're done with it (export/upload).
+  Future<String> snapshotToTempFile() async {
+    final dir = await getTemporaryDirectory();
+    final path = p.join(
+      dir.path,
+      'financecopilot_snapshot_${DateTime.now().microsecondsSinceEpoch}.db',
+    );
+    await vacuumInto(path);
+    return path;
   }
 }
 

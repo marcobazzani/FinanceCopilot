@@ -82,21 +82,39 @@ void main() {
     return r.assetsByIsin.values.single;
   }
 
-  /// Hand-summed stats helper. Each item is (qty, price). Buys and sells are
-  /// stored with positive qty; the SQL aggregates buy.qty − sell.qty, so the
-  /// sign comes from event.type. totalInvested is the weighted-average buy
-  /// price times remaining quantity — sells don't subtract their proceeds,
-  /// they reduce the qty whose cost we still track (cost-basis-after-sells
-  /// fix). Returns 0 for fully-closed positions.
-  ({double netQty, double totalInvested}) expected({
-    required List<(double qty, double price)> buys,
-    required List<(double qty, double price)> sells,
-  }) {
-    final buyQty = buys.fold<double>(0, (s, e) => s + e.$1);
-    final sellQty = sells.fold<double>(0, (s, e) => s + e.$1);
-    final buyAmount = buys.fold<double>(0, (s, e) => s + e.$1 * e.$2);
-    final netQty = buyQty - sellQty;
-    final invested = (buyQty <= 0 || netQty <= 0) ? 0.0 : (buyAmount / buyQty) * netQty;
+  /// Hand-summed stats helper. Mirrors the production moving-average-cost
+  /// algorithm ([AssetService._computeAssetStats]) as an independently
+  /// written cross-check: walk the SAME chronologically-ordered events and
+  /// maintain a running (cost, qty) pool. A sell removes quantity at the
+  /// pool's CURRENT average cost; once the pool's quantity reaches zero the
+  /// position is fully closed and the pool resets, so a later re-buy starts
+  /// a fresh average instead of blending in a disposed lot's price.
+  ({double netQty, double totalInvested}) expected(
+    List<(String type, double qty, double price)> events,
+  ) {
+    var poolCost = 0.0;
+    var poolQty = 0.0;
+    var netQty = 0.0;
+    for (final (type, qty, price) in events) {
+      if (type == 'buy') {
+        poolCost += qty * price;
+        poolQty += qty;
+        netQty += qty;
+      } else {
+        netQty -= qty;
+        if (poolQty > 0) {
+          final avg = poolCost / poolQty;
+          final removed = qty > poolQty ? poolQty : qty;
+          poolCost -= avg * removed;
+          poolQty -= removed;
+          if (poolQty <= 1e-9) {
+            poolCost = 0;
+            poolQty = 0;
+          }
+        }
+      }
+    }
+    final invested = netQty <= 0 ? 0.0 : poolCost;
     return (netQty: netQty, totalInvested: invested);
   }
 
@@ -111,14 +129,28 @@ void main() {
     // Running net qty: 100 → 40 → 120 → 0 → 40.
     // Mid-stream zero must NOT zero-out history; final net qty MUST be 40.
     //
-    // totalInvested now tracks the cost basis of the *currently held*
-    // shares (weighted-avg buy price × remaining qty), so each batch
-    // recomputes:
-    //   After B1: avg = 1000/100 = 10        → 10  × 100 = 1000.00
-    //   After B2: avg = 1000/100 = 10        → 10  × 40  =  400.00
-    //   After B3: avg = 1880/180 ≈ 10.4444   → ×120     ≈ 1253.33
-    //   After B4: net qty = 0                → 0
-    //   After B5: avg = 2440/220 ≈ 11.0909   → ×40      ≈  443.64
+    // totalInvested tracks the cost basis of the *currently held* shares via
+    // a moving-average-cost pool (see AssetService._computeAssetStats): a
+    // sell removes quantity at the pool's CURRENT average without changing
+    // the average of what remains; a later buy blends into whatever is
+    // LEFT in the pool, not into the lifetime total of everything ever
+    // bought. Each batch recomputes:
+    //   After B1: pool = 1000 / 100                      → cost 1000.00
+    //   After B2: sell 60 @ avg 10 → pool = 400 / 40      → cost  400.00
+    //   After B3: buy 80@11=880 → pool = (400+880) / 120  → cost 1280.00
+    //   After B4: sell 120 @ avg 10.667 → pool exactly 0  → cost    0.00
+    //   After B5: buy 40@14=560 → FRESH pool (post-reset) → cost  560.00
+    //
+    // NOTE ON A PRIOR (INCORRECT) EXPECTATION: this test previously asserted
+    // 1253.33 after B3 and 443.64 after B5, both computed as
+    // "lifetime-average buy price (ignoring how much was already sold) ×
+    // currently-held qty". That formula is wrong whenever a buy happens
+    // after a partial sell (B3) and is catastrophically wrong across a full
+    // liquidation (B5) — it blends the DISPOSED B1 lot's price back into a
+    // brand-new position that has nothing to do with it. The moving-average
+    // pool above is the standard cost-basis method (matches every other
+    // passing test in this suite, e.g. asset_service_cost_basis_after_sells_test.dart)
+    // and is what real brokerages report as "average cost".
 
     final assetId = await importBatch('b1.csv', '''
 2024-01-05,IE0000HOLDXX,buy,20,10.00,200.00
@@ -153,7 +185,11 @@ void main() {
 
     stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 120);
-    expect(stats.totalInvested, closeTo(1253.33, 0.01), reason: 'avg (1880/180) × 120 remaining');
+    expect(
+      stats.totalInvested,
+      closeTo(1280.0, 0.01),
+      reason: 'moving-average pool: (400 remaining-cost + 880 new buy) = 1280 for 120 shares',
+    );
     expect(stats.eventCount, 12);
 
     await importBatch('b4.csv', '''
@@ -177,39 +213,41 @@ void main() {
 2024-05-15,IE0000HOLDXX,buy,20,14.00,280.00
 ''');
 
-    // B5 re-opens the position. Weighted-avg uses the FULL buy history
-    // (B1+B3+B5), not just B5 — same convention retail brokerages use.
+    // B5 re-opens the position AFTER a full liquidation. The moving-average
+    // pool was reset to zero at the end of B4, so B5's cost basis is its
+    // OWN price only (2×20 @ 14 = 560) — it must NOT be diluted by blending
+    // in the B1/B3 lots that no longer exist.
     stats = (await assetService.getStatsForAll())[assetId]!;
     expect(stats.totalQuantity, 40, reason: 'B5 must add fresh shares without wiping any of B1..B4');
-    expect(stats.totalInvested, closeTo(443.636, 0.01), reason: 'avg (2440/220) × 40 — pure weighted-avg, no reset on re-open');
+    expect(
+      stats.totalInvested,
+      closeTo(560.0, 0.01),
+      reason: '40 shares @ 14/share — a fresh position after B4 fully closed, no blending with the disposed B1/B3 lots',
+    );
     expect(stats.eventCount, 20);
 
-    final hand = expected(
-      buys: const [
-        (20, 10),
-        (20, 10),
-        (20, 10),
-        (20, 10),
-        (20, 10),
-        (20, 11),
-        (20, 11),
-        (20, 11),
-        (20, 11),
-        (20, 14),
-        (20, 14),
-      ],
-      sells: const [
-        (20, 12),
-        (20, 12),
-        (20, 12),
-        (20, 13),
-        (20, 13),
-        (20, 13),
-        (20, 13),
-        (20, 13),
-        (20, 13),
-      ],
-    );
+    final hand = expected(const [
+      ('buy', 20, 10),
+      ('buy', 20, 10),
+      ('buy', 20, 10),
+      ('buy', 20, 10),
+      ('buy', 20, 10),
+      ('sell', 20, 12),
+      ('sell', 20, 12),
+      ('sell', 20, 12),
+      ('buy', 20, 11),
+      ('buy', 20, 11),
+      ('buy', 20, 11),
+      ('buy', 20, 11),
+      ('sell', 20, 13),
+      ('sell', 20, 13),
+      ('sell', 20, 13),
+      ('sell', 20, 13),
+      ('sell', 20, 13),
+      ('sell', 20, 13),
+      ('buy', 20, 14),
+      ('buy', 20, 14),
+    ]);
     expect(stats.totalQuantity, hand.netQty);
     expect(stats.totalInvested, closeTo(hand.totalInvested, 0.01));
 

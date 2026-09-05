@@ -60,6 +60,7 @@ class AssetEventService {
     double? price,
     required String currency,
     double? exchangeRate,
+    String? exchangeRateBase,
     double? commission,
     String? notes,
   }) async {
@@ -79,6 +80,10 @@ class AssetEventService {
             price: Value(price),
             currency: Value(currency),
             exchangeRate: Value(exchangeRate),
+            // Stamp which base the caller's rate was quoted against, so a
+            // later base change preserves it without reusing it. Only
+            // meaningful when a rate is actually supplied.
+            exchangeRateBase: Value(exchangeRate == null ? null : exchangeRateBase),
             commission: Value(commission),
             notes: Value(notes),
           ),
@@ -389,6 +394,52 @@ class AssetEventService {
         )
         .getSingleOrNull();
     return row?.readNullable<double>('amount');
+  }
+
+  /// Record which base currency every not-yet-stamped `exchangeRate` was
+  /// quoted against, so a base-currency change can no longer silently reuse
+  /// a rate that belonged to the OLD base.
+  ///
+  /// `exchangeRate` is "units of the event's currency per one base currency"
+  /// (consumers divide by it to reach base), so its meaning depends on the
+  /// configured base. The column is written from three places — a user typing
+  /// an execution rate in the event editor, an imported rate column, and the
+  /// `convertToBase` helpers caching a resolved rate — and NONE of those are
+  /// safe to reuse once the base changes.
+  ///
+  /// This is deliberately NOT a delete. A rate the user typed (or a broker
+  /// file supplied) is original data that no market lookup can reconstruct:
+  /// an execution rate differs from that day's reference rate, and switching
+  /// the base back would not bring it back. So instead of clearing the value,
+  /// [outgoingBase] is stamped onto every row that has a rate but no base
+  /// recorded yet. The rate is preserved; consumers simply stop trusting it
+  /// for the new base (see `exchangeRateBase` in `tables.dart`) and resolve a
+  /// fresh one, leaving the original visible in the event editor.
+  ///
+  /// Call this BEFORE persisting the new base currency, passing the base being
+  /// replaced. Returns the number of rows stamped.
+  Future<int> stampExchangeRateBase(String outgoingBase) {
+    _log.info('stampExchangeRateBase: base currency changing away from $outgoingBase, stamping unattributed rates');
+    return _db.customUpdate(
+      'UPDATE asset_events SET exchange_rate_base = ? '
+      'WHERE exchange_rate IS NOT NULL AND exchange_rate_base IS NULL',
+      variables: [Variable.withString(outgoingBase)],
+      updates: {_db.assetEvents},
+    );
+  }
+
+  /// Whether [event]'s stored `exchangeRate` can be used to convert into
+  /// [baseCurrency].
+  ///
+  /// A rate is usable when it is positive AND was quoted against the base we
+  /// are converting into. A NULL `exchangeRateBase` means "never stamped",
+  /// i.e. quoted against the current base — see `tables.dart`. A stamped rate
+  /// belonging to a different base is preserved data, not a usable rate.
+  static bool isExchangeRateUsableFor(AssetEvent event, String baseCurrency) {
+    final rate = event.exchangeRate;
+    if (rate == null || rate <= 0) return false;
+    final quotedAgainst = event.exchangeRateBase;
+    return quotedAgainst == null || quotedAgainst == baseCurrency;
   }
 
   static DateTime? _throughEndExclusive(DateTime? through) {
