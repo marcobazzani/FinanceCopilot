@@ -39,7 +39,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     _velocityWinCtl = TextEditingController(text: '$_velocityWindow');
 
     // Default zoom: last 365 days
-    final totalDays = ref.read(currentDateProvider).difference(widget.allData.firstDate).inDays.toDouble();
+    final totalDays = chart_math.calendarDaysBetween(widget.allData.firstDate, ref.read(currentDateProvider)).toDouble();
     final xMax = totalDays.clamp(0.0, double.infinity);
     final xMin365 = (xMax - 365).clamp(0.0, double.infinity);
     for (final id in [_idSaving, _idSpending, _idVelocity]) {

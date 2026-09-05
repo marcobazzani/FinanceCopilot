@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
 
+import 'package:finance_copilot/utils/chart_math.dart' as chart_math;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show AllSeriesData, buildTotalSpots;
 
 class PillarScopedHistory {
@@ -87,7 +88,7 @@ PillarScopedHistory buildPillarScopedHistory({
 
   final investedTotal = buildTotalSpots(scaledInvested.map(trim).toList());
   final marketTotal = buildTotalSpots(scaledMarket.map(trim).toList());
-  final inceptionDate = (investedTotal.isEmpty && marketTotal.isEmpty) ? null : allData.firstDate.add(Duration(days: shift.toInt()));
+  final inceptionDate = (investedTotal.isEmpty && marketTotal.isEmpty) ? null : chart_math.dateAddDays(allData.firstDate, shift.toInt());
 
   return PillarScopedHistory(
     inceptionDate: inceptionDate,
@@ -122,7 +123,7 @@ PillarPerformanceSnapshot computePillarPerformanceSnapshot({
       marketTotal: history.marketTotal,
       investedTotal: history.investedTotal,
     );
-    final days = normalizedAsOf.difference(history.inceptionDate!).inDays;
+    final days = chart_math.calendarDaysBetween(history.inceptionDate!, normalizedAsOf);
     if (twrr != null && days > 0 && (1 + twrr) > 0) {
       cagr = pow(1 + twrr, 365 / days).toDouble() - 1;
     }

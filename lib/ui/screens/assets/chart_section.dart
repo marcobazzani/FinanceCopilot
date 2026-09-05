@@ -34,6 +34,7 @@ class _AssetChartSection extends ConsumerWidget {
                 series: [data.priceSeries],
                 firstDate: data.firstDate,
                 currency: data.assetCurrency,
+                valueDecimals: 2,
               ),
           ],
         );
@@ -52,6 +53,7 @@ class _AssetChartCard extends ConsumerStatefulWidget {
   final List<ChartSeries> series;
   final DateTime firstDate;
   final String currency; // for axis labels
+  final int valueDecimals; // 0 for money magnitudes, 2 for unit price
 
   const _AssetChartCard({
     required this.title,
@@ -59,6 +61,7 @@ class _AssetChartCard extends ConsumerStatefulWidget {
     required this.series,
     required this.firstDate,
     required this.currency,
+    this.valueDecimals = 0,
   });
 
   @override
@@ -144,6 +147,7 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                             firstDate: widget.firstDate,
                             baseCurrency: widget.currency,
                             locale: locale,
+                            valueDecimals: widget.valueDecimals,
                             onZoom: _onZoom,
                             zoomedY: _zoomMinY != null || _zoomMaxY != null,
                             child: UnifiedChart(
@@ -159,6 +163,7 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                               zoomMinY: _zoomMinY,
                               zoomMaxY: _zoomMaxY,
                               isPrivate: isPrivate,
+                              valueDecimals: widget.valueDecimals,
                             ),
                           ),
                           if (hasZoom)

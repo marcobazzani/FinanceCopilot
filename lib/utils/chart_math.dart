@@ -99,3 +99,24 @@ List<FlSpot> computeDiff(List<FlSpot> a, List<FlSpot> b) {
       if (bMap.containsKey(sa.x)) FlSpot(sa.x, sa.y - bMap[sa.x]!),
   ];
 }
+
+// ════════════════════════════════════════════════════
+// DST-safe calendar-day arithmetic for chart X-axis mapping
+// ════════════════════════════════════════════════════
+// Chart X positions are "days since firstDate". Computing them with
+// `a.difference(b).inDays` truncates across a DST boundary — the elapsed
+// wall-clock time between two LOCAL midnights is N×24h ± 1h, so `.inDays`
+// rounds toward zero and every summer date is mislabelled by a day.
+// Normalizing to UTC (which has no DST) makes the day count exact and the
+// reverse map land on the correct calendar date.
+
+/// Whole calendar days from [from] to [to] (date-only, DST-safe).
+int calendarDaysBetween(DateTime from, DateTime to) =>
+    DateTime.utc(to.year, to.month, to.day).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
+
+/// The calendar date [days] after [from] (date-only, DST-safe), returned at
+/// local midnight for display/formatting.
+DateTime dateAddDays(DateTime from, int days) {
+  final u = DateTime.utc(from.year, from.month, from.day).add(Duration(days: days));
+  return DateTime(u.year, u.month, u.day);
+}

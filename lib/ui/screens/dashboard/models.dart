@@ -211,7 +211,7 @@ List<FlSpot> extendSingleSpotCarryForward(
 }) {
   if (spots.length != 1) return spots;
   final endDate = DateTime.fromMillisecondsSinceEpoch(endDayKey * 1000);
-  final endX = endDate.difference(firstDate).inDays.toDouble();
+  final endX = chart_math.calendarDaysBetween(firstDate, endDate).toDouble();
   if (endX <= spots.single.x) return spots;
   return [spots.single, FlSpot(endX, spots.single.y)];
 }

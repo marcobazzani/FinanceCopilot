@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:finance_copilot/utils/chart_math.dart' as chart_math;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show ChartSeries, allSeriesDataProvider;
 
 /// Chart data for a single asset: invested + market value, and raw price.
@@ -71,12 +72,12 @@ final singleAssetChartDataProvider = FutureProvider.family<SingleAssetChartData?
   List<FlSpot> shift(List<FlSpot> spots) => spots.map((s) => FlSpot(s.x - xOffset, s.y)).toList();
 
   // Asset-local firstDate (shifted by xOffset days from global firstDate)
-  final assetFirstDate = allData.firstDate.add(Duration(days: xOffset.toInt()));
+  final assetFirstDate = chart_math.dateAddDays(allData.firstDate, xOffset.toInt());
 
   // Build raw price series, also shifted
   final priceSpots = <FlSpot>[];
   for (final p in priceList) {
-    final x = p.key.difference(allData.firstDate).inDays.toDouble() - xOffset;
+    final x = chart_math.calendarDaysBetween(allData.firstDate, p.key).toDouble() - xOffset;
     if (x >= 0) priceSpots.add(FlSpot(x, p.value / bondDiv));
   }
 

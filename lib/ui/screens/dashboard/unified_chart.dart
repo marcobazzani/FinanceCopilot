@@ -199,6 +199,10 @@ class DragZoomWrapper extends StatefulWidget {
   final String baseCurrency;
   final String locale;
 
+  /// Decimal places for the drag-selection value label. Matches the wrapped
+  /// [UnifiedChart]'s valueDecimals (0 for money magnitudes, 2 for unit price).
+  final int valueDecimals;
+
   /// True when the parent has explicitly zoomed Y (rectangle zoom set
   /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
   /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
@@ -223,6 +227,7 @@ class DragZoomWrapper extends StatefulWidget {
     required this.firstDate,
     required this.baseCurrency,
     required this.locale,
+    this.valueDecimals = 0,
     required this.onZoom,
     this.rightReserved = 0,
     this.zoomedY = false,
@@ -420,7 +425,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
         final chartWidth = constraints.maxWidth - widget.leftReserved - widget.rightReserved;
         final chartHeight = constraints.maxHeight - widget.bottomReserved;
         final dateFmt = fmt.fullDateFormat(widget.locale);
-        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: 0);
+        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: widget.valueDecimals);
 
         return Listener(
           behavior: HitTestBehavior.translucent,
@@ -537,8 +542,8 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                               color: Colors.blue.withValues(alpha: 0.7),
                               child: Text(
-                                '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))} \u2013 '
-                                '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))}\n'
+                                '${dateFmt.format(chart_math.dateAddDays(widget.firstDate, _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt()))} \u2013 '
+                                '${dateFmt.format(chart_math.dateAddDays(widget.firstDate, _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt()))}\n'
                                 '${currFmt.format(_pixelToChartY(max(_dragStart!.dy, _dragCurrent!.dy), chartHeight))} \u2013 '
                                 '${currFmt.format(_pixelToChartY(min(_dragStart!.dy, _dragCurrent!.dy), chartHeight))}',
                                 style: const TextStyle(color: Colors.white, fontSize: 10),
@@ -577,6 +582,11 @@ class UnifiedChart extends StatelessWidget {
   final double? zoomMaxY;
   final bool isPrivate;
 
+  /// Decimal places for value formatting (Y-axis labels + tooltip). 0 suits
+  /// money magnitudes (net worth in the thousands); 2 is needed for a
+  /// unit-price series so e.g. 108.57 is not rounded to "109".
+  final int valueDecimals;
+
   /// True for the immersive full-screen view, where zoom updates fire at
   /// pointer-frequency and the 150ms LineChart tween becomes the
   /// bottleneck. Skipping the tween makes pinch feel native.
@@ -596,6 +606,7 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMinY,
     this.zoomMaxY,
     this.isPrivate = false,
+    this.valueDecimals = 0,
     this.liveZoom = false,
   });
 
@@ -610,7 +621,7 @@ class UnifiedChart extends StatelessWidget {
     final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
     final dateFmt = fmt.monthYearFormat(language);
     final fullFmt = fmt.fullDateFormat(language);
-    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: valueDecimals);
 
     // ── Dual Y-axis setup ──
     final leftVisible = visible.where((s) => !s.rightAxis).toList();
@@ -740,7 +751,7 @@ class UnifiedChart extends StatelessWidget {
               reservedSize: kChartBottomReserved,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
-                final date = firstDate.add(Duration(days: value.toInt()));
+                final date = chart_math.dateAddDays(firstDate, value.toInt());
                 return SideTitleWidget(
                   meta: meta,
                   angle: -0.5,
@@ -795,7 +806,7 @@ class UnifiedChart extends StatelessWidget {
                 final barIndex = spot.barIndex;
                 final isTotal = showTotal && barIndex == 0;
                 final seriesIdx = barIndex - (showTotal ? 1 : 0);
-                final date = firstDate.add(Duration(days: spot.x.toInt()));
+                final date = chart_math.dateAddDays(firstDate, spot.x.toInt());
                 final datePrefix = spotIdx == 0 ? '${fullFmt.format(date)}\n' : '';
 
                 if (isTotal) {

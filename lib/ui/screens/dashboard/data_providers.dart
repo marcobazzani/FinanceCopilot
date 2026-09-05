@@ -238,7 +238,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         final rate = await rates.getRate(account.currency, dayKey);
         if (rate == null) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
+        final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
         spots.add(FlSpot(x, running * rate));
       }
     }
@@ -270,7 +270,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       }
       if (started) {
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
+        final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
         spots.add(FlSpot(x, cumulative));
       }
     }
@@ -398,7 +398,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         final fxRate = lookupFx(asset.currency, dayKey) ?? await rates.getRate(asset.currency, dayKey);
         if (fxRate == null) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
+        final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
         final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
         spots.add(FlSpot(x, cumQuantity * lastPrice / bondDiv * fxRate));
       }
@@ -515,7 +515,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       cumulative += deltaMap[dayKey]!;
       if (rate == null) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-      final x = dt.difference(firstDate).inDays.toDouble();
+      final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
         spots.add(FlSpot(x - 0.5, prevY));
       }
@@ -728,7 +728,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   }
 
   double lookupNAV(DateTime date) {
-    final x = date.difference(allSeriesData.firstDate).inDays.toDouble();
+    final x = chart_math.calendarDaysBetween(allSeriesData.firstDate, date).toDouble();
     double nav = 0;
     for (final s in savingSpots) {
       if (s.x <= x) {
@@ -808,7 +808,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     final rate = await rates.getRate(currency, toDayKey(dt));
     if (rate == null) continue;
     cumulative += amount * rate;
-    final x = dt.difference(allSeriesData.firstDate).inDays.toDouble();
+    final x = chart_math.calendarDaysBetween(allSeriesData.firstDate, dt).toDouble();
     pensionContribSpots.add(FlSpot(x, cumulative));
   }
 
