@@ -46,7 +46,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // pdfrx 2.x requires explicit initialization before the document API
   // (PdfDocument.openData) is used outside of a pdfrx widget.
-  await pdfrxFlutterInitialize(dismissPdfiumWasmWarnings: true);
+  await pdfrxFlutterInitialize();
   await initLogging();
   await initializeDateFormatting();
   final portableLanguage = await AppSettings.loadLanguageForStartup();

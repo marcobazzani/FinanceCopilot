@@ -127,8 +127,8 @@ Future<void> showManageIntermediariesDialog(BuildContext context, WidgetRef ref)
                 : ReorderableListView.builder(
                     buildDefaultDragHandles: false,
                     itemCount: intermediaries.length,
-                    onReorder: (oldIndex, newIndex) {
-                      if (newIndex > oldIndex) newIndex--;
+                    // onReorderItem already delivers the post-removal newIndex.
+                    onReorderItem: (oldIndex, newIndex) {
                       final reordered = List<Intermediary>.from(intermediaries);
                       final item = reordered.removeAt(oldIndex);
                       reordered.insert(newIndex, item);

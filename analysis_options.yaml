@@ -13,6 +13,19 @@ formatter:
   page_width: 145
   trailing_commas: preserve
 
+# Flutter 3.47+ (`AnalysisOptionsMigration`, run on every `pub get`) requires
+# generated/platform directories to be excluded from analysis and rewrites
+# this file until they are. Declared here once, properly, so the migration is
+# a no-op.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - windows/**
+    - macos/**
+    - linux/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

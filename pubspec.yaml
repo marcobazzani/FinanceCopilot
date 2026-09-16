@@ -39,7 +39,7 @@ dependencies:
       url: https://github.com/justkawal/excel.git
       ref: main
   file_picker: ^11.0.2
-  pdfrx: ^2.4.1
+  pdfrx: ^2.6.1
 
   # HTTP (market data)
   dio: ^5.8.0
