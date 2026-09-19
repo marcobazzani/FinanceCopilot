@@ -195,6 +195,8 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                                       .toList()
                                 : [],
                             hashColumns: savedConfig != null ? (jsonDecode(savedConfig.hashColumnsJson) as List<dynamic>).cast<String>() : [],
+                            // Keep the account's number format: it describes the stored text.
+                            numberLocale: savedConfig?.numberLocale,
                           );
                     },
               child: Text(s.recalculate),

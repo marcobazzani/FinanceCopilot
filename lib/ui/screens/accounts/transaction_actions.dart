@@ -274,4 +274,25 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
       institutionCtrl.dispose();
     }
   }
+
+  /// Open the import wizard on the rows rebuilt from this account's stored
+  /// statement columns, so the mapping can be changed and the import re-run
+  /// without the original file.
+  Future<void> _rerunImportFromStored(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final importer = ref.read(importServiceProvider);
+    final config = await ref.read(importConfigServiceProvider).getByAccount(widget.account.id);
+    final preview = await importer.previewFromStoredRows(widget.account.id, numberLocale: config?.numberLocale);
+    if (!context.mounted) return;
+    if (preview == null) {
+      showInfoSnack(context, s.rerunImportNoStoredRows);
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImportScreen(preselectedAccountId: widget.account.id, storedPreview: preview),
+      ),
+    );
+  }
 }

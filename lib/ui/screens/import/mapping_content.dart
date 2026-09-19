@@ -46,20 +46,8 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 )
               else
                 _buildMappingRow('amount', columns, required: true),
-              // Value date: either mapped or same as operation date (transactions only)
-              if (_target == ImportTarget.transaction)
-                _buildDerivedFieldRow(
-                  field: 'valueDate',
-                  columns: columns,
-                  derived: _sameSettlementDate,
-                  formulaLabel: '= ${s.fieldLabel('date')}',
-                  toggleLabel: s.sameAsOperationDate,
-                  required: true,
-                  onToggle: (v) {
-                    _sameSettlementDate = v;
-                    if (v) _mappings['valueDate'] = null;
-                  },
-                ),
+              // Value date: optional column; defaults to the operation date.
+              if (_target == ImportTarget.transaction) _buildValueDateRow(columns, s),
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount' && f != 'valueDate')
                   .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
@@ -100,7 +88,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
               const SizedBox(height: 12),
               // Optional fields
               Text(s.optional, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              ..._optionalFields.map((f) => _buildMappingRow(f, columns, multiColumn: true)),
+              ..._optionalFields.where((f) => f != 'valueDate').map((f) => _buildMappingRow(f, columns, multiColumn: true)),
               const SizedBox(height: 4),
               Text(s.unmappedHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               if (_target == ImportTarget.transaction && preview != null) ...[
@@ -380,6 +368,22 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
             ),
             Text(toggleLabel, style: const TextStyle(fontSize: 12)),
           ],
+        ),
+      ],
+    );
+  }
+
+  /// Value date: a plain optional column. Unmapped = operation date. When the
+  /// real transaction date lives inside a text column, derive it with a
+  /// column split (regex + fallback column) and map the derived column here.
+  Widget _buildValueDateRow(List<String> columns, AppStrings s) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildMappingRow('valueDate', columns),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(s.valueDateDefaultsToOperationDate, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
         ),
       ],
     );
