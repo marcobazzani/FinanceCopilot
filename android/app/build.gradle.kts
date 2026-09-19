@@ -15,10 +15,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
-
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "net.bazzani.financecopilot"
@@ -52,6 +48,14 @@ android {
                 signingConfig = signingConfigs.getByName("debug")
             }
         }
+    }
+}
+
+// Kotlin 2.3 removed the `android.kotlinOptions { jvmTarget = String }` DSL;
+// the jvmTarget now lives here and must stay in sync with compileOptions above.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
     }
 }
 
