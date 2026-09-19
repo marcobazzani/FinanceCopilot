@@ -248,6 +248,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/import/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
 - `lib/services/import/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
 - `lib/services/import/import_service.dart` — Import mapping, dedup, balance recompute
+- `lib/services/import/stored_metadata_repair.dart` — One-shot per DB (AppConfigs `RAW_METADATA_LOCALE_VERSION`): re-spells stored statement numbers to each account's saved locale, only when re-parsing reproduces the stored amount; persists the locale
 - `lib/services/market/market_price_service.dart` — Abstract market price service
 - `lib/services/market/web_market_data_service.dart` — Market price/search/composition provider (WebView + Dio)
 - `lib/services/market/composition_service.dart` — ETF/stock composition fetcher

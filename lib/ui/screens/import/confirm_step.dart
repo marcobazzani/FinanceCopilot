@@ -147,7 +147,7 @@ extension _ConfirmStep on _ImportScreenState {
                       children: [
                         Text(s.importSummary, style: const TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        Text(s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
+                        Text(_fromStoredRows ? s.sourceStoredRows : s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
                         Text(s.rowCount(_preview?.totalRows ?? 0)),
                         Text(
                           s.targetLabel(
@@ -161,10 +161,14 @@ extension _ConfirmStep on _ImportScreenState {
                         const SizedBox(height: 8),
                         Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
                         ..._mappings.entries
-                            .where((e) => e.value != null && !(e.key == 'amount' && _amountFormula.isNotEmpty))
+                            .where((e) => e.value != null && !(e.key == 'amount' && (_amountFormula.isNotEmpty || _balanceDiffColumn != null)))
                             .map((e) => Text('  ${e.key} ← ${e.value}')),
                         if (_amountFormula.isNotEmpty)
                           Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
+                        if (_balanceDiffColumn != null) Text('  amount ← Δ $_balanceDiffColumn'),
+                        // Defaults are shown explicitly so a forgotten mapping is visible here.
+                        if (_target == ImportTarget.transaction && _mappings['valueDate'] == null)
+                          Text('  valueDate ← ${s.fieldLabel('date')}', style: TextStyle(color: Theme.of(context).colorScheme.tertiary)),
                         if (isAssetImport) ...[
                           const SizedBox(height: 12),
                           Text(s.assetsAndExchange, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -389,11 +393,9 @@ extension _ConfirmStep on _ImportScreenState {
   /// button (which previously let all-zero-amount imports slip through).
   String? _missingMappingReason() {
     final s = ref.read(appStringsProvider);
+    if (_numberLocaleMissing) return s.numberFormatRequiredForRerun;
     final needsDate = !(_target == ImportTarget.assetEvent && _assetImportMode == 'current');
     if (needsDate && _mappings['date'] == null) return s.missingDateMapping;
-    if (_target == ImportTarget.transaction && !_sameSettlementDate && _mappings['valueDate'] == null) {
-      return s.missingValueDateMapping;
-    }
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) {
       return s.missingAmountMapping;
     }
@@ -409,6 +411,7 @@ extension _ConfirmStep on _ImportScreenState {
     // must independently require every mandatory mapping — otherwise an import
     // with no amount column silently writes all-zero events.
     if (!_canProceedToConfirm()) return false;
+    if (_numberLocaleMissing) return false;
     if (isAssetImport) return _selectedIntermediaryId != null;
     if (isIncomeImport) return true;
     return _targetId != null;
@@ -701,6 +704,7 @@ extension _ConfirmStep on _ImportScreenState {
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
           numberLocaleOverride: _selectedNumberLocale,
+          replaceOnlyImportedRows: _fromStoredRows,
           appLocale: appLocale,
         );
       } else if (_target == ImportTarget.income) {
@@ -798,27 +802,44 @@ extension _ConfirmStep on _ImportScreenState {
     final s = ref.watch(appStringsProvider);
     final appLocale = ref.watch(appLocaleProvider).value;
     final autoLabel = appLocale != null && appLocale.isNotEmpty ? 'Auto ($appLocale)' : 'Auto';
-    final items = _numberLocaleOptions.map((opt) {
+    // Stored rows: no "Auto" — the text has one format and it must be named.
+    final options = _fromStoredRows ? _numberLocaleOptions.where((o) => o.$1 != null) : _numberLocaleOptions;
+    final items = options.map((opt) {
       final label = opt.$1 == null ? autoLabel : opt.$2;
       return DropdownMenuItem<String?>(
         value: opt.$1,
         child: Text(label),
       );
     }).toList();
+    final missing = _numberLocaleMissing;
     return Card(
+      key: const Key('numberLocalePicker'),
+      color: missing ? Theme.of(context).colorScheme.errorContainer : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                s.numberFormatLabel,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(s.numberFormatLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  if (missing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        s.numberFormatRequiredForRerun,
+                        key: const Key('numberLocaleMissingNote'),
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onErrorContainer),
+                      ),
+                    ),
+                ],
               ),
             ),
             DropdownButton<String?>(
+              key: const Key('numberLocaleDropdown'),
               value: _selectedNumberLocale,
-              hint: Text(autoLabel),
+              hint: Text(_fromStoredRows ? s.numberFormatChoose : autoLabel),
               items: items,
               onChanged: (v) {
                 _setState(() => _selectedNumberLocale = v);

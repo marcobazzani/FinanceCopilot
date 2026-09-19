@@ -45,7 +45,20 @@ class ImportScreen extends ConsumerStatefulWidget {
 
   /// When shared from another app (Android share target), auto-load this file.
   final String? initialFilePath;
-  const ImportScreen({super.key, this.preselectedAccountId, this.preselectedTarget, this.testPreview, this.initialFilePath});
+
+  /// Re-run mode: the preview was rebuilt from the raw statement columns
+  /// stored on the account's imported rows (`ImportService.previewFromStoredRows`).
+  /// No file, no re-parse, transforms already applied; the import replaces
+  /// only imported rows and carries user annotations over.
+  final FilePreview? storedPreview;
+  const ImportScreen({
+    super.key,
+    this.preselectedAccountId,
+    this.preselectedTarget,
+    this.testPreview,
+    this.initialFilePath,
+    this.storedPreview,
+  });
 
   @override
   ConsumerState<ImportScreen> createState() => _ImportScreenState();
@@ -127,8 +140,16 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   final List<FormulaTerm> _amountFormula = [];
 
   bool _noHeader = false;
-  bool _sameSettlementDate = false; // when true, valueDate = date (operation date)
   String? _balanceDiffColumn; // when set, amount = balance[i] - balance[i-1]
+
+  /// True while the wizard runs on rows rebuilt from stored metadata (cleared
+  /// when the user opens a file or pastes instead).
+  bool _fromStoredRows = false;
+
+  /// Re-run from stored rows with no saved number format: the stored text
+  /// must be parsed with the format it was written in, and that is not
+  /// something to guess. The user chooses once; the choice is saved.
+  bool get _numberLocaleMissing => _fromStoredRows && _selectedNumberLocale == null;
 
   /// Post-parse row/column transforms (filters + column splits) chosen in the
   /// "Refine rows & columns" panel. Applied to the raw parser output to
@@ -172,7 +193,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// not enforce sends users off to edit their source file for nothing
   /// (issue #96 — Price and Exchange Rate were starred but never checked).
   List<String> get _requiredFields => switch (_target) {
-    ImportTarget.transaction => ['date', 'valueDate', 'amount', 'description'],
+    ImportTarget.transaction => ['date', 'amount', 'description'],
     // Asset event imports come in two flavors:
     //   - byIsin (ISIN-grouped, e.g. broker trades, 401(k) multi-sub-fund):
     //     ISIN column drives asset creation/lookup.
@@ -194,7 +215,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   List<String> get _optionalFields => switch (_target) {
-    ImportTarget.transaction => ['currency', 'status'],
+    ImportTarget.transaction => ['valueDate', 'currency', 'status'],
     ImportTarget.assetEvent => _assetImportMode == 'historic' ? ['description'] : ['date', 'exchangeRate', 'description'],
     ImportTarget.income => ['currency'],
   };
@@ -527,6 +548,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (widget.preselectedTarget != null) {
       _target = widget.preselectedTarget!;
     }
+    // Re-run from stored rows: behaves like an injected preview, but the
+    // saved config is applied without re-parsing or re-applying transforms.
+    if (widget.storedPreview != null) {
+      _fromStoredRows = true;
+      _rawPreview = widget.storedPreview;
+      _preview = widget.storedPreview;
+      _selectedNumberLocale = widget.storedPreview!.numberLocale;
+      Future.microtask(() => _loadSavedConfig(widget.storedPreview!.columns));
+    }
     // Integration test injection: auto-load a pre-parsed preview
     if (widget.testPreview != null) {
       _rawPreview = widget.testPreview;
@@ -601,6 +631,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
   /// Parse and load a file by path (used by both file picker and share intent).
   Future<void> _loadFile(String path) async {
+    _fromStoredRows = false;
     _log.info('_loadFile: loading $path');
     setState(() {
       _error = null;
@@ -732,6 +763,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   }
 
   Future<void> _pasteFromClipboard() async {
+    _fromStoredRows = false;
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text == null || data!.text!.trim().isEmpty) {
       setState(() => _error = ref.read(appStringsProvider).clipboardEmpty);
@@ -802,7 +834,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     final savedMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
     final savedNoHeader = savedMappings['__noHeader'] == 'true';
     final localeChanged = _preview != null && _preview!.numberLocale != _effectiveNumberLocale();
-    final needsReparse = (config.skipRows > 0 && config.skipRows != _skipRows) || (savedNoHeader != _noHeader) || localeChanged;
+    final needsReparse =
+        !_fromStoredRows && ((config.skipRows > 0 && config.skipRows != _skipRows) || (savedNoHeader != _noHeader) || localeChanged);
 
     if (savedNoHeader) _noHeader = true;
     if (config.skipRows > 0) {
@@ -813,6 +846,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (needsReparse) {
       await _reparseFile();
     } else {
+      // Stored rows keep the original source columns, so splits re-derive
+      // their columns (idempotently) and can be edited; row filters are
+      // idempotent on rows that already passed them.
       _applySavedConfig();
     }
 
@@ -822,7 +858,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     // Auto-enable quick mode if the saved config covers all required fields.
     // The user can still tap "Let me edit" to drop into the full mapper.
-    if (_canProceedToConfirm()) {
+    if (_canProceedToConfirm() && !_numberLocaleMissing) {
       setState(() => _isQuickMode = true);
     }
   }
@@ -941,9 +977,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           }
         }
       }
-
-      // Update sameSettlementDate flag based on restored mappings
-      _sameSettlementDate = _mappings['valueDate'] == null || _mappings['valueDate'] == _mappings['date'];
 
       final savedFormula = (jsonDecode(config.formulaJson) as List<dynamic>);
       _amountFormula.clear();
@@ -1202,8 +1235,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (_target == ImportTarget.transaction && (widget.preselectedAccountId ?? _targetId) == null) return false;
     // date must be mapped (unless asset events in current mode)
     if (_mappings['date'] == null && !(_target == ImportTarget.assetEvent && _assetImportMode == 'current')) return false;
-    // Value date required for transactions (unless same as operation date)
-    if (_target == ImportTarget.transaction && !_sameSettlementDate && _mappings['valueDate'] == null) return false;
     // amount: either simple mapping, formula, balance-diff, or auto-calc
     if (_mappings['amount'] == null && _amountFormula.isEmpty && _balanceDiffColumn == null && !_autoCalcAmount) return false;
     // Asset events: in `byIsin` mode require an ISIN column; in
@@ -1274,7 +1305,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _importedSoFar = 0;
     _importTotal = 0;
 
-    _sameSettlementDate = false;
     _fullIsinSummary = null;
     _excludedIsins.clear();
     _multiMappings.clear();
@@ -1316,10 +1346,6 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       if (e.key == 'amount' && (_amountFormula.isNotEmpty || _balanceDiffColumn != null)) continue;
       mappings.add(ColumnMapping(sourceColumn: e.value!, targetField: e.key));
     }
-    if (_sameSettlementDate && _mappings['date'] != null) {
-      mappings.removeWhere((m) => m.targetField == 'valueDate');
-      mappings.add(ColumnMapping(sourceColumn: _mappings['date']!, targetField: 'valueDate'));
-    }
     for (final e in _multiMappings.entries) {
       if (e.value.length < 2) continue;
       mappings.removeWhere((m) => m.targetField == e.key);
@@ -1351,6 +1377,16 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// Compute a dry-run preview of the import (no DB writes).
   Future<void> _computePreview() async {
     if (_preview == null) return;
+    // No number format chosen for stored rows: any figure computed with a
+    // guessed locale would be misleading, so show none.
+    if (_numberLocaleMissing) {
+      _setState(() {
+        _previewing = false;
+        _txPreview = null;
+        _assetPreview = null;
+      });
+      return;
+    }
     _setState(() {
       _previewing = true;
       _txPreview = null;

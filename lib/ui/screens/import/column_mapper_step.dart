@@ -11,27 +11,39 @@ extension _ColumnMapperStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Data source toolbar FIRST — pick the file (or paste) up front.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: Text(s.openFile),
-              onPressed: _parsing ? null : _pickFile,
+        // Re-run from stored data: the source is the account itself.
+        if (_fromStoredRows)
+          Card(
+            key: const Key('rerunImportBanner'),
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            child: ListTile(
+              leading: const Icon(Icons.history),
+              title: Text(s.rerunImportFromStored),
+              subtitle: Text(s.rerunImportBanner(preview?.totalRows ?? 0)),
             ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.content_paste),
-              label: Text(s.pasteFromClipboard),
-              onPressed: _parsing ? null : _pasteFromClipboard,
-            ),
-            if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
-            if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
-            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-          ],
-        ),
+          )
+        else
+          // Data source toolbar FIRST — pick the file (or paste) up front.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton.icon(
+                icon: const Icon(Icons.folder_open),
+                label: Text(s.openFile),
+                onPressed: _parsing ? null : _pickFile,
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.content_paste),
+                label: Text(s.pasteFromClipboard),
+                onPressed: _parsing ? null : _pasteFromClipboard,
+              ),
+              if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
+              if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
+              if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+            ],
+          ),
         if (_error != null) ...[
           const SizedBox(height: 8),
           Text(_error!, style: const TextStyle(color: Colors.red)),

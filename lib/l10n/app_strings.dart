@@ -912,7 +912,23 @@ class AppStrings {
     _ => field,
   };
 
-  String get sameAsOperationDate => _it ? 'Uguale a data operazione' : 'Same as operation date';
+  String get valueDateDefaultsToOperationDate => _it
+      ? 'Facoltativa: se non mappata vale la data operazione. Se la data reale è nel testo, ricavala con una divisione colonna (regex + colonna di riserva).'
+      : 'Optional: defaults to the operation date. If the real date is inside a text column, derive it with a column split (regex + fallback column).';
+  String get rowFiltersStoredRowsNote => _it
+      ? 'Filtri applicati all\'import originale (sola lettura): le righe escluse non sono state salvate e non possono tornare; modificarli qui non ha senso.'
+      : 'Filters applied at the original import (read-only): excluded rows were never stored and cannot come back; editing them here has no meaning.';
+  String get numberFormatRequiredForRerun => _it
+      ? 'Questo conto non ha un formato numerico salvato. Scegli quello usato dall\'estratto conto originale (viene salvato).'
+      : 'This account has no saved number format. Choose the one the original statement used (it will be saved).';
+  String get numberFormatChoose => _it ? 'Scegli…' : 'Choose…';
+  String get sourceStoredRows => _it ? 'Origine: dati salvati del conto' : 'Source: stored account data';
+  String get rerunImportFromStored => _it ? 'Rielabora import dai dati salvati' : 'Re-run import from stored data';
+  String get rerunImportNoStoredRows =>
+      _it ? 'Nessuna transazione importata da rielaborare in questo conto.' : 'No imported transactions to re-run in this account.';
+  String rerunImportBanner(int n) => _it
+      ? 'Rielaborazione di $n transazioni dai dati salvati: nessun file necessario, le righe inserite a mano restano intatte.'
+      : 'Re-running $n transactions from stored data: no file needed, manually entered rows are kept.';
 
   String get skipRows => _it ? 'Salta righe: ' : 'Skip rows: ';
   String get skipRowsHelp => _it ? 'Salta N righe prima della riga di intestazione' : 'Skip N rows before the header row';
@@ -939,6 +955,8 @@ class AppStrings {
       ? 'Dividi una colonna in nuove colonne mappabili. Un nome per ogni parte; lascia vuoto per saltare (es. ",,periodo").'
       : 'Split a column into new mappable columns. One name per part; leave blank to skip a part (e.g. ",,period").';
   String get addSplit => _it ? 'Aggiungi divisione' : 'Add split';
+  String get splitFallbackColumn => _it ? 'Se non corrisponde, usa la colonna' : 'If no match, use column';
+  String get splitFallbackNone => _it ? '— lascia vuoto —' : '— leave empty —';
   String get splitByWhitespace => _it ? 'Spazi' : 'Whitespace';
   String get splitByDelimiter => _it ? 'Delimitatore' : 'Delimiter';
   String get splitByRegex => _it ? 'Regex' : 'Regex';

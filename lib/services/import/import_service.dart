@@ -209,9 +209,13 @@ class ImportService {
   /// with missing/garbage cells also contribute 0 but do NOT clear the
   /// last-known balance, so a single bad cell doesn't cause the next row
   /// to look like a huge transaction.
-  List<double> _computeBalanceDiffs(List<Map<String, String>> rows, String balCol) {
+  /// Amount of each row as the difference between consecutive statement
+  /// balances. [seedBalance] is the statement balance just before the first
+  /// row (see [_balanceDiffSeed]); when unknown the first row contributes 0
+  /// rather than inventing a transaction out of the opening balance.
+  List<double> _computeBalanceDiffs(List<Map<String, String>> rows, String balCol, {double? seedBalance}) {
     final out = <double>[];
-    double? prevBalance;
+    double? prevBalance = seedBalance;
     for (final row in rows) {
       final balance = _tryParseAmount(row[balCol] ?? '');
       if (balance != null && prevBalance != null) {
@@ -222,6 +226,56 @@ class ImportService {
       if (balance != null) prevBalance = balance;
     }
     return out;
+  }
+
+  /// The statement balance that precedes the first row of a balance-diff
+  /// import, learned from what the account already stores:
+  ///
+  ///  * rows exist BEFORE the first imported date (appending a statement):
+  ///    the last such row's statement balance;
+  ///  * no rows before, but rows from that date on are being replaced
+  ///    (re-run from stored data): the earliest replaced row's statement
+  ///    balance minus its stored amount — i.e. the opening balance the
+  ///    account was originally imported with (0 for an account that started
+  ///    from nothing, so its opening deposit stays a transaction);
+  ///  * nothing stored: null — the first row contributes 0.
+  Future<double?> _balanceDiffSeed({
+    required int accountId,
+    required String balCol,
+    required List<Map<String, String>> rows,
+    required ColumnMapping dateMapping,
+  }) async {
+    DateTime? first;
+    for (final row in rows) {
+      final d = date_parse.tryParseDate(_resolveMapping(dateMapping, row) ?? '');
+      if (d != null && (first == null || d.isBefore(first))) first = d;
+    }
+    if (first == null) return null;
+    final cutoff = DateTime(first.year, first.month, first.day);
+
+    double? statementBalance(Transaction t) {
+      if (t.rawMetadata == null) return null;
+      final meta = jsonDecode(t.rawMetadata!);
+      return meta is Map ? _tryParseAmount(meta[balCol]?.toString() ?? '') : null;
+    }
+
+    final before =
+        await (_db.select(_db.transactions)
+              ..where((t) => t.accountId.equals(accountId) & t.operationDate.isSmallerThanValue(cutoff))
+              ..orderBy([(t) => OrderingTerm.desc(t.operationDate), (t) => OrderingTerm.desc(t.id)])
+              ..limit(1))
+            .getSingleOrNull();
+    if (before != null) return statementBalance(before) ?? before.balanceAfter;
+
+    final earliestReplaced =
+        await (_db.select(_db.transactions)
+              ..where((t) => t.accountId.equals(accountId) & t.operationDate.isBiggerOrEqualValue(cutoff) & t.rawMetadata.isNotNull())
+              ..orderBy([(t) => OrderingTerm.asc(t.operationDate), (t) => OrderingTerm.asc(t.id)])
+              ..limit(1))
+            .getSingleOrNull();
+    if (earliestReplaced == null) return null;
+    final bal = statementBalance(earliestReplaced);
+    return bal == null ? null : bal - earliestReplaced.amount;
   }
 
   /// row's amount surfaces as missing rather than producing a half-correct sum.
@@ -338,6 +392,10 @@ class ImportService {
     /// App's configured locale (e.g. `it_IT`). Used as the final fallback
     /// when no per-source override or saved value exists.
     String? appLocale,
+
+    /// Re-run from stored data: replace only rows that came from an import
+    /// (have raw metadata); manually entered rows in the range are kept.
+    bool replaceOnlyImportedRows = false,
   }) async {
     await _setLocaleForAccount(
       accountId: accountId,
@@ -363,8 +421,10 @@ class ImportService {
     // Pre-compute balance-diff amounts if needed.
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
-      _log.info('importTransactions: balance-diff mode, column=${amountMapping.balanceDiffColumn}');
-      balanceDiffAmounts = _computeBalanceDiffs(preview.rows, amountMapping.balanceDiffColumn!);
+      final balCol = amountMapping.balanceDiffColumn!;
+      final seed = await _balanceDiffSeed(accountId: accountId, balCol: balCol, rows: preview.rows, dateMapping: dateMapping);
+      _log.info('importTransactions: balance-diff mode, column=$balCol, seed=$seed');
+      balanceDiffAmounts = _computeBalanceDiffs(preview.rows, balCol, seedBalance: seed);
     }
 
     // Fetch account's currency for fallback
@@ -514,7 +574,7 @@ class ImportService {
     // Compute balanceAfter
     _computeBalances(validRows, balanceMode, balanceFilterInclude, preCutoffBalance);
 
-    final companions = validRows.map((r) => _buildTransactionCompanion(r, accountId)).toList();
+    var companions = validRows.map((r) => _buildTransactionCompanion(r, accountId)).toList();
 
     // Delete the replaced range and insert every replacement row in ONE
     // transaction: every row was already validated above, so this batch
@@ -523,10 +583,27 @@ class ImportService {
     // rolls back the delete too rather than leaving the range wiped with
     // nothing inserted — the exception propagates to the caller, which
     // already surfaces import failures to the user.
+    // [replaceOnlyImportedRows] (re-run from stored data) leaves rows the
+    // user entered by hand (no raw_metadata) untouched: they were never part
+    // of the import being re-run.
+    final onlyImported = replaceOnlyImportedRows ? ' AND raw_metadata IS NOT NULL' : '';
     var deleted = 0;
     await _db.transaction(() async {
+      // User annotations on the rows about to be replaced survive the
+      // replacement: they are re-attached to the regenerated row with the
+      // same booking day, amount and description.
+      final annotated =
+          await (_db.select(_db.transactions)..where(
+                (t) =>
+                    t.accountId.equals(accountId) &
+                    t.operationDate.isBiggerOrEqualValue(DateTime.fromMillisecondsSinceEpoch(cutoffEpoch * 1000)) &
+                    (t.categoryId.isNotNull() | t.expenseType.isNotNull() | t.tags.equals('[]').not()),
+              ))
+              .get();
+      companions = _carryOverAnnotations(companions, annotated);
+
       deleted = await _db.customUpdate(
-        'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?',
+        'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?$onlyImported',
         variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
         updates: {_db.transactions},
       );
@@ -548,6 +625,79 @@ class ImportService {
       errorRows: errorCount,
       errors: errors,
     );
+  }
+
+  /// Re-attach user annotations (category, tags, expense type) from the rows
+  /// being replaced to the regenerated rows. Matching key: booking day,
+  /// amount in cents and description — the identity an import preserves.
+  /// Each annotated row is used at most once; unmatched ones are dropped
+  /// (their transaction no longer exists in the new data).
+  static List<TransactionsCompanion> _carryOverAnnotations(
+    List<TransactionsCompanion> companions,
+    List<Transaction> annotated,
+  ) {
+    if (annotated.isEmpty) return companions;
+    String key(DateTime day, double amount, String desc) => '${day.year}-${day.month}-${day.day}|${(amount * 100).round()}|$desc';
+    final pool = <String, List<Transaction>>{};
+    for (final t in annotated) {
+      (pool[key(t.operationDate, t.amount, t.description)] ??= []).add(t);
+    }
+    var carried = 0;
+    final out = <TransactionsCompanion>[];
+    for (final c in companions) {
+      final k = key(c.operationDate.value, c.amount.value, c.description.present ? c.description.value : '');
+      final list = pool[k];
+      if (list == null || list.isEmpty) {
+        out.add(c);
+        continue;
+      }
+      final src = list.removeAt(0);
+      carried++;
+      out.add(c.copyWith(categoryId: Value(src.categoryId), expenseType: Value(src.expenseType), tags: Value(src.tags)));
+    }
+    _log.info('importTransactions: carried over annotations on $carried of ${annotated.length} annotated rows');
+    return out;
+  }
+
+  /// Rebuild an import preview from the raw statement columns stored on every
+  /// imported row of [accountId] (`transactions.raw_metadata`), so an import
+  /// can be re-mapped and re-run without the original file. Rows the user
+  /// entered by hand (no raw metadata) are not part of it. Returns null when
+  /// the account has no imported rows.
+  ///
+  /// [numberLocale] is the account's SAVED number format; when the account
+  /// has none, the preview carries null and the wizard requires the user to
+  /// choose one explicitly — stored text is parsed with a guessed locale
+  /// never (a `2,000.00` read under `it_IT` is 2.00).
+  Future<FilePreview?> previewFromStoredRows(int accountId, {String? numberLocale}) async {
+    final rows =
+        await (_db.select(_db.transactions)
+              ..where((t) => t.accountId.equals(accountId) & t.rawMetadata.isNotNull())
+              ..orderBy([(t) => OrderingTerm.asc(t.operationDate), (t) => OrderingTerm.asc(t.id)]))
+            .get();
+    final columns = <String>[];
+    final seen = <String>{};
+    final data = <Map<String, String>>[];
+    for (final t in rows) {
+      final decoded = jsonDecode(t.rawMetadata!);
+      if (decoded is! Map) continue;
+      final row = <String, String>{};
+      for (final e in decoded.entries) {
+        final k = e.key.toString();
+        if (seen.add(k)) columns.add(k);
+        row[k] = e.value?.toString() ?? '';
+      }
+      data.add(row);
+    }
+    if (data.isEmpty) return null;
+    // Every row exposes every column so mappings resolve uniformly.
+    for (final r in data) {
+      for (final c in columns) {
+        r.putIfAbsent(c, () => '');
+      }
+    }
+    _log.info('previewFromStoredRows: account=$accountId rows=${data.length} columns=${columns.length} locale=$numberLocale');
+    return FilePreview(columns: columns, rows: data, totalRows: data.length, numberLocale: numberLocale);
   }
 
   /// Count the account's existing transactions from [cutoffEpoch] onward —
@@ -730,10 +880,12 @@ class ImportService {
       );
     }
 
-    // Pre-compute balance-diff amounts if needed
+    // Pre-compute balance-diff amounts if needed (same seed as the import).
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
-      balanceDiffAmounts = _computeBalanceDiffs(preview.rows, amountMapping.balanceDiffColumn!);
+      final balCol = amountMapping.balanceDiffColumn!;
+      final seed = await _balanceDiffSeed(accountId: accountId, balCol: balCol, rows: preview.rows, dateMapping: dateMapping);
+      balanceDiffAmounts = _computeBalanceDiffs(preview.rows, balCol, seedBalance: seed);
     }
 
     final valueDateMapping = mappingByField['valueDate'];
@@ -867,32 +1019,28 @@ class ImportService {
     required String? override,
     required String? appLocale,
   }) async {
-    final saved =
-        override ?? (await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull())?.numberLocale;
+    final existing = await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull();
+    final saved = override ?? existing?.numberLocale;
     _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
 
-    if (override != null) {
-      // Upsert into ImportConfigs. If no row exists yet, create one with
-      // sensible defaults so future opens of the wizard show the choice.
-      final existing = await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull();
-      if (existing == null) {
-        await _db
-            .into(_db.importConfigs)
-            .insert(
-              ImportConfigsCompanion.insert(
-                accountId: Value(accountId),
-                scope: const Value('transaction'),
-                numberLocale: Value(override),
-              ),
-            );
-      } else {
-        await (_db.update(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).write(
-          ImportConfigsCompanion(
-            numberLocale: Value(override),
-            updatedAt: Value(DateTime.now()),
-          ),
-        );
-      }
+    // Persist the locale the rows are actually written with. "Auto" used to
+    // leave NULL behind, so the stored statement text had no record of its
+    // own number format and could not be re-parsed later; now the RESOLVED
+    // locale is saved, so stored text and saved locale always agree.
+    if (existing == null) {
+      await _db
+          .into(_db.importConfigs)
+          .insert(
+            ImportConfigsCompanion.insert(
+              accountId: Value(accountId),
+              scope: const Value('transaction'),
+              numberLocale: Value(_activeLocale),
+            ),
+          );
+    } else if (existing.numberLocale != _activeLocale) {
+      await (_db.update(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).write(
+        ImportConfigsCompanion(numberLocale: Value(_activeLocale), updatedAt: Value(DateTime.now())),
+      );
     }
   }
 

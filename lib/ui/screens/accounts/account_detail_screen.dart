@@ -162,6 +162,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     ),
                   ),
                   AppBarAction(
+                    icon: Icons.history,
+                    tooltip: s.rerunImportFromStored,
+                    onPressed: () => _rerunImportFromStored(context),
+                  ),
+                  AppBarAction(
                     icon: Icons.account_balance_wallet,
                     tooltip: s.tooltipRecalcBalance,
                     onPressed: () => _showBalanceDialog(context),

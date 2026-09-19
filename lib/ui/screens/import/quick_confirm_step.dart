@@ -133,6 +133,9 @@ extension _QuickConfirmStep on _ImportScreenState {
     if (_balanceDiffColumn != null) {
       lines.add('amount ← Δ $_balanceDiffColumn');
     }
+    if (_mappings['valueDate'] == null) {
+      lines.add('valueDate ← date');
+    }
     for (final entry in _multiMappings.entries) {
       lines.add('${entry.key} ← ${entry.value.join(' + ')}');
     }

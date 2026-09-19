@@ -33,9 +33,9 @@ extension _RefinePanel on _ImportScreenState {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
           // Skip-rows / no-header are raw-line concepts that don't apply to
-          // PDFs (those go through the table reconstructor). Hide them for
-          // PDF sources; row filters are the right tool there.
-          if (!_isPdf) ...[
+          // PDFs (those go through the table reconstructor) nor to rows
+          // rebuilt from stored metadata (header already resolved).
+          if (!_isPdf && !_fromStoredRows) ...[
             _buildSkipRowsControl(s),
             const SizedBox(height: 4),
             _buildNoHeaderControl(s),
@@ -201,17 +201,7 @@ extension _RefinePanel on _ImportScreenState {
                         ),
                       )
                       .toList(),
-                  onChanged: (v) => v == null
-                      ? null
-                      : replace(
-                          ColumnSplit(
-                            sourceColumn: v,
-                            newColumns: split.newColumns,
-                            byRegex: split.byRegex,
-                            delimiter: split.delimiter,
-                            pattern: split.pattern,
-                          ),
-                        ),
+                  onChanged: (v) => v == null ? null : replace(split.copyWith(sourceColumn: v)),
                 ),
               ),
               SegmentedButton<String>(
@@ -234,12 +224,9 @@ extension _RefinePanel on _ImportScreenState {
                 onSelectionChanged: (sel) {
                   final m = sel.first;
                   replace(
-                    ColumnSplit(
-                      sourceColumn: split.sourceColumn,
-                      newColumns: split.newColumns,
+                    split.copyWith(
                       byRegex: m == 'regex',
                       delimiter: m == 'delim' ? (split.delimiter.trim().isEmpty ? ',' : split.delimiter) : '',
-                      pattern: split.pattern,
                     ),
                   );
                 },
@@ -261,13 +248,7 @@ extension _RefinePanel on _ImportScreenState {
                 child: TextFormField(
                   initialValue: split.delimiter,
                   decoration: InputDecoration(isDense: true, border: const OutlineInputBorder(), labelText: s.splitDelimiter),
-                  onChanged: (v) => replace(
-                    ColumnSplit(
-                      sourceColumn: split.sourceColumn,
-                      newColumns: split.newColumns,
-                      delimiter: v,
-                    ),
-                  ),
+                  onChanged: (v) => replace(split.copyWith(delimiter: v, byRegex: false)),
                 ),
               ),
             ),
@@ -277,14 +258,7 @@ extension _RefinePanel on _ImportScreenState {
               child: TextFormField(
                 initialValue: split.pattern,
                 decoration: InputDecoration(isDense: true, border: const OutlineInputBorder(), labelText: s.splitPattern),
-                onChanged: (v) => replace(
-                  ColumnSplit(
-                    sourceColumn: split.sourceColumn,
-                    newColumns: split.newColumns,
-                    byRegex: true,
-                    pattern: v,
-                  ),
-                ),
+                onChanged: (v) => replace(split.copyWith(byRegex: true, pattern: v)),
               ),
             ),
           Padding(
@@ -299,16 +273,29 @@ extension _RefinePanel on _ImportScreenState {
                 while (names.isNotEmpty && names.last.isEmpty) {
                   names.removeLast();
                 }
-                replace(
-                  ColumnSplit(
-                    sourceColumn: split.sourceColumn,
-                    newColumns: names,
-                    byRegex: split.byRegex,
-                    delimiter: split.delimiter,
-                    pattern: split.pattern,
-                  ),
-                );
+                replace(split.copyWith(newColumns: names));
               },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: SizedBox(
+              width: 260,
+              child: DropdownButtonFormField<String?>(
+                key: Key('splitFallback_$index'),
+                isExpanded: true,
+                initialValue: baseColumns.contains(split.fallbackColumn) ? split.fallbackColumn : null,
+                decoration: InputDecoration(isDense: true, border: const OutlineInputBorder(), labelText: s.splitFallbackColumn),
+                items: [
+                  DropdownMenuItem<String?>(value: null, child: Text(s.splitFallbackNone, style: const TextStyle(fontSize: 12))),
+                  for (final c in baseColumns)
+                    DropdownMenuItem<String?>(
+                      value: c,
+                      child: Text(c, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (v) => replace(split.copyWith(fallbackColumn: v)),
+              ),
             ),
           ),
           _buildSplitPreview(s, split),
@@ -373,8 +360,16 @@ extension _RefinePanel on _ImportScreenState {
 
   // ── Row filters ────────────────────────────────────────────────
 
+  /// Row filters. In a re-run from stored rows the section is READ-ONLY:
+  /// filtering already happened at the original import (excluded rows were
+  /// never stored, kept rows are exactly the stored ones), so editing here
+  /// has no meaning — loosening cannot bring rows back and tightening would
+  /// silently delete imported history. The saved filters are shown so the
+  /// user can see what shaped the data, but nothing is editable.
   Widget _buildRowFiltersSection(AppStrings s, List<String> columns) {
+    final readOnly = _fromStoredRows;
     return Column(
+      key: const Key('rowFiltersSection'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -396,12 +391,13 @@ extension _RefinePanel on _ImportScreenState {
                   ),
                 ],
                 selected: {_transforms.combine},
-                onSelectionChanged: (sel) => _updateTransforms(combine: sel.first),
+                onSelectionChanged: readOnly ? null : (sel) => _updateTransforms(combine: sel.first),
               ),
             TextButton.icon(
+              key: const Key('addFilterButton'),
               icon: const Icon(Icons.add, size: 18),
               label: Text(s.addFilter),
-              onPressed: columns.isEmpty
+              onPressed: (columns.isEmpty || readOnly)
                   ? null
                   : () => _updateTransforms(
                       filters: [
@@ -412,13 +408,17 @@ extension _RefinePanel on _ImportScreenState {
             ),
           ],
         ),
-        Text(s.rowFiltersHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        for (var i = 0; i < _transforms.filters.length; i++) _buildFilterRow(s, columns, i),
+        Text(
+          readOnly ? s.rowFiltersStoredRowsNote : s.rowFiltersHelp,
+          key: readOnly ? const Key('rowFiltersReadOnlyNote') : null,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        for (var i = 0; i < _transforms.filters.length; i++) _buildFilterRow(s, columns, i, readOnly: readOnly),
       ],
     );
   }
 
-  Widget _buildFilterRow(AppStrings s, List<String> columns, int index) {
+  Widget _buildFilterRow(AppStrings s, List<String> columns, int index, {bool readOnly = false}) {
     final filter = _transforms.filters[index];
 
     void replace(RowFilter next) {
@@ -448,7 +448,7 @@ extension _RefinePanel on _ImportScreenState {
                     ),
                   )
                   .toList(),
-              onChanged: (v) => v == null ? null : replace(RowFilter(column: v, op: filter.op, value: filter.value)),
+              onChanged: readOnly ? null : (v) => v == null ? null : replace(RowFilter(column: v, op: filter.op, value: filter.value)),
             ),
           ),
           SizedBox(
@@ -465,23 +465,26 @@ extension _RefinePanel on _ImportScreenState {
                     ),
                   )
                   .toList(),
-              onChanged: (v) => v == null ? null : replace(RowFilter(column: filter.column, op: v, value: filter.value)),
+              onChanged: readOnly ? null : (v) => v == null ? null : replace(RowFilter(column: filter.column, op: v, value: filter.value)),
             ),
           ),
           SizedBox(
             width: 150,
             child: TextFormField(
               initialValue: filter.value,
+              enabled: !readOnly,
               decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
               onChanged: (v) => replace(RowFilter(column: filter.column, op: filter.op, value: v)),
             ),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline, size: 20),
-            onPressed: () {
-              final list = [..._transforms.filters]..removeAt(index);
-              _updateTransforms(filters: list);
-            },
+            onPressed: readOnly
+                ? null
+                : () {
+                    final list = [..._transforms.filters]..removeAt(index);
+                    _updateTransforms(filters: list);
+                  },
           ),
         ],
       ),

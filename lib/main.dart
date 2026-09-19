@@ -20,6 +20,7 @@ import 'l10n/app_strings.dart';
 import 'services/app_actions_controller.dart';
 import 'services/app_settings.dart';
 import 'services/import/import_service.dart';
+import 'services/import/stored_metadata_repair.dart';
 import 'services/sync/db_transfer_service.dart';
 import 'services/market/exchange_rate_service.dart';
 import 'services/sync/google_drive_sync_service.dart';
@@ -224,6 +225,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       await _initDriveSync();
       await _checkEmptyDb();
       await _runPendingBalanceRecalc();
+      await _normalizeStoredNumbers();
       if (!_showLanding && widget.enableStartupSync) _startBackgroundSync();
     });
   }
@@ -270,6 +272,19 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   /// One-time recalculation of balances in value_date order after migration 25.
+  /// One-shot per database: make every account's stored statement text parse
+  /// under its saved number locale (see [StoredMetadataRepair]). Verified
+  /// against stored amounts, never a guess; failures are logged, never fatal.
+  Future<void> _normalizeStoredNumbers() async {
+    try {
+      final db = ref.read(databaseProvider);
+      final appLocale = await ref.read(appLocaleProvider.future);
+      await StoredMetadataRepair(db).runIfNeeded(appLocale: appLocale);
+    } catch (e, st) {
+      _log.warning('Stored-number normalization failed', e, st);
+    }
+  }
+
   Future<void> _runPendingBalanceRecalc() async {
     try {
       final db = ref.read(databaseProvider);

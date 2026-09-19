@@ -1772,6 +1772,87 @@ Date,Balance
       expect(txs[2].amount, closeTo(-20.0, 1e-9));
     });
 
+    test('appending a later statement diffs its first row against the last stored statement balance', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'BankX'));
+      const mappings = [
+        ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
+      ];
+      final first = await importer.parseFile(
+        writeCsv('bal1.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,1100
+''').path,
+      );
+      await importer.importTransactions(preview: first, mappings: mappings, accountId: accountId);
+      final second = await importer.parseFile(
+        writeCsv('bal2.csv', '''
+Date,Balance
+20/01/2024,1250
+21/01/2024,1200
+''').path,
+      );
+      final prev = await importer.previewTransactionImport(preview: second, mappings: mappings, accountId: accountId);
+      await importer.importTransactions(preview: second, mappings: mappings, accountId: accountId);
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      expect(txs.map((t) => t.amount).toList(), [
+        0.0,
+        closeTo(100, 1e-9),
+        closeTo(150, 1e-9),
+        closeTo(-50, 1e-9),
+      ], reason: 'the appended chunk continues from 1100, so its first row is +150, not 0');
+      expect(prev.importSum, closeTo(100, 1e-9), reason: 'preview parity');
+    });
+
+    test('re-running the whole account keeps its established opening balance', () async {
+      const mappings = [
+        ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
+      ];
+      // Account that started from zero: its first stored row IS the opening deposit (+2000).
+      final fromZero = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'FromZero'));
+      final csv = writeCsv('z.csv', '''
+Date,Balance
+20/02/2017,2000
+24/02/2017,2000.05
+11/05/2022,0
+''');
+      final preview = await importer.parseFile(csv.path);
+      await importer.importTransactions(preview: preview, mappings: mappings, accountId: fromZero);
+      // Historical data imported before the first-row rule changed: opening deposit stored as +2000.
+      final firstRow = (await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get()).first;
+      await (db.update(db.transactions)..where((t) => t.id.equals(firstRow.id))).write(const TransactionsCompanion(amount: Value(2000)));
+
+      final stored = (await importer.previewFromStoredRows(fromZero, numberLocale: 'en_US'))!;
+      final prev = await importer.previewTransactionImport(preview: stored, mappings: mappings, accountId: fromZero);
+      expect(prev.importSum, closeTo(0, 1e-6), reason: 'deltas telescope to last − opening = 0 − 0');
+      await importer.importTransactions(preview: stored, mappings: mappings, accountId: fromZero, replaceOnlyImportedRows: true);
+      final txs =
+          await (db.select(db.transactions)
+                ..where((t) => t.accountId.equals(fromZero))
+                ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+              .get();
+      expect(txs.map((t) => t.amount).toList(), [closeTo(2000, 1e-9), closeTo(0.05, 1e-9), closeTo(-2000.05, 1e-9)]);
+
+      // Account whose statement starts mid-life (opening balance 1000 is not a transaction): stays 0 on re-run.
+      final midLife = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'MidLife'));
+      final csv2 = writeCsv('m.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,1100
+''');
+      await importer.importTransactions(preview: await importer.parseFile(csv2.path), mappings: mappings, accountId: midLife);
+      final stored2 = (await importer.previewFromStoredRows(midLife, numberLocale: 'en_US'))!;
+      await importer.importTransactions(preview: stored2, mappings: mappings, accountId: midLife, replaceOnlyImportedRows: true);
+      final txs2 =
+          await (db.select(db.transactions)
+                ..where((t) => t.accountId.equals(midLife))
+                ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+              .get();
+      expect(txs2.map((t) => t.amount).toList(), [0.0, closeTo(100, 1e-9)]);
+    });
+
     test('gap in balance column carries the last known balance', () async {
       // Row 1 has no balance — the diff for row 2 should be (row2 - row0),
       // not (row2 - 0). Pre-fix code reset prevBalance to null on the gap
