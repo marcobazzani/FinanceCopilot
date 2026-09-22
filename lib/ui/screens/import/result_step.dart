@@ -27,6 +27,21 @@ extension _ResultStep on _ImportScreenState {
               _resultRow(s.importedLabel, '${r.importedRows}', color: Colors.green),
               if (r.deletedRows > 0) _resultRow(s.replacedOverlap, '${r.deletedRows}', color: Colors.orange),
               if (r.errorRows > 0) _resultRow(s.skippedLabel, '${r.errorRows}', color: Colors.red),
+              if (_classifyResult != null) ...[
+                _resultRow(s.categorizedLabel, '${_classifyResult!.changed}', color: Colors.blue),
+                if (_classifyResult!.uncategorizedAfter > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: TextButton.icon(
+                      key: const Key('importReviewUncategorized'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => ClassificationWizardScreen(accountId: _targetId)),
+                      ),
+                      icon: const Icon(Icons.auto_fix_high, size: 18),
+                      label: Text(s.reviewUncategorizedCount(_classifyResult!.uncategorizedAfter)),
+                    ),
+                  ),
+              ],
               if (r.errors.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 ...r.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),

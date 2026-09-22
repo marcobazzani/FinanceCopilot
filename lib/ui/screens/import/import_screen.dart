@@ -17,6 +17,8 @@ import 'package:finance_copilot/services/import/preview_transforms.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import 'package:finance_copilot/services/market/isin_lookup_service.dart';
 import 'package:finance_copilot/services/import/pdf_exceptions.dart';
+import 'package:finance_copilot/services/classification/transaction_classifier_service.dart';
+import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
 import '../../../utils/dialogs.dart';
@@ -176,6 +178,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   final Set<String> _excludedIsins = {};
 
   ImportResult? _result;
+  ClassifyResult? _classifyResult;
   bool _importing = false;
   bool _parsing = false;
   int _importedSoFar = 0;
@@ -1300,6 +1303,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _isQuickMode = false;
     _mappings.clear();
     _result = null;
+    _classifyResult = null;
     _error = null;
     _parsing = false;
     _importedSoFar = 0;

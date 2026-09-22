@@ -13,6 +13,7 @@ import 'package:finance_copilot/ui/screens/accounts/account_detail_screen.dart';
 import 'package:finance_copilot/ui/screens/accounts/capex_screen.dart' show AdjustmentsView;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
 import 'package:finance_copilot/ui/screens/accounts/income_screen.dart';
+import 'package:finance_copilot/ui/screens/classification/categories_rules_screen.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
@@ -45,9 +46,27 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
+    final uncategorized = ref.watch(classificationProgressProvider(null)).value?.uncategorized ?? 0;
+    final rulesDirty = ref.watch(rulesDirtyProvider);
     return Scaffold(
       appBar: AppBar(
-        actions: globalAppBarActions(context, ref),
+        actions: globalAppBarActions(
+          context,
+          ref,
+          local: [
+            // The single classification entry point: the full-screen
+            // Categories & rules view (wizard, rule runs, rules, categories).
+            AppBarAction(
+              icon: Icons.auto_fix_high,
+              color: rulesDirty ? Theme.of(context).colorScheme.tertiary : null,
+              tooltip: uncategorized > 0 ? s.reviewUncategorizedCount(uncategorized) : s.classificationWizardTitle,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CategoriesRulesScreen()),
+              ),
+            ),
+          ],
+        ),
         bottom: TabBar(
           controller: _tabController,
           tabs: [

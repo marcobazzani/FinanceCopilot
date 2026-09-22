@@ -12,6 +12,45 @@ enum ExpenseType { opex, capex }
 
 enum CategoryType { income, expense, transfer, reimbursement }
 
+/// Bank-declared entry kind, parsed from the statement's own type labels
+/// (causale / type column / POS-SDD-SCT prefixes). This is format parsing,
+/// not categorization: it never picks a category by itself, it only becomes
+/// available as a rule match dimension and as a hint in the UI.
+enum BankEntryKind {
+  cardPayment,
+  cardTopUp,
+  transfer,
+  directDebit,
+  standingOrder,
+  atmWithdrawal,
+  cashDeposit,
+  fee,
+  salary,
+  securitiesTrade,
+  interest,
+  refund,
+  fxExchange,
+  tax,
+  unknown,
+}
+
+/// How an [AutoCategorizationRules] row matches a transaction.
+enum RuleMatchType {
+  /// `pattern` equals the transaction's normalized merchant key.
+  merchantKey,
+
+  /// Case-insensitive substring over description + full description.
+  contains,
+
+  /// Case-insensitive regular expression over description + full description.
+  regex,
+
+  /// `pattern` equals the [BankEntryKind] name.
+  entryKind,
+}
+
+enum RuleDirection { any, inflow, outflow }
+
 enum AssetType {
   stock,
   stockEtf,
@@ -184,6 +223,13 @@ class Categories extends Table {
   TextColumn get icon => text().nullable()();
   TextColumn get color => text().nullable()();
   IntColumn get parentId => integer().nullable().references(Categories, #id)();
+
+  /// Stable l10n key for seeded categories (display name comes from
+  /// `AppStrings.categoryName(key)`). NULL for user-created categories, and
+  /// cleared when the user renames a seeded one — from then on [name] wins.
+  TextColumn get key => text().nullable()();
+  BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 }
 
 class Transactions extends Table {
@@ -203,6 +249,17 @@ class Transactions extends Table {
   TextColumn get rawMetadata => text().nullable()(); // JSON
   TextColumn get importHash => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  // ── Derived, recomputable columns (see DescriptionNormalizer) ──
+  /// Stable counterparty key: uppercase alphanumerics only, bank noise
+  /// (dates, card masks, reference ids) stripped. NULL until computed.
+  TextColumn get merchantKey => text().nullable()();
+
+  /// Human-readable counterparty as extracted from the description.
+  TextColumn get counterparty => text().nullable()();
+
+  /// Bank-declared entry kind parsed from the statement.
+  TextColumn get entryKind => textEnum<BankEntryKind>().nullable()();
 }
 
 class AutoCategorizationRules extends Table {
@@ -212,6 +269,15 @@ class AutoCategorizationRules extends Table {
   IntColumn get priority => integer().withDefault(const Constant(0))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get matchType => textEnum<RuleMatchType>().withDefault(Constant(RuleMatchType.merchantKey.name))();
+
+  /// Restrict the rule to one account; NULL = all accounts.
+  IntColumn get accountId => integer().nullable().references(Accounts, #id)();
+  TextColumn get direction => textEnum<RuleDirection>().withDefault(Constant(RuleDirection.any.name))();
+
+  /// Optional absolute-amount bounds (inclusive), in transaction currency.
+  RealColumn get amountMin => real().nullable()();
+  RealColumn get amountMax => real().nullable()();
 }
 
 class Assets extends Table {

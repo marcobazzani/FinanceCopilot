@@ -229,6 +229,27 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
             ),
             const SizedBox(height: 24),
           ],
+          // Where the money goes: spending per category, year over year.
+          // Independent of the income/expense series — it only needs
+          // categorized transactions.
+          ExpansionTile(
+            key: const Key('spendingByCategoryTile'),
+            title: Text(ref.watch(appStringsProvider).spendingByCategoryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(ref.watch(appStringsProvider).spendingByCategorySubtitle, style: Theme.of(context).textTheme.bodySmall),
+            initiallyExpanded: true,
+            children: [
+              ref
+                  .watch(_spendingByCategoryProvider)
+                  .when(
+                    loading: () => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text('$e')),
+                    data: (d) => _SpendingByCategoryChart(data: d, locale: locale),
+                  ),
+            ],
+          ),
           // Income/expense analytics sections
           if (ieAsync.isLoading) ...[
             const Center(child: CircularProgressIndicator()),

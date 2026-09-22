@@ -23,11 +23,16 @@ class SelectionActionBar<T> extends ConsumerWidget {
   /// dialog. On success, the controller is cleared automatically.
   final Future<void> Function(Set<T> ids) onDelete;
 
+  /// Optional screen-specific actions rendered before the delete button
+  /// (e.g. "Set category" on a transaction ledger).
+  final List<Widget> extraActions;
+
   const SelectionActionBar({
     super.key,
     required this.controller,
     required this.visibleIds,
     required this.onDelete,
+    this.extraActions = const [],
   });
 
   @override
@@ -77,6 +82,7 @@ class SelectionActionBar<T> extends ConsumerWidget {
                           },
                   ),
                   const SizedBox(width: 4),
+                  ...extraActions,
                   IconButton(
                     icon: Icon(Icons.delete, color: theme.colorScheme.error),
                     tooltip: s.delete,

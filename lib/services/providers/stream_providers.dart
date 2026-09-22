@@ -113,6 +113,75 @@ final allTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
   return ref.watch(transactionServiceProvider).watchAll(through: through);
 });
 
+// ── Transaction categorization ──
+
+/// Active (non-archived) categories in display order.
+final categoriesProvider = StreamProvider<List<Category>>((ref) {
+  return ref.watch(categoryServiceProvider).watchAll();
+});
+
+/// Every category including archived ones (management screen, label lookup
+/// for rows still pointing at an archived category).
+final allCategoriesProvider = StreamProvider<List<Category>>((ref) {
+  return ref.watch(categoryServiceProvider).watchAll(includeArchived: true);
+});
+
+/// Categories by id — includes archived so existing rows always resolve.
+final categoriesByIdProvider = Provider<Map<int, Category>>((ref) {
+  final list = ref.watch(allCategoriesProvider).value ?? const <Category>[];
+  return {for (final c in list) c.id: c};
+});
+
+/// Rules in evaluation order.
+final categorizationRulesProvider = StreamProvider<List<AutoCategorizationRule>>((ref) {
+  return ref.watch(ruleServiceProvider).watchAll();
+});
+
+/// Every category the user has actually used, most recently used first:
+/// categories targeted by a rule (newest rule first), then categories set
+/// directly on transactions. Unbounded by design — "used at least once" is
+/// the whole criterion.
+final usedCategoryIdsProvider = StreamProvider<List<int>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db
+      .customSelect(
+        'SELECT category_id AS id, MAX(last_used) AS last_used FROM ('
+        '  SELECT category_id, created_at AS last_used FROM auto_categorization_rules'
+        '  UNION ALL'
+        '  SELECT category_id, 0 AS last_used FROM transactions WHERE category_id IS NOT NULL'
+        ') GROUP BY category_id ORDER BY last_used DESC, id',
+        readsFrom: {db.autoCategorizationRules, db.transactions},
+      )
+      .watch()
+      .map((rows) => rows.map((r) => r.read<int>('id')).toList());
+});
+
+/// Classification progress measured in base-currency money (rows without an
+/// FX rate excluded and counted); family key = accountId (null = whole ledger).
+final classificationProgressProvider = StreamProvider.family<ClassificationProgress, int?>((ref, accountId) async* {
+  final base = await ref.watch(baseCurrencyProvider.future);
+  final rates = CachedRateResolver(ref.watch(exchangeRateServiceProvider), base);
+  yield* ref.watch(transactionClassifierServiceProvider).watchProgress(accountId: accountId, rate: rates.getRate, baseCurrency: base);
+});
+
+/// Uncategorized merchant groups, the ones worth the most money first;
+/// family key = accountId.
+final uncategorizedGroupsProvider = StreamProvider.family<List<MerchantGroup>, int?>((ref, accountId) async* {
+  final base = await ref.watch(baseCurrencyProvider.future);
+  final rates = CachedRateResolver(ref.watch(exchangeRateServiceProvider), base);
+  yield* ref.watch(transactionClassifierServiceProvider).watchUncategorizedGroups(accountId: accountId, rate: rates.getRate, baseCurrency: base);
+});
+
+/// Structural ledger roles (transfer / no-op / adjustment / cancelled) for
+/// every explained row. Rows in this map never take part in categorization.
+final ledgerRolesProvider = StreamProvider<Map<int, LedgerRole>>((ref) {
+  return ref.watch(transactionClassifierServiceProvider).watchLedger().map((l) => l.roles);
+});
+
+/// Set when rules changed since the last classifier run — the management
+/// screen shows a "reclassify" reminder until the user runs it.
+final rulesDirtyProvider = StateProvider<bool>((ref) => false);
+
 /// Asset events for a specific asset (pass assetId as family parameter).
 final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, assetId) {
   final through = ref.watch(waybackDateProvider);
@@ -207,39 +276,8 @@ final extraordinaryEventStatsProvider = StreamProvider<Map<int, ExtraordinaryEve
 final adjustmentInputsProvider = StreamProvider<AdjustmentInputs>((ref) {
   final through = ref.watch(waybackDateProvider);
   final service = ref.watch(extraordinaryEventServiceProvider);
-  final db = ref.watch(databaseProvider);
-
-  return service.watchAdjustmentRevision().asyncMap((_) async {
-    final events = await service.getAll(through: through);
-    final entriesByEvent = <int, List<ExtraordinaryEventEntry>>{};
-    final reimbByEvent = <int, List<BufferTransaction>>{};
-    for (final e in events) {
-      // NOTE: entries are intentionally NOT bounded by `through` here, matching
-      // the previous behaviour. Tightening that is a separate change.
-      entriesByEvent[e.id] = await (db.select(db.extraordinaryEventEntries)..where((t) => t.eventId.equals(e.id))).get();
-      if (e.bufferId != null) {
-        reimbByEvent[e.id] =
-            await (db.select(db.bufferTransactions)
-                  ..where((t) => t.bufferId.equals(e.bufferId!))
-                  ..where((t) => t.isReimbursement.equals(true)))
-                .get();
-      }
-    }
-    return AdjustmentInputs(events: events, entriesByEvent: entriesByEvent, reimbursementsByEvent: reimbByEvent);
-  });
+  return service.watchAdjustmentRevision().asyncMap((_) => service.getAdjustmentInputs(through: through));
 });
-
-/// Plain bag of adjustment inputs (see [adjustmentInputsProvider]).
-class AdjustmentInputs {
-  final List<ExtraordinaryEvent> events;
-  final Map<int, List<ExtraordinaryEventEntry>> entriesByEvent;
-  final Map<int, List<BufferTransaction>> reimbursementsByEvent;
-  const AdjustmentInputs({
-    required this.events,
-    required this.entriesByEvent,
-    required this.reimbursementsByEvent,
-  });
-}
 
 // ── Income stream providers ──
 

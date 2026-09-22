@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/classification/transaction_classifier_service.dart';
 import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 import 'package:finance_copilot/utils/logger.dart';
 
@@ -72,8 +73,14 @@ class TransactionService {
     double? balanceAfter,
     required String currency,
     TransactionStatus status = TransactionStatus.settled,
+    int? categoryId,
   }) {
     _log.info('create: accountId=$accountId, date=$operationDate');
+    final keys = TransactionClassifierService.normalize(
+      description: description,
+      descriptionFull: descriptionFull,
+      amount: amount,
+    );
     return _db
         .into(_db.transactions)
         .insert(
@@ -87,12 +94,34 @@ class TransactionService {
             balanceAfter: Value(balanceAfter),
             currency: Value(currency),
             status: Value(status),
+            categoryId: Value(categoryId),
+            merchantKey: Value(keys.merchantKey),
+            counterparty: Value(keys.counterparty),
+            entryKind: Value(keys.entryKind),
           ),
         );
   }
 
-  Future<bool> update(int id, TransactionsCompanion companion) {
+  /// Update a row. When the description, full description or amount sign
+  /// changes, the derived merchant key / counterparty / entry kind are
+  /// recomputed so grouping and merchant rules keep working.
+  Future<bool> update(int id, TransactionsCompanion companion) async {
     _log.info('update: id=$id');
+    if (companion.description.present || companion.descriptionFull.present || companion.amount.present) {
+      final current = await (_db.select(_db.transactions)..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (current == null) return false;
+      final keys = TransactionClassifierService.normalize(
+        description: companion.description.present ? companion.description.value : current.description,
+        descriptionFull: companion.descriptionFull.present ? companion.descriptionFull.value : current.descriptionFull,
+        rawMetadataJson: current.rawMetadata,
+        amount: companion.amount.present ? companion.amount.value : current.amount,
+      );
+      companion = companion.copyWith(
+        merchantKey: Value(keys.merchantKey),
+        counterparty: Value(keys.counterparty),
+        entryKind: Value(keys.entryKind),
+      );
+    }
     return (_db.update(_db.transactions)..where((t) => t.id.equals(id))).write(companion).then((rows) => rows > 0);
   }
 

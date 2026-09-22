@@ -13,7 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/ui/screens/accounts/entry_pairing.dart';
+import 'package:finance_copilot/services/domain/entry_pairing.dart';
 
 void main() {
   late AppDatabase db;

@@ -13,6 +13,17 @@ class SavingScheduleItem {
   const SavingScheduleItem({required this.date, required this.amount, required this.eventName});
 }
 
+/// Everything [resolveAdjustments] needs from the DB, pre-grouped so the
+/// resolver does no IO. Loaded by `ExtraordinaryEventService.getAdjustmentInputs`.
+class AdjustmentInputs {
+  final List<ExtraordinaryEvent> events;
+  final Map<int, List<ExtraordinaryEventEntry>> entriesByEvent;
+  final Map<int, List<BufferTransaction>> reimbursementsByEvent;
+  const AdjustmentInputs({required this.events, required this.entriesByEvent, required this.reimbursementsByEvent});
+
+  static const empty = AdjustmentInputs(events: [], entriesByEvent: {}, reimbursementsByEvent: {});
+}
+
 /// Result of resolving extraordinary events against the transaction list for
 /// the read-only All-Accounts view.
 class AdjustmentResolution {

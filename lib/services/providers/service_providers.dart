@@ -11,6 +11,9 @@ final importServiceProvider = _dbService(ImportService.new);
 final transactionServiceProvider = _dbService(TransactionService.new);
 final assetEventServiceProvider = _dbService(AssetEventService.new);
 final importConfigServiceProvider = _dbService(ImportConfigService.new);
+final categoryServiceProvider = _dbService(CategoryService.new);
+final ruleServiceProvider = _dbService(RuleService.new);
+final transactionClassifierServiceProvider = _dbService(TransactionClassifierService.new);
 
 final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
   final priceService = ref.watch(marketPriceServiceProvider);

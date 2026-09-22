@@ -226,6 +226,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       await _checkEmptyDb();
       await _runPendingBalanceRecalc();
       await _normalizeStoredNumbers();
+      await _recomputeMerchantKeys();
       if (!_showLanding && widget.enableStartupSync) _startBackgroundSync();
     });
   }
@@ -269,6 +270,16 @@ class _AppShellState extends ConsumerState<AppShell> {
         setState(() => _showLanding = true);
       }
     } catch (_) {}
+  }
+
+  /// Derived merchant keys are recomputed whenever the normalizer version
+  /// changed (or rows lack a key, e.g. right after the v50 migration).
+  Future<void> _recomputeMerchantKeys() async {
+    try {
+      await ref.read(transactionClassifierServiceProvider).recomputeKeysIfStale();
+    } catch (e) {
+      _log.warning('Merchant key recompute failed: $e');
+    }
   }
 
   /// One-time recalculation of balances in value_date order after migration 25.

@@ -1,4 +1,5 @@
 import '../database/tables.dart';
+import '../services/classification/ledger_roles.dart';
 
 /// Simple two-language (EN / IT) string table.
 /// Access via [appStringsProvider] in Riverpod widgets.
@@ -1247,4 +1248,207 @@ class AppStrings {
   String get ticketerDescriptionLabel => _it ? 'Descrizione del problema' : 'Describe the issue';
   String get ticketerStepsLabel => _it ? 'Passaggi per riprodurre' : 'Steps to reproduce';
   String get ticketerStepsHint => _it ? '1. Apri...\n2. Clicca...' : '1. Open...\n2. Click...';
+
+  // ── Transaction categorization ─────────────────────────
+  String get category => _it ? 'Categoria' : 'Category';
+  String get categories => _it ? 'Categorie' : 'Categories';
+  String get uncategorized => _it ? 'Senza categoria' : 'Uncategorized';
+  String uncategorizedCount(int n) => _it ? 'Senza categoria ($n)' : 'Uncategorized ($n)';
+  String get noCategory => _it ? 'Nessuna categoria' : 'No category';
+  String get categoriesAndRules => _it ? 'Categorie e regole' : 'Categories & rules';
+  String get categoriesAndRulesSubtitle => _it
+      ? 'Gestisci le categorie e le regole che classificano le transazioni'
+      : 'Manage the categories and the rules that classify transactions';
+  String get rules => _it ? 'Regole' : 'Rules';
+  String get rule => _it ? 'Regola' : 'Rule';
+  String get newRule => _it ? 'Nuova regola' : 'New rule';
+  String get editRule => _it ? 'Modifica regola' : 'Edit rule';
+  String get newCategory => _it ? 'Nuova categoria' : 'New category';
+  String get newCategoryEllipsis => _it ? 'Nuova categoria…' : 'New category…';
+  String createCategoryNamed(String name) => _it ? 'Crea "$name"' : 'Create "$name"';
+  String get editCategory => _it ? 'Modifica categoria' : 'Edit category';
+  String get categoryName => _it ? 'Nome categoria' : 'Category name';
+  String get categoryTypeLabel => _it ? 'Tipo' : 'Type';
+  String get archived => _it ? 'Archiviata' : 'Archived';
+  String get archive => _it ? 'Archivia' : 'Archive';
+  String get unarchive => _it ? 'Ripristina' : 'Unarchive';
+  String get showArchived => _it ? 'Mostra archiviate' : 'Show archived';
+  String get restoreDefaultCategories => _it ? 'Ripristina categorie predefinite' : 'Restore default categories';
+  String restoredCategories(int n) => _it ? 'Categorie ripristinate: $n' : 'Restored $n categories';
+  String get deleteCategoryTitle => _it ? 'Eliminare la categoria?' : 'Delete category?';
+  String deleteCategoryBody(int tx, int rules) => _it
+      ? 'Usata da $tx transazioni e $rules regole. Scegli dove spostarle, oppure lasciale senza categoria (le regole verranno eliminate).'
+      : 'Used by $tx transactions and $rules rules. Pick where to move them, or leave them uncategorized (rules will be deleted).';
+  String get reassignTo => _it ? 'Sposta in' : 'Move to';
+  String get leaveUncategorized => _it ? 'Lascia senza categoria' : 'Leave uncategorized';
+  String get essentialExpense => _it ? 'Spesa essenziale' : 'Essential expense';
+  String categoryTypeName(CategoryType t) => switch (t) {
+    CategoryType.income => _it ? 'Entrata' : 'Income',
+    CategoryType.expense => _it ? 'Spesa' : 'Expense',
+    CategoryType.transfer => _it ? 'Trasferimento' : 'Transfer',
+    CategoryType.reimbursement => _it ? 'Rimborso' : 'Reimbursement',
+  };
+
+  /// Display name for a seeded category key. Falls back to the key itself
+  /// for unknown keys so a stale DB never renders an empty label.
+  String categoryNameFor(String key) => switch (key) {
+    'salary' => _it ? 'Stipendio' : 'Salary',
+    'interestDividends' => _it ? 'Interessi e dividendi' : 'Interest & dividends',
+    'otherIncome' => _it ? 'Altre entrate' : 'Other income',
+    'refunds' => _it ? 'Rimborsi' : 'Refunds',
+    'transfer' => _it ? 'Trasferimenti' : 'Transfers',
+    'investments' => _it ? 'Investimenti' : 'Investments',
+    'groceries' => _it ? 'Spesa alimentare' : 'Groceries',
+    'restaurantsBars' => _it ? 'Ristoranti e bar' : 'Restaurants & bars',
+    'transport' => _it ? 'Trasporti' : 'Transport',
+    'carFuelTolls' => _it ? 'Auto, carburante e pedaggi' : 'Car, fuel & tolls',
+    'housing' => _it ? 'Casa' : 'Housing',
+    'utilities' => _it ? 'Utenze' : 'Utilities',
+    'health' => _it ? 'Salute' : 'Health',
+    'insurance' => _it ? 'Assicurazioni' : 'Insurance',
+    'shopping' => _it ? 'Shopping' : 'Shopping',
+    'subscriptionsEntertainment' => _it ? 'Abbonamenti e svago' : 'Subscriptions & entertainment',
+    'travel' => _it ? 'Viaggi' : 'Travel',
+    'education' => _it ? 'Istruzione' : 'Education',
+    'childcare' => _it ? 'Figli e asilo' : 'Childcare',
+    'giftsDonations' => _it ? 'Regali e donazioni' : 'Gifts & donations',
+    'taxesFees' => _it ? 'Tasse e imposte' : 'Taxes & fees',
+    'bankFees' => _it ? 'Commissioni bancarie' : 'Bank fees',
+    'cash' => _it ? 'Contanti' : 'Cash',
+    'other' => _it ? 'Altro' : 'Other',
+    _ => key,
+  };
+
+  String entryKindName(BankEntryKind k) => switch (k) {
+    BankEntryKind.cardPayment => _it ? 'Pagamento con carta' : 'Card payment',
+    BankEntryKind.cardTopUp => _it ? 'Ricarica carta' : 'Card top-up',
+    BankEntryKind.transfer => _it ? 'Bonifico' : 'Transfer',
+    BankEntryKind.directDebit => _it ? 'Addebito diretto' : 'Direct debit',
+    BankEntryKind.standingOrder => _it ? 'Ordine permanente' : 'Standing order',
+    BankEntryKind.atmWithdrawal => _it ? 'Prelievo' : 'ATM withdrawal',
+    BankEntryKind.cashDeposit => _it ? 'Versamento contanti' : 'Cash deposit',
+    BankEntryKind.fee => _it ? 'Commissione' : 'Fee',
+    BankEntryKind.salary => _it ? 'Stipendio' : 'Salary',
+    BankEntryKind.securitiesTrade => _it ? 'Compravendita titoli' : 'Securities trade',
+    BankEntryKind.interest => _it ? 'Interessi' : 'Interest',
+    BankEntryKind.refund => _it ? 'Rimborso' : 'Refund',
+    BankEntryKind.fxExchange => _it ? 'Cambio valuta' : 'FX exchange',
+    BankEntryKind.tax => _it ? 'Imposta' : 'Tax',
+    BankEntryKind.unknown => _it ? 'Sconosciuto' : 'Unknown',
+  };
+
+  String ruleMatchTypeName(RuleMatchType t) => switch (t) {
+    RuleMatchType.merchantKey => _it ? 'Controparte' : 'Merchant',
+    RuleMatchType.contains => _it ? 'Descrizione contiene' : 'Description contains',
+    RuleMatchType.regex => _it ? 'Espressione regolare' : 'Regular expression',
+    RuleMatchType.entryKind => _it ? 'Tipo di movimento' : 'Entry type',
+  };
+  String ruleDirectionName(RuleDirection d) => switch (d) {
+    RuleDirection.any => _it ? 'Entrate e uscite' : 'Inflows & outflows',
+    RuleDirection.inflow => _it ? 'Solo entrate' : 'Inflows only',
+    RuleDirection.outflow => _it ? 'Solo uscite' : 'Outflows only',
+  };
+  String get rulePattern => _it ? 'Valore' : 'Pattern';
+  String get ruleMatchType => _it ? 'Criterio' : 'Match';
+  String get ruleAccountScope => _it ? 'Conto' : 'Account';
+  String get ruleDirection => _it ? 'Direzione' : 'Direction';
+  String get amountMin => _it ? 'Importo minimo' : 'Min amount';
+  String get amountMax => _it ? 'Importo massimo' : 'Max amount';
+  String get ruleActive => _it ? 'Attiva' : 'Active';
+  String get invalidPattern => _it ? 'Valore non valido' : 'Invalid pattern';
+  String ruleMatchesPreview(int total, int uncategorized) =>
+      _it ? 'Corrisponde a $total transazioni ($uncategorized senza categoria)' : 'Matches $total transactions ($uncategorized uncategorized)';
+  String get noRulesYet => _it
+      ? 'Nessuna regola. Usa la procedura guidata o aggiungi una regola per iniziare a classificare.'
+      : 'No rules yet. Use the wizard or add a rule to start classifying.';
+  String get noCategoriesYet => _it ? 'Nessuna categoria.' : 'No categories.';
+  String get rulesChangedBanner =>
+      _it ? 'Le regole sono cambiate: riesegui la classificazione per applicarle.' : 'Rules changed — run the classifier to apply them.';
+  String get classifyUncategorized => _it ? 'Applica le regole ai senza categoria' : 'Apply rules to uncategorized';
+  String get reclassifyEverything => _it ? 'Riapplica le regole a tutto' : 'Re-apply rules to everything';
+  String get reclassifyEverythingTitle => _it ? 'Riapplicare le regole a tutto?' : 'Re-apply rules to everything?';
+  String get reclassifyEverythingBody => _it
+      ? 'Le regole sovrascriveranno la categoria di tutte le transazioni a cui corrispondono, anche quelle già classificate. Le transazioni senza regola corrispondente restano come sono.'
+      : 'Rules will overwrite the category of every transaction they match, including already-categorized ones. Transactions matching no rule are left as they are.';
+  String classifyResultSnack(int changed, int left) =>
+      _it ? 'Classificate $changed transazioni, $left senza categoria' : 'Classified $changed transactions, $left uncategorized';
+  String get createRuleForMerchant => _it ? 'Crea una regola per questa controparte' : 'Create a rule for this merchant';
+  String createRuleForMerchantHint(String merchant, int n) => _it
+      ? 'Le transazioni di "$merchant" ($n) riceveranno questa categoria a ogni classificazione'
+      : 'Transactions from "$merchant" ($n) will get this category on every classifier run';
+  String get setCategory => _it ? 'Imposta categoria' : 'Set category';
+  String setCategoryCount(int n) => _it ? 'Categoria impostata su $n transazioni' : 'Category set on $n transactions';
+  String get merchant => _it ? 'Controparte' : 'Merchant';
+  String get entryType => _it ? 'Tipo di movimento' : 'Entry type';
+  String get categoryFilterTitle => _it ? 'Categorie' : 'Categories';
+
+  // Wizard
+  String get classificationWizardTitle => _it ? 'Classifica le transazioni' : 'Classify transactions';
+  String get reviewUncategorized => _it ? 'Classifica' : 'Classify';
+  String reviewUncategorizedCount(int n) => _it ? 'Classifica $n senza categoria' : 'Classify $n uncategorized';
+  String wizardProgress(int done, int total, int pct) => _it ? '$done di $total classificate ($pct%)' : '$done of $total classified ($pct%)';
+  String wizardProgressAmount(String done, String total, String currency, int pct) =>
+      _it ? '$done di $total $currency classificati ($pct%)' : '$done of $total $currency classified ($pct%)';
+  String wizardProgressRows(int done, int total) => _it ? '$done di $total movimenti' : '$done of $total transactions';
+  String wizardFxExcludedNote(int n) =>
+      _it ? '$n movimenti senza tasso di cambio: esclusi dagli importi' : '$n entries without an exchange rate: excluded from the amounts';
+  String wizardGroupTotal(int n, String amounts) => _it
+      ? (n == 1 ? 'Stai classificando $amounts' : 'Stai classificando $n movimenti per $amounts')
+      : (n == 1 ? 'You are classifying $amounts' : 'You are classifying $n transactions worth $amounts');
+  String wizardGroupFxMissing(int n) => _it ? '($n senza tasso di cambio)' : '($n without an exchange rate)';
+  String wizardSimilarCount(int n) => _it
+      ? (n == 1 ? '1 altra transazione simile' : '$n altre transazioni simili')
+      : (n == 1 ? '1 other similar transaction' : '$n other similar transactions');
+  String get wizardNoSimilar => _it ? 'Nessun\'altra transazione simile' : 'No other similar transactions';
+  String get wizardAllDone => _it ? 'Tutte le transazioni sono classificate.' : 'All transactions are classified.';
+  String get wizardAllDoneSubtitle =>
+      _it ? 'Le regole create classificheranno anche le prossime importazioni.' : 'The rules you created will also classify future imports.';
+  String get wizardNothingLeftInScope => _it
+      ? 'Hai saltato tutte le transazioni rimaste. Ricomincia per rivederle.'
+      : 'You skipped every remaining transaction. Restart to review them.';
+  String get wizardRestart => _it ? 'Ricomincia' : 'Restart';
+  String get wizardSkip => _it ? 'Salta' : 'Skip';
+  String get wizardUndo => _it ? 'Annulla ultima' : 'Undo last';
+  String get wizardApply => _it ? 'Applica' : 'Apply';
+  String get wizardPickCategory => _it ? 'Scegli una categoria' : 'Pick a category';
+  String get wizardRuleScope => _it ? 'Applica a' : 'Apply to';
+  String get wizardScopeMerchant => _it ? 'Questa controparte' : 'This merchant';
+  String get wizardScopeContains => _it ? 'Descrizione contiene…' : 'Description contains…';
+  String get wizardScopeEntryKind => _it ? 'Questo tipo di movimento' : 'This entry type';
+  String get wizardScopeOnlyThis => _it ? 'Solo questa transazione' : 'Only this transaction';
+  String get wizardScopeAllAccounts => _it ? 'Tutti i conti' : 'All accounts';
+  String get wizardScopeThisAccount => _it ? 'Solo questo conto' : 'This account only';
+  String get wizardRecentCategories => _it ? 'Recenti' : 'Recent';
+  String get wizardSamples => _it ? 'Esempi' : 'Samples';
+  String wizardApplied(int n) => _it ? 'Regola creata: $n transazioni classificate' : 'Rule created: $n transactions classified';
+  String get wizardUndone => _it ? 'Ultima azione annullata' : 'Last action undone';
+  String get wizardAccountsLabel => _it ? 'Conti' : 'Accounts';
+  String importUncategorizedRows(int n) => _it ? 'Senza categoria dopo l\'import: $n' : 'Uncategorized after import: $n';
+  String get categorizedLabel => _it ? 'Classificate' : 'Categorized';
+  String wizardExcludedNote(int n) => _it
+      ? '$n movimenti non partecipano: trasferimenti, storni, rettifiche e annullati'
+      : '$n entries do not take part: transfers, no-ops, adjustments and cancelled';
+  String ledgerRoleName(LedgerRole r) => switch (r) {
+    LedgerRole.transfer => _it ? 'Trasferimento' : 'Transfer',
+    LedgerRole.noOp => _it ? 'Storno' : 'No-op',
+    LedgerRole.adjustment => _it ? 'Rettifica' : 'Adjustment',
+    LedgerRole.cancelled => _it ? 'Annullato' : 'Cancelled',
+  };
+  String notCategorizableBecause(String role) => _it
+      ? 'Non classificabile: $role. Questi movimenti sono già spiegati dal registro e non partecipano alla categorizzazione.'
+      : 'Not categorizable: $role. These entries are already explained by the ledger and do not take part in categorization.';
+
+  // Spending by category chart
+  String get spendingByCategoryTitle => _it ? 'Dove vanno i soldi' : 'Where the money goes';
+  String get spendingByCategorySubtitle =>
+      _it ? 'Spese per categoria, anno su anno (anno corrente ad oggi)' : 'Spending per category, year over year (current year to date)';
+  String get chartModeAmount => _it ? 'Importo' : 'Amount';
+  String get chartModeShare => _it ? 'Quota %' : 'Share %';
+  String get ytdSuffix => _it ? 'in corso' : 'YTD';
+  String get spendingByCategoryEmpty => _it
+      ? 'Nessuna spesa classificata. Usa la procedura guidata per assegnare le categorie.'
+      : 'No categorized spending yet. Use the wizard to assign categories.';
+  String spendingFxExcluded(int n) =>
+      _it ? '$n transazioni escluse: tasso di cambio non disponibile' : '$n transactions excluded: exchange rate unavailable';
+  String get spendingTransfersExcluded => _it ? 'Trasferimenti e investimenti esclusi' : 'Transfers and investments excluded';
 }

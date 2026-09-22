@@ -66,7 +66,11 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     // Kind/date/amount filtering runs on the composed rows (text was already
     // applied above). Skip the pass entirely when no per-row filter is set.
     final entries = _filter.hasRowFilter
-        ? allEntries.where((e) => _filter.matches(_entryKinds(e, annotatedTxIds), e.valueDate, _entryAmount(e))).toList()
+        ? allEntries
+              .where(
+                (e) => _filter.matches(_entryKinds(e, annotatedTxIds), e.valueDate, _entryAmount(e)) && _entryMatchesCategory(e),
+              )
+              .toList()
         : allEntries;
 
     return (entries: entries, annotatedTxIds: annotatedTxIds);
@@ -90,6 +94,16 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
         ...classifyTransactionKinds(tx),
         if (annotatedTxIds.containsKey(tx.id)) EntryKind.adjustment,
       },
+    };
+  }
+
+  /// Category dimension: only real transaction rows carry a category;
+  /// synthetic rows (collapsed pairs, spread adjustments) pass only when no
+  /// category restriction is set.
+  bool _entryMatchesCategory(_Entry e) {
+    return switch (e) {
+      _TxEntry(:final tx) => _filter.matchesCategory(tx.categoryId),
+      _ => !_filter.hasCategoryFilter,
     };
   }
 

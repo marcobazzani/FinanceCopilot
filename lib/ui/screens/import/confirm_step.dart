@@ -770,6 +770,14 @@ extension _ConfirmStep on _ImportScreenState {
         final mappings = savedConfig != null ? jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic> : <String, dynamic>{};
         final mode = (mappings['__balanceMode'] as String?) ?? 'cumulative';
         await txSvc.recalculateBalances(_targetId!, balanceMode: mode, savedMappings: mappings);
+        // Apply the user's rules to the freshly imported rows (never
+        // overwrites an existing category).
+        try {
+          _classifyResult = await ref.read(transactionClassifierServiceProvider).classifyAll(accountId: _targetId, overwrite: false);
+        } catch (e) {
+          _log.warning('_executeImport: post-import classification failed: $e');
+          _classifyResult = null;
+        }
       }
 
       _setState(() {

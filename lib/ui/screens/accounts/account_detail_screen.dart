@@ -8,14 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
-import 'package:finance_copilot/ui/screens/accounts/entry_pairing.dart';
-import 'package:finance_copilot/ui/screens/accounts/adjustment_items.dart';
+import 'package:finance_copilot/services/domain/entry_pairing.dart';
+import 'package:finance_copilot/services/domain/adjustment_items.dart';
 import 'package:finance_copilot/ui/screens/accounts/transaction_filter.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 import 'package:finance_copilot/ui/screens/events/transaction_edit_screen.dart';
 import 'package:finance_copilot/ui/screens/events/event_edit_screen.dart';
+import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
+import 'package:finance_copilot/ui/widgets/category_ui.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/income_split_dialog.dart';
@@ -105,6 +107,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   }
 
   bool get _isReadOnly => widget.account.id == kAllAccountsId;
+
+  /// Account scope for classification providers: null = whole ledger.
+  int? get _scopeAccountId => _isReadOnly ? null : widget.account.id;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +236,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   showAdjustment: (adjInputs?.events.isNotEmpty ?? false),
                   locale: locale,
                   s: s,
+                  categories: ref.watch(categoriesProvider).value ?? const [],
+                  uncategorizedCount: ref.watch(classificationProgressProvider(_scopeAccountId)).value?.uncategorized ?? 0,
+                  onReviewUncategorized: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ClassificationWizardScreen(accountId: _scopeAccountId)),
+                  ),
                   onChanged: (f) => setState(() {
                     _filter = f;
                     // Keep the search box in sync when contains-text is changed
@@ -451,6 +462,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   controller: _selection,
                   visibleIds: visibleIds,
                   onDelete: (ids) => ref.read(transactionServiceProvider).deleteMany(ids.toList()),
+                  extraActions: [
+                    IconButton(
+                      key: const Key('bulkSetCategory'),
+                      icon: const Icon(Icons.label_outline),
+                      tooltip: s.setCategory,
+                      onPressed: () => _bulkSetCategory(context),
+                    ),
+                  ],
                 )
               : null,
         );

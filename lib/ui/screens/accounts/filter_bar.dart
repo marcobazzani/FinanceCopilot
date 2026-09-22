@@ -24,6 +24,16 @@ class _LedgerFilterBar extends StatelessWidget {
   final String locale;
   final AppStrings s;
 
+  /// Categories offered in the sheet (active + any archived one still in use
+  /// is resolved by the caller). Empty = category section hidden.
+  final List<Category> categories;
+
+  /// Uncategorized rows in this ledger (for the "Uncategorized (N)" chip).
+  final int uncategorizedCount;
+
+  /// Opens the classification wizard for this ledger's scope.
+  final VoidCallback? onReviewUncategorized;
+
   const _LedgerFilterBar({
     required this.filter,
     required this.onChanged,
@@ -31,6 +41,9 @@ class _LedgerFilterBar extends StatelessWidget {
     required this.showAdjustment,
     required this.locale,
     required this.s,
+    this.categories = const [],
+    this.uncategorizedCount = 0,
+    this.onReviewUncategorized,
   });
 
   List<EntryKind> get _availableKinds => [
@@ -62,9 +75,18 @@ class _LedgerFilterBar extends StatelessWidget {
         kindLabel: _kindLabel,
         locale: locale,
         s: s,
+        categories: categories,
+        uncategorizedCount: uncategorizedCount,
+        onReviewUncategorized: onReviewUncategorized,
       ),
     );
     if (result != null) onChanged(result);
+  }
+
+  String _categoryLabel(int? id) {
+    if (id == null) return s.uncategorized;
+    final c = categories.where((c) => c.id == id).firstOrNull;
+    return c == null ? s.uncategorized : categoryLabel(c, s);
   }
 
   @override
@@ -92,7 +114,14 @@ class _LedgerFilterBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: filter.isActive
-                ? _ActiveFilterPills(filter: filter, kindLabel: _kindLabel, locale: locale, s: s, onChanged: onChanged)
+                ? _ActiveFilterPills(
+                    filter: filter,
+                    kindLabel: _kindLabel,
+                    categoryLabel: _categoryLabel,
+                    locale: locale,
+                    s: s,
+                    onChanged: onChanged,
+                  )
                 : Text(
                     s.filterNone,
                     style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12),
@@ -114,6 +143,7 @@ class _LedgerFilterBar extends StatelessWidget {
 class _ActiveFilterPills extends StatelessWidget {
   final TransactionFilter filter;
   final String Function(EntryKind) kindLabel;
+  final String Function(int?) categoryLabel;
   final String locale;
   final AppStrings s;
   final ValueChanged<TransactionFilter> onChanged;
@@ -121,6 +151,7 @@ class _ActiveFilterPills extends StatelessWidget {
   const _ActiveFilterPills({
     required this.filter,
     required this.kindLabel,
+    required this.categoryLabel,
     required this.locale,
     required this.s,
     required this.onChanged,
@@ -168,6 +199,9 @@ class _ActiveFilterPills extends StatelessWidget {
     if (filter.excludesText.isNotEmpty) {
       add('"${filter.excludesText}"', () => onChanged(filter.copyWith(excludesText: '')), negative: true);
     }
+    for (final id in filter.categoryIds) {
+      add(categoryLabel(id), () => onChanged(filter.toggleCategory(id)));
+    }
 
     pills.add(
       ActionChip(
@@ -198,6 +232,9 @@ class _FilterSheet extends StatefulWidget {
   final String Function(EntryKind) kindLabel;
   final String locale;
   final AppStrings s;
+  final List<Category> categories;
+  final int uncategorizedCount;
+  final VoidCallback? onReviewUncategorized;
 
   const _FilterSheet({
     required this.initial,
@@ -205,6 +242,9 @@ class _FilterSheet extends StatefulWidget {
     required this.kindLabel,
     required this.locale,
     required this.s,
+    this.categories = const [],
+    this.uncategorizedCount = 0,
+    this.onReviewUncategorized,
   });
 
   @override
@@ -280,6 +320,34 @@ class _FilterSheetState extends State<_FilterSheet> {
     );
   }
 
+  Widget _categoryGroup() {
+    final s = widget.s;
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        FilterChip(
+          key: const Key('categoryChip_uncategorized'),
+          avatar: const Icon(Icons.help_outline, size: 16),
+          label: Text(s.uncategorizedCount(widget.uncategorizedCount)),
+          selected: _draft.categoryIds.contains(null),
+          onSelected: (_) => setState(() => _draft = _draft.toggleCategory(null)),
+          visualDensity: VisualDensity.compact,
+        ),
+        for (final c in widget.categories)
+          FilterChip(
+            key: ValueKey('categoryChip_${c.id}'),
+            avatar: Icon(categoryIcon(c), size: 16, color: categoryPaint(c, scheme)),
+            label: Text(categoryLabel(c, s)),
+            selected: _draft.categoryIds.contains(c.id),
+            onSelected: (_) => setState(() => _draft = _draft.toggleCategory(c.id)),
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.s;
@@ -328,6 +396,29 @@ class _FilterSheetState extends State<_FilterSheet> {
                   const SizedBox(height: 4),
                   _kindGroup(hide: true),
                   const Divider(height: 28),
+
+                  // ── Category ──
+                  if (widget.categories.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Text(s.categoryFilterTitle, style: sectionStyle),
+                        const Spacer(),
+                        if (widget.onReviewUncategorized != null && widget.uncategorizedCount > 0)
+                          TextButton.icon(
+                            key: const Key('reviewUncategorizedButton'),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              widget.onReviewUncategorized!();
+                            },
+                            icon: const Icon(Icons.auto_fix_high, size: 18),
+                            label: Text(s.reviewUncategorized),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    _categoryGroup(),
+                    const Divider(height: 28),
+                  ],
 
                   // ── Date ──
                   Text(s.filterDateRange, style: sectionStyle),

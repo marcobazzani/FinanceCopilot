@@ -10,6 +10,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 import '../utils/logger.dart';
+import 'category_seeds.dart';
 import 'db_file_name.dart';
 import 'tables.dart';
 
@@ -82,7 +83,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 49;
+  int get schemaVersion => 50;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -91,6 +92,8 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
       await _createIndexes();
       await _seedAppConfig();
+      await seedDefaultCategories();
+      await _writeCategorySeedVersion();
       _log.info('Database schema created and seeded');
     },
     onUpgrade: (Migrator m, int from, int to) async {
@@ -767,9 +770,56 @@ class AppDatabase extends _$AppDatabase {
         }
         _log.info('Migration 49: added asset_events.exchange_rate_base');
       }
+      if (from < 50) {
+        // Transaction categorization. Categories/Transactions.category_id/
+        // auto_categorization_rules existed since v1 but were never used;
+        // extend them and seed the default category list (categories only —
+        // classification is always driven by user-defined rules).
+        if (!await _hasColumn('categories', 'key')) {
+          await customStatement('ALTER TABLE categories ADD COLUMN key TEXT NULL');
+        }
+        if (!await _hasColumn('categories', 'is_archived')) {
+          await customStatement('ALTER TABLE categories ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0');
+        }
+        if (!await _hasColumn('categories', 'sort_order')) {
+          await customStatement('ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+        }
+        if (!await _hasColumn('transactions', 'merchant_key')) {
+          await customStatement('ALTER TABLE transactions ADD COLUMN merchant_key TEXT NULL');
+        }
+        if (!await _hasColumn('transactions', 'counterparty')) {
+          await customStatement('ALTER TABLE transactions ADD COLUMN counterparty TEXT NULL');
+        }
+        if (!await _hasColumn('transactions', 'entry_kind')) {
+          await customStatement('ALTER TABLE transactions ADD COLUMN entry_kind TEXT NULL');
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'match_type')) {
+          await customStatement(
+            "ALTER TABLE auto_categorization_rules ADD COLUMN match_type TEXT NOT NULL DEFAULT 'merchantKey'",
+          );
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'account_id')) {
+          await customStatement('ALTER TABLE auto_categorization_rules ADD COLUMN account_id INTEGER NULL');
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'direction')) {
+          await customStatement(
+            "ALTER TABLE auto_categorization_rules ADD COLUMN direction TEXT NOT NULL DEFAULT 'any'",
+          );
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'amount_min')) {
+          await customStatement('ALTER TABLE auto_categorization_rules ADD COLUMN amount_min REAL NULL');
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'amount_max')) {
+          await customStatement('ALTER TABLE auto_categorization_rules ADD COLUMN amount_max REAL NULL');
+        }
+        await _createIndexes();
+        await seedDefaultCategories();
+        _log.info('Migration 50: transaction categorization columns + default categories');
+      }
     },
     beforeOpen: (details) async {
       await _purgeOrphanedTransactions();
+      await _seedNewDefaultCategories();
     },
   );
 
@@ -1014,7 +1064,66 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_pillars_portfolio_model '
       'ON pillars(portfolio_model_id)',
     );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_transactions_merchant_key '
+      'ON transactions(merchant_key)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_transactions_category '
+      'ON transactions(category_id)',
+    );
   }
+
+  /// Insert the default categories that are not present yet (matched by
+  /// [Categories.key]). Idempotent: safe on fresh DBs, on upgrade, and as a
+  /// "restore defaults" action. Never touches user-created rows.
+  ///
+  /// [sinceAfter] restricts the pass to seeds introduced after that seed-set
+  /// version, so a startup top-up only adds genuinely new defaults.
+  Future<int> seedDefaultCategories({int sinceAfter = 0}) async {
+    final existing = await (select(categories)..where((c) => c.key.isNotNull())).get();
+    final present = existing.map((c) => c.key).toSet();
+    var inserted = 0;
+    for (var i = 0; i < defaultCategorySeeds.length; i++) {
+      final seed = defaultCategorySeeds[i];
+      if (seed.since <= sinceAfter || present.contains(seed.key)) continue;
+      await into(categories).insert(
+        CategoriesCompanion.insert(
+          // Fallback display name when no l10n bundle is at hand (tests,
+          // raw SQL). The UI always resolves the localized name via `key`.
+          name: seed.key,
+          type: seed.type,
+          key: Value(seed.key),
+          icon: Value(seed.icon),
+          color: Value(seed.color),
+          isEssential: Value(seed.isEssential),
+          sortOrder: Value(i),
+        ),
+      );
+      inserted++;
+    }
+    return inserted;
+  }
+
+  /// Startup top-up: add defaults introduced since the seed-set version this
+  /// DB last saw. Defaults the user deleted earlier are NOT re-added.
+  Future<void> _seedNewDefaultCategories() async {
+    final row = await (select(appConfigs)..where((c) => c.key.equals(kCategorySeedVersionKey))).getSingleOrNull();
+    // DBs created before versioning (v50) carry the full v1 seed set.
+    final stored = int.tryParse(row?.value ?? '') ?? 1;
+    if (stored >= kCategorySeedVersion) return;
+    final n = await seedDefaultCategories(sinceAfter: stored);
+    await _writeCategorySeedVersion();
+    _log.info('Category seed top-up: v$stored → v$kCategorySeedVersion, added $n');
+  }
+
+  Future<void> _writeCategorySeedVersion() => into(appConfigs).insertOnConflictUpdate(
+    AppConfigsCompanion.insert(
+      key: kCategorySeedVersionKey,
+      value: kCategorySeedVersion.toString(),
+      description: const Value('Version of the default category set already seeded'),
+    ),
+  );
 
   /// Seed default AppConfig values from MoneyHistory Graph row 3455.
   Future<void> _seedAppConfig() async {

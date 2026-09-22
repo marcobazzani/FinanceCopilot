@@ -6,7 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
+import 'package:finance_copilot/services/classification/ledger_roles.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:finance_copilot/ui/widgets/category_ui.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 
@@ -38,6 +41,8 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
   late TextEditingController _currencyCtrl;
   late TransactionStatus _status;
   late DateTime _selectedDate;
+  int? _categoryId;
+  bool _createMerchantRule = false;
 
   bool get _isEditing => widget.transaction != null;
 
@@ -60,6 +65,8 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
     );
     _currencyCtrl = TextEditingController(text: tx?.currency ?? widget.account.currency);
     _status = tx?.status ?? TransactionStatus.settled;
+    _categoryId = tx?.categoryId;
+    _loadSimilarCount();
   }
 
   @override
@@ -71,6 +78,12 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
     _balanceCtrl.dispose();
     _currencyCtrl.dispose();
     super.dispose();
+  }
+
+  LedgerRole? get _ledgerRole {
+    final tx = widget.transaction;
+    if (tx == null) return null;
+    return ref.watch(ledgerRolesProvider).value?[tx.id];
   }
 
   @override
@@ -189,6 +202,42 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
             ),
             const SizedBox(height: 12),
 
+            // Category (+ optional merchant rule so future classifier runs
+            // reproduce this choice for the same counterparty). Rows the
+            // ledger explains structurally are not categorizable.
+            if (_ledgerRole != null)
+              ListTile(
+                key: const Key('notCategorizableNote'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.info_outline),
+                title: Text(s.notCategorizableBecause(s.ledgerRoleName(_ledgerRole!))),
+              )
+            else
+              CategoryField(
+                value: _categoryId,
+                onChanged: (v) => setState(() {
+                  _categoryId = v;
+                  if (v == null) _createMerchantRule = false;
+                }),
+                helperText: _merchantHelper(s),
+              ),
+            if (_ledgerRole == null && _categoryId != null && _isEditing && widget.transaction!.merchantKey != null)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                value: _createMerchantRule,
+                onChanged: (v) => setState(() => _createMerchantRule = v ?? false),
+                title: Text(s.createRuleForMerchant),
+                subtitle: Text(
+                  s.createRuleForMerchantHint(
+                    widget.transaction!.counterparty ?? widget.transaction!.merchantKey!,
+                    _similarCount,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+
             // Raw metadata (read-only if imported)
             if (_isEditing && widget.transaction!.rawMetadata != null) ...[
               const Divider(),
@@ -216,6 +265,25 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
         ),
       ),
     );
+  }
+
+  /// Helper line under the category field: recognized merchant + entry kind.
+  String? _merchantHelper(AppStrings s) {
+    final tx = widget.transaction;
+    if (tx == null) return null;
+    final parts = <String>[];
+    if (tx.counterparty != null) parts.add('${s.merchant}: ${tx.counterparty}');
+    if (tx.entryKind != null && tx.entryKind != BankEntryKind.unknown) parts.add(s.entryKindName(tx.entryKind!));
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  int _similarCount = 0;
+
+  Future<void> _loadSimilarCount() async {
+    final key = widget.transaction?.merchantKey;
+    if (key == null) return;
+    final ids = await ref.read(transactionClassifierServiceProvider).uncategorizedIdsOf(key);
+    if (mounted) setState(() => _similarCount = ids.where((id) => id != widget.transaction!.id).length);
   }
 
   Future<void> _pickDate() async {
@@ -248,8 +316,15 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
           balanceAfter: drift.Value(balance),
           currency: drift.Value(_currencyCtrl.text),
           status: drift.Value(_status),
+          categoryId: drift.Value(_categoryId),
         ),
       );
+      if (_createMerchantRule && _categoryId != null && widget.transaction!.merchantKey != null) {
+        await ref
+            .read(ruleServiceProvider)
+            .create(matchType: RuleMatchType.merchantKey, pattern: widget.transaction!.merchantKey!, categoryId: _categoryId!);
+        ref.read(rulesDirtyProvider.notifier).state = true;
+      }
     } else {
       _log.info('creating transaction for account=${widget.account.id}');
       await svc.create(
@@ -261,6 +336,7 @@ class _TransactionEditScreenState extends ConsumerState<TransactionEditScreen> {
         balanceAfter: balance,
         currency: _currencyCtrl.text,
         status: _status,
+        categoryId: _categoryId,
       );
     }
 

@@ -295,4 +295,16 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
       ),
     );
   }
+
+  /// Bulk "Set category" on the current multi-selection.
+  Future<void> _bulkSetCategory(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    final ids = _selection.ids.toList();
+    if (ids.isEmpty) return;
+    final pick = await showCategoryPicker(context);
+    if (pick == null) return;
+    final n = await ref.read(transactionClassifierServiceProvider).setCategory(ids, pick.categoryId);
+    _selection.clear();
+    if (context.mounted) showInfoSnack(context, s.setCategoryCount(n));
+  }
 }

@@ -76,6 +76,7 @@ extension _AppShellSettingsDialog on _AppShellState {
                   ),
                   const SizedBox(height: 20),
                   const Divider(),
+                  const Divider(),
                   const SizedBox(height: 4),
                   Row(
                     children: [

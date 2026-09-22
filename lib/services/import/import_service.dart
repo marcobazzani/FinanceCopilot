@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/classification/description_normalizer.dart';
 import 'package:finance_copilot/services/domain/asset_event_service.dart';
 import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 import 'package:finance_copilot/utils/date_parser.dart' as date_parse;
@@ -717,6 +718,7 @@ class ImportService {
   /// pre-insert validation pass and the final batch insert so both use
   /// identical column mapping.
   TransactionsCompanion _buildTransactionCompanion(_ParsedTransactionRow r, int accountId) {
+    final keys = normalizeDescription(description: r.description, rawMetadata: r.rawMetadata, inflow: r.amount > 0);
     return TransactionsCompanion.insert(
       accountId: accountId,
       operationDate: r.date,
@@ -727,6 +729,9 @@ class ImportService {
       currency: Value(r.currency),
       status: r.status != null ? Value(r.status!) : const Value.absent(),
       rawMetadata: Value(jsonEncode(r.rawMetadata)),
+      merchantKey: Value(keys.merchantKey),
+      counterparty: Value(keys.counterparty),
+      entryKind: Value(keys.entryKind),
     );
   }
 

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/services/domain/adjustment_items.dart';
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/utils/schedule_math.dart' as schedule_math;
 
@@ -83,6 +84,28 @@ class ExtraordinaryEventService {
   Stream<void> watchAdjustmentRevision() => _db.customSelect('SELECT 1', readsFrom: _adjustmentTables).watch();
 
   Future<List<ExtraordinaryEvent>> getAll({DateTime? through}) => _activeEvents(through: through).get();
+
+  /// Load events + their entries + buffer reimbursements, pre-grouped for
+  /// [resolveAdjustments]. Shared by the ledger UI and the classifier so both
+  /// see the same adjustment rows.
+  Future<AdjustmentInputs> getAdjustmentInputs({DateTime? through}) async {
+    final events = await getAll(through: through);
+    final entriesByEvent = <int, List<ExtraordinaryEventEntry>>{};
+    final reimbByEvent = <int, List<BufferTransaction>>{};
+    for (final e in events) {
+      // NOTE: entries are intentionally NOT bounded by `through` here, matching
+      // the previous behaviour. Tightening that is a separate change.
+      entriesByEvent[e.id] = await (_db.select(_db.extraordinaryEventEntries)..where((t) => t.eventId.equals(e.id))).get();
+      if (e.bufferId != null) {
+        reimbByEvent[e.id] =
+            await (_db.select(_db.bufferTransactions)
+                  ..where((t) => t.bufferId.equals(e.bufferId!))
+                  ..where((t) => t.isReimbursement.equals(true)))
+                .get();
+      }
+    }
+    return AdjustmentInputs(events: events, entriesByEvent: entriesByEvent, reimbursementsByEvent: reimbByEvent);
+  }
 
   Future<ExtraordinaryEvent> getById(int id) {
     return (_db.select(_db.extraordinaryEvents)..where((e) => e.id.equals(id))).getSingle();

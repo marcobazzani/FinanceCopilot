@@ -202,7 +202,7 @@ void main() {
 
     final migrated = AppDatabase.forTesting(NativeDatabase(File(path)));
     final version = (await migrated.customSelect('PRAGMA user_version').get()).first.read<int>('user_version');
-    expect(version, 49);
+    expect(version, 50);
     final modelTables = await migrated
         .customSelect(
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio_models', 'portfolio_model_items')",

@@ -826,3 +826,24 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     pensionContribCumulativeSpots: pensionContribSpots,
   );
 });
+
+// ════════════════════════════════════════════════════
+// Spending by category (year over year)
+// ════════════════════════════════════════════════════
+
+final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref) async {
+  final txs = await ref.watch(allTransactionsProvider.future);
+  final cats = await ref.watch(allCategoriesProvider.future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rates = _RateResolver(ref.watch(exchangeRateServiceProvider), baseCurrency);
+  final now = ref.watch(currentDateProvider);
+  final roles = await ref.watch(ledgerRolesProvider.future);
+  return aggregateSpendingByCategory(
+    transactions: txs,
+    categories: {for (final c in cats) c.id: c},
+    rate: rates.getRate,
+    baseCurrency: baseCurrency,
+    now: now,
+    excludedIds: roles.keys.toSet(),
+  );
+});

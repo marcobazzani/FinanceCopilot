@@ -259,6 +259,17 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/domain/income_service.dart` — Income tracking
 - `lib/services/domain/extraordinary_event_service.dart` — Extraordinary events / adjustments / depreciation schedules
 - `lib/services/domain/buffer_service.dart` — Buffer management
+- `lib/services/domain/entry_pairing.dart` — Deterministic cross-account transfer / same-account no-op pairing (shared by the ledger UI and the classifier)
+- `lib/services/domain/adjustment_items.dart` — Links transactions to extraordinary events by exact (day, cents, sign); `AdjustmentInputs` loader lives on `ExtraordinaryEventService`
+- `lib/services/classification/ledger_roles.dart` — `LedgerRole` (transfer / no-op / adjustment / cancelled): rows the ledger already explains; they never take part in categorization, wizard queue, progress or spending charts
+- `lib/services/classification/description_normalizer.dart` — Pure bank-line parser: entry kind + counterparty + stable merchant key (`normalizerVersion` bump ⇒ keys recomputed at startup). Regex-free pipeline in `normalizer/`: `statement_tokens.dart` (segment tokenizer + named noise rules), `line_formats.dart` (typed `LineFormat` parsers, first match wins, name kept as trace), `entry_kind_lexicon.dart` (ordered phrase table with `^`/`$`/`*` mini-syntax). Add a bank layout = add a `LineFormat` + a fixture test; never a regex.
+- `lib/services/classification/rule_service.dart` — Categorization rules CRUD + `CompiledRule.matches` (merchantKey / contains / regex / entryKind, scoped by account/direction/amount)
+- `lib/services/classification/category_service.dart` — Category CRUD, seeded defaults (`lib/database/category_seeds.dart`), delete-with-reassign
+- `lib/services/classification/transaction_classifier_service.dart` — The single classifier: `classifyAll({overwrite})` over the whole ledger, merchant groups + progress for the wizard, derived-key recompute
+- `lib/services/classification/spending_by_category.dart` — Pure YoY spending-per-category aggregation (FX-missing rows excluded and counted, never defaulted)
+- `lib/ui/screens/classification/classification_wizard_screen.dart` — One-transaction-at-a-time wizard: answer ⇒ rule ⇒ reclassify ledger
+- `lib/ui/screens/classification/categories_rules_screen.dart` — Settings → Categories & rules (CRUD, classify actions, dirty banner)
+- `lib/ui/widgets/category_ui.dart` — Single source for category label/icon/color, `CategoryChip`, `showCategoryPicker`, `CategoryField`
 - `lib/services/sync/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
 - `lib/services/sync/db_transfer_service.dart` — Import/export DB file
 - `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into part files)

@@ -223,9 +223,13 @@ void main() {
       // v48 added pillars.kind (standard vs virtual portfolios).
       // v49 added asset_events.exchange_rate_base (which base currency a
       // stored exchange_rate was quoted against).
+      // v50 added transaction categorization columns (categories.key/
+      // is_archived/sort_order, transactions.merchant_key/counterparty/
+      // entry_kind, rule match_type/account_id/direction/amount bounds) and
+      // seeded the default category list.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 49);
+      expect(version, 50);
     });
 
     test('dashboard_charts table is gone', () async {
