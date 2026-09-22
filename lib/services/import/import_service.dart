@@ -428,6 +428,11 @@ class ImportService {
     /// Re-run from stored data: replace only rows that came from an import
     /// (have raw metadata); manually entered rows in the range are kept.
     bool replaceOnlyImportedRows = false,
+
+    /// Preview columns computed by the wizard (splits). They are mapped like
+    /// any other column but are NOT statement data, so they are excluded
+    /// from the stored raw metadata — a later re-run recomputes them.
+    Set<String> derivedColumns = const {},
   }) async {
     await _setLocaleForAccount(
       accountId: accountId,
@@ -503,6 +508,7 @@ class ImportService {
 
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
+          if (derivedColumns.contains(col)) continue;
           var cell = row[col] ?? '';
           // A file in another number format than the account's stored text:
           // re-spell the numeric cells so the stored history stays uniform

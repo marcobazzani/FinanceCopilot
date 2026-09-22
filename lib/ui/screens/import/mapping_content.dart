@@ -24,7 +24,18 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 const Divider(),
               ],
               // Required fields -- date required except for asset events in current mode
-              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic') _buildMappingRow('date', columns, required: true),
+              // The operation date is the bank's booking date: it is the
+              // statement order and the wipe/dedup key of every later import.
+              // A computed (split) column can never be it — a loose regex
+              // would rewrite the account's history in one click. The real
+              // transaction date belongs to the value date below.
+              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic')
+                _buildMappingRow('date', columns.where((c) => !_transforms.derivedColumns.contains(c)).toList(), required: true),
+              if (_target == ImportTarget.transaction && _transforms.derivedColumns.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text(s.operationDateIsBankColumn, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                ),
               if (_target == ImportTarget.transaction)
                 _buildAmountFormulaRow(columns, s)
               else if (_target == ImportTarget.assetEvent)

@@ -981,6 +981,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         }
       }
 
+      _unmapDerivedOperationDate();
+
       final savedFormula = (jsonDecode(config.formulaJson) as List<dynamic>);
       _amountFormula.clear();
       for (final term in savedFormula) {

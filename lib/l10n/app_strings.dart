@@ -925,6 +925,9 @@ class AppStrings {
   String get valueDateDefaultsToOperationDate => _it
       ? 'Facoltativa: se non mappata vale la data operazione. Se la data reale è nel testo, ricavala con una divisione colonna (regex + colonna di riserva).'
       : 'Optional: defaults to the operation date. If the real date is inside a text column, derive it with a column split (regex + fallback column).';
+  String get operationDateIsBankColumn => _it
+      ? 'La data operazione è la data di contabilizzazione della banca: ordina l\'estratto e delimita gli import. Deve essere una colonna dell\'estratto, non una derivata; la data reale va nella data valuta.'
+      : 'The operation date is the bank\'s booking date: it orders the statement and bounds imports. It must be a statement column, not a derived one; the real date goes into the value date.';
   String get rowFiltersStoredRowsNote => _it
       ? 'Filtri applicati all\'import originale (sola lettura): le righe escluse non sono state salvate e non possono tornare; modificarli qui non ha senso.'
       : 'Filters applied at the original import (read-only): excluded rows were never stored and cannot come back; editing them here has no meaning.';

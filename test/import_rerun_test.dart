@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/import/import_service.dart';
+import 'package:finance_copilot/services/domain/transaction_service.dart';
 import 'package:finance_copilot/services/import/preview_transforms.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -307,6 +308,102 @@ void main() {
       expect(r.errorRows, 0);
       expect(await amounts(), [0, -3, -3], reason: 'seed unknown → 0; the chain is intact');
       expect((await rows()).map((x) => x.balanceAfter), [2000, 1997, 1994]);
+    });
+
+    test('column mode re-run with re-dated rows: stored balances follow the value date and the chart sees no dip', () async {
+      const bal = ColumnMapping(sourceColumn: 'Column 4', targetField: 'amount', balanceDiffColumn: 'Column 4');
+      const balAfter = ColumnMapping(sourceColumn: 'Column 4', targetField: 'balanceAfter');
+      // Booking order with the bank's running balance; the card payments carry their real date in the text.
+      final preview = FilePreview(
+        columns: const ['Column 1', 'Column 2', 'Column 4'],
+        rows: const [
+          {'Column 1': '09 May 2022', 'Column 2': 'SCT transfer', 'Column 4': '15,134.33'},
+          {'Column 1': '09 May 2022', 'Column 2': 'SCT transfer', 'Column 4': '10,134.33'},
+          {'Column 1': '09 May 2022', 'Column 2': 'SCT transfer', 'Column 4': '5,134.33'},
+          {'Column 1': '10 May 2022', 'Column 2': 'POS Revolut 20220508', 'Column 4': '2,634.33'},
+          {'Column 1': '11 May 2022', 'Column 2': 'POS Revolut 20220509', 'Column 4': '134.33'},
+          {'Column 1': '11 May 2022', 'Column 2': 'POS Revolut 20220510', 'Column 4': '0.00'},
+        ],
+        totalRows: 6,
+        numberLocale: 'en_US',
+      );
+      final maps = [
+        const ColumnMapping(sourceColumn: 'Column 1', targetField: 'date'),
+        bal,
+        balAfter,
+        const ColumnMapping(sourceColumn: 'Column 2', targetField: 'description'),
+      ];
+      await importer.importTransactions(preview: preview, mappings: maps, accountId: acct, balanceMode: 'column');
+
+      // Re-run with the value date derived from the text (booking date as fallback).
+      final split = const ColumnSplit(
+        sourceColumn: 'Column 2',
+        newColumns: ['Op Date'],
+        byRegex: true,
+        pattern: r' ([0-9]{8})$',
+        fallbackColumn: 'Column 1',
+      );
+      final stored = (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!;
+      final t = PreviewTransforms(splits: [split]);
+      final rerun = FilePreview(
+        columns: t.transformColumns(stored.columns),
+        rows: t.transformRows(stored.rows),
+        totalRows: stored.totalRows,
+        numberLocale: 'en_US',
+      );
+      final r = await importer.importTransactions(
+        preview: rerun,
+        mappings: [
+          ...maps,
+          const ColumnMapping(sourceColumn: 'Op Date', targetField: 'valueDate'),
+        ],
+        accountId: acct,
+        balanceMode: 'column',
+        replaceOnlyImportedRows: true,
+        derivedColumns: const {'Op Date'},
+      );
+      expect(r.errorRows, 0);
+      final all = await rows(); // ordered by operation date
+      // First row: no seed on the original import → 0 (documented rule), learned back on the re-run.
+      expect(all.map((x) => x.amount), [0, -5000, -5000, -2500, -2500, -134.33], reason: 'amounts unchanged by the re-dating');
+      // Chart read: last balance per value day.
+      final byDay = <DateTime, double>{};
+      for (final x in [...all]..sort((a, b) => a.valueDate != b.valueDate ? a.valueDate.compareTo(b.valueDate) : a.id.compareTo(b.id))) {
+        byDay[DateTime(x.valueDate.year, x.valueDate.month, x.valueDate.day)] = x.balanceAfter!;
+      }
+      // opening = closing 0 − Σ(−15134.33) = 15134.33; the 8th = opening − 2500.
+      expect(byDay.keys.map((d) => d.day).toList(), [8, 9, 10]);
+      expect(
+        byDay[DateTime(2022, 5, 8)],
+        closeTo(12634.33, 1e-9),
+        reason: 'the 8th shows the balance after the card payment, not the bank figure booked on the 10th',
+      );
+      expect(byDay[DateTime(2022, 5, 9)], closeTo(134.33, 1e-9));
+      expect(byDay[DateTime(2022, 5, 10)], closeTo(0, 1e-9));
+      // Closing equals the bank closing; recalc afterwards changes nothing.
+      final svc = TransactionService(db);
+      final again = await svc.recalculateBalances(
+        acct,
+        balanceMode: 'column',
+        savedMappings: {'balanceAfter': 'Column 4'},
+        numberLocale: 'en_US',
+      );
+      expect(again, 0, reason: 'import path and recalc agree');
+    });
+
+    test('derived split columns are never persisted as raw statement data', () async {
+      final r = await importer.importTransactions(
+        preview: withTxDate(kbcPreview()),
+        mappings: kbcMappings(),
+        accountId: acct,
+        derivedColumns: const {'TxDate'},
+      );
+      expect(r.importedRows, 4);
+      final t = await rows();
+      expect(t.first.valueDate, DateTime(2022, 5, 9), reason: 'the derived column is still used for the mapping');
+      expect(t.first.rawMetadata, isNot(contains('TxDate')));
+      final stored = (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!;
+      expect(stored.columns, ['Column 1', 'Column 2', 'Column 3']);
     });
   });
 }

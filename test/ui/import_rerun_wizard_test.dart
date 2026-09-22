@@ -155,8 +155,10 @@ void main() {
     final regenerated = rows.where((t) => t.rawMetadata != null).toList();
     expect(regenerated.map((t) => t.valueDate), [DateTime(2022, 5, 9), DateTime(2022, 5, 10), DateTime(2022, 5, 12)]);
     expect(regenerated.every((t) => t.operationDate.day >= 11), isTrue, reason: 'booking dates unchanged');
-    // The derived column is now part of the stored metadata, so a later re-run sees it too.
-    expect(regenerated.first.rawMetadata, contains('"TxDate":"20220509"'));
+    // The derived column is computed, not statement data: it is NOT persisted;
+    // a later re-run recomputes it from the saved split.
+    expect(regenerated.first.rawMetadata, isNot(contains('TxDate')));
+    expect(regenerated.first.rawMetadata, contains('"Column 2":"POS Revolut1946 20220509"'));
 
     // The re-run configuration is persisted for the next import (file or re-run).
     final cfg = (await ImportConfigService(db).getByAccount(acct))!;
@@ -166,6 +168,53 @@ void main() {
     expect(saved['__columnSplits'], contains('"newColumns":["TxDate"]'));
     expect(saved['__balanceMode'], 'none');
     expect(cfg.numberLocale, 'en_US');
+    await teardownTree(tester);
+  });
+
+  testWidgets('a derived split column is never offered as the operation date; a saved mapping pointing to one is dropped', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    // A config saved by a version that allowed it: Date ← derived column (the
+    // mistake that rewrote an account's booking dates with a loose regex).
+    await ImportConfigService(db).save(
+      accountId: acct,
+      skipRows: 0,
+      mappings: {
+        'date': 'TxDate',
+        'valueDate': 'Column 1',
+        'amount': 'Column 3',
+        'description': 'Column 2',
+        '__balanceMode': 'none',
+        '__columnSplits':
+            '[{"sourceColumn":"Column 2","newColumns":["TxDate"],"byRegex":true,"delimiter":"","pattern":"(\\\\d{8})\$","fallbackColumn":"Column 1"}]',
+      },
+      formula: const [],
+      hashColumns: const [],
+      numberLocale: 'en_US',
+    );
+    final preview = (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [databaseProvider.overrideWithValue(db), privacyModeProvider.overrideWith((ref) => false)],
+        child: MaterialApp(
+          home: ImportScreen(preselectedAccountId: acct, storedPreview: preview),
+        ),
+      ),
+    );
+    await settle(tester);
+    // The date mapping was dropped → the config is incomplete → no quick confirm, the mapping step is shown.
+    expect(find.textContaining('date ← TxDate'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Import'), findsNothing);
+    // Open the Date dropdown: bank columns only, the derived column is absent.
+    final dateDropdown = find.byWidgetPredicate((w) => w is DropdownButtonFormField<String> && w.initialValue == null).first;
+    await tester.scrollUntilVisible(dateDropdown, 200, scrollable: find.byType(Scrollable).first);
+    await settle(tester);
+    expect(find.textContaining('must be a statement column'), findsOneWidget);
+    await tester.tap(dateDropdown);
+    await settle(tester);
+    expect(find.text('Column 1').hitTestable(), findsWidgets);
+    expect(find.text('TxDate').hitTestable(), findsNothing);
     await teardownTree(tester);
   });
 

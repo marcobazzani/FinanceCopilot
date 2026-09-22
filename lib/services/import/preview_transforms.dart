@@ -200,6 +200,14 @@ class PreviewTransforms {
     return cols;
   }
 
+  /// Names of the columns the splits create. They are computed, not part of
+  /// the statement: the importer must never persist them as raw data.
+  Set<String> get derivedColumns => {
+    for (final split in splits)
+      for (final nc in split.newColumns)
+        if (nc.isNotEmpty) nc,
+  };
+
   /// Apply splits then filters to [rows], returning a new list. Pure; does
   /// not mutate the input rows.
   List<Map<String, String>> transformRows(List<Map<String, String>> rows) {

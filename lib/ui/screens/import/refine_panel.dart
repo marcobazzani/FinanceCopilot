@@ -20,7 +20,20 @@ extension _RefinePanel on _ImportScreenState {
       splits: splits ?? _transforms.splits,
       combine: combine ?? _transforms.combine,
     );
+    _unmapDerivedOperationDate();
     _rebuildPreviewFromTransforms();
+  }
+
+  /// The operation date must be a statement column (see the note in the
+  /// mapping step): if a split now produces the column it points to, the
+  /// mapping is dropped so the user picks a bank column explicitly.
+  void _unmapDerivedOperationDate() {
+    if (_target != ImportTarget.transaction) return;
+    final d = _mappings['date'];
+    if (d != null && _transforms.derivedColumns.contains(d)) {
+      _log.info('operation date "$d" is a derived column - unmapped');
+      _mappings['date'] = null;
+    }
   }
 
   Widget _buildRefinePanel(List<String> columns) {

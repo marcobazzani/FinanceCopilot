@@ -707,6 +707,7 @@ extension _ConfirmStep on _ImportScreenState {
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
           numberLocaleOverride: _selectedNumberLocale,
           replaceOnlyImportedRows: _fromStoredRows,
+          derivedColumns: _transforms.derivedColumns,
           appLocale: appLocale,
         );
       } else if (_target == ImportTarget.income) {
