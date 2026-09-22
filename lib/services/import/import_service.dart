@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/domain/running_balance.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/classification/description_normalizer.dart';
 import 'package:finance_copilot/services/domain/asset_event_service.dart';
@@ -1228,10 +1229,23 @@ class ImportService {
     if (rows.isEmpty || balanceMode == 'none') return;
 
     if (balanceMode == 'column') {
-      // Already set from CSV column in balanceAfterFromColumn
-      for (final r in rows) {
-        r.balanceAfter = r.balanceAfterFromColumn;
+      // The bank's balance column is a booking-order figure. Stored balances
+      // live on the value-date timeline, anchored on the bank's closing (same
+      // rule as TransactionService.recalculateBalances).
+      final anchored = anchoredRunningBalances([
+        for (final r in rows)
+          RunningBalanceRow(
+            valueDate: r.valueDate ?? r.date,
+            bookingDate: r.date,
+            order: r.csvIndex,
+            amount: r.amount,
+            statedBalance: r.balanceAfterFromColumn,
+          ),
+      ]);
+      for (var i = 0; i < rows.length; i++) {
+        rows[i].balanceAfter = anchored.balances[i];
       }
+      _log.info('_computeBalances: column - anchored=${anchored.anchored} closing=${anchored.bankClosing} opening=${anchored.opening}');
       return;
     }
 

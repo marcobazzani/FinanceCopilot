@@ -259,6 +259,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/domain/income_service.dart` — Income tracking
 - `lib/services/domain/extraordinary_event_service.dart` — Extraordinary events / adjustments / depreciation schedules
 - `lib/services/domain/buffer_service.dart` — Buffer management
+- `lib/services/domain/running_balance.dart` — Value-date running balance anchored on the bank closing (single timeline for stored `balance_after`; the bank's per-row balance column is booking-order data, never copied per row)
 - `lib/services/domain/entry_pairing.dart` — Deterministic cross-account transfer / same-account no-op pairing (shared by the ledger UI and the classifier)
 - `lib/services/domain/adjustment_items.dart` — Links transactions to extraordinary events by exact (day, cents, sign); `AdjustmentInputs` loader lives on `ExtraordinaryEventService`
 - `lib/services/classification/ledger_roles.dart` — `LedgerRole` (transfer / no-op / adjustment / cancelled): rows the ledger already explains; they never take part in categorization, wizard queue, progress or spending charts

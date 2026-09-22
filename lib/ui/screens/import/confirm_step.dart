@@ -149,6 +149,8 @@ extension _ConfirmStep on _ImportScreenState {
                         const SizedBox(height: 8),
                         Text(_fromStoredRows ? s.sourceStoredRows : s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
                         Text(s.rowCount(_preview?.totalRows ?? 0)),
+                        if (_target == ImportTarget.transaction && _balanceMode == 'column')
+                          Text(s.balancesOnValueDateTimeline, key: const Key('balancesTimelineNote'), style: const TextStyle(fontSize: 12)),
                         Text(
                           s.targetLabel(
                             isAssetImport

@@ -555,6 +555,15 @@ class AppStrings {
   String get all => _it ? 'Tutti' : 'All';
   String get recalculate => _it ? 'Ricalcola' : 'Recalculate';
   String recalculatedBalances(int n) => _it ? 'Ricalcolati $n saldi.' : 'Recalculated $n balances.';
+  String balanceAnchoredOpening(String opening, String closing) => _it
+      ? 'Saldo iniziale $opening dedotto dal saldo finale della banca ($closing): la storia precedente alla prima riga non è nell\'app.'
+      : 'Opening balance $opening implied by the bank closing balance ($closing): history before the first row is not in the app.';
+  String get balanceNotAnchored => _it
+      ? 'Nessun saldo banca su cui ancorare: il saldo progressivo parte da 0.'
+      : 'No bank balance to anchor on: the running balance starts at 0.';
+  String get balancesOnValueDateTimeline => _it
+      ? 'I saldi vengono ricalcolati per data valuta, ancorati al saldo finale della banca.'
+      : 'Balances are recomputed on the value-date timeline, anchored on the bank\'s closing balance.';
   String wipeTransactionsBody(String name) => _it
       ? 'Verranno eliminate tutte le transazioni da "$name" ma il conto e la configurazione importazione (mappature colonne, chiavi dedup, impostazioni saldo) verranno mantenuti.\n\n'
       : 'This will delete all transactions from "$name" but keep the account and its import configuration (column mappings, dedup keys, balance settings).\n\n';

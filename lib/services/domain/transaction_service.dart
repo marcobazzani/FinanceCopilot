@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/domain/running_balance.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/classification/transaction_classifier_service.dart';
 import 'package:finance_copilot/utils/amount_parser.dart' as amt;
@@ -190,12 +191,26 @@ class TransactionService {
     required String balanceMode,
     Map<String, dynamic> savedMappings = const {},
     String? numberLocale,
+  }) async => (await recalculateBalancesDetailed(
+    accountId,
+    balanceMode: balanceMode,
+    savedMappings: savedMappings,
+    numberLocale: numberLocale,
+  )).updated;
+
+  /// [recalculateBalances] plus the reconciliation of `column` mode: the
+  /// bank closing the series was anchored on and the opening it implies.
+  Future<BalanceRecalcResult> recalculateBalancesDetailed(
+    int accountId, {
+    required String balanceMode,
+    Map<String, dynamic> savedMappings = const {},
+    String? numberLocale,
   }) async {
-    if (balanceMode == 'none') return 0;
+    if (balanceMode == 'none') return const BalanceRecalcResult(updated: 0);
     final locale = numberLocale ?? 'en_US';
 
     final txs = await getByAccount(accountId);
-    if (txs.isEmpty) return 0;
+    if (txs.isEmpty) return const BalanceRecalcResult(updated: 0);
 
     // Sort chronologically (date ASC, id ASC)
     final sorted = List.of(txs)
@@ -223,15 +238,41 @@ class TransactionService {
       );
     }
 
-    for (final tx in sorted) {
+    // Column mode: the bank's balance column is a booking-order figure; the
+    // stored balance is the VALUE-DATE running balance anchored on the bank's
+    // closing (see running_balance.dart). One timeline for lists and charts.
+    AnchoredBalances? anchored;
+    if (balanceMode == 'column') {
+      double? stated(Transaction tx) {
+        if (balanceColumn == null || tx.rawMetadata == null) return null;
+        final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+        return amt.tryParseAmount(meta[balanceColumn]?.toString() ?? '', locale: locale);
+      }
+
+      anchored = anchoredRunningBalances([
+        for (final tx in sorted)
+          RunningBalanceRow(
+            valueDate: tx.valueDate,
+            bookingDate: tx.operationDate,
+            order: tx.id,
+            amount: tx.amount,
+            statedBalance: stated(tx),
+          ),
+      ]);
+      if (!anchored.anchored) {
+        _log.warning('recalculateBalances: account=$accountId column mode without a stated balance to anchor on - running balance starts at 0');
+      } else if (anchored.opening.abs() >= 0.005) {
+        _log.warning(
+          'recalculateBalances: account=$accountId opening balance ${anchored.opening} implied by bank closing ${anchored.bankClosing} - history before the first row is not in the app',
+        );
+      }
+    }
+
+    for (final (i, tx) in sorted.indexed) {
       double? newBalance;
 
       if (balanceMode == 'column') {
-        if (balanceColumn != null && tx.rawMetadata != null) {
-          final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
-          final raw = meta[balanceColumn]?.toString() ?? '';
-          newBalance = amt.tryParseAmount(raw, locale: locale);
-        }
+        newBalance = anchored!.balances[i];
       } else if (balanceMode == 'cumulative') {
         balanceCents += toCents(tx.amount);
         newBalance = fromCents(balanceCents);
@@ -272,7 +313,12 @@ class TransactionService {
     _log.info(
       'recalculateBalances: account=$accountId, mode=$balanceMode, updated=${updates.length}/${sorted.length}, cancelled=${statusUpdates.length}',
     );
-    return updates.length;
+    return BalanceRecalcResult(
+      updated: updates.length,
+      anchored: anchored?.anchored,
+      opening: anchored?.opening,
+      bankClosing: anchored?.bankClosing,
+    );
   }
 
   static DateTime? _throughEndExclusive(DateTime? through) {
@@ -283,4 +329,19 @@ class TransactionService {
       through.day,
     ).add(const Duration(days: 1));
   }
+}
+
+/// Outcome of a balance recalculation. The reconciliation fields are set in
+/// `column` mode only.
+class BalanceRecalcResult {
+  final int updated;
+
+  /// Whether the series could be anchored on a bank closing balance.
+  final bool? anchored;
+
+  /// Balance before the first row implied by the bank closing (0 when the
+  /// whole history is in the app).
+  final double? opening;
+  final double? bankClosing;
+  const BalanceRecalcResult({required this.updated, this.anchored, this.opening, this.bankClosing});
 }

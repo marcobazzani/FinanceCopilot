@@ -217,13 +217,22 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
     _log.info('balanceRecalc: mode=$balanceMode, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
     final s = ref.read(appStringsProvider);
     final txSvc = ref.read(transactionServiceProvider);
-    final updated = await txSvc.recalculateBalances(
+    final result = await txSvc.recalculateBalancesDetailed(
       widget.account.id,
       balanceMode: balanceMode,
       savedMappings: mappings,
     );
-    if (mounted) {
-      showInfoSnack(context, s.recalculatedBalances(updated));
+    if (!mounted) return;
+    var msg = s.recalculatedBalances(result.updated);
+    // Column mode reconciliation: say what the bank closing implied, never
+    // absorb it silently.
+    if (result.anchored == false) {
+      msg = '$msg ${s.balanceNotAnchored}';
+    } else if (result.anchored == true && (result.opening ?? 0).abs() >= 0.005) {
+      final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+      final f = fmt.amountFormat(locale);
+      msg = '$msg ${s.balanceAnchoredOpening(f.format(result.opening), f.format(result.bankClosing))}';
     }
+    showInfoSnack(context, msg);
   }
 }
