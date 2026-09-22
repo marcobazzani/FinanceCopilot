@@ -246,6 +246,7 @@ class ImportService {
     required String balCol,
     required List<Map<String, String>> rows,
     required ColumnMapping dateMapping,
+    bool replaceOnlyImportedRows = false,
   }) async {
     DateTime? first;
     for (final row in rows) {
@@ -261,9 +262,17 @@ class ImportService {
       return meta is Map ? _tryParseAmount(meta[balCol]?.toString() ?? '') : null;
     }
 
+    // A re-run replaces EVERY imported row of the account, so only rows the
+    // user entered by hand can precede the import; imported ones are about
+    // to be deleted and must not seed anything.
     final before =
         await (_db.select(_db.transactions)
-              ..where((t) => t.accountId.equals(accountId) & t.operationDate.isSmallerThanValue(cutoff))
+              ..where(
+                (t) =>
+                    t.accountId.equals(accountId) &
+                    t.operationDate.isSmallerThanValue(cutoff) &
+                    (replaceOnlyImportedRows ? t.rawMetadata.isNull() : const Constant(true)),
+              )
               ..orderBy([(t) => OrderingTerm.desc(t.operationDate), (t) => OrderingTerm.desc(t.id)])
               ..limit(1))
             .getSingleOrNull();
@@ -271,13 +280,28 @@ class ImportService {
 
     final earliestReplaced =
         await (_db.select(_db.transactions)
-              ..where((t) => t.accountId.equals(accountId) & t.operationDate.isBiggerOrEqualValue(cutoff) & t.rawMetadata.isNotNull())
+              ..where(
+                (t) =>
+                    t.accountId.equals(accountId) &
+                    t.rawMetadata.isNotNull() &
+                    (replaceOnlyImportedRows ? const Constant(true) : t.operationDate.isBiggerOrEqualValue(cutoff)),
+              )
               ..orderBy([(t) => OrderingTerm.asc(t.operationDate), (t) => OrderingTerm.asc(t.id)])
               ..limit(1))
             .getSingleOrNull();
     if (earliestReplaced == null) return null;
     final bal = statementBalance(earliestReplaced);
-    return bal == null ? null : bal - earliestReplaced.amount;
+    if (bal == null) return null;
+    final seed = bal - earliestReplaced.amount;
+    // With nothing before the import, the opening balance can only be 0
+    // (the first row is the opening deposit) or the first statement balance
+    // (the first row contributes 0). Anything else means the stored amount
+    // is already wrong; do not let it seed the next import.
+    if (replaceOnlyImportedRows && seed.abs() > 0.005 && (seed - bal).abs() > 0.005) {
+      _log.warning('balance-diff seed: stored amount of the earliest row is inconsistent with its statement balance ($seed); seed unknown');
+      return null;
+    }
+    return seed;
   }
 
   /// row's amount surfaces as missing rather than producing a half-correct sum.
@@ -424,7 +448,13 @@ class ImportService {
     List<double>? balanceDiffAmounts;
     if (amountMapping.isBalanceDiff) {
       final balCol = amountMapping.balanceDiffColumn!;
-      final seed = await _balanceDiffSeed(accountId: accountId, balCol: balCol, rows: preview.rows, dateMapping: dateMapping);
+      final seed = await _balanceDiffSeed(
+        accountId: accountId,
+        balCol: balCol,
+        rows: preview.rows,
+        dateMapping: dateMapping,
+        replaceOnlyImportedRows: replaceOnlyImportedRows,
+      );
       _log.info('importTransactions: balance-diff mode, column=$balCol, seed=$seed');
       balanceDiffAmounts = _computeBalanceDiffs(preview.rows, balCol, seedBalance: seed);
     }
@@ -552,11 +582,15 @@ class ImportService {
     // that fail the earlier PARSE step are tolerated as before: those are
     // typically not transactions at all (footers, totals, blank lines), and
     // treating them as missing data would refuse most real bank exports.
-    final rejectedInReplacedRange = rejectedDates.any(
-      (d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000 >= cutoffEpoch,
-    );
+    // On a re-run the replaced range is the whole imported set, so every
+    // rejected row is inside it.
+    final rejectedInReplacedRange = replaceOnlyImportedRows
+        ? rejectedDates.isNotEmpty
+        : rejectedDates.any((d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000 >= cutoffEpoch);
     if (rejectedInReplacedRange) {
-      final existingInRange = await _countTransactionsFrom(accountId, cutoffEpoch);
+      final existingInRange = replaceOnlyImportedRows
+          ? await _countImportedRows(accountId)
+          : await _countTransactionsFrom(accountId, cutoffEpoch);
       if (existingInRange > 0) {
         final msg =
             'Aborted: ${rejectedDates.length} row(s) could not be stored, so replacing '
@@ -571,7 +605,12 @@ class ImportService {
 
     // Seed cumulative balance from the true pre-cutoff sum so newly inserted
     // rows continue from the existing account balance instead of restarting at 0.
-    final preCutoffBalance = await _preCutoffBalance(accountId, cutoffEpoch, balanceMode: balanceMode);
+    final preCutoffBalance = await _preCutoffBalance(
+      accountId,
+      cutoffEpoch,
+      balanceMode: balanceMode,
+      survivorsOnly: replaceOnlyImportedRows,
+    );
 
     // Compute balanceAfter
     _computeBalances(validRows, balanceMode, balanceFilterInclude, preCutoffBalance);
@@ -588,7 +627,9 @@ class ImportService {
     // [replaceOnlyImportedRows] (re-run from stored data) leaves rows the
     // user entered by hand (no raw_metadata) untouched: they were never part
     // of the import being re-run.
-    final onlyImported = replaceOnlyImportedRows ? ' AND raw_metadata IS NOT NULL' : '';
+    // A re-run's input IS the whole imported set, so the whole imported set
+    // is what it replaces — not "from the oldest date onward": a row whose
+    // stored date is off would otherwise survive as a duplicate.
     var deleted = 0;
     await _db.transaction(() async {
       // User annotations on the rows about to be replaced survive the
@@ -598,18 +639,29 @@ class ImportService {
           await (_db.select(_db.transactions)..where(
                 (t) =>
                     t.accountId.equals(accountId) &
-                    t.operationDate.isBiggerOrEqualValue(DateTime.fromMillisecondsSinceEpoch(cutoffEpoch * 1000)) &
+                    (replaceOnlyImportedRows
+                        ? t.rawMetadata.isNotNull()
+                        : t.operationDate.isBiggerOrEqualValue(DateTime.fromMillisecondsSinceEpoch(cutoffEpoch * 1000))) &
                     (t.categoryId.isNotNull() | t.expenseType.isNotNull() | t.tags.equals('[]').not()),
               ))
               .get();
       companions = _carryOverAnnotations(companions, annotated);
 
-      deleted = await _db.customUpdate(
-        'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?$onlyImported',
-        variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
-        updates: {_db.transactions},
-      );
-      _log.info('importTransactions: deleted $deleted rows from ${formatYmd(oldestDate)} onward');
+      if (replaceOnlyImportedRows) {
+        deleted = await _db.customUpdate(
+          'DELETE FROM transactions WHERE account_id = ? AND raw_metadata IS NOT NULL',
+          variables: [Variable.withInt(accountId)],
+          updates: {_db.transactions},
+        );
+        _log.info('importTransactions: re-run - deleted all $deleted imported rows of the account');
+      } else {
+        deleted = await _db.customUpdate(
+          'DELETE FROM transactions WHERE account_id = ? AND operation_date >= ?',
+          variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
+          updates: {_db.transactions},
+        );
+        _log.info('importTransactions: deleted $deleted rows from ${formatYmd(oldestDate)} onward');
+      }
 
       // Report parsing complete, starting DB write
       onProgress?.call(preview.rows.length, preview.rows.length);
@@ -700,6 +752,18 @@ class ImportService {
     }
     _log.info('previewFromStoredRows: account=$accountId rows=${data.length} columns=${columns.length} locale=$numberLocale');
     return FilePreview(columns: columns, rows: data, totalRows: data.length, numberLocale: numberLocale);
+  }
+
+  /// Count the account's imported rows (those carrying raw statement data) —
+  /// exactly the rows a re-run from stored data replaces.
+  Future<int> _countImportedRows(int accountId) async {
+    final row = await _db
+        .customSelect(
+          'SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ? AND raw_metadata IS NOT NULL',
+          variables: [Variable.withInt(accountId)],
+        )
+        .getSingle();
+    return row.read<int>('cnt');
   }
 
   /// Count the account's existing transactions from [cutoffEpoch] onward —
@@ -1191,16 +1255,21 @@ class ImportService {
   /// that doesn't exist in the DB, so SUM(amount) over-counts. We instead
   /// trust the stored `balance_after` of the latest pre-cutoff row, which
   /// previous imports wrote as the *filtered* cumulative.
+  ///
+  /// [survivorsOnly] (re-run from stored data): every imported row is about
+  /// to be replaced, so only hand-entered rows count as "already there".
   Future<double> _preCutoffBalance(
     int accountId,
     int cutoffEpoch, {
     String balanceMode = 'cumulative',
+    bool survivorsOnly = false,
   }) async {
+    final survivors = survivorsOnly ? ' AND raw_metadata IS NULL' : '';
     if (balanceMode == 'filtered') {
       final row = await _db
           .customSelect(
             'SELECT balance_after FROM transactions '
-            'WHERE account_id = ? AND operation_date < ? '
+            'WHERE account_id = ? AND operation_date < ?$survivors '
             'ORDER BY operation_date DESC, id DESC LIMIT 1',
             variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
           )
@@ -1210,7 +1279,7 @@ class ImportService {
     final row = await _db
         .customSelect(
           'SELECT COALESCE(SUM(amount), 0) AS s FROM transactions '
-          'WHERE account_id = ? AND operation_date < ?',
+          'WHERE account_id = ? AND operation_date < ?$survivors',
           variables: [Variable.withInt(accountId), Variable.withInt(cutoffEpoch)],
         )
         .getSingle();

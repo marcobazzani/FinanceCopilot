@@ -227,5 +227,86 @@ void main() {
       expect(r.deletedRows, 5);
       expect(await rows(), hasLength(4));
     });
+
+    test('a re-run replaces EVERY imported row, even ones whose stored date is off (no orphan duplicates)', () async {
+      await importer.importTransactions(preview: kbcPreview(), mappings: kbcMappings(dateFromText: false), accountId: acct);
+      // Simulate a previous bad re-run that pushed one row's booking date far
+      // into the past: a date-cutoff delete would leave it behind.
+      final first = (await rows()).first;
+      await (db.update(db.transactions)..where((t) => t.id.equals(first.id))).write(
+        TransactionsCompanion(operationDate: Value(DateTime(1964, 11, 15)), valueDate: Value(DateTime(1964, 11, 15))),
+      );
+      // A hand-entered row must survive regardless of its date.
+      await db
+          .into(db.transactions)
+          .insert(
+            TransactionsCompanion.insert(accountId: acct, operationDate: DateTime(2000, 1, 1), valueDate: DateTime(2000, 1, 1), amount: -1),
+          );
+
+      final stored = (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!;
+      final r = await importer.importTransactions(
+        preview: stored,
+        mappings: kbcMappings(dateFromText: false),
+        accountId: acct,
+        replaceOnlyImportedRows: true,
+      );
+      expect(r.deletedRows, 4, reason: 'all four imported rows, including the mis-dated one');
+      expect(r.importedRows, 4);
+      final t = await rows();
+      expect(t, hasLength(5));
+      expect(t.where((x) => x.rawMetadata == null).single.amount, -1);
+      expect(t.where((x) => x.operationDate.year == 1964), isEmpty);
+      expect(t.where((x) => x.rawMetadata != null).map((x) => x.amount).reduce((a, b) => a + b), closeTo(-2684.79, 1e-6));
+    });
+
+    test('balance-diff re-run: the seed is learned from the stored first row, and a corrupted one cannot poison it', () async {
+      const bal = ColumnMapping(sourceColumn: 'Column 4', targetField: 'amount', balanceDiffColumn: 'Column 4');
+      const balAfter = ColumnMapping(sourceColumn: 'Column 4', targetField: 'balanceAfter');
+      final preview = FilePreview(
+        columns: const ['Column 1', 'Column 2', 'Column 4'],
+        rows: const [
+          {'Column 1': '20 Feb 2017', 'Column 2': 'SCT opening', 'Column 4': '2,000.00'},
+          {'Column 1': '24 Feb 2017', 'Column 2': 'POS shop', 'Column 4': '1,997.00'},
+          {'Column 1': '28 Feb 2017', 'Column 2': 'POS carpark', 'Column 4': '1,994.00'},
+        ],
+        totalRows: 3,
+        numberLocale: 'en_US',
+      );
+      final maps = [
+        const ColumnMapping(sourceColumn: 'Column 1', targetField: 'date'),
+        bal,
+        balAfter,
+        const ColumnMapping(sourceColumn: 'Column 2', targetField: 'description'),
+      ];
+      Future<ImportResult> rerun() async => importer.importTransactions(
+        preview: (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!,
+        mappings: maps,
+        accountId: acct,
+        balanceMode: 'column',
+        replaceOnlyImportedRows: true,
+      );
+      Future<List<double>> amounts() async => (await rows()).map((x) => x.amount).toList();
+
+      // Fresh import, nothing before it: the opening balance is unknown, the first row contributes 0.
+      await importer.importTransactions(preview: preview, mappings: maps, accountId: acct, balanceMode: 'column');
+      expect(await amounts(), [0, -3, -3]);
+      // A re-run learns "seed = first balance" from the stored first row and reproduces it.
+      await rerun();
+      expect(await amounts(), [0, -3, -3]);
+
+      // Accounts imported by older versions stored the first row as the opening deposit: learned and kept too.
+      final first = (await rows()).first;
+      await (db.update(db.transactions)..where((x) => x.id.equals(first.id))).write(const TransactionsCompanion(amount: Value(2000)));
+      await rerun();
+      expect(await amounts(), [2000, -3, -3]);
+
+      // A corrupted stored first amount (neither rule fits) must not become the seed of the next run.
+      final again = (await rows()).first;
+      await (db.update(db.transactions)..where((x) => x.id.equals(again.id))).write(const TransactionsCompanion(amount: Value(-201546.14)));
+      final r = await rerun();
+      expect(r.errorRows, 0);
+      expect(await amounts(), [0, -3, -3], reason: 'seed unknown → 0; the chain is intact');
+      expect((await rows()).map((x) => x.balanceAfter), [2000, 1997, 1994]);
+    });
   });
 }
