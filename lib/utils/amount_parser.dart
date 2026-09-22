@@ -8,7 +8,32 @@ import 'package:intl/intl.dart';
 double parseAmount(String s, {required String locale}) {
   final cleaned = s.replaceAll(RegExp(r'[€$£¥]'), '').trim();
   if (cleaned.isEmpty) throw const FormatException('Empty amount');
+  final symbols = NumberFormat.decimalPattern(locale).symbols;
+  if (!isWellFormedNumber(cleaned, decimalSeparator: symbols.DECIMAL_SEP, groupSeparator: symbols.GROUP_SEP)) {
+    throw FormatException('"$s" is not a number in $locale');
+  }
   return NumberFormat.decimalPattern(locale).parse(cleaned).toDouble();
+}
+
+/// Whether [text] is a number spelled with exactly this locale's separators:
+/// an optional sign, digits, the group separator only between groups of
+/// three digits, the decimal separator at most once, nothing else.
+///
+/// `NumberFormat.parse` is lenient: under `it_IT` it reads `-258.35` as
+/// −25835 because it treats the dot as grouping regardless of what follows.
+/// A dot-decimal export loaded under a comma-decimal locale then imports
+/// every amount a hundred times too big and nothing flags it. A string that
+/// does not fit the locale's shape is not a number in that locale and must
+/// fail, so the row shows up as an error instead of a wrong figure.
+bool isWellFormedNumber(String text, {required String decimalSeparator, required String groupSeparator}) {
+  var t = text.replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ').trim();
+  if (t.startsWith('+') || t.startsWith('-')) t = t.substring(1);
+  if (t.isEmpty) return false;
+  final g = RegExp.escape(groupSeparator == '\u00A0' || groupSeparator == '\u202F' ? ' ' : groupSeparator);
+  final d = RegExp.escape(decimalSeparator);
+  // digits with optional 3-digit groups, then an optional fraction.
+  final re = RegExp('^(\\d{1,3}($g\\d{3})*|\\d+)($d\\d+)?\$');
+  return re.hasMatch(t);
 }
 
 /// Like [parseAmount] but returns null on null/empty/parse-failure.

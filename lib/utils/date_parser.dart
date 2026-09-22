@@ -107,11 +107,14 @@ DateTime parseDate(String s) {
   // yyyyMMdd (compact, no separators)
   final compact = RegExp(r'^(\d{4})(\d{2})(\d{2})$').firstMatch(s);
   if (compact != null) {
-    return DateTime(
-      int.parse(compact.group(1)!),
-      int.parse(compact.group(2)!),
-      int.parse(compact.group(3)!),
-    );
+    final month = int.parse(compact.group(2)!);
+    final day = int.parse(compact.group(3)!);
+    // Any 8 digits match the shape; only a real calendar date is one.
+    // Without this, "86547083" silently becomes 8659-12-22 by rollover.
+    if (!_validDayMonth(day, month)) {
+      throw FormatException('Invalid day/month in date: $s');
+    }
+    return DateTime(int.parse(compact.group(1)!), month, day);
   }
 
   // ── Named month formats ──
