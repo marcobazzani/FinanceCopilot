@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
@@ -1635,6 +1636,82 @@ Date,Amount
       expect(cfg.numberLocale, 'it_IT');
       final tx = (await db.select(db.transactions).get()).first;
       expect(tx.amount, closeTo(1234.56, 1e-9));
+    });
+
+    test('a file in another number format than the stored history is re-spelled into the account format on write', () async {
+      // The Revolut case: history imported as comma-decimal ("-90,5"), then
+      // the bank switched its export to dot-decimal ("-258.35").
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Revolut'));
+      final dir = await Directory.systemTemp.createTemp('fc_respell_');
+      addTearDown(() async => await dir.delete(recursive: true));
+      const maps = [
+        ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ColumnMapping(sourceColumn: 'Balance', targetField: 'balanceAfter'),
+        ColumnMapping(sourceColumn: 'Note', targetField: 'description'),
+      ];
+      final f1 = File('${dir.path}/old.csv')..writeAsStringSync('Date,Amount,Balance,Note\n01/01/2024,"-90,5","1.003,98",bar 12.5\n');
+      await importer.importTransactions(
+        preview: await importer.parseFile(f1.path),
+        mappings: maps,
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        balanceMode: 'column',
+      );
+      var cfg = await (db.select(db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingle();
+      expect(cfg.numberLocale, 'it_IT', reason: 'first import fixes the stored format');
+
+      // New export, dot-decimal. Parsed under en_US (the user's choice for THIS file).
+      final f2 = File('${dir.path}/new.csv')..writeAsStringSync('Date,Amount,Balance,Note\n02/01/2024,-258.35,"2,000.00",bar 12.5\n');
+      final r = await importer.importTransactions(
+        preview: await importer.parseFile(f2.path),
+        mappings: maps,
+        accountId: accountId,
+        numberLocaleOverride: 'en_US',
+        balanceMode: 'column',
+      );
+      expect(r.errorRows, 0);
+      final rows = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.operationDate)])).get();
+      expect(rows.map((t) => t.amount), [-90.5, -258.35]);
+      expect(rows[1].balanceAfter, 2000);
+      // The account format is unchanged, and the new row's numeric cells are stored in it.
+      cfg = await (db.select(db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingle();
+      expect(cfg.numberLocale, 'it_IT');
+      final meta = jsonDecode(rows[1].rawMetadata!) as Map<String, dynamic>;
+      expect(meta['Amount'], '-258,35');
+      expect(meta['Balance'], '2000');
+      expect(meta['Note'], 'bar 12.5', reason: 'only mapped numeric cells are re-spelled');
+      // The whole history re-parses under the saved format: the account is re-runnable.
+      final stored = (await importer.previewFromStoredRows(accountId, numberLocale: 'it_IT'))!;
+      final again = await importer.importTransactions(
+        preview: stored,
+        mappings: maps,
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        balanceMode: 'column',
+        replaceOnlyImportedRows: true,
+      );
+      expect(again.errorRows, 0);
+      expect((await db.select(db.transactions).get()).map((t) => t.amount).toSet(), {-90.5, -258.35});
+    });
+
+    test('a file whose numbers do not fit the chosen format is rejected row by row, never rescaled', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'X'));
+      final dir = await Directory.systemTemp.createTemp('fc_reject_');
+      addTearDown(() async => await dir.delete(recursive: true));
+      final f = File('${dir.path}/t.csv')..writeAsStringSync('Date,Amount\n01/01/2024,-258.35\n02/01/2024,"-90,5"\n');
+      final r = await importer.importTransactions(
+        preview: await importer.parseFile(f.path),
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+      );
+      expect(r.importedRows, 1);
+      expect(r.errorRows, 1, reason: '-258.35 is not an Italian number; it used to import as -25835');
+      expect((await db.select(db.transactions).get()).single.amount, -90.5);
     });
 
     test('appLocale fallback when no override and no saved value', () async {

@@ -155,6 +155,12 @@ class ImportService {
   // ignore: prefer_final_fields  // mutated per import call
   String _activeLocale = 'en_US';
 
+  /// Number format of the account's STORED statement text (`raw_metadata`).
+  /// Fixed once set: every later import is parsed with the file's own format
+  /// ([_activeLocale]) and its numeric cells are re-spelled into this one
+  /// before being stored, so one account never mixes spellings again.
+  String _storedLocale = 'en_US';
+
   ImportService(this._db);
 
   // ──────────────────────────────────────────────
@@ -431,6 +437,8 @@ class ImportService {
     preview = await _ensurePreviewLocale(preview);
     _log.info('importTransactions: accountId=$accountId, ${preview.totalRows} rows, ${mappings.length} mappings, locale=$_activeLocale');
     final mappingByField = {for (final m in mappings) m.targetField: m};
+    final respell = _storedLocale != _activeLocale;
+    final numericCols = respell ? _numericColumnsOf(mappings) : const <String>{};
     final dateMapping = mappingByField['date'];
     final amountMapping = mappingByField['amount'];
 
@@ -495,7 +503,15 @@ class ImportService {
 
         final rawMetadata = <String, String>{};
         for (final col in preview.columns) {
-          rawMetadata[col] = row[col] ?? '';
+          var cell = row[col] ?? '';
+          // A file in another number format than the account's stored text:
+          // re-spell the numeric cells so the stored history stays uniform
+          // and re-parseable under the saved locale.
+          if (respell && numericCols.contains(col) && cell.trim().isNotEmpty) {
+            final v = amt.tryParseAmount(cell, locale: _activeLocale);
+            if (v != null) cell = amt.formatAmountLossless(v, locale: _storedLocale);
+          }
+          rawMetadata[col] = cell;
         }
 
         TransactionStatus? txStatus;
@@ -1090,13 +1106,17 @@ class ImportService {
     required String? appLocale,
   }) async {
     final existing = await (_db.select(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingleOrNull();
-    final saved = override ?? existing?.numberLocale;
-    _activeLocale = amt.resolveImportLocale(saved: saved, appLocale: appLocale);
+    // The file's format: the user's choice for this file, else the account's
+    // format (the usual case: same bank, same export), else the app locale.
+    _activeLocale = amt.resolveImportLocale(saved: override ?? existing?.numberLocale, appLocale: appLocale);
+    // The stored text's format: whatever the account already has. It is set
+    // by the first import and never changed by a later file — a file in a
+    // different format is re-spelled into it on write.
+    _storedLocale = existing?.numberLocale ?? _activeLocale;
+    if (_storedLocale != _activeLocale) {
+      _log.info('import: file format $_activeLocale, stored format $_storedLocale - numeric cells re-spelled on write');
+    }
 
-    // Persist the locale the rows are actually written with. "Auto" used to
-    // leave NULL behind, so the stored statement text had no record of its
-    // own number format and could not be re-parsed later; now the RESOLVED
-    // locale is saved, so stored text and saved locale always agree.
     if (existing == null) {
       await _db
           .into(_db.importConfigs)
@@ -1104,14 +1124,29 @@ class ImportService {
             ImportConfigsCompanion.insert(
               accountId: Value(accountId),
               scope: const Value('transaction'),
-              numberLocale: Value(_activeLocale),
+              numberLocale: Value(_storedLocale),
             ),
           );
-    } else if (existing.numberLocale != _activeLocale) {
+    } else if (existing.numberLocale == null) {
       await (_db.update(_db.importConfigs)..where((c) => c.accountId.equals(accountId))).write(
-        ImportConfigsCompanion(numberLocale: Value(_activeLocale), updatedAt: Value(DateTime.now())),
+        ImportConfigsCompanion(numberLocale: Value(_storedLocale), updatedAt: Value(DateTime.now())),
       );
     }
+  }
+
+  /// Columns the mappings read as numbers — the cells whose spelling the
+  /// stored locale governs.
+  static Set<String> _numericColumnsOf(List<ColumnMapping> mappings) {
+    final cols = <String>{};
+    for (final m in mappings) {
+      if (m.targetField != 'amount' && m.targetField != 'balanceAfter') continue;
+      if (m.sourceColumn != null) cols.add(m.sourceColumn!);
+      if (m.balanceDiffColumn != null) cols.add(m.balanceDiffColumn!);
+      for (final t in m.formulaTerms ?? const <FormulaTerm>[]) {
+        cols.add(t.sourceColumn);
+      }
+    }
+    return cols;
   }
 
   /// Resolve the effective locale for an asset-event import on
