@@ -168,6 +168,16 @@ class RuleService {
     return null;
   }
 
+  /// Direction for a rule learned from one transaction of [amount] into a
+  /// category of [type]. Transfer categories cover both legs (any); every
+  /// other rule only matches the direction it was learned from, so
+  /// classifying a payment FROM someone never tags payments TO them (the
+  /// merchant key is the same both ways).
+  static RuleDirection directionFor(double amount, CategoryType? type) {
+    if (type == CategoryType.transfer) return RuleDirection.any;
+    return amount < 0 ? RuleDirection.outflow : RuleDirection.inflow;
+  }
+
   /// Create a rule. New rules go LAST in evaluation order unless [priority]
   /// is given (lower = evaluated first). Creating an exact duplicate of an
   /// existing rule returns that rule's id instead (re-activating it).

@@ -145,6 +145,31 @@ void main() {
     await teardownTree(tester);
   });
 
+  testWidgets('the rule takes the direction of the shown transaction: an inflow rule leaves outflows to the same person alone', (tester) async {
+    // A person paying back (inflow) is the biggest group; the user also pays them (outflow, same merchant key).
+    // One merchant group (same key); the wizard shows its newest row — the inflow.
+    final paidOut = await tx('Pagamento a favore di MORENA PAGANO', -300, date: DateTime(2024, 6, 1));
+    await tx('Pagamento da parte di MORENA PAGANO', 500, date: DateTime(2024, 6, 2));
+    await tester.pumpWidget(harness());
+    await settle(tester);
+    expect(find.text('500.00 EUR'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wizardPickCategory')));
+    await settle(tester);
+    await tester.enterText(find.byKey(const Key('categoryPickerSearch')), 'Refund');
+    await settle(tester);
+    await tester.tap(find.text('Refunds').last);
+    await settle(tester);
+    await tester.ensureVisible(find.byKey(const Key('wizardApply')));
+    await tester.tap(find.byKey(const Key('wizardApply')));
+    await settle(tester);
+
+    final rule = (await db.select(db.autoCategorizationRules).get()).single;
+    expect(rule.direction, RuleDirection.inflow);
+    final out = await (db.select(db.transactions)..where((t) => t.id.equals(paidOut))).getSingle();
+    expect(out.categoryId, isNull, reason: 'a payment TO the person is not a refund');
+    await teardownTree(tester);
+  });
+
   testWidgets('"only this transaction" sets the category without a rule', (tester) async {
     await tester.pumpWidget(harness());
     await settle(tester);

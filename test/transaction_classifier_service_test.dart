@@ -689,4 +689,32 @@ void main() {
       [restaurants, restaurants, transfer, groceries],
     );
   });
+
+  group('RuleService.directionFor', () {
+    test('a rule learned from an inflow only matches inflows, from an outflow only outflows; transfers both', () {
+      expect(RuleService.directionFor(50, CategoryType.reimbursement), RuleDirection.inflow);
+      expect(RuleService.directionFor(3000, CategoryType.income), RuleDirection.inflow);
+      expect(RuleService.directionFor(-20, CategoryType.expense), RuleDirection.outflow);
+      expect(RuleService.directionFor(-20, null), RuleDirection.outflow);
+      expect(RuleService.directionFor(-500, CategoryType.transfer), RuleDirection.any);
+      expect(RuleService.directionFor(500, CategoryType.transfer), RuleDirection.any);
+    });
+
+    test('an inflow rule for a person never tags payments to that person (same merchant key)', () async {
+      final refunds = (await cats.getByKey('refunds'))!.id;
+      final inflow = await tx(acctA, 50, 'Pagamento da parte di MORENA PAGANO');
+      final outflow = await tx(acctA, -2000, 'Pagamento a favore di MORENA PAGANO');
+      final key = (await get(inflow)).merchantKey!;
+      expect((await get(outflow)).merchantKey, key, reason: 'the key cannot tell the two apart');
+      await rules.create(
+        matchType: RuleMatchType.merchantKey,
+        pattern: key,
+        categoryId: refunds,
+        direction: RuleService.directionFor(50, CategoryType.reimbursement),
+      );
+      await clf.classifyAll();
+      expect((await get(inflow)).categoryId, refunds);
+      expect((await get(outflow)).categoryId, isNull);
+    });
+  });
 }

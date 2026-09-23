@@ -337,10 +337,17 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
       createdAt: DateTime.now(),
       matchType: type,
       accountId: _thisAccountOnly ? widget.accountId : null,
-      direction: RuleDirection.any,
+      direction: _direction(categoryId),
       amountMin: null,
       amountMax: null,
     );
+  }
+
+  /// The shown transaction's direction (see [RuleService.directionFor]).
+  RuleDirection _direction(int categoryId) {
+    final amount = widget.samples.firstOrNull?.amount ?? -1;
+    final cat = ref.read(categoriesByIdProvider)[categoryId == 0 ? _categoryId : categoryId];
+    return RuleService.directionFor(amount, cat?.type);
   }
 
   Future<void> _refreshContainsPreview(MerchantGroup g) async {
@@ -384,12 +391,14 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
           pattern: draft.pattern,
           categoryId: cat,
           accountId: draft.accountId,
+          direction: draft.direction,
         );
         final ruleId = await ruleSvc.create(
           matchType: draft.matchType,
           pattern: draft.pattern,
           categoryId: cat,
           accountId: draft.accountId,
+          direction: draft.direction,
         );
         final result = await clf.classifyAll(overwrite: false);
         final after = await clf.uncategorizedIds();
