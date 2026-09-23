@@ -360,23 +360,7 @@ class TransactionClassifierService {
     for (final t in _uncategorizedIn(ledger, accountId: accountId)) {
       final key = t.merchantKey;
       if (key == null) continue;
-      final g = acc[key] ??= _GroupAcc(key);
-      g.count++;
-      g.totals[t.currency] = (g.totals[t.currency] ?? 0) + t.amount.abs();
-      if (valuation != null) {
-        final v = valuation.baseAbs[t.id];
-        if (v == null) {
-          g.fxMissing++;
-        } else {
-          g.baseTotal += v;
-        }
-      }
-      if (g.first == null || t.valueDate.isBefore(g.first!)) g.first = t.valueDate;
-      if (g.last == null || t.valueDate.isAfter(g.last!)) g.last = t.valueDate;
-      g.counterparty ??= t.counterparty;
-      g.entryKind ??= t.entryKind;
-      g.accountIds.add(t.accountId);
-      if (g.latest == null || _newer(t, g.latest!)) g.latest = t;
+      (acc[key] ??= _GroupAcc(key)).add(t, valuation);
     }
     return acc.values.map((g) => g.build()).toList()..sort((a, b) {
       if (valuation != null) {
@@ -412,6 +396,56 @@ class TransactionClassifierService {
   Future<List<int>> uncategorizedIdsOf(String merchantKey, {int? accountId}) async {
     final rows = await uncategorizedOf(merchantKey, accountId: accountId, limit: 1 << 30);
     return rows.map((t) => t.id).toList();
+  }
+
+  /// The rows a classification of [t] speaks for: participating rows of the
+  /// same merchant that are uncategorized or share [t]'s current category
+  /// (for an uncategorized [t] this is exactly its wizard group). [t] first,
+  /// then newest first. [t] alone when it has no merchant key.
+  static List<Transaction> similarRowsOf(LedgerSnapshot ledger, Transaction t) {
+    final key = t.merchantKey;
+    final others = key == null
+        ? <Transaction>[]
+        : (ledger.participating
+              .where((o) => o.id != t.id && o.merchantKey == key && (o.categoryId == null || o.categoryId == t.categoryId))
+              .toList()
+            ..sort((a, b) => _newer(a, b) ? -1 : 1));
+    return [t, ...others];
+  }
+
+  /// [rows] summarized as one [MerchantGroup] (same shape the wizard shows).
+  static MerchantGroup groupOfRows(List<Transaction> rows, {LedgerValuation? valuation}) {
+    final g = _GroupAcc(rows.first.merchantKey ?? '');
+    for (final t in rows) {
+      g.add(t, valuation);
+    }
+    return g.build();
+  }
+
+  /// The wizard's view of one given row (categorized or not): its group and
+  /// its sample rows, [txId] first. Null when the row is gone or is explained
+  /// by the ledger (transfer, no-op, adjustment, cancelled).
+  Future<({MerchantGroup group, List<Transaction> rows})?> classificationContextFor(int txId, {RateLookup? rate, String? baseCurrency}) async {
+    final ledger = await loadLedger();
+    final t = ledger.transactions.where((x) => x.id == txId).firstOrNull;
+    if (t == null || ledger.isExcluded(t)) return null;
+    final rows = similarRowsOf(ledger, t);
+    final valuation = rate == null || baseCurrency == null ? null : await valueLedger(ledger, rate: rate, baseCurrency: baseCurrency);
+    return (group: groupOfRows(rows, valuation: valuation), rows: rows);
+  }
+
+  /// Move the participating rows that [rule] matches out of [fromCategoryId]
+  /// into the rule's category. Used when an already categorized row is
+  /// re-classified: `classifyAll(overwrite: false)` only fills uncategorized
+  /// rows, so without this the row the user acted on would not change.
+  Future<Set<int>> recategorizeMatching(CompiledRule rule, {required int fromCategoryId}) async {
+    final ledger = await loadLedger();
+    final ids = {
+      for (final t in ledger.participating)
+        if (t.categoryId == fromCategoryId && rule.matches(RuleInput.of(t))) t.id,
+    };
+    await setCategory(ids, rule.categoryId);
+    return ids;
   }
 
   /// Ids of every uncategorized, participating row. The wizard snapshots this
@@ -563,6 +597,25 @@ class _GroupAcc {
   final accountIds = <int>{};
   Transaction? latest;
   _GroupAcc(this.key);
+
+  void add(Transaction t, LedgerValuation? valuation) {
+    count++;
+    totals[t.currency] = (totals[t.currency] ?? 0) + t.amount.abs();
+    if (valuation != null) {
+      final v = valuation.baseAbs[t.id];
+      if (v == null) {
+        fxMissing++;
+      } else {
+        baseTotal += v;
+      }
+    }
+    if (first == null || t.valueDate.isBefore(first!)) first = t.valueDate;
+    if (last == null || t.valueDate.isAfter(last!)) last = t.valueDate;
+    counterparty ??= t.counterparty;
+    entryKind ??= t.entryKind;
+    accountIds.add(t.accountId);
+    if (latest == null || TransactionClassifierService._newer(t, latest!)) latest = t;
+  }
 
   MerchantGroup build() => MerchantGroup(
     merchantKey: key,

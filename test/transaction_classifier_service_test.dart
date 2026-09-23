@@ -643,4 +643,50 @@ void main() {
       expect(await clf.recomputeKeysIfStale(force: true), 1);
     });
   });
+
+  group('classificationContextFor (one given row)', () {
+    test('uncategorized row: the same group the wizard shows, the row first', () async {
+      final a = await tx(acctA, -20, 'Esselunga', date: DateTime(2024, 1, 1));
+      final b = await tx(acctA, -30, 'Esselunga', date: DateTime(2024, 2, 1));
+      await tx(acctA, -40, 'Esselunga', date: DateTime(2024, 3, 1), categoryId: groceries); // categorized: not in its group
+      await tx(acctA, -5, 'Pizzikotto');
+      final ctx = (await clf.classificationContextFor(a))!;
+      expect(ctx.rows.map((t) => t.id), [a, b], reason: 'tapped row first, then newest first');
+      final wizard = TransactionClassifierService.groupsOf(await clf.loadLedger()).firstWhere((g) => g.merchantKey == ctx.group.merchantKey);
+      expect(ctx.group.count, wizard.count);
+      expect(ctx.group.totalByCurrency, wizard.totalByCurrency);
+    });
+
+    test('categorized row: its merchant rows sharing its category, plus uncategorized ones', () async {
+      final a = await tx(acctA, -20, 'Esselunga', categoryId: groceries);
+      final b = await tx(acctA, -30, 'Esselunga', date: DateTime(2024, 4, 1));
+      await tx(acctA, -40, 'Esselunga', categoryId: restaurants); // another category: not spoken for
+      final ctx = (await clf.classificationContextFor(a))!;
+      expect(ctx.rows.map((t) => t.id).toSet(), {a, b});
+      expect(ctx.group.count, 2);
+    });
+
+    test('a ledger-explained row has no classification context', () async {
+      final out = await tx(acctA, -100, 'Bonifico a me');
+      await tx(acctB, 100, 'Bonifico da me');
+      expect(await clf.classificationContextFor(out), isNull);
+    });
+  });
+
+  test('recategorizeMatching moves only rows matching the rule out of the given category', () async {
+    final a = await tx(acctA, -20, 'Esselunga', categoryId: groceries);
+    final b = await tx(acctA, -30, 'Esselunga', categoryId: groceries);
+    final c = await tx(acctA, -40, 'Esselunga', categoryId: transfer); // other category: untouched
+    final d = await tx(acctA, -50, 'Pizzikotto', categoryId: groceries); // other merchant: untouched
+    final key = (await get(a)).merchantKey!;
+    final id = await rules.create(matchType: RuleMatchType.merchantKey, pattern: key, categoryId: restaurants);
+    final rule = (await rules.compileActive()).firstWhere((r) => r.rule.id == id);
+    expect(await clf.recategorizeMatching(rule, fromCategoryId: groceries), {a, b});
+    expect(
+      [
+        for (final x in [a, b, c, d]) (await get(x)).categoryId,
+      ],
+      [restaurants, restaurants, transfer, groceries],
+    );
+  });
 }
