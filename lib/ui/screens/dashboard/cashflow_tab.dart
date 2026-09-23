@@ -229,9 +229,9 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
             ),
             const SizedBox(height: 24),
           ],
-          // Where the money goes: spending per category, year over year.
-          // Independent of the income/expense series — it only needs
-          // categorized transactions.
+          // Where the money goes: one year as a Sankey. Income, savings and
+          // expenses are the yearly Income/Expense/Savings figures below (one
+          // source of truth); the ledger only splits expenses by category.
           ExpansionTile(
             key: const Key('spendingByCategoryTile'),
             title: Text(ref.watch(appStringsProvider).spendingByCategoryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -246,7 +246,17 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
                       child: Center(child: CircularProgressIndicator()),
                     ),
                     error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text('$e')),
-                    data: (d) => _SpendingByCategoryChart(data: d, locale: locale),
+                    data: (d) => ieAsync.isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        : CashFlowSankeyCard(
+                            spending: d,
+                            years: {for (final y in ieData?.years ?? const <_YearBucket>[]) y.year: (income: y.income, savings: y.savings)},
+                            currentYear: ref.watch(currentDateProvider).year,
+                            locale: locale,
+                          ),
                   ),
             ],
           ),

@@ -828,7 +828,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 });
 
 // ════════════════════════════════════════════════════
-// Spending by category (year over year)
+// Spending by category (splits the yearly expenses in the Sankey)
 // ════════════════════════════════════════════════════
 
 final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref) async {
@@ -838,12 +838,15 @@ final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref)
   final rates = _RateResolver(ref.watch(exchangeRateServiceProvider), baseCurrency);
   final now = ref.watch(currentDateProvider);
   final roles = await ref.watch(ledgerRolesProvider.future);
+  // Same cutoff as the yearly Income/Expense/Savings figures.
+  final wayback = ref.watch(waybackDateProvider) != null;
   return aggregateSpendingByCategory(
     transactions: txs,
     categories: {for (final c in cats) c.id: c},
     rate: rates.getRate,
     baseCurrency: baseCurrency,
     now: now,
+    through: wayback ? now : null,
     excludedIds: roles.keys.toSet(),
   );
 });

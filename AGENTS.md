@@ -268,8 +268,10 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/classification/category_service.dart` — Category CRUD, seeded defaults (`lib/database/category_seeds.dart`), delete-with-reassign
 - `lib/services/classification/transaction_classifier_service.dart` — The single classifier: `classifyAll({overwrite})` over the whole ledger, merchant groups + progress for the wizard, derived-key recompute
 - `lib/services/classification/spending_by_category.dart` — Pure YoY spending-per-category aggregation (FX-missing rows excluded and counted, never defaulted)
+- `lib/services/classification/cash_flow_sankey.dart` — Pure yearly cash-flow Sankey graph. Income/savings/expenses are the yearly Income/Expense/Savings bucket figures (expenses = income − savings). Ledger spending = categorized + uncategorized (uncategorized is tracked, never "untracked"); the gap to the yearly expenses is explicit: "untracked expenses" when ledger < expenses, "untracked income" when ledger > expenses; never clamped
+- `lib/ui/widgets/sankey_chart.dart` — Generic Sankey widget + pure `computeSankeyLayout`; used by Cash Flow → "Where the money goes"
 - `lib/ui/screens/classification/classification_wizard_screen.dart` — One-transaction-at-a-time wizard: answer ⇒ rule ⇒ reclassify ledger
-- `lib/ui/screens/classification/transaction_classify_card.dart` — `TransactionClassifyCard`: the single classification card (category, rule scope, Skip/Apply) used by the wizard; re-classifying a categorized row also moves the rule's matches sharing its old category (`recategorizeMatching`)
+- `lib/ui/screens/classification/transaction_classify_card.dart` — `TransactionClassifyCard`: the single classification card (category, rule scope, Skip/Apply) used by the wizard and the Sankey drill-down; re-classifying a categorized row also moves the rule's matches sharing its old category (`recategorizeMatching`)
 - `lib/ui/screens/classification/categories_rules_screen.dart` — Settings → Categories & rules (CRUD, classify actions, dirty banner)
 - `lib/ui/widgets/category_ui.dart` — Single source for category label/icon/color, `CategoryChip`, `showCategoryPicker`, `CategoryField`
 - `lib/services/sync/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection

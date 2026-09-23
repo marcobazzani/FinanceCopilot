@@ -38,15 +38,15 @@ void main() {
 
   Future<double?> rateOk(String c, int day) async => c == 'USD' ? 0.5 : null;
 
-  test('sums outflows per year per category, excludes transfers/income/reimbursement and inflows', () async {
+  test('sums outflows per year per category; transfers are left out but totalled; inflows never count', () async {
     final d = await aggregateSpendingByCategory(
       transactions: [
         tx(1, -100, DateTime(2024, 1, 5), categoryId: 1),
         tx(2, -50, DateTime(2024, 3, 5), categoryId: 1),
         tx(3, -30, DateTime(2024, 3, 6), categoryId: 2),
         tx(4, -999, DateTime(2024, 3, 7), categoryId: 3), // transfer — excluded
-        tx(5, -999, DateTime(2024, 3, 8), categoryId: 4), // income type on an outflow — excluded
-        tx(6, -999, DateTime(2024, 3, 9), categoryId: 5), // reimbursement type — excluded
+        tx(5, -40, DateTime(2024, 3, 8), categoryId: 4), // outflow in an income category: money left — counts
+        tx(6, -60, DateTime(2024, 3, 9), categoryId: 5), // outflow in a reimbursement category: counts
         tx(7, 500, DateTime(2024, 3, 10), categoryId: 1), // inflow — excluded
         tx(8, -20, DateTime(2025, 2, 1)), // uncategorized bucket
         tx(9, -70, DateTime(2025, 2, 2), categoryId: 2),
@@ -63,14 +63,19 @@ void main() {
     expect(d.amount(2024, 1), 150);
     expect(d.amount(2024, 2), 30);
     expect(d.amount(2024, null), 0);
-    expect(d.totalFor(2024), 180);
-    expect(d.share(2024, 1), closeTo(150 / 180, 1e-9));
+    expect(d.amount(2024, 4), 40);
+    expect(d.amount(2024, 5), 60);
+    expect(d.amount(2024, 3), 0, reason: 'transfer: not spending');
+    expect(d.transfersExcluded(2024), 999, reason: 'but its amount is reported, never silently dropped');
+    expect(d.transfersExcluded(2025), 0);
+    expect(d.totalFor(2024), 280);
+    expect(d.share(2024, 1), closeTo(150 / 280, 1e-9));
     expect(d.amount(2025, null), 30, reason: 'uncategorized + dangling category id');
     expect(d.amount(2025, 2), 70);
     expect(d.fxExcluded, 0);
     expect(d.isEmpty, isFalse);
-    // Ordered by all-years total: groceries 150, travel 100, uncategorized 30.
-    expect(d.categoriesByTotal(), [1, 2, null]);
+    // Ordered by all-years total: groceries 150, travel 100, reimbursement 60, income 40, uncategorized 30.
+    expect(d.categoriesByTotal(), [1, 2, 5, 4, null]);
   });
 
   test('foreign currency rows are converted; missing rates are excluded and counted, never defaulted', () async {

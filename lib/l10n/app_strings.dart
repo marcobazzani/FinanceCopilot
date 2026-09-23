@@ -1452,15 +1452,26 @@ class AppStrings {
 
   // Spending by category chart
   String get spendingByCategoryTitle => _it ? 'Dove vanno i soldi' : 'Where the money goes';
-  String get spendingByCategorySubtitle =>
-      _it ? 'Spese per categoria, anno su anno (anno corrente ad oggi)' : 'Spending per category, year over year (current year to date)';
-  String get chartModeAmount => _it ? 'Importo' : 'Amount';
-  String get chartModeShare => _it ? 'Quota %' : 'Share %';
+  String get spendingByCategorySubtitle => _it
+      ? 'Da dove arrivano e dove vanno i soldi, per categoria, nell\'anno scelto (anno corrente ad oggi)'
+      : 'Where the money comes from and where it goes, by category, in the chosen year (current year to date)';
   String get ytdSuffix => _it ? 'in corso' : 'YTD';
   String get spendingByCategoryEmpty => _it
-      ? 'Nessuna spesa classificata. Usa la procedura guidata per assegnare le categorie.'
-      : 'No categorized spending yet. Use the wizard to assign categories.';
+      ? 'Nessuna entrata o spesa da mostrare. Importa i movimenti e usa la procedura guidata per assegnare le categorie.'
+      : 'No income or spending to show yet. Import transactions and use the wizard to assign categories.';
+  String get sankeyUntrackedIncome => _it ? 'Entrate non tracciate' : 'Untracked income';
+  String get sankeyUntrackedExpenses => _it ? 'Spese non tracciate' : 'Untracked expenses';
+  String get sankeyFromSavings => _it ? 'Dai risparmi' : 'From savings';
+  String get sankeyTotal => _it ? 'Disponibile' : 'Available';
+  String get sankeyEssential => _it ? 'Essenziali' : 'Essential';
+  String get sankeyDiscretionary => _it ? 'Non essenziali' : 'Discretionary';
+  String get sankeySaved => _it ? 'Risparmiato' : 'Saved';
+  String get sankeySource => _it
+      ? 'Entrate, uscite e risparmi come nel grafico annuale; le categorie vengono dai movimenti'
+      : 'Income, expenses and savings as in the yearly chart; categories come from the transactions';
+  String sankeyTransfersExcluded(String amount) =>
+      _it ? 'Trasferimenti e investimenti non conteggiati come spese: $amount' : 'Transfers and investments not counted as expenses: $amount';
+  String get sankeyTapHint => _it ? 'Tocca una categoria per vederne i movimenti' : 'Tap a category to see its transactions';
   String spendingFxExcluded(int n) =>
       _it ? '$n transazioni escluse: tasso di cambio non disponibile' : '$n transactions excluded: exchange rate unavailable';
-  String get spendingTransfersExcluded => _it ? 'Trasferimenti e investimenti esclusi' : 'Transfers and investments excluded';
 }
