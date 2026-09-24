@@ -49,7 +49,27 @@ jobs:
         run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Run tests
+        if: matrix.os != 'ubuntu-latest'
         run: flutter test --dart-define=DB_FILE_NAME=finance_copilot_test.db
+
+      # One leg collects coverage and gates it (ratchet against
+      # tool/coverage_baseline.txt): coverage must never go down.
+      - name: Run tests with coverage
+        if: matrix.os == 'ubuntu-latest'
+        run: flutter test --coverage --dart-define=DB_FILE_NAME=finance_copilot_test.db
+
+      - name: Coverage gate
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: tool/check_coverage.sh coverage/lcov.info
+
+      - name: Upload coverage report
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
 
   integration-test:
     if: "!startsWith(github.ref, 'refs/tags/v')"

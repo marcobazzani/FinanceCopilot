@@ -122,7 +122,8 @@ The script writes the last `-Tail` lines to `C:\fc_applog.txt` and appends `READ
   2. `flutter test` -- all unit tests must pass
   3. `flutter test integration_test/all_tests.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- all integration tests must pass. ALWAYS pass `_test.db`; integration tests delete that DB file, and using `finance_copilot_dev.db` will wipe local dev data.
   4. `flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- live data fetch test must pass
-  5. NEVER commit with known failing tests. NEVER skip any test suite.
+  5. `flutter test --coverage && tool/check_coverage.sh` -- coverage gate (same as CI): line coverage of `lib/` (generated files excluded) must not drop below `tool/coverage_baseline.txt`. When it goes up, run `tool/check_coverage.sh coverage/lcov.info --update` and commit the new baseline with the change.
+  6. NEVER commit with known failing tests. NEVER skip any test suite.
 
 ## Releasing a new version
 
