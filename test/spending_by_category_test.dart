@@ -141,4 +141,31 @@ void main() {
     );
     expect(d.categoriesByTotal(), [1, 2, null]);
   });
+
+  test('refunds received: inflows in reimbursement or expense categories, with their rows; unknown inflows are not refunds', () async {
+    final d = await aggregateSpendingByCategory(
+      transactions: [
+        tx(1, 40, DateTime(2024, 2, 1), categoryId: 5), // reimbursement
+        tx(2, 15, DateTime(2024, 2, 2), categoryId: 1), // money back in an expense category
+        tx(3, 100, DateTime(2024, 2, 3), currency: 'USD', categoryId: 5), // 50 EUR
+        tx(4, 999, DateTime(2024, 2, 4)), // uncategorized inflow: unknown, not a refund
+        tx(5, 999, DateTime(2024, 2, 5), categoryId: 4), // income
+        tx(6, 999, DateTime(2024, 2, 6), categoryId: 3), // transfer
+        tx(7, 999, DateTime(2024, 2, 7), categoryId: 5, status: TransactionStatus.cancelled),
+        tx(8, 999, DateTime(2024, 2, 8), categoryId: 5), // ledger-explained
+        tx(9, 10, DateTime(2024, 2, 9), categoryId: 5, currency: 'GBP'), // no rate
+        tx(10, -20, DateTime(2024, 2, 10), categoryId: 1),
+      ],
+      categories: cats,
+      rate: rateOk,
+      baseCurrency: 'EUR',
+      now: now,
+      excludedIds: {8},
+    );
+    expect(d.refunds(2024), 105);
+    expect(d.refundIds(2024), [1, 2, 3]);
+    expect(d.refunds(2023), 0);
+    expect(d.fxExcluded, 1);
+    expect(d.totalFor(2024), 20, reason: 'spending itself stays gross');
+  });
 }

@@ -181,4 +181,57 @@ void main() {
     expect(d.ids(2024, null), [4]);
     expect(d.ids(2023, 2), isEmpty);
   });
+
+  test('refunds received are their own source: they explain part of the gap instead of counting as untracked income', () async {
+    final refunds = cat(5, CategoryType.reimbursement);
+    cats[5] = refunds;
+    addTearDown(() => cats.remove(5));
+    final d = await spend([
+      tx(1, -2000, DateTime(2024, 1, 2), categoryId: 2),
+      tx(2, 300, DateTime(2024, 1, 3), categoryId: 5), // refund received
+    ]);
+    // Yearly: income 3000, savings 1500 → expenses 1500 (net of the refund, which landed in savings).
+    final g = build(d, income: 3000, savings: 1500);
+    expect(g.refunds, 300);
+    expect(g.untrackedIncome, 200, reason: '2000 spent − 300 back − 1500 expenses');
+    expect(g.nodes.map((n) => n.toString()).toList(), [
+      'income=3000.0',
+      'refunds=300.0',
+      'untrackedIncome=200.0',
+      'total=3500.0',
+      'grp:discretionary=2000.0',
+      'saved=1500.0',
+      'out:2=2000.0',
+    ]);
+    expectBalanced(g);
+  });
+
+  test('refunds can turn the gap into untracked expenses', () async {
+    final refunds = cat(5, CategoryType.reimbursement);
+    cats[5] = refunds;
+    addTearDown(() => cats.remove(5));
+    final d = await spend([
+      tx(1, -1500, DateTime(2024, 1, 2), categoryId: 2),
+      tx(2, 400, DateTime(2024, 1, 3), categoryId: 5),
+    ]);
+    final g = build(d, income: 3000, savings: 1500); // expenses 1500
+    expect(g.untrackedIncome, 0);
+    expect(g.untrackedExpenses, 400, reason: '1500 − (1500 − 400)');
+    expectBalanced(g);
+  });
+
+  test('refund Income records (pay-slip reimbursements, inside the salary row) join the ledger refunds', () async {
+    final refunds = cat(5, CategoryType.reimbursement);
+    cats[5] = refunds;
+    addTearDown(() => cats.remove(5));
+    final d = await spend([
+      tx(1, -2000, DateTime(2024, 1, 2), categoryId: 2),
+      tx(2, 100, DateTime(2024, 1, 3), categoryId: 5),
+    ]);
+    final g = buildCashFlowSankey(year: 2024, income: 3000, savings: 1500, recordedRefunds: 400, spending: d, categories: cats);
+    expect(g.refunds, 500, reason: '100 in the ledger + 400 recorded');
+    expect(g.untrackedIncome, 0, reason: '2000 − 500 − 1500');
+    expect(g.untrackedExpenses, 0);
+    expectBalanced(g);
+  });
 }

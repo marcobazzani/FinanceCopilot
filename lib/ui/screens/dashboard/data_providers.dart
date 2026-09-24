@@ -683,6 +683,23 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     monthsWithIncomeData.add(key);
   }
 
+  // 1b. Refund Income records: money received that is not personal income
+  // but lands in the bank, so it is inside the savings change and lowers
+  // the derived expenses. Kept per year so the cash-flow Sankey can show it.
+  final refundRows = await db
+      .customSelect(
+        "SELECT value_date AS date, amount, currency FROM incomes WHERE type = 'refund' ORDER BY value_date ASC",
+      )
+      .get();
+  final refundByYear = <int, double>{};
+  for (final row in refundRows) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+    if (!includeDayKey(toDayKey(dt))) continue;
+    final rate = await rates.getRate(row.read<String>('currency'), toDayKey(dt));
+    if (rate == null) continue; // no rate -> exclude rather than mis-sum
+    refundByYear[dt.year] = (refundByYear[dt.year] ?? 0) + row.read<double>('amount') * rate;
+  }
+
   // 2. Build total saving series — resolved from the user's configured
   // Saving chart when present (option B), else hard-coded composition.
   final userCharts = ref.watch(dashboardChartsProvider);
@@ -794,6 +811,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         income: yearIncome,
         navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
         pensionContrib: yearPensionContrib,
+        refunds: refundByYear[y] ?? 0,
         months: months,
       ),
     );

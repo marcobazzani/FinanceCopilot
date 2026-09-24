@@ -119,6 +119,9 @@ class _MonthBucket {
 class _YearBucket {
   final int year, days;
   final double income, navChange, pensionContrib;
+
+  /// Refund Income records of the year (not income, but inside [savings]).
+  final double refunds;
   final List<_MonthBucket> months;
 
   double get personalNavChange => navChange - pensionContrib;
@@ -138,6 +141,7 @@ class _YearBucket {
     required this.navChange,
     required this.months,
     this.pensionContrib = 0,
+    this.refunds = 0,
   });
 }
 

@@ -17,6 +17,12 @@ typedef RateLookup = Future<double?> Function(String currency, int dayKey);
 /// Rows whose FX rate is unavailable are excluded and counted in
 /// [fxExcluded] so the chart can footnote them instead of silently
 /// mis-summing.
+///
+/// Refunds received — inflows in a reimbursement or expense category (money
+/// coming back for something spent) — are summed per year in
+/// [refundsByYear]: spending above is gross, so a chart that compares it
+/// with net figures needs them as their own term, never folded in silently.
+/// Uncategorized inflows are not refunds: what they are is unknown.
 class SpendingByCategoryData {
   /// Years ascending.
   final List<int> years;
@@ -43,9 +49,18 @@ class SpendingByCategoryData {
     required this.baseCurrency,
     this.idsByYear = const {},
     this.transfersExcludedByYear = const {},
+    this.refundsByYear = const {},
+    this.refundIdsByYear = const {},
   });
 
   double transfersExcluded(int year) => transfersExcludedByYear[year] ?? 0.0;
+
+  /// year → refunds received (base currency) and the rows behind them.
+  final Map<int, double> refundsByYear;
+  final Map<int, List<int>> refundIdsByYear;
+
+  double refunds(int year) => refundsByYear[year] ?? 0.0;
+  List<int> refundIds(int year) => refundIdsByYear[year] ?? const [];
 
   bool get isEmpty => byYear.values.every((m) => m.isEmpty);
 
@@ -86,6 +101,10 @@ class SpendingByCategoryData {
 /// type except transfers (own-money moves).
 bool isSpendingCategoryType(CategoryType? type) => type != CategoryType.transfer;
 
+/// True when an inflow in a category of [type] is money coming back for
+/// something spent.
+bool isRefundCategoryType(CategoryType? type) => type == CategoryType.reimbursement || type == CategoryType.expense;
+
 Future<SpendingByCategoryData> aggregateSpendingByCategory({
   required List<Transaction> transactions,
   required Map<int, Category> categories,
@@ -99,10 +118,13 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
   final idsByYear = <int, Map<int?, List<int>>>{};
   var fxExcluded = 0;
   final transfers = <int, double>{};
+  final refunds = <int, double>{};
+  final refundIds = <int, List<int>>{};
   for (final t in transactions) {
-    if (t.amount >= 0 || t.status == TransactionStatus.cancelled || excludedIds.contains(t.id)) continue;
+    if (t.amount == 0 || t.status == TransactionStatus.cancelled || excludedIds.contains(t.id)) continue;
     if (through != null && t.valueDate.isAfter(through)) continue;
     final cat = t.categoryId == null ? null : categories[t.categoryId];
+    if (t.amount > 0 && !isRefundCategoryType(cat?.type)) continue;
     // A row pointing at a deleted category is treated as uncategorized.
     final catId = cat?.id;
     final d = t.valueDate;
@@ -110,6 +132,11 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
     final r = t.currency == baseCurrency ? 1.0 : await rate(t.currency, dayKey);
     if (r == null) {
       fxExcluded++;
+      continue;
+    }
+    if (t.amount > 0) {
+      refunds[d.year] = (refunds[d.year] ?? 0) + t.amount * r;
+      (refundIds[d.year] ??= []).add(t.id);
       continue;
     }
     if (!isSpendingCategoryType(cat?.type)) {
@@ -127,6 +154,8 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
     byYear: byYear,
     idsByYear: idsByYear,
     transfersExcludedByYear: transfers,
+    refundsByYear: refunds,
+    refundIdsByYear: refundIds,
     fxExcluded: fxExcluded,
     baseCurrency: baseCurrency,
   );

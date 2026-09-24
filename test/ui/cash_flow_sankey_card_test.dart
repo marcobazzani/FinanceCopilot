@@ -36,8 +36,8 @@ void main() {
   ];
   // The yearly Income/Expense/Savings figures (expenses = income − savings).
   const Map<int, CashFlowYearTotals> years = {
-    2024: (income: 3000, savings: 1000), // expenses 2000
-    2025: (income: 2000, savings: -500), // expenses 2500
+    2024: (income: 3000, savings: 1000, refunds: 0), // expenses 2000
+    2025: (income: 2000, savings: -500, refunds: 0), // expenses 2500
   };
 
   Future<void> pump(
@@ -110,7 +110,7 @@ void main() {
 
   testWidgets('categorized spending above the yearly expenses is balanced by untracked income, no warning', (tester) async {
     // 2025: ledger 1500 + 300, expenses 1000 − 500 = 500 → 1300 untracked income.
-    await pump(tester, isPrivate: false, totals: const {2025: (income: 1000, savings: 500)});
+    await pump(tester, isPrivate: false, totals: const {2025: (income: 1000, savings: 500, refunds: 0)});
     expect(find.byKey(const Key('cashFlowSankey')), findsOneWidget);
     expect(inNode('untrackedIncome', '€1,300'), findsOneWidget);
     expect(inNode('untrackedIncome', 'Untracked income'), findsOneWidget);
@@ -141,6 +141,19 @@ void main() {
     expect(masked(find.byKey(const Key('spendingFootnote'))), isFalse, reason: 'explanations and counts stay readable');
     expect(find.byKey(const ValueKey('sankeyNode:out:9')), findsNothing);
     expect(inNode('out:8', '€200'), findsOneWidget, reason: 'an outflow in a refund category is money that left');
+  });
+
+  testWidgets('refunds received show as their own source, masked, and tap lists exactly those rows', (tester) async {
+    const back = Category(id: 8, name: 'Refunds', type: CategoryType.reimbursement, isEssential: false, isArchived: false, sortOrder: 8);
+    cats[8] = back;
+    addTearDown(() => cats.remove(8));
+    await pump(tester, isPrivate: true, ledger: [...baseTxs, tx(30, 250, DateTime(2025, 4, 1), categoryId: 8)]);
+    expect(inNode('refunds', 'Refunds received'), findsOneWidget);
+    expect(masked(inNode('refunds', '€250')), isTrue);
+    await tester.tap(find.byKey(const ValueKey('sankeyNode:refunds')));
+    await tester.pumpAndSettle();
+    expect(find.text('Refunds received · 2025 (1)'), findsOneWidget);
+    expect(find.text('row 30'), findsOneWidget);
   });
 
   testWidgets('tapping a category lists exactly the transactions summed into it', (tester) async {

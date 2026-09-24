@@ -253,7 +253,10 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
                           )
                         : CashFlowSankeyCard(
                             spending: d,
-                            years: {for (final y in ieData?.years ?? const <_YearBucket>[]) y.year: (income: y.income, savings: y.savings)},
+                            years: {
+                              for (final y in ieData?.years ?? const <_YearBucket>[])
+                                y.year: (income: y.income, savings: y.savings, refunds: y.refunds),
+                            },
                             currentYear: ref.watch(currentDateProvider).year,
                             locale: locale,
                           ),

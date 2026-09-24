@@ -1268,9 +1268,6 @@ class AppStrings {
   String uncategorizedCount(int n) => _it ? 'Senza categoria ($n)' : 'Uncategorized ($n)';
   String get noCategory => _it ? 'Nessuna categoria' : 'No category';
   String get categoriesAndRules => _it ? 'Categorie e regole' : 'Categories & rules';
-  String get categoriesAndRulesSubtitle => _it
-      ? 'Gestisci le categorie e le regole che classificano le transazioni'
-      : 'Manage the categories and the rules that classify transactions';
   String get rules => _it ? 'Regole' : 'Rules';
   String get rule => _it ? 'Regola' : 'Rule';
   String get newRule => _it ? 'Nuova regola' : 'New rule';
@@ -1282,8 +1279,6 @@ class AppStrings {
   String get categoryName => _it ? 'Nome categoria' : 'Category name';
   String get categoryTypeLabel => _it ? 'Tipo' : 'Type';
   String get archived => _it ? 'Archiviata' : 'Archived';
-  String get archive => _it ? 'Archivia' : 'Archive';
-  String get unarchive => _it ? 'Ripristina' : 'Unarchive';
   String get showArchived => _it ? 'Mostra archiviate' : 'Show archived';
   String get restoreDefaultCategories => _it ? 'Ripristina categorie predefinite' : 'Restore default categories';
   String restoredCategories(int n) => _it ? 'Categorie ripristinate: $n' : 'Restored $n categories';
@@ -1435,7 +1430,6 @@ class AppStrings {
   String wizardApplied(int n) => _it ? 'Regola creata: $n transazioni classificate' : 'Rule created: $n transactions classified';
   String get wizardUndone => _it ? 'Ultima azione annullata' : 'Last action undone';
   String get wizardAccountsLabel => _it ? 'Conti' : 'Accounts';
-  String importUncategorizedRows(int n) => _it ? 'Senza categoria dopo l\'import: $n' : 'Uncategorized after import: $n';
   String get categorizedLabel => _it ? 'Classificate' : 'Categorized';
   String wizardExcludedNote(int n) => _it
       ? '$n movimenti non partecipano: trasferimenti, storni, rettifiche e annullati'
@@ -1459,6 +1453,7 @@ class AppStrings {
   String get spendingByCategoryEmpty => _it
       ? 'Nessuna entrata o spesa da mostrare. Importa i movimenti e usa la procedura guidata per assegnare le categorie.'
       : 'No income or spending to show yet. Import transactions and use the wizard to assign categories.';
+  String get sankeyRefunds => _it ? 'Rimborsi ricevuti' : 'Refunds received';
   String get sankeyUntrackedIncome => _it ? 'Entrate non tracciate' : 'Untracked income';
   String get sankeyUntrackedExpenses => _it ? 'Spese non tracciate' : 'Untracked expenses';
   String get sankeyFromSavings => _it ? 'Dai risparmi' : 'From savings';

@@ -6,8 +6,11 @@ enum CashFlowNodeKind {
   /// The year's income (Income records, same figure as the yearly chart).
   income,
 
-  /// Categorized spending the yearly figures do not explain: money that
-  /// came in without an Income record.
+  /// Refunds received in the ledger (money back for something spent).
+  refunds,
+
+  /// Ledger spending the yearly figures and refunds do not explain: money
+  /// that came in without an Income record.
   untrackedIncome,
 
   /// Savings went down in the year: the drop funded part of the expenses.
@@ -57,7 +60,7 @@ class CashFlowLink {
 }
 
 /// One year of cash flow as a Sankey graph:
-/// income (+ untracked income, + from savings) → available → essential /
+/// income (+ refunds, + untracked income, + from savings) → available → essential /
 /// discretionary / uncategorized / untracked expenses / saved → expense
 /// categories.
 ///
@@ -82,6 +85,9 @@ class CashFlowSankey {
   /// Ledger spending of the year without a category.
   final double uncategorized;
 
+  /// Refunds received in the ledger in the year.
+  final double refunds;
+
   const CashFlowSankey({
     required this.nodes,
     required this.links,
@@ -89,6 +95,7 @@ class CashFlowSankey {
     required this.savings,
     required this.categorized,
     required this.uncategorized,
+    this.refunds = 0,
   });
 
   /// All spending the ledger holds for the year.
@@ -97,10 +104,16 @@ class CashFlowSankey {
   double get expenses => income - savings;
 
   /// Ledger spending above the yearly expenses.
-  double get untrackedIncome => ledgerSpending > expenses ? ledgerSpending - expenses : 0;
+  double get untrackedIncome => _gap > 0 ? _gap : 0;
+
+  /// Ledger spending not covered by the yearly expenses plus refunds
+  /// received (spending is gross; the yearly expenses are net of refunds,
+  /// which land in savings). Positive = untracked income, negative =
+  /// untracked expenses.
+  double get _gap => ledgerSpending - refunds - expenses;
 
   /// Yearly expenses the ledger does not contain.
-  double get untrackedExpenses => expenses > ledgerSpending ? expenses - ledgerSpending : 0;
+  double get untrackedExpenses => _gap < 0 ? -_gap : 0;
   bool get isEmpty => nodes.isEmpty;
 
   /// Share of income saved; null without income (same as the yearly chart's
@@ -108,7 +121,7 @@ class CashFlowSankey {
   double? get savingsRate => income > 0 ? savings / income : null;
 
   /// The value every column is measured against (the total node).
-  double get scaleTotal => income + untrackedIncome + (savings < 0 ? -savings : 0);
+  double get scaleTotal => income + refunds + untrackedIncome + (savings < 0 ? -savings : 0);
 }
 
 const _eps = 0.005;
@@ -117,10 +130,17 @@ String cashFlowExpenseNodeId(int categoryId) => 'out:$categoryId';
 
 /// [income] and [savings] come from the yearly Income/Expense/Savings bucket
 /// of [year]; [spending] supplies the category split of the expenses.
+///
+/// Refunds received come from two sources that never hold the same money:
+/// [recordedRefunds] (refund Income records — e.g. the part of a pay slip
+/// that reimburses expenses, booked in the ledger inside the salary row) and
+/// the ledger's refund inflows ([SpendingByCategoryData.refunds]). Both land
+/// in savings, so both explain spending the yearly expenses net out.
 CashFlowSankey buildCashFlowSankey({
   required int year,
   required double income,
   required double savings,
+  double recordedRefunds = 0,
   required SpendingByCategoryData spending,
   required Map<int, Category> categories,
 }) {
@@ -134,13 +154,23 @@ CashFlowSankey buildCashFlowSankey({
       });
   final categorized = named.fold(0.0, (a, e) => a + e.value);
   final uncategorized = spending.amount(year, null);
+  final refunds = spending.refunds(year) + recordedRefunds;
   final expenses = income - savings;
 
-  CashFlowSankey result(List<CashFlowNode> nodes, List<CashFlowLink> links) =>
-      CashFlowSankey(nodes: nodes, links: links, income: income, savings: savings, categorized: categorized, uncategorized: uncategorized);
+  CashFlowSankey result(List<CashFlowNode> nodes, List<CashFlowLink> links) => CashFlowSankey(
+    nodes: nodes,
+    links: links,
+    income: income,
+    savings: savings,
+    categorized: categorized,
+    uncategorized: uncategorized,
+    refunds: refunds,
+  );
 
   if (income.abs() < _eps && savings.abs() < _eps && categorized + uncategorized < _eps) return result(const [], const []);
-  final untrackedIncome = categorized + uncategorized - expenses;
+  // Balance: income + refunds + untracked income (+ from savings) =
+  // ledger spending + saved + untracked expenses.
+  final untrackedIncome = categorized + uncategorized - refunds - expenses;
 
   final nodes = <CashFlowNode>[];
   final links = <CashFlowLink>[];
@@ -150,6 +180,10 @@ CashFlowSankey buildCashFlowSankey({
   if (income >= _eps) {
     nodes.add(CashFlowNode(id: 'income', kind: CashFlowNodeKind.income, layer: 0, value: income));
     links.add(CashFlowLink('income', total, income));
+  }
+  if (refunds >= _eps) {
+    nodes.add(CashFlowNode(id: 'refunds', kind: CashFlowNodeKind.refunds, layer: 0, value: refunds));
+    links.add(CashFlowLink('refunds', total, refunds));
   }
   if (untrackedIncome >= _eps) {
     nodes.add(CashFlowNode(id: 'untrackedIncome', kind: CashFlowNodeKind.untrackedIncome, layer: 0, value: untrackedIncome));
@@ -161,7 +195,7 @@ CashFlowSankey buildCashFlowSankey({
   }
 
   // Layer 1: total.
-  final available = income + (untrackedIncome > 0 ? untrackedIncome : 0) + (savings < 0 ? -savings : 0);
+  final available = income + (refunds >= _eps ? refunds : 0) + (untrackedIncome > 0 ? untrackedIncome : 0) + (savings < 0 ? -savings : 0);
   nodes.add(CashFlowNode(id: total, kind: CashFlowNodeKind.total, layer: 1, value: available));
 
   // Layers 2-3: where it went.

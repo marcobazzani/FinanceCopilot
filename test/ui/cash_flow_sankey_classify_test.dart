@@ -87,7 +87,7 @@ void main() {
                   if (d == null) return const SizedBox.shrink();
                   return CashFlowSankeyCard(
                     spending: d,
-                    years: const {2024: (income: 1000, savings: 0)},
+                    years: const {2024: (income: 1000, savings: 0, refunds: 0)},
                     currentYear: 2024,
                     locale: 'en_US',
                   );

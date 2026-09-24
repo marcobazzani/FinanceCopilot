@@ -1,8 +1,9 @@
 part of 'dashboard_screen.dart';
 
 /// Yearly income and savings, exactly as the Income/Expense/Savings chart
-/// computes them (expenses = income − savings).
-typedef CashFlowYearTotals = ({double income, double savings});
+/// computes them (expenses = income − savings), plus the refund Income
+/// records the savings figure contains.
+typedef CashFlowYearTotals = ({double income, double savings, double refunds});
 
 /// "Where the money goes": one year of cash flow as a Sankey — income (+ from
 /// savings / untracked income) → available → essential / discretionary /
@@ -69,7 +70,14 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
 
     final year = _effectiveYear(years);
     final totals = widget.years[year]!;
-    final graph = buildCashFlowSankey(year: year, income: totals.income, savings: totals.savings, spending: d, categories: byId);
+    final graph = buildCashFlowSankey(
+      year: year,
+      income: totals.income,
+      savings: totals.savings,
+      recordedRefunds: totals.refunds,
+      spending: d,
+      categories: byId,
+    );
     final money = fmt.currencyFormat(widget.locale, currencySymbol(d.baseCurrency), decimalDigits: 0);
     final pct = NumberFormat.decimalPercentPattern(locale: widget.locale, decimalDigits: 1);
     String yearLabel(int y) => y == widget.currentYear ? '$y ${s.ytdSuffix}' : '$y';
@@ -81,6 +89,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       CashFlowNodeKind.total => scheme.primary,
       CashFlowNodeKind.essential => scheme.tertiary,
       CashFlowNodeKind.discretionary => scheme.secondary,
+      CashFlowNodeKind.refunds => Colors.teal.shade400,
       CashFlowNodeKind.untrackedIncome => Colors.green.shade300,
       CashFlowNodeKind.uncategorized => scheme.outlineVariant,
       CashFlowNodeKind.untrackedExpenses => scheme.outline,
@@ -93,6 +102,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       CashFlowNodeKind.total => s.sankeyTotal,
       CashFlowNodeKind.essential => s.sankeyEssential,
       CashFlowNodeKind.discretionary => s.sankeyDiscretionary,
+      CashFlowNodeKind.refunds => s.sankeyRefunds,
       CashFlowNodeKind.untrackedIncome => s.sankeyUntrackedIncome,
       CashFlowNodeKind.uncategorized => s.uncategorized,
       CashFlowNodeKind.untrackedExpenses => s.sankeyUntrackedExpenses,
@@ -225,12 +235,14 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
   }
 
   Future<void> _onNodeTap(BuildContext context, CashFlowNode node, int year, String label) async {
-    final categoryId = switch (node.kind) {
-      CashFlowNodeKind.expense => node.categoryId,
-      CashFlowNodeKind.uncategorized => null,
-      _ => -1,
+    // The rows summed into the node, from the live data.
+    final List<int> Function(SpendingByCategoryData)? idsOf = switch (node.kind) {
+      CashFlowNodeKind.expense => (d) => d.ids(year, node.categoryId),
+      CashFlowNodeKind.uncategorized => (d) => d.ids(year, null),
+      CashFlowNodeKind.refunds => (d) => d.refundIds(year),
+      _ => null,
     };
-    if (categoryId == -1 || widget.spending.ids(year, categoryId).isEmpty) return;
+    if (idsOf == null || idsOf(widget.spending).isEmpty) return;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -241,7 +253,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
         builder: (ctx, controller) => _NodeTransactionsSheet(
           spending: _spendingLive,
           year: year,
-          categoryId: categoryId,
+          idsOf: idsOf,
           label: label,
           locale: widget.locale,
           controller: controller,
@@ -258,15 +270,15 @@ class _NodeTransactionsSheet extends ConsumerStatefulWidget {
   final ValueListenable<SpendingByCategoryData> spending;
   final int year;
 
-  /// Category of the node; null = uncategorized.
-  final int? categoryId;
+  /// The node's rows in the given data.
+  final List<int> Function(SpendingByCategoryData) idsOf;
   final String label;
   final String locale;
   final ScrollController controller;
   const _NodeTransactionsSheet({
     required this.spending,
     required this.year,
-    required this.categoryId,
+    required this.idsOf,
     required this.label,
     required this.locale,
     required this.controller,
@@ -333,7 +345,7 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
       builder: (context, spending, _) {
         // Exactly the rows summed into the node, biggest first (|amount| in
         // the row's own currency); newest, then id, break ties.
-        final ids = spending.ids(widget.year, widget.categoryId).toSet();
+        final ids = widget.idsOf(spending).toSet();
         final rows = txs.where((t) => ids.contains(t.id)).toList()
           ..sort((a, b) {
             final c = b.amount.abs().compareTo(a.amount.abs());

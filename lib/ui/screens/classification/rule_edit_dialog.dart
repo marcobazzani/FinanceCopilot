@@ -217,6 +217,8 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
                 }),
               ),
               const SizedBox(height: 12),
+              Text(s.ruleDirection, style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 6),
               SegmentedButton<RuleDirection>(
                 showSelectedIcon: false,
                 segments: [for (final d in RuleDirection.values) ButtonSegment(value: d, label: Text(s.ruleDirectionName(d)))],
