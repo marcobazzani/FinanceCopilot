@@ -1,48 +1,74 @@
 #!/usr/bin/env sh
-# Coverage ratchet: line coverage of lib/ (generated *.g.dart excluded) from a
-# `flutter test --coverage` lcov file must not drop below the committed
+# Coverage ratchet: line coverage of lib/ must not drop below the committed
 # baseline in tool/coverage_baseline.txt.
 #
-#   tool/check_coverage.sh [lcov.info]          check (CI gate)
-#   tool/check_coverage.sh [lcov.info] --update raise the baseline to the
-#                                               current value (never lowers it)
+#   tool/check_coverage.sh [lcov ...]            check (CI gate)
+#   tool/check_coverage.sh [lcov ...] --update   raise the baseline to the
+#                                                current value (never lowers)
 #
-# A small tolerance absorbs run-to-run noise (async code paths hit or not by
-# timing); anything beyond it fails. When coverage goes up, raise the
-# baseline in the same commit so the gain is locked in.
+# Several lcov files (unit + integration runs) are MERGED: a line counts as
+# covered when any run executed it. Default input: coverage/lcov.info plus
+# coverage/lcov.integration.info when present.
+#
+# Excluded: generated code (*.g.dart) and pure declarations whose "lines" are
+# never meaningfully executed — the l10n string table (one getter per line,
+# counted only when a test happens to render that string) and the Drift table
+# definitions (schema DSL). They measure which strings/columns a test touched,
+# not which logic ran.
+#
+# A small tolerance absorbs run-to-run noise (async paths hit or not by
+# timing). When coverage goes up, raise the baseline in the same commit.
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 cd "$repo_root"
 
-lcov=${1:-coverage/lcov.info}
-mode=${2:-check}
 baseline_file=tool/coverage_baseline.txt
 tolerance=0.10
-
-if [ ! -f "$lcov" ]; then
-  echo "coverage file not found: $lcov (run: flutter test --coverage)" >&2
-  exit 1
+mode=check
+files=""
+for arg in "$@"; do
+  case "$arg" in
+    --update) mode=update ;;
+    *) files="$files $arg" ;;
+  esac
+done
+if [ -z "$files" ]; then
+  files=coverage/lcov.info
+  [ -f coverage/lcov.integration.info ] && files="$files coverage/lcov.integration.info"
 fi
+for f in $files; do
+  [ -f "$f" ] || { echo "coverage file not found: $f (run: flutter test --coverage)" >&2; exit 1; }
+done
 
-# LF/LH summed over lib/ source files that are not generated.
-current=$(awk -F: '
-  /^SF:/ { f = substr($0, 4); keep = (f ~ /(^|\/)lib\// && f !~ /\.g\.dart$/) }
-  /^LF:/ && keep { lf += $2 }
-  /^LH:/ && keep { lh += $2 }
-  END { if (lf == 0) { print "0.00" } else { printf "%.2f", 100 * lh / lf } }
-' "$lcov")
-lines=$(awk -F: '
-  /^SF:/ { f = substr($0, 4); keep = (f ~ /(^|\/)lib\// && f !~ /\.g\.dart$/) }
-  /^LF:/ && keep { lf += $2 } /^LH:/ && keep { lh += $2 }
-  END { printf "%d/%d", lh, lf }
-' "$lcov")
+# shellcheck disable=SC2086
+summary=$(awk -F'[:,]' '
+  /^SF:/ {
+    f = substr($0, 4)
+    i = index(f, "lib/"); if (i > 1 && substr(f, i - 1, 1) != "/") i = 0
+    f = (substr(f, 1, 4) == "lib/") ? f : (i > 0 ? substr(f, i) : "")
+    keep = (f != "" && f !~ /\.g\.dart$/ && f != "lib/l10n/app_strings.dart" && f != "lib/database/tables.dart")
+    next
+  }
+  /^DA:/ && keep {
+    k = f SUBSEP $2
+    seen[k] = 1
+    if ($3 + 0 > 0) hit[k] = 1
+  }
+  END {
+    for (k in seen) lf++
+    for (k in hit) lh++
+    if (lf == 0) printf "0.00 0/0"; else printf "%.2f %d/%d", 100 * lh / lf, lh, lf
+  }
+' $files)
+current=${summary%% *}
+lines=${summary#* }
 
 baseline=$(tr -d '[:space:]' < "$baseline_file")
-echo "Line coverage (lib/, generated excluded): ${current}% (${lines}); baseline ${baseline}%"
+echo "Line coverage (lib/, merged:$files): ${current}% (${lines}); baseline ${baseline}%"
 
-if [ "$mode" = "--update" ]; then
+if [ "$mode" = update ]; then
   if awk -v c="$current" -v b="$baseline" 'BEGIN { exit !(c > b) }'; then
     printf '%s\n' "$current" > "$baseline_file"
     echo "Baseline raised to ${current}%"
@@ -57,5 +83,5 @@ if awk -v c="$current" -v b="$baseline" -v t="$tolerance" 'BEGIN { exit !(c + t 
   exit 1
 fi
 if awk -v c="$current" -v b="$baseline" -v t="$tolerance" 'BEGIN { exit !(c > b + t) }'; then
-  echo "Coverage is above the baseline: raise it with 'tool/check_coverage.sh $lcov --update' and commit tool/coverage_baseline.txt."
+  echo "Coverage is above the baseline: raise it with 'tool/check_coverage.sh$files --update' and commit tool/coverage_baseline.txt."
 fi
