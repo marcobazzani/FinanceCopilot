@@ -218,5 +218,39 @@ void main() {
         controller.dispose();
       }
     });
+
+    testWidgets('firing again mid-show launches a full new wave instead of fast-forwarding', (tester) async {
+      final (controller, ctx) = await _mount(tester);
+      final fireworks = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter.runtimeType.toString() == '_FireworksPainter',
+      );
+      var elapsedMs = 0;
+      Future<void> runUntil(double seconds) async {
+        while (elapsedMs < seconds * 1000) {
+          await tester.pump(const Duration(milliseconds: 100));
+          elapsedMs += 100;
+        }
+      }
+
+      try {
+        controller.fire(ctx, 'Portfolio');
+        await tester.pump();
+        await runUntil(3.0);
+        controller.fire(ctx, 'Total Assets'); // e.g. the 6-tap easter egg while the first show runs
+        await tester.pump();
+
+        // The second wave launches over 4.75 s from t≈3 s and burns out ≈8.6 s
+        // later. Restarting the frame clock mid-show fed the next frame the
+        // whole elapsed time as one step, so the new wave ended with the first.
+        await runUntil(10.0);
+        expect(find.text('Total Assets'), findsOneWidget);
+        expect(fireworks, paints..circle());
+
+        await runUntil(11.9);
+        expect(fireworks, paintsNothing);
+      } finally {
+        controller.dispose();
+      }
+    });
   });
 }
