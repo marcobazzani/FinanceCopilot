@@ -192,66 +192,21 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
 
   Future<void> _showAddDialog(BuildContext context, String defaultCurrency) async {
     final s = ref.read(appStringsProvider);
-    final dateFmt = fmt.shortDateFormat(_locale);
-    final dateCtl = TextEditingController(text: dateFmt.format(DateTime.now()));
-    final amountCtl = TextEditingController();
-    var currency = defaultCurrency;
-    var type = IncomeType.income;
-
-    final result = await showDialog<bool>(
+    final result = await showDialog<_IncomeFormResult>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.addIncomeTitle),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: dateCtl,
-                  decoration: InputDecoration(labelText: s.dateFormatHint),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: amountCtl,
-                  decoration: InputDecoration(labelText: s.amount),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => Navigator.pop(ctx, true),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<IncomeType>(
-                  initialValue: type,
-                  decoration: InputDecoration(labelText: s.incomeTypeLabel),
-                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(s.incomeTypeName(t)))).toList(),
-                  onChanged: (v) => setDialogState(() => type = v!),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: currency,
-                  decoration: InputDecoration(labelText: s.currency),
-                  items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                  onChanged: (v) => setDialogState(() => currency = v!),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.add)),
-          ],
-        ),
+      builder: (_) => _IncomeFormDialog(
+        title: s.addIncomeTitle,
+        confirmLabel: s.add,
+        initialDate: fmt.shortDateFormat(_locale).format(DateTime.now()),
+        initialAmount: '',
+        initialType: IncomeType.income,
+        initialCurrency: defaultCurrency,
       ),
     );
+    if (result == null) return;
 
-    final confirmed = result == true;
-    final date = confirmed ? _tryParseDate(dateCtl.text) : null;
-    final amount = confirmed ? fmt.tryParseLocalized(amountCtl.text, locale: ref.read(appLocaleProvider).value ?? Platform.localeName) : null;
-    dateCtl.dispose();
-    amountCtl.dispose();
-    if (!confirmed) return;
+    final date = _tryParseDate(result.dateText);
+    final amount = fmt.tryParseLocalized(result.amountText, locale: _locale);
     if (date == null || amount == null) {
       if (context.mounted) {
         showInfoSnack(context, s.invalidDateOrAmount);
@@ -264,94 +219,37 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
         .create(
           date: date,
           amount: amount,
-          type: type,
-          currency: currency,
+          type: result.type,
+          currency: result.currency,
         );
   }
 
   Future<void> _showEditDialog(BuildContext context, Income income) async {
     final s = ref.read(appStringsProvider);
-    final dateFmt = fmt.shortDateFormat(_locale);
-    // Display valueDate per CLAUDE.md convention (canonical "money moved" date).
-    final dateCtl = TextEditingController(text: dateFmt.format(income.valueDate));
-    final amountCtl = TextEditingController(text: income.amount.toString());
-    var currency = income.currency;
-    var type = income.type;
-
-    final result = await showDialog<String>(
+    final result = await showDialog<_IncomeFormResult>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.editIncomeTitle),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: dateCtl,
-                  decoration: InputDecoration(labelText: s.dateFormatHint),
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: amountCtl,
-                  decoration: InputDecoration(labelText: s.amount),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => Navigator.pop(ctx, 'save'),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<IncomeType>(
-                  initialValue: type,
-                  decoration: InputDecoration(labelText: s.incomeTypeLabel),
-                  items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(s.incomeTypeName(t)))).toList(),
-                  onChanged: (v) => setDialogState(() => type = v!),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: currency,
-                  decoration: InputDecoration(labelText: s.currency),
-                  items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                  onChanged: (v) => setDialogState(() => currency = v!),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: s.delete,
-                  onPressed: () => Navigator.pop(ctx, 'delete'),
-                ),
-                const Spacer(),
-                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-                const SizedBox(width: 8),
-                FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(s.save)),
-              ],
-            ),
-          ],
-        ),
+      builder: (_) => _IncomeFormDialog(
+        title: s.editIncomeTitle,
+        confirmLabel: s.save,
+        // Display valueDate per CLAUDE.md convention (canonical "money moved" date).
+        initialDate: fmt.shortDateFormat(_locale).format(income.valueDate),
+        initialAmount: income.amount.toString(),
+        initialType: income.type,
+        initialCurrency: income.currency,
+        canDelete: true,
       ),
     );
+    if (result == null) return;
 
-    final dateText = dateCtl.text;
-    final amountText = amountCtl.text;
-    dateCtl.dispose();
-    amountCtl.dispose();
-
-    if (result == 'delete') {
+    if (result.delete) {
       if (context.mounted) {
         await _confirmDelete(context, income);
       }
       return;
     }
-    if (result != 'save') return;
 
-    final date = _tryParseDate(dateText);
-    final amount = fmt.tryParseLocalized(amountText, locale: ref.read(appLocaleProvider).value ?? Platform.localeName);
+    final date = _tryParseDate(result.dateText);
+    final amount = fmt.tryParseLocalized(result.amountText, locale: _locale);
     if (date == null || amount == null) {
       if (context.mounted) {
         showInfoSnack(context, s.invalidDateOrAmount);
@@ -369,8 +267,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
             date: Value(date),
             valueDate: Value(date),
             amount: Value(amount),
-            type: Value(type),
-            currency: Value(currency),
+            type: Value(result.type),
+            currency: Value(result.currency),
           ),
         );
   }
@@ -394,4 +292,116 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
   }
 
   DateTime? _tryParseDate(String text) => fmt.parseFlexibleDate(text);
+}
+
+/// What the income form hands back: the raw field texts (parsed by the
+/// caller, so unreadable input is reported instead of guessed) and the
+/// picked type and currency. `delete` is the edit form's delete action.
+typedef _IncomeFormResult = ({bool delete, String dateText, String amountText, IncomeType type, String currency});
+
+/// The Add and Edit Income form. Owns its text controllers and disposes them
+/// only once the dialog is fully gone: disposing them as soon as the dialog
+/// returned broke the closing animation, which still rebuilds the fields.
+class _IncomeFormDialog extends ConsumerStatefulWidget {
+  const _IncomeFormDialog({
+    required this.title,
+    required this.confirmLabel,
+    required this.initialDate,
+    required this.initialAmount,
+    required this.initialType,
+    required this.initialCurrency,
+    this.canDelete = false,
+  });
+
+  final String title;
+  final String confirmLabel;
+  final String initialDate;
+  final String initialAmount;
+  final IncomeType initialType;
+  final String initialCurrency;
+  final bool canDelete;
+
+  @override
+  ConsumerState<_IncomeFormDialog> createState() => _IncomeFormDialogState();
+}
+
+class _IncomeFormDialogState extends ConsumerState<_IncomeFormDialog> {
+  late final _dateCtl = TextEditingController(text: widget.initialDate);
+  late final _amountCtl = TextEditingController(text: widget.initialAmount);
+  late var _type = widget.initialType;
+  late var _currency = widget.initialCurrency;
+
+  @override
+  void dispose() {
+    _dateCtl.dispose();
+    _amountCtl.dispose();
+    super.dispose();
+  }
+
+  void _close({bool delete = false}) => Navigator.pop<_IncomeFormResult>(
+    context,
+    (delete: delete, dateText: _dateCtl.text, amountText: _amountCtl.text, type: _type, currency: _currency),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    final cancel = TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel));
+    final confirm = FilledButton(onPressed: _close, child: Text(widget.confirmLabel));
+    return AlertDialog(
+      title: Text(widget.title),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _dateCtl,
+              decoration: InputDecoration(labelText: s.dateFormatHint),
+              textInputAction: TextInputAction.next,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _amountCtl,
+              decoration: InputDecoration(labelText: s.amount),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _close(),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<IncomeType>(
+              initialValue: _type,
+              decoration: InputDecoration(labelText: s.incomeTypeLabel),
+              items: IncomeType.values.map((t) => DropdownMenuItem(value: t, child: Text(s.incomeTypeName(t)))).toList(),
+              onChanged: (v) => setState(() => _type = v!),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _currency,
+              decoration: InputDecoration(labelText: s.currency),
+              items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+              onChanged: (v) => setState(() => _currency = v!),
+            ),
+          ],
+        ),
+      ),
+      actions: widget.canDelete
+          ? [
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    tooltip: s.delete,
+                    onPressed: () => _close(delete: true),
+                  ),
+                  const Spacer(),
+                  cancel,
+                  const SizedBox(width: 8),
+                  confirm,
+                ],
+              ),
+            ]
+          : [cancel, confirm],
+    );
+  }
 }
