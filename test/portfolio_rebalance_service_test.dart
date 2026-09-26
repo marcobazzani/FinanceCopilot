@@ -761,4 +761,105 @@ void main() {
       );
     });
   });
+
+  // A holding the draft cannot value leaves the pillar's total — and so every
+  // target amount — unknown. Treating it as worth zero made the draft buy
+  // more of it and sell everything else to "reach" the model weights.
+  group('a held asset that cannot be valued blocks the pillar draft', () {
+    test('baseline: a pillar without a model gets no draft and adds nothing to the totals', () async {
+      final a = await assetPosition(name: 'A', isin: 'IE00B4L5Y983', quantity: 5, buyPrice: 100, marketPrice: 100);
+      final pillarId = await pillars.create(name: 'Retirement');
+      await pillars.assign(pillarId: pillarId, assetId: a, qty: 5);
+
+      final draft = await rebalance.buildDraft(
+        scope: PortfolioRebalanceScope.currentPillar(pillarId),
+        mode: PortfolioRebalanceMode.buyOnly,
+        contributionAmount: 1000,
+        asOf: DateTime(2026, 1, 2),
+      );
+      expect(draft.rows, isEmpty);
+      expect(draft.unresolved.single.reason, PortfolioRebalanceUnresolvedReason.missingModel);
+      expect(
+        [
+          draft.availableCashBase,
+          draft.targetBuyBase,
+          draft.executedBuyBase,
+          draft.buyShortfallBase,
+          draft.leftoverCashBase,
+          draft.currentPortfolioValueBase,
+          draft.projectedPortfolioValueBase,
+        ],
+        everyElement(0),
+      );
+    });
+
+    /// EUR leg A: 5 × 100 = 500, priced. Leg B: 15 units held, 50/50 model.
+    Future<(String, int)> pillarWithUnvaluedLeg({
+      String currency = 'EUR',
+      bool priced = true,
+      DateTime? fxDate,
+    }) async {
+      final a = await assetPosition(name: 'A', isin: 'IE00B4L5Y983', quantity: 5, buyPrice: 100, marketPrice: 100);
+      final b = await assets.create(name: 'B', isin: 'IE00B579F325', currency: currency, intermediaryId: intermediaryId);
+      await events.create(
+        assetId: b,
+        date: DateTime(2026, 1, 1),
+        type: EventType.buy,
+        quantity: 15,
+        price: 50,
+        amount: 750,
+        currency: currency,
+      );
+      if (priced) {
+        await db
+            .into(db.marketPrices)
+            .insert(MarketPricesCompanion.insert(assetId: b, date: DateTime(2026, 1, 2), closePrice: 100, currency: currency));
+      }
+      if (fxDate != null) {
+        await db
+            .into(db.exchangeRates)
+            .insert(ExchangeRatesCompanion.insert(fromCurrency: 'EUR', toCurrency: currency, date: fxDate, rate: 1.25));
+      }
+      final pillarId = await twoAssetPillar(firstAsset: a, secondAsset: b, firstQty: 5, secondQty: 15);
+      return (pillarId, b);
+    }
+
+    Future<void> expectBlocked(
+      String pillarId,
+      int b,
+      PortfolioRebalanceUnresolvedReason reason, {
+      PortfolioRebalanceMode mode = PortfolioRebalanceMode.sellAndBuy,
+    }) async {
+      final draft = await rebalance.buildDraft(
+        scope: PortfolioRebalanceScope.currentPillar(pillarId),
+        mode: mode,
+        contributionAmount: mode == PortfolioRebalanceMode.buyOnly ? 1000 : 0,
+        asOf: DateTime(2026, 1, 2),
+      );
+      expect(draft.rows, isEmpty, reason: 'no trade is computable while the pillar total is unknown');
+      expect(draft.unresolved.where((u) => u.assetId == b).map((u) => u.reason), [reason], reason: 'reported once');
+      expect(draft.executedBuyBase, 0);
+      expect(draft.estimatedTax, 0);
+    }
+
+    test('no market price', () async {
+      final (pillarId, b) = await pillarWithUnvaluedLeg(priced: false);
+      await expectBlocked(pillarId, b, PortfolioRebalanceUnresolvedReason.missingMarketPrice);
+    });
+
+    test('no market price, buy-only: the contribution is not spent around it', () async {
+      final (pillarId, b) = await pillarWithUnvaluedLeg(priced: false);
+      await expectBlocked(pillarId, b, PortfolioRebalanceUnresolvedReason.missingMarketPrice, mode: PortfolioRebalanceMode.buyOnly);
+    });
+
+    test('no FX rate for its currency', () async {
+      final (pillarId, b) = await pillarWithUnvaluedLeg(currency: 'USD');
+      await expectBlocked(pillarId, b, PortfolioRebalanceUnresolvedReason.missingFxRate);
+    });
+
+    test('no FX rate on the buy day for its cost basis', () async {
+      final (pillarId, b) = await pillarWithUnvaluedLeg(currency: 'USD', fxDate: DateTime(2026, 1, 2));
+      await expectBlocked(pillarId, b, PortfolioRebalanceUnresolvedReason.missingCostBasisFx);
+    });
+  });
 }

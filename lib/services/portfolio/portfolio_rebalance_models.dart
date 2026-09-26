@@ -137,6 +137,20 @@ class PortfolioRebalanceDraft {
   double get estimatedTax => rows.fold<double>(0, (sum, row) => sum + row.estimatedTax);
 }
 
+/// One pillar's share of a [PortfolioRebalanceDraft], summed across pillars.
+typedef _PillarDraft = ({
+  List<PortfolioRebalanceDraftRow> rows,
+  List<PortfolioRebalanceUnresolved> unresolved,
+  double availableCashBase,
+  double targetBuyBase,
+  double executedBuyBase,
+  double buyShortfallBase,
+  double leftoverCashBase,
+  double grossSellBase,
+  double currentPortfolioValueBase,
+  double projectedPortfolioValueBase,
+});
+
 class _TargetPlaceholder {
   final Pillar pillar;
   final PortfolioModelItem target;

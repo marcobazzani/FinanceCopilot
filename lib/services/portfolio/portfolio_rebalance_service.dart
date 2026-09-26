@@ -160,21 +160,7 @@ class PortfolioRebalanceService {
     return ids;
   }
 
-  Future<
-    ({
-      List<PortfolioRebalanceDraftRow> rows,
-      List<PortfolioRebalanceUnresolved> unresolved,
-      double availableCashBase,
-      double targetBuyBase,
-      double executedBuyBase,
-      double buyShortfallBase,
-      double leftoverCashBase,
-      double grossSellBase,
-      double currentPortfolioValueBase,
-      double projectedPortfolioValueBase,
-    })
-  >
-  _buildPillarDraft({
+  Future<_PillarDraft> _buildPillarDraft({
     required Pillar pillar,
     required PortfolioRebalanceMode mode,
     required double contributionAmount,
@@ -184,46 +170,15 @@ class PortfolioRebalanceService {
     required bool resolveMissingTargets,
   }) async {
     final modelId = pillar.portfolioModelId;
-    if (modelId == null || modelId.isEmpty) {
-      return (
-        rows: const <PortfolioRebalanceDraftRow>[],
-        unresolved: [
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            reason: PortfolioRebalanceUnresolvedReason.missingModel,
-          ),
-        ],
-        availableCashBase: 0.0,
-        targetBuyBase: 0.0,
-        executedBuyBase: 0.0,
-        buyShortfallBase: 0.0,
-        leftoverCashBase: 0.0,
-        grossSellBase: 0.0,
-        currentPortfolioValueBase: 0.0,
-        projectedPortfolioValueBase: 0.0,
-      );
-    }
-    final model = await _models.getWithItems(modelId);
+    final model = modelId == null || modelId.isEmpty ? null : await _models.getWithItems(modelId);
     if (model == null) {
-      return (
-        rows: const <PortfolioRebalanceDraftRow>[],
-        unresolved: [
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            reason: PortfolioRebalanceUnresolvedReason.missingModel,
-          ),
-        ],
-        availableCashBase: 0.0,
-        targetBuyBase: 0.0,
-        executedBuyBase: 0.0,
-        buyShortfallBase: 0.0,
-        leftoverCashBase: 0.0,
-        grossSellBase: 0.0,
-        currentPortfolioValueBase: 0.0,
-        projectedPortfolioValueBase: 0.0,
-      );
+      return _noPillarDraft([
+        PortfolioRebalanceUnresolved(
+          pillarId: pillar.id,
+          pillarName: pillar.name,
+          reason: PortfolioRebalanceUnresolvedReason.missingModel,
+        ),
+      ]);
     }
 
     final unresolved = <PortfolioRebalanceUnresolved>[];
@@ -233,20 +188,17 @@ class PortfolioRebalanceService {
       baseCurrency: baseCurrency,
       unresolved: unresolved,
     );
+    // A held asset without a value (price, FX rate) or a convertible cost
+    // basis leaves the pillar's total — so every target amount and the tax on
+    // every sale — unknown. Drafting around it treated it as worth zero: it
+    // bought more of that asset and sold the rest to "reach" the weights.
+    if (unresolved.any((u) => _unvaluedHolding.contains(u.reason))) {
+      _log.warning('buildDraft: ${pillar.name} holds an asset that cannot be valued; no trades drafted');
+      return _noPillarDraft(unresolved);
+    }
     final resolvedValue = positions.fold<double>(0, (sum, p) => sum + p.currentValueBase);
     if (resolvedValue <= 0 && contributionAmount <= 0) {
-      return (
-        rows: const <PortfolioRebalanceDraftRow>[],
-        unresolved: unresolved,
-        availableCashBase: 0.0,
-        targetBuyBase: 0.0,
-        executedBuyBase: 0.0,
-        buyShortfallBase: 0.0,
-        leftoverCashBase: 0.0,
-        grossSellBase: 0.0,
-        currentPortfolioValueBase: resolvedValue,
-        projectedPortfolioValueBase: resolvedValue,
-      );
+      return _noPillarDraft(unresolved, valueBase: resolvedValue);
     }
 
     final targetsByIsin = {
@@ -433,6 +385,28 @@ class PortfolioRebalanceService {
       projectedPortfolioValueBase: projectedPortfolioValueBase,
     );
   }
+
+  /// Unresolved reasons that mean a HELD asset has no usable value or cost
+  /// basis. Any one of them blocks its pillar's draft.
+  static const _unvaluedHolding = {
+    PortfolioRebalanceUnresolvedReason.missingMarketPrice,
+    PortfolioRebalanceUnresolvedReason.missingFxRate,
+    PortfolioRebalanceUnresolvedReason.missingCostBasisFx,
+  };
+
+  /// A pillar that gets no trades: nothing spent, sold or bought.
+  _PillarDraft _noPillarDraft(List<PortfolioRebalanceUnresolved> unresolved, {double valueBase = 0.0}) => (
+    rows: const <PortfolioRebalanceDraftRow>[],
+    unresolved: unresolved,
+    availableCashBase: 0.0,
+    targetBuyBase: 0.0,
+    executedBuyBase: 0.0,
+    buyShortfallBase: 0.0,
+    leftoverCashBase: 0.0,
+    grossSellBase: 0.0,
+    currentPortfolioValueBase: valueBase,
+    projectedPortfolioValueBase: valueBase,
+  );
 
   PortfolioRebalanceDraftRow _placeholderBuyRow(_PositionGroup group, double desiredBase) {
     final placeholder = group.placeholder!;
