@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 /// UUIDv7: 48-bit Unix-ms timestamp + 12-bit sequence + 62-bit random.
 /// Time-ordered for cross-device merge stability without a new dependency.
 class UuidV7 {
@@ -9,12 +11,22 @@ class UuidV7 {
   static int _lastMs = 0;
   static int _seq = 0;
 
-  static String generate() {
-    var nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (nowMs == _lastMs) {
+  static String generate() => generateAt(DateTime.now().millisecondsSinceEpoch);
+
+  /// [generate] for an explicit wall-clock reading, so tests can freeze the
+  /// clock or step it back instead of racing real time.
+  @visibleForTesting
+  static String generateAt(int clockMs) {
+    var nowMs = clockMs;
+    if (nowMs <= _lastMs) {
+      // Same millisecond as the last id — or the clock reads earlier than it
+      // (a sequence overflow moved the last id ahead, or the wall clock
+      // stepped back): stay on the last timestamp and count up, so ids always
+      // sort in creation order.
+      nowMs = _lastMs;
       _seq = (_seq + 1) & 0xfff;
       if (_seq == 0) {
-        // Sequence overflow inside the same millisecond: bump time forward.
+        // Sequence exhausted for this millisecond: move on to the next one.
         nowMs = _lastMs + 1;
       }
     } else {
