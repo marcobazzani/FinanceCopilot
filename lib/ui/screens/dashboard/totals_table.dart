@@ -74,8 +74,11 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     // never fire on startup, and by a per-session "already fired" set so
     // dashboard rebuilds don't keep re-triggering. Scope is the three
     // canonical series (kAthEligibleLabels). Fires post-frame to avoid
-    // mutating state during build.
-    final historySeen = ref.read(historyTabSeenThisSessionProvider);
+    // mutating state during build. The gate is WATCHED: the History page is
+    // built during the tab animation, before the flag flips when it settles,
+    // so only a rebuild on the flip runs the scan when the user arrives —
+    // otherwise it waited for an unrelated rebuild (e.g. a price refresh).
+    final historySeen = ref.watch(historyTabSeenThisSessionProvider);
     if (historySeen) {
       final firedSet = ref.read(athFiredThisSessionProvider);
       final newFires = <String>[];

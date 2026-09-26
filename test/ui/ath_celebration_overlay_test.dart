@@ -150,4 +150,73 @@ void main() {
   test('kAthEligibleLabels pins the three in-scope chart titles', () {
     expect(kAthEligibleLabels, {'Total Assets', 'Portfolio', 'Performance'});
   });
+
+  // The lifetime paths below used to be reached only by the live-data
+  // integration walkthrough, and only on a day the fixture portfolio closed at
+  // a new high — so whether they ran depended on the market, not on the code.
+  group('AthCelebrationController lifetime', () {
+    testWidgets('each card auto-dismisses after its lifetime, oldest first; the last one removes the overlay', (tester) async {
+      final (controller, ctx) = await _mount(tester);
+      try {
+        controller.fire(ctx, 'Portfolio');
+        await tester.pump(const Duration(seconds: 3));
+        controller.fire(ctx, 'Total Assets');
+        await tester.pump();
+        expect(controller.cards.map((c) => c.label), ['Portfolio', 'Total Assets']);
+
+        // t = 9 s: the first card's lifetime is over, the second stays.
+        await tester.pump(const Duration(seconds: 6));
+        expect(controller.cards.map((c) => c.label), ['Total Assets']);
+        expect(find.text('Portfolio'), findsNothing);
+        expect(find.text('Total Assets'), findsOneWidget);
+        expect(find.byType(ConfettiWidget), findsNWidgets(9), reason: 'overlay stays up while a card is showing');
+
+        // t = 12 s: the last card goes, and the overlay entry with it.
+        await tester.pump(const Duration(seconds: 3));
+        expect(controller.cards, isEmpty);
+        expect(find.text('NEW ALL-TIME HIGH!'), findsNothing);
+        expect(find.byType(ConfettiWidget), findsNothing);
+      } finally {
+        controller.dispose();
+      }
+    });
+
+    testWidgets('fireworks rise, burst and burn out before the card is dismissed', (tester) async {
+      final (controller, ctx) = await _mount(tester);
+      final fireworks = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter.runtimeType.toString() == '_FireworksPainter',
+      );
+      // Drives the show at 10 fps; returns once [seconds] have elapsed.
+      var elapsedMs = 0;
+      Future<void> runUntil(double seconds) async {
+        while (elapsedMs < seconds * 1000) {
+          await tester.pump(const Duration(milliseconds: 100));
+          elapsedMs += 100;
+        }
+      }
+
+      try {
+        controller.fire(ctx, 'Performance');
+        await tester.pump();
+        expect(fireworks, findsOneWidget);
+
+        await runUntil(0.4); // first rocket climbing
+        expect(fireworks, paints..circle());
+        await runUntil(1.5); // first shells bursting, later ones still rising
+        expect(fireworks, paints..circle());
+
+        // Last launch at 4.75 s + rise + burst + cascade ≈ 8.6 s: the sky is
+        // empty again while the card (9 s lifetime) is still on screen.
+        await runUntil(8.9);
+        expect(find.text('Performance'), findsOneWidget);
+        expect(fireworks, paintsNothing);
+
+        await runUntil(9.0);
+        expect(controller.cards, isEmpty);
+        expect(fireworks, findsNothing);
+      } finally {
+        controller.dispose();
+      }
+    });
+  });
 }
