@@ -4,18 +4,20 @@
 
 part of 'import_service.dart';
 
+/// Result of an asset import that groups by ISIN.
 class AssetImportResult {
   final ImportResult result;
   final Map<String, int> assetsByIsin; // ISIN → asset ID
+
   const AssetImportResult({required this.result, required this.assetsByIsin});
 }
 
+/// Summary of a single asset in an asset event import preview.
 class AssetPreviewSummary {
   final String isin;
   final String? name;
   final int buyCount;
   final int sellCount;
-  final double netQuantity;
   final String? currency;
 
   const AssetPreviewSummary({
@@ -23,15 +25,20 @@ class AssetPreviewSummary {
     this.name,
     required this.buyCount,
     required this.sellCount,
-    required this.netQuantity,
     this.currency,
   });
 }
 
+/// Preview of an asset event import (dry run, no DB writes).
 class AssetEventImportPreview {
   final int parsedRows;
   final int errorRows;
-  final List<String> errors;
+
+  /// The first issues found (at most 5), in row order.
+  final List<ImportIssue> issues;
+
+  /// [issues] as English text, for logs.
+  List<String> get errors => [for (final i in issues) i.message];
   final Map<String, AssetPreviewSummary> assetSummary;
 
   /// External fee rows that would be folded into a parent's commission
@@ -41,30 +48,80 @@ class AssetEventImportPreview {
   /// External fee rows that did not match any parent Buy/Sell.
   final int unmatchedFees;
 
+  /// No currency column is mapped: the import records every event, and every
+  /// asset it creates, in the base currency — for the wizard to disclose.
+  final bool baseCurrencyAssumed;
+
   const AssetEventImportPreview({
     required this.parsedRows,
     required this.errorRows,
-    this.errors = const [],
+    this.issues = const [],
     required this.assetSummary,
     this.attachedFees = 0,
     this.unmatchedFees = 0,
+    this.baseCurrencyAssumed = false,
   });
 }
 
+const _isinRequired = ImportIssue(ImportIssueKind.isinRequired, 'ISIN column is required (or pass targetAssetId for single-asset import)');
+
 /// Amount for a row whose amount column is unmapped — the wizard's "Auto calc"
 /// derives it from quantity x price. Bonds are quoted as a percentage of face
-/// value, so the money amount divides by 100.
+/// value, so the money amount divides by their price divisor
+/// ([bondPriceDivisor]). Without the noise of the product
+/// ([amt.stripFloatNoise]): 3 x 0.1 is 0.3.
 ///
-/// Shared by the real import and the dry-run preview: the preview used to
-/// ignore `price` entirely and infer buy/sell from the quantity sign alone, so
-/// it could classify a row differently from the import it was previewing.
+/// Shared by the real import and the dry-run preview, so the preview values
+/// and classifies every row exactly as the import it previews.
 /// Returns 0 when either input is missing — never a guess.
 double autoCalcAmountFor({required double? qty, required double? price, required bool isBond}) {
   if (qty == null || price == null) return 0;
-  return isBond ? qty * price / 100 : qty * price;
+  return amt.stripFloatNoise(isBond ? qty * price / bondPriceDivisor(InstrumentType.bond) : qty * price);
+}
+
+/// Commission of a row under the wizard's "Computed" fee: what [amount] paid
+/// beyond the value of the units, `|amount| − |quantity| × price`, the value
+/// converted by the row's [rate] when an exchange-rate column is mapped
+/// ([rateMapped]). The value is the amount auto-calc of the units
+/// ([autoCalcAmountFor]: a bond's per 100 of face value). Without the noise
+/// of the subtraction.
+///
+/// Shared by the import and the wizard's preview of it. Null — never a guess —
+/// when the quantity or the price is missing, or when the rate column is
+/// mapped but the row's rate is missing or not positive: a 1:1 rate would
+/// fabricate a fee out of two currencies.
+double? computedFeeFor({
+  required double amount,
+  required double? qty,
+  required double? price,
+  required bool isBond,
+  required bool rateMapped,
+  double? rate,
+}) {
+  if (qty == null || price == null) return null;
+  final value = autoCalcAmountFor(qty: qty.abs(), price: price, isBond: isBond);
+  if (!rateMapped) return ImportService._figureSum([amount.abs(), -value]).abs();
+  if (rate == null || !(rate > 0)) return null;
+  return ImportService._figureSum([amount.abs(), -(value / rate)]).abs();
 }
 
 extension AssetImportFlow on ImportService {
+  /// The currency of an asset event from the mapped currency column
+  /// ([ImportService._mappedCurrencyCell]: null when none is mapped, a blank
+  /// cell refuses the row), refused as well when the database does not accept
+  /// it. Checked while the rows are read, before anything is written: one bad
+  /// cell refuses its row instead of failing the whole import at write time.
+  String? _mappedEventCurrency(ColumnMapping? mapping, Map<String, String> row) {
+    final cell = _mappedCurrencyCell(mapping, row);
+    if (cell != null && !_db.assetEvents.validateIntegrity(AssetEventsCompanion(currency: Value(cell))).dataValid) {
+      throw _RefusedCellException('currency', cell);
+    }
+    return cell;
+  }
+
+  /// Import rows as AssetEvents, grouped by ISIN.
+  /// Auto-creates Asset entries for each unique ISIN found in the data.
+  /// Returns the import result plus a map of created/reused asset IDs by ISIN.
   Future<AssetImportResult> importAssetEventsGrouped({
     required FilePreview preview,
     required List<ColumnMapping> mappings,
@@ -167,7 +224,7 @@ extension AssetImportFlow on ImportService {
           totalRows: 0,
           importedRows: 0,
           errorRows: 0,
-          errors: ['ISIN column is required (or pass targetAssetId for single-asset import)'],
+          issues: [_isinRequired],
         ),
         assetsByIsin: {},
       );
@@ -187,7 +244,7 @@ extension AssetImportFlow on ImportService {
     var errorCount = 0;
     var attachedFees = 0;
     var unmatchedFees = 0;
-    final errors = <String>[];
+    final issues = <ImportIssue>[];
 
     // Pre-pass: collect external fee rows by (isin, orderRef) so the main
     // loop can fold them into the parent Buy/Sell's commission. When
@@ -209,15 +266,15 @@ extension AssetImportFlow on ImportService {
         final isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
         if (isin.isEmpty) continue;
         final amountStr = amountMapping == null ? '' : (_resolveMapping(amountMapping, row) ?? '');
-        final amt = _tryParseAmount(amountStr);
-        if (amt == null) continue;
+        final fee = _tryParseAmount(amountStr);
+        if (fee == null) continue;
         final key = '$isin|$orderRef';
-        externalFeeByKey[key] = (externalFeeByKey[key] ?? 0) + amt.abs();
+        externalFeeByKey[key] = ImportService._figureSum([externalFeeByKey[key] ?? 0, fee.abs()]);
         externalFeeUsed[key] = false;
       }
     }
 
-    // First pass: collect unique ISINs and find/create assets.
+    // First pass: collect unique ISINs (their assets are resolved below).
     // Skipped entirely in single-asset (`targetAssetId`) mode — every
     // row routes to the pre-existing asset, no per-row ISIN to inspect.
     final isinToRows = <String, List<int>>{};
@@ -227,7 +284,7 @@ extension AssetImportFlow on ImportService {
         final isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
         if (isin.isEmpty) {
           errorCount++;
-          errors.add('Skipped line ${i + 1}: empty ISIN');
+          issues.add(ImportIssue(ImportIssueKind.emptyIsin, 'Skipped line ${i + 1}: empty ISIN', line: i + 1));
           continue;
         }
         if (excludedIsins != null && excludedIsins.contains(isin)) {
@@ -240,11 +297,10 @@ extension AssetImportFlow on ImportService {
       _log.info('importAssetEventsGrouped: single-asset mode, targetAssetId=$targetAssetId');
     }
 
-    // Find or create asset for each ISIN. Scope the lookup to this
+    // Reuse the asset each ISIN already has. Scope the lookup to this
     // intermediary so the same ISIN held at two brokers produces two
     // independent asset rows (one per broker, each with its own events).
     // In single-asset mode, this loop is empty (isinToRows is empty).
-    final assetsByIsin = <String, int>{};
     final existingByIsin = <String, int>{};
     if (targetAssetId == null) {
       final existingRows = await _db
@@ -260,81 +316,78 @@ extension AssetImportFlow on ImportService {
       }
     }
 
-    // Resolve new ISINs — use selected exchanges from UI if provided
+    // The asset each new ISIN gets (from the listing picked in the wizard,
+    // else a lookup), resolved before anything is written: a lookup can be
+    // slow, and nothing is written until every row has been read. It is
+    // created — in the currency of the first row it holds — only when at
+    // least one of its rows imports, in the transaction that writes them.
+    final newAssets = <String, AssetsCompanion>{};
     for (final isin in isinToRows.keys) {
       if (existingByIsin.containsKey(isin)) {
-        assetsByIsin[isin] = existingByIsin[isin]!;
         _log.fine('importAssetEventsGrouped: reusing asset id=${existingByIsin[isin]} for ISIN=$isin');
-      } else {
-        // Use selected exchange from UI picker, or lookup first result
-        final selected = selectedExchanges?[isin];
-        String name;
-        String? ticker;
-        String? exchange;
+        continue;
+      }
+      // Use selected exchange from UI picker, or lookup first result
+      final selected = selectedExchanges?[isin];
+      String name;
+      String? ticker;
+      String? exchange;
 
-        InstrumentType instrumentType = InstrumentType.etf;
-        AssetClass assetClassValue = AssetClass.equity;
+      InstrumentType instrumentType = InstrumentType.etf;
+      AssetClass assetClassValue = AssetClass.equity;
 
-        if (selected != null) {
-          name = selected.name;
-          ticker = selected.ticker;
-          exchange = selected.exchange;
-          final (inst, cls) = selected.classification;
+      if (selected != null) {
+        name = selected.name;
+        ticker = selected.ticker;
+        exchange = selected.exchange;
+        final (inst, cls) = selected.classification;
+        instrumentType = inst;
+        assetClassValue = cls;
+      } else if (isinLookup != null) {
+        final lookup = await isinLookup.lookup(isin);
+        final best = lookup.bestFor(null);
+        name = best?.name ?? isin;
+        ticker = best?.ticker;
+        exchange = best?.exchange;
+        if (best != null) {
+          final (inst, cls) = best.classification;
           instrumentType = inst;
           assetClassValue = cls;
-        } else if (isinLookup != null) {
-          final lookup = await isinLookup.lookup(isin);
-          final best = lookup.bestFor(null);
-          name = best?.name ?? isin;
-          ticker = best?.ticker;
-          exchange = best?.exchange;
-          if (best != null) {
-            final (inst, cls) = best.classification;
-            instrumentType = inst;
-            assetClassValue = cls;
-          }
-        } else {
-          name = isin;
         }
-
-        final currency = currencyMapping != null
-            ? (_resolveMapping(currencyMapping, preview.rows[isinToRows[isin]!.first]) ?? baseCurrency)
-            : baseCurrency;
-        final assetId = await _db
-            .into(_db.assets)
-            .insert(
-              AssetsCompanion.insert(
-                name: name.length > 200 ? name.substring(0, 200) : name,
-                assetType: AssetType.stockEtf,
-                instrumentType: Value(instrumentType),
-                assetClass: Value(assetClassValue),
-                valuationMethod: ValuationMethod.marketPrice,
-                ticker: Value(ticker),
-                isin: Value(isin),
-                currency: Value(currency),
-                exchange: Value(exchange),
-                intermediaryId: intermediaryId,
-              ),
-            );
-        assetsByIsin[isin] = assetId;
-        _log.info('importAssetEventsGrouped: created asset id=$assetId for ISIN=$isin, name=$name, ticker=$ticker, exchange=$exchange');
+      } else {
+        name = isin;
       }
+
+      newAssets[isin] = AssetsCompanion.insert(
+        name: name.length > 200 ? name.substring(0, 200) : name,
+        assetType: AssetType.stockEtf,
+        instrumentType: Value(instrumentType),
+        assetClass: Value(assetClassValue),
+        valuationMethod: ValuationMethod.marketPrice,
+        ticker: Value(ticker),
+        isin: Value(isin),
+        exchange: Value(exchange),
+        intermediaryId: intermediaryId,
+      );
     }
 
-    // Build set of bond ISINs for price divisor
-    final bondIsinRows = await _db
-        .customSelect(
-          "SELECT isin FROM assets WHERE instrument_type = 'bond' AND isin IS NOT NULL",
-          readsFrom: {_db.assets},
-        )
-        .get();
-    final bondIsins = <String>{};
-    for (final row in bondIsinRows) {
-      bondIsins.add(row.read<String>('isin').toUpperCase());
-    }
+    // The instrument of every asset the rows go to — the one it has, or the
+    // one it is created with: a bond is quoted per 100 of face value, so each
+    // quantity x price conversion below uses its price divisor
+    // (bondPriceDivisor).
+    final existingInstrument = {
+      for (final a in await (_db.select(
+        _db.assets,
+      )..where((a) => a.id.isIn({for (final isin in isinToRows.keys) ?existingByIsin[isin], ?targetAssetId}))).get())
+        a.id: a.instrumentType,
+    };
+    InstrumentType? instrumentOf(String isin) => switch (targetAssetId ?? existingByIsin[isin]) {
+      final id? => existingInstrument[id],
+      null => newAssets[isin]?.instrumentType.value,
+    };
 
-    // Second pass: build event companions
-    final companions = <AssetEventsCompanion>[];
+    // Second pass: build the event of every row, with the ISIN it goes to.
+    final pending = <({String isin, AssetEventsCompanion event})>[];
     // Parallel income companions for pension contributions — one per
     // event row that A3 auto-fills (cash-only buy on an eventDriven
     // asset). Routed to the Income ledger so the user can audit
@@ -355,17 +408,16 @@ extension AssetImportFlow on ImportService {
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
       final String isin;
-      final int? assetId;
       if (targetAssetId != null) {
         isin = '';
-        assetId = targetAssetId;
       } else {
         isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
-        assetId = assetsByIsin[isin];
-      }
-      if (assetId == null) {
-        if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
-        continue; // already counted as error in first pass
+        // An empty ISIN was counted as an error in the first pass; an
+        // excluded one is not imported.
+        if (!isinToRows.containsKey(isin)) {
+          if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
+          continue;
+        }
       }
 
       try {
@@ -389,7 +441,8 @@ extension AssetImportFlow on ImportService {
 
         // Amount: from column, or auto-calculated as quantity * price
         // For bonds, prices are quoted as % of face value → divide by 100
-        final isBond = bondIsins.contains(isin);
+        final instrument = instrumentOf(isin);
+        final isBond = instrument == InstrumentType.bond;
         double amount;
         if (amountMapping != null) {
           final amountStr = _resolveMapping(amountMapping, row) ?? '';
@@ -437,6 +490,12 @@ extension AssetImportFlow on ImportService {
           final isNeg = (qty != null && qty < 0) || amount < 0;
           eventType = isNeg ? EventType.sell : EventType.buy;
         }
+
+        // The row's currency. A blank cell of a mapped currency column, or a
+        // value the database does not accept, refuses the row — before it
+        // takes an external fee, and never recorded in the base currency.
+        // A fee row (above) is folded into its trade: its own does not count.
+        final currency = _mappedEventCurrency(currencyMapping, row) ?? baseCurrency;
 
         // Per-type amount source: a Revalue row's value is the absolute
         // position snapshot, which lives in a different column (e.g. Saldo)
@@ -490,14 +549,17 @@ extension AssetImportFlow on ImportService {
         // invariant holding for the rows it rescales.
         //
         // Never invent a value: a missing/zero quantity or a zero amount
-        // leaves the price NULL instead of writing a meaningless 0.
+        // leaves the price NULL instead of writing a meaningless 0 — and so
+        // does an asset of unknown instrument (a target asset that does not
+        // exist), whose divisor is unknown.
         if (autoCalcPrice &&
+            instrument != null &&
             effectivePrice == null &&
             (eventType == EventType.buy || eventType == EventType.sell) &&
             effectiveQty != null &&
             effectiveQty != 0 &&
             amount != 0) {
-          effectivePrice = amount.abs() / effectiveQty.abs() * (isBond ? 100 : 1);
+          effectivePrice = amount.abs() / effectiveQty.abs() * bondPriceDivisor(instrument);
         }
 
         // External-row fee takes precedence over inline/computed:
@@ -517,13 +579,17 @@ extension AssetImportFlow on ImportService {
           }
         }
         if (commission == null) {
-          // Fall through to the existing inline paths.
+          // Fall through to the existing inline paths. The computed fee values
+          // the units like the amount auto-calc does (a bond's per 100).
           if (computeFee && qty != null && price != null) {
-            if (exchangeRateMapping == null) {
-              commission = (amount.abs() - qty.abs() * price).abs();
-            } else if (rate != null && rate > 0) {
-              commission = (amount.abs() - qty.abs() * price / rate).abs();
-            }
+            commission = computedFeeFor(
+              amount: amount,
+              qty: qty,
+              price: price,
+              isBond: isBond,
+              rateMapped: exchangeRateMapping != null,
+              rate: rate,
+            );
           } else if (commMapping != null) {
             commission = _tryParseAmount(_resolveMapping(commMapping, row));
           }
@@ -537,16 +603,20 @@ extension AssetImportFlow on ImportService {
         // some broker exports (Directa, Fineco, IB) store sells with negative
         // quantity, which would double-negate in the stats aggregation. See
         // issue #77.
-        companions.add(
-          AssetEventsCompanion.insert(
-            assetId: assetId,
-            date: date,
-            valueDate: valueDate,
-            type: eventType,
-            amount: amount,
+        final assetId = targetAssetId ?? existingByIsin[isin];
+        pending.add((
+          isin: isin,
+          event: AssetEventsCompanion(
+            // A new ISIN's asset is created with the events: its id is set
+            // then (an event without one cannot be inserted).
+            assetId: assetId == null ? const Value.absent() : Value(assetId),
+            date: Value(date),
+            valueDate: Value(valueDate),
+            type: Value(eventType),
+            amount: Value(amount),
             quantity: Value(effectiveQty?.abs()),
             price: Value(effectivePrice),
-            currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
+            currency: Value(currency),
             exchangeRate: Value(rate),
             // An imported rate is quoted against the base currency this
             // import ran under; stamp it so a later base change preserves it
@@ -556,7 +626,7 @@ extension AssetImportFlow on ImportService {
             notes: Value(descMapping != null ? _resolveMapping(descMapping, row) : null),
             rawMetadata: Value(jsonEncode(rawMetadata)),
           ),
-        );
+        ));
         // Pension-contribution mirror: same condition as A3 auto-fill.
         // When the cash-only synthesis triggered, this row represents a
         // contribution to a pension fund — replicate it as an Income
@@ -572,7 +642,7 @@ extension AssetImportFlow on ImportService {
               valueDate: valueDate,
               amount: amount,
               type: const Value(IncomeType.pensionContribution),
-              currency: Value(currencyMapping != null ? (_resolveMapping(currencyMapping, row) ?? baseCurrency) : baseCurrency),
+              currency: Value(currency),
               assetId: Value(targetAssetId),
             ),
           );
@@ -580,8 +650,8 @@ extension AssetImportFlow on ImportService {
         imported++;
       } catch (e, stack) {
         errorCount++;
-        errors.add('Skipped line ${i + 1}: $e');
-        _log.warning('importAssetEventsGrouped: skipped line ${i + 1}: $e', e, stack);
+        issues.add(ImportService._rowIssue(i + 1, e));
+        _log.fine('importAssetEventsGrouped: skipped line ${i + 1}: $e', e, stack);
       }
       if (i % progressInterval == 0) onProgress?.call(i + 1, preview.rows.length);
     }
@@ -590,14 +660,15 @@ extension AssetImportFlow on ImportService {
 
     // Every row failed to parse — return an explicit error result instead of
     // continuing into the wipe step (which would `reduce` an empty list).
-    if (companions.isEmpty) {
+    // Nothing has been written: no asset is created for an import of nothing.
+    if (pending.isEmpty) {
       _log.warning('importAssetEventsGrouped: no rows parsed (errors=$errorCount)');
       return AssetImportResult(
         result: ImportResult(
           totalRows: preview.totalRows,
           importedRows: 0,
           errorRows: errorCount,
-          errors: errors,
+          issues: issues,
         ),
         assetsByIsin: const {},
       );
@@ -607,11 +678,8 @@ extension AssetImportFlow on ImportService {
     // events for the scope; for transaction imports keep the date-based cutoff.
     final isSpot = dateMapping == null;
     var totalDeleted = 0;
-    // Group companions by assetId (needed for rate backfill later)
-    final byAsset = <int, List<AssetEventsCompanion>>{};
-    for (final c in companions) {
-      (byAsset[c.assetId.value] ??= []).add(c);
-    }
+    // The assets the rows go to: the reused ones, and the new ones once created.
+    final assetsByIsin = <String, int>{for (final isin in isinToRows.keys) isin: ?existingByIsin[isin]};
 
     // Cutoff for the date-based (non-spot) wipe, hoisted so the mirrored
     // pension-income wipe below can reuse the EXACT same boundary as the
@@ -620,14 +688,37 @@ extension AssetImportFlow on ImportService {
     DateTime? globalCutoff;
     int? cutoffEpoch;
 
-    // Delete the replaced range (asset events + their mirrored pension
-    // income rows) and insert every replacement row in ONE transaction.
-    // Without this, a bad row that fails a DB-level constraint at
-    // insert time could throw after a delete had already committed on
-    // its own, permanently wiping data the failed insert never replaced
-    // — the same class of bug fixed for transaction imports in
-    // ImportService.importTransactions.
+    // Everything the import writes — the assets it creates, the replaced
+    // range (asset events + their mirrored pension income rows) and every
+    // replacement row, the price resync and the rate fill — in ONE
+    // transaction: a failure anywhere leaves nothing written. Without it, the
+    // assets created before a failing step stayed behind, and a bad row that
+    // failed a DB-level constraint at insert time could throw after a delete
+    // had already committed on its own, permanently wiping data the failed
+    // insert never replaced — the same class of bug fixed for transaction
+    // imports in ImportService.importTransactions.
     await _db.transaction(() async {
+      // The asset of each new ISIN with an imported row, in the currency of
+      // the first of them; its events then get its id.
+      for (final p in pending) {
+        final spec = newAssets[p.isin];
+        if (spec == null || assetsByIsin.containsKey(p.isin)) continue;
+        final id = await _db.into(_db.assets).insert(spec.copyWith(currency: p.event.currency));
+        assetsByIsin[p.isin] = id;
+        _log.info(
+          'importAssetEventsGrouped: created asset id=$id for ISIN=${p.isin}, name=${spec.name.value}, '
+          'ticker=${spec.ticker.value}, exchange=${spec.exchange.value}',
+        );
+      }
+      final companions = [
+        for (final p in pending) p.event.assetId.present ? p.event : p.event.copyWith(assetId: Value(assetsByIsin[p.isin]!)),
+      ];
+      // Group companions by assetId (for the resync and the rate fill below)
+      final byAsset = <int, List<AssetEventsCompanion>>{};
+      for (final c in companions) {
+        (byAsset[c.assetId.value] ??= []).add(c);
+      }
+
       if (isSpot) {
         // Spot import: scope wipe to the assets we just touched. In
         // ISIN-grouped mode that's everything under this intermediary
@@ -710,48 +801,50 @@ extension AssetImportFlow on ImportService {
         });
         _log.info('importAssetEventsGrouped: pension-contribution income rows: wiped=$wiped, inserted=${incomeCompanions.length}');
       }
-    });
 
-    // Materialize revalue events into `market_prices` for every touched
-    // asset. The batch insert above bypasses AssetEventService.create's
-    // post-CRUD resync, so without this loop a freshly-imported pension
-    // statement leaves manual assets with zero market_prices rows — the
-    // single-asset chart provider returns null in that state and no
-    // graph renders. See asset_event_service.resyncRevaluePricesForAsset.
-    final eventService = AssetEventService(_db);
-    final assetIdsToResync = <int>{
-      ...byAsset.keys,
-      ?targetAssetId,
-    };
-    for (final aid in assetIdsToResync) {
-      await eventService.resyncRevaluePricesForAsset(aid);
-    }
-    if (assetIdsToResync.isNotEmpty) {
-      _log.info('importAssetEventsGrouped: resynced market_prices for ${assetIdsToResync.length} asset(s)');
-    }
+      // Materialize revalue events into `market_prices` for every touched
+      // asset. The batch insert above bypasses AssetEventService.create's
+      // post-CRUD resync, so without this loop a freshly-imported pension
+      // statement leaves manual assets with zero market_prices rows — the
+      // single-asset chart provider returns null in that state and no
+      // graph renders. See asset_event_service.resyncRevaluePricesForAsset.
+      final eventService = AssetEventService(_db);
+      final assetIdsToResync = <int>{
+        ...byAsset.keys,
+        ?targetAssetId,
+      };
+      for (final aid in assetIdsToResync) {
+        await eventService.resyncRevaluePricesForAsset(aid);
+      }
+      if (assetIdsToResync.isNotEmpty) {
+        _log.info('importAssetEventsGrouped: resynced market_prices for ${assetIdsToResync.length} asset(s)');
+      }
 
-    // Fill missing exchange rates from historical data. Strictly a FILL:
-    // rows that already carry a rate are left alone, because that value is
-    // user- or broker-supplied data (see the `exchangeRateBase` doc in
-    // `tables.dart`) and a derived rate must never overwrite it.
-    if (rateService != null) {
-      var filled = 0;
-      for (final assetId in byAsset.keys) {
-        final events = await (_db.select(
-          _db.assetEvents,
-        )..where((e) => e.assetId.equals(assetId) & e.exchangeRate.isNull() & e.currency.equals(baseCurrency).not())).get();
-        for (final ev in events) {
-          final rate = await rateService.getRate(baseCurrency, ev.currency, ev.date);
-          if (rate != null) {
-            await (_db.update(_db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
-              AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
-            );
-            filled++;
+      // Fill missing exchange rates from historical data. Strictly a FILL:
+      // rows that already carry a rate are left alone, because that value is
+      // user- or broker-supplied data (see the `exchangeRateBase` doc in
+      // `tables.dart`) and a derived rate must never overwrite it. The rate is
+      // the one of the value date — when the money moved — like every other
+      // conversion; the trade date only drives the re-import dedup.
+      if (rateService != null) {
+        var filled = 0;
+        for (final assetId in byAsset.keys) {
+          final events = await (_db.select(
+            _db.assetEvents,
+          )..where((e) => e.assetId.equals(assetId) & e.exchangeRate.isNull() & e.currency.equals(baseCurrency).not())).get();
+          for (final ev in events) {
+            final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
+            if (rate != null) {
+              await (_db.update(_db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+                AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+              );
+              filled++;
+            }
           }
         }
+        if (filled > 0) _log.info('importAssetEventsGrouped: filled $filled missing exchange rates');
       }
-      if (filled > 0) _log.info('importAssetEventsGrouped: filled $filled missing exchange rates');
-    }
+    });
 
     // Tally external fee rows that found no matching parent in this batch.
     for (final used in externalFeeUsed.values) {
@@ -768,7 +861,7 @@ extension AssetImportFlow on ImportService {
         totalRows: preview.totalRows,
         importedRows: imported,
         errorRows: errorCount,
-        errors: errors,
+        issues: issues,
         attachedFees: attachedFees,
         unmatchedFees: unmatchedFees,
       ),
@@ -776,6 +869,8 @@ extension AssetImportFlow on ImportService {
     );
   }
 
+  /// Dry-run an asset event import: parse all rows, compute per-ISIN summaries
+  /// — without touching the DB.
   Future<AssetEventImportPreview> previewAssetEventImport({
     required FilePreview preview,
     required List<ColumnMapping> mappings,
@@ -819,7 +914,7 @@ extension AssetImportFlow on ImportService {
         parsedRows: 0,
         errorRows: 0,
         assetSummary: {},
-        errors: ['ISIN column is required (or pass targetAssetId for single-asset import)'],
+        issues: [_isinRequired],
       );
     }
 
@@ -841,12 +936,11 @@ extension AssetImportFlow on ImportService {
     var errorCount = 0;
     var attachedFees = 0;
     var unmatchedFees = 0;
-    final errors = <String>[];
+    final issues = <ImportIssue>[];
 
-    // Accumulate per-ISIN: buyCount, sellCount, netQty
+    // Accumulate per-ISIN: buyCount, sellCount
     final buyCountByIsin = <String, int>{};
     final sellCountByIsin = <String, int>{};
-    final netQtyByIsin = <String, double>{};
     final currencyByIsin = <String, String>{};
 
     // Pre-pass: tally external fee rows by (isin, orderRef) so the main
@@ -878,7 +972,7 @@ extension AssetImportFlow on ImportService {
           isin = (_resolveMapping(isinMapping!, row) ?? '').trim().toUpperCase();
           if (isin.isEmpty) {
             errorCount++;
-            if (errors.length < 5) errors.add('Line ${i + 1}: empty ISIN');
+            if (issues.length < 5) issues.add(ImportIssue(ImportIssueKind.emptyIsin, 'Line ${i + 1}: empty ISIN', line: i + 1));
             continue;
           }
           if (excludedIsins != null && excludedIsins.contains(isin)) continue;
@@ -932,14 +1026,15 @@ extension AssetImportFlow on ImportService {
             _parseAmount(primaryStr);
           }
         }
+        // A currency cell the import refuses (blank, or not accepted by the
+        // database) refuses the row here too.
+        final currency = _mappedEventCurrency(currencyMapping, row);
 
-        final absQty = qty?.abs() ?? 0;
         buyCountByIsin[isin] = (buyCountByIsin[isin] ?? 0) + (eventType == EventType.buy ? 1 : 0);
         sellCountByIsin[isin] = (sellCountByIsin[isin] ?? 0) + (eventType == EventType.sell ? 1 : 0);
-        netQtyByIsin[isin] = (netQtyByIsin[isin] ?? 0) + (eventType == EventType.sell ? -absQty : absQty);
 
-        if (currencyMapping != null && !currencyByIsin.containsKey(isin)) {
-          currencyByIsin[isin] = (_resolveMapping(currencyMapping, row) ?? '').trim();
+        if (currency != null && !currencyByIsin.containsKey(isin)) {
+          currencyByIsin[isin] = currency.trim();
         }
 
         // Mark a matching external fee row as "attached" so the unmatched
@@ -958,7 +1053,7 @@ extension AssetImportFlow on ImportService {
         parsed++;
       } catch (e) {
         errorCount++;
-        if (errors.length < 5) errors.add('Line ${i + 1}: $e');
+        if (issues.length < 5) issues.add(ImportService._rowIssue(i + 1, e, label: 'Line'));
       }
     }
     for (final used in feeKeysSeen.values) {
@@ -978,14 +1073,13 @@ extension AssetImportFlow on ImportService {
     }
 
     final summary = <String, AssetPreviewSummary>{};
-    for (final isin in netQtyByIsin.keys) {
+    for (final isin in buyCountByIsin.keys) {
       final name = existingNames[isin] ?? selectedExchanges?[isin]?.name;
       summary[isin] = AssetPreviewSummary(
         isin: isin,
         name: name,
         buyCount: buyCountByIsin[isin] ?? 0,
         sellCount: sellCountByIsin[isin] ?? 0,
-        netQuantity: netQtyByIsin[isin] ?? 0,
         currency: currencyByIsin[isin],
       );
     }
@@ -996,10 +1090,11 @@ extension AssetImportFlow on ImportService {
     return AssetEventImportPreview(
       parsedRows: parsed,
       errorRows: errorCount,
-      errors: errors,
+      issues: issues,
       assetSummary: summary,
       attachedFees: attachedFees,
       unmatchedFees: unmatchedFees,
+      baseCurrencyAssumed: currencyMapping == null,
     );
   }
 }

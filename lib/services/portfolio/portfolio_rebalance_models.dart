@@ -132,7 +132,6 @@ class PortfolioRebalanceDraft {
     required this.projectedPortfolioValueBase,
   });
 
-  bool get hasTrades => rows.isNotEmpty;
   bool get hasExecutableTrades => rows.any((row) => !row.isPlaceholder);
   double get estimatedTax => rows.fold<double>(0, (sum, row) => sum + row.estimatedTax);
 }
@@ -178,14 +177,12 @@ class _SyntheticTargetAsset {
     required this.fxRate,
   });
 
-  double get unitBaseValue => price / (createSpec.instrumentType == InstrumentType.bond ? 100.0 : 1.0) * fxRate;
+  double get unitBaseValue => price / bondPriceDivisor(createSpec.instrumentType) * fxRate;
 }
 
 class _Position {
   final Pillar pillar;
   final Asset asset;
-  final double totalQuantity;
-  final double pillarQuantity;
   final double price;
   final double fxRate;
   final double currentValueBase;
@@ -194,8 +191,6 @@ class _Position {
   const _Position({
     required this.pillar,
     required this.asset,
-    required this.totalQuantity,
-    required this.pillarQuantity,
     required this.price,
     required this.fxRate,
     required this.currentValueBase,
@@ -208,7 +203,7 @@ class _Position {
     return normaliseIsin(value);
   }
 
-  double get bondDivisor => asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+  double get bondDivisor => bondPriceDivisor(asset.instrumentType);
   double get unitBaseValue => price / bondDivisor * fxRate;
 }
 

@@ -4,6 +4,7 @@ import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/utils/income_split.dart';
 import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 final _log = getLogger('IncomeService');
 
@@ -12,25 +13,15 @@ class IncomeService {
 
   IncomeService(this._db);
 
-  Stream<List<Income>> watchAll({DateTime? through}) {
+  SimpleSelectStatement<$IncomesTable, Income> _all({DateTime? through}) {
     final query = _db.select(_db.incomes);
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((i) => i.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(i) => OrderingTerm.desc(i.valueDate)]);
-    return query.watch();
+    if (through != null) query.where((i) => i.valueDate.isSmallerThanValue(startOfNextDay(through)));
+    return query..orderBy([(i) => OrderingTerm.desc(i.valueDate)]);
   }
 
-  Future<List<Income>> getAll({DateTime? through}) {
-    final query = _db.select(_db.incomes);
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((i) => i.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(i) => OrderingTerm.desc(i.valueDate)]);
-    return query.get();
-  }
+  Stream<List<Income>> watchAll({DateTime? through}) => _all(through: through).watch();
+
+  Future<List<Income>> getAll({DateTime? through}) => _all(through: through).get();
 
   Future<Income> getById(int id) {
     return (_db.select(_db.incomes)..where((i) => i.id.equals(id))).getSingle();
@@ -108,14 +99,5 @@ class IncomeService {
     await _db.batch((batch) {
       batch.insertAll(_db.incomes, entries);
     });
-  }
-
-  static DateTime? _throughEndExclusive(DateTime? through) {
-    if (through == null) return null;
-    return DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
   }
 }

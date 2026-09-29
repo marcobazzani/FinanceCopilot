@@ -116,7 +116,7 @@ class ExchangeRateService {
     if (currencies.isEmpty) return;
 
     // Find earliest date across all data. asset_events / transactions /
-    // incomes use value_date (canonical per CLAUDE.md); market_prices has
+    // incomes use value_date (canonical per AGENTS.md); market_prices has
     // a single date column.
     final earliestRow = await _db
         .customSelect(

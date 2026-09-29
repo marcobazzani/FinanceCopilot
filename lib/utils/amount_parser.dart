@@ -1,23 +1,46 @@
 import 'package:intl/intl.dart';
 
+/// Why [parseAmount] rejected a text. Still a [FormatException] whose message
+/// is the English one the logs show, plus what was read and in which number
+/// format, so a caller can word the problem in the user's language.
+class AmountParseException extends FormatException {
+  /// The text that was read.
+  final String raw;
+
+  /// The number format it was read with.
+  final String locale;
+
+  /// There was nothing to read (only blanks or a currency symbol).
+  final bool empty;
+
+  const AmountParseException(super.message, {required this.raw, required this.locale, this.empty = false});
+}
+
 /// Parses an amount/balance string under the given locale.
 ///
 /// Locale must be an ICU locale tag the app uses (e.g. `it_IT`, `en_US`,
 /// `de_DE`, `fr_FR`, `es_ES`, `en_GB`). The decimal/thousands separators
-/// come from the locale — no heuristic guessing.
+/// come from the locale — no heuristic guessing. Throws
+/// [AmountParseException] when [s] is not a number in [locale].
 double parseAmount(String s, {required String locale}) {
-  final cleaned = s.replaceAll(RegExp(r'[€$£¥]'), '').trim();
-  if (cleaned.isEmpty) throw const FormatException('Empty amount');
+  final cleaned = asciiMinus(s.replaceAll(RegExp(r'[€$£¥]'), '')).trim();
+  if (cleaned.isEmpty) throw AmountParseException('Empty amount', raw: s, locale: locale, empty: true);
   final symbols = NumberFormat.decimalPattern(locale).symbols;
   if (!isWellFormedNumber(cleaned, decimalSeparator: symbols.DECIMAL_SEP, groupSeparator: symbols.GROUP_SEP)) {
-    throw FormatException('"$s" is not a number in $locale');
+    throw AmountParseException('"$s" is not a number in $locale', raw: s, locale: locale);
   }
   return NumberFormat.decimalPattern(locale).parse(cleaned).toDouble();
 }
 
+/// [text] with the minus sign U+2212 some locales format negative numbers
+/// with (sv_SE: "−1 234,50") replaced by '-', which every locale's parser
+/// reads.
+String asciiMinus(String text) => text.replaceAll('\u2212', '-');
+
 /// Whether [text] is a number spelled with exactly this locale's separators:
 /// an optional sign, digits, the group separator only between groups of
-/// three digits, the decimal separator at most once, nothing else.
+/// three digits, the decimal separator at most once, nothing else. The sign
+/// may be the Unicode minus the locale formats it with ([asciiMinus]).
 ///
 /// `NumberFormat.parse` is lenient: under `it_IT` it reads `-258.35` as
 /// −25835 because it treats the dot as grouping regardless of what follows.
@@ -26,7 +49,7 @@ double parseAmount(String s, {required String locale}) {
 /// does not fit the locale's shape is not a number in that locale and must
 /// fail, so the row shows up as an error instead of a wrong figure.
 bool isWellFormedNumber(String text, {required String decimalSeparator, required String groupSeparator}) {
-  var t = text.replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ').trim();
+  var t = asciiMinus(text).replaceAll('\u00A0', ' ').replaceAll('\u202F', ' ').trim();
   if (t.startsWith('+') || t.startsWith('-')) t = t.substring(1);
   if (t.isEmpty) return false;
   final g = RegExp.escape(groupSeparator == '\u00A0' || groupSeparator == '\u202F' ? ' ' : groupSeparator);
@@ -44,6 +67,26 @@ double? tryParseAmount(String? s, {required String locale}) {
   } catch (_) {
     return null;
   }
+}
+
+/// [v] without the noise binary arithmetic leaves on a decimal figure
+/// (`1100.15 − 1000.10` is 100.05000000000007): rounded to 15 significant
+/// digits, which a real 2–6-decimal figure fits in, so such a figure comes
+/// back exactly.
+///
+/// A sum or difference carries the noise of its largest term, not its own:
+/// `12345.62 − 12345.67` is −0.049999999999272404, whose first 15 digits are
+/// still noise. Pass that term's size as [magnitude] and the 15 digits are
+/// counted from it instead (here −0.05). A [magnitude] no larger than [v]
+/// changes nothing.
+double stripFloatNoise(double v, {double magnitude = 0}) {
+  if (!v.isFinite) return v;
+  final scale = magnitude.abs();
+  if (scale <= v.abs()) return double.parse(v.toStringAsPrecision(15));
+  // The decimals 15 significant digits of [scale] reach, from its decimal
+  // exponent ("1.23456700000000e+4" → 4 → 10 decimals).
+  final exponent = int.parse(scale.toStringAsExponential(14).split('e').last);
+  return double.parse(v.toStringAsFixed((14 - exponent).clamp(0, 20)));
 }
 
 /// Pick the effective locale to parse an import file under.

@@ -11,6 +11,7 @@ import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/widgets/category_edit_dialog.dart';
 import 'package:finance_copilot/ui/widgets/category_ui.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
+import 'package:finance_copilot/ui/widgets/wizard_nav_bar.dart';
 import 'package:finance_copilot/utils/dialogs.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
@@ -70,9 +71,21 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
   @override
   void initState() {
     super.initState();
-    _scope = widget.group.merchantKey.isEmpty ? _RuleScope.onlyThis : _RuleScope.merchant;
+    _scope = _defaultScope(widget.group);
     _containsCtrl.text = widget.group.counterparty ?? '';
   }
+
+  @override
+  void didUpdateWidget(TransactionClassifyCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A recomputed group can lose its entry kind: the "this entry type" scope
+    // is then gone, so the card falls back to its default scope.
+    if (_scope == _RuleScope.entryKind && !_hasEntryKind(widget.group)) _scope = _defaultScope(widget.group);
+  }
+
+  static _RuleScope _defaultScope(MerchantGroup g) => g.merchantKey.isEmpty ? _RuleScope.onlyThis : _RuleScope.merchant;
+
+  static bool _hasEntryKind(MerchantGroup g) => g.entryKind != null && g.entryKind != BankEntryKind.unknown;
 
   @override
   void dispose() {
@@ -131,7 +144,7 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
                         runSpacing: 4,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          if (g.entryKind != null && g.entryKind != BankEntryKind.unknown)
+                          if (_hasEntryKind(g))
                             Chip(
                               label: Text(s.entryKindName(g.entryKind!)),
                               visualDensity: VisualDensity.compact,
@@ -171,13 +184,15 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
             ),
             const SizedBox(height: 4),
             // How much money this decision explains: the group's total per
-            // currency (position size → masked in privacy mode).
+            // currency (position size → masked in privacy mode; the count of
+            // transactions stays readable).
             Wrap(
               spacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                PrivacyText(
-                  s.wizardGroupTotal(g.count, g.totalByCurrency.entries.map((e) => '${amtFmt.format(e.value)} ${e.key}').join(' + ')),
+                PrivacySentence(
+                  s.wizardGroupTotal(g.count, privacySlot(0)),
+                  figures: [g.totalByCurrency.entries.map((e) => '${amtFmt.format(e.value)} ${e.key}').join(' + ')],
                   key: const Key('wizardGroupTotal'),
                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
@@ -191,8 +206,7 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
               const SizedBox(height: 4),
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(s.wizardSamples, style: theme.textTheme.bodySmall),
+                title: Text(s.wizardSamples, style: const TextStyle(fontWeight: FontWeight.w600)),
                 children: [
                   for (final t in samples.skip(1))
                     ListTile(
@@ -255,7 +269,7 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
                 if (g.merchantKey.isNotEmpty)
                   ButtonSegment(value: _RuleScope.merchant, label: Text(s.wizardScopeMerchant), icon: const Icon(Icons.storefront, size: 16)),
                 ButtonSegment(value: _RuleScope.contains, label: Text(s.wizardScopeContains), icon: const Icon(Icons.text_fields, size: 16)),
-                if (g.entryKind != null && g.entryKind != BankEntryKind.unknown)
+                if (_hasEntryKind(g))
                   ButtonSegment(value: _RuleScope.entryKind, label: Text(s.wizardScopeEntryKind), icon: const Icon(Icons.category, size: 16)),
                 ButtonSegment(value: _RuleScope.onlyThis, label: Text(s.wizardScopeOnlyThis), icon: const Icon(Icons.looks_one, size: 16)),
               ],
@@ -296,24 +310,16 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
             const SizedBox(height: 16),
 
             // ── Actions ──
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  key: const Key('wizardSkip'),
-                  onPressed: _busy ? null : widget.onSkip,
-                  icon: const Icon(Icons.skip_next),
-                  label: Text(s.wizardSkip),
-                ),
-                const Spacer(),
-                FilledButton.icon(
-                  key: const Key('wizardApply'),
-                  onPressed: _busy || _categoryId == null || tx == null ? null : () => _apply(g, tx),
-                  icon: _busy
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.check),
-                  label: Text(s.wizardApply),
-                ),
-              ],
+            WizardNavBar(
+              secondaryKey: const Key('wizardSkip'),
+              secondaryIcon: Icons.skip_next,
+              secondaryLabel: s.wizardSkip,
+              onSecondary: _busy ? null : widget.onSkip,
+              primaryKey: const Key('wizardApply'),
+              primaryIcon: Icons.check,
+              primaryBusy: _busy,
+              primaryLabel: s.wizardApply,
+              onPrimary: _busy || _categoryId == null || tx == null ? null : () => _apply(g, tx),
             ),
           ],
         ),
@@ -325,7 +331,8 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
     final (type, pattern) = switch (_scope) {
       _RuleScope.merchant => (RuleMatchType.merchantKey, g.merchantKey),
       _RuleScope.contains => (RuleMatchType.contains, _containsCtrl.text),
-      _RuleScope.entryKind => (RuleMatchType.entryKind, g.entryKind!.name),
+      // No kind left (see didUpdateWidget): an empty, invalid pattern.
+      _RuleScope.entryKind => (RuleMatchType.entryKind, g.entryKind?.name ?? ''),
       _RuleScope.onlyThis => throw StateError('no rule for onlyThis'),
     };
     return AutoCategorizationRule(
@@ -412,7 +419,11 @@ class _TransactionClassifyCardState extends ConsumerState<TransactionClassifyCar
         if (mounted) showInfoSnack(context, s.wizardApplied(changed.length));
       }
     } finally {
-      if (mounted) _setBusy(false);
+      // Reported even when the wizard swapped this card away mid-apply (the
+      // applied rule classified its group): it would otherwise stay busy,
+      // with Undo disabled.
+      if (mounted) setState(() => _busy = false);
+      widget.onBusyChanged?.call(false);
     }
   }
 }

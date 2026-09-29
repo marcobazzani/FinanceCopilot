@@ -1,8 +1,11 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/query_helpers.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/asset_value_math.dart';
 import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 final _log = getLogger('AssetEventService');
 
@@ -11,25 +14,15 @@ class AssetEventService {
 
   AssetEventService(this._db);
 
-  Stream<List<AssetEvent>> watchByAsset(int assetId, {DateTime? through}) {
+  SimpleSelectStatement<$AssetEventsTable, AssetEvent> _byAsset(int assetId, {DateTime? through}) {
     final query = _db.select(_db.assetEvents)..where((e) => e.assetId.equals(assetId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
-    return query.watch();
+    if (through != null) query.where((e) => e.valueDate.isSmallerThanValue(startOfNextDay(through)));
+    return query..orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
   }
 
-  Future<List<AssetEvent>> getByAsset(int assetId, {DateTime? through}) {
-    final query = _db.select(_db.assetEvents)..where((e) => e.assetId.equals(assetId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
-    return query.get();
-  }
+  Stream<List<AssetEvent>> watchByAsset(int assetId, {DateTime? through}) => _byAsset(assetId, through: through).watch();
+
+  Future<List<AssetEvent>> getByAsset(int assetId, {DateTime? through}) => _byAsset(assetId, through: through).get();
 
   /// Fetch events for multiple assets in a single query, grouped by asset ID.
   Future<Map<int, List<AssetEvent>>> getByAssets(
@@ -38,10 +31,7 @@ class AssetEventService {
   }) async {
     if (assetIds.isEmpty) return {};
     final query = _db.select(_db.assetEvents)..where((e) => e.assetId.isIn(assetIds));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
+    if (through != null) query.where((e) => e.valueDate.isSmallerThanValue(startOfNextDay(through)));
     query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
     final events = await query.get();
     final result = <int, List<AssetEvent>>{};
@@ -258,7 +248,7 @@ class AssetEventService {
     // the materialised close_price by the divisor — otherwise `amount / qty`
     // gets divided by 100 a second time at read time and the position collapses
     // to ~1/100 of its real value (issue #87).
-    final bondDivisor = assetRow.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+    final bondDivisor = bondPriceDivisor(assetRow.instrumentType);
 
     for (final rDate in revalueDates) {
       // When two revalues share a value_date, the latest-inserted wins (same
@@ -370,7 +360,7 @@ class AssetEventService {
           "FROM asset_events WHERE asset_id = ? AND type = 'buy' "
           "AND quantity IS NOT NULL AND price IS NOT NULL "
           "${bounded ? 'AND value_date < ? ' : ''}",
-          variables: [Variable.withInt(assetId), ..._throughVars(through)],
+          variables: [Variable.withInt(assetId), ...throughVars(through)],
         )
         .getSingleOrNull();
     final totalCost = row?.readNullable<double>('total_cost') ?? 0;
@@ -390,7 +380,7 @@ class AssetEventService {
           "SELECT amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' "
           "${bounded ? 'AND value_date < ? ' : ''}"
           "ORDER BY value_date DESC, id DESC LIMIT 1",
-          variables: [Variable.withInt(assetId), ..._throughVars(through)],
+          variables: [Variable.withInt(assetId), ...throughVars(through)],
         )
         .getSingleOrNull();
     return row?.readNullable<double>('amount');
@@ -440,20 +430,5 @@ class AssetEventService {
     if (rate == null || rate <= 0) return false;
     final quotedAgainst = event.exchangeRateBase;
     return quotedAgainst == null || quotedAgainst == baseCurrency;
-  }
-
-  static DateTime? _throughEndExclusive(DateTime? through) {
-    if (through == null) return null;
-    return DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
-  }
-
-  static List<Variable<int>> _throughVars(DateTime? through) {
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive == null) return const [];
-    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 }

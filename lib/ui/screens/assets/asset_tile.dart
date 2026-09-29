@@ -1,6 +1,6 @@
 part of 'assets_screen.dart';
 
-class _AssetTile extends StatelessWidget {
+class _AssetTile extends ConsumerWidget {
   final Asset asset;
   final AssetStats? stats;
   final double? convertedInvested;
@@ -28,11 +28,18 @@ class _AssetTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final amtFormat = fmt.amountFormat(locale);
     final qtyFormat = fmt.qtyFormat(locale);
     final dateFormat = fmt.monthYearFormat(locale);
+    // Until the values have loaded, a missing one is not yet missing data.
+    final valuesLoaded = ref.watch(assetMarketValuesProvider.select((v) => v.hasValue));
+    // Converted to null: a buy has no rate to base for its day, so the cost
+    // basis — and any gain against it — is unknown, and marked as such.
+    final costBasisUnknown = ref.watch(
+      convertedAssetStatsProvider.select((v) => v.value?.containsKey(asset.id) == true && v.value![asset.id] == null),
+    );
 
     return InkWell(
       onTap: onTap,
@@ -109,16 +116,26 @@ class _AssetTile extends StatelessWidget {
                   ] else if (convertedInvested != null && convertedInvested! > 0) ...[
                     const SizedBox(height: 2),
                     _buildGainLoss(theme, amtFormat),
+                  ] else if (costBasisUnknown) ...[
+                    const SizedBox(height: 2),
+                    _buildCostBasisUnknownMark(theme),
                   ],
-                ] else if (stats != null && stats!.totalInvested > 0)
-                  PrivacyText(
-                    '${amtFormat.format(stats!.totalInvested)} ${asset.currency}',
+                ] else if (stats != null && (stats!.totalQuantity != 0 || stats!.totalInvested > 0)) ...[
+                  // A position without a price or exchange rate has no known
+                  // value: a dash, never the cost basis (it read as the market
+                  // value in this slot) and no gain against it.
+                  Text(
+                    '—',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: asset.isActive ? theme.colorScheme.primary : Colors.grey,
+                      color: asset.isActive ? null : Colors.grey,
                     ),
-                  )
-                else
+                  ),
+                  if (asset.isActive && valuesLoaded) ...[
+                    const SizedBox(height: 2),
+                    _buildNoMarketDataBadge(theme),
+                  ],
+                ] else
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
@@ -137,7 +154,6 @@ class _AssetTile extends StatelessWidget {
                   // `price x quantity`: the unit price is public market data and
                   // stays readable; only the quantity is masked, because with a
                   // public price it is what reveals the size of the position.
-                  // Blurring the whole line (as this used to) hid the price too.
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -145,9 +161,9 @@ class _AssetTile extends StatelessWidget {
                         Text.rich(
                           TextSpan(
                             children: [
-                              TextSpan(
-                                text: amtFormat.format(marketValue! / stats!.totalQuantity),
-                                style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
+                              _unitPriceSpan(
+                                amtFormat.format(marketValue! / stats!.totalQuantity),
+                                theme.textTheme.labelSmall?.copyWith(color: Colors.grey),
                               ),
                               if (asset.currency != baseCurrency)
                                 TextSpan(
@@ -175,63 +191,63 @@ class _AssetTile extends StatelessWidget {
               ],
             ),
             const SizedBox(width: 4),
-            PopupMenuButton<int>(
-              icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
-              tooltip: strings.selectIntermediary,
-              itemBuilder: (_) => <PopupMenuEntry<int>>[
-                PopupMenuItem<int>(
-                  enabled: false,
-                  child: Text(
-                    strings.selectIntermediary,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ),
-                const PopupMenuDivider(),
-                for (final i in intermediaries)
-                  PopupMenuItem<int>(
-                    value: i.id,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.business, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(i.name)),
-                        if (asset.intermediaryId == i.id) const Icon(Icons.check, size: 18),
-                      ],
-                    ),
-                  ),
-              ],
-              onSelected: onMove,
-            ),
+            // Every asset has an intermediary: the menu offers no Unassigned.
+            IntermediaryMoveMenu(intermediaries: intermediaries, current: asset.intermediaryId, onMove: (id) => onMove(id!)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildNoMarketDataBadge(ThemeData theme) {
-    return Tooltip(
-      message: strings.noMarketData,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 12,
-            color: theme.colorScheme.error,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            strings.noMarketData,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.error,
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  /// The unit price of the `price × quantity` line. A manually valued asset
+  /// has no public price: its unit price is its own revaluation per unit —
+  /// position size — so it is masked like the quantity.
+  InlineSpan _unitPriceSpan(String price, TextStyle? style) =>
+      unitPriceIsPrivate(asset.valuationMethod) ? privacyFigureSpan(price, style: style) : TextSpan(text: price, style: style);
+
+  /// Why the value is missing: no price or exchange rate.
+  Widget _buildNoMarketDataBadge(ThemeData theme) => _mark(
+    theme,
+    icon: Icons.error_outline,
+    label: strings.noMarketData,
+    tooltip: strings.noMarketData,
+    color: theme.colorScheme.error,
+    bold: true,
+  );
+
+  /// In place of the gain when the cost basis is unknown: no gain is shown
+  /// against part of what the position cost, and this says why.
+  Widget _buildCostBasisUnknownMark(ThemeData theme) => _mark(
+    theme,
+    icon: Icons.info_outline,
+    label: strings.costBasisUnknown,
+    tooltip: strings.costBasisUnknownHint,
+    color: theme.colorScheme.onSurfaceVariant,
+  );
+
+  /// A mark under the value: [label] after a small [icon], both in [color],
+  /// explained by [tooltip].
+  static Widget _mark(
+    ThemeData theme, {
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    required Color color,
+    bool bold = false,
+  }) => Tooltip(
+    message: tooltip,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(color: color, fontWeight: bold ? FontWeight.w600 : null, fontSize: 11),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildGainLoss(ThemeData theme, NumberFormat amtFormat) {
     final invested = convertedInvested!;
@@ -254,7 +270,7 @@ class _AssetTile extends StatelessWidget {
       children: [
         Text('$arrow ', style: style),
         PrivacyText(amtFormat.format(gain.abs()), style: style),
-        Text(' (${pct.abs().toStringAsFixed(1)}%)', style: style),
+        Text(' (${NumberFormat('0.0', locale).format(pct.abs())}%)', style: style),
       ],
     );
   }

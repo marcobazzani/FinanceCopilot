@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/auth_io.dart' as auth;
@@ -29,14 +30,12 @@ class DriveFileInfo {
   final String fileId;
   final DateTime modifiedTime;
   final int size;
-  final String? deviceId;
   final String? deviceName;
 
   const DriveFileInfo({
     required this.fileId,
     required this.modifiedTime,
     required this.size,
-    this.deviceId,
     this.deviceName,
   });
 }
@@ -50,21 +49,56 @@ class DriveFileInfo {
 class GoogleDriveSyncService {
   static final bool _isDesktop = Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
+  /// How long one backup transfer may take: the whole upload, and on a
+  /// download the response and then each wait for more data. Generous — the
+  /// whole database crosses the wire, on any link — it only keeps a stalled
+  /// transfer from leaving Backup/Restore busy forever.
+  static const _defaultTransferTimeout = Duration(minutes: 10);
+
+  /// How long an interactive desktop sign-in waits for the consent given in
+  /// the browser (account choice, password, second factor).
+  static const _defaultConsentTimeout = Duration(minutes: 5);
+
+  /// Bound on the account lookup that confirms a new session.
+  static const _lookupTimeout = Duration(seconds: 30);
+
+  static Future<bool> _openInBrowser(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
+
   // Mobile auth via Google Sign-In (uses Google Play Services)
   bool _mobileInitialized = false;
   GoogleSignInAccount? _mobileAccount;
 
-  // Desktop auth via googleapis_auth (uses loopback redirect + client secret)
-  auth.AuthClient? _desktopAuthClient;
-
-  // Shared
+  // Shared. The session's authenticated client: the desktop auth client
+  // (googleapis_auth, loopback redirect + client secret) or the mobile
+  // authorized client.
   http.Client? _httpClient;
   drive.DriveApi? _driveApi;
   String? _userEmail;
 
   late final String _deviceId;
 
-  GoogleDriveSyncService() {
+  /// The transport under a desktop session's auth client.
+  final http.Client Function() _newHttpClient;
+
+  /// Opens the consent page of an interactive desktop sign-in; false when
+  /// nothing could open it.
+  final Future<bool> Function(Uri url) _launchConsentUrl;
+
+  final Duration _transferTimeout;
+  final Duration _consentTimeout;
+
+  /// [httpClientFactory], [launchConsentUrl], [transferTimeout] and
+  /// [consentTimeout] are test seams (the desktop auth transport, the browser
+  /// launch and the two waits below); production uses the defaults.
+  GoogleDriveSyncService({
+    @visibleForTesting http.Client Function()? httpClientFactory,
+    @visibleForTesting Future<bool> Function(Uri url)? launchConsentUrl,
+    @visibleForTesting Duration transferTimeout = _defaultTransferTimeout,
+    @visibleForTesting Duration consentTimeout = _defaultConsentTimeout,
+  }) : _newHttpClient = httpClientFactory ?? http.Client.new,
+       _launchConsentUrl = launchConsentUrl ?? _openInBrowser,
+       _transferTimeout = transferTimeout,
+       _consentTimeout = consentTimeout {
     _deviceId = _computeDeviceId();
     // Fail fast if DB_FILE_NAME dart-define is missing, so dev builds can't
     // silently read or overwrite the prod Drive backup.
@@ -133,18 +167,63 @@ class GoogleDriveSyncService {
   }
 
   Future<void> signOut() async {
+    _signOuts++;
+    _closeClient();
     if (_isDesktop) {
-      _desktopAuthClient?.close();
-      _desktopAuthClient = null;
       await AppSettings.set('googleRefreshToken', '');
     } else {
       await GoogleSignIn.instance.signOut();
       _mobileAccount = null;
     }
-    _httpClient = null;
-    _driveApi = null;
     _userEmail = null;
     _log.info('Signed out');
+  }
+
+  /// Sign-outs so far: a sign-in still confirming its account must not
+  /// revive a session the user ended meanwhile.
+  int _signOuts = 0;
+
+  /// Make [client] the session's transport, closing the one it replaces: a
+  /// dropped auth client keeps its connections (and, on desktop, its token
+  /// refresh) alive.
+  drive.DriveApi _useClient(http.Client client) {
+    final previous = _httpClient;
+    _httpClient = client;
+    if (!identical(previous, client)) previous?.close();
+    return _driveApi = drive.DriveApi(client);
+  }
+
+  /// End the session: close its client and forget it.
+  void _closeClient() {
+    final client = _httpClient;
+    _httpClient = null;
+    _driveApi = null;
+    client?.close();
+  }
+
+  /// Make [client] the session once the account behind it answered, with that
+  /// account's email. Until then nothing changes: a lookup that fails
+  /// (revoked token, no network) must not leave [isSignedIn] reporting a
+  /// session that cannot reach Drive, and a sign-out landing meanwhile wins.
+  /// Returns whether [client] became the session; if not, it is closed and a
+  /// failed lookup rethrown.
+  Future<bool> _adoptSession(http.Client client) async {
+    final signOuts = _signOuts;
+    final String? email;
+    try {
+      final about = await drive.DriveApi(client).about.get($fields: 'user').timeout(_lookupTimeout);
+      email = about.user?.emailAddress;
+    } catch (_) {
+      client.close();
+      rethrow;
+    }
+    if (signOuts != _signOuts) {
+      client.close();
+      return false;
+    }
+    _useClient(client);
+    _userEmail = email;
+    return true;
   }
 
   // ── Desktop auth (loopback OAuth) ─────────────────
@@ -159,38 +238,69 @@ class GoogleDriveSyncService {
       [_driveScope],
     );
 
-    _desktopAuthClient = auth.autoRefreshingClient(_clientId, credentials, http.Client());
-    _httpClient = _desktopAuthClient;
-    _driveApi = drive.DriveApi(_desktopAuthClient!);
-
-    final about = await _driveApi!.about.get($fields: 'user');
-    _userEmail = about.user?.emailAddress;
+    if (!await _adoptSession(auth.autoRefreshingClient(_clientId, credentials, _newHttpClient()))) return false;
     _log.info('Desktop silent sign-in successful: $_userEmail');
     return true;
   }
 
   Future<bool> _desktopSignIn() async {
-    _desktopAuthClient = await auth.clientViaUserConsent(
-      _clientId,
-      [_driveScope],
-      (url) {
-        _log.info('Opening OAuth URL in browser');
-        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      },
-    );
+    final client = await _userConsentClient();
+    if (client == null) return false;
 
-    _httpClient = _desktopAuthClient;
-    _driveApi = drive.DriveApi(_desktopAuthClient!);
-
-    final credentials = _desktopAuthClient!.credentials;
-    if (credentials.refreshToken != null) {
-      await AppSettings.set('googleRefreshToken', credentials.refreshToken!);
+    try {
+      final refreshToken = client.credentials.refreshToken;
+      if (refreshToken != null) await AppSettings.set('googleRefreshToken', refreshToken);
+    } catch (_) {
+      client.close();
+      rethrow;
     }
 
-    final about = await _driveApi!.about.get($fields: 'user');
-    _userEmail = about.user?.emailAddress;
+    if (!await _adoptSession(client)) return false;
     _log.info('Desktop sign-in successful: $_userEmail');
     return true;
+  }
+
+  /// The browser half of an interactive desktop sign-in: opens the consent
+  /// page and waits for the redirect it sends to the loopback listener. Null
+  /// when the browser could not be opened or no consent came within
+  /// [_consentTimeout]; a consent given in the browser afterwards is
+  /// discarded.
+  Future<auth.AutoRefreshingAuthClient?> _userConsentClient() async {
+    final launchFailed = Completer<void>();
+    final consent = auth.clientViaUserConsent(_clientId, [_driveScope], (url) {
+      _log.info('Opening OAuth URL in browser');
+      // The prompt callback is synchronous: the launch reports back through
+      // [launchFailed], which the wait below races against the consent.
+      unawaited(
+        _launchConsentUrl(Uri.parse(url)).then(
+          (opened) {
+            if (!opened) launchFailed.complete();
+          },
+          onError: (Object e) {
+            _log.warning('Opening the OAuth URL failed: $e');
+            launchFailed.complete();
+          },
+        ),
+      );
+    });
+
+    final client = await Future.any<auth.AutoRefreshingAuthClient?>([
+      consent,
+      launchFailed.future.then((_) => null),
+    ]).timeout(_consentTimeout, onTimeout: () => null);
+    if (client != null) return client;
+
+    _log.warning(
+      launchFailed.isCompleted
+          ? 'Desktop sign-in: no browser could open the consent page'
+          : 'Desktop sign-in: no consent within ${_consentTimeout.inSeconds}s',
+    );
+    // Whatever the abandoned flow still produces is discarded: a consent
+    // finished in the browser from now on must not sign in behind the user.
+    // Its loopback listener is left to it: an ephemeral port, and a retry
+    // opens a flow of its own.
+    unawaited(consent.then((abandoned) => abandoned.close(), onError: (Object _) {}));
+    return null;
   }
 
   // ── Mobile auth (Google Play Services) ────────────
@@ -230,11 +340,18 @@ class GoogleDriveSyncService {
     final account = _mobileAccount;
     if (account == null) return false;
     final authz = await account.authorizationClient.authorizeScopes([_driveScope]);
-    _httpClient = authz.authClient(scopes: [_driveScope]);
-    _driveApi = drive.DriveApi(_httpClient!);
+    _useClient(authz.authClient(scopes: [_driveScope]));
     _userEmail = account.email;
     _log.info('Mobile sign-in successful: $_userEmail');
     return true;
+  }
+
+  /// Test seam: signs in over [client] (e.g. a mock HTTP client) instead of
+  /// an OAuth flow, handing the session over exactly like a real sign-in.
+  @visibleForTesting
+  void signInWithClientForTest(http.Client client, {String? email}) {
+    _useClient(client);
+    _userEmail = email;
   }
 
   // ── Sync ──────────────────────────────────────────
@@ -244,11 +361,21 @@ class GoogleDriveSyncService {
     return p.join(dir.path, dbFileName);
   }
 
-  /// Check what's on Google Drive.
-  Future<DriveFileInfo?> getRemoteInfo() async {
-    if (_driveApi == null) return null;
+  /// Check what's on Google Drive: the backup, or null when there is none (or
+  /// no session to look with). Throws when the lookup fails (auth/network):
+  /// an unanswered lookup is no "no backup".
+  Future<DriveFileInfo?> getRemoteInfo() {
+    final api = _driveApi;
+    if (api == null) return Future.value();
+    return _remoteInfo(api);
+  }
+
+  /// The backup on [api]'s Drive, or null when there is none. A lookup that
+  /// fails rethrows: answering null would make Backup create a second remote
+  /// file next to the existing one, and Restore report there is none.
+  Future<DriveFileInfo?> _remoteInfo(drive.DriveApi api) async {
     try {
-      final fileList = await _driveApi!.files.list(
+      final fileList = await api.files.list(
         spaces: 'appDataFolder',
         q: "name = '$dbFileName'",
         $fields: 'files(id, name, modifiedTime, size, appProperties)',
@@ -259,10 +386,9 @@ class GoogleDriveSyncService {
       if (files == null || files.isEmpty) return null;
       final f = files.first;
       return DriveFileInfo(
-        fileId: f.id!,
+        fileId: f.id ?? (throw StateError('Drive listed the backup without an id')),
         modifiedTime: f.modifiedTime ?? DateTime(2000),
         size: int.tryParse(f.size ?? '0') ?? 0,
-        deviceId: f.appProperties?['deviceId'],
         deviceName: f.appProperties?['deviceName'],
       );
     } catch (e) {
@@ -274,7 +400,7 @@ class GoogleDriveSyncService {
       if (msg.contains('invalid_token') || msg.contains('unauthorized') || msg.contains('access was denied')) {
         _needsReauth = true;
       }
-      return null;
+      rethrow;
     }
   }
 
@@ -288,7 +414,10 @@ class GoogleDriveSyncService {
   /// etc.) — the upload "succeeds" but silently replaces a good remote
   /// backup with an inconsistent one.
   Future<DriveFileInfo> backupToDrive() async {
-    if (_driveApi == null) throw StateError('not_signed_in');
+    // Read the session once: signOut() can clear it while this awaits, and
+    // every call below must go to the account the backup started on.
+    final api = _driveApi;
+    if (api == null) throw StateError('not_signed_in');
     final snapshot = createSnapshot;
     if (snapshot == null) {
       throw StateError('createSnapshot callback is not wired — cannot back up safely');
@@ -305,32 +434,37 @@ class GoogleDriveSyncService {
           'deviceName': Platform.localHostname,
         };
 
-      final existing = await getRemoteInfo();
+      // Throws when the lookup fails: a backup that could not be seen must
+      // not get a second one created next to it.
+      final existing = await _remoteInfo(api);
       final media = drive.Media(file.openRead(), file.lengthSync());
       final drive.File uploaded;
       if (existing != null) {
-        uploaded = await _driveApi!.files.update(
-          metadata,
-          existing.fileId,
-          uploadMedia: media,
-          $fields: 'id,modifiedTime,size,appProperties',
-        );
+        uploaded = await api.files
+            .update(
+              metadata,
+              existing.fileId,
+              uploadMedia: media,
+              $fields: 'id,modifiedTime,size,appProperties',
+            )
+            .timeout(_transferTimeout);
         _log.info('backupToDrive: updated remote DB (${file.lengthSync()} bytes)');
       } else {
         metadata.parents = ['appDataFolder'];
-        uploaded = await _driveApi!.files.create(
-          metadata,
-          uploadMedia: media,
-          $fields: 'id,modifiedTime,size,appProperties',
-        );
+        uploaded = await api.files
+            .create(
+              metadata,
+              uploadMedia: media,
+              $fields: 'id,modifiedTime,size,appProperties',
+            )
+            .timeout(_transferTimeout);
         _log.info('backupToDrive: created remote DB (${file.lengthSync()} bytes)');
       }
 
       final info = DriveFileInfo(
-        fileId: uploaded.id!,
+        fileId: uploaded.id ?? (throw StateError('Drive answered the upload without a file id')),
         modifiedTime: uploaded.modifiedTime ?? DateTime.now().toUtc(),
         size: int.tryParse(uploaded.size ?? '0') ?? file.lengthSync(),
-        deviceId: uploaded.appProperties?['deviceId'],
         deviceName: uploaded.appProperties?['deviceName'],
       );
       // Track the actual remote modifiedTime, never local clock.
@@ -350,11 +484,13 @@ class GoogleDriveSyncService {
   /// into the local DB via ATTACH. Returns the restored file info, or null
   /// if no remote backup exists. Throws on auth/network errors.
   Future<DriveFileInfo?> restoreFromDrive() async {
-    if (_driveApi == null) throw StateError('not_signed_in');
-    final remote = await getRemoteInfo();
+    // Read the session once (see backupToDrive).
+    final api = _driveApi;
+    if (api == null) throw StateError('not_signed_in');
+    final remote = await _remoteInfo(api);
     if (remote == null) return null;
     final localPath = await _localDbPath;
-    await _download(localPath, remote.fileId);
+    await _download(api, localPath, remote.fileId);
     // Override the lastSyncTime that _download set with local clock —
     // store the actual remote modifiedTime so future comparisons are honest.
     await AppSettings.set('lastSyncTime', remote.modifiedTime.toIso8601String());
@@ -404,7 +540,7 @@ class GoogleDriveSyncService {
   ///   2. delegate to `copyFromAttached` (wired by the app shell) which runs
   ///      ATTACH + per-table INSERT FROM SELECT inside a drift transaction
   ///   3. delete the tmp file
-  Future<void> _download(String localPath, String fileId) async {
+  Future<void> _download(drive.DriveApi api, String localPath, String fileId) async {
     final tmpPath = '$localPath.tmp';
     final tmpFile = File(tmpPath);
 
@@ -412,14 +548,30 @@ class GoogleDriveSyncService {
       final t0 = DateTime.now();
       _log.info('download: phase 1 - fetching remote...');
       final response =
-          await _driveApi!.files.get(
-                fileId,
-                downloadOptions: drive.DownloadOptions.fullMedia,
-              )
+          await api.files
+                  .get(
+                    fileId,
+                    downloadOptions: drive.DownloadOptions.fullMedia,
+                  )
+                  .timeout(_transferTimeout)
               as drive.Media;
       if (tmpFile.existsSync()) await tmpFile.delete();
       final sink = tmpFile.openWrite();
-      await response.stream.pipe(sink);
+      try {
+        // Bounded per wait for more data, not overall: a slow link still
+        // finishes, a stalled one fails (and its stream is cancelled).
+        await response.stream.timeout(_transferTimeout).pipe(sink);
+      } finally {
+        // pipe() closes the sink only when the stream completes. Close it when
+        // the download breaks too, so the tmp file is released before the
+        // cleanup below deletes it; that close failing must not mask the error
+        // that broke the download.
+        try {
+          await sink.close();
+        } catch (e) {
+          _log.fine('download: closing tmp file failed: $e');
+        }
+      }
       final tmpSize = await tmpFile.length();
       _log.info('download: phase 1 done - fetched $tmpSize bytes in ${DateTime.now().difference(t0).inMilliseconds}ms');
 
@@ -429,13 +581,14 @@ class GoogleDriveSyncService {
         return;
       }
 
-      if (copyFromAttached == null) {
+      final copy = copyFromAttached;
+      if (copy == null) {
         throw StateError('copyFromAttached callback is not wired — cannot merge remote DB');
       }
 
       final tCopy = DateTime.now();
       _log.info('download: phase 2 - ATTACH + copy tables from tmp');
-      await copyFromAttached!(tmpPath);
+      await copy(tmpPath);
       _log.info('download: phase 2 done in ${DateTime.now().difference(tCopy).inMilliseconds}ms');
 
       // Phase 3: cleanup tmp file

@@ -48,8 +48,8 @@ extension _AppShellDriveDbOps on _AppShellState {
     );
     if (action == null || !context.mounted) return;
     if (action == 'export') {
-      final path = await DbTransferService.exportDb(ref.read(databaseProvider));
-      if (path != null && context.mounted) {
+      final exported = await _exportDbFile(context, s.dbExportFailed);
+      if (exported?.path != null && context.mounted) {
         showInfoSnack(context, s.settingsExportSuccess);
       }
     } else if (action == 'import') {
@@ -61,16 +61,72 @@ extension _AppShellDriveDbOps on _AppShellState {
     }
   }
 
+  /// Tells the user, in their language, that a database transfer failed: the
+  /// specific reason when there is one they can act on (a database from
+  /// another app version), otherwise [message]. The raw error only goes to the
+  /// log, which the caller writes.
+  void _showTransferFailure(BuildContext context, Object error, String message) {
+    final s = ref.read(appStringsProvider);
+    showInfoSnack(
+      context,
+      error is SchemaVersionMismatchException ? s.dbSchemaMismatch(error.remoteVersion, error.localVersion) : message,
+    );
+  }
+
+  /// Picks a database file and merges it into the open one. Returns whether
+  /// it was merged: false when the user cancelled or the merge failed (the
+  /// failure is reported).
+  Future<bool> _mergeDbFromFile(BuildContext context) async {
+    final s = ref.read(appStringsProvider);
+    try {
+      return await DbTransferService.importDb(ref.read(databaseProvider), dialogTitle: s.dbImportPickerTitle) != null;
+    } catch (e, st) {
+      _log.warning('importDb failed', e, st);
+      if (context.mounted) _showTransferFailure(context, e, s.dbImportFailed);
+      return false;
+    }
+  }
+
+  /// Exports the open database to a file the user picks: `(path: …)`, null
+  /// inside when the user cancelled. When the export fails the answer is
+  /// null: [failure] is reported and the error logged.
+  Future<({String? path})?> _exportDbFile(BuildContext context, String failure) async {
+    final s = ref.read(appStringsProvider);
+    try {
+      return (path: await DbTransferService.exportDb(ref.read(databaseProvider), dialogTitle: s.dbExportPickerTitle));
+    } catch (e, st) {
+      _log.warning('exportDb failed', e, st);
+      if (context.mounted) _showTransferFailure(context, e, failure);
+      return null;
+    }
+  }
+
   String _formatRemoteInfo(AppStrings s, DriveFileInfo info) {
-    final size = _formatBytes(info.size);
-    final date = '${info.modifiedTime.toLocal()}'.split('.').first;
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+    final size = _formatBytes(info.size, locale);
+    final date = fmt.fullDateFormat(locale).add_Hm().format(info.modifiedTime.toLocal());
     return s.importExportRemoteInfo(size, date, info.deviceName);
   }
 
-  String _formatBytes(int bytes) {
+  String _formatBytes(int bytes, String locale) {
     if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    final oneDecimal = NumberFormat('#,##0.0', locale);
+    if (bytes < 1024 * 1024) return '${oneDecimal.format(bytes / 1024)} KB';
+    return '${oneDecimal.format(bytes / 1024 / 1024)} MB';
+  }
+
+  /// Looks up the Drive backup a confirmation quotes: `(backup: …)`, null
+  /// inside when Drive holds none. When the lookup fails the operation stops
+  /// here: [failure] is reported and the whole answer is null — an unanswered
+  /// lookup is no "no backup" (a backup would create a second remote file).
+  Future<({DriveFileInfo? backup})?> _lookUpDriveBackup(BuildContext context, GoogleDriveSyncService sync, String failure) async {
+    try {
+      return (backup: await sync.getRemoteInfo());
+    } catch (e, st) {
+      _log.warning('Drive backup lookup failed', e, st);
+      if (context.mounted) _showTransferFailure(context, e, failure);
+      return null;
+    }
   }
 
   Future<void> _backupToDrive(BuildContext context) async {
@@ -78,34 +134,27 @@ extension _AppShellDriveDbOps on _AppShellState {
     final sync = ref.read(googleDriveSyncProvider);
 
     // Pre-flight: show the user what will be overwritten on Drive.
-    final existing = await sync.getRemoteInfo();
-    if (!context.mounted) return;
+    final lookup = await _lookUpDriveBackup(context, sync, s.importExportBackupFailed);
+    if (lookup == null || !context.mounted) return;
+    final existing = lookup.backup;
     final remoteInfo = existing != null ? _formatRemoteInfo(s, existing) : null;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.importExportBackupConfirmTitle),
-        content: Text(s.importExportBackupConfirmBody(remoteInfo)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.importExportBackupDrive),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.importExportBackupConfirmTitle,
+      content: s.importExportBackupConfirmBody(remoteInfo),
+      confirmLabel: s.importExportBackupDrive,
+      cancelLabel: s.cancel,
     );
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       await sync.backupToDrive();
       if (!context.mounted) return;
       showInfoSnack(context, s.importExportBackupSuccess);
-    } catch (e) {
-      _log.warning('backupToDrive failed: $e');
-      if (!context.mounted) return;
-      showInfoSnack(context, '${s.importExportBackupFailed}: $e');
+    } catch (e, st) {
+      _log.warning('backupToDrive failed', e, st);
+      if (context.mounted) _showTransferFailure(context, e, s.importExportBackupFailed);
     }
   }
 
@@ -114,30 +163,24 @@ extension _AppShellDriveDbOps on _AppShellState {
     final sync = ref.read(googleDriveSyncProvider);
 
     // Pre-flight: show the user what will be pulled from Drive.
-    final existing = await sync.getRemoteInfo();
-    if (!context.mounted) return;
+    final lookup = await _lookUpDriveBackup(context, sync, s.importExportRestoreFailed);
+    if (lookup == null || !context.mounted) return;
+    final existing = lookup.backup;
     if (existing == null) {
       showInfoSnack(context, s.importExportRestoreEmpty);
       return;
     }
     final remoteInfo = _formatRemoteInfo(s, existing);
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.importExportRestoreConfirmTitle),
-        content: Text(s.importExportRestoreConfirmBody(remoteInfo)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.importExportRestoreDrive),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.importExportRestoreConfirmTitle,
+      content: s.importExportRestoreConfirmBody(remoteInfo),
+      confirmLabel: s.importExportRestoreDrive,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       _wireSyncCallbacks(sync);
@@ -149,10 +192,9 @@ extension _AppShellDriveDbOps on _AppShellState {
       }
       ref.read(dbReloadTrigger.notifier).state++;
       showInfoSnack(context, s.importExportRestoreSuccess);
-    } catch (e) {
-      _log.warning('restoreFromDrive failed: $e');
-      if (!context.mounted) return;
-      showInfoSnack(context, '${s.importExportRestoreFailed}: $e');
+    } catch (e, st) {
+      _log.warning('restoreFromDrive failed', e, st);
+      if (context.mounted) _showTransferFailure(context, e, s.importExportRestoreFailed);
     }
   }
 
@@ -181,10 +223,10 @@ extension _AppShellDriveDbOps on _AppShellState {
           ],
         ),
       );
-      if (action == null) return;
+      if (action == null || !context.mounted) return;
       if (action == 'export') {
-        final exported = await DbTransferService.exportDb(db);
-        if (exported == null) return; // cancelled
+        final exported = await _exportDbFile(context, s.dbExportFailed);
+        if (exported?.path == null) return; // failed (reported) or cancelled
       }
     }
 
@@ -192,8 +234,7 @@ extension _AppShellDriveDbOps on _AppShellState {
     // file while Drift still has active stream subscribers, which is fragile
     // on Windows and can leave stale handles.
     if (!context.mounted) return;
-    final path = await DbTransferService.importDb(db);
-    if (path == null) return;
+    if (!await _mergeDbFromFile(context)) return;
 
     ref.read(dbReloadTrigger.notifier).state++;
     if (context.mounted) {
@@ -201,12 +242,15 @@ extension _AppShellDriveDbOps on _AppShellState {
     }
   }
 
+  /// Runs from the host screen once the Settings dialog has closed, so its
+  /// messages are not raised under that dialog's barrier.
   Future<void> _wipeDb(BuildContext context) async {
     final s = ref.read(appStringsProvider);
 
     // Force export first
-    final exported = await DbTransferService.exportDb(ref.read(databaseProvider));
-    if (exported == null) {
+    final exported = await _exportDbFile(context, s.settingsWipeExportFailed);
+    if (exported == null) return; // failed, reported
+    if (exported.path == null) {
       // User cancelled the export — abort wipe
       if (context.mounted) {
         showInfoSnack(context, s.settingsWipeCancelled);
@@ -241,19 +285,24 @@ extension _AppShellDriveDbOps on _AppShellState {
 
     if (confirmed != true || !context.mounted) return;
 
-    // Delete the DB file and reload
+    // Close the connection before deleting its file: Windows refuses to delete
+    // an open file, and elsewhere the open handle would keep using the
+    // unlinked one. The reload trigger then opens a fresh database — also
+    // after a failure, since the closed instance cannot be used any more.
     try {
-      final path = await DbTransferService.dbPath;
-      final file = File(path);
+      await ref.read(databaseProvider).close();
+      final file = File(await DbTransferService.dbPath);
       if (file.existsSync()) file.deleteSync();
+    } catch (e, st) {
+      _log.severe('Wipe DB failed', e, st);
       ref.read(dbReloadTrigger.notifier).state++;
-      if (context.mounted) {
-        Navigator.pop(context); // close settings
-        // ignore: invalid_use_of_protected_member
-        setState(() => _showLanding = true);
-      }
-    } catch (e) {
-      _log.severe('Wipe DB failed: $e');
+      if (context.mounted) showInfoSnack(context, s.settingsWipeFailed);
+      return;
+    }
+    ref.read(dbReloadTrigger.notifier).state++;
+    if (mounted) {
+      // ignore: invalid_use_of_protected_member
+      setState(() => _showLanding = true);
     }
   }
 }

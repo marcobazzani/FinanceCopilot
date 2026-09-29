@@ -18,11 +18,16 @@ final _log = getLogger('FileParserService');
 // Top-level functions for isolate parsing
 // ──────────────────────────────────────────────
 
-FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
-  final content = args['content'] as String;
-  final separator = args['separator'] as String?;
-  final skipRows = args['skipRows'] as int;
-  final noHeader = args['noHeader'] as bool? ?? false;
+/// What a CSV / TSV / pasted-text parse runs with, sent to the parsing
+/// isolate. A null [separator] is detected from the first line.
+typedef _CsvJob = ({String content, String? separator, int skipRows, bool noHeader});
+
+/// What an XLSX parse runs with, sent to the parsing isolate (or run in
+/// process). [numberLocale] spells the numeric cells; null keeps `toString`.
+typedef _ExcelJob = ({List<int> bytes, String? sheetName, int skipRows, bool noHeader, String? numberLocale});
+
+FilePreview _parseCsvIsolate(_CsvJob job) {
+  final (:content, :separator, :skipRows, :noHeader) = job;
 
   // Auto-detect separator
   final firstLine = content.split('\n').first;
@@ -82,7 +87,7 @@ FilePreview _parseCsvIsolate(Map<String, dynamic> args) {
 /// full precision — plain `NumberFormat.decimalPattern` rounds to 3
 /// fraction digits, silently truncating e.g. a small quantity or a
 /// high-precision FX rate.
-String _xlsCellToString(dynamic value, {String? numberLocale}) {
+String _xlsCellToString(Object? value, {String? numberLocale}) {
   double? doubleValue;
   if (value is xl.DoubleCellValue) {
     doubleValue = value.value;
@@ -102,12 +107,8 @@ String _xlsCellToString(dynamic value, {String? numberLocale}) {
   return value?.toString().trim() ?? '';
 }
 
-FilePreview _parseExcelIsolate(Map<String, dynamic> args) {
-  final bytes = args['bytes'] as List<int>;
-  final sheetName = args['sheetName'] as String?;
-  final skipRows = args['skipRows'] as int;
-  final noHeader = args['noHeader'] as bool? ?? false;
-  final numberLocale = args['numberLocale'] as String?;
+FilePreview _parseExcelIsolate(_ExcelJob job) {
+  final (:bytes, :sheetName, :skipRows, :noHeader, :numberLocale) = job;
 
   final excel = xl.Excel.decodeBytes(bytes);
   final sheet = sheetName != null ? excel.tables[sheetName] : excel.tables.values.first;
@@ -236,34 +237,9 @@ class FileParserService {
   /// Runs heavy parsing in a separate isolate to avoid UI jank.
   Future<FilePreview> parseFile(String filePath, {String? sheetName, int skipRows = 0, bool noHeader = false, String? numberLocale}) async {
     _log.info('parseFile: path=$filePath, sheet=$sheetName, skipRows=$skipRows, noHeader=$noHeader, numberLocale=$numberLocale');
-    final ext = filePath.toLowerCase().split('.').last;
-    final FilePreview result;
-    switch (ext) {
-      case 'csv':
-      case 'tsv':
-        final content = await File(filePath).readAsString();
-        result = await compute(_parseCsvIsolate, <String, dynamic>{
-          'content': content,
-          'separator': ext == 'tsv' ? '\t' : null,
-          'skipRows': skipRows,
-          'noHeader': noHeader,
-        });
-      case 'xlsx':
-      case 'xls':
-        final bytes = await File(filePath).readAsBytes();
-        result = await compute(_parseExcelIsolate, <String, dynamic>{
-          'bytes': bytes,
-          'sheetName': sheetName,
-          'skipRows': skipRows,
-          'noHeader': noHeader,
-          'numberLocale': numberLocale,
-        });
-      case 'pdf':
-        final bytes = await File(filePath).readAsBytes();
-        result = await _parsePdfMain(bytes, noHeader: noHeader);
-      default:
-        throw UnsupportedError('Unsupported file format: .$ext');
-    }
+    final result =
+        await _parseSource(filePath, sheetName: sheetName, skipRows: skipRows, noHeader: noHeader, numberLocale: numberLocale) ??
+        (throw UnsupportedError('Unsupported file format: .${_extensionOf(filePath)}'));
     // Cap rows for preview (first 5 + last 5) to save memory; import re-parses
     final previewRows = _capPreviewRows(result.rows);
     _log.info('parseFile: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
@@ -291,12 +267,7 @@ class FileParserService {
   /// Parse clipboard/pasted text as CSV/TSV → FilePreview.
   Future<FilePreview> parseClipboard(String text, {int skipRows = 0, bool noHeader = false}) async {
     _log.info('parseClipboard: ${text.length} chars, skipRows=$skipRows, noHeader=$noHeader');
-    final result = await compute(_parseCsvIsolate, <String, dynamic>{
-      'content': text,
-      'separator': null, // auto-detect
-      'skipRows': skipRows,
-      'noHeader': noHeader,
-    });
+    final result = await compute(_parseCsvIsolate, (content: text, separator: null, skipRows: skipRows, noHeader: noHeader));
     final previewRows = _capPreviewRows(result.rows);
     _log.info('parseClipboard: parsed ${result.columns.length} columns, ${result.totalRows} rows (preview: ${previewRows.length})');
     return FilePreview(
@@ -325,39 +296,19 @@ class FileParserService {
     }
 
     _log.info('getFullRows: re-parsing ${preview.totalRows} rows from source (numberLocale=$effectiveLocale)');
-    if (preview.filePath != null) {
-      final ext = preview.filePath!.toLowerCase().split('.').last;
-      switch (ext) {
-        case 'csv':
-        case 'tsv':
-          final content = await File(preview.filePath!).readAsString();
-          return compute(_parseCsvIsolate, <String, dynamic>{
-            'content': content,
-            'separator': ext == 'tsv' ? '\t' : null,
-            'skipRows': preview.skipRows,
-            'noHeader': preview.noHeader,
-          });
-        case 'xlsx':
-        case 'xls':
-          final bytes = await File(preview.filePath!).readAsBytes();
-          return compute(_parseExcelIsolate, <String, dynamic>{
-            'bytes': bytes,
-            'sheetName': preview.sheetName,
-            'skipRows': preview.skipRows,
-            'noHeader': preview.noHeader,
-            'numberLocale': effectiveLocale,
-          });
-        case 'pdf':
-          final bytes = await File(preview.filePath!).readAsBytes();
-          return _parsePdfMain(bytes, noHeader: preview.noHeader);
-      }
-    } else if (preview.clipboardText != null) {
-      return compute(_parseCsvIsolate, <String, dynamic>{
-        'content': preview.clipboardText!,
-        'separator': null,
-        'skipRows': preview.skipRows,
-        'noHeader': preview.noHeader,
-      });
+    final filePath = preview.filePath;
+    final clipboardText = preview.clipboardText;
+    if (filePath != null) {
+      final parsed = await _parseSource(
+        filePath,
+        sheetName: preview.sheetName,
+        skipRows: preview.skipRows,
+        noHeader: preview.noHeader,
+        numberLocale: effectiveLocale,
+      );
+      if (parsed != null) return parsed;
+    } else if (clipboardText != null) {
+      return compute(_parseCsvIsolate, (content: clipboardText, separator: null, skipRows: preview.skipRows, noHeader: preview.noHeader));
     }
     return preview;
   }
@@ -368,16 +319,59 @@ class FileParserService {
   /// XLSX/XLS go through here today; other code paths still use the
   /// isolate-based [getFullRows].
   Future<FilePreview> getFullRowsInProcess(FilePreview preview, {String? numberLocale}) async {
-    if (preview.filePath == null) return preview;
-    final ext = preview.filePath!.toLowerCase().split('.').last;
+    final filePath = preview.filePath;
+    if (filePath == null) return preview;
+    final ext = _extensionOf(filePath);
     if (ext != 'xlsx' && ext != 'xls') return getFullRows(preview, numberLocale: numberLocale);
-    final bytes = await File(preview.filePath!).readAsBytes();
-    return _parseExcelIsolate({
-      'bytes': bytes,
-      'sheetName': preview.sheetName,
-      'skipRows': preview.skipRows,
-      'noHeader': preview.noHeader,
-      'numberLocale': numberLocale ?? preview.numberLocale,
-    });
+    return (await _parseSource(
+      filePath,
+      sheetName: preview.sheetName,
+      skipRows: preview.skipRows,
+      noHeader: preview.noHeader,
+      numberLocale: numberLocale ?? preview.numberLocale,
+      inProcess: true,
+    ))!;
   }
+
+  /// The parse of the file at [filePath], by its extension: CSV and TSV (the
+  /// TSV split on tabs) and XLSX / XLS in an isolate — on the calling isolate
+  /// for XLSX / XLS when [inProcess] — and PDF on the main isolate
+  /// ([_parsePdfMain]). Null for any other extension.
+  static Future<FilePreview?> _parseSource(
+    String filePath, {
+    String? sheetName,
+    required int skipRows,
+    required bool noHeader,
+    String? numberLocale,
+    bool inProcess = false,
+  }) async {
+    final ext = _extensionOf(filePath);
+    switch (ext) {
+      case 'csv':
+      case 'tsv':
+        final content = await File(filePath).readAsString();
+        return compute(_parseCsvIsolate, (
+          content: content,
+          separator: ext == 'tsv' ? '\t' : null,
+          skipRows: skipRows,
+          noHeader: noHeader,
+        ));
+      case 'xlsx':
+      case 'xls':
+        final _ExcelJob job = (
+          bytes: await File(filePath).readAsBytes(),
+          sheetName: sheetName,
+          skipRows: skipRows,
+          noHeader: noHeader,
+          numberLocale: numberLocale,
+        );
+        return inProcess ? _parseExcelIsolate(job) : compute(_parseExcelIsolate, job);
+      case 'pdf':
+        final bytes = await File(filePath).readAsBytes();
+        return _parsePdfMain(bytes, noHeader: noHeader);
+    }
+    return null;
+  }
+
+  static String _extensionOf(String filePath) => filePath.toLowerCase().split('.').last;
 }

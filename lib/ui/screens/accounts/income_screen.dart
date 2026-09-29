@@ -8,15 +8,19 @@ import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/import/import_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
+import 'package:finance_copilot/utils/date_parser.dart' show tryParseUserDate;
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_action_bar.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_controller.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 import 'package:finance_copilot/utils/dialogs.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart' show editedDates;
 
 class IncomeScreen extends ConsumerStatefulWidget {
   const IncomeScreen({super.key});
@@ -100,21 +104,11 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
             body: incomesAsync.when(
               data: (incomes) {
                 if (incomes.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.payments, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        const SizedBox(height: 16),
-                        Text(s.noIncomeYet, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: () => _showAddDialog(context, baseCurrency),
-                          icon: const Icon(Icons.add),
-                          label: Text(s.addIncomeTitle),
-                        ),
-                      ],
-                    ),
+                  return EmptyState(
+                    icon: Icons.payments,
+                    message: s.noIncomeYet,
+                    actionLabel: s.addIncomeTitle,
+                    onAction: () => _showAddDialog(context, baseCurrency),
                   );
                 }
 
@@ -129,23 +123,30 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
                       return SelectableItem<int>(
                         controller: _selection,
                         id: income.id,
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: _typeColor(context, income.type),
-                            child: Icon(
-                              _typeIcon(income.type),
-                              color: _typeIconColor(context, income.type),
+                        child: SwipeToDelete.custom(
+                          key: ValueKey('dismiss_income_${income.id}'),
+                          confirmAndDelete: () => _confirmDelete(context, income),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: _typeColor(context, income.type),
+                              child: Icon(
+                                _typeIcon(income.type),
+                                color: _typeIconColor(context, income.type),
+                              ),
                             ),
+                            title: PrivacyText(
+                              '${amtFormat.format(income.amount)} $sym',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              '${dateFmt.format(income.valueDate)} · ${s.incomeTypeName(income.type)}',
+                            ),
+                            trailing: Text(
+                              income.currency,
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                            ),
+                            onTap: () => _showEditDialog(context, income),
                           ),
-                          title: PrivacyText(
-                            '${amtFormat.format(income.amount)} $sym',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: Text(
-                            '${dateFmt.format(income.valueDate)} · ${s.incomeTypeName(income.type)}',
-                          ),
-                          trailing: Text(income.currency, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-                          onTap: () => _showEditDialog(context, income),
                         ),
                       );
                     },
@@ -205,7 +206,8 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
     );
     if (result == null) return;
 
-    final date = _tryParseDate(result.dateText);
+    // Read in the locale's short date first: the form pre-fills that format.
+    final date = tryParseUserDate(result.dateText, locale: _locale);
     final amount = fmt.tryParseLocalized(result.amountText, locale: _locale);
     if (date == null || amount == null) {
       if (context.mounted) {
@@ -231,9 +233,11 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       builder: (_) => _IncomeFormDialog(
         title: s.editIncomeTitle,
         confirmLabel: s.save,
-        // Display valueDate per CLAUDE.md convention (canonical "money moved" date).
+        // Display valueDate per AGENTS.md convention (canonical "money moved" date).
         initialDate: fmt.shortDateFormat(_locale).format(income.valueDate),
-        initialAmount: income.amount.toString(),
+        // The locale's own spelling with every digit: the save parses it back
+        // with the same locale, so an untouched amount saves unchanged.
+        initialAmount: fmt.editableFigure(income.amount, fmt.amountFormat(_locale), locale: _locale),
         initialType: income.type,
         initialCurrency: income.currency,
         canDelete: true,
@@ -248,7 +252,7 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       return;
     }
 
-    final date = _tryParseDate(result.dateText);
+    final date = tryParseUserDate(result.dateText, locale: _locale);
     final amount = fmt.tryParseLocalized(result.amountText, locale: _locale);
     if (date == null || amount == null) {
       if (context.mounted) {
@@ -257,15 +261,16 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
       return;
     }
 
-    // Update both date and valueDate together — the user only sees one field
-    // and editing it should not leave the two columns inconsistent.
+    // The user sees one date field: the value date. The booking date (`date`)
+    // keys the import dedup: see editedDates.
+    final dates = editedDates(edited: date, valueDate: income.valueDate, bookingDate: income.date);
     await ref
         .read(incomeServiceProvider)
         .update(
           income.id,
           IncomesCompanion(
-            date: Value(date),
-            valueDate: Value(date),
+            date: Value.absentIfNull(dates.bookingDate),
+            valueDate: Value.absentIfNull(dates.valueDate),
             amount: Value(amount),
             type: Value(result.type),
             currency: Value(result.currency),
@@ -273,25 +278,27 @@ class _IncomeScreenState extends ConsumerState<IncomeScreen> {
         );
   }
 
-  Future<void> _confirmDelete(BuildContext context, Income income) async {
+  /// Asks, then deletes [income]; says whether it did. Behind the edit form's
+  /// delete and the swipe of the row. The amount is position size: masked in
+  /// privacy mode, while the currency and the date stay readable.
+  Future<bool> _confirmDelete(BuildContext context, Income income) async {
     final s = ref.read(appStringsProvider);
+    final incomes = ref.read(incomeServiceProvider);
     final amtFormat = fmt.amountFormat(_locale);
     final dateFmt = fmt.shortDateFormat(_locale);
     final confirmed = await showConfirmDialog(
       context,
       title: s.deleteIncomeTitle,
-      content: s.deleteIncomeConfirm(amtFormat.format(income.amount), income.currency, dateFmt.format(income.valueDate)),
+      content: s.deleteIncomeConfirm(privacySlot(0), income.currency, dateFmt.format(income.valueDate)),
+      maskedFigures: [amtFormat.format(income.amount)],
       confirmLabel: s.delete,
       cancelLabel: s.cancel,
       confirmColor: Colors.red,
     );
-
-    if (confirmed) {
-      await ref.read(incomeServiceProvider).delete(income.id);
-    }
+    if (!confirmed) return false;
+    await incomes.delete(income.id);
+    return true;
   }
-
-  DateTime? _tryParseDate(String text) => fmt.parseFlexibleDate(text);
 }
 
 /// What the income form hands back: the raw field texts (parsed by the
@@ -346,6 +353,7 @@ class _IncomeFormDialogState extends ConsumerState<_IncomeFormDialog> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final cancel = TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel));
     final confirm = FilledButton(onPressed: _close, child: Text(widget.confirmLabel));
     return AlertDialog(
@@ -357,7 +365,10 @@ class _IncomeFormDialogState extends ConsumerState<_IncomeFormDialog> {
           children: [
             TextField(
               controller: _dateCtl,
-              decoration: InputDecoration(labelText: s.dateFormatHint),
+              // A day above 12 makes the example show the locale's order.
+              decoration: InputDecoration(
+                labelText: s.dateFormatHint(fmt.shortDateFormat(locale).format(DateTime(DateTime.now().year, 12, 31))),
+              ),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 8),

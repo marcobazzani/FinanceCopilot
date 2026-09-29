@@ -1,17 +1,21 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/services/domain/extraordinary_event_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_action_bar.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_controller.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
 import 'package:finance_copilot/ui/screens/events/event_detail_screen.dart';
 import 'package:finance_copilot/ui/screens/events/event_edit_screen.dart';
@@ -65,31 +69,27 @@ class _AdjustmentsViewState extends ConsumerState<AdjustmentsView> {
                   if (events.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 40),
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.event_note, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            const SizedBox(height: 16),
-                            Text(s.noEventsYet, textAlign: TextAlign.center),
-                          ],
-                        ),
-                      ),
+                      child: EmptyState(icon: Icons.event_note, message: s.noEventsYet),
                     )
                   else
                     for (var i = 0; i < events.length; i++) ...[
                       SelectableItem<int>(
                         controller: _selection,
                         id: events[i].id,
-                        child: _EventTile(
-                          event: events[i],
-                          stats: stats[events[i].id],
-                          baseCurrency: baseCurrency,
-                          locale: locale,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => EventDetailScreen(eventId: events[i].id),
+                        child: SwipeToDelete.custom(
+                          key: ValueKey('dismiss_adjustment_${events[i].id}'),
+                          confirmAndDelete: () => confirmAndDeleteAdjustment(context, ref, events[i]),
+                          child: _EventTile(
+                            event: events[i],
+                            stats: stats[events[i].id],
+                            baseCurrency: baseCurrency,
+                            locale: locale,
+                            strings: s,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => EventDetailScreen(eventId: events[i].id),
+                              ),
                             ),
                           ),
                         ),
@@ -180,6 +180,7 @@ class _EventTile extends StatelessWidget {
   final ExtraordinaryEventStats? stats;
   final String baseCurrency;
   final String locale;
+  final AppStrings strings;
   final VoidCallback onTap;
 
   const _EventTile({
@@ -187,6 +188,7 @@ class _EventTile extends StatelessWidget {
     required this.stats,
     required this.baseCurrency,
     required this.locale,
+    required this.strings,
     required this.onTap,
   });
 
@@ -232,11 +234,7 @@ class _EventTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    _subtitle(context, shortDate, amtFmt, sym),
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  _subtitle(shortDate, amtFmt, sym),
                 ],
               ),
             ),
@@ -254,12 +252,12 @@ class _EventTile extends StatelessWidget {
                 if (stats != null && stats!.entryCount > 0) ...[
                   const SizedBox(height: 2),
                   Text(
-                    '${stats!.entryCount} · ${_treatmentLabel(context)}',
+                    '${stats!.entryCount} · $_treatmentLabel',
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
                 ] else
                   Text(
-                    _treatmentLabel(context),
+                    _treatmentLabel,
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
               ],
@@ -272,18 +270,18 @@ class _EventTile extends StatelessWidget {
     );
   }
 
-  String _subtitle(BuildContext context, dateFmt, amtFmt, String sym) {
-    final buffer = StringBuffer(dateFmt.format(event.eventDate));
-    if (stats != null && stats!.totalAllocated > 0) {
-      buffer.write(' · ');
-      buffer.write('${amtFmt.format(stats!.totalAllocated)} $sym');
-    }
-    return buffer.toString();
+  /// Event date, then the amount already allocated to it. The amount is
+  /// position size (masked in privacy mode); the date is not.
+  Widget _subtitle(DateFormat dateFmt, NumberFormat amtFmt, String sym) {
+    final date = dateFmt.format(event.eventDate);
+    final allocated = stats != null && stats!.totalAllocated > 0;
+    return PrivacySentence(
+      allocated ? '$date · ${privacySlot(0)}' : date,
+      figures: [if (allocated) '${amtFmt.format(stats!.totalAllocated)} $sym'],
+      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+      overflow: TextOverflow.ellipsis,
+    );
   }
 
-  String _treatmentLabel(BuildContext context) {
-    // Avoid pulling in AppStrings here; the tile is created per-row and
-    // treating this as a single-word heuristic is fine.
-    return event.treatment == EventTreatment.spread ? 'spread' : 'instant';
-  }
+  String get _treatmentLabel => event.treatment == EventTreatment.spread ? strings.eventTreatmentSpread : strings.eventTreatmentInstant;
 }

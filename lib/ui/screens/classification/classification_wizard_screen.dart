@@ -84,7 +84,7 @@ class _ClassificationWizardScreenState extends ConsumerState<ClassificationWizar
                     loading: () => const Center(
                       child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()),
                     ),
-                    error: (e, _) => Text('$e'),
+                    error: (e, _) => Text(s.error(e)),
                     data: (groups) {
                       final pending = groups.where((g) => !_skipped.contains(g.merchantKey)).toList();
                       if (groups.isEmpty) return _DoneCard(s: s);
@@ -98,7 +98,10 @@ class _ClassificationWizardScreenState extends ConsumerState<ClassificationWizar
                         samples: samples,
                         accountId: widget.accountId,
                         onSkip: () => setState(() => _skipped.add(g.merchantKey)),
-                        onBusyChanged: (v) => setState(() => _busy = v),
+                        // The card may report after this screen is gone.
+                        onBusyChanged: (v) {
+                          if (mounted) setState(() => _busy = v);
+                        },
                         onApplied: (step) => setState(() {
                           _history.add(step);
                           _skipped.remove(g.merchantKey);
@@ -121,7 +124,8 @@ class _ClassificationWizardScreenState extends ConsumerState<ClassificationWizar
     final step = _history.removeLast();
     setState(() => _busy = true);
     try {
-      if (step.ruleId != null) await ref.read(ruleServiceProvider).delete(step.ruleId!);
+      final ruleId = step.ruleId;
+      if (ruleId != null) await ref.read(ruleServiceProvider).delete(ruleId);
       await ref.read(transactionClassifierServiceProvider).setCategory(step.changedIds, null);
       if (mounted) showInfoSnack(context, s.wizardUndone);
     } finally {
@@ -140,19 +144,19 @@ class _ProgressHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pct = (progress.fraction * 100).round();
-    final amounts = progress.totalAmount != null && progress.baseCurrency != null;
+    final amounts = progress.amounts;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Progress is money explained, not rows ticked: the header leads with
         // the amounts (masked in privacy mode) and keeps the row count as a
         // secondary line.
-        if (amounts)
+        if (amounts != null)
           PrivacyText(
             s.wizardProgressAmount(
-              amountFmt.format(progress.categorizedAmount),
-              amountFmt.format(progress.totalAmount),
-              progress.baseCurrency!,
+              amountFmt.format(amounts.categorized),
+              amountFmt.format(amounts.total),
+              amounts.currency,
               pct,
             ),
             key: const Key('wizardProgress'),
@@ -164,7 +168,7 @@ class _ProgressHeader extends StatelessWidget {
             key: const Key('wizardProgress'),
             style: theme.textTheme.titleMedium,
           ),
-        if (amounts)
+        if (amounts != null)
           Text(
             s.wizardProgressRows(progress.categorized, progress.total),
             key: const Key('wizardProgressRows'),

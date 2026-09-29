@@ -20,6 +20,9 @@ class DashboardChart {
     required this.createdAt,
   });
 
+  /// [sourceChartIds] is the one nullable field, so it takes a sentinel:
+  /// omitted keeps it, an explicit null clears it, a string replaces it;
+  /// anything else is refused.
   DashboardChart copyWith({
     int? id,
     String? title,
@@ -35,7 +38,11 @@ class DashboardChart {
       widgetType: widgetType ?? this.widgetType,
       sortOrder: sortOrder ?? this.sortOrder,
       seriesJson: seriesJson ?? this.seriesJson,
-      sourceChartIds: identical(sourceChartIds, _sentinel) ? this.sourceChartIds : sourceChartIds as String?,
+      sourceChartIds: switch (sourceChartIds) {
+        _sentinel => this.sourceChartIds,
+        final String? ids => ids,
+        _ => throw ArgumentError.value(sourceChartIds, 'sourceChartIds', 'must be a String or null'),
+      },
       createdAt: createdAt ?? this.createdAt,
     );
   }

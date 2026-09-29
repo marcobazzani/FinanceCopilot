@@ -1,4 +1,20 @@
+import 'package:intl/intl.dart' show DateFormat;
+
 import 'formatters.dart' show monthMap;
+import 'visualization_clock.dart' show dateOnly;
+
+/// Why [parseDate] rejected a text. Still a [FormatException] whose message
+/// is the English one the logs show, plus what was read, so a caller can
+/// word the problem in the user's language.
+class DateParseException extends FormatException {
+  /// The text that was read.
+  final String raw;
+
+  /// There was nothing to read.
+  final bool empty;
+
+  const DateParseException(super.message, {required this.raw, this.empty = false});
+}
 
 /// Comprehensive date parser supporting many formats.
 ///
@@ -6,10 +22,10 @@ import 'formatters.dart' show monthMap;
 /// 2-digit years, compact yyyyMMdd, epoch timestamps, ISO 8601, etc.
 /// Multi-language month names via [monthMap].
 ///
-/// Throws [FormatException] if no format matches.
+/// Throws [DateParseException] if no format matches.
 DateTime parseDate(String s) {
   s = s.trim();
-  if (s.isEmpty) throw const FormatException('Empty date');
+  if (s.isEmpty) throw DateParseException('Empty date', raw: s, empty: true);
 
   // Strip surrounding quotes
   if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
@@ -30,7 +46,7 @@ DateTime parseDate(String s) {
     final day = int.parse(dmy.group(1)!);
     final month = int.parse(dmy.group(2)!);
     if (!_validDayMonth(day, month)) {
-      throw FormatException('Invalid day/month in date: $s');
+      throw DateParseException('Invalid day/month in date: $s', raw: s);
     }
     return DateTime(
       int.parse(dmy.group(3)!),
@@ -48,7 +64,7 @@ DateTime parseDate(String s) {
     final month = int.parse(ymd.group(2)!);
     final day = int.parse(ymd.group(3)!);
     if (!_validDayMonth(day, month)) {
-      throw FormatException('Invalid day/month in date: $s');
+      throw DateParseException('Invalid day/month in date: $s', raw: s);
     }
     return DateTime(
       int.parse(ymd.group(1)!),
@@ -72,7 +88,7 @@ DateTime parseDate(String s) {
     final month = int.parse(mYy.group(1)!);
     final year = int.parse(mYy.group(2)!);
     if (month < 1 || month > 12) {
-      throw FormatException('Invalid month in date: $s');
+      throw DateParseException('Invalid month in date: $s', raw: s);
     }
     // DateTime(y, m+1, 0) = last day of month m, robust across leap years.
     return DateTime(year, month + 1, 0);
@@ -97,11 +113,9 @@ DateTime parseDate(String s) {
     final day = int.parse(dmy2.group(1)!);
     final month = int.parse(dmy2.group(2)!);
     if (!_validDayMonth(day, month)) {
-      throw FormatException('Invalid day/month in date: $s');
+      throw DateParseException('Invalid day/month in date: $s', raw: s);
     }
-    var year = int.parse(dmy2.group(3)!);
-    year += year > 50 ? 1900 : 2000;
-    return DateTime(year, month, day);
+    return DateTime(_expandTwoDigitYear(int.parse(dmy2.group(3)!)), month, day);
   }
 
   // yyyyMMdd (compact, no separators)
@@ -112,7 +126,7 @@ DateTime parseDate(String s) {
     // Any 8 digits match the shape; only a real calendar date is one.
     // Without this, "86547083" silently becomes 8659-12-22 by rollover.
     if (!_validDayMonth(day, month)) {
-      throw FormatException('Invalid day/month in date: $s');
+      throw DateParseException('Invalid day/month in date: $s', raw: s);
     }
     return DateTime(int.parse(compact.group(1)!), month, day);
   }
@@ -177,7 +191,7 @@ DateTime parseDate(String s) {
   try {
     return DateTime.parse(s);
   } catch (_) {
-    throw FormatException('Invalid date format: $s');
+    throw DateParseException('Invalid date format: $s', raw: s);
   }
 }
 
@@ -189,5 +203,37 @@ DateTime? tryParseDate(String text) {
     return null;
   }
 }
+
+/// A date the user typed in a form field under [locale]: a calendar day, at
+/// local midnight.
+///
+/// The locale's own short date comes first — the `DateFormat.yMd` text the
+/// forms pre-fill — so under en_US "3/7/2026" is March 7 and "9/27/2026" is
+/// accepted. Any other shape goes to the day-first [tryParseDate] (ISO
+/// "2026-03-07", named months, …); a clock time or zone in it only locates
+/// the day: '2026-03-07T23:30:00Z' is the local day of that instant, never
+/// the instant itself. Null when neither reads it.
+DateTime? tryParseUserDate(String text, {required String locale}) {
+  final s = text.trim();
+  if (s.isEmpty) return null;
+  final short = DateFormat.yMd(locale);
+  try {
+    final d = short.parseStrict(s);
+    if (d.year >= 1000) return d;
+    // `y` takes a short year literally ("26" is year 26). A two-digit year
+    // keeps the locale's day/month order and gets the dd/MM/yy century.
+    if ((short.pattern ?? '').endsWith('y') && _trailingTwoDigits.hasMatch(s)) {
+      return DateTime(_expandTwoDigitYear(d.year), d.month, d.day);
+    }
+  } on FormatException {
+    // Not the locale's short date: the comprehensive parser below decides.
+  }
+  final parsed = tryParseDate(s);
+  return parsed == null ? null : dateOnly(parsed.toLocal());
+}
+
+final _trailingTwoDigits = RegExp(r'(^|\D)\d{2}$');
+
+int _expandTwoDigitYear(int year) => year + (year > 50 ? 1900 : 2000);
 
 bool _validDayMonth(int day, int month) => month >= 1 && month <= 12 && day >= 1 && day <= 31;

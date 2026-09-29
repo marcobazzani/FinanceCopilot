@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 
 import '../../../l10n/app_strings.dart';
+import '../../widgets/privacy_text.dart' show privacySlot, splitPrivacySlots;
 
 /// Per-month income/expense data used by the EoY projection.
 class EoyMonth {
@@ -83,8 +84,15 @@ EoyDetails? computeEoyDetails(EoyYear current, EoyYear prev, {bool expenses = fa
   );
 }
 
-const _monthAbbrs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-String monthAbbr(int month) => _monthAbbrs[(month - 1).clamp(0, 11)];
+/// Abbreviated name of [month] (1-12) in [locale], e.g. "Apr" / "apr".
+String monthAbbr(int month, String locale) => DateFormat.MMM(locale).format(DateTime(2000, month.clamp(1, 12)));
+
+/// A position-size figure inside a rich formula or explanation: an amount of
+/// income, expenses, savings or a projection of them. Privacy mode masks these
+/// spans alone; the labels, months and percentages around them stay readable.
+class PositionFigureSpan extends TextSpan {
+  const PositionFigureSpan({super.text, super.style});
+}
 
 /// Smoothed annual expense estimate for forward-looking KPIs (e.g. FIRE).
 ///
@@ -142,11 +150,17 @@ SmoothedAnnualExpenses? estimateSmoothedAnnualExpenses({
 /// info dialog. Returns `null` when neither income nor expenses can be
 /// projected.
 ///
+/// Worded by [s]; month names are spelled in [locale], the display locale
+/// (English without one).
+///
 /// Layout:
 ///   1. Title + seasonal-reference subtitle
 ///   2. Bold "Predictions" block: Income / Expenses / Savings / Rate
 ///   3. "How it's calculated" details: per-metric breakdown + savings/rate
 ///      math + formula footer
+///
+/// Every amount is its own [PositionFigureSpan]; the rest (labels, years,
+/// month ranges, percentages) are plain spans.
 TextSpan? buildEoyExplanationSpan({
   required EoyYear current,
   required EoyYear prev,
@@ -154,6 +168,7 @@ TextSpan? buildEoyExplanationSpan({
   required NumberFormat pctFmt,
   required String sym,
   required AppStrings s,
+  String locale = 'en_US',
 }) {
   if (current.months.isEmpty) return null;
   final incD = computeEoyDetails(current, prev);
@@ -165,40 +180,46 @@ TextSpan? buildEoyExplanationSpan({
   final eoySav = (eoyInc != null && eoyExp != null) ? eoyInc - eoyExp : null;
   final eoyRate = (eoyInc != null && eoyInc > 0 && eoySav != null) ? eoySav / eoyInc : null;
 
-  final isIt = s.eoyFormula.contains('anno'); // detect language
   final boldStyle = const TextStyle(fontWeight: FontWeight.w700);
 
-  String monthRangeOf(EoyDetails d) => d.months == 1 ? 'Jan' : 'Jan–${monthAbbr(d.months)}';
+  String monthRangeOf(EoyDetails d) => d.months == 1 ? monthAbbr(1, locale) : '${monthAbbr(1, locale)}–${monthAbbr(d.months, locale)}';
 
-  String fmtAmt(double v) => '${amtFmt.format(v)} $sym';
+  /// [v] as a marked amount, followed by the currency symbol unless [bare].
+  PositionFigureSpan amount(double v, {bool bare = false, TextStyle? style}) =>
+      PositionFigureSpan(text: bare ? amtFmt.format(v) : '${amtFmt.format(v)} $sym', style: style);
+
+  // Stands for the amount in a localized sentence; [sentence] puts the
+  // amount's spans in its place, the words on either side stay plain spans.
+  final amountMark = privacySlot(0);
+  List<InlineSpan> sentence(String template, List<InlineSpan> filling) {
+    final parts = splitPrivacySlots(template);
+    assert(parts.where((part) => part.slot != null).length == 1, 'one amount per sentence: $template');
+    return [
+      for (final (:words, :slot) in parts)
+        if (slot == null) TextSpan(text: words) else ...filling,
+    ];
+  }
 
   final children = <InlineSpan>[];
 
   // ── Header ─────────────────────────────────────────────
   children.add(
     TextSpan(
-      text: isIt ? 'Previsione fine anno ${current.year}\n' : 'End-of-year ${current.year} prediction\n',
+      text: '${s.eoyTitle(current.year)}\n',
       style: const TextStyle(fontWeight: FontWeight.w700),
     ),
   );
-  children.add(
-    TextSpan(
-      text: isIt
-          ? 'Basata sull\'andamento del ${prev.year} come riferimento stagionale.\n\n'
-          : 'Based on ${prev.year} as the seasonal reference.\n\n',
-    ),
-  );
+  children.add(TextSpan(text: '${s.eoyBasis(prev.year)}\n\n'));
 
   // ── Predictions (bold values) ─────────────────────────
   void addPrediction(String label, double? value, {bool isPct = false}) {
     if (value == null) return;
     children.add(TextSpan(text: '  $label: '));
-    children.add(
-      TextSpan(
-        text: isPct ? '~${pctFmt.format(value)}\n' : '~${fmtAmt(value)}\n',
-        style: boldStyle,
-      ),
-    );
+    if (isPct) {
+      children.add(TextSpan(text: '~${pctFmt.format(value)}\n', style: boldStyle));
+    } else {
+      children.addAll([TextSpan(text: '~', style: boldStyle), amount(value, style: boldStyle), const TextSpan(text: '\n')]);
+    }
   }
 
   addPrediction(s.colIncome, eoyInc);
@@ -209,7 +230,7 @@ TextSpan? buildEoyExplanationSpan({
   // ── Details ───────────────────────────────────────────
   children.add(
     TextSpan(
-      text: isIt ? '\nDettagli del calcolo:\n' : '\nHow it\'s calculated:\n',
+      text: '\n${s.eoyHowCalculated}\n',
       style: const TextStyle(fontWeight: FontWeight.w600),
     ),
   );
@@ -217,41 +238,50 @@ TextSpan? buildEoyExplanationSpan({
   void addMetricDetail(String label, EoyDetails? d, double? result) {
     if (d == null || result == null) return;
     final monthRange = monthRangeOf(d);
-    final prevPct = d.prevSame != 0 ? (d.currentTotal / d.prevSame * 100).toStringAsFixed(1) : '?';
-    final body = isIt
-        ? '━ $label\n'
-              '  Nel ${prev.year}, il totale annuo è stato ${fmtAmt(d.prevTotal)}.\n'
-              '  Nello stesso periodo ($monthRange) del ${prev.year}: ${fmtAmt(d.prevSame)}.\n'
-              '  Nel ${current.year} ($monthRange) finora: ${fmtAmt(d.currentTotal)} ($prevPct% rispetto al ${prev.year}).\n'
-              '  Proiezione: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${fmtAmt(result)}\n'
-        : '━ $label\n'
-              '  In ${prev.year}, the full-year total was ${fmtAmt(d.prevTotal)}.\n'
-              '  Over the same period ($monthRange) in ${prev.year}: ${fmtAmt(d.prevSame)}.\n'
-              '  In ${current.year} ($monthRange) so far: ${fmtAmt(d.currentTotal)} ($prevPct% vs ${prev.year}).\n'
-              '  Projection: ${amtFmt.format(d.prevTotal)} × ${amtFmt.format(d.currentTotal)} ÷ ${amtFmt.format(d.prevSame)} = ~${fmtAmt(result)}\n';
-    children.add(TextSpan(text: body));
+    final prevPct = d.prevSame != 0 ? pctFmt.format(d.currentTotal / d.prevSame) : '?';
+    children.addAll([
+      TextSpan(text: '━ $label\n  '),
+      ...sentence(s.eoyPrevFullYear(prev.year, amountMark), [amount(d.prevTotal)]),
+      const TextSpan(text: '\n  '),
+      ...sentence(s.eoyPrevSamePeriod(monthRange, prev.year, amountMark), [amount(d.prevSame)]),
+      const TextSpan(text: '\n  '),
+      ...sentence(s.eoyCurrentSoFar(current.year, monthRange, amountMark, prevPct, prev.year), [amount(d.currentTotal)]),
+      const TextSpan(text: '\n  '),
+      ...sentence(s.eoyProjection(amountMark), [
+        amount(d.prevTotal, bare: true),
+        const TextSpan(text: ' × '),
+        amount(d.currentTotal, bare: true),
+        const TextSpan(text: ' ÷ '),
+        amount(d.prevSame, bare: true),
+        const TextSpan(text: ' = ~'),
+        amount(result),
+      ]),
+      const TextSpan(text: '\n'),
+    ]);
   }
 
   addMetricDetail(s.colIncome, incD, eoyInc);
   addMetricDetail(s.colExpenses, expD, eoyExp);
 
   if (eoySav != null) {
-    children.add(
-      TextSpan(
-        text:
-            '━ ${s.colSavings}\n'
-            '  ~${fmtAmt(eoyInc!)} − ~${fmtAmt(eoyExp!)} = ~${fmtAmt(eoySav)}\n',
-      ),
-    );
+    children.addAll([
+      TextSpan(text: '━ ${s.colSavings}\n  ~'),
+      amount(eoyInc!),
+      const TextSpan(text: ' − ~'),
+      amount(eoyExp!),
+      const TextSpan(text: ' = ~'),
+      amount(eoySav),
+      const TextSpan(text: '\n'),
+    ]);
   }
   if (eoyRate != null) {
-    children.add(
-      TextSpan(
-        text:
-            '━ ${s.colRate}\n'
-            '  ~${amtFmt.format(eoySav!)} ÷ ~${amtFmt.format(eoyInc!)} = ~${pctFmt.format(eoyRate)}\n',
-      ),
-    );
+    children.addAll([
+      TextSpan(text: '━ ${s.colRate}\n  ~'),
+      amount(eoySav!, bare: true),
+      const TextSpan(text: ' ÷ ~'),
+      amount(eoyInc!, bare: true),
+      TextSpan(text: ' = ~${pctFmt.format(eoyRate)}\n'),
+    ]);
   }
 
   children.add(TextSpan(text: '\n${s.eoyFormula}\n'));

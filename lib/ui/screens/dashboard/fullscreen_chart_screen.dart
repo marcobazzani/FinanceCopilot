@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +15,9 @@ import 'dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, 
 /// support for data-visualisation modals) and turns on full pinch X+Y +
 /// drag pan via [DragZoomWrapper.fullPinch]. Restores portrait-only
 /// orientation on dispose so the rest of the app stays portrait.
+///
+/// Privacy mode is watched, not handed over when the chart opens: turned on
+/// or off while the chart is up (a global shortcut), it applies at once.
 class FullscreenChartScreen extends ConsumerStatefulWidget {
   final String title;
   final List<ChartSeries> series;
@@ -23,7 +25,6 @@ class FullscreenChartScreen extends ConsumerStatefulWidget {
   final bool showTotal;
   final DateTime firstDate;
   final String baseCurrency;
-  final bool isPrivate;
 
   const FullscreenChartScreen({
     super.key,
@@ -33,7 +34,6 @@ class FullscreenChartScreen extends ConsumerStatefulWidget {
     required this.showTotal,
     required this.firstDate,
     required this.baseCurrency,
-    this.isPrivate = false,
   });
 
   @override
@@ -75,23 +75,31 @@ class _FullscreenChartScreenState extends ConsumerState<FullscreenChartScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
+    final isPrivate = ref.watch(privacyModeProvider);
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final langCode = ref.watch(portableLanguageProvider);
     final language = langCode.startsWith('it') ? 'it_IT' : 'en_US';
 
     final lastX = widget.totalSpots.isNotEmpty ? widget.totalSpots.last.x : 1.0;
 
-    // Y range mirrors UnifiedChart's auto-fit so DragZoomWrapper's pixel→
-    // chart math works on the same window the chart actually paints.
-    final allY = [
-      if (widget.showTotal) ...widget.totalSpots.map((p) => p.y),
-      ...widget.series.where((s) => !s.rightAxis).expand((s) => s.spots.map((p) => p.y)),
-    ];
-    final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
-    final autoMaxY = allY.isEmpty ? 100.0 : allY.reduce(max);
-    final autoRange = autoMaxY - autoMinY;
-    final effectiveMinY = _zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
-    final effectiveMaxY = _zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
+    final chart = UnifiedChart(
+      firstDate: widget.firstDate,
+      visible: widget.series,
+      totalSpots: widget.totalSpots,
+      showTotal: widget.showTotal,
+      baseCurrency: widget.baseCurrency,
+      locale: locale,
+      language: language,
+      zoomMinX: _zoomMinX,
+      zoomMaxX: _zoomMaxX,
+      zoomMinY: _zoomMinY,
+      zoomMaxY: _zoomMaxY,
+      isPrivate: isPrivate,
+      liveZoom: true,
+    );
+    // DragZoomWrapper's pixel→chart math works on the Y range the chart
+    // actually paints.
+    final yRange = chart.drawnYRange;
 
     final hasZoom = _zoomMinX != null || _zoomMaxX != null || _zoomMinY != null || _zoomMaxY != null;
 
@@ -118,8 +126,8 @@ class _FullscreenChartScreenState extends ConsumerState<FullscreenChartScreen> {
           child: DragZoomWrapper(
             xMin: _zoomMinX ?? 0,
             xMax: _zoomMaxX ?? lastX,
-            yMin: effectiveMinY,
-            yMax: effectiveMaxY,
+            yMin: yRange.minY,
+            yMax: yRange.maxY,
             totalDays: lastX,
             firstDate: widget.firstDate,
             baseCurrency: widget.baseCurrency,
@@ -128,21 +136,8 @@ class _FullscreenChartScreenState extends ConsumerState<FullscreenChartScreen> {
             rightReserved: widget.series.any((s) => s.rightAxis) ? kChartRightReservedDual : 0,
             zoomedY: _zoomMinY != null || _zoomMaxY != null,
             fullPinch: true,
-            child: UnifiedChart(
-              firstDate: widget.firstDate,
-              visible: widget.series,
-              totalSpots: widget.totalSpots,
-              showTotal: widget.showTotal,
-              baseCurrency: widget.baseCurrency,
-              locale: locale,
-              language: language,
-              zoomMinX: _zoomMinX,
-              zoomMaxX: _zoomMaxX,
-              zoomMinY: _zoomMinY,
-              zoomMaxY: _zoomMaxY,
-              isPrivate: widget.isPrivate,
-              liveZoom: true,
-            ),
+            isPrivate: isPrivate,
+            child: chart,
           ),
         ),
       ),

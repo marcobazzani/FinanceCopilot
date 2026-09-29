@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
@@ -9,6 +7,7 @@ import 'package:finance_copilot/services/classification/ledger_roles.dart';
 import 'package:finance_copilot/services/classification/rule_service.dart';
 import 'package:finance_copilot/services/classification/spending_by_category.dart' show RateLookup;
 import 'package:finance_copilot/services/domain/extraordinary_event_service.dart';
+import 'package:finance_copilot/services/import/stored_import_data.dart' show decodeRawMetadata;
 import 'package:finance_copilot/utils/logger.dart';
 
 final _log = getLogger('TransactionClassifierService');
@@ -97,33 +96,36 @@ class ClassificationProgress {
   /// Rows with a [LedgerRole], reported for transparency.
   final int excluded;
 
-  /// Money that takes part in categorization, as |amount| in [baseCurrency],
-  /// and the part of it already categorized. Null when the ledger was not
-  /// valued (no rate lookup given). Rows without an FX rate are excluded
-  /// from both sums and counted in [fxExcluded].
-  final double? totalAmount;
-  final double? categorizedAmount;
+  /// Money that takes part in categorization, as |amount| in the base
+  /// [currency], and the part of it already categorized — all three or none:
+  /// null when the ledger was not valued (no rate lookup given). Rows without
+  /// an FX rate are excluded from both sums and counted in [fxExcluded].
+  final ({double total, double categorized, String currency})? amounts;
   final int fxExcluded;
-  final String? baseCurrency;
 
   const ClassificationProgress({
     required this.total,
     required this.categorized,
     this.excluded = 0,
-    this.totalAmount,
-    this.categorizedAmount,
+    this.amounts,
     this.fxExcluded = 0,
-    this.baseCurrency,
   });
   int get uncategorized => total - categorized;
-  double? get uncategorizedAmount => totalAmount == null ? null : totalAmount! - categorizedAmount!;
+
+  double? get totalAmount => amounts?.total;
+  double? get categorizedAmount => amounts?.categorized;
+  String? get baseCurrency => amounts?.currency;
+  double? get uncategorizedAmount {
+    final money = amounts;
+    return money == null ? null : money.total - money.categorized;
+  }
 
   /// Progress is measured in money when the ledger is valued (what matters is
   /// how much of the spending is explained, not how many rows), in rows
   /// otherwise.
   double get fraction {
-    final ta = totalAmount;
-    if (ta != null) return ta == 0 ? 1.0 : (categorizedAmount! / ta).clamp(0.0, 1.0);
+    final money = amounts;
+    if (money != null) return money.total == 0 ? 1.0 : (money.categorized / money.total).clamp(0.0, 1.0);
     return total == 0 ? 1.0 : categorized / total;
   }
 }
@@ -311,10 +313,8 @@ class TransactionClassifierService {
       total: total,
       categorized: done,
       excluded: excluded,
-      totalAmount: valuation == null ? null : totalAmount,
-      categorizedAmount: valuation == null ? null : doneAmount,
+      amounts: valuation == null ? null : (total: totalAmount, categorized: doneAmount, currency: valuation.baseCurrency),
       fxExcluded: fxExcluded,
-      baseCurrency: valuation?.baseCurrency,
     );
   }
 
@@ -461,23 +461,12 @@ class TransactionClassifierService {
     String? descriptionFull,
     String? rawMetadataJson,
     required double amount,
-  }) {
-    Map<String, dynamic>? meta;
-    if (rawMetadataJson != null && rawMetadataJson.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(rawMetadataJson);
-        if (decoded is Map<String, dynamic>) meta = decoded;
-      } on FormatException {
-        meta = null;
-      }
-    }
-    return normalizeDescription(
-      description: description,
-      descriptionFull: descriptionFull,
-      rawMetadata: meta,
-      inflow: amount > 0,
-    );
-  }
+  }) => normalizeDescription(
+    description: description,
+    descriptionFull: descriptionFull,
+    rawMetadata: decodeRawMetadata(rawMetadataJson),
+    inflow: amount > 0,
+  );
 
   /// Recompute `merchant_key` / `counterparty` / `entry_kind` when the
   /// normalizer version changed or when rows lack a key. Returns the number
@@ -550,7 +539,12 @@ class TransactionClassifierService {
     )..where((r) => r.matchType.equals(RuleMatchType.merchantKey.name) & r.pattern.isIn(moved.keys.toList()))).get();
     var n = 0;
     for (final r in rules) {
-      final targets = moved[r.pattern]!.toList()..sort();
+      // The query selects a rule by one of these keys, so its new keys are
+      // there; a rule without any is left as it is rather than failing the
+      // whole recompute.
+      final newKeys = moved[r.pattern];
+      if (newKeys == null || newKeys.isEmpty) continue;
+      final targets = newKeys.toList()..sort();
       await (_db.update(_db.autoCategorizationRules)..where((x) => x.id.equals(r.id))).write(
         AutoCategorizationRulesCompanion(pattern: Value(targets.first)),
       );

@@ -28,13 +28,15 @@ class DbTransferService {
   /// actual write itself and requires `bytes` up front — a bare
   /// `saveFile(...)` call without `bytes` throws on those platforms.
   ///
+  /// [dialogTitle] titles the picker, in the UI language.
+  ///
   /// Returns the export path on success, null if cancelled.
-  static Future<String?> exportDb(AppDatabase db) async {
+  static Future<String?> exportDb(AppDatabase db, {required String dialogTitle}) async {
     final snapshotPath = await db.snapshotToTempFile();
     try {
       final bytes = await File(snapshotPath).readAsBytes();
       final result = await FilePicker.saveFile(
-        dialogTitle: 'Export Database',
+        dialogTitle: dialogTitle,
         fileName: 'FinanceCopilot.db',
         type: FileType.any,
         bytes: bytes,
@@ -59,10 +61,11 @@ class DbTransferService {
   /// Uses SQLite ATTACH via [AppDatabase.mergeFromAttachedDb] instead of
   /// replacing the database file. This keeps the import safe while Drift has
   /// active stream subscribers and avoids Windows file-lock failures.
+  /// [dialogTitle] titles the picker, in the UI language.
   /// Returns the import source path on success, null if cancelled.
-  static Future<String?> importDb(AppDatabase db) async {
+  static Future<String?> importDb(AppDatabase db, {required String dialogTitle}) async {
     final picked = await FilePicker.pickFiles(
-      dialogTitle: 'Import Database',
+      dialogTitle: dialogTitle,
       type: FileType.custom,
       allowedExtensions: ['db'],
     );

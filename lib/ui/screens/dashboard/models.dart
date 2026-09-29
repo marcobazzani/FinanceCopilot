@@ -35,6 +35,16 @@ class AllSeriesData {
   final List<ChartSeries> ephemeralInflows; // key: "ephemeral_inflow_value/events:<id>" — line-of-credit inflows
   final String baseCurrency;
 
+  /// Accounts whose balance is in a currency without any rate to
+  /// [baseCurrency]: their series has no spots, so every total leaves them
+  /// out — counted by [totalExclusions].
+  final Set<int> excludedAccountIds;
+
+  /// Adjustments (extraordinary events) whose amounts are in a currency
+  /// without any rate to [baseCurrency]: their series are kept without spots,
+  /// so every total leaves them out — counted by [totalExclusions].
+  final Set<int> excludedAdjustmentIds;
+
   const AllSeriesData({
     required this.firstDate,
     required this.accounts,
@@ -46,6 +56,8 @@ class AllSeriesData {
     required this.incomeAdjustments,
     required this.ephemeralInflows,
     required this.baseCurrency,
+    this.excludedAccountIds = const {},
+    this.excludedAdjustmentIds = const {},
   });
 
   List<ChartSeries> get allSeries => [
@@ -157,11 +169,17 @@ class _IncomeExpenseData {
   /// inflates fund NAV but never lands in the user's bank account, so
   /// it shouldn't drive saving/expense velocity metrics.
   final List<FlSpot> pensionContribCumulativeSpots;
+
+  /// Income records (salaries, refunds, pension contributions) whose currency
+  /// had no rate to base on their value date: left out of [years] rather than
+  /// converted 1:1, and counted here.
+  final int rowsWithoutRate;
   const _IncomeExpenseData({
     required this.years,
     required this.baseCurrency,
     required this.firstDate,
     this.pensionContribCumulativeSpots = const [],
+    required this.rowsWithoutRate,
   });
 }
 
@@ -208,6 +226,141 @@ List<FlSpot> buildTotalSpots(List<List<FlSpot>> allSpots) {
   }).toList();
 }
 
+/// The series of [visible] that make up a chart's total, so an asset is never
+/// counted twice nor valued at cost:
+/// - a visible `asset_net:<id>` supersedes `asset_invested:<id>` and
+///   `asset_market:<id>`;
+/// - otherwise a visible `asset_market:<id>` supersedes `asset_invested:<id>`;
+/// - a superseding series without spots (no price or exchange rate) leaves
+///   the asset out altogether — its invested line never stands in for the
+///   missing value — and [totalExclusions] reports the asset as unpriced;
+/// - right-axis series are on another scale and never count.
+List<ChartSeries> smartTotalSeries(List<ChartSeries> visible) => _smartTotal(visible).series;
+
+/// The series of [smartTotalSeries], and the assets it leaves out for want of
+/// a value: the series standing for the asset (net if visible, else market)
+/// has no spots.
+({List<ChartSeries> series, Set<int> unpriced}) _smartTotal(List<ChartSeries> visible) {
+  final visibleInvestedIds = <int>{};
+  final visibleMarketIds = <int>{};
+  final visibleNetIds = <int>{};
+  for (final s in visible) {
+    final key = parseSeriesKey(s.key);
+    if (key == null) continue;
+    if (key.type == 'asset_invested') visibleInvestedIds.add(key.id);
+    if (key.type == 'asset_market') visibleMarketIds.add(key.id);
+    if (key.type == 'asset_net') visibleNetIds.add(key.id);
+  }
+  final excludeFromTotal = <String>{};
+  for (final id in visibleNetIds) {
+    excludeFromTotal.add('asset_invested:$id');
+    excludeFromTotal.add('asset_market:$id');
+  }
+  for (final id in visibleInvestedIds) {
+    if (visibleMarketIds.contains(id)) {
+      excludeFromTotal.add('asset_invested:$id');
+    }
+  }
+  final series = <ChartSeries>[];
+  final unpriced = <int>{};
+  for (final s in visible) {
+    if (excludeFromTotal.contains(s.key) || s.rightAxis) continue;
+    final key = parseSeriesKey(s.key);
+    if (key != null && s.spots.isEmpty && (key.type == 'asset_market' || key.type == 'asset_net')) {
+      unpriced.add(key.id);
+      continue;
+    }
+    series.add(s);
+  }
+  return (series: series, unpriced: unpriced);
+}
+
+/// Every contributor a total built from some visible series leaves out — or,
+/// for an incomplete cost basis, holds only part of — for want of a price or
+/// an exchange rate, each one once. Totals over several charts merge theirs
+/// with [union]; the footnote under them shows [excludedFromTotalCount].
+class TotalExclusions {
+  /// Assets without a value in the series standing for them in the total
+  /// (see [smartTotalSeries]), or without a market value to draw the gain the
+  /// total adds up from.
+  final Set<int> unpricedAssetIds;
+
+  /// Assets standing in the total through their invested or gain series while
+  /// a buy or sell amount has no rate to base: the amount is missing from
+  /// them (see [costBasisIncompleteAssetIds]) — every amount when their
+  /// invested series has no spots, whether they have a price or not.
+  final Set<int> costBasisIncompleteAssetIds;
+
+  /// Accounts without a rate to base (see [AllSeriesData.excludedAccountIds]).
+  final Set<int> accountIds;
+
+  /// Adjustments without a rate to base (see
+  /// [AllSeriesData.excludedAdjustmentIds]).
+  final Set<int> adjustmentIds;
+
+  const TotalExclusions({
+    this.unpricedAssetIds = const {},
+    this.costBasisIncompleteAssetIds = const {},
+    this.accountIds = const {},
+    this.adjustmentIds = const {},
+  });
+
+  /// How many contributors are left out: an asset counts once, whatever the
+  /// reason.
+  int get excludedFromTotalCount => {...unpricedAssetIds, ...costBasisIncompleteAssetIds}.length + accountIds.length + adjustmentIds.length;
+
+  /// The contributors left out of either.
+  TotalExclusions union(TotalExclusions other) => TotalExclusions(
+    unpricedAssetIds: {...unpricedAssetIds, ...other.unpricedAssetIds},
+    costBasisIncompleteAssetIds: {...costBasisIncompleteAssetIds, ...other.costBasisIncompleteAssetIds},
+    accountIds: {...accountIds, ...other.accountIds},
+    adjustmentIds: {...adjustmentIds, ...other.adjustmentIds},
+  );
+}
+
+/// What the smart total of [visible] ([buildSmartTotalSpots]) leaves out of
+/// [data]: the assets whose series standing for their value has no spots
+/// ([smartTotalSeries]), plus, among the series the total adds up, the
+/// accounts and adjustments of [data] without a rate to base and the assets
+/// whose cost basis is incomplete. An asset series the total adds up without
+/// spots adds nothing to it, so its asset is counted whatever the reason: an
+/// invested line none of whose amounts converts to base (an incomplete cost
+/// basis, priced or not), a gain series against a whole cost basis (no market
+/// value to draw it from: unpriced).
+TotalExclusions totalExclusions(List<ChartSeries> visible, AllSeriesData data) {
+  final total = _smartTotal(visible);
+  late final incompleteCostBasis = costBasisIncompleteAssetIds(data);
+  final unpriced = {...total.unpriced};
+  final costBasis = <int>{};
+  final accounts = <int>{};
+  final adjustments = <int>{};
+  for (final s in total.series) {
+    final key = parseSeriesKey(s.key);
+    if (key == null) continue;
+    if (key.type == 'account') {
+      if (data.excludedAccountIds.contains(key.id)) accounts.add(key.id);
+    } else if (isAdjustmentSeriesKey(s.key)) {
+      if (data.excludedAdjustmentIds.contains(key.id)) adjustments.add(key.id);
+    } else if (key.type == 'asset_invested' || key.type == 'asset_gain') {
+      if (incompleteCostBasis.contains(key.id) || (key.type == 'asset_invested' && s.spots.isEmpty)) {
+        costBasis.add(key.id);
+      } else if (s.spots.isEmpty) {
+        unpriced.add(key.id);
+      }
+    }
+  }
+  return TotalExclusions(
+    unpricedAssetIds: unpriced,
+    costBasisIncompleteAssetIds: costBasis,
+    accountIds: accounts,
+    adjustmentIds: adjustments,
+  );
+}
+
+/// Carry-forward total of the [smartTotalSeries] of [visible]: the total a
+/// chart card plots and shows in its header, and what the role resolvers read.
+List<FlSpot> buildSmartTotalSpots(List<ChartSeries> visible) => buildTotalSpots(smartTotalSeries(visible).map((s) => s.spots).toList());
+
 List<FlSpot> extendSingleSpotCarryForward(
   List<FlSpot> spots, {
   required DateTime firstDate,
@@ -241,6 +394,10 @@ bool isAdjustmentSeriesKey(String key) =>
 /// epoch. [firstDayOfWeekIndex] follows `MaterialLocalizations` (0 = Sunday …
 /// 6 = Saturday) so `WTD` honours the active locale's first day of week
 /// (Monday for it/de/fr/es/en_GB, Sunday for en_US).
+///
+/// Every step is in calendar days, never in multiples of 24 hours: on a
+/// daylight-saving change a day is 23 or 25 hours long, and 7 × 24 hours
+/// before a local midnight is 23:00 of the calendar day before the one meant.
 DateTime priceChangeReferenceDate({
   required DateTime today,
   required String unit,
@@ -249,9 +406,9 @@ DateTime priceChangeReferenceDate({
 }) {
   switch (unit) {
     case 'd':
-      return today.subtract(Duration(days: number));
+      return _calendarDaysBefore(today, number);
     case 'w':
-      return today.subtract(Duration(days: number * 7));
+      return _calendarDaysBefore(today, number * 7);
     case 'm':
       return DateTime(today.year, today.month - number, today.day);
     case 'y':
@@ -263,18 +420,22 @@ DateTime priceChangeReferenceDate({
       final daysSinceWeekStart = (today.weekday % 7 - firstDayOfWeekIndex + 7) % 7;
       // Anchor to the day BEFORE the week start so getPrice("on or before")
       // resolves to the previous week's close (the week-start day itself read 0).
-      return DateTime(today.year, today.month, today.day).subtract(Duration(days: daysSinceWeekStart + 1));
+      return DateTime(today.year, today.month, today.day - daysSinceWeekStart - 1);
     case 'MTD':
-      // Day before the 1st = last day of the previous month, so the base is the
+      // Day 0 of the month = last day of the previous month, so the base is the
       // previous month's close (anchoring to the 1st made day 1 of the month read 0).
-      return DateTime(today.year, today.month, 1).subtract(const Duration(days: 1));
+      return DateTime(today.year, today.month, 0);
     case 'YTD':
       // Dec 31 of the previous year, so the base is the prior year's close
       // (anchoring to Jan 1 made the first trading day of the year read 0).
-      return DateTime(today.year, 1, 1).subtract(const Duration(days: 1));
+      return DateTime(today.year - 1, 12, 31);
     case 'All':
       return DateTime(2000, 1, 1);
     default:
-      return today.subtract(const Duration(days: 1));
+      return _calendarDaysBefore(today, 1);
   }
 }
+
+/// [date] moved back [days] calendar days, at the same time of day.
+DateTime _calendarDaysBefore(DateTime date, int days) =>
+    DateTime(date.year, date.month, date.day - days, date.hour, date.minute, date.second, date.millisecond, date.microsecond);

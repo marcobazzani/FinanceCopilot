@@ -2,7 +2,11 @@ part of 'asset_detail_screen.dart';
 
 class _AssetChartSection extends ConsumerWidget {
   final int assetId;
-  const _AssetChartSection({required this.assetId});
+
+  /// The asset is manually valued: its "price" is the user's own valuation
+  /// per unit (position size), not public market data.
+  final bool privatePrice;
+  const _AssetChartSection({required this.assetId, required this.privatePrice});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,6 +39,7 @@ class _AssetChartSection extends ConsumerWidget {
                 firstDate: data.firstDate,
                 currency: data.assetCurrency,
                 valueDecimals: 2,
+                showsPositionSize: privatePrice,
               ),
           ],
         );
@@ -55,6 +60,10 @@ class _AssetChartCard extends ConsumerStatefulWidget {
   final String currency; // for axis labels
   final int valueDecimals; // 0 for money magnitudes, 2 for unit price
 
+  /// Whether the charted values are position size, masked in privacy mode.
+  /// False for the unit price of a listed instrument: public market data.
+  final bool showsPositionSize;
+
   const _AssetChartCard({
     required this.title,
     required this.titleValue,
@@ -62,6 +71,7 @@ class _AssetChartCard extends ConsumerStatefulWidget {
     required this.firstDate,
     required this.currency,
     this.valueDecimals = 0,
+    this.showsPositionSize = true,
   });
 
   @override
@@ -88,20 +98,35 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
 
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final language = locale.split('_').first;
-    final isPrivate = ref.watch(privacyModeProvider);
+    final isPrivate = ref.watch(privacyModeProvider) && widget.showsPositionSize;
     final s = ref.watch(appStringsProvider);
     final hasZoom = _zoomMinX != null || _zoomMinY != null;
 
-    // X range from all series
+    // One X extent for the chart and its drag zoom: the furthest any series
+    // reaches. The chart reads its extent off the series handed to it as the
+    // total, so that is the series reaching this far — the first one (the
+    // invested line) can stop earlier, or be empty for an asset without one,
+    // and the chart then drew days 0–1 only.
     final lastX = allSpots.map((s) => s.x).reduce(max);
+    final longest = widget.series.firstWhere((s) => s.spots.any((p) => p.x == lastX)).spots;
 
-    // Y range from all series
-    final allY = allSpots.map((s) => s.y).toList();
-    final autoMinY = allY.reduce(min);
-    final autoMaxY = allY.reduce(max);
-    final autoRange = autoMaxY - autoMinY;
-    final effectiveMinY = _zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
-    final effectiveMaxY = _zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
+    final chart = UnifiedChart(
+      firstDate: widget.firstDate,
+      visible: widget.series,
+      totalSpots: longest,
+      showTotal: false,
+      baseCurrency: widget.currency,
+      locale: locale,
+      language: language,
+      zoomMinX: _zoomMinX,
+      zoomMaxX: _zoomMaxX,
+      zoomMinY: _zoomMinY,
+      zoomMaxY: _zoomMaxY,
+      isPrivate: isPrivate,
+      valueDecimals: widget.valueDecimals,
+    );
+    // The drag zoom maps pixels through the Y range the chart draws.
+    final yRange = chart.drawnYRange;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -117,10 +142,11 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                   Expanded(
                     child: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
-                  if (isPrivate)
-                    const Text('****', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
-                  else
-                    Text(widget.titleValue, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  PrivacyText(
+                    widget.titleValue,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    masked: widget.showsPositionSize,
+                  ),
                   const SizedBox(width: 8),
                   Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 20),
                 ],
@@ -141,8 +167,8 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                           DragZoomWrapper(
                             xMin: _zoomMinX ?? 0,
                             xMax: _zoomMaxX ?? lastX,
-                            yMin: effectiveMinY,
-                            yMax: effectiveMaxY,
+                            yMin: yRange.minY,
+                            yMax: yRange.maxY,
                             totalDays: lastX,
                             firstDate: widget.firstDate,
                             baseCurrency: widget.currency,
@@ -150,21 +176,8 @@ class _AssetChartCardState extends ConsumerState<_AssetChartCard> {
                             valueDecimals: widget.valueDecimals,
                             onZoom: _onZoom,
                             zoomedY: _zoomMinY != null || _zoomMaxY != null,
-                            child: UnifiedChart(
-                              firstDate: widget.firstDate,
-                              visible: widget.series,
-                              totalSpots: widget.series.first.spots,
-                              showTotal: false,
-                              baseCurrency: widget.currency,
-                              locale: locale,
-                              language: language,
-                              zoomMinX: _zoomMinX,
-                              zoomMaxX: _zoomMaxX,
-                              zoomMinY: _zoomMinY,
-                              zoomMaxY: _zoomMaxY,
-                              isPrivate: isPrivate,
-                              valueDecimals: widget.valueDecimals,
-                            ),
+                            isPrivate: isPrivate,
+                            child: chart,
                           ),
                           if (hasZoom)
                             Positioned(

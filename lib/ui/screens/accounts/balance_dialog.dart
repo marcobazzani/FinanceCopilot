@@ -12,38 +12,26 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
       return;
     }
 
-    // Discover columns from rawMetadata
-    final allColumns = <String>{};
-    for (final tx in txs) {
-      if (tx.rawMetadata != null) {
-        final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
-        allColumns.addAll(meta.keys);
-      }
-    }
-    final columns = allColumns.toList()..sort();
+    // Discover columns from rawMetadata (a row whose data cannot be read has none)
+    final metas = [for (final tx in txs) ?decodeRawMetadata(tx.rawMetadata)];
+    final columns = {for (final meta in metas) ...meta.keys}.toList()..sort();
 
-    // Load saved config for current balance mode
+    // Load saved config for current balance mode. Settings that cannot be
+    // read (logged) are not offered: the user applies a mode explicitly.
     final savedConfig = await ref.read(importConfigServiceProvider).getByAccount(widget.account.id);
-    Map<String, dynamic> savedMappings = {};
-    if (savedConfig != null) {
-      savedMappings = jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic>;
-    }
+    final saved = savedConfig != null ? SavedImportMappings.decode(savedConfig.mappingsJson) : SavedImportMappings(const {});
 
-    var balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'cumulative';
-    String? filterColumn = savedMappings['__balanceFilterColumn'] as String?;
+    var balanceMode = saved.balanceMode ?? BalanceMode.byDefault;
+    // The saved filter, offered when the filtered sum is picked.
+    final savedFilter = saved.balanceFor(BalanceMode.filtered);
+    String? filterColumn = savedFilter?.filterColumn;
     if (filterColumn != null && !columns.contains(filterColumn)) filterColumn = null;
-    final filterInclude = <String>{};
-    if (savedMappings.containsKey('__balanceFilterInclude')) {
-      filterInclude.addAll(
-        (jsonDecode(savedMappings['__balanceFilterInclude'] as String) as List<dynamic>).cast<String>(),
-      );
-    }
+    final filterInclude = <String>{...?savedFilter?.filterInclude};
+    final hasBalanceColumn = saved.balanceFor(BalanceMode.column)?.balanceColumn != null;
     // Get unique values for filter column from rawMetadata
     List<String> uniqueValues(String col) {
       final vals = <String>{};
-      for (final tx in txs) {
-        if (tx.rawMetadata == null) continue;
-        final meta = jsonDecode(tx.rawMetadata!) as Map<String, dynamic>;
+      for (final meta in metas) {
         final v = (meta[col]?.toString() ?? '').trim();
         if (v.isNotEmpty) vals.add(v);
       }
@@ -66,16 +54,16 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                 children: [
                   Text(s.recalcBalanceHelp, style: const TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 12),
-                  SegmentedButton<String>(
+                  SegmentedButton<BalanceMode>(
                     segments: [
-                      ButtonSegment(value: 'cumulative', label: Text(s.recalcCumulative)),
-                      ButtonSegment(value: 'column', label: Text(s.recalcColumn)),
-                      ButtonSegment(value: 'filtered', label: Text(s.recalcFiltered)),
+                      ButtonSegment(value: BalanceMode.cumulative, label: Text(s.recalcCumulative)),
+                      ButtonSegment(value: BalanceMode.column, label: Text(s.recalcColumn)),
+                      ButtonSegment(value: BalanceMode.filtered, label: Text(s.recalcFiltered)),
                     ],
                     selected: {balanceMode},
                     onSelectionChanged: (v) => setDialogState(() {
                       balanceMode = v.first;
-                      if (balanceMode != 'filtered') {
+                      if (balanceMode != BalanceMode.filtered) {
                         filterColumn = null;
                         filterInclude.clear();
                       }
@@ -83,19 +71,19 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                   ),
                   const SizedBox(height: 12),
 
-                  if (balanceMode == 'column')
+                  if (balanceMode == BalanceMode.column)
                     Text(
                       s.balanceFromColumnHelp,
                       style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
                     ),
 
-                  if (balanceMode == 'cumulative')
+                  if (balanceMode == BalanceMode.cumulative)
                     Text(
                       s.balanceCumulativeHelp,
                       style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
                     ),
 
-                  if (balanceMode == 'filtered') ...[
+                  if (balanceMode == BalanceMode.filtered) ...[
                     Text(s.filterColumnLabel, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
                     const SizedBox(height: 4),
                     DropdownButtonFormField<String>(
@@ -165,39 +153,49 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed:
-                  (balanceMode == 'filtered' && filterColumn == null) || (balanceMode == 'column' && savedMappings['balanceAfter'] == null)
+                  (balanceMode == BalanceMode.filtered && filterColumn == null) || (balanceMode == BalanceMode.column && !hasBalanceColumn)
                   ? null
                   : () async {
                       Navigator.pop(ctx);
-                      await _executeBalanceRecalc(txs, balanceMode, filterColumn, filterInclude, savedMappings);
-                      // Update saved config with new balance mode
-                      final updatedMappings = Map<String, dynamic>.from(savedMappings);
-                      updatedMappings['__balanceMode'] = balanceMode;
+                      // The settings shown are the ones applied and saved — both
+                      // or neither: a mode applied but not saved is reverted by
+                      // the next automatic recalculation, and settings that
+                      // could not be read are never rewritten.
+                      final updatedMappings = Map<String, dynamic>.from(saved.values);
+                      updatedMappings[SavedImportMappings.balanceModeKey] = balanceMode.name;
                       if (filterColumn != null) {
-                        updatedMappings['__balanceFilterColumn'] = filterColumn;
+                        updatedMappings[SavedImportMappings.balanceFilterColumnKey] = filterColumn;
                       } else {
-                        updatedMappings.remove('__balanceFilterColumn');
+                        updatedMappings.remove(SavedImportMappings.balanceFilterColumnKey);
                       }
                       if (filterInclude.isNotEmpty) {
-                        updatedMappings['__balanceFilterInclude'] = jsonEncode(filterInclude.toList());
+                        updatedMappings[SavedImportMappings.balanceFilterIncludeKey] = jsonEncode(filterInclude.toList());
                       } else {
-                        updatedMappings.remove('__balanceFilterInclude');
+                        updatedMappings.remove(SavedImportMappings.balanceFilterIncludeKey);
                       }
-                      await ref
-                          .read(importConfigServiceProvider)
-                          .save(
-                            accountId: widget.account.id,
-                            skipRows: savedConfig?.skipRows ?? 0,
-                            mappings: updatedMappings.map((k, v) => MapEntry(k, v as String?)),
-                            formula: savedConfig != null
-                                ? (jsonDecode(savedConfig.formulaJson) as List<dynamic>)
-                                      .map((e) => (e as Map<String, dynamic>).map((k, v) => MapEntry(k, v as String)))
-                                      .toList()
-                                : [],
-                            hashColumns: savedConfig != null ? (jsonDecode(savedConfig.hashColumnsJson) as List<dynamic>).cast<String>() : [],
-                            // Keep the account's number format: it describes the stored text.
-                            numberLocale: savedConfig?.numberLocale,
-                          );
+                      final formula = savedConfig != null ? SavedImportMappings.formulaTerms(savedConfig.formulaJson) : <Map<String, String>>[];
+                      final hashColumns = savedConfig != null ? SavedImportMappings.textListOf(savedConfig.hashColumnsJson) : <String>[];
+                      if (saved.corrupt ||
+                          formula == null ||
+                          hashColumns == null ||
+                          updatedMappings.values.any((v) => v != null && v is! String)) {
+                        _log.warning('balanceRecalc: saved import config unreadable - nothing recalculated nor overwritten');
+                        if (context.mounted) showInfoSnack(context, s.balanceSettingsUnreadable);
+                        return;
+                      }
+                      // Read before awaiting: the screen may be gone when the
+                      // recalculation ends, and the mode must still be saved.
+                      final configs = ref.read(importConfigServiceProvider);
+                      await _executeBalanceRecalc(txs, balanceMode, filterColumn, filterInclude, updatedMappings, savedConfig?.numberLocale);
+                      await configs.save(
+                        accountId: widget.account.id,
+                        skipRows: savedConfig?.skipRows ?? 0,
+                        mappings: updatedMappings.map((k, v) => MapEntry(k, v as String?)),
+                        formula: formula,
+                        hashColumns: hashColumns,
+                        // Keep the account's number format: it describes the stored text.
+                        numberLocale: savedConfig?.numberLocale,
+                      );
                     },
               child: Text(s.recalculate),
             ),
@@ -209,21 +207,25 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
 
   Future<void> _executeBalanceRecalc(
     List<Transaction> transactions,
-    String balanceMode,
+    BalanceMode balanceMode,
     String? filterColumn,
     Set<String> filterInclude,
     Map<String, dynamic> mappings,
+    // The number format of the stored statement text (column mode reads it).
+    String? numberLocale,
   ) async {
-    _log.info('balanceRecalc: mode=$balanceMode, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
+    _log.info('balanceRecalc: mode=${balanceMode.name}, filterCol=$filterColumn, include=$filterInclude, ${transactions.length} txs');
     final s = ref.read(appStringsProvider);
     final txSvc = ref.read(transactionServiceProvider);
     final result = await txSvc.recalculateBalancesDetailed(
       widget.account.id,
-      balanceMode: balanceMode,
+      balanceMode: balanceMode.name,
       savedMappings: mappings,
+      numberLocale: numberLocale,
     );
     if (!mounted) return;
     var msg = s.recalculatedBalances(result.updated);
+    var figures = const <String>[];
     // Column mode reconciliation: say what the bank closing implied, never
     // absorb it silently.
     if (result.anchored == false) {
@@ -231,8 +233,10 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
     } else if (result.anchored == true && (result.opening ?? 0).abs() >= 0.005) {
       final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
       final f = fmt.amountFormat(locale);
-      msg = '$msg ${s.balanceAnchoredOpening(f.format(result.opening), f.format(result.bankClosing))}';
+      // Both are balances: masked in privacy mode, the explanation is not.
+      msg = '$msg ${s.balanceAnchoredOpening(privacySlot(0), privacySlot(1))}';
+      figures = [f.format(result.opening), f.format(result.bankClosing)];
     }
-    showInfoSnack(context, msg);
+    showInfoSnack(context, msg, maskedFigures: figures);
   }
 }

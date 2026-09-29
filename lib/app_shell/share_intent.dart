@@ -44,28 +44,10 @@ extension _AppShellShareIntent on _AppShellState {
               const SizedBox(height: 20),
               Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              SegmentedButton<ImportTarget>(
-                segments: [
-                  ButtonSegment(
-                    value: ImportTarget.transaction,
-                    icon: const Icon(Icons.receipt_long, size: 18),
-                    label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12)),
-                  ),
-                  ButtonSegment(
-                    value: ImportTarget.assetEvent,
-                    icon: const Icon(Icons.trending_up, size: 18),
-                    label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12)),
-                  ),
-                  ButtonSegment(
-                    value: ImportTarget.income,
-                    icon: const Icon(Icons.payments, size: 18),
-                    label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12)),
-                  ),
-                ],
-                selected: {target},
-                onSelectionChanged: (v) => setSheetState(() => target = v.first),
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                showSelectedIcon: false,
+              ImportTargetSelector(
+                selected: target,
+                onChanged: (v) => setSheetState(() => target = v),
+                compact: true,
               ),
               if (target == ImportTarget.transaction && accounts.isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -109,10 +91,4 @@ extension _AppShellShareIntent on _AppShellState {
       ),
     );
   }
-
-  /// Restore the Drive sign-in session silently (if possible) so the manual
-  /// Backup/Restore buttons in Import/Export can call Drive without an
-  /// interactive prompt every time. We do NOT auto-pull or auto-push — all
-  /// Drive operations are explicit user actions; see _backupToDrive /
-  /// _restoreFromDrive in the Import/Export dialog.
 }

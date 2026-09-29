@@ -88,11 +88,8 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
 
     final assetIds = <int>{};
     for (final ser in [...d.assetInvested, ...d.assetMarket, ...d.assetGain, ...d.assetNet]) {
-      final parts = ser.key.split(':');
-      if (parts.length == 2) {
-        final id = int.tryParse(parts[1]);
-        if (id != null) assetIds.add(id);
-      }
+      final id = parseSeriesKey(ser.key)?.id;
+      if (id != null) assetIds.add(id);
     }
 
     return AlertDialog(
@@ -187,10 +184,10 @@ class _ChartEditorDialogState extends ConsumerState<_ChartEditorDialog> {
               ? null
               : () {
                   final seriesList = _selected.map((key) {
-                    final parts = key.split(':');
+                    final series = parseSeriesKey(key)!;
                     return {
-                      'type': parts[0],
-                      'id': int.parse(parts[1]),
+                      'type': series.type,
+                      'id': series.id,
                       // Only emit `sign` when non-default so legacy consumers
                       // and human-readable JSON stay terse.
                       if (_inverted.contains(key)) 'sign': -1,
@@ -248,13 +245,10 @@ class _AssetsGrid extends StatelessWidget {
 
   String _name(int id) {
     for (final src in [allData.assetMarket, allData.assetInvested, allData.assetGain, allData.assetNet]) {
-      final hit = src.where((ser) {
-        final parts = ser.key.split(':');
-        return parts.length == 2 && int.tryParse(parts[1]) == id;
-      });
+      final hit = src.where((ser) => parseSeriesKey(ser.key)?.id == id);
       if (hit.isNotEmpty) return hit.first.name;
     }
-    return 'Asset $id';
+    return s.chartAssetNumbered(id);
   }
 
   Set<String> _columnKeys(String type) => {
@@ -477,11 +471,7 @@ class _EventAdjustmentsGrid extends StatelessWidget {
 
   static const double _colWidth = 72;
 
-  ({int id, String name}) _identify(ChartSeries s) {
-    final parts = s.key.split(':');
-    final id = parts.length == 2 ? int.tryParse(parts[1]) : null;
-    return (id: id ?? -1, name: s.name);
-  }
+  ({int id, String name}) _identify(ChartSeries s) => (id: parseSeriesKey(s.key)?.id ?? -1, name: s.name);
 
   @override
   Widget build(BuildContext context) {
@@ -540,7 +530,7 @@ class _EventAdjustmentsGrid extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    byId[id] ?? 'Event $id',
+                    byId[id] ?? s.chartEventNumbered(id),
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 13),
                   ),

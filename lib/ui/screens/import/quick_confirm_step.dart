@@ -11,11 +11,9 @@ extension _QuickConfirmStep on _ImportScreenState {
   Widget _buildQuickConfirm(FilePreview preview) {
     final s = ref.watch(appStringsProvider);
 
-    // Trigger preview computation once when entering quick confirm
-    if (_txPreview == null && _assetPreview == null && !_previewing && _target != ImportTarget.income) {
-      Future.microtask(() => _computePreview());
-    }
-
+    // The dry run shown below is started when the saved config enables quick
+    // mode (_loadSavedConfig), not from here: work started from build would
+    // rerun on every rebuild, forever when it fails.
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,29 +57,17 @@ extension _QuickConfirmStep on _ImportScreenState {
           if (_target != ImportTarget.income) _buildImportPreview(),
           const SizedBox(height: 16),
 
-          // Action buttons
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.edit),
-                label: Text(s.letMeEdit),
-                onPressed: () => _setState(() => _isQuickMode = false),
-              ),
-              // Same gate as the full Confirm step. Quick mode used to call
-              // _executeImport unconditionally, relying only on
-              // _missingMappingReason() — which checks the column mappings but
-              // NOT the import target, so `intermediaryId: _selectedIntermediaryId!`
-              // downstream was a null-check crash waiting for a state where the
-              // target is unset rather than a message the user can act on.
-              FilledButton.icon(
-                icon: const Icon(Icons.check),
-                label: Text(s.importButton),
-                onPressed: _canImport(_target == ImportTarget.assetEvent, _target == ImportTarget.income) ? _executeImport : null,
-              ),
-            ],
+          // Action buttons. Import has the same gate as the full Confirm step
+          // (_canImport): the mapping check alone says nothing about the
+          // import target, and an asset import needs its intermediary. Off
+          // while an import runs: a second tap would start another.
+          WizardNavBar(
+            secondaryIcon: Icons.edit,
+            secondaryLabel: s.letMeEdit,
+            onSecondary: () => _setState(() => _isQuickMode = false),
+            primaryIcon: Icons.check,
+            primaryLabel: s.importButton,
+            onPrimary: !_importing && _canImport(_target == ImportTarget.assetEvent, _target == ImportTarget.income) ? _executeImport : null,
           ),
           const SizedBox(height: 8),
         ],
@@ -94,6 +80,7 @@ extension _QuickConfirmStep on _ImportScreenState {
   Widget _buildHeaderPreviewTable(FilePreview preview) {
     final cols = preview.columns;
     final rows = preview.rows.take(5).toList();
+    final positionSize = _positionSizeColumns;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
@@ -111,7 +98,9 @@ extension _QuickConfirmStep on _ImportScreenState {
         rows: rows
             .map(
               (row) => DataRow(
-                cells: cols.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 11)))).toList(),
+                cells: cols
+                    .map((c) => DataCell(_previewCell(c, row[c] ?? '', style: const TextStyle(fontSize: 11), positionSize: positionSize)))
+                    .toList(),
               ),
             )
             .toList(),
@@ -119,41 +108,39 @@ extension _QuickConfirmStep on _ImportScreenState {
     );
   }
 
-  /// Read-only list of `field ← column` lines (same format as the existing confirm step).
+  /// The mappings summary card of the quick confirm.
   Widget _buildMappingsSummary() {
-    final lines = <String>[];
-    for (final entry in _mappings.entries) {
-      if (entry.value == null) continue;
-      if (entry.key == 'amount' && _amountFormula.isNotEmpty) continue;
-      lines.add('${entry.key} ← ${entry.value}');
-    }
-    if (_amountFormula.isNotEmpty) {
-      lines.add('amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}');
-    }
-    if (_balanceDiffColumn != null) {
-      lines.add('amount ← Δ $_balanceDiffColumn');
-    }
-    if (_mappings['valueDate'] == null) {
-      lines.add('valueDate ← date');
-    }
-    for (final entry in _multiMappings.entries) {
-      lines.add('${entry.key} ← ${entry.value.join(' + ')}');
-    }
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: lines
-              .map(
-                (l) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Text(l, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                ),
-              )
-              .toList(),
-        ),
-      ),
+      child: Padding(padding: const EdgeInsets.all(12), child: _buildMappingLines()),
+    );
+  }
+
+  /// The `field ← column` lines of the current mappings: the one summary of
+  /// both the quick confirm and the confirm step. The value date the import
+  /// defaults to is listed too, dimmed, so a forgotten mapping is visible.
+  Widget _buildMappingLines() {
+    final s = ref.watch(appStringsProvider);
+    final amountDerived = _amountFormula.isNotEmpty || _balanceDiffColumn != null;
+    final lines = [
+      for (final entry in _mappings.entries)
+        if (entry.value != null && !(entry.key == 'amount' && amountDerived)) '${entry.key} ← ${entry.value}',
+      if (_amountFormula.isNotEmpty) 'amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}',
+      if (_balanceDiffColumn != null) 'amount ← Δ $_balanceDiffColumn',
+      for (final entry in _multiMappings.entries)
+        if (entry.value.length > 1) '${entry.key} ← ${entry.value.join(' + ')}',
+    ];
+    const style = TextStyle(fontSize: 12, fontFamily: 'monospace');
+    Widget line(String text, {TextStyle style = style}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(text, style: style),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final l in lines) line(l),
+        if (_target == ImportTarget.transaction && _mappings['valueDate'] == null)
+          line('valueDate ← ${s.fieldLabel('date')}', style: style.copyWith(color: Theme.of(context).colorScheme.tertiary)),
+      ],
     );
   }
 }

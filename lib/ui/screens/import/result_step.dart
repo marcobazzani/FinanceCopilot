@@ -8,6 +8,7 @@ extension _ResultStep on _ImportScreenState {
   Widget _buildResult() {
     final r = _result!;
     final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     return Center(
       child: Card(
         child: Padding(
@@ -42,10 +43,17 @@ extension _ResultStep on _ImportScreenState {
                     ),
                   ),
               ],
-              if (r.errors.isNotEmpty) ...[
+              if (r.issues.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                ...r.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),
-                if (r.errors.length > 5) Text(s.andMore(r.errors.length - 5), style: const TextStyle(fontSize: 12)),
+                ...r.issues
+                    .take(5)
+                    .map(
+                      (i) => Text(
+                        importIssueText(s, i, locale: locale),
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                      ),
+                    ),
+                if (r.issues.length > 5) Text(s.andMore(r.issues.length - 5), style: const TextStyle(fontSize: 12)),
               ],
               const SizedBox(height: 24),
               Row(

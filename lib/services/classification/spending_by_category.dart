@@ -1,5 +1,6 @@
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 /// Resolves the `currency → base` rate for a day key (unix seconds at local
 /// midnight); null when no rate is known.
@@ -120,9 +121,12 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
   final transfers = <int, double>{};
   final refunds = <int, double>{};
   final refundIds = <int, List<int>>{};
+  // Every row of the as-of day counts, whatever its clock time: the bound is
+  // the next midnight, as for the ledger's own as-of reads.
+  final endExclusive = throughEndExclusive(through);
   for (final t in transactions) {
     if (t.amount == 0 || t.status == TransactionStatus.cancelled || excludedIds.contains(t.id)) continue;
-    if (through != null && t.valueDate.isAfter(through)) continue;
+    if (endExclusive != null && !t.valueDate.isBefore(endExclusive)) continue;
     final cat = t.categoryId == null ? null : categories[t.categoryId];
     if (t.amount > 0 && !isRefundCategoryType(cat?.type)) continue;
     // A row pointing at a deleted category is treated as uncategorized.

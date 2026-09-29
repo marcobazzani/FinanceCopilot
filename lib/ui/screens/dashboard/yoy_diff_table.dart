@@ -6,11 +6,6 @@ class _YoYDiffTable extends ConsumerWidget {
   final String language;
   const _YoYDiffTable({required this.data, required this.locale, required this.language});
 
-  List<String> _localizedMonths() {
-    final f = DateFormat('MMM', language);
-    return [for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
@@ -106,7 +101,7 @@ class _YoYDiffTable extends ConsumerWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  child: Text(_localizedMonths()[m - 1], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                  child: Text(monthAbbr(m, language), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 ),
                 for (final p in pairs) diffCell(diff(p.$1, p.$2, m)),
               ],

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/import/stored_import_data.dart';
 import 'package:finance_copilot/utils/amount_parser.dart' as amt;
 import 'package:finance_copilot/utils/logger.dart';
 
@@ -108,8 +109,18 @@ class StoredMetadataRepair {
 
   Future<AccountRepairReport?> _repairAccount(ImportConfig cfg, String? accountName, {required String appLocale, required bool dryRun}) async {
     final accountId = cfg.accountId!;
-    final mappings = jsonDecode(cfg.mappingsJson) as Map<String, dynamic>;
-    final formula = (jsonDecode(cfg.formulaJson) as List<dynamic>).cast<Map<String, dynamic>>();
+    final saved = SavedImportMappings.decode(cfg.mappingsJson);
+    final formula = SavedImportMappings.formulaTerms(cfg.formulaJson);
+    final balanceDiffCol = saved.text('__balanceDiffColumn');
+    final balanceMode = saved.balanceMode;
+    final balanceCol = saved.text('balanceAfter');
+    // A setting that cannot be read could decide which spelling reproduces a
+    // row: nothing is rewritten on a guess.
+    if (saved.corrupt || formula == null || balanceMode == null || saved.unreadable.isNotEmpty) {
+      _log.warning('account $accountId: saved import config unreadable - stored numbers left as they are');
+      return null;
+    }
+    final mappings = saved.values;
     final numeric = _numericColumns(mappings, formula);
     if (numeric.isEmpty) return null;
 
@@ -120,10 +131,6 @@ class StoredMetadataRepair {
             .get();
     if (rows.isEmpty) return null;
 
-    final balanceDiffCol = mappings['__balanceDiffColumn'] as String?;
-    final balanceMode = (mappings['__balanceMode'] as String?) ?? 'cumulative';
-    final balanceCol = mappings['balanceAfter'] as String?;
-
     // Pass 1 — for every row, which separator families reproduce the stored
     // amount, and the values they parse. Balance-diff amounts depend on the
     // previous row's parsed balance, carried per family.
@@ -131,8 +138,8 @@ class StoredMetadataRepair {
     final matches = <int, Map<String, Map<String, double>>>{}; // id → family → parsed cells
     final prevBalance = <String, double?>{for (final f in _families) f: null};
     for (final t in rows) {
-      final decoded = jsonDecode(t.rawMetadata!);
-      if (decoded is! Map) continue;
+      final decoded = decodeRawMetadata(t.rawMetadata);
+      if (decoded == null) continue;
       final meta = Map<String, dynamic>.from(decoded);
       metas[t.id] = meta;
       final rowMatches = <String, Map<String, double>>{};
@@ -152,7 +159,7 @@ class StoredMetadataRepair {
         if (!ok) continue;
         final amounts = _amountsFor(mappings, formula, balanceDiffCol, values, prevBalance[family]);
         if (!amounts.any((a) => (a - t.amount).abs() <= 0.005)) continue;
-        if (balanceMode == 'column' && balanceCol != null && values.containsKey(balanceCol) && t.balanceAfter != null) {
+        if (balanceMode == BalanceMode.column && balanceCol != null && values.containsKey(balanceCol) && t.balanceAfter != null) {
           if ((values[balanceCol]! - t.balanceAfter!).abs() > 0.005) continue;
         }
         rowMatches[family] = values;

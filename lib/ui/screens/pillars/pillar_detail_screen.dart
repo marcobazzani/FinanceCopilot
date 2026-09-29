@@ -8,11 +8,16 @@ import '../../../l10n/app_strings.dart';
 import '../../../models/dashboard_chart.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
 import 'package:finance_copilot/services/pillars/pillar_service.dart';
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart' show normaliseIsin;
 import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/footnote.dart';
 import '../../widgets/global_app_bar_actions.dart';
+import '../../widgets/mobile_pull_to_refresh.dart';
 import '../../widgets/privacy_text.dart';
 import '../../../utils/formatters.dart' as fmt;
+import '../../../utils/dialogs.dart';
 import '../dashboard/dashboard_screen.dart' show AllSeriesData, ChartCard, ChartSeries, allSeriesDataProvider;
 import 'package:finance_copilot/ui/screens/allocation/allocation_tab.dart';
 import 'pillar_create_dialog.dart';
@@ -20,6 +25,26 @@ import 'rebalance_preview_dialog.dart';
 
 part 'pillar_detail_overview.dart';
 part 'pillar_detail_cards.dart';
+
+/// Asks, then deletes [pillar] (a standard pillar or a virtual portfolio,
+/// each with its own message); says whether it did. Behind the detail view's
+/// trashcan, and the one confirmation a list swipe shares
+/// (`SwipeToDelete.custom`).
+Future<bool> confirmAndDeletePillar(BuildContext context, WidgetRef ref, Pillar pillar) async {
+  final s = ref.read(appStringsProvider);
+  final pillars = ref.read(pillarServiceProvider);
+  final confirmed = await showConfirmDialog(
+    context,
+    title: s.delete,
+    content: pillar.kind == PillarKind.virtual ? s.virtualPortfolioDeleteConfirm : s.pillarDeleteConfirm,
+    confirmLabel: s.delete,
+    cancelLabel: s.cancel,
+    confirmColor: Colors.red,
+  );
+  if (!confirmed) return false;
+  await pillars.delete(pillar.id);
+  return true;
+}
 
 class PillarDetailScreen extends ConsumerStatefulWidget {
   final String pillarId;
@@ -64,7 +89,7 @@ class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with Si
       appBar: AppBar(
         title: pillarsAsync.when(
           loading: () => const Text('…'),
-          error: (e, _) => Text('$e'),
+          error: (e, _) => Text(s.error(e)),
           data: (pillars) {
             final p = pillars.where((x) => x.id == widget.pillarId).firstOrNull;
             if (p == null) return const Text('—');
@@ -114,23 +139,7 @@ class _PillarDetailScreenState extends ConsumerState<PillarDetailScreen> with Si
               onPressed: () async {
                 final p = (pillarsAsync.value ?? const []).where((x) => x.id == widget.pillarId).firstOrNull;
                 if (p == null) return;
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: Text(s.delete),
-                    content: Text(
-                      p.kind == PillarKind.virtual ? s.virtualPortfolioDeleteConfirm : s.pillarDeleteConfirm,
-                    ),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  await ref.read(pillarServiceProvider).delete(p.id);
-                  if (context.mounted) Navigator.of(context).pop();
-                }
+                if (await confirmAndDeletePillar(context, ref, p) && context.mounted) Navigator.of(context).pop();
               },
             ),
           ],
@@ -169,6 +178,7 @@ class _PillarAssetsOverviewTab extends ConsumerWidget {
           marketValues: data.marketValues,
           baseCurrency: data.baseCurrency,
           compositions: compositions,
+          unvaluedCount: data.unvaluedAssetCount,
         ),
       ),
     );

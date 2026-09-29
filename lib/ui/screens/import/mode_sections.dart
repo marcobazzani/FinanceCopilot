@@ -1,6 +1,7 @@
 part of 'import_screen.dart';
 
 extension _ColumnMapperModeSections on _ImportScreenState {
+  /// Build the "Balance per row" configuration section.
   Widget _buildBalanceModeSection(FilePreview preview) {
     final s = ref.watch(appStringsProvider);
     return Column(
@@ -10,19 +11,19 @@ extension _ColumnMapperModeSections on _ImportScreenState {
         Text(s.balancePerRow, style: const TextStyle(fontWeight: FontWeight.bold)),
         Text(s.balancePerRowHelp, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         const SizedBox(height: 8),
-        SegmentedButton<String>(
+        SegmentedButton<BalanceMode>(
           segments: [
-            ButtonSegment(value: 'cumulative', label: Text(s.recalcCumulative)),
-            ButtonSegment(value: 'column', label: Text(s.balanceFromColumn)),
-            ButtonSegment(value: 'filtered', label: Text(s.recalcFiltered)),
+            ButtonSegment(value: BalanceMode.cumulative, label: Text(s.recalcCumulative)),
+            ButtonSegment(value: BalanceMode.column, label: Text(s.balanceFromColumn)),
+            ButtonSegment(value: BalanceMode.filtered, label: Text(s.recalcFiltered)),
           ],
-          selected: {_balanceMode},
+          selected: {_balance},
           onSelectionChanged: (v) => _setState(() {
-            _balanceMode = v.first;
-            if (_balanceMode != 'column') {
+            _balance = v.first;
+            if (_balance != BalanceMode.column) {
               _mappings.remove('balanceAfter');
             }
-            if (_balanceMode != 'filtered') {
+            if (_balance != BalanceMode.filtered) {
               _balanceFilterColumn = null;
               _balanceFilterInclude.clear();
             }
@@ -31,17 +32,17 @@ extension _ColumnMapperModeSections on _ImportScreenState {
         const SizedBox(height: 8),
 
         // Column mode: show dropdown to pick balance column
-        if (_balanceMode == 'column') _buildMappingRow('balanceAfter', preview.columns),
+        if (_balance == BalanceMode.column) _buildMappingRow('balanceAfter', preview.columns),
 
         // Cumulative: just a description
-        if (_balanceMode == 'cumulative')
+        if (_balance == BalanceMode.cumulative)
           Text(
-            'Balance = running sum of amount from oldest to newest transaction',
+            s.balanceCumulativeHelp,
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
           ),
 
         // Filtered: column picker + value checkboxes
-        if (_balanceMode == 'filtered') ...[
+        if (_balance == BalanceMode.filtered) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
@@ -129,8 +130,7 @@ extension _ColumnMapperModeSections on _ImportScreenState {
             Padding(
               padding: const EdgeInsets.only(left: 16),
               child: Text(
-                'Only transactions with included values contribute to the running sum. '
-                'Excluded transactions still get the last known balance.',
+                s.balanceFilteredHelp,
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
               ),
             ),
@@ -143,11 +143,8 @@ extension _ColumnMapperModeSections on _ImportScreenState {
   /// Build the buy/sell type detection section for asset imports.
   Widget _buildTypeDetectionSection(List<String> columns) {
     final s = ref.watch(appStringsProvider);
-    // Gather unique values from the mapped type column (all rows, not just preview)
+    // Values from all rows once loaded (_ensureTypeValues), the preview's until then.
     final typeCol = _mappings['type'];
-    if (typeCol != null && !_fullUniqueValues.containsKey(typeCol)) {
-      _loadFullUniqueValues(typeCol);
-    }
     final uniqueVals = typeCol != null ? (_fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol)) : <String>[];
 
     return Column(
@@ -343,10 +340,8 @@ extension _ColumnMapperModeSections on _ImportScreenState {
   /// `pensionContributionValues` sets passed to `importIncomes`.
   Widget _buildIncomeTypeSection(List<String> columns) {
     final s = ref.watch(appStringsProvider);
+    // Values from all rows once loaded (_ensureTypeValues), the preview's until then.
     final typeCol = _mappings['type'];
-    if (typeCol != null && !_fullUniqueValues.containsKey(typeCol)) {
-      _loadFullUniqueValues(typeCol);
-    }
     final uniqueVals = typeCol != null ? (_fullUniqueValues[typeCol] ?? _uniqueColumnValues(typeCol)) : <String>[];
 
     return Column(
@@ -452,38 +447,62 @@ extension _ColumnMapperModeSections on _ImportScreenState {
         if (_feeMode == 'column') _buildMappingRow('commission', columns, required: true),
         if (_feeMode == 'computed') ...[
           Text(
-            'fee = |amount| − quantity × price / exchangeRate',
+            s.feeComputedFormula,
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
           ),
           if (_preview != null && _preview!.rows.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(
-              'Preview: ${_feeComputedPreview()}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
-            ),
+            _computedFiguresPreview(s, _feeComputedPreview(), empty: s.notApplicable),
           ],
         ],
       ],
     );
   }
 
-  /// Preview first few computed fee values.
-  String _feeComputedPreview() {
-    if (_preview == null) return '';
-    final results = <String>[];
+  /// The first few fees the import will compute, by its formula
+  /// ([computedFeeFor]): rows lacking one of the figures, or — with a rate
+  /// column mapped — a positive rate, have none.
+  List<(double?, String?)> _feeComputedPreview() {
+    if (_preview == null) return const [];
+    final rateMapped = _mappings['exchangeRate'] != null;
+    final assets = ref.watch(assetsProvider).value;
+    final results = <(double?, String?)>[];
     for (var i = 0; i < _preview!.rows.length && results.length < 3; i++) {
       final row = _preview!.rows[i];
       final amount = _tryResolveNumeric('amount', row);
-      final qty = _tryResolveNumeric('quantity', row);
-      final price = _tryResolveNumeric('price', row);
-      final rate = _tryResolveNumeric('exchangeRate', row);
-      if (amount != null && qty != null && price != null && rate != null && rate != 0) {
-        final fee = amount.abs() - qty * price / rate;
-        results.add(fee.abs().toStringAsFixed(2));
-      }
+      final isBond = _previewRowIsBond(row, assets);
+      if (amount == null || isBond == null) continue;
+      final fee = computedFeeFor(
+        amount: amount,
+        qty: _tryResolveNumeric('quantity', row),
+        price: _tryResolveNumeric('price', row),
+        isBond: isBond,
+        rateMapped: rateMapped,
+        rate: _tryResolveNumeric('exchangeRate', row),
+      );
+      if (fee != null) results.add((fee, null));
     }
-    return results.isEmpty ? 'N/A' : results.join(', ');
+    return results;
   }
 
-  /// Mode switch buttons for the amount field.
+  /// Whether [row] goes to a bond — whose units the import values per 100 of
+  /// face value — as far as the wizard knows it, resolved like the import
+  /// resolves a row's asset among [assets]: the single asset imported into
+  /// (null until the assets have loaded); else the asset the ISIN already has
+  /// at the chosen intermediary; else the listing picked for it in the
+  /// exchange picker; else a new asset nothing has classified yet, which the
+  /// import creates as a fund.
+  bool? _previewRowIsBond(Map<String, String> row, List<Asset>? assets) {
+    if (_assetEventMode == 'singleAsset') {
+      final target = assets?.where((a) => a.id == _singleAssetTargetId).firstOrNull;
+      return target == null ? null : target.instrumentType == InstrumentType.bond;
+    }
+    final isinColumn = _mappings['isin'];
+    final isin = isinColumn == null ? '' : (row[isinColumn] ?? '').trim().toUpperCase();
+    final held = isin.isEmpty
+        ? null
+        : assets?.where((a) => a.intermediaryId == _selectedIntermediaryId && a.isin?.toUpperCase() == isin).firstOrNull;
+    final instrument = held?.instrumentType ?? _selectedExchanges[isin]?.classification.$1 ?? InstrumentType.etf;
+    return instrument == InstrumentType.bond;
+  }
 }

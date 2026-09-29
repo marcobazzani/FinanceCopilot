@@ -62,15 +62,15 @@ final portfolioModelItemsProvider = StreamProvider.family<List<PortfolioModelIte
 });
 
 /// For one pillar: assetId → fraction of that asset's total holding.
-final pillarFractionProvider = FutureProvider.family<Map<int, double>, String>((ref, pillarId) async {
+final pillarFractionProvider = FutureProvider.family<Map<int, double>, String>((ref, pillarId) {
   ref.watch(pillarAssetsProvider);
   return ref.read(pillarServiceProvider).fractionsForPillar(pillarId);
 });
 
 final unassignedFractionProvider = FutureProvider<Map<int, double>>((ref) async {
   ref.watch(pillarAssetsProvider);
-  final assets = await ref.watch(activeAssetsProvider.future);
   final svc = ref.read(pillarServiceProvider);
+  final assets = await ref.watch(activeAssetsProvider.future);
   final out = <int, double>{};
   for (final a in assets) {
     final total = await svc.totalQuantity(a.id);
@@ -101,7 +101,9 @@ final assetStatsProvider = StreamProvider<Map<int, AssetStats>>((ref) {
 });
 
 /// Transactions for a specific account (pass accountId as family parameter).
-final accountTransactionsProvider = StreamProvider.family<List<Transaction>, int>((ref, accountId) {
+/// Released when no screen shows the account any more: one live query per
+/// account opened would otherwise pile up for the whole session.
+final accountTransactionsProvider = StreamProvider.autoDispose.family<List<Transaction>, int>((ref, accountId) {
   final through = ref.watch(waybackDateProvider);
   return ref.watch(transactionServiceProvider).watchByAccount(accountId, through: through);
 });
@@ -159,17 +161,25 @@ final usedCategoryIdsProvider = StreamProvider<List<int>>((ref) {
 /// Classification progress measured in base-currency money (rows without an
 /// FX rate excluded and counted); family key = accountId (null = whole ledger).
 final classificationProgressProvider = StreamProvider.family<ClassificationProgress, int?>((ref, accountId) async* {
+  // Watched before the await: a dependency first read after it would be
+  // read on a ref the await may have outlived.
+  final rateService = ref.watch(exchangeRateServiceProvider);
+  final classifier = ref.watch(transactionClassifierServiceProvider);
   final base = await ref.watch(baseCurrencyProvider.future);
-  final rates = CachedRateResolver(ref.watch(exchangeRateServiceProvider), base);
-  yield* ref.watch(transactionClassifierServiceProvider).watchProgress(accountId: accountId, rate: rates.getRate, baseCurrency: base);
+  final rates = CachedRateResolver(rateService, base);
+  yield* classifier.watchProgress(accountId: accountId, rate: rates.getRate, baseCurrency: base);
 });
 
 /// Uncategorized merchant groups, the ones worth the most money first;
-/// family key = accountId.
-final uncategorizedGroupsProvider = StreamProvider.family<List<MerchantGroup>, int?>((ref, accountId) async* {
+/// family key = accountId. Only the wizard shows them: released when it
+/// closes, instead of re-grouping the whole ledger on every write for the
+/// rest of the session.
+final uncategorizedGroupsProvider = StreamProvider.autoDispose.family<List<MerchantGroup>, int?>((ref, accountId) async* {
+  final rateService = ref.watch(exchangeRateServiceProvider);
+  final classifier = ref.watch(transactionClassifierServiceProvider);
   final base = await ref.watch(baseCurrencyProvider.future);
-  final rates = CachedRateResolver(ref.watch(exchangeRateServiceProvider), base);
-  yield* ref.watch(transactionClassifierServiceProvider).watchUncategorizedGroups(accountId: accountId, rate: rates.getRate, baseCurrency: base);
+  final rates = CachedRateResolver(rateService, base);
+  yield* classifier.watchUncategorizedGroups(accountId: accountId, rate: rates.getRate, baseCurrency: base);
 });
 
 /// Structural ledger roles (transfer / no-op / adjustment / cancelled) for
@@ -183,7 +193,9 @@ final ledgerRolesProvider = StreamProvider<Map<int, LedgerRole>>((ref) {
 final rulesDirtyProvider = StateProvider<bool>((ref) => false);
 
 /// Asset events for a specific asset (pass assetId as family parameter).
-final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, assetId) {
+/// Released when nothing shows the asset any more (see
+/// [accountTransactionsProvider]).
+final assetEventsProvider = StreamProvider.autoDispose.family<List<AssetEvent>, int>((ref, assetId) {
   final through = ref.watch(waybackDateProvider);
   return ref.watch(assetEventServiceProvider).watchByAsset(assetId, through: through);
 });
@@ -193,13 +205,15 @@ final assetEventsProvider = StreamProvider.family<List<AssetEvent>, int>((ref, a
 /// editor (debug mode) and the read-only renderer (release mode) use it
 /// as their starting point.
 final defaultChartsLoadedProvider = FutureProvider<List<DashboardChart>>((ref) async {
-  final accounts = await ref.watch(accountsProvider.future);
-  final assets = await ref.watch(activeAssetsProvider.future);
-  final events = await ref.watch(extraordinaryEventsProvider.future);
+  // All three watched up front, so they load side by side rather than each
+  // waiting for the one before (a failed load still fails the charts).
+  final accounts = ref.watch(accountsProvider.future);
+  final assets = ref.watch(activeAssetsProvider.future);
+  final events = ref.watch(extraordinaryEventsProvider.future);
   return const DefaultChartsLoader().load(
-    activeAccounts: accounts.where((a) => a.isActive).toList(),
-    activeAssets: assets,
-    activeEvents: events,
+    activeAccounts: (await accounts).where((a) => a.isActive).toList(),
+    activeAssets: await assets,
+    activeEvents: await events,
   );
 });
 

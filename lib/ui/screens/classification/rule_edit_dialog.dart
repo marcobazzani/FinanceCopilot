@@ -37,6 +37,26 @@ Future<bool> showRuleEditDialog(
   return r == true;
 }
 
+/// Asks, then deletes [rule] and marks the rules changed; says whether it
+/// did. Behind the rule dialog's trashcan and the swipe of the rules list.
+Future<bool> confirmAndDeleteRule(BuildContext context, WidgetRef ref, AutoCategorizationRule rule) async {
+  final s = ref.read(appStringsProvider);
+  final rules = ref.read(ruleServiceProvider);
+  final dirty = ref.read(rulesDirtyProvider.notifier);
+  final confirmed = await showConfirmDialog(
+    context,
+    title: s.delete,
+    content: s.cannotBeUndone,
+    confirmLabel: s.delete,
+    cancelLabel: s.cancel,
+    confirmColor: Colors.red,
+  );
+  if (!confirmed) return false;
+  await rules.delete(rule.id);
+  dirty.state = true;
+  return true;
+}
+
 class _RuleEditDialog extends ConsumerStatefulWidget {
   final AutoCategorizationRule? rule;
   final RuleMatchType? initialMatchType;
@@ -81,9 +101,10 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
     _accountId = r?.accountId ?? widget.initialAccountId;
     _direction = r?.direction ?? RuleDirection.any;
     _active = r?.isActive ?? true;
+    // Every digit of a stored bound: one the user leaves alone saves unchanged.
     final amt = fmt.amountFormat(_locale);
-    _minCtrl = TextEditingController(text: r?.amountMin == null ? '' : amt.format(r!.amountMin!));
-    _maxCtrl = TextEditingController(text: r?.amountMax == null ? '' : amt.format(r!.amountMax!));
+    _minCtrl = TextEditingController(text: r?.amountMin == null ? '' : fmt.editableFigure(r!.amountMin!, amt, locale: _locale));
+    _maxCtrl = TextEditingController(text: r?.amountMax == null ? '' : fmt.editableFigure(r!.amountMax!, amt, locale: _locale));
     _schedulePreview();
   }
 
@@ -98,7 +119,12 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
 
   bool get _patternValid => RuleService.isValidPattern(_type, _patternCtrl.text);
 
-  double? _parseAmount(String t) => t.trim().isEmpty ? null : fmt.tryParseLocalized(t, locale: _locale);
+  /// An amount bound read in the locale, strictly: text the locale cannot
+  /// read is flagged on its field and keeps Save off — never saved as "no
+  /// bound", which would match every amount.
+  ({double? value, bool invalid}) _readAmount(TextEditingController ctrl) => fmt.readOptionalNumber(ctrl.text, locale: _locale);
+
+  bool get _amountsValid => !_readAmount(_minCtrl).invalid && !_readAmount(_maxCtrl).invalid;
 
   AutoCategorizationRule _draft() => AutoCategorizationRule(
     id: widget.rule?.id ?? -1,
@@ -110,14 +136,16 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
     matchType: _type,
     accountId: _accountId,
     direction: _direction,
-    amountMin: _parseAmount(_minCtrl.text),
-    amountMax: _parseAmount(_maxCtrl.text),
+    amountMin: _readAmount(_minCtrl).value,
+    amountMax: _readAmount(_maxCtrl).value,
   );
 
   void _schedulePreview() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () async {
-      if (!_patternValid) {
+      // No count for a bound the locale cannot read: it would be the count
+      // of every amount.
+      if (!_patternValid || !_amountsValid) {
         if (mounted) setState(() => _preview = null);
         return;
       }
@@ -134,7 +162,7 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
     final s = ref.watch(appStringsProvider);
     final accounts = ref.watch(accountsProvider).value ?? const <Account>[];
     final isEdit = widget.rule != null;
-    final canSave = _patternValid && _categoryId != null && !_saving;
+    final canSave = _patternValid && _categoryId != null && _amountsValid && !_saving;
 
     return AlertDialog(
       title: Row(
@@ -234,18 +262,28 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
                   Expanded(
                     child: TextField(
                       controller: _minCtrl,
-                      decoration: InputDecoration(labelText: s.amountMin, border: const OutlineInputBorder(), isDense: true),
+                      decoration: InputDecoration(
+                        labelText: s.amountMin,
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        errorText: _readAmount(_minCtrl).invalid ? s.invalidNumber : null,
+                      ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => _schedulePreview(),
+                      onChanged: (_) => setState(_schedulePreview),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
                       controller: _maxCtrl,
-                      decoration: InputDecoration(labelText: s.amountMax, border: const OutlineInputBorder(), isDense: true),
+                      decoration: InputDecoration(
+                        labelText: s.amountMax,
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        errorText: _readAmount(_maxCtrl).invalid ? s.invalidNumber : null,
+                      ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      onChanged: (_) => _schedulePreview(),
+                      onChanged: (_) => setState(_schedulePreview),
                     ),
                   ),
                 ],
@@ -306,17 +344,6 @@ class _RuleEditDialogState extends ConsumerState<_RuleEditDialog> {
   }
 
   Future<void> _delete() async {
-    final s = ref.read(appStringsProvider);
-    final ok = await showConfirmDialog(
-      context,
-      title: s.delete,
-      content: s.cannotBeUndone,
-      confirmLabel: s.delete,
-      cancelLabel: s.cancel,
-      confirmColor: Colors.red,
-    );
-    if (!ok) return;
-    await ref.read(ruleServiceProvider).delete(widget.rule!.id);
-    if (mounted) Navigator.pop(context, true);
+    if (await confirmAndDeleteRule(context, ref, widget.rule!) && mounted) Navigator.pop(context, true);
   }
 }

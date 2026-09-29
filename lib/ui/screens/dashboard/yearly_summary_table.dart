@@ -13,7 +13,7 @@ class _YearlySummaryTable extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final amtFmt = fmt.amountFormat(locale);
-    final pctFmt = NumberFormat('0.0%');
+    final pctFmt = NumberFormat('0.0%', locale);
     final theme = Theme.of(context);
     final sym = currencySymbol(data.baseCurrency);
     final now = ref.watch(currentDateProvider);
@@ -88,7 +88,13 @@ class _YearlySummaryTable extends ConsumerWidget {
             style: (style ?? const TextStyle()).copyWith(color: savingsColor, fontWeight: FontWeight.w600),
           ),
         ),
-        DataCell(Text('${y.savingsRate >= 0 ? '+' : ''}${pctFmt.format(y.savingsRate)}', style: style?.copyWith(color: savingsColor))),
+        // A year without income has no savings rate (the Sankey leaves it
+        // out, the Health tab reads N/A): a dash, not a 0% rate.
+        DataCell(
+          y.income > 0
+              ? Text('${y.savingsRate >= 0 ? '+' : ''}${pctFmt.format(y.savingsRate)}', style: style?.copyWith(color: savingsColor))
+              : Text('\u2014', style: style),
+        ),
         DataCell(PrivacyText('${amtFmt.format(y.monthlyIncome)} $sym', style: style)),
         DataCell(PrivacyText('${amtFmt.format(y.monthlyExpenses)} $sym', style: style)),
         DataCell(PrivacyText('${amtFmt.format(y.dailyIncome)} $sym', style: style)),

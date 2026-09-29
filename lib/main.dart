@@ -1,12 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'utils/dialogs.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderException;
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart' show NumberFormat;
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -15,24 +16,25 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'database/database.dart';
 import 'database/providers.dart';
-import 'app_shell/app_navigator.dart';
 import 'l10n/app_strings.dart';
 import 'services/app_actions_controller.dart';
 import 'services/app_settings.dart';
 import 'services/import/import_service.dart';
+import 'services/import/stored_import_data.dart';
 import 'services/import/stored_metadata_repair.dart';
 import 'services/sync/db_transfer_service.dart';
 import 'services/market/exchange_rate_service.dart';
 import 'services/sync/google_drive_sync_service.dart';
 import 'services/providers/providers.dart';
 import 'utils/formatters.dart' as fmt;
+import 'utils/amount_parser.dart' show stripFloatNoise;
 
 import 'ui/screens/accounts/accounts_screen.dart';
 import 'ui/screens/assets/assets_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/import/import_screen.dart';
 import 'ui/screens/pillars/pillars_screen.dart';
-import 'utils/asset_value_math.dart';
+import 'ui/widgets/import_target_selector.dart';
 import 'utils/bug_reporter.dart';
 import 'utils/logger.dart';
 import 'version.dart';
@@ -51,9 +53,7 @@ Future<void> main() async {
   await initLogging();
   await initializeDateFormatting();
   final portableLanguage = await AppSettings.loadLanguageForStartup();
-  // Print key paths to stdout for easy access
-  // ignore: avoid_print
-  print('LOG: $logFilePath');
+  _log.info('Log file: $logFilePath');
   _log.info('FinanceCopilot v$appVersionDisplay starting up');
   runApp(
     ProviderScope(
@@ -79,7 +79,6 @@ class FinanceCopilotApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'FinanceCopilot',
-      navigatorKey: rootNavigatorKey,
       debugShowCheckedModeBanner: false,
       locale: appLocale,
       supportedLocales: const [
@@ -127,6 +126,9 @@ class _SafeAppShell extends ConsumerWidget {
       ref.watch(databaseProvider);
     } catch (e, stack) {
       _log.severe('Failed to open database: $e\n$stack');
+      // Riverpod wraps the provider's error (with its stack trace); the user
+      // is shown the cause, the log keeps everything.
+      final cause = e is ProviderException ? e.exception : e;
       return Scaffold(
         appBar: AppBar(title: const Text('FinanceCopilot')),
         body: Center(
@@ -135,7 +137,7 @@ class _SafeAppShell extends ConsumerWidget {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 16),
-              Text('Failed to open database: $e', textAlign: TextAlign.center),
+              Text(ref.watch(appStringsProvider).dbOpenFailed(cause), textAlign: TextAlign.center),
             ],
           ),
         ),
@@ -240,20 +242,27 @@ class _AppShellState extends ConsumerState<AppShell> {
     } else if (sync.needsReauth && mounted) {
       _log.info('Drive sync: needs re-auth (use Settings to sign in)');
       final s = ref.read(appStringsProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(s.syncReauthNeeded),
-          duration: const Duration(seconds: 8),
-          action: SnackBarAction(
-            label: s.settingsSyncSignIn,
-            onPressed: () async {
-              final ok = await sync.signIn();
-              if (ok) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
-            },
-          ),
+      showInfoSnack(
+        context,
+        s.syncReauthNeeded,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: s.settingsSyncSignIn,
+          onPressed: () async {
+            if (await _signInToDrive(sync)) _log.info('Drive sync: re-authenticated as ${sync.userEmail}');
+          },
         ),
       );
     }
+  }
+
+  /// An interactive Drive sign-in from the shell (not from a dialog, whose
+  /// barrier would hide a snack bar): one that does not complete is said in a
+  /// snack bar. Says whether it signed in.
+  Future<bool> _signInToDrive(GoogleDriveSyncService sync) async {
+    final ok = await sync.signIn();
+    if (!ok && mounted) showInfoSnack(context, ref.read(appStringsProvider).driveSignInFailed);
+    return ok;
   }
 
   @override
@@ -282,7 +291,6 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
-  /// One-time recalculation of balances in value_date order after migration 25.
   /// One-shot per database: make every account's stored statement text parse
   /// under its saved number locale (see [StoredMetadataRepair]). Verified
   /// against stored amounts, never a guess; failures are logged, never fatal.
@@ -296,6 +304,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
+  /// One-time recalculation of balances in value_date order after migration 25,
+  /// from each account's saved import config. Column-mode balances follow the
+  /// bank's own figures and are left alone.
   Future<void> _runPendingBalanceRecalc() async {
     try {
       final db = ref.read(databaseProvider);
@@ -306,25 +317,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           .getSingleOrNull();
       if (flag == null) return;
 
-      final txService = ref.read(transactionServiceProvider);
-      final configs = await db
-          .customSelect(
-            'SELECT account_id, mappings_json FROM import_configs',
-          )
-          .get();
-
-      for (final row in configs) {
-        final accountId = row.read<int>('account_id');
-        final mappings = jsonDecode(row.read<String>('mappings_json')) as Map<String, dynamic>;
-        final balanceMode = (mappings['__balanceMode'] as String?) ?? 'none';
-        if (balanceMode == 'none' || balanceMode == 'column') continue;
-        final updated = await txService.recalculateBalances(
-          accountId,
-          balanceMode: balanceMode,
-          savedMappings: mappings,
-        );
-        _log.info('Balance recalc (migration 25): account=$accountId mode=$balanceMode updated=$updated');
-      }
+      await ref.read(transactionServiceProvider).recalcAllFromImportConfigs(skip: const {BalanceMode.column});
 
       await db.customStatement(
         "DELETE FROM app_configs WHERE key = 'PENDING_BALANCE_RECALC'",
@@ -387,9 +380,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     Future.microtask(() async {
       if (!mounted) return;
       try {
+        // _syncPrices refreshes the exchange rates too.
         await Future.wait([
           _syncPrices(),
-          ref.read(exchangeRateServiceProvider).syncRates(),
           ref.read(compositionServiceProvider).syncCompositions(),
         ]);
       } catch (e) {
@@ -463,29 +456,37 @@ class _AppShellState extends ConsumerState<AppShell> {
     }
   }
 
+  /// Background price + FX sync. Single-flight: the busy flag is claimed
+  /// before the first await, so a caller arriving while one runs — or while
+  /// a manual refresh (which syncs both itself) holds the flag — returns at
+  /// once instead of starting another.
   Future<void> _syncPrices({bool forceToday = false}) async {
     if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      await _runPriceSync(forceToday);
+    } finally {
+      if (mounted) _isSyncing = false;
+    }
+  }
 
+  Future<void> _runPriceSync(bool forceToday) async {
     // Check network first
     final monitor = ref.read(networkMonitorProvider);
     final online = await monitor.check();
+    if (!mounted) return;
     ref.read(networkOnlineProvider.notifier).state = online;
     if (!online) {
       _log.info('Network offline - skipping price sync');
       return;
     }
 
-    _isSyncing = true;
-    try {
-      _log.info('Starting market price sync (forceToday=$forceToday)...');
-      await Future.wait([
-        ref.read(marketPriceServiceProvider).syncPrices(forceToday: forceToday),
-        ref.read(exchangeRateServiceProvider).syncRates(force: forceToday),
-      ]);
-      ref.read(priceRefreshCounter.notifier).state++;
-    } finally {
-      if (mounted) _isSyncing = false;
-    }
+    _log.info('Starting market price sync (forceToday=$forceToday)...');
+    await Future.wait([
+      ref.read(marketPriceServiceProvider).syncPrices(forceToday: forceToday),
+      ref.read(exchangeRateServiceProvider).syncRates(force: forceToday),
+    ]);
+    if (mounted) ref.read(priceRefreshCounter.notifier).state++;
   }
 
   Widget _body() {
@@ -551,8 +552,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                         icon: const Icon(Icons.cloud_sync),
                         label: Text(s.landingSyncDrive),
                         onPressed: () async {
-                          final ok = await sync.signIn();
-                          if (!ok) return;
+                          if (!await _signInToDrive(sync)) return;
                           if (mounted) setState(() => _syncingDrive = true);
                           _wireSyncCallbacks(sync);
                           try {
@@ -560,8 +560,15 @@ class _AppShellState extends ConsumerState<AppShell> {
                             if (restored != null && mounted) {
                               ref.read(dbReloadTrigger.notifier).state++;
                             }
-                          } catch (e) {
-                            _log.warning('Landing sync: restore failed: $e');
+                          } catch (e, st) {
+                            // Nothing was restored: the landing page stays, so
+                            // the user can retry or start another way.
+                            _log.warning('Landing sync: restore failed', e, st);
+                            if (mounted) {
+                              setState(() => _syncingDrive = false);
+                              _showTransferFailure(context, e, s.importExportRestoreFailed);
+                            }
+                            return;
                           }
                           if (mounted) {
                             setState(() {
@@ -581,10 +588,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                         icon: const Icon(Icons.file_upload),
                         label: Text(s.landingImportDb),
                         onPressed: () async {
-                          final path = await DbTransferService.importDb(
-                            ref.read(databaseProvider),
-                          );
-                          if (path != null && mounted) {
+                          if (await _mergeDbFromFile(context) && mounted) {
                             ref.read(dbReloadTrigger.notifier).state++;
                             setState(() => _showLanding = false);
                           }
@@ -718,17 +722,3 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 }
-
-/// Locale dropdown options for the settings dialog. Top-level so the
-/// extension-based settings_dialog.dart part can access it without a class
-/// qualifier (Dart extensions can't reach unqualified static members of the
-/// extended type).
-const _localeOptions = [
-  ('', 'System Default'),
-  ('it_IT', 'Italiano (IT)'),
-  ('en_US', 'English (US)'),
-  ('en_GB', 'English (GB)'),
-  ('de_DE', 'Deutsch (DE)'),
-  ('fr_FR', 'Français (FR)'),
-  ('es_ES', 'Español (ES)'),
-];

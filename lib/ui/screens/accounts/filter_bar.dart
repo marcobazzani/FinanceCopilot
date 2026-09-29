@@ -507,7 +507,7 @@ class _FilterSheetState extends State<_FilterSheet> {
 }
 
 /// "Jun 1 → Jun 30" style label for a date range; open bounds render as "…".
-String _dateRangeLabel(DateRangeFilter dr, dynamic dateFmt, AppStrings s) {
+String _dateRangeLabel(DateRangeFilter dr, DateFormat dateFmt, AppStrings s) {
   if (dr.isEmpty) return s.filterAnyDate;
   final from = dr.start != null ? dateFmt.format(dr.start!) : '…';
   final to = dr.end != null ? dateFmt.format(dr.end!) : '…';
@@ -516,7 +516,7 @@ String _dateRangeLabel(DateRangeFilter dr, dynamic dateFmt, AppStrings s) {
 
 /// "+ 100 – 500" style label for an amount range; a leading "∉" marks an
 /// outside-range (negated) bound, and +/− marks a direction scope.
-String _amountRangeLabel(AmountRangeFilter ar, dynamic amtFmt, AppStrings s) {
+String _amountRangeLabel(AmountRangeFilter ar, NumberFormat amtFmt, AppStrings s) {
   final lo = ar.min != null ? amtFmt.format(ar.min) : '…';
   final hi = ar.max != null ? amtFmt.format(ar.max) : '…';
   final dir = switch (ar.direction) {
@@ -547,6 +547,11 @@ class _AmountRangeDialogState extends State<_AmountRangeDialog> {
   late AmountDirection _direction;
   late bool _outside;
 
+  // Bounds the locale could not read at the last Apply: flagged on their
+  // field until edited, and nothing was applied.
+  bool _minInvalid = false;
+  bool _maxInvalid = false;
+
   @override
   void initState() {
     super.initState();
@@ -575,13 +580,19 @@ class _AmountRangeDialogState extends State<_AmountRangeDialog> {
           TextField(
             controller: _minCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-            decoration: InputDecoration(labelText: s.filterAmountMin),
+            decoration: InputDecoration(labelText: s.filterAmountMin, errorText: _minInvalid ? s.invalidNumber : null),
+            onChanged: (_) {
+              if (_minInvalid) setState(() => _minInvalid = false);
+            },
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _maxCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-            decoration: InputDecoration(labelText: s.filterAmountMax),
+            decoration: InputDecoration(labelText: s.filterAmountMax, errorText: _maxInvalid ? s.invalidNumber : null),
+            onChanged: (_) {
+              if (_maxInvalid) setState(() => _maxInvalid = false);
+            },
           ),
           const SizedBox(height: 16),
           // Whether the magnitude bound matches inside or outside the window.
@@ -617,11 +628,21 @@ class _AmountRangeDialogState extends State<_AmountRangeDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
         FilledButton(
           onPressed: () {
-            final min = fmt.parseFlexibleNumber(_minCtrl.text.trim());
-            final max = fmt.parseFlexibleNumber(_maxCtrl.text.trim());
+            // Read in the ledger's locale, strictly: under it_IT "1.000" is a
+            // thousand, and text the locale cannot read is flagged, never
+            // applied as some other number.
+            final min = fmt.readOptionalNumber(_minCtrl.text, locale: widget.locale);
+            final max = fmt.readOptionalNumber(_maxCtrl.text, locale: widget.locale);
+            if (min.invalid || max.invalid) {
+              setState(() {
+                _minInvalid = min.invalid;
+                _maxInvalid = max.invalid;
+              });
+              return;
+            }
             Navigator.pop(
               context,
-              AmountRangeFilter(min: min?.abs(), max: max?.abs(), direction: _direction, outside: _outside),
+              AmountRangeFilter(min: min.value?.abs(), max: max.value?.abs(), direction: _direction, outside: _outside),
             );
           },
           child: Text(s.filterApply),

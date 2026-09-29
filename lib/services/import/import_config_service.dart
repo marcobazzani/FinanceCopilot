@@ -22,9 +22,6 @@ extension ImportConfigScopeName on ImportConfigScope {
     ImportConfigScope.assetSingle => 'assetSingle',
     ImportConfigScope.income => 'income',
   };
-
-  static ImportConfigScope fromWire(String s) =>
-      ImportConfigScope.values.firstWhere((e) => e.wire == s, orElse: () => ImportConfigScope.transaction);
 }
 
 class ImportConfigService {
@@ -52,16 +49,18 @@ class ImportConfigService {
     int? intermediaryId,
     int? assetId,
   }) async {
+    // A scoped config without the id its scope is keyed by is a caller bug:
+    // say which id is missing instead of crashing inside the query.
+    int keyOf(String name, int? value) => value ?? (throw ArgumentError.value(value, name, 'required by a ${scope.wire} import config'));
     final query = _db.select(_db.importConfigs)
       ..where((c) {
-        var pred = c.scope.equals(scope.wire);
-        pred = switch (scope) {
-          ImportConfigScope.transaction => pred & c.accountId.equals(accountId!),
-          ImportConfigScope.assetByIsin => pred & c.intermediaryId.equals(intermediaryId!),
-          ImportConfigScope.assetSingle => pred & c.assetId.equals(assetId!),
-          ImportConfigScope.income => pred,
+        final inScope = c.scope.equals(scope.wire);
+        return switch (scope) {
+          ImportConfigScope.transaction => inScope & c.accountId.equals(keyOf('accountId', accountId)),
+          ImportConfigScope.assetByIsin => inScope & c.intermediaryId.equals(keyOf('intermediaryId', intermediaryId)),
+          ImportConfigScope.assetSingle => inScope & c.assetId.equals(keyOf('assetId', assetId)),
+          ImportConfigScope.income => inScope,
         };
-        return pred;
       });
     final results = await query.get();
     if (results.isEmpty) return null;
@@ -88,7 +87,12 @@ class ImportConfigService {
 
   /// Save or update an import config in any [scope]. Exactly one of
   /// accountId/intermediaryId/assetId must be set for a scoped config (income
-  /// uses none). Upserts on the (scope, key) tuple.
+  /// uses none); an [ArgumentError] names the one [scope] needs when it is
+  /// missing. Upserts on the (scope, key) tuple.
+  ///
+  /// A null [numberLocale] is the wizard's "Auto": no choice, so an existing
+  /// config keeps its stored format (the one its rows were read with); only an
+  /// explicit format replaces it.
   Future<void> saveScoped({
     required ImportConfigScope scope,
     int? accountId,
@@ -118,7 +122,7 @@ class ImportConfigService {
           mappingsJson: Value(mappingsJson),
           formulaJson: Value(formulaJson),
           hashColumnsJson: Value(hashColumnsJson),
-          numberLocale: Value(numberLocale),
+          numberLocale: numberLocale == null ? const Value.absent() : Value(numberLocale),
           updatedAt: Value(DateTime.now()),
         ),
       );

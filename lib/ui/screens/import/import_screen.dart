@@ -14,6 +14,7 @@ import '../../../database/tables.dart';
 import 'package:finance_copilot/services/import/import_service.dart';
 import 'package:finance_copilot/services/import/import_config_service.dart';
 import 'package:finance_copilot/services/import/preview_transforms.dart';
+import 'package:finance_copilot/services/import/stored_import_data.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import 'package:finance_copilot/services/market/isin_lookup_service.dart';
 import 'package:finance_copilot/services/import/pdf_exceptions.dart';
@@ -21,10 +22,14 @@ import 'package:finance_copilot/services/classification/transaction_classifier_s
 import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
 import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
+import '../../../utils/amount_parser.dart' as amt;
 import '../../../utils/dialogs.dart';
 import '../../../utils/formatters.dart' as fmt;
 import '../../../utils/logger.dart';
 import '../../widgets/isin_url_paste_recovery.dart';
+import '../../widgets/import_target_selector.dart';
+import '../../widgets/privacy_text.dart';
+import '../../widgets/wizard_nav_bar.dart';
 
 part 'column_mapper_step.dart';
 part 'mapping_content.dart';
@@ -36,6 +41,27 @@ part 'quick_confirm_step.dart';
 part 'result_step.dart';
 
 final _log = getLogger('ImportScreen');
+
+/// Why rows were not imported ([issue]), worded in the language of [s]; a
+/// date in it is spelled in [locale].
+String importIssueText(AppStrings s, ImportIssue issue, {required String locale}) => switch (issue.kind) {
+  ImportIssueKind.dateAndAmountRequired => s.importDateAmountRequired,
+  ImportIssueKind.isinRequired => s.importIsinRequired,
+  ImportIssueKind.emptyIsin => s.importLineEmptyIsin(issue.line),
+  ImportIssueKind.emptyDate => s.importLineEmptyDate(issue.line),
+  ImportIssueKind.invalidDate => s.importLineInvalidDate(issue.line, issue.value),
+  ImportIssueKind.emptyAmount => s.importLineEmptyAmount(issue.line),
+  ImportIssueKind.invalidAmount => s.importLineInvalidAmount(issue.line, issue.value, issue.locale),
+  ImportIssueKind.untaggedType => s.importLineUntaggedType(issue.line, issue.value),
+  ImportIssueKind.rejected => s.importLineRejected(issue.line, issue.fields.map(s.fieldLabel).join(', ')),
+  // The first replaced day is set by the importer for this kind only; read it
+  // by pattern, never with `!`.
+  ImportIssueKind.replaceAborted => switch (issue.replaceFrom) {
+    final from? => s.importReplaceAborted(issue.rejectedRows, fmt.shortDateFormat(locale).format(from), issue.existingRows),
+    null => s.importReplaceAbortedUndated(issue.rejectedRows, issue.existingRows),
+  },
+  ImportIssueKind.other => s.importLineFailed(issue.line, issue.value),
+};
 
 /// The full import wizard: pick file -> preview -> map columns -> select target -> confirm.
 class ImportScreen extends ConsumerStatefulWidget {
@@ -236,12 +262,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   // Delimiter for string concatenation in multi-column mappings (default: space)
   final Map<String, String> _multiDelimiters = {};
 
-  // Balance computation mode: 'cumulative' | 'column' | 'filtered'
-  String _balanceMode = 'cumulative';
+  // Balance computation mode (the wizard offers cumulative, column, filtered)
+  BalanceMode _balance = BalanceMode.byDefault;
+
   // For 'filtered' mode: which CSV column to filter on
   String? _balanceFilterColumn;
   // For 'filtered' mode: included status values
   final Set<String> _balanceFilterInclude = {};
+
+  /// The saved config has a setting that could not be read (logged, not
+  /// restored): the wizard then opens on the mapper, not the quick confirm.
+  bool _savedConfigUnreadable = false;
 
   // Fee computation mode for asset imports: 'column' | 'computed'
   // 'column' = map from a CSV column (default)
@@ -300,9 +331,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   String _assetEventMode = 'byIsin'; // 'byIsin' | 'singleAsset'
   int? _singleAssetTargetId;
 
-  // Cached unique values per column (from ALL rows, not just preview)
+  // Cached unique values per column (from ALL rows, not just preview).
+  // Loaded by [_ensureTypeValues] from the handlers that change the Type
+  // mapping or the rows — never from build. A column whose load failed is
+  // not retried until the rows change ([_resetTypeValues]).
   final Map<String, List<String>> _fullUniqueValues = {};
-  bool _loadingUniqueValues = false;
+  final Set<String> _loadingUniqueColumns = {};
+  final Set<String> _failedUniqueColumns = {};
+  int _uniqueValuesGen = 0;
+
+  // Generation tokens: each overlapping async request bumps its counter and
+  // applies its result only while it is still the latest one.
+  int _parseGen = 0; // file read / re-parse / paste
+  int _configGen = 0; // saved-config load
+  int _previewGen = 0; // dry-run preview
 
   // Exchange picker for asset imports (ISIN -> all available listings, user picks one)
   Map<String, IsinLookupResult>? _isinLookupResults;
@@ -335,7 +377,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   /// is hidden for PDFs; use row filters instead.
   bool get _isPdf => (_filePath ?? '').toLowerCase().endsWith('.pdf');
 
-  // ignore: invalid_use_of_protected_member
+  /// [setState] for the step extensions and async callbacks: a no-op once the
+  /// screen is gone.
   void _setState(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
@@ -393,13 +436,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _preview = _applyTransforms(raw);
       _clearFullPreviewCache();
       _fullIsinSummary = null;
-      _fullUniqueValues.clear();
+      _resetTypeValues();
       // The previously-loaded full row sets are stale after a transform change.
       _showAllRows = null;
       _transformedFullRows = null;
       _reconcileTypeTags();
     });
     if (_savedConfig != null) _applySavedConfig(restoreTransforms: false);
+    _ensureTypeValues();
     // Load the complete transformed set so the preview shows every affected
     // row (filters/splits evaluated over all rows, not the capped sample).
     _ensureTransformedFullRows();
@@ -558,7 +602,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _rawPreview = widget.storedPreview;
       _preview = widget.storedPreview;
       _selectedNumberLocale = widget.storedPreview!.numberLocale;
-      Future.microtask(() => _loadSavedConfig(widget.storedPreview!.columns));
+      Future.microtask(_loadSavedConfig);
     }
     // Integration test injection: auto-load a pre-parsed preview
     if (widget.testPreview != null) {
@@ -566,7 +610,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _preview = widget.testPreview;
       // Mirror production _loadFile: apply any saved config for the
       // preselected account so quick-confirm renders when available.
-      Future.microtask(() => _loadSavedConfig(widget.testPreview!.columns));
+      Future.microtask(_loadSavedConfig);
     }
     // Shared file from another app (Android share target)
     if (widget.initialFilePath != null) {
@@ -584,31 +628,36 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(s.importTitle),
-        leading: _step == 2
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() => _step = 1),
-              )
-            : null,
-      ),
-      body: Column(
-        children: [
-          LinearProgressIndicator(value: _step / 3),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: switch (_step) {
-                1 => _buildColumnMapper(),
-                2 => _buildConfirm(),
-                3 => _buildResult(),
-                _ => const SizedBox(),
-              },
+    // Leaving mid-import would leave the account half-done (config not
+    // saved, balances not recalculated): back waits for the import.
+    return PopScope(
+      canPop: !_importing,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(s.importTitle),
+          leading: _step == 2
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _importing ? null : () => setState(() => _step = 1),
+                )
+              : null,
+        ),
+        body: Column(
+          children: [
+            LinearProgressIndicator(value: _step / 3),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: switch (_step) {
+                  1 => _buildColumnMapper(),
+                  2 => _buildConfirm(),
+                  3 => _buildResult(),
+                  _ => const SizedBox(),
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -629,6 +678,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     final path = result.files.single.path!;
     await _saveLastDirectory(p.dirname(path));
+    if (!mounted) return;
     await _loadFile(path);
   }
 
@@ -636,22 +686,27 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   Future<void> _loadFile(String path) async {
     _fromStoredRows = false;
     _log.info('_loadFile: loading $path');
+    final gen = ++_parseGen;
     setState(() {
       _error = null;
       _filePath = path;
       _parsing = true;
     });
+    // Read before awaiting: the screen may be gone when the parse completes.
+    final s = ref.read(appStringsProvider);
+    final importer = ref.read(importServiceProvider);
 
     try {
-      final importer = ref.read(importServiceProvider);
       final ext = path.toLowerCase().split('.').last;
 
       // For Excel files, check for multiple sheets
       if (ext == 'xlsx' || ext == 'xls') {
         final sheets = await importer.listSheets(path);
+        if (!mounted || gen != _parseGen) return;
         if (sheets.length > 1) {
           _log.info('_loadFile: multi-sheet Excel, showing sheet picker');
           await _showSheetPicker(sheets);
+          if (!mounted || gen != _parseGen) return;
           if (_selectedSheet == null) {
             _log.info('_loadFile: sheet selection cancelled');
             return;
@@ -667,9 +722,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         noHeader: _noHeader,
         numberLocale: _effectiveNumberLocale(),
       );
+      // The screen is gone, or a newer file / paste / re-parse replaced this one.
+      if (!mounted || gen != _parseGen) return;
       if (preview.rows.isEmpty) {
         _log.warning('_loadFile: file is empty after parsing');
-        setState(() => _error = ref.read(appStringsProvider).fileEmpty);
+        setState(() => _error = s.fileEmpty);
         return;
       }
 
@@ -679,21 +736,23 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _preview = _applyTransforms(preview);
         _clearFullPreviewCache();
         _fullIsinSummary = null;
+        _resetTypeValues();
         _parsing = false;
         _seedMappingKeys();
       });
+      _ensureTypeValues();
       // Load saved config if we have a preselected account
-      await _loadSavedConfig(preview.columns);
+      await _loadSavedConfig();
     } catch (e, stack) {
       _log.severe('_loadFile: error reading file', e, stack);
-      final s = ref.read(appStringsProvider);
+      if (!mounted || gen != _parseGen) return;
       setState(() {
         _error = switch (e) {
           PdfNoTextLayerException() => s.pdfNoTextLayer,
           PdfEncryptedException() => s.pdfEncrypted,
           PdfUnreadableTextException() => s.pdfUnreadableText,
           PdfTableNotDetectedException() => s.pdfTableNotDetected,
-          _ => 'Error reading file: $e',
+          _ => s.errorReadingFile(e),
         };
         _parsing = false;
       });
@@ -701,7 +760,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // Safety net: every early-return path in the try above (cancelled
       // sheet picker, empty file) must not leave the screen stuck on the
       // parsing spinner.
-      if (mounted && _parsing) setState(() => _parsing = false);
+      if (mounted && _parsing && gen == _parseGen) setState(() => _parsing = false);
     }
   }
 
@@ -721,25 +780,31 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
             .toList(),
       ),
     );
-    setState(() => _selectedSheet = selected);
+    _setState(() => _selectedSheet = selected);
   }
 
-  /// Re-parse the loaded file after a skip-rows / sheet change.
+  /// Re-parse the loaded file after a skip-rows / sheet change. Only the
+  /// latest request applies: clicking skip-rows twice keeps the rows of the
+  /// second click even when the first parse finishes last.
   Future<void> _reparseFile() async {
     if (_filePath == null) return;
-    _log.info('_reparseFile: re-parsing with skipRows=$_skipRows, sheet=$_selectedSheet');
+    final gen = ++_parseGen;
+    final skipRows = _skipRows;
+    _log.info('_reparseFile: re-parsing with skipRows=$skipRows, sheet=$_selectedSheet');
+    final s = ref.read(appStringsProvider);
+    final importer = ref.read(importServiceProvider);
     try {
-      final importer = ref.read(importServiceProvider);
       final preview = await importer.parseFile(
         _filePath!,
         sheetName: _selectedSheet,
-        skipRows: _skipRows,
+        skipRows: skipRows,
         noHeader: _noHeader,
         numberLocale: _effectiveNumberLocale(),
       );
+      if (!mounted || gen != _parseGen) return;
       if (preview.rows.isEmpty) {
-        _log.warning('_reparseFile: empty after skipping $_skipRows rows');
-        setState(() => _error = ref.read(appStringsProvider).fileEmptyAfterSkip(_skipRows));
+        _log.warning('_reparseFile: empty after skipping $skipRows rows');
+        setState(() => _error = s.fileEmptyAfterSkip(skipRows));
         return;
       }
       _log.info('_reparseFile: OK - ${preview.columns.length} cols, ${preview.totalRows} rows');
@@ -748,6 +813,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _preview = _applyTransforms(preview);
         _clearFullPreviewCache();
         _fullIsinSummary = null;
+        _resetTypeValues();
         _error = null;
         _mappings.clear();
         _amountFormula.clear();
@@ -761,15 +827,20 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
     } catch (e, stack) {
       _log.severe('_reparseFile: error', e, stack);
-      setState(() => _error = ref.read(appStringsProvider).errorReparsingFile(e));
+      if (!mounted || gen != _parseGen) return;
+      setState(() => _error = s.errorReparsingFile(e));
     }
   }
 
   Future<void> _pasteFromClipboard() async {
     _fromStoredRows = false;
+    final gen = ++_parseGen;
+    final s = ref.read(appStringsProvider);
+    final importer = ref.read(importServiceProvider);
     final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (!mounted || gen != _parseGen) return;
     if (data?.text == null || data!.text!.trim().isEmpty) {
-      setState(() => _error = ref.read(appStringsProvider).clipboardEmpty);
+      setState(() => _error = s.clipboardEmpty);
       return;
     }
     setState(() {
@@ -778,11 +849,11 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _filePath = null;
     });
     try {
-      final importer = ref.read(importServiceProvider);
       final preview = await importer.parseClipboard(data.text!, skipRows: _skipRows, noHeader: _noHeader);
+      if (!mounted || gen != _parseGen) return;
       if (preview.rows.isEmpty) {
         setState(() {
-          _error = ref.read(appStringsProvider).noDataRowsClipboard;
+          _error = s.noDataRowsClipboard;
           _parsing = false;
         });
         return;
@@ -792,6 +863,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _preview = _applyTransforms(preview);
         _clearFullPreviewCache();
         _fullIsinSummary = null;
+        _resetTypeValues();
         _parsing = false;
         _mappings.clear();
         _amountFormula.clear();
@@ -799,16 +871,24 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         _seedMappingKeys();
       });
     } catch (e) {
+      if (!mounted || gen != _parseGen) return;
       setState(() {
-        _error = ref.read(appStringsProvider).errorParsingClipboard(e);
+        _error = s.errorParsingClipboard(e);
         _parsing = false;
       });
     }
   }
 
+  /// What a saved config is looked up by: when it changes while a lookup is
+  /// pending (another account / target / asset picked), that lookup is stale.
+  Object get _configScope => (_target, widget.preselectedAccountId ?? _targetId, _assetEventMode, _singleAssetTargetId, _selectedIntermediaryId);
+
   /// Load saved import config for the current scope (account / intermediary /
-  /// single asset / income) and cache it.
-  Future<void> _loadSavedConfig(List<String> fileColumns) async {
+  /// single asset / income) and cache it. Only the latest request applies:
+  /// picking accounts quickly never applies the previous account's config.
+  Future<void> _loadSavedConfig() async {
+    final gen = ++_configGen;
+    final scope = _configScope;
     final svc = ref.read(importConfigServiceProvider);
     final ImportConfig? config;
     switch (_target) {
@@ -827,15 +907,16 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       case ImportTarget.income:
         config = await svc.getIncome();
     }
+    if (!mounted || gen != _configGen || scope != _configScope) return;
     if (config == null) return;
 
     _log.info('_loadSavedConfig: found ${config.scope} config');
     _savedConfig = config;
+    _savedConfigUnreadable = false;
     _selectedNumberLocale = config.numberLocale;
 
     // Check if noHeader is saved -- need to set before re-parse
-    final savedMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
-    final savedNoHeader = savedMappings['__noHeader'] == 'true';
+    final savedNoHeader = SavedImportMappings.decode(config.mappingsJson).flag('__noHeader');
     final localeChanged = _preview != null && _preview!.numberLocale != _effectiveNumberLocale();
     final needsReparse =
         !_fromStoredRows && ((config.skipRows > 0 && config.skipRows != _skipRows) || (savedNoHeader != _noHeader) || localeChanged);
@@ -848,6 +929,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     if (needsReparse) {
       await _reparseFile();
+      if (!mounted || gen != _configGen || scope != _configScope) return;
     } else {
       // Stored rows keep the original source columns, so splits re-derive
       // their columns (idempotently) and can be edited; row filters are
@@ -860,9 +942,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _ensureTransformedFullRows();
 
     // Auto-enable quick mode if the saved config covers all required fields.
-    // The user can still tap "Let me edit" to drop into the full mapper.
-    if (_canProceedToConfirm() && !_numberLocaleMissing) {
+    // The user can still tap "Let me edit" to drop into the full mapper. A
+    // saved setting that could not be read opens the mapper instead: nothing
+    // is imported with a setting the user did not save without being shown.
+    if (_canProceedToConfirm() && !_numberLocaleMissing && !_savedConfigUnreadable) {
       setState(() => _isQuickMode = true);
+      // The quick confirm shows the dry run of the saved config (incomes have
+      // none). Not awaited: the config is applied now, the figures fill in
+      // when the dry run lands (it handles its own errors and staleness).
+      if (_target != ImportTarget.income) unawaited(_computePreview());
     }
   }
 
@@ -878,24 +966,18 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     if (config == null || _preview == null) return;
 
     // Restore preview transforms FIRST, so derived split columns exist before
-    // mappings are matched against the column list.
-    final preMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
-    final restoredFilters = <RowFilter>[];
-    final restoredSplits = <ColumnSplit>[];
+    // mappings are matched against the column list. A setting that cannot be
+    // read is logged and not restored (see [_savedConfigUnreadable]).
+    final saved = SavedImportMappings.decode(config.mappingsJson);
+    final restoredFilters = saved.objects('__rowFilters', RowFilter.fromJson) ?? <RowFilter>[];
+    final restoredSplits = saved.objects('__columnSplits', ColumnSplit.fromJson) ?? <ColumnSplit>[];
     var restoredCombine = FilterCombine.all;
-    if (preMappings['__rowFilters'] != null) {
-      for (final f in jsonDecode(preMappings['__rowFilters'] as String) as List<dynamic>) {
-        restoredFilters.add(RowFilter.fromJson(f as Map<String, dynamic>));
-      }
+    if (saved.values['__rowFilters'] != null) {
+      final combine = saved.choice('__filterCombine', [for (final c in FilterCombine.values) c.name]);
       restoredCombine = FilterCombine.values.firstWhere(
-        (c) => c.name == preMappings['__filterCombine'],
+        (c) => c.name == combine,
         orElse: () => FilterCombine.all,
       );
-    }
-    if (preMappings['__columnSplits'] != null) {
-      for (final sp in jsonDecode(preMappings['__columnSplits'] as String) as List<dynamic>) {
-        restoredSplits.add(ColumnSplit.fromJson(sp as Map<String, dynamic>));
-      }
     }
     if (restoreTransforms && (restoredFilters.isNotEmpty || restoredSplits.isNotEmpty)) {
       // Adopt the saved transforms and rebuild the preview from the raw rows
@@ -911,7 +993,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // un-split values (e.g. "C/Azienda mese 01/2026" instead of "C/Azienda")
       // and the saved tags wouldn't match.
       _clearFullPreviewCache();
-      _fullUniqueValues.clear();
+      _resetTypeValues();
       _transformedFullRows = null;
     }
     _log.fine(
@@ -921,55 +1003,55 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
     final currentCols = _preview!.columns;
     _log.info('_applySavedConfig: applying to ${currentCols.length} columns: $currentCols');
+    final savedFormula = SavedImportMappings.formulaTerms(config.formulaJson);
 
     setState(() {
-      final savedMappings = (jsonDecode(config.mappingsJson) as Map<String, dynamic>);
+      final savedMappings = saved.values;
       _log.info('_applySavedConfig: savedMappings keys=${savedMappings.keys.toList()}');
 
       // Restore balanceDiffColumn and noHeader from special keys
-      if (savedMappings.containsKey('__balanceDiffColumn')) {
-        final balCol = savedMappings['__balanceDiffColumn'] as String?;
-        if (balCol != null && currentCols.contains(balCol)) {
-          _balanceDiffColumn = balCol;
-        }
+      final balCol = saved.text('__balanceDiffColumn');
+      if (balCol != null && currentCols.contains(balCol)) {
+        _balanceDiffColumn = balCol;
       }
-      if (savedMappings['__noHeader'] == 'true') {
+      if (saved.flag('__noHeader')) {
         _noHeader = true;
       }
 
       // Restore multi-column mappings and delimiters
       _multiMappings.clear();
       _multiDelimiters.clear();
-      for (final entry in savedMappings.entries) {
-        if (entry.key.startsWith('__multi_')) {
-          final field = entry.key.substring(8); // strip '__multi_'
-          final cols = (jsonDecode(entry.value as String) as List<dynamic>).cast<String>();
+      for (final key in savedMappings.keys) {
+        if (key.startsWith('__multi_')) {
+          final field = key.substring(8); // strip '__multi_'
+          final cols = saved.textList(key);
+          if (cols == null) continue;
           final validCols = cols.where((c) => currentCols.contains(c)).toList();
           _log.info('_applySavedConfig: multi-col $field: saved=$cols valid=$validCols');
           if (validCols.length > 1) {
             _multiMappings[field] = validCols;
             _mappings[field] = null; // multi-column overrides single mapping
           }
-        } else if (entry.key.startsWith('__delim_')) {
-          final field = entry.key.substring(8); // strip '__delim_'
-          _multiDelimiters[field] = entry.value as String;
-          _log.info('_applySavedConfig: delim $field="${entry.value}"');
+        } else if (key.startsWith('__delim_')) {
+          final field = key.substring(8); // strip '__delim_'
+          final delimiter = saved.text(key);
+          if (delimiter == null) continue;
+          _multiDelimiters[field] = delimiter;
+          _log.info('_applySavedConfig: delim $field="$delimiter"');
         }
       }
 
-      // Restore balance mode config
-      _balanceMode = (savedMappings['__balanceMode'] as String?) ?? 'cumulative';
-      _balanceFilterColumn = savedMappings['__balanceFilterColumn'] as String?;
+      // Restore balance mode config (an unreadable one keeps the default)
+      final savedFilter = saved.balanceFor(BalanceMode.filtered);
+      _balance = saved.balanceMode ?? BalanceMode.byDefault;
+      _balanceFilterColumn = savedFilter?.filterColumn;
       if (_balanceFilterColumn != null && !currentCols.contains(_balanceFilterColumn)) {
         _balanceFilterColumn = null;
-        _balanceMode = 'cumulative';
+        _balance = BalanceMode.cumulative;
       }
       _balanceFilterInclude.clear();
-      if (savedMappings.containsKey('__balanceFilterInclude')) {
-        final vals = (jsonDecode(savedMappings['__balanceFilterInclude'] as String) as List<dynamic>).cast<String>();
-        _balanceFilterInclude.addAll(vals);
-      }
-      _log.info('_applySavedConfig: balanceMode=$_balanceMode, filterCol=$_balanceFilterColumn, filterInclude=$_balanceFilterInclude');
+      _balanceFilterInclude.addAll(savedFilter?.filterInclude ?? const {});
+      _log.info('_applySavedConfig: balanceMode=${_balance.name}, filterCol=$_balanceFilterColumn, filterInclude=$_balanceFilterInclude');
 
       for (final entry in savedMappings.entries) {
         if (entry.key.startsWith('__')) continue; // skip meta keys
@@ -983,11 +1065,10 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
 
       _unmapDerivedOperationDate();
 
-      final savedFormula = (jsonDecode(config.formulaJson) as List<dynamic>);
       _amountFormula.clear();
-      for (final term in savedFormula) {
-        final op = term['operator'] as String;
-        final col = term['sourceColumn'] as String;
+      for (final term in savedFormula ?? const <Map<String, String>>[]) {
+        final op = term['operator']!;
+        final col = term['sourceColumn']!;
         if (currentCols.contains(col)) {
           _amountFormula.add(FormulaTerm(operator: op, sourceColumn: col));
         }
@@ -997,19 +1078,19 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       // historic/current + fee mode). Type-tag values are validated against
       // the current Type column's values so a stale tag can't orphan.
       if (_target == ImportTarget.assetEvent) {
-        _assetImportMode = (savedMappings['__assetImportMode'] as String?) ?? _assetImportMode;
-        _typeMode = (savedMappings['__typeMode'] as String?) ?? _typeMode;
-        _feeMode = (savedMappings['__feeMode'] as String?) ?? _feeMode;
-        _negativeIsBuy = savedMappings['__negativeIsBuy'] == 'true';
+        _assetImportMode = saved.choice('__assetImportMode', const ['historic', 'current']) ?? _assetImportMode;
+        _typeMode = saved.choice('__typeMode', const ['column', 'sign']) ?? _typeMode;
+        _feeMode = saved.choice('__feeMode', const ['column', 'computed']) ?? _feeMode;
+        _negativeIsBuy = saved.flag('__negativeIsBuy');
         // Auto-calc (amount = qty × price) is mutually exclusive with a mapped
         // amount column. A mapped amount always wins; otherwise honor the
         // saved auto-calc flag. This prevents the contradictory state where
         // both are set (auto-calc then silently produced 0 for cash-only
         // pension rows that have no qty/price).
-        _autoCalcAmount = _mappings['amount'] == null && savedMappings['__autoCalcAmount'] == 'true';
+        _autoCalcAmount = _mappings['amount'] == null && saved.flag('__autoCalcAmount');
         // Same rule for the price derivation (issue #96): a mapped price
         // column always wins, and the two auto-calcs can't both be on.
-        _autoCalcPrice = !_autoCalcAmount && _mappings['price'] == null && savedMappings['__autoCalcPrice'] == 'true';
+        _autoCalcPrice = !_autoCalcAmount && _mappings['price'] == null && saved.flag('__autoCalcPrice');
 
         final typeCol = _mappings['type'];
         // Prune a restored tag only when we can confirm its value is absent
@@ -1022,10 +1103,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         final validTypeVals = (canPrune ? fullVals : const <String>[]).toSet();
         void restoreTagSet(Set<String> target, String key) {
           target.clear();
-          if (savedMappings[key] != null) {
-            for (final v in (jsonDecode(savedMappings[key] as String) as List<dynamic>).cast<String>()) {
-              if (!canPrune || validTypeVals.contains(v)) target.add(v);
-            }
+          for (final v in saved.textList(key) ?? const <String>[]) {
+            if (!canPrune || validTypeVals.contains(v)) target.add(v);
           }
         }
 
@@ -1034,7 +1113,7 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         restoreTagSet(_revalueValues, '__revalueValues');
         restoreTagSet(_feeValues, '__feeValues');
 
-        final revCol = savedMappings['__revalueAmountColumn'] as String?;
+        final revCol = saved.text('__revalueAmountColumn');
         _revalueAmountColumn = (revCol != null && currentCols.contains(revCol)) ? revCol : null;
       }
 
@@ -1047,10 +1126,8 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         final validTypeVals = (canPrune ? fullVals : const <String>[]).toSet();
         void restoreIncomeTagSet(Set<String> target, String key) {
           target.clear();
-          if (savedMappings[key] != null) {
-            for (final v in (jsonDecode(savedMappings[key] as String) as List<dynamic>).cast<String>()) {
-              if (!canPrune || validTypeVals.contains(v)) target.add(v);
-            }
+          for (final v in saved.textList(key) ?? const <String>[]) {
+            if (!canPrune || validTypeVals.contains(v)) target.add(v);
           }
         }
 
@@ -1063,10 +1140,14 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
         '_applySavedConfig: result - mappings=$_mappings, multiMappings=$_multiMappings, delimiters=$_multiDelimiters, formula=${_amountFormula.length} terms',
       );
     });
+    _savedConfigUnreadable = saved.corrupt || saved.unreadable.isNotEmpty || savedFormula == null;
+    _ensureTypeValues();
   }
 
-  /// Save current import config for the target account.
-  Future<void> _saveConfig() async {
+  /// Save current import config for the target account. [svc] is read by
+  /// the caller before the import's awaits: this runs after them, possibly
+  /// once the screen is gone.
+  Future<void> _saveConfig(ImportConfigService svc) async {
     // Resolve the scope + key for the current import mode. Each mode persists
     // under its natural key (transaction→account, asset byIsin→intermediary,
     // asset single→asset, income→global). When no key is available the
@@ -1113,12 +1194,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       mappingsToSave['__delim_${entry.key}'] = entry.value;
     }
     // Save balance mode config
-    mappingsToSave['__balanceMode'] = _balanceMode;
+    mappingsToSave[SavedImportMappings.balanceModeKey] = _balance.name;
     if (_balanceFilterColumn != null) {
-      mappingsToSave['__balanceFilterColumn'] = _balanceFilterColumn;
+      mappingsToSave[SavedImportMappings.balanceFilterColumnKey] = _balanceFilterColumn;
     }
     if (_balanceFilterInclude.isNotEmpty) {
-      mappingsToSave['__balanceFilterInclude'] = jsonEncode(_balanceFilterInclude.toList());
+      mappingsToSave[SavedImportMappings.balanceFilterIncludeKey] = jsonEncode(_balanceFilterInclude.toList());
     }
     // Save preview transforms (row filters + column splits)
     if (_transforms.filters.isNotEmpty) {
@@ -1151,19 +1232,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       }
     }
 
-    await ref
-        .read(importConfigServiceProvider)
-        .saveScoped(
-          scope: scope,
-          accountId: accountId,
-          intermediaryId: intermediaryId,
-          assetId: assetId,
-          skipRows: _skipRows,
-          mappings: mappingsToSave,
-          formula: _amountFormula.map((t) => {'operator': t.operator, 'sourceColumn': t.sourceColumn}).toList(),
-          hashColumns: const [],
-          numberLocale: _selectedNumberLocale,
-        );
+    await svc.saveScoped(
+      scope: scope,
+      accountId: accountId,
+      intermediaryId: intermediaryId,
+      assetId: assetId,
+      skipRows: _skipRows,
+      mappings: mappingsToSave,
+      formula: _amountFormula.map((t) => {'operator': t.operator, 'sourceColumn': t.sourceColumn}).toList(),
+      hashColumns: const [],
+      numberLocale: _selectedNumberLocale,
+    );
     _log.info('_saveConfig: saved ${scope.wire} config');
   }
 
@@ -1179,53 +1258,137 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     return sorted;
   }
 
-  /// Load unique values for a column from ALL rows (not just preview).
+  /// Forget the complete Type-column values: the rows they came from changed.
+  /// A load still running for the old rows is ignored when it completes.
+  void _resetTypeValues() {
+    _fullUniqueValues.clear();
+    _loadingUniqueColumns.clear();
+    _failedUniqueColumns.clear();
+    _uniqueValuesGen++;
+  }
+
+  /// Load the complete values of the mapped Type column when the wizard tags
+  /// them (asset events typed from a column, incomes). Called by the handlers
+  /// that change the mapping or the rows — never from build.
+  void _ensureTypeValues() {
+    final typeCol = _mappings['type'];
+    if (typeCol == null) return;
+    if (_target == ImportTarget.income || (_target == ImportTarget.assetEvent && _typeMode == 'column')) {
+      // Not awaited: the preview's values stand in until every row's are
+      // loaded; the load applies only to the rows it was started for and
+      // records its own failure.
+      unawaited(_loadFullUniqueValues(typeCol));
+    }
+  }
+
+  /// Load unique values for a column from ALL rows (not just preview). A
+  /// failed load is not retried until the rows change: the preview's values
+  /// stand in meanwhile.
   Future<void> _loadFullUniqueValues(String column) async {
-    if (_fullUniqueValues.containsKey(column) || _preview == null || _loadingUniqueValues) return;
-    setState(() => _loadingUniqueValues = true);
+    if (_preview == null ||
+        _fullUniqueValues.containsKey(column) ||
+        _loadingUniqueColumns.contains(column) ||
+        _failedUniqueColumns.contains(column)) {
+      return;
+    }
+    final gen = _uniqueValuesGen;
+    _loadingUniqueColumns.add(column);
     try {
       final full = await _loadCompletePreview();
+      if (!mounted || gen != _uniqueValuesGen) return;
       final values = <String>{};
       for (final row in full.rows) {
         final v = (row[column] ?? '').trim();
         if (v.isNotEmpty) values.add(v);
       }
       final sorted = values.toList()..sort();
-      if (mounted) {
-        setState(() {
-          _fullUniqueValues[column] = sorted;
-          _loadingUniqueValues = false;
-        });
-      }
+      setState(() {
+        _fullUniqueValues[column] = sorted;
+        _loadingUniqueColumns.remove(column);
+      });
     } catch (e) {
       _log.warning('_loadFullUniqueValues failed: $e');
-      if (mounted) setState(() => _loadingUniqueValues = false);
+      if (!mounted || gen != _uniqueValuesGen) return;
+      setState(() {
+        _failedUniqueColumns.add(column);
+        _loadingUniqueColumns.remove(column);
+      });
     }
   }
 
-  /// Try to resolve a mapped field as a numeric value from a row.
+  /// Try to resolve a mapped field as a numeric value from a row, read in the
+  /// number format the import uses — so a preview figure is the imported one.
   double? _tryResolveNumeric(String field, Map<String, String> row) {
     final col = _mappings[field];
     if (col == null) return null;
-    final raw = row[col] ?? '';
-    return fmt.parseFlexibleNumber(raw);
+    return amt.tryParseAmount(row[col], locale: _effectiveNumberLocale());
   }
 
-  /// Preview the result of combining multiple columns for a field.
+  /// The source columns whose cells are position size: the ones feeding the
+  /// amount (a formula term, the balance-difference column, the revalue amount
+  /// column), the balance, the quantity and the commission. The wizard's raw
+  /// row previews blur them in privacy mode; prices and exchange rates are
+  /// market data and, like dates, descriptions and unmapped columns, stay
+  /// readable.
+  Set<String> get _positionSizeColumns => {
+    for (final field in const ['amount', 'balanceAfter', 'quantity', 'commission']) ?_mappings[field],
+    for (final term in _amountFormula) term.sourceColumn,
+    ?_balanceDiffColumn,
+    ?_revalueAmountColumn,
+  };
+
+  /// A raw cell of [column] in a preview table: blurred in privacy mode when
+  /// the column is position size ([_positionSizeColumns]).
+  Widget _previewCell(String column, String text, {required TextStyle style, required Set<String> positionSize}) =>
+      PrivacyText(text, style: style, masked: positionSize.contains(column));
+
+  /// The app's locale, in which the wizard spells the figures it computes.
+  String get _displayLocale => ref.watch(appLocaleProvider).value ?? Platform.localeName;
+
+  /// A "Preview: …" line of figures the import will compute (amounts, fees):
+  /// position size, blurred in privacy mode, spelled in the app's locale and
+  /// separated by a dot a decimal comma cannot be mistaken for. A figure the
+  /// import cannot compute (null) reads N/A; the label, [lead] and each
+  /// figure's note stay readable. [empty] stands in for no figure at all.
+  Widget _computedFiguresPreview(AppStrings s, List<(double?, String?)> figures, {String lead = '', String empty = ''}) {
+    final format = fmt.amountFormat(_displayLocale);
+    final spelled = <String>[];
+    final parts = <String>[];
+    for (final (value, note) in figures) {
+      var part = s.notApplicable;
+      if (value != null) {
+        part = privacySlot(spelled.length);
+        spelled.add(format.format(value));
+      }
+      parts.add(note == null ? part : '$part $note');
+    }
+    return PrivacySentence(
+      '${s.previewLabel}: $lead${parts.isEmpty ? empty : parts.join('  ·  ')}',
+      figures: spelled,
+      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// Preview the result of combining multiple columns for a field, by the
+  /// import's rule: blank cells are skipped, numbers (in the import's number
+  /// format) are summed, anything else is joined with the delimiter.
   String _previewMultiMapping(String field, List<String> cols) {
     if (_preview == null || _preview!.rows.isEmpty) return '';
     final row = _preview!.rows.first;
-    final values = cols.map((c) => row[c] ?? '').toList();
+    final values = cols.map((c) => (row[c] ?? '').trim()).where((v) => v.isNotEmpty).toList();
+    if (values.isEmpty) return '';
     final delimiter = _multiDelimiters[field] ?? ' ';
 
     // Try numeric sum first
-    final nums = values.map((v) => fmt.parseFlexibleNumber(v)).toList();
+    final locale = _effectiveNumberLocale();
+    final nums = values.map((v) => amt.tryParseAmount(v, locale: locale)).toList();
     if (nums.every((n) => n != null)) {
       final sum = nums.fold(0.0, (a, b) => a + b!);
-      return sum.toStringAsFixed(2);
+      return fmt.amountFormat(_displayLocale).format(sum);
     }
     // String concatenation with delimiter
-    return values.where((v) => v.isNotEmpty).join(delimiter);
+    return values.join(delimiter);
   }
 
   /// Determine which amount mode is active.
@@ -1312,13 +1475,15 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     _importTotal = 0;
 
     _fullIsinSummary = null;
+    _resetTypeValues();
     _excludedIsins.clear();
     _multiMappings.clear();
     _multiDelimiters.clear();
     _noHeader = false;
     _balanceDiffColumn = null;
     _savedConfig = null;
-    _balanceMode = 'cumulative';
+    _savedConfigUnreadable = false;
+    _balance = BalanceMode.byDefault;
     _balanceFilterColumn = null;
     _balanceFilterInclude.clear();
     _feeMode = 'column';
@@ -1380,9 +1545,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
     return mappings;
   }
 
-  /// Compute a dry-run preview of the import (no DB writes).
+  /// Compute a dry-run preview of the import (no DB writes). Only the latest
+  /// request applies: an older dry run that finishes last (e.g. of the
+  /// previous number format) never replaces the current one.
   Future<void> _computePreview() async {
     if (_preview == null) return;
+    final gen = ++_previewGen;
     // No number format chosen for stored rows: any figure computed with a
     // guessed locale would be misleading, so show none.
     if (_numberLocaleMissing) {
@@ -1399,8 +1567,9 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       _assetPreview = null;
     });
 
+    final importer = ref.read(importServiceProvider);
+    final appLocale = ref.read(appLocaleProvider).value;
     try {
-      final importer = ref.read(importServiceProvider);
       final mappings = _buildColumnMappings();
 
       // Get full rows only when the preview was capped. Locale mismatches
@@ -1408,21 +1577,21 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
       var fullPreview = _preview!;
       if (fullPreview.rows.length < fullPreview.totalRows) {
         fullPreview = await _loadCompletePreview();
+        if (!mounted || gen != _previewGen) return;
       }
 
-      final appLocale = ref.read(appLocaleProvider).value;
       if (_target == ImportTarget.transaction && _targetId != null) {
         final result = await importer.previewTransactionImport(
           preview: fullPreview,
           mappings: mappings,
           accountId: _targetId!,
-          balanceMode: _balanceMode,
+          balanceMode: _balance.name,
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
           numberLocale: _selectedNumberLocale,
           appLocale: appLocale,
         );
-        if (mounted) _setState(() => _txPreview = result);
+        if (gen == _previewGen) _setState(() => _txPreview = result);
       } else if (_target == ImportTarget.assetEvent) {
         // Remove type mapping if using sign-based detection
         if (_typeMode == 'sign') {
@@ -1443,12 +1612,12 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
           targetAssetId: _assetEventMode == 'singleAsset' ? _singleAssetTargetId : null,
           revalueAmountColumn: _revalueValues.isNotEmpty ? _revalueAmountColumn : null,
         );
-        if (mounted) _setState(() => _assetPreview = result);
+        if (gen == _previewGen) _setState(() => _assetPreview = result);
       }
     } catch (e) {
       _log.warning('_computePreview: $e');
     } finally {
-      if (mounted) _setState(() => _previewing = false);
+      if (gen == _previewGen) _setState(() => _previewing = false);
     }
   }
 }

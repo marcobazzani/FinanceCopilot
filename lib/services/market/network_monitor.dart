@@ -14,8 +14,6 @@ class NetworkMonitor {
   static const _checkInterval = Duration(seconds: 30);
   static const _offlineBackoff = Duration(minutes: 2);
 
-  bool get isOnline => _online;
-
   /// Quick connectivity check. Cached for [_checkInterval].
   /// Returns true if network is available.
   Future<bool> check() async {

@@ -19,6 +19,8 @@ extension _ConfirmStep on _ImportScreenState {
 
   Future<void> _lookupIsins() async {
     if (_preview == null || _mappings['isin'] == null) return;
+    // Read before awaiting: the screen may be gone when the rows arrive.
+    final lookup = _maybeIsinLookupService();
 
     // Use full rows (not capped preview) to find ALL unique ISINs.
     // The preview is capped to first 5 + last 5 rows for display;
@@ -26,6 +28,7 @@ extension _ConfirmStep on _ImportScreenState {
     var source = _preview!;
     if (source.rows.length < source.totalRows) {
       source = await _loadCompletePreview();
+      if (!mounted) return;
     }
 
     final isinCol = _mappings['isin']!;
@@ -40,7 +43,6 @@ extension _ConfirmStep on _ImportScreenState {
     if (isins.isEmpty) return;
     _setState(() => _lookingUpIsins = true);
     try {
-      final lookup = _maybeIsinLookupService();
       if (lookup == null) {
         if (mounted) {
           _setState(() {
@@ -149,7 +151,7 @@ extension _ConfirmStep on _ImportScreenState {
                         const SizedBox(height: 8),
                         Text(_fromStoredRows ? s.sourceStoredRows : s.sourceFile(_filePath?.split('/').last ?? s.clipboard)),
                         Text(s.rowCount(_preview?.totalRows ?? 0)),
-                        if (_target == ImportTarget.transaction && _balanceMode == 'column')
+                        if (_target == ImportTarget.transaction && _balance == BalanceMode.column)
                           Text(s.balancesOnValueDateTimeline, key: const Key('balancesTimelineNote'), style: const TextStyle(fontSize: 12)),
                         Text(
                           s.targetLabel(
@@ -162,15 +164,7 @@ extension _ConfirmStep on _ImportScreenState {
                         ),
                         const SizedBox(height: 8),
                         Text(s.mappingsLabel, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ..._mappings.entries
-                            .where((e) => e.value != null && !(e.key == 'amount' && (_amountFormula.isNotEmpty || _balanceDiffColumn != null)))
-                            .map((e) => Text('  ${e.key} ← ${e.value}')),
-                        if (_amountFormula.isNotEmpty)
-                          Text('  amount ← ${_amountFormula.map((t) => '${t.operator} ${t.sourceColumn}').join(' ').replaceFirst('+ ', '')}'),
-                        if (_balanceDiffColumn != null) Text('  amount ← Δ $_balanceDiffColumn'),
-                        // Defaults are shown explicitly so a forgotten mapping is visible here.
-                        if (_target == ImportTarget.transaction && _mappings['valueDate'] == null)
-                          Text('  valueDate ← ${s.fieldLabel('date')}', style: TextStyle(color: Theme.of(context).colorScheme.tertiary)),
+                        Padding(padding: const EdgeInsets.only(left: 8), child: _buildMappingLines()),
                         if (isAssetImport) ...[
                           const SizedBox(height: 12),
                           Text(s.assetsAndExchange, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -254,7 +248,7 @@ extension _ConfirmStep on _ImportScreenState {
                                       ),
                                     ),
                                     const SizedBox(width: 4),
-                                    Text(s.nEventsCount(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                    Text(s.nEvents(count), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                     const SizedBox(width: 8),
                                     if (options.length > 1)
                                       Expanded(
@@ -358,32 +352,25 @@ extension _ConfirmStep on _ImportScreenState {
             ),
           ),
         ] else
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              if (_missingMappingReason() != null) ...[
-                Expanded(
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, size: 16, color: Colors.red.shade300),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _missingMappingReason()!,
-                          style: TextStyle(fontSize: 12, color: Colors.red.shade300),
-                        ),
-                      ),
-                    ],
+          WizardNavBar(
+            leading: switch (_missingMappingReason()) {
+              final reason? => Row(
+                children: [
+                  Icon(Icons.error_outline, size: 16, color: Colors.red.shade300),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      reason,
+                      style: TextStyle(fontSize: 12, color: Colors.red.shade300),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              FilledButton.icon(
-                icon: const Icon(Icons.check),
-                label: Text(s.importButton),
-                onPressed: _canImport(isAssetImport, isIncomeImport) ? _executeImport : null,
+                ],
               ),
-            ],
+              null => null,
+            },
+            primaryIcon: Icons.check,
+            primaryLabel: s.importButton,
+            onPrimary: _canImport(isAssetImport, isIncomeImport) ? _executeImport : null,
           ),
       ],
     );
@@ -414,6 +401,10 @@ extension _ConfirmStep on _ImportScreenState {
     // with no amount column silently writes all-zero events.
     if (!_canProceedToConfirm()) return false;
     if (_numberLocaleMissing) return false;
+    // Incomes and asset events are recorded in the stored base currency, and
+    // asset rates quoted against it: the button comes on once it has loaded,
+    // as the create-account dialog's does. Watched, so it does.
+    if ((isAssetImport || isIncomeImport) && ref.watch(baseCurrencyProvider).value == null) return false;
     if (isAssetImport) return _selectedIntermediaryId != null;
     if (isIncomeImport) return true;
     return _targetId != null;
@@ -477,39 +468,11 @@ extension _ConfirmStep on _ImportScreenState {
     );
   }
 
+  /// The intermediary list's Add Intermediary form; the one it creates is
+  /// selected at once.
   Future<void> _createIntermediaryInline() async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController();
-    final String? name;
-    try {
-      name = await showDialog<String>(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            title: Text(s.addIntermediary),
-            content: TextField(
-              controller: nameCtrl,
-              decoration: InputDecoration(labelText: s.intermediaryName),
-              autofocus: true,
-              onChanged: (_) => setDialogState(() {}),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-              FilledButton(
-                onPressed: nameCtrl.text.trim().isNotEmpty ? () => Navigator.pop(ctx, nameCtrl.text.trim()) : null,
-                child: Text(s.create),
-              ),
-            ],
-          ),
-        ),
-      );
-    } finally {
-      nameCtrl.dispose();
-    }
-    if (name == null || name.isEmpty) return;
-    final svc = ref.read(intermediaryServiceProvider);
-    final id = await svc.create(name: name);
-    if (mounted) _setState(() => _selectedIntermediaryId = id);
+    final id = await showIntermediaryEditDialog(context, ref);
+    if (id != null) _setState(() => _selectedIntermediaryId = id);
   }
 
   Widget _buildImportPreview() {
@@ -545,12 +508,27 @@ extension _ConfirmStep on _ImportScreenState {
               _previewRow(s.parsedRowsLabel, '${p.parsedRows}'),
               if (p.errorRows > 0) _previewRow(s.skippedLabel, '${p.errorRows}', color: Colors.red),
               if (p.rowsToReplace > 0) _previewRow(s.rowsToReplace, '${p.rowsToReplace}', color: Colors.orange),
-              _previewRow(s.importAmountSum, amtFmt.format(p.importSum)),
+              _previewRow(s.importAmountSum, amtFmt.format(p.importSum), masked: true),
               if (p.predictedBalance != null)
-                _previewRow(s.predictedBalance, amtFmt.format(p.predictedBalance!), color: Theme.of(context).colorScheme.primary, bold: true),
-              if (p.errors.isNotEmpty) ...[
+                _previewRow(
+                  s.predictedBalance,
+                  amtFmt.format(p.predictedBalance!),
+                  color: Theme.of(context).colorScheme.primary,
+                  bold: true,
+                  masked: true,
+                )
+              else if (p.openingBalanceUnknown)
+                _previewRow(s.predictedBalance, s.predictedBalanceUnknown, color: Colors.orange),
+              if (p.issues.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                ...p.errors.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 11, color: Colors.red))),
+                ...p.issues
+                    .take(3)
+                    .map(
+                      (i) => Text(
+                        importIssueText(s, i, locale: locale),
+                        style: const TextStyle(fontSize: 11, color: Colors.red),
+                      ),
+                    ),
               ],
             ],
           ),
@@ -562,6 +540,9 @@ extension _ConfirmStep on _ImportScreenState {
       final p = _assetPreview!;
       final totalBuys = p.assetSummary.values.fold(0, (sum, e) => sum + e.buyCount);
       final totalSells = p.assetSummary.values.fold(0, (sum, e) => sum + e.sellCount);
+      // No currency column: what is recorded in the base currency is said,
+      // naming it, while a currency column can still be mapped.
+      final assumedBase = p.baseCurrencyAssumed ? ref.watch(baseCurrencyProvider).value : null;
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -575,9 +556,25 @@ extension _ConfirmStep on _ImportScreenState {
               _previewRow(s.assetLabel, '${p.assetSummary.length}'),
               _previewRow(s.buysLabel, '$totalBuys', color: Colors.green),
               if (totalSells > 0) _previewRow(s.sellsLabel, '$totalSells', color: Colors.red),
-              if (p.errors.isNotEmpty) ...[
+              if (assumedBase != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    s.importBaseCurrencyAssumed(assumedBase),
+                    key: const Key('baseCurrencyAssumedNote'),
+                    style: const TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
+                ),
+              if (p.issues.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                ...p.errors.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 11, color: Colors.red))),
+                ...p.issues
+                    .take(3)
+                    .map(
+                      (i) => Text(
+                        importIssueText(s, i, locale: locale),
+                        style: const TextStyle(fontSize: 11, color: Colors.red),
+                      ),
+                    ),
               ],
             ],
           ),
@@ -588,62 +585,30 @@ extension _ConfirmStep on _ImportScreenState {
     return const SizedBox.shrink();
   }
 
-  Widget _previewRow(String label, String value, {Color? color, bool bold = false}) {
+  /// [masked]: [value] is position size (an amount, a balance) and blurs in
+  /// privacy mode; row counts stay readable.
+  Widget _previewRow(String label, String value, {Color? color, bool bold = false, bool masked = false}) {
+    final style = TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.bold : null, color: color);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           SizedBox(width: 180, child: Text(label, style: const TextStyle(fontSize: 12))),
-          Text(
-            value,
-            style: TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.bold : null, color: color),
+          Flexible(
+            child: PrivacyText(value, style: style, masked: masked),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _showCreateAccountDialog() async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController();
-
-    final bool? created;
-    try {
-      created = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(s.newAccountTitle),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.name, hintText: s.accountNameHint),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                await ref
-                    .read(accountServiceProvider)
-                    .create(
-                      name: nameCtrl.text.trim(),
-                      currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-                    );
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              },
-              child: Text(s.create),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      nameCtrl.dispose();
-    }
-    if (created == true) _setState(() {});
-  }
+  /// The Accounts screen's New Account form (the account is created in the
+  /// stored base currency); the account picker lists the new account.
+  Future<void> _showCreateAccountDialog() => showCreateAccountDialog(context);
 
   Future<void> _executeImport() async {
     _log.info('_executeImport: starting import - target=${_target.name}, targetId=$_targetId');
+    final s = ref.read(appStringsProvider);
     // Hard stop: never run an import with a missing required mapping (the
     // button gate should already prevent this, but guard the entry point so
     // a regression can't silently produce all-zero events).
@@ -659,9 +624,36 @@ extension _ConfirmStep on _ImportScreenState {
     // null-check crash instead of a message the user can act on.
     if (_target == ImportTarget.assetEvent && _selectedIntermediaryId == null) {
       _log.warning('_executeImport: blocked — asset import with no intermediary selected');
-      _setState(() => _error = ref.read(appStringsProvider).selectIntermediary);
+      _setState(() => _error = s.selectIntermediary);
       return;
     }
+    // Incomes and asset events are recorded in the stored base currency, and
+    // an asset's rate is quoted against it: never in a guessed one. The
+    // Import button waits for it (_canImport); this guards the entry point.
+    final baseCurrency = ref.read(baseCurrencyProvider).value;
+    if (_target != ImportTarget.transaction && baseCurrency == null) {
+      _log.warning('_executeImport: blocked — the base currency has not loaded');
+      _setState(() => _error = s.importBaseCurrencyLoading);
+      return;
+    }
+    // Everything the import and its bookkeeping use is read now, before the
+    // first await: `ref` is unusable once the screen is gone, and the config
+    // save, balance recalculation and classification must still run then —
+    // skipping them would leave the imported rows with stale balances.
+    final importer = ref.read(importServiceProvider);
+    final configSvc = ref.read(importConfigServiceProvider);
+    final txSvc = ref.read(transactionServiceProvider);
+    final classifier = ref.read(transactionClassifierServiceProvider);
+    final appLocale = ref.read(appLocaleProvider).value;
+    // The number format the file is read in (explicit choice, else the app's).
+    final fileLocale = _effectiveNumberLocale();
+    final isAssetImport = _target == ImportTarget.assetEvent;
+    // ISIN lookup is available only when the market data service is the
+    // web-backed implementation. Test/no-op services still import assets
+    // using the raw ISIN data.
+    final isinLookup = isAssetImport ? _maybeIsinLookupService() : null;
+    final rateService = isAssetImport ? ref.read(exchangeRateServiceProvider) : null;
+    final targetId = _targetId;
     _setState(() {
       _importing = true;
       _importedSoFar = 0;
@@ -670,7 +662,6 @@ extension _ConfirmStep on _ImportScreenState {
     });
 
     try {
-      final importer = ref.read(importServiceProvider);
       final mappings = _buildColumnMappings();
 
       _log.info('_executeImport: ${mappings.length} column mappings built');
@@ -693,16 +684,14 @@ extension _ConfirmStep on _ImportScreenState {
         });
       }
 
-      final appLocale = ref.read(appLocaleProvider).value;
-
       final ImportResult result;
       if (_target == ImportTarget.transaction) {
         result = await importer.importTransactions(
           preview: fullPreview,
           mappings: mappings,
-          accountId: _targetId!,
+          accountId: targetId!,
           onProgress: onProgress,
-          balanceMode: _balanceMode,
+          balanceMode: _balance.name,
           balanceFilterColumn: _balanceFilterColumn,
           balanceFilterInclude: _balanceFilterInclude.isNotEmpty ? _balanceFilterInclude : null,
           numberLocaleOverride: _selectedNumberLocale,
@@ -711,11 +700,10 @@ extension _ConfirmStep on _ImportScreenState {
           appLocale: appLocale,
         );
       } else if (_target == ImportTarget.income) {
-        final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
         result = await importer.importIncomes(
           preview: fullPreview,
           mappings: mappings,
-          defaultCurrency: baseCurrency,
+          defaultCurrency: baseCurrency!, // non-null: gated by _canImport AND re-checked in _executeImport
           onProgress: onProgress,
           incomeValues: _incomeValues.isNotEmpty ? _incomeValues : null,
           refundValues: _refundValues.isNotEmpty ? _refundValues : null,
@@ -728,10 +716,6 @@ extension _ConfirmStep on _ImportScreenState {
         if (_typeMode == 'sign') {
           mappings.removeWhere((m) => m.targetField == 'type');
         }
-        // ISIN lookup is available only when the market data service is the
-        // web-backed implementation. Test/no-op services still import assets
-        // using the raw ISIN data.
-        final isinLookup = _maybeIsinLookupService();
         final assetResult = await importer.importAssetEventsGrouped(
           preview: fullPreview,
           mappings: mappings,
@@ -745,8 +729,8 @@ extension _ConfirmStep on _ImportScreenState {
           revalueValues: _revalueValues.isNotEmpty ? _revalueValues : null,
           selectedExchanges: _selectedExchanges.isNotEmpty ? _selectedExchanges : null,
           excludedIsins: _excludedIsins.isNotEmpty ? _excludedIsins : null,
-          rateService: ref.read(exchangeRateServiceProvider),
-          baseCurrency: ref.read(baseCurrencyProvider).value ?? 'EUR',
+          rateService: rateService,
+          baseCurrency: baseCurrency!, // non-null: gated by _canImport AND re-checked in _executeImport
           intermediaryId: _selectedIntermediaryId!, // non-null: gated by _canImport AND re-checked in _executeImport
           numberLocaleOverride: _selectedNumberLocale,
           appLocale: appLocale,
@@ -763,20 +747,30 @@ extension _ConfirmStep on _ImportScreenState {
       }
 
       // Save import config for this account
-      await _saveConfig();
+      await _saveConfig(configSvc);
 
       // Auto-recalculate balances for the entire account after transaction import
-      if (_target == ImportTarget.transaction && _targetId != null) {
-        final txSvc = ref.read(transactionServiceProvider);
-        final configSvc = ref.read(importConfigServiceProvider);
-        final savedConfig = await configSvc.getByAccount(_targetId!);
-        final mappings = savedConfig != null ? jsonDecode(savedConfig.mappingsJson) as Map<String, dynamic> : <String, dynamic>{};
-        final mode = (mappings['__balanceMode'] as String?) ?? 'cumulative';
-        await txSvc.recalculateBalances(_targetId!, balanceMode: mode, savedMappings: mappings);
+      if (_target == ImportTarget.transaction && targetId != null) {
+        final savedConfig = await configSvc.getByAccount(targetId);
+        final saved = savedConfig != null ? SavedImportMappings.decode(savedConfig.mappingsJson) : SavedImportMappings(const {});
+        final mode = saved.balanceMode;
+        // The stored statement text is re-read in the account's number
+        // format: read as en_US, an it_IT "1.100,00" is no balance at all and
+        // a column-mode account would lose its anchor on the bank's closing.
+        if (mode == null) {
+          _log.warning('_executeImport: saved balance settings unreadable - account balances not recalculated');
+        } else {
+          await txSvc.recalculateBalances(
+            targetId,
+            balanceMode: mode.name,
+            savedMappings: saved.values,
+            numberLocale: savedConfig?.numberLocale ?? fileLocale,
+          );
+        }
         // Apply the user's rules to the freshly imported rows (never
         // overwrites an existing category).
         try {
-          _classifyResult = await ref.read(transactionClassifierServiceProvider).classifyAll(accountId: _targetId, overwrite: false);
+          _classifyResult = await classifier.classifyAll(accountId: targetId, overwrite: false);
         } catch (e) {
           _log.warning('_executeImport: post-import classification failed: $e');
           _classifyResult = null;
@@ -791,37 +785,24 @@ extension _ConfirmStep on _ImportScreenState {
     } catch (e, stack) {
       _log.severe('_executeImport: failed', e, stack);
       _setState(() {
-        _error = 'Import failed: $e';
+        _error = s.importFailed(e);
         _importing = false;
       });
     }
   }
 
-  /// Locales the user can pick for number-format parsing in the wizard.
-  /// `null` value = "Auto" (resolve from app locale at import time).
-  static const List<(String?, String)> _numberLocaleOptions = [
-    (null, 'Auto'),
-    ('it_IT', 'Italiano (it_IT)'),
-    ('en_US', 'English / US (en_US)'),
-    ('en_GB', 'English / UK (en_GB)'),
-    ('de_DE', 'Deutsch (de_DE)'),
-    ('fr_FR', 'Français (fr_FR)'),
-    ('es_ES', 'Español (es_ES)'),
-  ];
-
+  /// The number formats the user can pick (the ones Settings offers), after
+  /// "Auto" (`null`: resolve from the saved format or the app locale at import
+  /// time).
   Widget _buildNumberLocalePicker() {
     final s = ref.watch(appStringsProvider);
     final appLocale = ref.watch(appLocaleProvider).value;
-    final autoLabel = appLocale != null && appLocale.isNotEmpty ? 'Auto ($appLocale)' : 'Auto';
-    // Stored rows: no "Auto" — the text has one format and it must be named.
-    final options = _fromStoredRows ? _numberLocaleOptions.where((o) => o.$1 != null) : _numberLocaleOptions;
-    final items = options.map((opt) {
-      final label = opt.$1 == null ? autoLabel : opt.$2;
-      return DropdownMenuItem<String?>(
-        value: opt.$1,
-        child: Text(label),
-      );
-    }).toList();
+    final autoLabel = appLocale != null && appLocale.isNotEmpty ? '${s.auto} ($appLocale)' : s.auto;
+    final items = [
+      // Stored rows: no "Auto" — the text has one format and it must be named.
+      if (!_fromStoredRows) DropdownMenuItem<String?>(value: null, child: Text(autoLabel)),
+      for (final (locale, label) in s.numberLocaleOptions) DropdownMenuItem<String?>(value: locale, child: Text(label)),
+    ];
     final missing = _numberLocaleMissing;
     return Card(
       key: const Key('numberLocalePicker'),

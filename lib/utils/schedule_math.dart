@@ -32,10 +32,12 @@ int _monthsPerStep(StepFrequency freq) => switch (freq) {
 /// Compute step [n] (0-based) from [anchor]. For monthly/quarterly/yearly
 /// this re-anchors each step on [anchor.day] instead of compounding the
 /// previous step's clamped day, so a "31st of every month" schedule does
-/// not drift to the 29th after crossing February.
+/// not drift to the 29th after crossing February. Weekly steps are calendar
+/// days too, never 7 x 24 hours: a week across a daylight-saving change is an
+/// hour shorter or longer, which moved a step to 23:00 of the day before.
 DateTime _stepN(DateTime anchor, int n, StepFrequency freq) {
   if (freq == StepFrequency.weekly) {
-    return anchor.add(Duration(days: 7 * n));
+    return DateTime(anchor.year, anchor.month, anchor.day + 7 * n);
   }
   return addMonthsClamped(anchor, n * _monthsPerStep(freq));
 }

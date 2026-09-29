@@ -1,10 +1,12 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/query_helpers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/domain/adjustment_items.dart';
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/utils/schedule_math.dart' as schedule_math;
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 final _log = getLogger('ExtraordinaryEventService');
 
@@ -47,10 +49,7 @@ class ExtraordinaryEventService {
 
   SimpleSelectStatement<$ExtraordinaryEventsTable, ExtraordinaryEvent> _activeEvents({DateTime? through}) {
     final query = _db.select(_db.extraordinaryEvents)..where((e) => e.isActive.equals(true));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.eventDate.isSmallerThanValue(endExclusive));
-    }
+    if (through != null) query.where((e) => e.eventDate.isSmallerThanValue(startOfNextDay(through)));
     query.orderBy([(e) => OrderingTerm.desc(e.eventDate)]);
     return query;
   }
@@ -140,7 +139,7 @@ class ExtraordinaryEventService {
         'isEphemeral is only valid for inflow/instant events',
       );
     }
-    _log.info(
+    _log.fine(
       'create: name=$name, $direction/$treatment, amount=$totalAmount'
       '${isEphemeral ? ', ephemeral' : ''}',
     );
@@ -188,15 +187,19 @@ class ExtraordinaryEventService {
     return rows > 0;
   }
 
-  Future<int> delete(int id) async {
+  /// Deletes the event with its entries and linked buffer in one
+  /// transaction: a failure part-way deletes nothing.
+  Future<int> delete(int id) {
     _log.warning('delete: event id=$id');
-    final event = await getById(id);
-    if (event.bufferId != null) {
-      await (_db.delete(_db.bufferTransactions)..where((t) => t.bufferId.equals(event.bufferId!))).go();
-      await (_db.delete(_db.buffers)..where((b) => b.id.equals(event.bufferId!))).go();
-    }
-    await (_db.delete(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(id))).go();
-    return (_db.delete(_db.extraordinaryEvents)..where((e) => e.id.equals(id))).go();
+    return _db.transaction(() async {
+      final event = await getById(id);
+      if (event.bufferId != null) {
+        await (_db.delete(_db.bufferTransactions)..where((t) => t.bufferId.equals(event.bufferId!))).go();
+        await (_db.delete(_db.buffers)..where((b) => b.id.equals(event.bufferId!))).go();
+      }
+      await (_db.delete(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(id))).go();
+      return (_db.delete(_db.extraordinaryEvents)..where((e) => e.id.equals(id))).go();
+    });
   }
 
   Future<int> deleteMany(List<int> ids) async {
@@ -238,7 +241,7 @@ class ExtraordinaryEventService {
     final stepAmount = amountToSpread / dates.length;
     // Sign flip: outflow entries reduce saving (negative); inflow entries add (positive).
     final signedStep = event.direction == EventDirection.outflow ? -stepAmount : stepAmount;
-    _log.info(
+    _log.fine(
       'generateScheduledEntries: event=$eventId, ${dates.length} steps, '
       'signedStep=$signedStep',
     );
@@ -302,8 +305,8 @@ class ExtraordinaryEventService {
     required DateTime date,
     required double amount,
   }) async {
-    final dayStart = DateTime(date.year, date.month, date.day);
-    final dayEndExclusive = dayStart.add(const Duration(days: 1));
+    final dayStart = dateOnly(date);
+    final dayEndExclusive = startOfNextDay(date);
     final cents = (amount.abs() * 100).round();
     final result = await _db
         .customSelect(
@@ -353,31 +356,21 @@ class ExtraordinaryEventService {
 
   // ── Entries read ──
 
+  SimpleSelectStatement<$ExtraordinaryEventEntriesTable, ExtraordinaryEventEntry> _entries(int eventId, {DateTime? through}) {
+    final query = _db.select(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(eventId));
+    if (through != null) query.where((e) => e.date.isSmallerThanValue(startOfNextDay(through)));
+    return query..orderBy([(e) => OrderingTerm.asc(e.date)]);
+  }
+
   Stream<List<ExtraordinaryEventEntry>> watchEntries(
     int eventId, {
     DateTime? through,
-  }) {
-    final query = _db.select(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(eventId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.date.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(e) => OrderingTerm.asc(e.date)]);
-    return query.watch();
-  }
+  }) => _entries(eventId, through: through).watch();
 
   Future<List<ExtraordinaryEventEntry>> getEntries(
     int eventId, {
     DateTime? through,
-  }) {
-    final query = _db.select(_db.extraordinaryEventEntries)..where((e) => e.eventId.equals(eventId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.date.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(e) => OrderingTerm.asc(e.date)]);
-    return query.get();
-  }
+  }) => _entries(eventId, through: through).get();
 
   // ── Stats ──
 
@@ -392,7 +385,7 @@ class ExtraordinaryEventService {
     // — it is only honoured by `.watch()`.)
     return watchAdjustmentRevision().asyncMap((_) async {
       var events = await (_db.select(_db.extraordinaryEvents)..where((e) => e.isActive.equals(true))).get();
-      final endExclusive = _throughEndExclusive(through);
+      final endExclusive = throughEndExclusive(through);
       if (endExclusive != null) {
         events = events.where((e) => e.eventDate.isBefore(endExclusive)).toList();
       }
@@ -414,7 +407,7 @@ class ExtraordinaryEventService {
             'GROUP BY event_id',
             variables: [
               for (final id in ids) Variable.withInt(id),
-              ..._throughVars(through),
+              ...throughVars(through),
             ],
             readsFrom: {_db.extraordinaryEventEntries},
           )
@@ -442,7 +435,7 @@ class ExtraordinaryEventService {
               'GROUP BY buffer_id',
               variables: [
                 for (final id in bufferIds) Variable.withInt(id),
-                ..._throughVars(through),
+                ...throughVars(through),
               ],
               readsFrom: {_db.bufferTransactions},
             )
@@ -474,21 +467,6 @@ class ExtraordinaryEventService {
       }
       return result;
     });
-  }
-
-  static DateTime? _throughEndExclusive(DateTime? through) {
-    if (through == null) return null;
-    return DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
-  }
-
-  static List<Variable<int>> _throughVars(DateTime? through) {
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive == null) return const [];
-    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 
   // ── Buffer linking (spread treatment only) ──

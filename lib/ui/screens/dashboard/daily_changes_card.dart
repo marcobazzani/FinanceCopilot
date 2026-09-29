@@ -4,6 +4,12 @@ part of 'dashboard_screen.dart';
 // Asset Daily Changes Card
 // ════════════════════════════════════════════════════
 
+/// Held assets that [assetDailyChangesProvider] left out of [changes] for want
+/// of a price (today or at the reference date) or an exchange rate: it lists
+/// one change per held asset otherwise.
+int _unlistedHeldAssets(List<Asset> assets, Map<int, AssetStats>? stats, List<AssetDailyChange> changes) =>
+    assets.where((a) => a.isActive && (stats?[a.id]?.totalQuantity ?? 0) != 0).length - changes.length;
+
 class _AssetDailyChangesCard extends ConsumerStatefulWidget {
   final String locale;
   final String baseCurrency;
@@ -136,6 +142,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate(today)));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
+    final pctFmt = NumberFormat('0.00', widget.locale);
     final symbol = currencySymbol(widget.baseCurrency);
     final markedUnit = _markedUnit;
 
@@ -226,13 +233,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                           }
                         });
                         if (!context.mounted) return;
-                        showInfoSnack(context, s.dashDefaultPeriodSet(u));
+                        showInfoSnack(context, s.dashDefaultPeriodSet(s.priceChangeUnitLabel(u)));
                       },
                       child: ChoiceChip(
                         label: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(u),
+                            Text(s.priceChangeUnitLabel(u)),
                             if (isDefault) ...[
                               const SizedBox(width: 3),
                               Semantics(
@@ -302,6 +309,14 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                 final totalDiff = sorted.fold(0.0, (sum, c) => sum + c.valueDiff);
                 final totalPreviousValue = sorted.fold(0.0, (sum, c) => sum + c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate);
                 final totalPct = totalPreviousValue != 0 ? (totalDiff / totalPreviousValue) * 100 : 0.0;
+                // Held assets without a price (today or at the reference date)
+                // or an exchange rate are not listed and stay out of the total:
+                // counted under it.
+                final excluded = _unlistedHeldAssets(
+                  ref.watch(assetsProvider).value ?? const <Asset>[],
+                  ref.watch(assetStatsProvider).value,
+                  changes,
+                );
 
                 Widget headerCell(String label, _SortCol col, {int flex = 2, TextAlign align = TextAlign.right}) {
                   final isActive = _sortCol == col;
@@ -335,7 +350,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                           headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
                           headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
                           headerCell('%', _SortCol.pct),
-                          headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
+                          headerCell('${s.value} \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
                         ],
                       ),
                     ),
@@ -343,6 +358,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       final hasFx = c.currency != c.baseCurrency;
                       final prevValueBase = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
                       final basePct = prevValueBase != 0 ? (c.valueDiff / prevValueBase) * 100 : 0.0;
+                      final privatePrice = unitPriceIsPrivate(c.valuationMethod);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Column(
@@ -351,21 +367,24 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                               theme: theme,
                               name: c.ticker ?? c.name,
                               marketValue: c.todayPrice * c.todayFxRate,
+                              privatePrice: privatePrice,
                               pricePct: basePct,
                               valueDiff: c.valueDiff,
                               amtFmt: amtFmt,
+                              pctFmt: pctFmt,
                               url: c.providerUrl,
                               marketOpen: c.marketOpen,
                               s: s,
                             ),
                             if (hasFx)
                               _buildSubRow(
-                                theme: theme,
                                 assetPrice: c.todayPrice,
+                                privatePrice: privatePrice,
                                 assetPricePct: c.pricePct,
                                 assetValueDiff: c.priceDiff * c.quantity / c.priceDivisor,
                                 assetCurrency: c.currency,
                                 amtFmt: amtFmt,
+                                pctFmt: pctFmt,
                               ),
                           ],
                         ),
@@ -379,8 +398,17 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       pricePct: totalPct,
                       valueDiff: totalDiff,
                       amtFmt: amtFmt,
+                      pctFmt: pctFmt,
                       bold: true,
                     ),
+                    if (excluded > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Footnote(s.unpricedExcludedFromTotal(excluded)),
+                        ),
+                      ),
                   ],
                 );
               },
@@ -397,9 +425,11 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required ThemeData theme,
     required String name,
     required double? marketValue,
+    bool privatePrice = false,
     required double pricePct,
     required double valueDiff,
     required NumberFormat amtFmt,
+    required NumberFormat pctFmt,
     bool bold = false,
     String? url,
     bool? marketOpen,
@@ -460,10 +490,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         Expanded(
           flex: 2,
           child: marketValue != null
-              ? Text(
+              // A unit price: public market data stays readable, a manually
+              // valued asset's price ([privatePrice]) is position size.
+              ? PrivacyText(
                   amtFmt.format(marketValue),
                   style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
                   textAlign: TextAlign.right,
+                  masked: privatePrice,
                 )
               : Text(
                   '',
@@ -474,7 +507,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         Expanded(
           flex: 2,
           child: Text(
-            '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%',
+            '${pricePct >= 0 ? '+' : ''}${pctFmt.format(pricePct)}%',
             style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight, fontSize: 11),
             textAlign: TextAlign.right,
           ),
@@ -497,17 +530,18 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
   /// asset's native-currency price/pct/diff. Rendered only when the
   /// asset's currency differs from base.
   Widget _buildSubRow({
-    required ThemeData theme,
     required double assetPrice,
+    required bool privatePrice,
     required double assetPricePct,
     required double assetValueDiff,
     required String assetCurrency,
     required NumberFormat amtFmt,
+    required NumberFormat pctFmt,
   }) {
     final pctColor = _bracketColor(assetPricePct);
     final diffColor = _bracketColor(assetValueDiff);
     final priceStr = amtFmt.format(assetPrice);
-    final pctStr = '${assetPricePct >= 0 ? '+' : ''}${assetPricePct.toStringAsFixed(2)}%';
+    final pctStr = '${assetPricePct >= 0 ? '+' : ''}${pctFmt.format(assetPricePct)}%';
     final diffStr = '${assetValueDiff >= 0 ? '+' : ''}${amtFmt.format(assetValueDiff)}';
 
     final subStyle = TextStyle(fontSize: 9, color: Colors.grey.shade500);
@@ -525,7 +559,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
           Expanded(
             flex: 2,
-            child: Text(priceStr, style: subStyle, textAlign: TextAlign.right),
+            child: PrivacyText(priceStr, style: subStyle, textAlign: TextAlign.right, masked: privatePrice),
           ),
           Expanded(
             flex: 2,

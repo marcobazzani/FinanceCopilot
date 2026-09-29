@@ -14,12 +14,14 @@ import 'package:finance_copilot/ui/screens/accounts/capex_screen.dart' show Adju
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
 import 'package:finance_copilot/ui/screens/accounts/income_screen.dart';
 import 'package:finance_copilot/ui/screens/classification/categories_rules_screen.dart';
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_action_bar.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_controller.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
@@ -135,21 +137,11 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
           body: accountsAsync.when(
             data: (accounts) {
               if (accounts.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.account_balance, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 16),
-                      Text(s.noAccountsYet, textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: () => _showCreateDialog(context),
-                        icon: const Icon(Icons.add),
-                        label: Text(s.newAccountTitle),
-                      ),
-                    ],
-                  ),
+                return EmptyState(
+                  icon: Icons.account_balance,
+                  message: s.noAccountsYet,
+                  actionLabel: s.newAccountTitle,
+                  onAction: () => showCreateAccountDialog(context),
                 );
               }
 
@@ -178,8 +170,6 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
                       if (grouped[groupId]?.isNotEmpty ?? false)
                         _buildGroup(
                           context,
-                          s,
-                          groupId,
                           groupId == null ? null : intermediaries.firstWhere((i) => i.id == groupId),
                           grouped[groupId] ?? [],
                           stats,
@@ -215,7 +205,7 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
                     const SizedBox(height: 8),
                     FloatingActionButton(
                       heroTag: 'add_account',
-                      onPressed: () => _showCreateDialog(context),
+                      onPressed: () => showCreateAccountDialog(context),
                       child: const Icon(Icons.add),
                     ),
                   ],
@@ -227,8 +217,6 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
 
   Widget _buildGroup(
     BuildContext context,
-    AppStrings s,
-    int? groupId,
     Intermediary? intermediary,
     List<Account> accounts,
     Map<int, AccountStats> stats,
@@ -237,54 +225,31 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
     String locale,
     List<Intermediary> intermediaries,
   ) {
-    final title = intermediary?.name ?? s.unassigned;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Icon(
-                intermediary != null ? Icons.business : Icons.folder_open,
-                size: 18,
-                color: Colors.grey,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '$title (${accounts.length})',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        IntermediaryGroupHeader(intermediary: intermediary, count: accounts.length),
         ...accounts.map((account) {
           return SelectableItem<int>(
             key: ValueKey(account.id),
             controller: _selection,
             id: account.id,
-            child: _AccountTile(
-              account: account,
-              stats: stats[account.id],
-              convertedBalance: convertedStats[account.id],
-              baseCurrency: baseCurrency,
-              locale: locale,
-              intermediaries: intermediaries,
-              onMove: (newId) {
-                if (newId != account.intermediaryId) {
-                  ref.read(intermediaryServiceProvider).moveAccount(account.id, newId);
-                }
-              },
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AccountDetailScreen(account: account),
+            child: SwipeToDelete.custom(
+              key: ValueKey('dismiss_account_${account.id}'),
+              confirmAndDelete: () => confirmAndDeleteAccount(context, ref, account),
+              child: _AccountTile(
+                account: account,
+                stats: stats[account.id],
+                convertedBalance: convertedStats[account.id],
+                baseCurrency: baseCurrency,
+                locale: locale,
+                intermediaries: intermediaries,
+                onMove: (newId) => ref.read(intermediaryServiceProvider).moveAccount(account.id, newId),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AccountDetailScreen(account: account),
+                  ),
                 ),
               ),
             ),
@@ -296,54 +261,6 @@ class _AccountsListTabState extends ConsumerState<_AccountsListTab> {
   }
 
   Future<void> _showManageIntermediariesDialog(BuildContext context) => showManageIntermediariesDialog(context, ref);
-
-  Future<void> _showCreateDialog(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController();
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.newAccountTitle),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.name, hintText: s.accountNameHint),
-            autofocus: true,
-            textInputAction: TextInputAction.done,
-            onChanged: (_) => setDialogState(() {}),
-            onSubmitted: (_) async {
-              if (nameCtrl.text.trim().isEmpty) return;
-              await ref
-                  .read(accountServiceProvider)
-                  .create(
-                    name: nameCtrl.text.trim(),
-                    currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-                  );
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty
-                  ? () async {
-                      await ref
-                          .read(accountServiceProvider)
-                          .create(
-                            name: nameCtrl.text.trim(),
-                            currency: ref.read(baseCurrencyProvider).value ?? 'EUR',
-                          );
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    }
-                  : null,
-              child: Text(s.create),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 /// Virtual top-level "All accounts" entry. Pinned at the top of the list.
@@ -484,44 +401,7 @@ class _AccountTile extends ConsumerWidget {
               ],
             ),
             const SizedBox(width: 4),
-            PopupMenuButton<int?>(
-              icon: const Icon(Icons.more_vert, size: 20, color: Colors.grey),
-              tooltip: s.selectIntermediary,
-              itemBuilder: (_) => <PopupMenuEntry<int?>>[
-                PopupMenuItem<int?>(
-                  enabled: false,
-                  child: Text(
-                    s.selectIntermediary,
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ),
-                const PopupMenuDivider(),
-                for (final i in intermediaries)
-                  PopupMenuItem<int?>(
-                    value: i.id,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.business, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(i.name)),
-                        if (account.intermediaryId == i.id) const Icon(Icons.check, size: 18),
-                      ],
-                    ),
-                  ),
-                PopupMenuItem<int?>(
-                  value: null,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.folder_open, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(s.unassigned)),
-                      if (account.intermediaryId == null) const Icon(Icons.check, size: 18),
-                    ],
-                  ),
-                ),
-              ],
-              onSelected: onMove,
-            ),
+            IntermediaryMoveMenu(intermediaries: intermediaries, current: account.intermediaryId, allowUnassigned: true, onMove: onMove),
           ],
         ),
       ),
@@ -540,7 +420,7 @@ class _AccountTile extends ConsumerWidget {
     }
 
     final parts = <InlineSpan>[];
-    parts.add(TextSpan(text: '${stats!.count} ${s.transactions}', style: style));
+    parts.add(TextSpan(text: s.transactionCount(stats!.count), style: style));
     if (stats!.firstDate != null) {
       parts.add(TextSpan(text: '  ·  ${s.since(dateFormat.format(stats!.firstDate!))}', style: style));
     }

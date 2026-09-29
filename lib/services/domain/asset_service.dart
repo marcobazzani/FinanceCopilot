@@ -2,7 +2,9 @@ import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/asset_value_math.dart';
 import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 import 'package:finance_copilot/services/domain/asset_event_service.dart';
 
 final _log = getLogger('AssetService');
@@ -26,6 +28,10 @@ class AssetStats {
   /// have no per-share quantity (pension contributions in cash-only mode,
   /// or any buy with `quantity IS NULL`) — those have no per-share price to
   /// weight against, so the gross sum is the only meaningful figure.
+  ///
+  /// Each buy counts with its amount as recorded: one recorded in another
+  /// currency is not converted. The base-currency cost basis
+  /// (`convertedAssetStatsProvider`) converts every buy instead.
   final double totalInvested;
 
   final double totalQuantity; // net quantity (buys - sells), always ≥ 0
@@ -126,21 +132,19 @@ class AssetService {
     return rows > 0;
   }
 
-  Future<int> delete(int id) async {
-    _log.warning('delete: id=$id (cascade: events, snapshots, prices)');
-    await (_db.delete(_db.assetEvents)..where((e) => e.assetId.equals(id))).go();
-    await (_db.delete(_db.assetSnapshots)..where((s) => s.assetId.equals(id))).go();
-    await (_db.delete(_db.marketPrices)..where((p) => p.assetId.equals(id))).go();
-    return (_db.delete(_db.assets)..where((a) => a.id.equals(id))).go();
-  }
+  /// Deletes the asset with its events, snapshots and prices in one
+  /// transaction: a failure part-way deletes nothing.
+  Future<int> delete(int id) => deleteMany([id]);
 
   Future<int> deleteMany(List<int> ids) async {
     if (ids.isEmpty) return 0;
-    _log.warning('deleteMany: ${ids.length} assets (cascade: events, snapshots, prices)');
-    await (_db.delete(_db.assetEvents)..where((e) => e.assetId.isIn(ids))).go();
-    await (_db.delete(_db.assetSnapshots)..where((s) => s.assetId.isIn(ids))).go();
-    await (_db.delete(_db.marketPrices)..where((p) => p.assetId.isIn(ids))).go();
-    return (_db.delete(_db.assets)..where((a) => a.id.isIn(ids))).go();
+    _log.warning('deleteMany: ${ids.length} assets $ids (cascade: events, snapshots, prices)');
+    return _db.transaction(() async {
+      await (_db.delete(_db.assetEvents)..where((e) => e.assetId.isIn(ids))).go();
+      await (_db.delete(_db.assetSnapshots)..where((s) => s.assetId.isIn(ids))).go();
+      await (_db.delete(_db.marketPrices)..where((p) => p.assetId.isIn(ids))).go();
+      return (_db.delete(_db.assets)..where((a) => a.id.isIn(ids))).go();
+    });
   }
 
   Future<void> reorder(List<int> orderedIds) async {
@@ -156,7 +160,7 @@ class AssetService {
     });
   }
 
-  // first/last date use value_date per CLAUDE.md (canonical "money moved"
+  // first/last date use value_date per AGENTS.md (canonical "money moved"
   // date for display). operation_date is only for import dedup.
   //
   // total_invested is computed by walking each asset's events in
@@ -174,16 +178,8 @@ class AssetService {
         (e) => OrderingTerm.asc(e.valueDate),
         (e) => OrderingTerm.asc(e.id),
       ]);
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
+    if (through != null) query.where((e) => e.valueDate.isSmallerThanValue(startOfNextDay(through)));
     return query;
-  }
-
-  static DateTime? _throughEndExclusive(DateTime? through) {
-    if (through == null) return null;
-    return DateTime(through.year, through.month, through.day).add(const Duration(days: 1));
   }
 
   /// Group already chronologically-sorted events by asset and reduce each
@@ -197,18 +193,8 @@ class AssetService {
   }
 
   /// Reduce one asset's events (already ordered by valueDate, then id) to
-  /// its aggregated [AssetStats].
-  ///
-  /// Cost basis walks the events in order, maintaining a running
-  /// weighted-average pool of (cost, quantity):
-  ///  - a buy with a per-share quantity adds its amount and quantity to the
-  ///    pool;
-  ///  - a sell removes quantity at the pool's CURRENT average cost (the
-  ///    weighted-average inventory method — a sell never changes the
-  ///    average cost of what remains, only the pool's size);
-  ///  - when the pool's quantity reaches zero the position is fully closed:
-  ///    cost resets to zero, so a later re-buy starts a brand-new pool
-  ///    instead of being blended with the disposed lot's price.
+  /// its aggregated [AssetStats]; the cost basis is the moving-average pool
+  /// of [CostBasisPool].
   //
   // ABS(quantity): event.type encodes direction; the source row's sign on
   // quantity is irrelevant. Some broker exports (Directa, Fineco, IB-style)
@@ -216,21 +202,17 @@ class AssetService {
   //
   // Buys that carry NO per-share quantity (cash-only events — pension
   // contribute via the A3 fallback, manual entries without qty) can't join a
-  // per-share pool: there is no quantity to attach a unit cost to. Their
-  // gross amount is tracked separately in [cashOnlyCost] and ADDED to the
-  // result, so an asset that mixes both shapes reports the full amount the
-  // user put in. Dropping it whenever some other buy happened to carry a
-  // quantity would silently understate invested capital (a 100 contribution
-  // followed by a 200 two-share buy must report 300, not 200).
+  // per-share pool: there is no quantity to attach a unit cost to. The pool
+  // keeps their gross amount apart and ADDS it to the result, so an asset
+  // that mixes both shapes reports the full amount the user put in. Dropping
+  // it whenever some other buy happened to carry a quantity would silently
+  // understate invested capital (a 100 contribution followed by a 200
+  // two-share buy must report 300, not 200).
   static AssetStats _computeAssetStats(List<AssetEvent> events) {
     var eventCount = 0;
     DateTime? firstDate;
     DateTime? lastDate;
-
-    var poolCost = 0.0;
-    var poolQty = 0.0;
-    var cashOnlyCost = 0.0;
-    var remainingQty = 0.0;
+    final pool = CostBasisPool();
 
     for (final e in events) {
       eventCount++;
@@ -238,30 +220,9 @@ class AssetService {
       if (lastDate == null || e.valueDate.isAfter(lastDate)) lastDate = e.valueDate;
 
       if (e.type == EventType.buy) {
-        final qty = (e.quantity ?? 0).abs();
-        final amount = e.amount.abs();
-        remainingQty += qty;
-        if (qty > 0) {
-          poolCost += amount;
-          poolQty += qty;
-        } else {
-          cashOnlyCost += amount;
-        }
+        pool.buy(e.amount.abs(), (e.quantity ?? 0.0).abs());
       } else if (e.type == EventType.sell) {
-        final qty = (e.quantity ?? 0).abs();
-        remainingQty -= qty;
-        if (poolQty > 0 && qty > 0) {
-          final avgCost = poolCost / poolQty;
-          final removedQty = qty > poolQty ? poolQty : qty;
-          poolCost -= avgCost * removedQty;
-          poolQty -= removedQty;
-          // Clamp instead of letting floating-point remainders survive a
-          // full liquidation as a near-zero residue.
-          if (poolQty <= 1e-9) {
-            poolCost = 0;
-            poolQty = 0;
-          }
-        }
+        pool.sell((e.quantity ?? 0.0).abs());
       }
       // Other event types (revalue) don't affect quantity or cost basis,
       // but still count toward eventCount/first/lastDate above.
@@ -274,14 +235,12 @@ class AssetService {
     // keep counting. A purely cash-only asset therefore reports its gross
     // contributions, and a purely share-based one its pool, with no special
     // casing needed for either.
-    final totalInvested = (remainingQty <= 0 ? 0.0 : poolCost) + cashOnlyCost;
-
     return AssetStats(
       eventCount: eventCount,
       firstDate: firstDate,
       lastDate: lastDate,
-      totalInvested: totalInvested,
-      totalQuantity: remainingQty,
+      totalInvested: pool.costBasis(),
+      totalQuantity: pool.heldQuantity,
     );
   }
 

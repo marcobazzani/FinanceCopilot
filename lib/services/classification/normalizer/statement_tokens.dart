@@ -16,7 +16,6 @@ class Segment {
   const Segment(this.text, {required this.isWord});
 
   bool get isDigits => isWord && text.isNotEmpty && text.codeUnits.every(_isDigit);
-  int get digitCount => text.codeUnits.where(_isDigit).length;
   bool get hasMask => text.contains('*');
 
   /// A separator that is exactly [s] (whitespace ignored).

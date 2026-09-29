@@ -1,6 +1,7 @@
 part of 'import_screen.dart';
 
 extension _ColumnMapperMappingContent on _ImportScreenState {
+  /// The mapping UI content (preview table, refine panel, column mapping, Next button).
   Widget _buildMappingContent(FilePreview? preview) {
     final s = ref.watch(appStringsProvider);
     final columns = preview?.columns ?? [];
@@ -110,20 +111,15 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FilledButton(
-              onPressed: _canProceedToConfirm()
-                  ? () {
-                      _setState(() => _step = 2);
-                      if (_target == ImportTarget.assetEvent) _lookupIsins();
-                      _computePreview();
-                    }
-                  : null,
-              child: Text(s.next),
-            ),
-          ],
+        WizardNavBar(
+          primaryLabel: s.next,
+          onPrimary: _canProceedToConfirm()
+              ? () {
+                  _setState(() => _step = 2);
+                  if (_target == ImportTarget.assetEvent) _lookupIsins();
+                  _computePreview();
+                }
+              : null,
         ),
       ],
     );
@@ -251,11 +247,12 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
       ];
     }
 
+    final positionSize = _positionSizeColumns;
     DataRow buildRow(Map<String, String>? row) {
       if (row == null) {
         // Separator: a tinted band spanning the table, labelled with the
         // hidden-row count, so it clearly reads as a divider (not a row).
-        final label = '⋯  ${s.hiddenRows(hiddenCount)}  ⋯';
+        final label = s.hiddenRows(hiddenCount);
         return DataRow(
           color: WidgetStateProperty.all(Colors.grey.withValues(alpha: 0.12)),
           cells: List.generate(
@@ -276,7 +273,9 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
         );
       }
       return DataRow(
-        cells: columns.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 12)))).toList(),
+        cells: columns
+            .map((c) => DataCell(_previewCell(c, row[c] ?? '', style: const TextStyle(fontSize: 12), positionSize: positionSize)))
+            .toList(),
       );
     }
 
@@ -402,6 +401,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
 
   Widget _buildMappingRow(String field, List<String> columns, {bool required = false, bool multiColumn = false}) {
     final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final multiCols = _multiMappings[field] ?? [];
     final isMulti = multiColumn && multiCols.length > 1;
     final showAddBtn = multiColumn && !isMulti && _mappings[field] != null;
@@ -438,7 +438,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                       hintText: required
                           ? s.required
                           : field == 'date'
-                          ? '${s.notMapped} (→ ${DateTime.now().toIso8601String().substring(0, 10)})'
+                          ? '${s.notMapped} (→ ${fmt.shortDateFormat(locale).format(DateTime.now())})'
                           : s.notMapped,
                     ),
                     items: [
@@ -448,17 +448,20 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                       ),
                       ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
-                    onChanged: (v) => _setState(() {
-                      _mappings[field] = v;
-                      // Mapping an explicit column and its "Auto calc" toggle
-                      // are mutually exclusive — turn the derivation off so
-                      // they can't silently conflict. A mapped column always
-                      // wins over a derived value.
-                      if (v != null) {
-                        if (field == 'amount') _autoCalcAmount = false;
-                        if (field == 'price') _autoCalcPrice = false;
-                      }
-                    }),
+                    onChanged: (v) {
+                      _setState(() {
+                        _mappings[field] = v;
+                        // Mapping an explicit column and its "Auto calc" toggle
+                        // are mutually exclusive — turn the derivation off so
+                        // they can't silently conflict. A mapped column always
+                        // wins over a derived value.
+                        if (v != null) {
+                          if (field == 'amount') _autoCalcAmount = false;
+                          if (field == 'price') _autoCalcPrice = false;
+                        }
+                      });
+                      if (field == 'type') _ensureTypeValues();
+                    },
                   ),
                 ),
               if (isMulti)
@@ -574,7 +577,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Preview: ${_previewMultiMapping(field, multiCols)}',
+                        '${s.previewLabel}: ${_previewMultiMapping(field, multiCols)}',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -587,6 +590,4 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
       ),
     );
   }
-
-  /// Build the "Balance per row" configuration section.
 }

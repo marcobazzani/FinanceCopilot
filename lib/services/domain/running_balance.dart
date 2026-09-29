@@ -1,5 +1,6 @@
-/// Running balance on the app's single timeline (value date), anchored on the
-/// bank's stated closing balance.
+/// Running balance on the app's single timeline (value date): anchored on the
+/// bank's stated closing balance ([anchoredRunningBalances], column mode), or
+/// from a known opening ([runningBalances], cumulative and filtered modes).
 ///
 /// A bank's per-row balance column is a running balance **in booking order**.
 /// Copying it per row is only right while value date == booking date; as soon
@@ -54,7 +55,6 @@ class AnchoredBalances {
 /// BOOKING order that has one. Integer-cent arithmetic.
 AnchoredBalances anchoredRunningBalances(List<RunningBalanceRow> rows) {
   if (rows.isEmpty) return const AnchoredBalances(balances: [], opening: 0, bankClosing: null);
-  int cents(double v) => (v * 100).round();
 
   // Anchor: last booked row with a stated balance.
   RunningBalanceRow? anchor;
@@ -66,9 +66,26 @@ AnchoredBalances anchoredRunningBalances(List<RunningBalanceRow> rows) {
       anchor = r;
     }
   }
-  final sum = rows.fold<int>(0, (s, r) => s + cents(r.amount));
-  final openingCents = anchor == null ? 0 : cents(anchor.statedBalance!) - sum;
+  final sum = rows.fold<int>(0, (s, r) => s + _cents(r.amount));
+  final openingCents = anchor == null ? 0 : _cents(anchor.statedBalance!) - sum;
+  return AnchoredBalances(balances: _runningFrom(openingCents, rows), opening: openingCents / 100, bankClosing: anchor?.statedBalance);
+}
 
+/// Value-date running balance of [rows] from [opening] — the cumulative and
+/// filtered modes: the balance after each input row, aligned to the input
+/// order. Integer-cent arithmetic. A row for which [moves] is false (filtered
+/// mode: its filter value is excluded) leaves the balance where it is. Null
+/// for every row when [opening] is null: what the rows continue from is
+/// unknown.
+List<double?> runningBalances(List<RunningBalanceRow> rows, {required double? opening, bool Function(int index)? moves}) =>
+    opening == null ? List<double?>.filled(rows.length, null) : _runningFrom(_cents(opening), rows, moves: moves);
+
+int _cents(double v) => (v * 100).round();
+
+/// The balance after each of [rows] (aligned to the input order), walking
+/// them in value-date order — ties by [RunningBalanceRow.order] — from
+/// [openingCents]; a row for which [moves] is false does not move it.
+List<double> _runningFrom(int openingCents, List<RunningBalanceRow> rows, {bool Function(int index)? moves}) {
   final indexed = List<int>.generate(rows.length, (i) => i)
     ..sort((a, b) {
       final c = rows[a].valueDate.compareTo(rows[b].valueDate);
@@ -77,8 +94,8 @@ AnchoredBalances anchoredRunningBalances(List<RunningBalanceRow> rows) {
   final out = List<double>.filled(rows.length, 0);
   var running = openingCents;
   for (final i in indexed) {
-    running += cents(rows[i].amount);
+    if (moves == null || moves(i)) running += _cents(rows[i].amount);
     out[i] = running / 100;
   }
-  return AnchoredBalances(balances: out, opening: openingCents / 100, bankClosing: anchor?.statedBalance);
+  return out;
 }

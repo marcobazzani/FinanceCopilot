@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,9 +12,12 @@ import 'package:finance_copilot/ui/widgets/category_edit_dialog.dart';
 import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
 import 'package:finance_copilot/ui/screens/classification/rule_edit_dialog.dart';
 import 'package:finance_copilot/ui/widgets/category_ui.dart';
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 import 'package:finance_copilot/utils/dialogs.dart';
+import 'package:finance_copilot/utils/formatters.dart' as fmt;
 
 /// Settings → Categories & rules. Two tabs: the category list and the rule
 /// list, plus the two classifier actions.
@@ -97,10 +103,13 @@ class _CategoriesRulesScreenState extends ConsumerState<CategoriesRulesScreen> w
       );
       if (!ok) return;
     }
+    // Read before the (long) run: the screen may be closed by the time it
+    // ends, its ref unusable, and the applied rules are no longer "changed".
+    final dirty = ref.read(rulesDirtyProvider.notifier);
     setState(() => _busy = true);
     try {
       final r = await ref.read(transactionClassifierServiceProvider).classifyAll(overwrite: overwrite);
-      ref.read(rulesDirtyProvider.notifier).state = false;
+      dirty.state = false;
       if (mounted) showInfoSnack(context, s.classifyResultSnack(r.changed, r.uncategorizedAfter));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -108,18 +117,59 @@ class _CategoriesRulesScreenState extends ConsumerState<CategoriesRulesScreen> w
   }
 }
 
+/// The order a drag just dropped a list in, shown until the database streams
+/// the list back in that order: without it the list snapped back to the old
+/// order until the save came back. Shared by the rule and category tabs.
+mixin _PendingOrder<W extends ConsumerStatefulWidget> on ConsumerState<W> {
+  List<int>? _pendingIds;
+
+  /// [live] in the pending order while the database has not caught up. The
+  /// pending order is dropped once [live] agrees with it, or no longer holds
+  /// the same rows (the live list then wins).
+  List<T> inPendingOrder<T>(List<T> live, int Function(T) idOf) {
+    final ids = _pendingIds;
+    if (ids == null) return live;
+    final liveIds = [for (final x in live) idOf(x)];
+    if (listEquals(liveIds, ids) || liveIds.length != ids.length || !liveIds.toSet().containsAll(ids)) {
+      _pendingIds = null;
+      return live;
+    }
+    final rank = {for (var i = 0; i < ids.length; i++) ids[i]: i};
+    return [...live]..sort((a, b) => rank[idOf(a)]!.compareTo(rank[idOf(b)]!));
+  }
+
+  /// Shows [ids] at once, then saves them with [write]; a failed save shows
+  /// the live order again.
+  Future<void> saveOrder(List<int> ids, Future<void> Function() write) async {
+    setState(() => _pendingIds = ids);
+    try {
+      await write();
+    } catch (_) {
+      if (mounted) setState(() => _pendingIds = null);
+      rethrow;
+    }
+  }
+}
+
 // ── Rules ──
 
-class _RulesTab extends ConsumerWidget {
+class _RulesTab extends ConsumerStatefulWidget {
   final bool busy;
   final Future<void> Function({required bool overwrite}) onRun;
   const _RulesTab({required this.busy, required this.onRun});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_RulesTab> createState() => _RulesTabState();
+}
+
+class _RulesTabState extends ConsumerState<_RulesTab> with _PendingOrder {
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final theme = Theme.of(context);
-    final rules = ref.watch(categorizationRulesProvider).value ?? const <AutoCategorizationRule>[];
+    final busy = widget.busy;
+    final onRun = widget.onRun;
+    final rules = inPendingOrder(ref.watch(categorizationRulesProvider).value ?? const <AutoCategorizationRule>[], (r) => r.id);
     final byId = ref.watch(categoriesByIdProvider);
     final accounts = {for (final a in ref.watch(accountsProvider).value ?? const <Account>[]) a.id: a.name};
     final dirty = ref.watch(rulesDirtyProvider);
@@ -177,8 +227,8 @@ class _RulesTab extends ConsumerWidget {
           const Divider(),
           if (rules.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(s.noRulesYet, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: EmptyState(icon: Icons.rule, message: s.noRulesYet),
             )
           else
             ReorderableListView.builder(
@@ -191,8 +241,10 @@ class _RulesTab extends ConsumerWidget {
                 final ids = rules.map((r) => r.id).toList();
                 final moved = ids.removeAt(from);
                 ids.insert(to, moved);
-                await ref.read(ruleServiceProvider).reorder(ids);
-                ref.read(rulesDirtyProvider.notifier).state = true;
+                final svc = ref.read(ruleServiceProvider);
+                final dirty = ref.read(rulesDirtyProvider.notifier);
+                await saveOrder(ids, () => svc.reorder(ids));
+                dirty.state = true;
               },
               itemBuilder: (ctx, i) {
                 final r = rules[i];
@@ -223,37 +275,20 @@ class _RuleTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final amtFmt = fmt.amountFormat(ref.watch(appLocaleProvider).value ?? Platform.localeName);
     final scope = <String>[
       ?accountName,
       if (rule.direction != RuleDirection.any) s.ruleDirectionName(rule.direction),
-      if (rule.amountMin != null) '≥ ${rule.amountMin}',
-      if (rule.amountMax != null) '≤ ${rule.amountMax}',
+      if (rule.amountMin != null) '≥ ${amtFmt.format(rule.amountMin)}',
+      if (rule.amountMax != null) '≤ ${amtFmt.format(rule.amountMax)}',
     ];
     final patternLabel = rule.matchType == RuleMatchType.entryKind
         ? s.entryKindName(BankEntryKind.values.firstWhere((k) => k.name == rule.pattern, orElse: () => BankEntryKind.unknown))
         : rule.pattern;
 
-    return Dismissible(
+    return SwipeToDelete.custom(
       key: ValueKey('dismiss_rule_${rule.id}'),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        color: theme.colorScheme.errorContainer,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: Icon(Icons.delete, color: theme.colorScheme.onErrorContainer),
-      ),
-      confirmDismiss: (_) => showConfirmDialog(
-        context,
-        title: s.delete,
-        content: s.cannotBeUndone,
-        confirmLabel: s.delete,
-        cancelLabel: s.cancel,
-        confirmColor: Colors.red,
-      ),
-      onDismissed: (_) async {
-        await ref.read(ruleServiceProvider).delete(rule.id);
-        ref.read(rulesDirtyProvider.notifier).state = true;
-      },
+      confirmAndDelete: () => confirmAndDeleteRule(context, ref, rule),
       child: ListTile(
         leading: ReorderableDragStartListener(index: index, child: const Icon(Icons.drag_handle)),
         title: Text.rich(
@@ -297,17 +332,24 @@ class _RuleTile extends ConsumerWidget {
 
 // ── Categories ──
 
-class _CategoriesTab extends ConsumerWidget {
+class _CategoriesTab extends ConsumerStatefulWidget {
   final bool showArchived;
   final ValueChanged<bool> onToggleArchived;
   const _CategoriesTab({required this.showArchived, required this.onToggleArchived});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CategoriesTab> createState() => _CategoriesTabState();
+}
+
+class _CategoriesTabState extends ConsumerState<_CategoriesTab> with _PendingOrder {
+  @override
+  Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final theme = Theme.of(context);
+    final showArchived = widget.showArchived;
+    final onToggleArchived = widget.onToggleArchived;
     final all = ref.watch(allCategoriesProvider).value ?? const <Category>[];
-    final cats = showArchived ? all : all.where((c) => !c.isArchived).toList();
+    final cats = inPendingOrder(showArchived ? all : all.where((c) => !c.isArchived).toList(), (c) => c.id);
 
     return MobilePullToRefresh(
       child: ListView(
@@ -339,8 +381,8 @@ class _CategoriesTab extends ConsumerWidget {
           const Divider(),
           if (cats.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(s.noCategoriesYet, textAlign: TextAlign.center),
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: EmptyState(icon: Icons.label_outline, message: s.noCategoriesYet),
             )
           else
             ReorderableListView.builder(
@@ -354,21 +396,15 @@ class _CategoriesTab extends ConsumerWidget {
                 ids.insert(to, moved);
                 // Keep hidden archived rows after the visible ones.
                 final hidden = all.where((c) => !ids.contains(c.id)).map((c) => c.id);
-                await ref.read(categoryServiceProvider).reorder([...ids, ...hidden]);
+                final svc = ref.read(categoryServiceProvider);
+                await saveOrder(ids, () => svc.reorder([...ids, ...hidden]));
               },
               itemBuilder: (ctx, i) {
                 final c = cats[i];
                 final color = categoryPaint(c, theme.colorScheme);
-                return Dismissible(
+                return SwipeToDelete.custom(
                   key: ValueKey('dismiss_cat_${c.id}'),
-                  direction: DismissDirection.endToStart,
-                  background: Container(
-                    color: theme.colorScheme.errorContainer,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    child: Icon(Icons.delete, color: theme.colorScheme.onErrorContainer),
-                  ),
-                  confirmDismiss: (_) => confirmAndDeleteCategory(context, ref, c),
+                  confirmAndDelete: () => confirmAndDeleteCategory(context, ref, c),
                   child: ListTile(
                     key: ValueKey('cat_${c.id}'),
                     leading: ReorderableDragStartListener(index: i, child: const Icon(Icons.drag_handle)),

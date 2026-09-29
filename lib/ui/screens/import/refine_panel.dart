@@ -38,28 +38,33 @@ extension _RefinePanel on _ImportScreenState {
 
   Widget _buildRefinePanel(List<String> columns) {
     final s = ref.watch(appStringsProvider);
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: ExpansionTile(
-        title: Text(s.refineRowsColumns, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(s.refineRowsColumnsHelp, style: const TextStyle(fontSize: 12)),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        children: [
-          // Skip-rows / no-header are raw-line concepts that don't apply to
-          // PDFs (those go through the table reconstructor) nor to rows
-          // rebuilt from stored metadata (header already resolved).
-          if (!_isPdf && !_fromStoredRows) ...[
-            _buildSkipRowsControl(s),
-            const SizedBox(height: 4),
-            _buildNoHeaderControl(s),
-            const Divider(),
-          ],
-          _buildColumnSplitsSection(s, columns),
+    // The reference collapsible (Cash Flow tab): no card of its own.
+    return ExpansionTile(
+      title: Text(s.refineRowsColumns, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(s.refineRowsColumnsHelp, style: Theme.of(context).textTheme.bodySmall),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      children: [
+        // Skip-rows / no-header are raw-line concepts that don't apply to
+        // PDFs (those go through the table reconstructor) nor to rows
+        // rebuilt from stored metadata (header already resolved).
+        if (!_isPdf && !_fromStoredRows) ...[
+          _buildSkipRowsControl(s),
+          const SizedBox(height: 4),
+          _buildNoHeaderControl(s),
           const Divider(),
-          _buildRowFiltersSection(s, columns),
         ],
-      ),
+        _buildColumnSplitsSection(s, columns),
+        const Divider(),
+        _buildRowFiltersSection(s, columns),
+      ],
     );
+  }
+
+  /// The skip-rows field's value: a whole number of rows, 0 or more; null for
+  /// anything else — flagged on the field, never applied as a guess.
+  int? _readSkipRows(String text) {
+    final n = int.tryParse(text.trim(), radix: 10);
+    return n != null && n >= 0 ? n : null;
   }
 
   Widget _buildSkipRowsControl(AppStrings s) {
@@ -106,14 +111,19 @@ extension _RefinePanel on _ImportScreenState {
               ),
             ),
             keyboardType: TextInputType.number,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            validator: (v) => _readSkipRows(v ?? '') == null ? s.invalidNumber : null,
             onChanged: (v) {
-              _skipRows = int.tryParse(v) ?? 0;
               _skipRowsTimer?.cancel();
+              // Unreadable: flagged by the validator; the last readable value stays.
+              final rows = _readSkipRows(v);
+              if (rows == null) return;
+              _skipRows = rows;
               _skipRowsTimer = Timer(const Duration(seconds: 1), _reparseFile);
             },
-            onFieldSubmitted: (_) {
+            onFieldSubmitted: (v) {
               _skipRowsTimer?.cancel();
-              _reparseFile();
+              if (_readSkipRows(v) != null) _reparseFile();
             },
           ),
         ),

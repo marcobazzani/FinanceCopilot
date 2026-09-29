@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -9,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
+import '../services/import/stored_import_data.dart';
 import '../utils/logger.dart';
 import 'category_seeds.dart';
 import 'db_file_name.dart';
@@ -575,23 +575,24 @@ class AppDatabase extends _$AppDatabase {
         }
       }
       if (from < 39) {
-        // Drop the never-read assets.yahoo_ticker column (carry-over from
-        // a long-removed provider integration) and the unused
-        // registered_events table + RegisteredEventType enum.
+        // Drop the never-read legacy price-provider column of assets
+        // (carry-over from a long-removed provider integration) and the
+        // unused registered_events table + RegisteredEventType enum.
         // (Cache-key + asset.exchange normalisation deferred to v40 —
         // v39's own UPDATE was clobbered by an earlier rename pass.)
         if (await _hasColumn('assets', 'yahoo_ticker')) {
           await customStatement('ALTER TABLE assets DROP COLUMN yahoo_ticker');
         }
         await customStatement('DROP TABLE IF EXISTS registered_events');
-        _log.info('Migration 39: dropped yahoo_ticker, registered_events');
+        _log.info('Migration 39: dropped the legacy price-provider column, registered_events');
       }
       if (from < 40) {
-        // (a) Rename legacy app_configs cache keys INVESTING_*→PROVIDER_*
-        //     using INSERT-OR-IGNORE then DELETE so we survive the
-        //     partial state v39 left behind (where some PROVIDER_* rows
-        //     already exist alongside their INVESTING_* counterparts).
-        //     The PROVIDER_* row wins; INVESTING_* gets cleaned up.
+        // (a) Rename the legacy cache keys of app_configs to their
+        //     PROVIDER_* names using INSERT-OR-IGNORE then DELETE so we
+        //     survive the partial state v39 left behind (where some
+        //     PROVIDER_* rows already exist alongside their legacy
+        //     counterparts). The PROVIDER_* row wins; the legacy key gets
+        //     cleaned up.
         // (b) Heal stored description text that still mentions the
         //     external provider by name (cosmetic, but eliminates a
         //     grep hit on a fresh-from-old-DB install).
@@ -677,7 +678,7 @@ class AppDatabase extends _$AppDatabase {
           }
         }
         _log.info(
-          'Migration 40: cache keys renamed INVESTING_*→PROVIDER_*; '
+          'Migration 40: legacy cache keys renamed to PROVIDER_*; '
           'asset.exchange + cache-key suffixes normalised to canonical names',
         );
       }
@@ -872,34 +873,15 @@ class AppDatabase extends _$AppDatabase {
     var totalFlipped = 0;
     for (final cfg in configRows) {
       final accountId = cfg.read<int>('account_id');
-      Map<String, dynamic> mappings;
-      try {
-        mappings = jsonDecode(cfg.read<String>('mappings_json')) as Map<String, dynamic>;
-      } catch (_) {
-        continue; // unparseable config — skip rather than guess
-      }
-      if (mappings['__balanceMode'] != 'filtered') continue;
-      final filterColumn = mappings['__balanceFilterColumn'] as String?;
+      // Unreadable settings (logged): skip rather than guess.
+      final balance = SavedImportMappings.decode(cfg.read<String>('mappings_json')).balance;
+      if (balance == null || balance.mode != BalanceMode.filtered) continue;
+      final filterColumn = balance.filterColumn;
       if (filterColumn == null || filterColumn.isEmpty) continue;
 
-      // `__balanceFilterInclude` is stored as a JSON-encoded string list.
-      final includeRaw = mappings['__balanceFilterInclude'];
-      final include = <String>{};
-      if (includeRaw is String && includeRaw.isNotEmpty) {
-        try {
-          for (final v in jsonDecode(includeRaw) as List) {
-            include.add(v.toString());
-          }
-        } catch (_) {
-          continue;
-        }
-      } else if (includeRaw is List) {
-        for (final v in includeRaw) {
-          include.add(v.toString());
-        }
-      }
       // Empty include set means "include everything" (mirrors the importer);
       // nothing to cancel.
+      final include = balance.filterInclude;
       if (include.isEmpty) continue;
 
       // For each settled transaction on this account, read its filter value
@@ -912,12 +894,8 @@ class AppDatabase extends _$AppDatabase {
 
       final toCancel = <int>[];
       for (final t in txRows) {
-        Map<String, dynamic> meta;
-        try {
-          meta = jsonDecode(t.read<String>('raw_metadata')) as Map<String, dynamic>;
-        } catch (_) {
-          continue; // no parseable metadata — leave untouched (no guessing)
-        }
+        final meta = decodeRawMetadata(t.read<String>('raw_metadata'));
+        if (meta == null) continue; // no parseable metadata — leave untouched (no guessing)
         if (!meta.containsKey(filterColumn)) continue;
         final value = (meta[filterColumn] ?? '').toString().trim();
         if (!include.contains(value)) {
@@ -1285,8 +1263,6 @@ LazyDatabase _openConnection() {
       await dir.create(recursive: true);
     }
     final file = File(p.join(dir.path, dbFileName));
-    // ignore: avoid_print
-    print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');
     return NativeDatabase(file);
   });
@@ -1301,8 +1277,6 @@ LazyDatabase _openAtPath(String path) {
       _log.info('Creating database directory: ${parent.path}');
       await parent.create(recursive: true);
     }
-    // ignore: avoid_print
-    print('DB:  $path');
     _log.info('Opening database at path: $path');
     return NativeDatabase(file);
   });

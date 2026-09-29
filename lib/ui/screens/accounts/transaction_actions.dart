@@ -1,5 +1,26 @@
 part of 'account_detail_screen.dart';
 
+/// Asks, then deletes [account] with its transactions, and says whether it
+/// did. Behind the account's trashcan on its detail screen and the swipe of
+/// the accounts list. Pass the live row: the message names the account as it
+/// is now.
+Future<bool> confirmAndDeleteAccount(BuildContext context, WidgetRef ref, Account account) async {
+  final s = ref.read(appStringsProvider);
+  final accounts = ref.read(accountServiceProvider);
+  final confirmed = await showConfirmDialog(
+    context,
+    title: s.deleteAccountTitle,
+    content: s.deleteAccountConfirm(account.name),
+    confirmLabel: s.delete,
+    cancelLabel: s.cancel,
+    confirmColor: Colors.red,
+  );
+  if (!confirmed) return false;
+  _log.warning('deleting account id=${account.id} name=${account.name}');
+  await accounts.delete(account.id);
+  return true;
+}
+
 extension _AccountDetailTransactionActions on _AccountDetailScreenState {
   /// Turn a POSITIVE transaction into income. A single inflow is often a mix
   /// (salary + expense refund + pension contribution), so the user allocates
@@ -66,8 +87,12 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     final s = ref.read(appStringsProvider);
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final amtFmt = fmt.currencyFormat(locale, tx.currency);
+    final service = ref.read(extraordinaryEventServiceProvider);
 
-    final allEvents = await ref.read(extraordinaryEventsProvider.future);
+    // Read once through the service: awaiting extraordinaryEventsProvider
+    // never completes on a screen where nothing else listens to it (Riverpod
+    // pauses unlistened providers).
+    final allEvents = await service.getAll(through: ref.read(waybackDateProvider));
     final inflows = allEvents.where((e) => e.direction == EventDirection.inflow && e.isActive).toList();
     if (inflows.isEmpty) {
       if (mounted) showInfoSnack(context, s.noInflowEventsAvailable);
@@ -96,7 +121,7 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(s.flagAsAdjustmentBody(amtFmt.format(tx.amount.abs()))),
+              PrivacySentence(s.flagAsAdjustmentBody(privacySlot(0)), figures: [amtFmt.format(tx.amount.abs())]),
               const SizedBox(height: 12),
               DropdownButtonFormField<int>(
                 initialValue: selectedId,
@@ -131,7 +156,6 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     // re-click (the badge used to appear only after a restart, which made
     // repeat clicks likely). Two identical same-day drawdowns are legitimate
     // though, so confirm rather than block.
-    final service = ref.read(extraordinaryEventServiceProvider);
     final duplicates = await service.countIdenticalManualEntries(
       eventId: selectedId,
       date: tx.valueDate,
@@ -142,7 +166,8 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
       final addAnyway = await showConfirmDialog(
         context,
         title: s.duplicateAdjustmentTitle,
-        content: s.duplicateAdjustmentBody(duplicates, amtFmt.format(tx.amount.abs())),
+        content: s.duplicateAdjustmentBody(duplicates, privacySlot(0)),
+        maskedFigures: [amtFmt.format(tx.amount.abs())],
         confirmLabel: s.addAnyway,
         cancelLabel: s.cancel,
       );
@@ -171,7 +196,7 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     final confirmed = await showConfirmDialog(
       context,
       title: s.wipeAllTransactionsTitle,
-      content: '${s.wipeTransactionsBody(widget.account.name)}${s.cannotBeUndone}',
+      content: '${s.wipeTransactionsBody(_liveAccount(ref.read(accountsProvider).value).name)}${s.cannotBeUndone}',
       confirmLabel: s.wipe,
       cancelLabel: s.cancel,
       confirmColor: Colors.orange,
@@ -185,94 +210,18 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     }
   }
 
+  /// The trashcan: once the account is deleted, its screen is left.
   Future<void> _confirmDeleteAccount(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final confirmed = await showConfirmDialog(
-      context,
-      title: s.deleteAccountTitle,
-      content: s.deleteAccountConfirm(widget.account.name),
-      confirmLabel: s.delete,
-      cancelLabel: s.cancel,
-      confirmColor: Colors.red,
-    );
-    if (confirmed) {
-      _log.warning('deleting account id=${widget.account.id} name=${widget.account.name}');
-      await ref.read(accountServiceProvider).delete(widget.account.id);
-      if (context.mounted) Navigator.pop(context);
+    if (await confirmAndDeleteAccount(context, ref, _liveAccount(ref.read(accountsProvider).value)) && context.mounted) {
+      Navigator.pop(context);
     }
   }
 
   Future<void> _editAccount(BuildContext context) async {
-    final s = ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController(text: widget.account.name);
-    var currencyCtrl = TextEditingController(text: widget.account.currency);
-    var institutionCtrl = TextEditingController(text: widget.account.institution);
-    var isActive = widget.account.isActive;
-
-    try {
-      await showDialog(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            title: Text(s.editAccountTitle),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: InputDecoration(labelText: s.name),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: currencyCtrl,
-                    decoration: InputDecoration(labelText: s.currency, hintText: 'EUR'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: institutionCtrl,
-                    decoration: InputDecoration(labelText: s.institution),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    title: Text(s.active),
-                    value: isActive,
-                    onChanged: (v) => setDialogState(() => isActive = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-              FilledButton(
-                onPressed: () async {
-                  if (nameCtrl.text.trim().isEmpty) return;
-                  await ref
-                      .read(accountServiceProvider)
-                      .update(
-                        widget.account.id,
-                        AccountsCompanion(
-                          name: Value(nameCtrl.text.trim()),
-                          currency: Value(currencyCtrl.text.trim()),
-                          institution: Value(institutionCtrl.text.trim()),
-                          isActive: Value(isActive),
-                          updatedAt: Value(DateTime.now()),
-                        ),
-                      );
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                child: Text(s.save),
-              ),
-            ],
-          ),
-        ),
-      );
-    } finally {
-      nameCtrl.dispose();
-      currencyCtrl.dispose();
-      institutionCtrl.dispose();
-    }
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _EditAccountDialog(account: _liveAccount(ref.read(accountsProvider).value)),
+    );
   }
 
   /// Open the import wizard on the rows rebuilt from this account's stored
@@ -306,5 +255,95 @@ extension _AccountDetailTransactionActions on _AccountDetailScreenState {
     final n = await ref.read(transactionClassifierServiceProvider).setCategory(ids, pick.categoryId);
     _selection.clear();
     if (context.mounted) showInfoSnack(context, s.setCategoryCount(n));
+  }
+}
+
+/// The Edit account form, pre-filled from [account] (the live row). Owns its
+/// text controllers and disposes them only once the dialog is gone: disposing
+/// them as soon as the dialog returned broke its closing animation, which
+/// still rebuilds the fields. Saves at most once: Save is off while it runs.
+class _EditAccountDialog extends ConsumerStatefulWidget {
+  final Account account;
+  const _EditAccountDialog({required this.account});
+
+  @override
+  ConsumerState<_EditAccountDialog> createState() => _EditAccountDialogState();
+}
+
+class _EditAccountDialogState extends ConsumerState<_EditAccountDialog> {
+  late final _nameCtrl = TextEditingController(text: widget.account.name);
+  late final _currencyCtrl = TextEditingController(text: widget.account.currency);
+  late final _institutionCtrl = TextEditingController(text: widget.account.institution);
+  late var _isActive = widget.account.isActive;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _currencyCtrl.dispose();
+    _institutionCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving || _nameCtrl.text.trim().isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(accountServiceProvider)
+          .update(
+            widget.account.id,
+            AccountsCompanion(
+              name: Value(_nameCtrl.text.trim()),
+              currency: Value(_currencyCtrl.text.trim()),
+              institution: Value(_institutionCtrl.text.trim()),
+              isActive: Value(_isActive),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    return AlertDialog(
+      title: Text(s.editAccountTitle),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameCtrl,
+              decoration: InputDecoration(labelText: s.name),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _currencyCtrl,
+              decoration: InputDecoration(labelText: s.currency, hintText: 'EUR'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _institutionCtrl,
+              decoration: InputDecoration(labelText: s.institution),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: Text(s.active),
+              value: _isActive,
+              onChanged: (v) => setState(() => _isActive = v),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
+        FilledButton(onPressed: _saving ? null : _save, child: Text(s.save)),
+      ],
+    );
   }
 }

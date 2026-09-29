@@ -128,7 +128,10 @@ class _AthOverlayBody extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final card in cards) ...[
-              _AthCartelCard(card: card),
+              // Keyed by the card itself (a label can show twice): when the
+              // oldest card goes, the next keeps its own element and
+              // animation instead of taking over the finished one it had.
+              _AthCartelCard(key: ValueKey(card), card: card),
               const SizedBox(height: 12),
             ],
           ],
@@ -143,7 +146,7 @@ class _AthOverlayBody extends StatelessWidget {
 /// lands. Larger sizing than a standard card — this is the hero element.
 class _AthCartelCard extends ConsumerStatefulWidget {
   final AthCard card;
-  const _AthCartelCard({required this.card});
+  const _AthCartelCard({super.key, required this.card});
 
   @override
   ConsumerState<_AthCartelCard> createState() => _AthCartelCardState();
@@ -151,8 +154,8 @@ class _AthCartelCard extends ConsumerStatefulWidget {
 
 class _AthCartelCardState extends ConsumerState<_AthCartelCard> with TickerProviderStateMixin {
   late final AnimationController _popIn;
-  late final Animation<double> _scale;
-  late final Animation<double> _fade;
+  late final CurvedAnimation _scale;
+  late final CurvedAnimation _fade;
 
   /// Damped oscillation that drives the cartel's bouncing motion. Plays
   /// once over the card's full lifetime: starts with a big, fast swing
@@ -178,6 +181,10 @@ class _AthCartelCardState extends ConsumerState<_AthCartelCard> with TickerProvi
   /// Peak roll amplitude (radians) right after the pop-in (~5.7°).
   static const double _floatRoll = 0.10;
 
+  /// The pop-in and the bounce, merged once for the builder that follows
+  /// both (a merge per build re-subscribed it on every rebuild).
+  late final Listenable _motion;
+
   @override
   void initState() {
     super.initState();
@@ -191,11 +198,14 @@ class _AthCartelCardState extends ConsumerState<_AthCartelCard> with TickerProvi
       vsync: this,
       duration: _floatDuration,
     )..forward();
+    _motion = Listenable.merge([_popIn, _floatBounce]);
     _popIn.forward();
   }
 
   @override
   void dispose() {
+    _scale.dispose();
+    _fade.dispose();
     _popIn.dispose();
     _floatBounce.dispose();
     super.dispose();
@@ -208,7 +218,7 @@ class _AthCartelCardState extends ConsumerState<_AthCartelCard> with TickerProvi
     final s = ref.watch(appStringsProvider);
     final theme = Theme.of(context);
     return AnimatedBuilder(
-      animation: Listenable.merge([_popIn, _floatBounce]),
+      animation: _motion,
       builder: (ctx, child) {
         // Damped sinusoid: fast + tall at the start, slowing and shrinking
         // until the cartel is almost still by the time it auto-dismisses.

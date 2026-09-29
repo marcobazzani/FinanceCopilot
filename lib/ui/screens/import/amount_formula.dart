@@ -1,6 +1,7 @@
 part of 'import_screen.dart';
 
 extension _ColumnMapperAmountFormula on _ImportScreenState {
+  /// Mode switch buttons for the amount field.
   Widget _buildAmountModeButtons(List<String> columns, {required String currentMode}) {
     final s = ref.read(appStringsProvider);
     Widget modeBtn(String label, IconData icon, String mode) {
@@ -106,11 +107,7 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
                   ),
                   if (_preview != null && _balanceDiffColumn != null) ...[
                     const SizedBox(height: 4),
-                    Text(
-                      '${s.previewLabel}: amount = balance[i] − balance[i−1] → ${_balanceDiffPreview(s)}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    _computedFiguresPreview(s, _balanceDiffPreview(s), lead: '${s.balanceDiffFormula} → '),
                   ],
                 ],
               ),
@@ -283,19 +280,7 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
                 const SizedBox(width: 16),
                 if (_preview != null)
                   Expanded(
-                    child: Text(
-                      '${s.previewLabel}: ${_preview!.rows.take(3).map((row) {
-                        double sum = 0;
-                        for (final t in _amountFormula) {
-                          final raw = row[t.sourceColumn] ?? '0';
-                          final v = fmt.parseFlexibleNumber(raw) ?? 0;
-                          sum += t.operator == '-' ? -v : v;
-                        }
-                        return sum.toStringAsFixed(2);
-                      }).join(',  ')}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: _computedFiguresPreview(s, [for (final row in _preview!.rows.take(3)) (_formulaAmount(row), null)]),
                   ),
               ],
             ),
@@ -305,22 +290,31 @@ extension _ColumnMapperAmountFormula on _ImportScreenState {
     );
   }
 
-  /// Preview first few balance-diff computed values.
-  String _balanceDiffPreview(AppStrings s) {
-    if (_preview == null || _balanceDiffColumn == null) return '';
+  /// The formula amount of [row] as the import stores it ([formulaAmount]):
+  /// cells read in the import's number format, a blank cell adds 0, and an
+  /// unreadable one leaves the row without an amount (the import skips it) —
+  /// null, shown as N/A.
+  double? _formulaAmount(Map<String, String> row) => formulaAmount(_amountFormula, row, locale: _effectiveNumberLocale());
+
+  /// The first few balance-diff amounts, read in the import's number format;
+  /// the first readable balance is shown as such. Like the import, an
+  /// unreadable balance is skipped and the last readable one stays the
+  /// reference.
+  List<(double?, String?)> _balanceDiffPreview(AppStrings s) {
+    if (_preview == null || _balanceDiffColumn == null) return const [];
     final rows = _preview!.rows;
-    final results = <String>[];
+    final locale = _effectiveNumberLocale();
+    final results = <(double?, String?)>[];
     double? prev;
     for (var i = 0; i < rows.length && results.length < 4; i++) {
-      final raw = rows[i][_balanceDiffColumn!] ?? '';
-      final val = fmt.parseFlexibleNumber(raw);
+      final val = amt.tryParseAmount(rows[i][_balanceDiffColumn!], locale: locale);
       if (val != null && prev != null) {
-        results.add((val - prev).toStringAsFixed(2));
+        results.add((val - prev, null));
       } else if (val != null) {
-        results.add('${val.toStringAsFixed(2)} ${s.firstRowLabel}');
+        results.add((val, s.firstRowLabel));
       }
-      prev = val;
+      if (val != null) prev = val;
     }
-    return results.join(', ');
+    return results;
   }
 }

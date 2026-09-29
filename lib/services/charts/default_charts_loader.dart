@@ -67,8 +67,15 @@ class DefaultChartsLoader {
     required List<Asset> activeAssets,
     required List<ExtraordinaryEvent> activeEvents,
   }) {
-    final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
-    final charts = (decoded['charts'] as List).cast<Map<String, dynamic>>();
+    // Checked up front, entry by entry: a malformed file fails here, naming
+    // what is wrong, instead of as a cast error from a lazy view later on.
+    final charts = switch (jsonDecode(rawJson)) {
+      {'charts': final List<Object?> list} => [
+        for (final (i, chart) in list.indexed)
+          chart is Map<String, dynamic> ? chart : throw FormatException('default charts: entry #$i is not an object', rawJson),
+      ],
+      _ => throw FormatException('default charts: no "charts" list', rawJson),
+    };
     final now = DateTime.now();
     final result = <DashboardChart>[];
     var nextId = -1; // negative ids never collide with DB rows
@@ -121,7 +128,7 @@ class DefaultChartsLoader {
   }
 
   /// Decode either `"category_name"` or `{"category": "...", "sign": -1}`.
-  (String name, int sign) _entry(dynamic entry) {
+  (String name, int sign) _entry(Object? entry) {
     if (entry is String) return (entry, 1);
     if (entry is Map<String, dynamic>) {
       final name = entry['category'] as String? ?? '';

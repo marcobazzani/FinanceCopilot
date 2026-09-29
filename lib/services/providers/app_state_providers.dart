@@ -56,19 +56,9 @@ final historyTabSeenThisSessionProvider = StateProvider<bool>((_) => false);
 /// running. Drives the spinner on the global Refresh icon from any screen.
 final isManualSyncingProvider = StateProvider<bool>((ref) => false);
 
-/// Whether a Drive backup/restore is currently in flight. Independent
-/// from [isManualSyncingProvider] so both spinners can co-exist.
-final isDriveSyncingProvider = StateProvider<bool>((ref) => false);
-
 /// Portable language setting (from ~/.config/FinanceCopilot/settings.json).
 /// Used before a DB is opened. Initialized on app start.
 final portableLanguageProvider = StateProvider<String>((ref) => 'en');
-
-/// UI language from AppConfigs, reactive. 'en' (default) or 'it'.
-final appLanguageProvider = StreamProvider<String>((ref) {
-  final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('LANGUAGE'))).watchSingleOrNull().map((row) => row?.value ?? 'en');
-});
 
 /// Provides the current [AppStrings] instance from portable language setting.
 final appStringsProvider = Provider<AppStrings>((ref) {
@@ -92,15 +82,11 @@ final baseCurrencyProvider = StreamProvider<String>((ref) {
 });
 
 /// Default capital-gains tax rate (fraction, 0.26 = 26%). Reactive from
-/// AppConfigs; defaults to [kDefaultTaxRate] when unset or invalid.
+/// AppConfigs; see [parseStoredTaxRate] for unset or invalid values.
 /// Per-asset `taxRate` overrides this on a position-by-position basis.
 final defaultTaxRateProvider = StreamProvider<double>((ref) {
   final db = ref.watch(databaseProvider);
-  return (db.select(db.appConfigs)..where((c) => c.key.equals('TAX_RATE'))).watchSingleOrNull().map((row) {
-    final v = double.tryParse(row?.value ?? '');
-    if (v == null) return kDefaultTaxRate;
-    return v.clamp(0.0, 1.0);
-  });
+  return (db.select(db.appConfigs)..where((c) => c.key.equals('TAX_RATE'))).watchSingleOrNull().map((row) => parseStoredTaxRate(row?.value));
 });
 
 /// Safe Withdrawal Rate (%) for the FIRE indicator. Reactive from AppConfigs;

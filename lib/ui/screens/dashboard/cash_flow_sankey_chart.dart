@@ -35,7 +35,14 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
   @override
   void didUpdateWidget(CashFlowSankeyCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.spending != widget.spending) _spendingLive.value = widget.spending;
+    // The sheet listening to this lives in another route: notifying it now,
+    // in the middle of the build that delivered the new data, would mark it
+    // dirty during build. Hand the data over once the frame is done.
+    if (oldWidget.spending != widget.spending) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _spendingLive.value = widget.spending;
+      });
+    }
   }
 
   @override
@@ -64,7 +71,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     if (years.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
-        child: Text(s.spendingByCategoryEmpty, textAlign: TextAlign.center, key: const Key('spendingEmpty')),
+        child: EmptyState(key: const Key('spendingEmpty'), icon: Icons.account_tree_outlined, message: s.spendingByCategoryEmpty),
       );
     }
 

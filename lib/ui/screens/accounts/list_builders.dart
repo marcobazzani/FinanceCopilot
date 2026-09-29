@@ -6,13 +6,11 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
   /// synthetic saving rows (merged view only), then applies the structured
   /// kind/date/amount filter. Used by both the rendered list and the
   /// selection ("select all") id snapshot so they never diverge.
-  ({List<_Entry> entries, Map<int, String> annotatedTxIds}) _composeEntries(
+  _ComposedLedger _composeEntries(
     List<Transaction> transactions, {
     required AdjustmentInputs? adjInputs,
     required AppStrings s,
   }) {
-    int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
-
     // Text constraints (contains / doesn't-contain) apply to the raw
     // transactions before pairing/collapsing, over the same searchable fields
     // as before (description + full description + amount).
@@ -26,16 +24,19 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
       filtered: searched,
       detectTransfers: _isReadOnly,
       detectNoOps: true,
-      dayKey: dayKey,
+      dayKey: ledgerDayKey,
     );
 
+    // Resolved on the whole ledger, not on the rows the search kept: which
+    // transaction an event accounts for — and so which of its scheduled
+    // entries are left as synthetic saving rows — never depends on the search.
     final AdjustmentResolution? adj = (adjInputs != null)
         ? resolveAdjustments(
             events: adjInputs.events,
             entriesByEvent: adjInputs.entriesByEvent,
             reimbursementsByEvent: adjInputs.reimbursementsByEvent,
-            transactions: searched,
-            dayKey: dayKey,
+            transactions: transactions,
+            dayKey: ledgerDayKey,
             adjustedLabel: s.adjustedForLabel,
             reimbLabel: s.reimbForLabel,
             savingForLabel: s.savingForLabel,
@@ -45,10 +46,14 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     final annotatedTxIds = adj?.annotatedTxIds ?? const <int, String>{};
 
     // Synthetic "Saving for X" spread rows: merged All-accounts view only
-    // (no account). Insert by date (desc), preserving same-day order.
+    // (no account), each in its spread event's currency. The text constraints
+    // match them over what they show: their label and amount. Insert by date
+    // (desc), preserving same-day order.
+    final savingItems = (adj != null && _isReadOnly) ? adj.savingItems : const <SavingScheduleItem>[];
     final savingEntries = <_AdjustmentEntry>[
-      if (adj != null && _isReadOnly)
-        for (final item in adj.savingItems) _AdjustmentEntry(date: item.date, amount: item.amount, eventName: item.eventName),
+      for (final item in savingItems)
+        if (!_filter.hasTextFilter || _filter.textMatches('${s.savingForLabel(item.eventName)} ${item.amount}'))
+          _AdjustmentEntry(date: item.date, amount: item.amount, eventName: item.eventName, currency: item.currency),
     ];
     final List<_Entry> allEntries;
     if (savingEntries.isEmpty) {
@@ -73,7 +78,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
               .toList()
         : allEntries;
 
-    return (entries: entries, annotatedTxIds: annotatedTxIds);
+    return (entries: entries, annotatedTxIds: annotatedTxIds, ledgerEmpty: transactions.isEmpty && savingItems.isEmpty);
   }
 
   /// Classifies a display [_Entry] to its set of [EntryKind]s for filtering.
@@ -172,8 +177,8 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     required BuildContext context,
     required Transaction tx,
     required bool isPositive,
-    required dynamic rowAmtFmt,
-    required dynamic dateFmt,
+    required NumberFormat rowAmtFmt,
+    required DateFormat dateFmt,
     required Map<int, String> accountNameById,
     required AppStrings s,
     String? adjustedLabel,
@@ -292,7 +297,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
                       children: [
                         const Icon(Icons.label_important_outline, size: 18),
                         const SizedBox(width: 8),
-                        Text(s.flagAsIncomeTooltip),
+                        Expanded(child: Text(s.flagAsIncomeTooltip)),
                       ],
                     ),
                   )
@@ -303,7 +308,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
                       children: [
                         const Icon(Icons.compare_arrows, size: 18),
                         const SizedBox(width: 8),
-                        Text(s.flagAsAdjustmentTooltip),
+                        Expanded(child: Text(s.flagAsAdjustmentTooltip)),
                       ],
                     ),
                   ),
@@ -313,7 +318,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
                       children: [
                         const Icon(Icons.timeline, size: 18),
                         const SizedBox(width: 8),
-                        Text(s.spreadSpendingMenu),
+                        Expanded(child: Text(s.spreadSpendingMenu)),
                       ],
                     ),
                   ),
@@ -330,12 +335,21 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
       ),
       onTap: _isReadOnly ? null : () => _openTransaction(tx),
     );
+    // The read-only All-accounts view neither selects nor deletes. Here a row
+    // swipes away through the transaction's one confirm-and-delete (the
+    // service recomputes the account's balances); this builder also draws the
+    // legs of an expanded pair, which are transaction rows too — the collapsed
+    // pair row and the synthetic saving rows have no swipe.
     return _isReadOnly
         ? tile
         : SelectableItem<int>(
             controller: _selection,
             id: tx.id,
-            child: tile,
+            child: SwipeToDelete.custom(
+              key: ValueKey('dismiss_tx_${tx.id}'),
+              confirmAndDelete: () => confirmAndDeleteTransaction(context, ref, tx),
+              child: tile,
+            ),
           );
   }
 
@@ -345,7 +359,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
       MaterialPageRoute(
         builder: (_) => TransactionEditScreen(
           transaction: tx,
-          account: widget.account,
+          account: _liveAccount(ref.read(accountsProvider).value),
         ),
       ),
     );
@@ -355,7 +369,7 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => TransactionEditScreen(account: widget.account),
+        builder: (_) => TransactionEditScreen(account: _liveAccount(ref.read(accountsProvider).value)),
       ),
     );
   }

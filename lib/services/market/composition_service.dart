@@ -28,7 +28,30 @@ class CompositionService {
   final Dio _dio;
   final WebMarketDataService? _providerService;
 
-  CompositionService(this._db, {Dio? dio, WebMarketDataService? providerService}) : _dio = dio ?? Dio(), _providerService = providerService;
+  /// Assets sync one after another, so an unbounded request would stall the
+  /// whole composition sync (and the global refresh awaiting it).
+  static const _connectTimeout = Duration(seconds: 10);
+  static const _requestTimeout = Duration(seconds: 20);
+
+  CompositionService(this._db, {Dio? dio, WebMarketDataService? providerService})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: _connectTimeout,
+              receiveTimeout: _requestTimeout,
+              sendTimeout: _connectTimeout,
+            ),
+          ),
+      _providerService = providerService;
+
+  @visibleForTesting
+  Dio get httpClientForTest => _dio;
+
+  /// Closes the HTTP client. The provider calls this when it rebuilds the
+  /// service (the DB reloads after an import, restore or wipe), so a replaced
+  /// instance does not keep its connections open.
+  void dispose() => _dio.close(force: true);
 
   static const _classToInstrument = {
     'Stock ETF': InstrumentType.etf,
@@ -77,8 +100,9 @@ class CompositionService {
                 ..limit(1))
               .getSingleOrNull();
       if (existing != null) {
-        if (asset.ter == null && asset.isin != null) {
-          await _fetchTerOnly(asset);
+        final isin = asset.isin;
+        if (asset.ter == null && isin != null) {
+          await _fetchTerOnly(asset, isin);
         }
         _log.fine('syncCompositions: ${asset.name} - rows exist, skipping');
         continue;
@@ -185,7 +209,7 @@ class CompositionService {
     // Standard ISINs (2-letter country + 10 chars) → try the ETF profile
     // provider first.
     if (isin.length == 12 && RegExp(r'^[A-Z]{2}').hasMatch(isin)) {
-      final etfResult = await _fetchEtf(asset);
+      final etfResult = await _fetchEtf(asset, isin);
       if (etfResult.isNotEmpty) return etfResult;
 
       // If the ETF provider didn't find it (e.g. it's a stock, not an
@@ -206,63 +230,39 @@ class CompositionService {
     return _fetchFundFromProvider(asset);
   }
 
-  /// Quick TER-only fetch (ETF profile provider for ETFs, market data provider for funds).
-  Future<void> _fetchTerOnly(Asset asset) async {
-    // Try the ETF profile provider first (for ETFs/ETCs).
-    final isin = asset.isin!;
-    final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
-    final html = await _fetchHtml(url);
-    if (html != null) {
-      final doc = parse(html);
-      final terText = doc.querySelector('[data-testid="tl_etf-basics_value_ter"]')?.text.trim();
-      if (terText != null) {
-        final terMatch = RegExp(r'([\d,.]+)\s*%').firstMatch(terText);
-        if (terMatch != null) {
-          final ter = double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
-          if (ter != null) {
-            await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
-            _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (etf-provider)');
-            return;
-          }
-        }
-      }
-    }
-
-    // Try the market data provider (for funds/pension)
-    final searchTerm = asset.isin ?? asset.ticker ?? asset.name;
-    try {
-      final searchUrl =
-          '$kProviderApiBase/api/search/v2/search'
-          '?q=${Uri.encodeComponent(searchTerm)}';
-      final searchResp = await _dio.get(
-        searchUrl,
-        options: Options(
-          headers: {'User-Agent': _userAgent, 'Accept': 'application/json', 'Domain-Id': 'www', 'Accept-Language': 'en-US,en;q=0.9'},
-          responseType: ResponseType.json,
-        ),
-      );
-      final quotes = (searchResp.data as Map<String, dynamic>)['quotes'] as List? ?? [];
-      if (quotes.isEmpty) return;
-      final fundPath = quotes[0]['url'] as String?;
-      if (fundPath == null || fundPath.isEmpty) return;
-
-      final fundHtml = await _fetchHtml('$kProviderBase$fundPath');
-      if (fundHtml == null) return;
-      final ter = parseTerFromProviderHtml(fundHtml);
-      if (ter != null) {
-        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
-        _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (provider)');
-      }
-    } catch (e) {
-      _log.fine('_fetchTerOnly: ${asset.name} - provider failed: $e');
-    }
+  /// Quick TER-only fetch from the ETF profile provider. There is no fund
+  /// fallback: the one there was asked the legacy `api/search/v2/search`
+  /// endpoint over the plain client, which is refused (403) or answers an
+  /// empty list — it never found a TER.
+  Future<void> _fetchTerOnly(Asset asset, String isin) async {
+    final html = await _fetchHtml(_etfProfileUrl(isin));
+    if (html == null) return;
+    final ter = _parseEtfProfileTer(parse(html));
+    if (ter == null) return;
+    await _saveTer(asset, ter);
+    _log.info('_fetchTerOnly: ${asset.name} - TER=$ter% (etf-provider)');
   }
+
+  /// Writes the TER of [asset].
+  Future<void> _saveTer(Asset asset, double ter) =>
+      (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
 
   // ── ETFs/ETCs: ETF profile provider ─────────────────────
 
-  Future<List<_Entry>> _fetchEtf(Asset asset) async {
-    final isin = asset.isin!;
-    final url = 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
+  static String _etfProfileUrl(String isin) => 'https://www.justetf.com/en/etf-profile.html?isin=$isin';
+
+  /// The TER on an ETF profile page, in percent (the page may write the
+  /// decimal with a comma); null when the page shows none.
+  static double? _parseEtfProfileTer(Document doc) {
+    final terText = doc.querySelector('[data-testid="tl_etf-basics_value_ter"]')?.text.trim();
+    if (terText == null) return null;
+    final terMatch = RegExp(r'([\d,.]+)\s*%').firstMatch(terText);
+    if (terMatch == null) return null;
+    return double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
+  }
+
+  Future<List<_Entry>> _fetchEtf(Asset asset, String isin) async {
+    final url = _etfProfileUrl(isin);
     _log.fine('fetchEtf: ${asset.name} from etf-provider ($isin)');
 
     final html = await _fetchHtml(url);
@@ -296,16 +296,10 @@ class CompositionService {
     }
 
     // Extract TER and update asset
-    final terText = doc.querySelector('[data-testid="tl_etf-basics_value_ter"]')?.text.trim();
-    if (terText != null) {
-      final terMatch = RegExp(r'([\d,.]+)\s*%').firstMatch(terText);
-      if (terMatch != null) {
-        final ter = double.tryParse(terMatch.group(1)!.replaceAll(',', '.'));
-        if (ter != null && ter != asset.ter) {
-          await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
-          _log.info('syncCompositions: ${asset.name} - updated TER to $ter%');
-        }
-      }
+    final ter = _parseEtfProfileTer(doc);
+    if (ter != null && ter != asset.ter) {
+      await _saveTer(asset, ter);
+      _log.info('syncCompositions: ${asset.name} - updated TER to $ter%');
     }
 
     // Store source URL
@@ -502,7 +496,7 @@ class CompositionService {
     if (mainHtml != null) {
       final ter = parseTerFromProviderHtml(mainHtml);
       if (ter != null && ter != asset.ter) {
-        await (_db.update(_db.assets)..where((a) => a.id.equals(asset.id))).write(AssetsCompanion(ter: Value(ter)));
+        await _saveTer(asset, ter);
         _log.info('fetchFund: ${asset.name} - updated TER to $ter% from the provider');
       }
     }
@@ -666,7 +660,7 @@ class CompositionService {
 
   Future<String?> _fetchHtml(String url) async {
     try {
-      final response = await _dio.get(
+      final response = await _dio.get<String>(
         url,
         options: Options(
           headers: {
@@ -679,7 +673,7 @@ class CompositionService {
           validateStatus: (status) => status != null && status < 400,
         ),
       );
-      return response.data as String;
+      return response.data;
     } on DioException catch (e) {
       // On CF-protected provider pages, fall back to WebView fetch
       if (e.response?.statusCode == 403 && _providerService != null && url.contains(kProviderHost)) {

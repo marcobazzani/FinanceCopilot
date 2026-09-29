@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:finance_copilot/services/market/market_price_service.dart' show supportedExchanges;
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
+import 'package:finance_copilot/utils/amount_parser.dart' show stripFloatNoise;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/assets/asset_detail_charts_provider.dart';
 import 'package:finance_copilot/ui/screens/assets/asset_event_edit_screen.dart';
@@ -23,11 +24,13 @@ import 'package:finance_copilot/ui/screens/pillars/pillar_detail_screen.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show ChartSeries, DragZoomWrapper, UnifiedChart, currencySymbol;
 import 'package:finance_copilot/ui/widgets/asset_search.dart';
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_action_bar.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_controller.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 
 part 'chart_section.dart';
 part 'composition_section.dart';
@@ -62,10 +65,16 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.currencyFormat(locale, asset.currency);
+    // Event unit prices and quantities: two decimals in the locale's spelling.
+    final figureFmt = NumberFormat('0.00', locale);
     final baseCurrency = ref.watch(baseCurrencyProvider).value ?? 'EUR';
     final showConverted = asset.currency != baseCurrency;
     final baseFmt = fmt.currencyFormat(locale, currencySymbol(baseCurrency));
     final convertedAmounts = showConverted ? ref.watch(convertedEventAmountsProvider(asset.id)).value ?? {} : <int, double>{};
+    // From the live row: the first revaluation turns a market-priced asset
+    // into a manually valued one while this screen is open.
+    final valuation = ref.watch(assetsProvider).value?.where((a) => a.id == asset.id).firstOrNull?.valuationMethod ?? asset.valuationMethod;
+    final privatePrice = unitPriceIsPrivate(valuation);
 
     return ListenableBuilder(
       listenable: _selection,
@@ -131,7 +140,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            s.taxRateLabel((asset.taxRate! * 100).toStringAsFixed(1)),
+                            s.taxRateLabel(NumberFormat('0.0', locale).format(asset.taxRate! * 100)),
                             style: const TextStyle(fontSize: 12),
                           ),
                         ),
@@ -140,7 +149,7 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                 ),
               ),
               // Asset charts (portfolio history + performance)
-              _AssetChartSection(assetId: asset.id),
+              _AssetChartSection(assetId: asset.id, privatePrice: privatePrice),
               // Composition breakdown
               _CompositionSection(assetId: asset.id),
               // Events header
@@ -164,11 +173,15 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                 child: eventsStream.when(
                   data: (events) {
                     if (events.isEmpty) {
-                      return Center(
-                        child: Text(
-                          s.noEventsYet,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.grey),
+                      return MobilePullToRefresh(
+                        child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 40),
+                              child: EmptyState(icon: Icons.event_note, message: s.noEventsYet),
+                            ),
+                          ],
                         ),
                       );
                     }
@@ -180,67 +193,81 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
                         itemBuilder: (ctx, i) {
                           final ev = events[i];
                           final typeColor = _colorForEventType(ev.type);
+                          final priceLabel = ev.price == null ? null : '@ ${figureFmt.format(ev.price)}';
                           return SelectableItem<int>(
                             controller: _selection,
                             id: ev.id,
-                            child: ListTile(
-                              dense: true,
-                              leading: CircleAvatar(
-                                radius: 16,
-                                backgroundColor: typeColor.withValues(alpha: 0.15),
-                                child: Text(
-                                  ev.type.name.substring(0, 1).toUpperCase(),
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: typeColor),
+                            // The event's trashcan confirm-and-delete: same
+                            // question, same service call (it resyncs the
+                            // asset's revalue prices).
+                            child: SwipeToDelete.custom(
+                              key: ValueKey('dismiss_asset_event_${ev.id}'),
+                              confirmAndDelete: () => confirmAndDeleteAssetEvent(context, ref, ev),
+                              child: ListTile(
+                                dense: true,
+                                leading: CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: typeColor.withValues(alpha: 0.15),
+                                  child: Text(
+                                    ev.type.name.substring(0, 1).toUpperCase(),
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: typeColor),
+                                  ),
                                 ),
-                              ),
-                              title: Row(
-                                children: [
-                                  Text(
-                                    ev.type.name,
-                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: typeColor),
-                                  ),
-                                  // Quantity and price reveal position size — censor in privacy mode.
-                                  if (ev.quantity != null) ...[
-                                    const SizedBox(width: 8),
-                                    PrivacyText(
-                                      'qty: ${ev.quantity!.toStringAsFixed(2)}',
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                title: Row(
+                                  children: [
+                                    Text(
+                                      ev.type.name,
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: typeColor),
                                     ),
+                                    // Quantity and price reveal position size — censor in privacy mode.
+                                    if (ev.quantity != null) ...[
+                                      const SizedBox(width: 8),
+                                      PrivacyText(
+                                        s.eventQuantityShort(figureFmt.format(ev.quantity)),
+                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                    if (priceLabel != null) ...[
+                                      const SizedBox(width: 8),
+                                      // Execution price is public market data —
+                                      // identical for anyone who traded that day,
+                                      // so it stays readable. The quantity above
+                                      // is what reveals the position size. A
+                                      // manually valued asset has no market: its
+                                      // price is its own valuation per unit.
+                                      PrivacyText(
+                                        priceLabel,
+                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                        masked: privatePrice,
+                                      ),
+                                    ],
                                   ],
-                                  if (ev.price != null) ...[
-                                    const SizedBox(width: 8),
-                                    // Execution price is public market data —
-                                    // identical for anyone who traded that day,
-                                    // so it stays readable. The quantity above
-                                    // is what reveals the position size.
-                                    Text('@ ${ev.price!.toStringAsFixed(2)}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                  ],
-                                ],
-                              ),
-                              subtitle: Text(dateFmt.format(ev.valueDate), style: const TextStyle(fontSize: 12)),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  PrivacyText(
-                                    '${ev.amount >= 0 ? '+' : ''}${amtFmt.format(ev.amount)}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: ev.amount >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-                                    ),
-                                  ),
-                                  if (showConverted && convertedAmounts.containsKey(ev.id))
+                                ),
+                                subtitle: Text(dateFmt.format(ev.valueDate), style: const TextStyle(fontSize: 12)),
+                                trailing: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
                                     PrivacyText(
-                                      '≈ ${baseFmt.format(convertedAmounts[ev.id]!)}',
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      '${ev.amount >= 0 ? '+' : ''}${amtFmt.format(ev.amount)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: ev.amount >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                                      ),
                                     ),
-                                ],
-                              ),
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AssetEventEditScreen(event: ev, asset: asset),
+                                    if (showConverted && convertedAmounts.containsKey(ev.id))
+                                      PrivacyText(
+                                        '≈ ${baseFmt.format(convertedAmounts[ev.id]!)}',
+                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      ),
+                                  ],
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AssetEventEditScreen(event: ev, asset: asset),
+                                  ),
                                 ),
                               ),
                             ),
@@ -303,7 +330,10 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
     int assetId,
   ) async {
     final s = ref.read(appStringsProvider);
-    final pillars = await ref.read(pillarsProvider.future);
+    // Read once through the service: awaiting pillarsProvider never completes
+    // on a screen where nothing else listens to it (Riverpod pauses
+    // unlistened providers).
+    final pillars = await ref.read(pillarServiceProvider).getAll();
     if (!context.mounted) return;
     if (pillars.isEmpty) {
       showInfoSnack(context, s.pillarsEmptyTitle);
@@ -359,22 +389,28 @@ class _AssetDetailScreenState extends ConsumerState<AssetDetailScreen> {
   }
 
   Future<void> _confirmDeleteAsset(BuildContext context, WidgetRef ref) async {
-    final s = ref.read(appStringsProvider);
-    final confirmed = await showConfirmDialog(
-      context,
-      title: s.deleteAssetTitle,
-      content: s.deleteAssetConfirm(asset.name),
-      confirmLabel: s.delete,
-      cancelLabel: s.cancel,
-      confirmColor: Colors.red,
-    );
-    if (confirmed) {
-      _log.warning('deleting asset id=${asset.id}, name=${asset.name}');
-      await ref.read(assetEventServiceProvider).deleteByAsset(asset.id);
-      await ref.read(assetServiceProvider).delete(asset.id);
-      if (context.mounted) Navigator.pop(context);
-    }
+    if (await confirmAndDeleteAsset(context, ref, asset) && context.mounted) Navigator.pop(context);
   }
+}
+
+/// Asks, then deletes [asset] with its events, snapshots and prices (one
+/// transaction, in the asset service); says whether it did. Behind the detail
+/// view's trashcan and the swipe of the assets list.
+Future<bool> confirmAndDeleteAsset(BuildContext context, WidgetRef ref, Asset asset) async {
+  final s = ref.read(appStringsProvider);
+  final assets = ref.read(assetServiceProvider);
+  final confirmed = await showConfirmDialog(
+    context,
+    title: s.deleteAssetTitle,
+    content: s.deleteAssetConfirm(asset.name),
+    confirmLabel: s.delete,
+    cancelLabel: s.cancel,
+    confirmColor: Colors.red,
+  );
+  if (!confirmed) return false;
+  _log.warning('deleting asset id=${asset.id}, name=${asset.name}');
+  await assets.delete(asset.id);
+  return true;
 }
 
 // ──────────────────────────────────────────────

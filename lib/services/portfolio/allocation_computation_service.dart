@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/tables.dart';
 
 /// Groups assets by a field, sums market values, returns sorted descending map.
 ///
@@ -24,6 +25,25 @@ Map<String, double> groupByField(
   final sorted = map.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
   return Map.fromEntries(sorted);
 }
+
+/// The total the allocation charts split: the positive values of [assets],
+/// the very holdings every slice is drawn from. A liability or an asset
+/// without a value is in no slice, so it is not in the total either and the
+/// slices add up to 100%.
+double allocationTotal(List<Asset> assets, Map<int, double> values) {
+  var total = 0.0;
+  for (final asset in assets) {
+    final val = values[asset.id];
+    if (val != null && val > 0) total += val;
+  }
+  return total;
+}
+
+/// Held [assets] (ids in [heldIds]) without a value in [values] — no price
+/// or exchange rate. They are in no slice and no total, and are counted under
+/// the charts rather than silently dropped.
+int unvaluedAssetCount(List<Asset> assets, Map<int, double> values, {required Set<int> heldIds}) =>
+    assets.where((a) => heldIds.contains(a.id) && !values.containsKey(a.id)).length;
 
 /// Drill-down for simple field grouping: for each group key, which assets
 /// contribute.
@@ -53,8 +73,10 @@ Map<String, double> weightedBreakdown(
 ) {
   final result = <String, double>{};
   for (final asset in assets) {
-    final mv = marketValues[asset.id] ?? 0;
-    if (mv <= 0) continue;
+    // No value (no price or exchange rate; see [unvaluedAssetCount]) or a
+    // liability: in no slice.
+    final mv = marketValues[asset.id];
+    if (mv == null || mv <= 0) continue;
 
     final comps = compositions[asset.id]?.where((c) => c.type == compositionType).toList();
 
@@ -82,8 +104,9 @@ Map<String, Map<String, double>> drillDownData(
 ) {
   final result = <String, Map<String, double>>{};
   for (final asset in assets) {
-    final mv = marketValues[asset.id] ?? 0;
-    if (mv <= 0) continue;
+    // Same holdings as [weightedBreakdown]: nothing for an unvalued asset.
+    final mv = marketValues[asset.id];
+    if (mv == null || mv <= 0) continue;
 
     final comps = compositions[asset.id]?.where((c) => c.type == compositionType).toList();
 
@@ -151,4 +174,44 @@ ConcentrationResult computeConcentration(
     hhi: hhi,
     classification: classification,
   );
+}
+
+/// Instruments that charge a TER. One of these without a TER on record has an
+/// unknown cost, not a zero one. Stocks, bonds, cash, crypto, real estate, …
+/// have no TER at all and weigh in at zero cost.
+const _terChargingInstruments = {InstrumentType.etf, InstrumentType.etc, InstrumentType.fund, InstrumentType.pension};
+
+/// Market-value-weighted TER of a set of holdings.
+class WeightedTerResult {
+  /// Weighted TER in percent; null when no holding could be weighed.
+  final double? ter;
+
+  /// Yearly cost of the covered holdings: value × TER.
+  final double annualCost;
+
+  /// Funds with a value but no TER on record, left out of both the value the
+  /// TER is weighted over and [annualCost]: counted as free they would
+  /// understate [ter].
+  final int unknownTerFunds;
+
+  const WeightedTerResult({required this.ter, required this.annualCost, required this.unknownTerFunds});
+}
+
+/// Weighted TER of the [assets] with a positive market value in [values]
+/// (an asset without a value cannot be weighed and is skipped).
+WeightedTerResult computeWeightedTer(List<Asset> assets, Map<int, double> values) {
+  var covered = 0.0, cost = 0.0;
+  var unknown = 0;
+  for (final asset in assets) {
+    final mv = values[asset.id];
+    if (mv == null || mv <= 0) continue;
+    final ter = asset.ter;
+    if (ter == null && _terChargingInstruments.contains(asset.instrumentType)) {
+      unknown++;
+      continue;
+    }
+    covered += mv;
+    if (ter != null && ter > 0) cost += mv * ter / 100;
+  }
+  return WeightedTerResult(ter: covered > 0 ? cost / covered * 100 : null, annualCost: cost, unknownTerFunds: unknown);
 }

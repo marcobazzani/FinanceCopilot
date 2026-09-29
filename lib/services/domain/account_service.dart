@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/query_helpers.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/utils/logger.dart';
 
@@ -17,17 +18,21 @@ class AccountStats {
 }
 
 /// SQL to get the latest balance per account: the balance_after from the
-/// transaction with the latest date, tiebroken by highest id within that date.
+/// transaction with the latest date, tiebroken by highest id within that date,
+/// among the rows that HAVE a balance — a hand-entered row with no balance on
+/// the latest day must not make the account's balance disappear.
 String _latestBalanceSql({required bool bounded}) =>
     'SELECT t.account_id, t.balance_after FROM transactions t '
     'INNER JOIN ('
     '  SELECT account_id, MAX(value_date) AS max_date FROM transactions '
-    '${bounded ? 'WHERE value_date < ? ' : ''}'
+    'WHERE balance_after IS NOT NULL '
+    '${bounded ? 'AND value_date < ? ' : ''}'
     'GROUP BY account_id'
     ') md ON t.account_id = md.account_id AND t.value_date = md.max_date '
     'WHERE t.id = ('
     '  SELECT MAX(id) FROM transactions t2 '
-    '  WHERE t2.account_id = t.account_id AND t2.value_date = md.max_date'
+    '  WHERE t2.account_id = t.account_id AND t2.value_date = md.max_date '
+    '  AND t2.balance_after IS NOT NULL'
     ')';
 
 String _statsSql({required bool bounded}) =>
@@ -85,19 +90,18 @@ class AccountService {
     return (_db.update(_db.accounts)..where((a) => a.id.equals(id))).write(companion).then((rows) => rows > 0);
   }
 
-  Future<int> delete(int id) async {
-    _log.warning('delete: id=$id (cascade: transactions, import configs)');
-    await (_db.delete(_db.transactions)..where((t) => t.accountId.equals(id))).go();
-    await (_db.delete(_db.importConfigs)..where((c) => c.accountId.equals(id))).go();
-    return (_db.delete(_db.accounts)..where((a) => a.id.equals(id))).go();
-  }
+  /// Deletes the account with its transactions and import config in one
+  /// transaction: a failure part-way deletes nothing.
+  Future<int> delete(int id) => deleteMany([id]);
 
   Future<int> deleteMany(List<int> ids) async {
     if (ids.isEmpty) return 0;
-    _log.warning('deleteMany: ${ids.length} accounts (cascade: transactions, import configs)');
-    await (_db.delete(_db.transactions)..where((t) => t.accountId.isIn(ids))).go();
-    await (_db.delete(_db.importConfigs)..where((c) => c.accountId.isIn(ids))).go();
-    return (_db.delete(_db.accounts)..where((a) => a.id.isIn(ids))).go();
+    _log.warning('deleteMany: ${ids.length} accounts $ids (cascade: transactions, import configs)');
+    return _db.transaction(() async {
+      await (_db.delete(_db.transactions)..where((t) => t.accountId.isIn(ids))).go();
+      await (_db.delete(_db.importConfigs)..where((c) => c.accountId.isIn(ids))).go();
+      return (_db.delete(_db.accounts)..where((a) => a.id.isIn(ids))).go();
+    });
   }
 
   /// Reorder accounts by updating sortOrder for each account.
@@ -119,7 +123,7 @@ class AccountService {
     final statsRows = await _db
         .customSelect(
           _statsSql(bounded: through != null),
-          variables: _throughVars(through),
+          variables: throughVars(through),
           readsFrom: {_db.transactions},
         )
         .get();
@@ -132,7 +136,7 @@ class AccountService {
     return _db
         .customSelect(
           _statsSql(bounded: through != null),
-          variables: _throughVars(through),
+          variables: throughVars(through),
           readsFrom: {_db.transactions},
         )
         .watch()
@@ -146,7 +150,7 @@ class AccountService {
     final rows = await _db
         .customSelect(
           _latestBalanceSql(bounded: through != null),
-          variables: _throughVars(through),
+          variables: throughVars(through),
           readsFrom: {_db.transactions},
         )
         .get();
@@ -171,14 +175,4 @@ class AccountService {
   }
 
   static DateTime? _epochToDate(int? epochSec) => epochSec != null ? DateTime.fromMillisecondsSinceEpoch(epochSec * 1000) : null;
-
-  static List<Variable<int>> _throughVars(DateTime? through) {
-    if (through == null) return const [];
-    final endExclusive = DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
-    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
-  }
 }

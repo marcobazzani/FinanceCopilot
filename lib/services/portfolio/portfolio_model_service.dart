@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/utils/uuid_v7.dart';
 
@@ -15,9 +17,81 @@ const _modelCatalogRoot = 'PortfolioModels/';
 const _weightTolerance = 0.05;
 final _isinPattern = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
 
+/// What a portfolio model check found wrong.
+enum PortfolioModelIssueKind {
+  /// A custom model without a name.
+  nameRequired,
+
+  /// A catalog file without a model ID.
+  missingId,
+
+  /// A catalog row whose weight does not read as a number.
+  invalidWeight,
+
+  /// A model without items.
+  noItems,
+
+  /// A row without an ISIN.
+  isinRequired,
+
+  /// A row whose ISIN is not one.
+  isinMalformed,
+
+  /// A row whose weight is zero or negative.
+  weightNotPositive,
+
+  /// A row repeating the ISIN of an earlier one.
+  duplicateIsin,
+
+  /// Weights not summing to 100%.
+  weightsTotal,
+}
+
+/// One problem a portfolio model check found: its [kind]; for a row, the
+/// 1-based [row] and the model it is numbered in ([context], when given; the
+/// model ID for [PortfolioModelIssueKind.invalidWeight]); what it names
+/// ([value]: the duplicate ISIN, the unreadable weight, the catalog file
+/// without an ID) and, for [PortfolioModelIssueKind.weightsTotal], the
+/// weights' [total].
+class PortfolioModelIssue {
+  final PortfolioModelIssueKind kind;
+  final int? row;
+  final String? context;
+  final String? value;
+  final double? total;
+
+  const PortfolioModelIssue(this.kind, {this.row, this.context, this.value, this.total});
+
+  /// This problem worded by [s], its number written by [number].
+  String _text(AppStrings s, String Function(double) number) {
+    final rowLabel = row == null ? '' : s.portfolioModelRow(row!, context);
+    return switch (kind) {
+      PortfolioModelIssueKind.nameRequired => s.portfolioModelNameRequired,
+      PortfolioModelIssueKind.missingId => s.portfolioModelMissingId(value),
+      PortfolioModelIssueKind.invalidWeight => s.portfolioModelInvalidWeight(value!, context!),
+      PortfolioModelIssueKind.noItems => s.portfolioModelNoItems,
+      PortfolioModelIssueKind.isinRequired => s.portfolioModelIsinRequired(rowLabel),
+      PortfolioModelIssueKind.isinMalformed => s.portfolioModelIsinMalformed(rowLabel),
+      PortfolioModelIssueKind.weightNotPositive => s.portfolioModelWeightNotPositive(rowLabel),
+      PortfolioModelIssueKind.duplicateIsin => s.portfolioModelDuplicateIsin(rowLabel, value!),
+      PortfolioModelIssueKind.weightsTotal => s.portfolioModelWeightsTotal(number(total!)),
+    };
+  }
+}
+
 class PortfolioModelValidationException implements Exception {
-  final List<String> messages;
-  const PortfolioModelValidationException(this.messages);
+  final List<PortfolioModelIssue> issues;
+  const PortfolioModelValidationException(this.issues);
+
+  /// The problems in English, as the checks word them.
+  List<String> get messages => [for (final issue in issues) issue._text(AppStrings.en, (v) => v.toStringAsFixed(2))];
+
+  /// The problems in the language of [s], the weights' total written in the
+  /// display [locale].
+  List<String> localizedMessages(AppStrings s, {required String locale}) {
+    final number = NumberFormat('0.00', locale);
+    return [for (final issue in issues) issue._text(s, number.format)];
+  }
 
   @override
   String toString() => 'PortfolioModelValidationException(${messages.join('; ')})';
@@ -88,18 +162,6 @@ class PortfolioModelWithItems {
   });
 }
 
-class PortfolioUnresolvedHolding {
-  final int assetId;
-  final String assetName;
-  final String reason;
-
-  const PortfolioUnresolvedHolding({
-    required this.assetId,
-    required this.assetName,
-    required this.reason,
-  });
-}
-
 class PortfolioExtraHolding {
   final int assetId;
   final String assetName;
@@ -119,51 +181,39 @@ class PortfolioExtraHolding {
 class PortfolioDivergenceRow {
   final PortfolioModelItem target;
   final List<int> assetIds;
-  final double targetValue;
   final double currentValue;
   final double currentWeight;
 
   const PortfolioDivergenceRow({
     required this.target,
     required this.assetIds,
-    required this.targetValue,
     required this.currentValue,
     required this.currentWeight,
   });
 
   bool get isUnmatched => assetIds.isEmpty;
-  double get valueDivergence => currentValue - targetValue;
-  double get weightDivergence => currentWeight - target.targetWeight;
 }
 
 class PortfolioDivergence {
   final Pillar pillar;
   final PortfolioModel model;
-  final double resolvedValue;
   final List<PortfolioDivergenceRow> rows;
   final List<PortfolioExtraHolding> extraHoldings;
-  final List<PortfolioUnresolvedHolding> unresolvedHoldings;
 
   const PortfolioDivergence({
     required this.pillar,
     required this.model,
-    required this.resolvedValue,
     required this.rows,
     required this.extraHoldings,
-    required this.unresolvedHoldings,
   });
 }
 
 class _ResolvedPillarHolding {
   final Asset asset;
-  final double totalQuantity;
-  final double pillarQuantity;
   final double currentValue;
 
   const _ResolvedPillarHolding({
     required this.asset,
-    required this.totalQuantity,
-    required this.pillarQuantity,
     required this.currentValue,
   });
 
@@ -175,6 +225,17 @@ class _ResolvedPillarHolding {
 }
 
 String normaliseIsin(String value) => value.trim().toUpperCase();
+
+/// Whether [value] is exactly an ISIN: two letters, nine letters or digits and
+/// a check digit. Case-sensitive: callers pass upper-cased text.
+bool isIsin(String value) => _isinPattern.hasMatch(value);
+
+/// The key an instrument resolved for the search [query] is cached under: the
+/// query upper-cased when it is an ISIN, otherwise exactly as typed.
+String isinCacheKey(String query) {
+  final upper = query.toUpperCase();
+  return isIsin(upper) ? upper : query;
+}
 
 class PortfolioModelService {
   final AppDatabase _db;
@@ -263,7 +324,7 @@ class PortfolioModelService {
   }) async {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) {
-      throw const PortfolioModelValidationException(['name is required']);
+      throw const PortfolioModelValidationException([PortfolioModelIssue(PortfolioModelIssueKind.nameRequired)]);
     }
     validateItems(items, context: trimmedName);
     final id = UuidV7.generate();
@@ -297,7 +358,7 @@ class PortfolioModelService {
     if (model.isBuiltIn) throw PortfolioModelReadOnlyException(modelId);
     final trimmedName = name?.trim();
     if (trimmedName != null && trimmedName.isEmpty) {
-      throw const PortfolioModelValidationException(['name is required']);
+      throw const PortfolioModelValidationException([PortfolioModelIssue(PortfolioModelIssueKind.nameRequired)]);
     }
     if (items != null) validateItems(items, context: trimmedName ?? model.name);
 
@@ -332,8 +393,7 @@ class PortfolioModelService {
     final model = await getById(modelId);
     if (model == null) return null;
     final targetItems = await getItems(model.id);
-    final holdings = await _resolvedHoldings(pillarId, marketValuesByAssetId);
-    final resolved = holdings.resolved;
+    final resolved = await _resolvedHoldings(pillarId, marketValuesByAssetId);
     final totalValue = resolved.fold<double>(0, (sum, h) => sum + h.currentValue);
 
     final targetIsins = targetItems.map((item) => normaliseIsin(item.isin)).toSet();
@@ -371,7 +431,6 @@ class PortfolioModelService {
         PortfolioDivergenceRow(
           target: item,
           assetIds: matched?.assetIds ?? const [],
-          targetValue: totalValue * item.targetWeight / 100.0,
           currentValue: current,
           currentWeight: totalValue <= 0 ? 0.0 : current / totalValue * 100,
         ),
@@ -381,10 +440,8 @@ class PortfolioModelService {
     return PortfolioDivergence(
       pillar: pillar,
       model: model,
-      resolvedValue: totalValue,
       rows: rows,
       extraHoldings: extras,
-      unresolvedHoldings: holdings.unresolved,
     );
   }
 
@@ -409,49 +466,30 @@ class PortfolioModelService {
     });
   }
 
-  Future<({List<_ResolvedPillarHolding> resolved, List<PortfolioUnresolvedHolding> unresolved})> _resolvedHoldings(
+  /// The pillar's holdings with a current quantity and a market value, at the
+  /// pillar's share of that value. One without either has no value to weigh.
+  Future<List<_ResolvedPillarHolding>> _resolvedHoldings(
     String pillarId,
     Map<int, double> marketValuesByAssetId,
   ) async {
     final assignments = await (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId))).get();
     final resolved = <_ResolvedPillarHolding>[];
-    final unresolved = <PortfolioUnresolvedHolding>[];
 
     for (final assignment in assignments) {
       final asset = await (_db.select(_db.assets)..where((a) => a.id.equals(assignment.assetId))).getSingleOrNull();
       if (asset == null) continue;
       final totalQty = await _totalQuantity(asset.id);
-      if (totalQty <= 0) {
-        unresolved.add(
-          PortfolioUnresolvedHolding(
-            assetId: asset.id,
-            assetName: asset.name,
-            reason: 'no current quantity',
-          ),
-        );
-        continue;
-      }
+      if (totalQty <= 0) continue;
       final fullMarketValue = marketValuesByAssetId[asset.id];
-      if (fullMarketValue == null) {
-        unresolved.add(
-          PortfolioUnresolvedHolding(
-            assetId: asset.id,
-            assetName: asset.name,
-            reason: 'missing price or FX rate',
-          ),
-        );
-        continue;
-      }
+      if (fullMarketValue == null) continue;
       resolved.add(
         _ResolvedPillarHolding(
           asset: asset,
-          totalQuantity: totalQty,
-          pillarQuantity: assignment.quantity,
           currentValue: fullMarketValue * (assignment.quantity / totalQty),
         ),
       );
     }
-    return (resolved: resolved, unresolved: unresolved);
+    return resolved;
   }
 
   Future<double> _totalQuantity(int assetId) async {
@@ -485,7 +523,7 @@ class PortfolioModelService {
     final idMatch = RegExp(r'ID:\s*`?([^`\s]+)`?').firstMatch(idLine);
     final id = idMatch?.group(1)?.trim();
     if (id == null || id.isEmpty) {
-      throw PortfolioModelValidationException(['missing model ID${path == null ? '' : ' in $path'}']);
+      throw PortfolioModelValidationException([PortfolioModelIssue(PortfolioModelIssueKind.missingId, value: path)]);
     }
 
     final items = <PortfolioModelInputItem>[];
@@ -503,7 +541,7 @@ class PortfolioModelService {
       if (first.replaceAll('-', '').isEmpty) continue;
       final weight = _parseWeight(cells[1]);
       if (weight == null) {
-        throw PortfolioModelValidationException(['invalid weight "${cells[1]}" in $id']);
+        throw PortfolioModelValidationException([PortfolioModelIssue(PortfolioModelIssueKind.invalidWeight, value: cells[1], context: id)]);
       }
       String? headerValue(List<String> names) {
         final currentHeaders = headers;
@@ -545,30 +583,31 @@ class PortfolioModelService {
 
   @visibleForTesting
   static void validateItems(List<PortfolioModelInputItem> rawItems, {String? context}) {
-    final errors = <String>[];
+    final errors = <PortfolioModelIssue>[];
     if (rawItems.isEmpty) {
-      errors.add('at least one item is required');
+      errors.add(const PortfolioModelIssue(PortfolioModelIssueKind.noItems));
     }
     final seen = <String>{};
     var total = 0.0;
     for (var i = 0; i < rawItems.length; i++) {
       final row = rawItems[i].normalised();
-      final rowLabel = context == null ? 'row ${i + 1}' : '$context row ${i + 1}';
+      PortfolioModelIssue issue(PortfolioModelIssueKind kind, {String? value}) =>
+          PortfolioModelIssue(kind, row: i + 1, context: context, value: value);
       if (row.isin.isEmpty) {
-        errors.add('$rowLabel: ISIN is required');
-      } else if (!_isinPattern.hasMatch(row.isin)) {
-        errors.add('$rowLabel: ISIN is malformed');
+        errors.add(issue(PortfolioModelIssueKind.isinRequired));
+      } else if (!isIsin(row.isin)) {
+        errors.add(issue(PortfolioModelIssueKind.isinMalformed));
       }
       if (row.targetWeight <= 0) {
-        errors.add('$rowLabel: weight must be positive');
+        errors.add(issue(PortfolioModelIssueKind.weightNotPositive));
       }
       if (!seen.add(row.isin)) {
-        errors.add('$rowLabel: duplicate ISIN ${row.isin}');
+        errors.add(issue(PortfolioModelIssueKind.duplicateIsin, value: row.isin));
       }
       total += row.targetWeight;
     }
     if ((total - 100).abs() > _weightTolerance) {
-      errors.add('weights must sum to 100% (got ${total.toStringAsFixed(2)}%)');
+      errors.add(PortfolioModelIssue(PortfolioModelIssueKind.weightsTotal, total: total));
     }
     if (errors.isNotEmpty) throw PortfolioModelValidationException(errors);
   }

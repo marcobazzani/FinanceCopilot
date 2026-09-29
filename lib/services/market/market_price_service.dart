@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
 import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 import 'package:finance_copilot/services/domain/asset_event_service.dart';
 
 final _log = getLogger('MarketPriceService');
@@ -81,38 +82,6 @@ const exchangeSynonyms = <String, String>{
 
 /// True when [name] is a canonical exchange name OR a recognised synonym.
 bool isKnownExchange(String name) => exchangeSynonyms.containsKey(name);
-
-/// One-shot map from legacy short-codes / synonyms to the canonical name.
-/// Used by migration v40 to heal pre-existing rows; no live code path
-/// should rely on this. Kept as a public const so the migration can
-/// consume it without duplicating the table.
-const legacyExchangeAliases = <String, String>{
-  // Codes
-  'MIL': 'Milan',
-  'NYQ': 'NYSE',
-  'NMS': 'NASDAQ',
-  'NYS': 'NYSE',
-  'ASE': 'AMEX',
-  'XETRA': 'Xetra',
-  'FRA': 'Frankfurt',
-  'LON': 'London',
-  'AMS': 'Amsterdam',
-  'PAR': 'Paris',
-  'BRU': 'Brussels',
-  'LIS': 'Lisbon',
-  'SIX': 'Switzerland',
-  'TSE': 'Toronto',
-  'HKG': 'Hong Kong',
-  'TYO': 'Tokyo',
-  // Italian synonyms
-  'Milano': 'Milan',
-  'Londra': 'London',
-  'Francoforte': 'Frankfurt',
-  'Parigi': 'Paris',
-  'Bruxelles': 'Brussels',
-  'Lisbona': 'Lisbon',
-  'Svizzera': 'Switzerland',
-};
 
 /// Abstract base for market price providers.
 /// Handles all DB logic; subclasses only implement the HTTP fetch.
@@ -228,7 +197,7 @@ abstract class MarketPriceService {
   // ──────────────────────────────────────────────
 
   /// Date of the first "buy" event for an asset, or null if none.
-  /// Uses value_date per CLAUDE.md (canonical "money moved" date) so the
+  /// Uses value_date per AGENTS.md (canonical "money moved" date) so the
   /// price-history fetch window starts no later than the actual investment.
   Future<DateTime?> getFirstBuyDate(int assetId) async {
     final row = await db
@@ -268,12 +237,7 @@ abstract class MarketPriceService {
   /// here automatically. Falls back to the last buy event's price for assets
   /// that have neither market_prices rows nor revalues.
   Future<double?> getPrice(int assetId, DateTime date) async {
-    final endExclusive = DateTime(
-      date.year,
-      date.month,
-      date.day,
-    ).add(const Duration(days: 1));
-    final epochSec = endExclusive.millisecondsSinceEpoch ~/ 1000;
+    final epochSec = startOfNextDay(date).millisecondsSinceEpoch ~/ 1000;
     final row = await db
         .customSelect(
           'SELECT close_price FROM market_prices '
@@ -293,28 +257,6 @@ abstract class MarketPriceService {
         )
         .getSingleOrNull();
     return buyRow?.readNullable<double>('price');
-  }
-
-  /// Get the two most recent prices for an asset (latest and previous).
-  /// Returns (latest, previous) or nulls if not enough data.
-  Future<(double?, double?)> getLastTwoPrices(int assetId) async {
-    final prices = await getRecentPrices(assetId, 2);
-    return (
-      prices.isNotEmpty ? prices[0] : null,
-      prices.length >= 2 ? prices[1] : null,
-    );
-  }
-
-  /// Get the [count] most recent prices for an asset, newest first.
-  Future<List<double>> getRecentPrices(int assetId, int count) async {
-    final rows = await db
-        .customSelect(
-          'SELECT close_price FROM market_prices '
-          'WHERE asset_id = ? ORDER BY date DESC LIMIT ?',
-          variables: [Variable.withInt(assetId), Variable.withInt(count)],
-        )
-        .get();
-    return rows.map((r) => r.readNullable<double>('close_price')).whereType<double>().toList();
   }
 
   /// Get all prices for an asset, sorted by date ascending.

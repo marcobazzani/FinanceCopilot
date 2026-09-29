@@ -10,7 +10,15 @@ class SavingScheduleItem {
   final DateTime date;
   final double amount; // signed (negative for outflow saving)
   final String eventName;
-  const SavingScheduleItem({required this.date, required this.amount, required this.eventName});
+
+  /// The currency of the spread event this row comes from: [amount] is in it.
+  final String currency;
+  const SavingScheduleItem({
+    required this.date,
+    required this.amount,
+    required this.eventName,
+    required this.currency,
+  });
 }
 
 /// Everything [resolveAdjustments] needs from the DB, pre-grouped so the
@@ -137,7 +145,7 @@ AdjustmentResolution resolveAdjustments({
         consumed.add(t.id);
         annotated[t.id] = (e.isEphemeral && !isOutflow) ? financedLabel(e.name) : adjustedLabel(e.name);
       } else if (en.entryKind == EventEntryKind.scheduled) {
-        savings.add(SavingScheduleItem(date: en.date, amount: en.amount, eventName: e.name));
+        savings.add(SavingScheduleItem(date: en.date, amount: en.amount, eventName: e.name, currency: e.currency));
       }
     }
   }
