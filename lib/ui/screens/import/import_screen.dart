@@ -665,18 +665,17 @@ class _ImportScreenState extends ConsumerState<ImportScreen> {
   Future<void> _pickFile() async {
     _log.info('_pickFile: opening file picker');
     await _loadLastDirectory();
-    final result = await FilePicker.pickFiles(
+    final picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['csv', 'xlsx', 'xls', 'tsv', 'pdf'],
       initialDirectory: _lastDirectory,
     );
-
-    if (result == null || result.files.single.path == null) {
+    final path = picked?.path;
+    if (path == null) {
       _log.info('_pickFile: cancelled by user');
       return;
     }
 
-    final path = result.files.single.path!;
     await _saveLastDirectory(p.dirname(path));
     if (!mounted) return;
     await _loadFile(path);

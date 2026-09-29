@@ -16,16 +16,13 @@ import 'dart:io';
 
 import 'package:drift/native.dart';
 import 'package:file_picker/file_picker.dart';
-// The picker's platform interface is the plugin's own test seam: the method
-// channel it uses under test does not transmit dialog titles.
-// ignore: implementation_imports
-import 'package:file_picker/src/platform/file_picker_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import '../helpers/fake_file_picker.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
@@ -82,49 +79,12 @@ class _OfflinePrices extends MarketPriceService {
   Future<Map<DateTime, double>> fetchHistoricalPrices(String ticker, String currency, DateTime from) async => const {};
 }
 
-/// Records the title of every file picker opened; the user always cancels.
-class _RecordingPicker extends FilePickerPlatform {
-  final titles = <String?>[];
-
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Function(FilePickerStatus)? onFileLoading,
-    int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-    bool cancelUploadOnWindowBlur = true,
-  }) async {
-    titles.add(dialogTitle);
-    return null;
-  }
-
-  @override
-  Future<String?> saveFile({
-    String? dialogTitle,
-    String? fileName,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    Uint8List? bytes,
-    bool lockParentWindow = false,
-  }) async {
-    titles.add(dialogTitle);
-    return null;
-  }
-}
-
 void main() {
   late Directory dir;
   late AppDatabase db;
   late _FakeSync sync;
-  late _RecordingPicker picker;
+  // Records the title of every picker opened; the user always cancels.
+  late FakeFilePicker picker;
   late FilePickerPlatform originalPicker;
 
   setUpAll(() async => initializeDateFormatting());
@@ -135,7 +95,7 @@ void main() {
     AppSettings.testConfigDir = dir;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(_pathProvider, (call) async => dir.path);
     originalPicker = FilePickerPlatform.instance;
-    picker = _RecordingPicker();
+    picker = FakeFilePicker();
     FilePickerPlatform.instance = picker;
     db = AppDatabase.forTesting(NativeDatabase.memory());
     sync = _FakeSync();

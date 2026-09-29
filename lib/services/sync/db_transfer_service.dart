@@ -35,13 +35,16 @@ class DbTransferService {
     final snapshotPath = await db.snapshotToTempFile();
     try {
       final bytes = await File(snapshotPath).readAsBytes();
-      final result = await FilePicker.saveFile(
+      final saved = await FilePicker.saveFile(
         dialogTitle: dialogTitle,
         fileName: 'FinanceCopilot.db',
         type: FileType.any,
         bytes: bytes,
       );
-      if (result == null) return null;
+      if (saved == null) return null;
+      // A file on disk reads as its path; a platform document (e.g. an
+      // Android content URI) as its URI.
+      final result = saved.scheme == 'file' ? saved.toFilePath() : saved.toString();
       _log.info('exportDb: exported to $result');
       return result;
     } catch (e) {
@@ -64,14 +67,12 @@ class DbTransferService {
   /// [dialogTitle] titles the picker, in the UI language.
   /// Returns the import source path on success, null if cancelled.
   static Future<String?> importDb(AppDatabase db, {required String dialogTitle}) async {
-    final picked = await FilePicker.pickFiles(
+    final picked = await FilePicker.pickFile(
       dialogTitle: dialogTitle,
       type: FileType.custom,
       allowedExtensions: ['db'],
     );
-    if (picked == null || picked.files.isEmpty) return null;
-
-    final sourcePath = picked.files.single.path;
+    final sourcePath = picked?.path;
     if (sourcePath == null) return null;
 
     return importDbFromPath(db, sourcePath);

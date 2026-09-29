@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:path/path.dart' as p;
 
+import '../helpers/fake_file_picker.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
@@ -28,7 +30,6 @@ import 'package:finance_copilot/services/sync/google_drive_sync_service.dart';
 /// `--dart-define=DB_FILE_NAME=…`.
 const _dbFileName = String.fromEnvironment('DB_FILE_NAME');
 const _pathProvider = MethodChannel('plugins.flutter.io/path_provider');
-const _filePicker = MethodChannel('miguelruivo.flutter.plugins.filepicker');
 
 class _SignedOutSync extends GoogleDriveSyncService {
   @override
@@ -53,8 +54,8 @@ void main() {
   late Directory dir;
   late AppDatabase db;
   var tempDirFails = false;
-  String? saveResult;
-  late List<String> pickerCalls;
+  late FakeFilePicker picker;
+  late FilePickerPlatform originalPicker;
 
   setUpAll(() async => initializeDateFormatting());
 
@@ -63,16 +64,14 @@ void main() {
     AppSettings.resetForTesting();
     AppSettings.testConfigDir = dir;
     tempDirFails = false;
-    saveResult = null;
-    pickerCalls = [];
+    // An import pick is always cancelled ([FakeFilePicker.picked] stays null).
+    picker = FakeFilePicker();
+    originalPicker = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = picker;
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(_pathProvider, (call) async {
       if (call.method == 'getTemporaryDirectory' && tempDirFails) throw PlatformException(code: 'no_temp_dir');
       return dir.path;
-    });
-    messenger.setMockMethodCallHandler(_filePicker, (call) async {
-      pickerCalls.add(call.method);
-      return call.method == 'save' ? saveResult : null; // an import pick is always cancelled
     });
     db = AppDatabase.forTesting(NativeDatabase.memory());
   });
@@ -81,7 +80,7 @@ void main() {
     await db.close();
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(_pathProvider, null);
-    messenger.setMockMethodCallHandler(_filePicker, null);
+    FilePickerPlatform.instance = originalPicker;
     AppSettings.resetForTesting();
     await dir.delete(recursive: true);
   });
@@ -142,13 +141,13 @@ void main() {
   group('AppShell database export', skip: _dbFileName.isEmpty ? 'needs --dart-define=DB_FILE_NAME=<name>' : null, () {
     group('from Import / Export', () {
       testWidgets('an export that succeeds is confirmed', (tester) async {
-        saveResult = p.join(dir.path, 'exported.db');
+        picker.saveTo = p.join(dir.path, 'exported.db');
         await pumpShell(tester);
         try {
           await openImportExport(tester);
           await tapWithIo(tester, find.text(s.settingsExportDb), until: () => shown(s.settingsExportSuccess));
 
-          expect(pickerCalls, ['save']);
+          expect(picker.calls, ['save']);
           expect(snacks(), [s.settingsExportSuccess]);
         } finally {
           await unmount(tester);
@@ -159,9 +158,9 @@ void main() {
         await pumpShell(tester);
         try {
           await openImportExport(tester);
-          await tapWithIo(tester, find.text(s.settingsExportDb), until: () => pickerCalls.isNotEmpty);
+          await tapWithIo(tester, find.text(s.settingsExportDb), until: () => picker.calls.isNotEmpty);
 
-          expect(pickerCalls, ['save']);
+          expect(picker.calls, ['save']);
           expect(snacks(), isEmpty);
           expect(find.byType(AlertDialog), findsNothing);
         } finally {
@@ -177,7 +176,7 @@ void main() {
           await tester.tap(find.text(s.settingsExportDb));
           await settle(tester);
 
-          expect(pickerCalls, isEmpty);
+          expect(picker.calls, isEmpty);
           expect(snacks(), [s.dbExportFailed]);
         } finally {
           await unmount(tester);
@@ -200,14 +199,14 @@ void main() {
       }
 
       testWidgets('an export that succeeds goes on to the import picker, with no export message', (tester) async {
-        saveResult = p.join(dir.path, 'exported.db');
+        picker.saveTo = p.join(dir.path, 'exported.db');
         try {
           await chooseExportFirst(tester);
-          await tapWithIo(tester, find.text(s.settingsExportFirst), until: () => pickerCalls.length >= 2);
+          await tapWithIo(tester, find.text(s.settingsExportFirst), until: () => picker.calls.length >= 2);
 
-          expect(pickerCalls.first, 'save');
-          expect(pickerCalls, hasLength(2), reason: 'then the database to import is picked (and cancelled here)');
-          expect(pickerCalls.last, isNot('save'));
+          expect(picker.calls.first, 'save');
+          expect(picker.calls, hasLength(2), reason: 'then the database to import is picked (and cancelled here)');
+          expect(picker.calls.last, isNot('save'));
           expect(snacks(), isEmpty);
         } finally {
           await unmount(tester);
@@ -217,11 +216,11 @@ void main() {
       testWidgets('a cancelled export stops the import', (tester) async {
         try {
           await chooseExportFirst(tester);
-          await tapWithIo(tester, find.text(s.settingsExportFirst), until: () => pickerCalls.isNotEmpty);
+          await tapWithIo(tester, find.text(s.settingsExportFirst), until: () => picker.calls.isNotEmpty);
           await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
           await settle(tester);
 
-          expect(pickerCalls, ['save'], reason: 'no database is picked to import');
+          expect(picker.calls, ['save'], reason: 'no database is picked to import');
           expect(snacks(), isEmpty);
         } finally {
           await unmount(tester);
@@ -234,7 +233,7 @@ void main() {
           await chooseExportFirst(tester);
           await tapWithIo(tester, find.text(s.settingsExportFirst), until: () => shown(s.dbExportFailed));
 
-          expect(pickerCalls, isEmpty);
+          expect(picker.calls, isEmpty);
           expect(snacks(), [s.dbExportFailed]);
         } finally {
           await unmount(tester);

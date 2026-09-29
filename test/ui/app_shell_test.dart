@@ -24,6 +24,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +34,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 
+import '../helpers/fake_file_picker.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
 import 'package:finance_copilot/database/tables.dart';
@@ -51,7 +53,6 @@ import 'package:finance_copilot/services/sync/google_drive_sync_service.dart';
 /// always passes `--dart-define=DB_FILE_NAME=…`.
 const _dbFileName = String.fromEnvironment('DB_FILE_NAME');
 const _pathProvider = MethodChannel('plugins.flutter.io/path_provider');
-const _filePicker = MethodChannel('miguelruivo.flutter.plugins.filepicker');
 
 class _FakeSync extends GoogleDriveSyncService {
   bool signedIn = false;
@@ -179,8 +180,8 @@ void main() {
   late _FakePrices prices;
   late _FakeRates rates;
   var tempDirFails = false;
-  List<Map<String, Object?>>? pickedFiles;
-  String? saveResult;
+  late FakeFilePicker picker;
+  late FilePickerPlatform originalPicker;
 
   setUpAll(() async => initializeDateFormatting());
 
@@ -190,15 +191,13 @@ void main() {
     AppSettings.resetForTesting();
     AppSettings.testConfigDir = dir;
     tempDirFails = false;
-    pickedFiles = null;
-    saveResult = null;
+    picker = FakeFilePicker();
+    originalPicker = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = picker;
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(_pathProvider, (call) async {
       if (call.method == 'getTemporaryDirectory' && tempDirFails) throw PlatformException(code: 'no_temp_dir');
       return dir.path;
-    });
-    messenger.setMockMethodCallHandler(_filePicker, (call) async {
-      return call.method == 'save' ? saveResult : pickedFiles;
     });
     db = _TrackedDb(dbFile);
     dbs = [db];
@@ -215,7 +214,7 @@ void main() {
     }
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(_pathProvider, null);
-    messenger.setMockMethodCallHandler(_filePicker, null);
+    FilePickerPlatform.instance = originalPicker;
     AppSettings.resetForTesting();
     await dir.delete(recursive: true);
   });
@@ -308,8 +307,6 @@ void main() {
     return path;
   }
 
-  Map<String, Object?> picked(String path) => {'name': p.basename(path), 'path': path, 'size': File(path).lengthSync()};
-
   group('AppShell', skip: _dbFileName.isEmpty ? 'needs --dart-define=DB_FILE_NAME=<name>' : null, () {
     testWidgets('re-auth: an 8 s snack with a Sign in action that starts the sign-in', (tester) async {
       dbFile.writeAsBytesSync([]); // a database exists, so start-up restores the Drive session
@@ -347,7 +344,7 @@ void main() {
     });
 
     testWidgets('landing: a database from another app version is refused with a message', (tester) async {
-      pickedFiles = [picked(writeOldBackup())];
+      picker.picked = writeOldBackup();
       await pumpShell(tester);
       try {
         await tester.tap(find.text(s.landingImportDb));
@@ -380,7 +377,7 @@ void main() {
       });
 
       testWidgets('importing a database from another app version is refused with a message', (tester) async {
-        pickedFiles = [picked(writeOldBackup())];
+        picker.picked = writeOldBackup();
         await pumpShell(tester);
         try {
           await choose(tester, s.settingsImportDb);
@@ -651,7 +648,7 @@ void main() {
       });
 
       Future<void> exportAndConfirmWipe(WidgetTester tester) async {
-        saveResult = p.join(dir.path, 'exported.db');
+        picker.saveTo = p.join(dir.path, 'exported.db');
         await openSettings(tester);
         await tapWithIo(tester, find.text(s.settingsWipeButton), until: () => shown(s.settingsWipeConfirmBody));
         expect(find.text(s.settingsWipeConfirmBody), findsOneWidget);

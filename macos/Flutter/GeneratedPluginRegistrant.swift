@@ -5,7 +5,7 @@
 import FlutterMacOS
 import Foundation
 
-import file_picker
+import file_picker_darwin
 import flutter_inappwebview_macos
 import google_sign_in_ios
 import pdfium_flutter
