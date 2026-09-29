@@ -1,4 +1,4 @@
-"""Reverse-engineer Investing.com historical data API using Playwright."""
+"""Reverse-engineer the market data provider's historical data API using Playwright."""
 import json
 import sys
 from playwright.sync_api import sync_playwright
@@ -45,8 +45,8 @@ def main():
 
         page.on("response", on_response)
 
-        # Step 1: Go directly to a known SWDA page on investing.com
-        print(f"[INFO] Navigating to investing.com for {ticker}...", file=sys.stderr)
+        # Step 1: Go directly to a known SWDA page on the provider's website
+        print(f"[INFO] Navigating to the provider's website for {ticker}...", file=sys.stderr)
         page.goto("https://www.investing.com/etfs/ishares-msci-world---acc", timeout=60000)
         page.wait_for_timeout(5000)
         print(f"[INFO] Page loaded: {page.url}", file=sys.stderr)

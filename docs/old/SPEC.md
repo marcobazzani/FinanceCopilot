@@ -19,7 +19,7 @@ Single codebase targeting **macOS, Windows, Linux, iOS, and Android** using Flut
 | Calculations | SQL window functions + Dart logic |
 | Charts | `fl_chart` |
 | File Import | `csv`, `excel` (Dart) |
-| Market Data | `dio` HTTP client → Yahoo Finance / Alpha Vantage |
+| Market Data | `dio` HTTP client → market data provider API |
 | Local Storage | SQLite (single file, portable, backupable) |
 
 ### Architecture Diagram
@@ -828,8 +828,8 @@ This allows the user to reference original bank data without losing anything.
 
 | Source | Method | Frequency |
 |--------|--------|-----------|
-| Market prices | Yahoo Finance API / Alpha Vantage | Daily (EOD) |
-| FX rates | ECB API or Yahoo Finance | Daily |
+| Market prices | Market data provider API | Daily (EOD) |
+| FX rates | Central-bank reference rates or the market data provider | Daily |
 
 ### 6.2 Daily Snapshot Job
 

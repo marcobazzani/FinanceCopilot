@@ -1,5 +1,5 @@
 """
-Fetch ETF composition (countries + sectors + top holdings) from justETF.
+Fetch ETF composition (countries + sectors + top holdings) from the composition data source.
 
 Usage:
   # JSON output only
@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright
 
 
 def fetch_composition(page, isin):
-    """Fetch country/sector/holdings breakdown for a single ISIN from justETF."""
+    """Fetch country/sector/holdings breakdown for a single ISIN from the composition data source."""
     url = f"https://www.justetf.com/en/etf-profile.html?isin={isin}"
     page.goto(url, timeout=30000, wait_until="domcontentloaded")
     page.wait_for_timeout(2000)

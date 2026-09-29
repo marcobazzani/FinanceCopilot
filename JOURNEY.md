@@ -183,8 +183,8 @@ Every direction × treatment × frequency × cardinal feature exercised:
 ## Notes on test mechanics
 
 - **Real network**: `pumpApp(useRealServices: true)` skips the NoOp market
-  price service and the FX stub, so `InvestingComService` and the
-  investing-backed `ExchangeRateService` run with real HTTP.
+  price service and the FX stub, so the real market-data service and the
+  provider-backed `ExchangeRateService` run with real HTTP.
 - **`testPreview` injection** in `import_screen.dart` mirrors production by
   calling `_loadSavedConfig` after auto-mapping, so the test that re-imports
   a file with a saved config lands on `quick_confirm_step` like the user

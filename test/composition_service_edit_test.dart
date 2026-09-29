@@ -11,7 +11,7 @@ import 'package:finance_copilot/services/market/composition_service.dart';
 /// - `setEntries` round-trips: writes per-(assetId,type), wiping prior rows.
 /// - `setEntries` is scoped: editing 'country' leaves 'sector' alone.
 /// - `clearAndResync` wipes all rows for the asset (sync run is a no-op
-///   in tests since there's no network and no investing service).
+///   in tests since there's no network and no market data provider).
 /// - The "any rows == skip sync" invariant is encoded by setEntries
 ///   leaving the rows in place; the sync-skip behavior itself is
 ///   exercised end-to-end in the integration test.
@@ -122,7 +122,7 @@ void main() {
       CompositionEntry('Synthetic Holding', 100.0),
     ]);
 
-    // Run sync; with no investing service injected and no network reachable
+    // Run sync; with no market data provider injected and no network reachable
     // in tests, the only way to keep the row count at exactly 1 is for the
     // sync to short-circuit on the rows-exist check.
     await service.syncCompositions();

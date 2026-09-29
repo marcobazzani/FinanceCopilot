@@ -2,7 +2,7 @@
 
 ## The Problem
 
-FinanceCopilot fetches market prices from the market data provider's API (`api.investing.com/api/financialdata/historical/`). This API is protected by Cloudflare. On macOS, the app worked perfectly. On Windows, every API call returned **403 Forbidden**.
+FinanceCopilot fetches market prices from the market data provider's API (historical-data endpoint on its API host). This API is protected by Cloudflare. On macOS, the app worked perfectly. On Windows, every API call returned **403 Forbidden**.
 
 ## Phase 1: Initial Assumption — Cookie Extraction Bug
 
@@ -12,7 +12,7 @@ FinanceCopilot fetches market prices from the market data provider's API (`api.i
 - macOS (WKWebView): 23 cookies including `cf_clearance`
 - Windows (WebView2): 22 cookies, **`cf_clearance` missing**
 
-**Attempted fix**: Tried extracting cookies from multiple domains (`www.investing.com`, `api.investing.com`, `investing.com`). Still no `cf_clearance`.
+**Attempted fix**: Tried extracting cookies from multiple domains (the provider's web host, its API host and the bare domain). Still no `cf_clearance`.
 
 **Result**: ❌ Cookie was never there to extract.
 
@@ -28,7 +28,7 @@ FinanceCopilot fetches market prices from the market data provider's API (`api.i
 
 **Theory**: Cloudflare needs browser security headers (`sec-ch-ua`, `sec-fetch-*`).
 
-**Investigation**: Captured HAR files from Edge on Windows. Found that Edge's XHR calls to `api.investing.com` include `sec-ch-ua`, `sec-fetch-dest: empty`, `sec-fetch-mode: cors`, etc.
+**Investigation**: Captured HAR files from Edge on Windows. Found that Edge's XHR calls to the provider's API host include `sec-ch-ua`, `sec-fetch-dest: empty`, `sec-fetch-mode: cors`, etc.
 
 **Attempted fix**: Added all `sec-*` headers to Dio requests.
 
@@ -56,8 +56,8 @@ On Windows, headless WebView2 never triggers the Cloudflare challenge (the page 
 
 ### How it works:
 
-1. **On startup**: Show a visible `InAppWebView` dialog that loads `www.investing.com` (CF solves, WebView gets cookies)
-2. **For API calls**: Navigate the same WebView to `api.investing.com/api/financialdata/historical/...` with custom headers (`domain-id: www`)
+1. **On startup**: Show a visible `InAppWebView` dialog that loads the provider's website (CF solves, WebView gets cookies)
+2. **For API calls**: Navigate the same WebView to the provider's historical-data API URL with custom headers (`domain-id: www`)
 3. **Read response**: Poll `document.body.innerText` for JSON content
 4. **Parse**: Clean and decode the JSON response
 5. **After sync**: Dismiss the dialog
@@ -73,7 +73,7 @@ On Windows, headless WebView2 never triggers the Cloudflare challenge (the page 
 ```
 macOS:
   HeadlessInAppWebView → solve CF → extract cf_clearance
-  Dio + cf_clearance cookie → api.investing.com → 200 ✓
+  Dio + cf_clearance cookie → provider API host → 200 ✓
 
 Windows:
   Visible InAppWebView dialog → solve CF (no cf_clearance issued)
@@ -82,8 +82,8 @@ Windows:
 
 ## Files Changed
 
-- `lib/services/investing_com_service.dart` — Platform-specific `_ensureWebView()`, `_fetchViaNavigation()`, `_solveHeadless()`, `_solveVisible()`
-- `lib/main.dart` — Set `InvestingComService.appContext`, dismiss dialog after sync
+- `lib/services/market/web_market_data_service.dart` (then a provider-named service file) — Platform-specific `_ensureWebView()`, `_fetchViaNavigation()`, `_solveHeadless()`, `_solveVisible()`
+- `lib/main.dart` — Set the market-data service `appContext`, dismiss dialog after sync
 
 ## What We Tried That Didn't Work
 

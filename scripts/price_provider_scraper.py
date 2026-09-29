@@ -1,15 +1,15 @@
 """
-Investing.com price scraper using Playwright to bypass Cloudflare.
+Market data provider price scraper using Playwright to bypass Cloudflare.
 
 Usage:
-  # Search for a ticker and get its investing.com ID
-  python investing_scraper.py search SWDA MIL
+  # Search for a ticker and get its provider instrument ID
+  python price_provider_scraper.py search SWDA MIL
 
   # Fetch historical prices (outputs JSON lines: {"date":"YYYY-MM-DD","close":123.45})
-  python investing_scraper.py history 46925 2020-01-01 2024-03-18
+  python price_provider_scraper.py history 46925 2020-01-01 2024-03-18
 
   # Full pipeline: search + fetch all history
-  python investing_scraper.py sync '{"assets":[{"ticker":"SWDA","exchange":"MIL","cid":null,"from":"2020-01-01"}]}'
+  python price_provider_scraper.py sync '{"assets":[{"ticker":"SWDA","exchange":"MIL","cid":null,"from":"2020-01-01"}]}'
 """
 import json
 import sys
@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 
 
-# Map internal exchange codes to Investing.com exchange labels
+# Map internal exchange codes to the provider's exchange labels
 EXCHANGE_MAP = {
     'MIL': 'Milano',
     'NYQ': 'NYSE',
@@ -77,13 +77,13 @@ def create_browser(playwright):
 
 
 def pass_cloudflare(page):
-    """Navigate to investing.com to pass Cloudflare challenge."""
+    """Navigate to the provider's website to pass the Cloudflare challenge."""
     page.goto("https://www.investing.com/", timeout=60000, wait_until="domcontentloaded")
     page.wait_for_timeout(3000)
 
 
 def search_ticker(page, ticker, exchange_code):
-    """Search for a ticker on investing.com and return the cid for the matching exchange."""
+    """Search for a ticker on the provider and return the cid for the matching exchange."""
     exchange_label = EXCHANGE_MAP.get(exchange_code, exchange_code)
     exchange_label_en = EXCHANGE_MAP_EN.get(exchange_code, exchange_code)
 
