@@ -1,5 +1,5 @@
 ---
-description: Long-running pre-release sweep — branch/DB sanity, UI consistency, dedup, silent-default eradication, locale enforcement, date semantics, LoC reduction, Dart best-practices audit, dead code, provider-name leak check, bug hunt loop. Run before every major release.
+description: Long-running pre-release sweep — branch/DB sanity, UI consistency, dedup, silent-default eradication, locale enforcement, date semantics, LoC reduction, Dart best-practices audit, dead code, provider-name leak check, bug hunt loop, dependency bump. Run before every major release.
 ---
 
 Mission: harden the codebase before a major release. Long-running and exhaustive — keep iterating until a full pass produces zero findings in every phase. Behavior must be preserved unless a phase explicitly fixes a bug (in which case a failing test must exist first). Read the project guidelines file (`AGENTS.md`, or `CLAUDE.md` if that is what the repo uses) in full before starting.
@@ -158,7 +158,17 @@ Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For ever
 - Is it more complex than the simplest thing that works? If yes → simplify.
 "keep it simple", "fit my requests in the current app" — these are non-negotiable.
 
-## Phase 13 — Verify & report
+## Phase 13 — Dependency bump (once, after the loop, before the final verify)
+Run this only after a full pass of Phases 1–12 meets the stopping condition, so upgrade breakage is never mixed with cleanup changes.
+1. Record the starting point: `flutter pub outdated` (direct + dev dependencies: current / upgradable / resolvable / latest) and keep a copy of `pubspec.yaml` and `pubspec.lock`.
+2. Upgrade every direct and dev dependency to its latest version that resolves with the Flutter SDK pinned in `.flutter-version`: `flutter pub upgrade --major-versions`, then bump by hand any constraint it leaves behind. Do NOT change the Flutter/Dart SDK pin or `dependency_overrides` as part of this phase unless the user asks.
+3. If a code-generation package changed (e.g. drift/drift_dev/build_runner), regenerate: `dart run build_runner build --delete-conflicting-outputs`, and check the generated diff is only the expected regeneration.
+4. Fix breaking API changes in `lib/` (read each changelog). Never edit a test to follow a dependency; a test that fails after the bump means the code or the upgrade is wrong — analyse it, and ask before changing any test.
+5. A package that cannot move (SDK constraint, conflicting transitive constraints, a breaking change that needs a product decision) stays at the newest version that works; record the reason.
+6. Re-run everything and verify green: `dart fix --apply && dart analyze lib/ test/ integration_test/` (zero issues), `tool/check_dart_format.sh`, the four test suites of Phase 0 step 3, and the coverage gate (`tool/check_coverage.sh`). Build the release app for macOS and Android (see the guidelines file for the exact commands) to catch native/plugin breakage (Gradle/AGP/Kotlin, CocoaPods/SwiftPM). If there is no Windows machine available, say so in the report.
+7. Record for the report: `package | old | new | notes` for every changed dependency, plus the held-back packages with their reason.
+
+## Phase 14 — Verify & report
 - Run all four suites — must be green.
 - Compute LoC delta vs baseline.
 - Print a final report:
@@ -170,6 +180,7 @@ Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For ever
   - Bugs fixed (with reproducing test names)
   - Provider-name leaks removed (count)
   - UI inconsistencies reconciled (count + screens)
+  - Dependencies bumped (`package | old | new`) and held-back packages with the reason
   - Next candidate areas for the following pass
 - Do NOT commit. Do NOT push. Wait for explicit approval.
 
@@ -187,7 +198,7 @@ Re-read the full diff of this run (`git diff <baseline-commit>..HEAD`). For ever
 - Never sleep > 10s in any command. Long tasks → background + poll.
 
 ## Stopping condition
-A full pass through all 12 phases yields:
+A full pass through Phases 1–12 yields:
 - Zero UI inconsistencies left to reconcile,
 - Zero duplications left to collapse,
 - Zero silent defaults in money paths,
@@ -199,4 +210,4 @@ A full pass through all 12 phases yields:
 - Zero provider-name leaks,
 - Zero new bugs,
 - Zero overreach in the diff.
-Then report final totals and stop.
+Then run Phase 13 (dependency bump) and Phase 14 (verify & report), report final totals and stop.

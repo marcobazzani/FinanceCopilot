@@ -237,7 +237,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 
 # Pre-Release Checklist
 
-- Before tagging a release on `main`, run `/pre-release-cleanup` on `develop`. Merge to `main` only after it reports zero findings across all phases (UI consistency, dedup, silent defaults, locale, date semantics, LoC, dead code, provider-name leaks, bug hunt, overreach).
+- Before tagging a release on `main`, run `/pre-release-cleanup` on `develop`. Merge to `main` only after it reports zero findings across all phases (UI consistency, dedup, silent defaults, locale, date semantics, LoC, dead code, provider-name leaks, bug hunt, overreach) and its dependency bump is green on all suites.
 
 # Key Project Files
 
