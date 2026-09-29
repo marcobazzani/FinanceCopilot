@@ -19,9 +19,9 @@ dependencies:
   flutter_riverpod: ^3.3.1
 
   # Database (drift + SQLite)
-  drift: ^2.31.0
-  sqlite3: any
-  sqlite3_flutter_libs: any
+  drift: ^2.35.0
+  # SQLite itself is bundled by sqlite3's build hooks (no Flutter plugin).
+  sqlite3: ^3.6.0
   path_provider: ^2.1.5
   path: ^1.9.1
 
@@ -75,7 +75,7 @@ dev_dependencies:
   fake_async: ^1.3.3
 
   # Drift code generation
-  drift_dev: ^2.31.0
+  drift_dev: ^2.35.0
   build_runner: ^2.15.0
 
 flutter:

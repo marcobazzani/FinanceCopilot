@@ -14287,10 +14287,7 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.accounts,
-    aliasName: $_aliasNameGenerator(
-      db.intermediaries.id,
-      db.accounts.intermediaryId,
-    ),
+    aliasName: 'intermediaries__id__accounts__intermediary_id',
   );
 
   $$AccountsTableProcessedTableManager get accountsRefs {
@@ -14309,10 +14306,7 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.assets,
-    aliasName: $_aliasNameGenerator(
-      db.intermediaries.id,
-      db.assets.intermediaryId,
-    ),
+    aliasName: 'intermediaries__id__assets__intermediary_id',
   );
 
   $$AssetsTableProcessedTableManager get assetsRefs {
@@ -14329,10 +14323,7 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
 
   static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.importConfigs,
-    aliasName: $_aliasNameGenerator(
-      db.intermediaries.id,
-      db.importConfigs.intermediaryId,
-    ),
+    aliasName: 'intermediaries__id__import_configs__intermediary_id',
   );
 
   $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
@@ -14658,7 +14649,7 @@ class $$IntermediariesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$IntermediariesTable, Intermediary>(table),
                   $$IntermediariesTableReferences(db, table, e),
                 ),
               )
@@ -14779,9 +14770,8 @@ typedef $$AccountsTableUpdateCompanionBuilder =
 final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $AccountsTable, Account> {
   $$AccountsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
-    $_aliasNameGenerator(db.accounts.intermediaryId, db.intermediaries.id),
-  );
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias('accounts__intermediary_id__intermediaries__id');
 
   $$IntermediariesTableProcessedTableManager? get intermediaryId {
     final $_column = $_itemColumn<int>('intermediary_id');
@@ -14799,7 +14789,7 @@ final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $Acc
 
   static MultiTypedResultKey<$TransactionsTable, List<Transaction>> _transactionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.transactions,
-    aliasName: $_aliasNameGenerator(db.accounts.id, db.transactions.accountId),
+    aliasName: 'accounts__id__transactions__account_id',
   );
 
   $$TransactionsTableProcessedTableManager get transactionsRefs {
@@ -14817,10 +14807,7 @@ final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $Acc
   static MultiTypedResultKey<$AutoCategorizationRulesTable, List<AutoCategorizationRule>> _autoCategorizationRulesRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.autoCategorizationRules,
-        aliasName: $_aliasNameGenerator(
-          db.accounts.id,
-          db.autoCategorizationRules.accountId,
-        ),
+        aliasName: 'accounts__id__auto_categorization_rules__account_id',
       );
 
   $$AutoCategorizationRulesTableProcessedTableManager get autoCategorizationRulesRefs {
@@ -14839,7 +14826,7 @@ final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $Acc
 
   static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.importConfigs,
-    aliasName: $_aliasNameGenerator(db.accounts.id, db.importConfigs.accountId),
+    aliasName: 'accounts__id__import_configs__account_id',
   );
 
   $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
@@ -15301,7 +15288,7 @@ class $$AccountsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AccountsTable, Account>(table),
                   $$AccountsTableReferences(db, table, e),
                 ),
               )
@@ -15452,9 +15439,7 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
 final class $$CategoriesTableReferences extends BaseReferences<_$AppDatabase, $CategoriesTable, Category> {
   $$CategoriesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $CategoriesTable _parentIdTable(_$AppDatabase db) => db.categories.createAlias(
-    $_aliasNameGenerator(db.categories.parentId, db.categories.id),
-  );
+  static $CategoriesTable _parentIdTable(_$AppDatabase db) => db.categories.createAlias('categories__parent_id__categories__id');
 
   $$CategoriesTableProcessedTableManager? get parentId {
     final $_column = $_itemColumn<int>('parent_id');
@@ -15472,10 +15457,7 @@ final class $$CategoriesTableReferences extends BaseReferences<_$AppDatabase, $C
 
   static MultiTypedResultKey<$TransactionsTable, List<Transaction>> _transactionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.transactions,
-    aliasName: $_aliasNameGenerator(
-      db.categories.id,
-      db.transactions.categoryId,
-    ),
+    aliasName: 'categories__id__transactions__category_id',
   );
 
   $$TransactionsTableProcessedTableManager get transactionsRefs {
@@ -15493,10 +15475,7 @@ final class $$CategoriesTableReferences extends BaseReferences<_$AppDatabase, $C
   static MultiTypedResultKey<$AutoCategorizationRulesTable, List<AutoCategorizationRule>> _autoCategorizationRulesRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.autoCategorizationRules,
-        aliasName: $_aliasNameGenerator(
-          db.categories.id,
-          db.autoCategorizationRules.categoryId,
-        ),
+        aliasName: 'categories__id__auto_categorization_rules__category_id',
       );
 
   $$AutoCategorizationRulesTableProcessedTableManager get autoCategorizationRulesRefs {
@@ -15914,7 +15893,7 @@ class $$CategoriesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$CategoriesTable, Category>(table),
                   $$CategoriesTableReferences(db, table, e),
                 ),
               )
@@ -16064,9 +16043,7 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
 final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, $TransactionsTable, Transaction> {
   $$TransactionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias(
-    $_aliasNameGenerator(db.transactions.accountId, db.accounts.id),
-  );
+  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias('transactions__account_id__accounts__id');
 
   $$AccountsTableProcessedTableManager get accountId {
     final $_column = $_itemColumn<int>('account_id')!;
@@ -16082,9 +16059,7 @@ final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, 
     );
   }
 
-  static $CategoriesTable _categoryIdTable(_$AppDatabase db) => db.categories.createAlias(
-    $_aliasNameGenerator(db.transactions.categoryId, db.categories.id),
-  );
+  static $CategoriesTable _categoryIdTable(_$AppDatabase db) => db.categories.createAlias('transactions__category_id__categories__id');
 
   $$CategoriesTableProcessedTableManager? get categoryId {
     final $_column = $_itemColumn<int>('category_id');
@@ -16103,10 +16078,7 @@ final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, 
   static MultiTypedResultKey<$BufferTransactionsTable, List<BufferTransaction>> _bufferTransactionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.bufferTransactions,
-        aliasName: $_aliasNameGenerator(
-          db.transactions.id,
-          db.bufferTransactions.linkedTransactionId,
-        ),
+        aliasName: 'transactions__id__buffer_transactions__linked_transaction_id',
       );
 
   $$BufferTransactionsTableProcessedTableManager get bufferTransactionsRefs {
@@ -16129,10 +16101,7 @@ final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, 
   static MultiTypedResultKey<$ExtraordinaryEventsTable, List<ExtraordinaryEvent>> _extraordinaryEventsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.extraordinaryEvents,
-        aliasName: $_aliasNameGenerator(
-          db.transactions.id,
-          db.extraordinaryEvents.transactionId,
-        ),
+        aliasName: 'transactions__id__extraordinary_events__transaction_id',
       );
 
   $$ExtraordinaryEventsTableProcessedTableManager get extraordinaryEventsRefs {
@@ -16753,7 +16722,7 @@ class $$TransactionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$TransactionsTable, Transaction>(table),
                   $$TransactionsTableReferences(db, table, e),
                 ),
               )
@@ -16904,12 +16873,8 @@ final class $$AutoCategorizationRulesTableReferences
     super.$_typedResult,
   );
 
-  static $CategoriesTable _categoryIdTable(_$AppDatabase db) => db.categories.createAlias(
-    $_aliasNameGenerator(
-      db.autoCategorizationRules.categoryId,
-      db.categories.id,
-    ),
-  );
+  static $CategoriesTable _categoryIdTable(_$AppDatabase db) =>
+      db.categories.createAlias('auto_categorization_rules__category_id__categories__id');
 
   $$CategoriesTableProcessedTableManager get categoryId {
     final $_column = $_itemColumn<int>('category_id')!;
@@ -16925,12 +16890,7 @@ final class $$AutoCategorizationRulesTableReferences
     );
   }
 
-  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias(
-    $_aliasNameGenerator(
-      db.autoCategorizationRules.accountId,
-      db.accounts.id,
-    ),
-  );
+  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias('auto_categorization_rules__account_id__accounts__id');
 
   $$AccountsTableProcessedTableManager? get accountId {
     final $_column = $_itemColumn<int>('account_id');
@@ -17305,7 +17265,7 @@ class $$AutoCategorizationRulesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AutoCategorizationRulesTable, AutoCategorizationRule>(table),
                   $$AutoCategorizationRulesTableReferences(db, table, e),
                 ),
               )
@@ -17432,9 +17392,8 @@ typedef $$AssetsTableUpdateCompanionBuilder =
 final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $AssetsTable, Asset> {
   $$AssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
-    $_aliasNameGenerator(db.assets.intermediaryId, db.intermediaries.id),
-  );
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias('assets__intermediary_id__intermediaries__id');
 
   $$IntermediariesTableProcessedTableManager get intermediaryId {
     final $_column = $_itemColumn<int>('intermediary_id')!;
@@ -17452,7 +17411,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$AssetEventsTable, List<AssetEvent>> _assetEventsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.assetEvents,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.assetEvents.assetId),
+    aliasName: 'assets__id__asset_events__asset_id',
   );
 
   $$AssetEventsTableProcessedTableManager get assetEventsRefs {
@@ -17470,7 +17429,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
   static MultiTypedResultKey<$AssetSnapshotsTable, List<AssetSnapshot>> _assetSnapshotsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.assetSnapshots,
-        aliasName: $_aliasNameGenerator(db.assets.id, db.assetSnapshots.assetId),
+        aliasName: 'assets__id__asset_snapshots__asset_id',
       );
 
   $$AssetSnapshotsTableProcessedTableManager get assetSnapshotsRefs {
@@ -17487,7 +17446,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$MarketPricesTable, List<MarketPrice>> _marketPricesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.marketPrices,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.marketPrices.assetId),
+    aliasName: 'assets__id__market_prices__asset_id',
   );
 
   $$MarketPricesTableProcessedTableManager get marketPricesRefs {
@@ -17504,7 +17463,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.importConfigs,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.importConfigs.assetId),
+    aliasName: 'assets__id__import_configs__asset_id',
   );
 
   $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
@@ -17523,7 +17482,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.incomes,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.incomes.assetId),
+    aliasName: 'assets__id__incomes__asset_id',
   );
 
   $$IncomesTableProcessedTableManager get incomesRefs {
@@ -17541,10 +17500,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
   static MultiTypedResultKey<$AssetCompositionsTable, List<AssetComposition>> _assetCompositionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.assetCompositions,
-        aliasName: $_aliasNameGenerator(
-          db.assets.id,
-          db.assetCompositions.assetId,
-        ),
+        aliasName: 'assets__id__asset_compositions__asset_id',
       );
 
   $$AssetCompositionsTableProcessedTableManager get assetCompositionsRefs {
@@ -17563,7 +17519,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>> _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.pillarAssets,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.pillarAssets.assetId),
+    aliasName: 'assets__id__pillar_assets__asset_id',
   );
 
   $$PillarAssetsTableProcessedTableManager get pillarAssetsRefs {
@@ -18421,7 +18377,10 @@ class $$AssetsTableTableManager
               ),
           withReferenceMapper: (p0) => p0
               .map(
-                (e) => (e.readTable(table), $$AssetsTableReferences(db, table, e)),
+                (e) => (
+                  e.readTable<$AssetsTable, Asset>(table),
+                  $$AssetsTableReferences(db, table, e),
+                ),
               )
               .toList(),
           prefetchHooksCallback:
@@ -18652,9 +18611,7 @@ typedef $$AssetEventsTableUpdateCompanionBuilder =
 final class $$AssetEventsTableReferences extends BaseReferences<_$AppDatabase, $AssetEventsTable, AssetEvent> {
   $$AssetEventsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.assetEvents.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('asset_events__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -19092,7 +19049,7 @@ class $$AssetEventsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AssetEventsTable, AssetEvent>(table),
                   $$AssetEventsTableReferences(db, table, e),
                 ),
               )
@@ -19187,9 +19144,7 @@ final class $$AssetSnapshotsTableReferences extends BaseReferences<_$AppDatabase
     super.$_typedResult,
   );
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.assetSnapshots.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('asset_snapshots__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -19489,7 +19444,7 @@ class $$AssetSnapshotsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AssetSnapshotsTable, AssetSnapshot>(table),
                   $$AssetSnapshotsTableReferences(db, table, e),
                 ),
               )
@@ -19577,10 +19532,7 @@ final class $$BuffersTableReferences extends BaseReferences<_$AppDatabase, $Buff
   static MultiTypedResultKey<$BufferTransactionsTable, List<BufferTransaction>> _bufferTransactionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.bufferTransactions,
-        aliasName: $_aliasNameGenerator(
-          db.buffers.id,
-          db.bufferTransactions.bufferId,
-        ),
+        aliasName: 'buffers__id__buffer_transactions__buffer_id',
       );
 
   $$BufferTransactionsTableProcessedTableManager get bufferTransactionsRefs {
@@ -19600,10 +19552,7 @@ final class $$BuffersTableReferences extends BaseReferences<_$AppDatabase, $Buff
   static MultiTypedResultKey<$ExtraordinaryEventsTable, List<ExtraordinaryEvent>> _extraordinaryEventsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.extraordinaryEvents,
-        aliasName: $_aliasNameGenerator(
-          db.buffers.id,
-          db.extraordinaryEvents.bufferId,
-        ),
+        aliasName: 'buffers__id__extraordinary_events__buffer_id',
       );
 
   $$ExtraordinaryEventsTableProcessedTableManager get extraordinaryEventsRefs {
@@ -19899,7 +19848,7 @@ class $$BuffersTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$BuffersTable, Buffer>(table),
                   $$BuffersTableReferences(db, table, e),
                 ),
               )
@@ -20011,9 +19960,7 @@ final class $$BufferTransactionsTableReferences extends BaseReferences<_$AppData
     super.$_typedResult,
   );
 
-  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias(
-    $_aliasNameGenerator(db.bufferTransactions.bufferId, db.buffers.id),
-  );
+  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias('buffer_transactions__buffer_id__buffers__id');
 
   $$BuffersTableProcessedTableManager get bufferId {
     final $_column = $_itemColumn<int>('buffer_id')!;
@@ -20030,10 +19977,7 @@ final class $$BufferTransactionsTableReferences extends BaseReferences<_$AppData
   }
 
   static $TransactionsTable _linkedTransactionIdTable(_$AppDatabase db) => db.transactions.createAlias(
-    $_aliasNameGenerator(
-      db.bufferTransactions.linkedTransactionId,
-      db.transactions.id,
-    ),
+    'buffer_transactions__linked_transaction_id__transactions__id',
   );
 
   $$TransactionsTableProcessedTableManager? get linkedTransactionId {
@@ -20448,7 +20392,9 @@ class $$BufferTransactionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$BufferTransactionsTable, BufferTransaction>(
+                    table,
+                  ),
                   $$BufferTransactionsTableReferences(db, table, e),
                 ),
               )
@@ -20539,9 +20485,7 @@ typedef $$MarketPricesTableUpdateCompanionBuilder =
 final class $$MarketPricesTableReferences extends BaseReferences<_$AppDatabase, $MarketPricesTable, MarketPrice> {
   $$MarketPricesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.marketPrices.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('market_prices__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -20744,7 +20688,7 @@ class $$MarketPricesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$MarketPricesTable, MarketPrice>(table),
                   $$MarketPricesTableReferences(db, table, e),
                 ),
               )
@@ -20957,7 +20901,14 @@ class $$ExchangeRatesTableTableManager
                 rate: rate,
                 rowid: rowid,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ExchangeRatesTable, ExchangeRate>(table),
+                  BaseReferences<_$AppDatabase, $ExchangeRatesTable, ExchangeRate>(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -21320,7 +21271,16 @@ class $$HealthReimbursementsTableTableManager
                 processingDays: processingDays,
                 isCovered: isCovered,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$HealthReimbursementsTable, HealthReimbursement>(
+                    table,
+                  ),
+                  BaseReferences<_$AppDatabase, $HealthReimbursementsTable, HealthReimbursement>(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -21474,7 +21434,18 @@ class $$AppConfigsTableTableManager
                 description: description,
                 rowid: rowid,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AppConfigsTable, AppConfig>(table),
+                  BaseReferences<_$AppDatabase, $AppConfigsTable, AppConfig>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -21530,9 +21501,7 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     super.$_typedResult,
   );
 
-  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias(
-    $_aliasNameGenerator(db.importConfigs.accountId, db.accounts.id),
-  );
+  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias('import_configs__account_id__accounts__id');
 
   $$AccountsTableProcessedTableManager? get accountId {
     final $_column = $_itemColumn<int>('account_id');
@@ -21548,12 +21517,8 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     );
   }
 
-  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
-    $_aliasNameGenerator(
-      db.importConfigs.intermediaryId,
-      db.intermediaries.id,
-    ),
-  );
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias('import_configs__intermediary_id__intermediaries__id');
 
   $$IntermediariesTableProcessedTableManager? get intermediaryId {
     final $_column = $_itemColumn<int>('intermediary_id');
@@ -21569,9 +21534,7 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     );
   }
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.importConfigs.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('import_configs__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager? get assetId {
     final $_column = $_itemColumn<int>('asset_id');
@@ -22003,7 +21966,7 @@ class $$ImportConfigsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ImportConfigsTable, ImportConfig>(table),
                   $$ImportConfigsTableReferences(db, table, e),
                 ),
               )
@@ -22114,9 +22077,7 @@ typedef $$IncomesTableUpdateCompanionBuilder =
 final class $$IncomesTableReferences extends BaseReferences<_$AppDatabase, $IncomesTable, Income> {
   $$IncomesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.incomes.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('incomes__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager? get assetId {
     final $_column = $_itemColumn<int>('asset_id');
@@ -22376,7 +22337,7 @@ class $$IncomesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$IncomesTable, Income>(table),
                   $$IncomesTableReferences(db, table, e),
                 ),
               )
@@ -22463,9 +22424,7 @@ final class $$AssetCompositionsTableReferences extends BaseReferences<_$AppDatab
     super.$_typedResult,
   );
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.assetCompositions.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('asset_compositions__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -22698,7 +22657,7 @@ class $$AssetCompositionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AssetCompositionsTable, AssetComposition>(table),
                   $$AssetCompositionsTableReferences(db, table, e),
                 ),
               )
@@ -22807,12 +22766,8 @@ final class $$ExtraordinaryEventsTableReferences extends BaseReferences<_$AppDat
     super.$_typedResult,
   );
 
-  static $TransactionsTable _transactionIdTable(_$AppDatabase db) => db.transactions.createAlias(
-    $_aliasNameGenerator(
-      db.extraordinaryEvents.transactionId,
-      db.transactions.id,
-    ),
-  );
+  static $TransactionsTable _transactionIdTable(_$AppDatabase db) =>
+      db.transactions.createAlias('extraordinary_events__transaction_id__transactions__id');
 
   $$TransactionsTableProcessedTableManager? get transactionId {
     final $_column = $_itemColumn<int>('transaction_id');
@@ -22828,9 +22783,7 @@ final class $$ExtraordinaryEventsTableReferences extends BaseReferences<_$AppDat
     );
   }
 
-  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias(
-    $_aliasNameGenerator(db.extraordinaryEvents.bufferId, db.buffers.id),
-  );
+  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias('extraordinary_events__buffer_id__buffers__id');
 
   $$BuffersTableProcessedTableManager? get bufferId {
     final $_column = $_itemColumn<int>('buffer_id');
@@ -22850,10 +22803,7 @@ final class $$ExtraordinaryEventsTableReferences extends BaseReferences<_$AppDat
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.extraordinaryEventEntries,
-    aliasName: $_aliasNameGenerator(
-      db.extraordinaryEvents.id,
-      db.extraordinaryEventEntries.eventId,
-    ),
+    aliasName: 'extraordinary_events__id__extraordinary_event_entries__event_id',
   );
 
   $$ExtraordinaryEventEntriesTableProcessedTableManager get extraordinaryEventEntriesRefs {
@@ -23386,7 +23336,9 @@ class $$ExtraordinaryEventsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ExtraordinaryEventsTable, ExtraordinaryEvent>(
+                    table,
+                  ),
                   $$ExtraordinaryEventsTableReferences(db, table, e),
                 ),
               )
@@ -23517,10 +23469,7 @@ final class $$ExtraordinaryEventEntriesTableReferences
   );
 
   static $ExtraordinaryEventsTable _eventIdTable(_$AppDatabase db) => db.extraordinaryEvents.createAlias(
-    $_aliasNameGenerator(
-      db.extraordinaryEventEntries.eventId,
-      db.extraordinaryEvents.id,
-    ),
+    'extraordinary_event_entries__event_id__extraordinary_events__id',
   );
 
   $$ExtraordinaryEventsTableProcessedTableManager get eventId {
@@ -23815,7 +23764,7 @@ class $$ExtraordinaryEventEntriesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ExtraordinaryEventEntriesTable, ExtraordinaryEventEntry>(table),
                   $$ExtraordinaryEventEntriesTableReferences(db, table, e),
                 ),
               )
@@ -23913,10 +23862,7 @@ final class $$PortfolioModelsTableReferences extends BaseReferences<_$AppDatabas
   static MultiTypedResultKey<$PortfolioModelItemsTable, List<PortfolioModelItem>> _portfolioModelItemsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.portfolioModelItems,
-        aliasName: $_aliasNameGenerator(
-          db.portfolioModels.id,
-          db.portfolioModelItems.modelId,
-        ),
+        aliasName: 'portfolio_models__id__portfolio_model_items__model_id',
       );
 
   $$PortfolioModelItemsTableProcessedTableManager get portfolioModelItemsRefs {
@@ -23937,10 +23883,7 @@ final class $$PortfolioModelsTableReferences extends BaseReferences<_$AppDatabas
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.pillars,
-    aliasName: $_aliasNameGenerator(
-      db.portfolioModels.id,
-      db.pillars.portfolioModelId,
-    ),
+    aliasName: 'portfolio_models__id__pillars__portfolio_model_id',
   );
 
   $$PillarsTableProcessedTableManager get pillarsRefs {
@@ -24269,7 +24212,7 @@ class $$PortfolioModelsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PortfolioModelsTable, PortfolioModel>(table),
                   $$PortfolioModelsTableReferences(db, table, e),
                 ),
               )
@@ -24364,12 +24307,8 @@ final class $$PortfolioModelItemsTableReferences extends BaseReferences<_$AppDat
     super.$_typedResult,
   );
 
-  static $PortfolioModelsTable _modelIdTable(_$AppDatabase db) => db.portfolioModels.createAlias(
-    $_aliasNameGenerator(
-      db.portfolioModelItems.modelId,
-      db.portfolioModels.id,
-    ),
-  );
+  static $PortfolioModelsTable _modelIdTable(_$AppDatabase db) =>
+      db.portfolioModels.createAlias('portfolio_model_items__model_id__portfolio_models__id');
 
   $$PortfolioModelsTableProcessedTableManager get modelId {
     final $_column = $_itemColumn<String>('model_id')!;
@@ -24649,7 +24588,9 @@ class $$PortfolioModelItemsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PortfolioModelItemsTable, PortfolioModelItem>(
+                    table,
+                  ),
                   $$PortfolioModelItemsTableReferences(db, table, e),
                 ),
               )
@@ -24740,12 +24681,8 @@ typedef $$PillarsTableUpdateCompanionBuilder =
 final class $$PillarsTableReferences extends BaseReferences<_$AppDatabase, $PillarsTable, Pillar> {
   $$PillarsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $PortfolioModelsTable _portfolioModelIdTable(_$AppDatabase db) => db.portfolioModels.createAlias(
-    $_aliasNameGenerator(
-      db.pillars.portfolioModelId,
-      db.portfolioModels.id,
-    ),
-  );
+  static $PortfolioModelsTable _portfolioModelIdTable(_$AppDatabase db) =>
+      db.portfolioModels.createAlias('pillars__portfolio_model_id__portfolio_models__id');
 
   $$PortfolioModelsTableProcessedTableManager? get portfolioModelId {
     final $_column = $_itemColumn<String>('portfolio_model_id');
@@ -24763,7 +24700,7 @@ final class $$PillarsTableReferences extends BaseReferences<_$AppDatabase, $Pill
 
   static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>> _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.pillarAssets,
-    aliasName: $_aliasNameGenerator(db.pillars.id, db.pillarAssets.pillarId),
+    aliasName: 'pillars__id__pillar_assets__pillar_id',
   );
 
   $$PillarAssetsTableProcessedTableManager get pillarAssetsRefs {
@@ -25096,7 +25033,7 @@ class $$PillarsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PillarsTable, Pillar>(table),
                   $$PillarsTableReferences(db, table, e),
                 ),
               )
@@ -25192,9 +25129,7 @@ typedef $$PillarAssetsTableUpdateCompanionBuilder =
 final class $$PillarAssetsTableReferences extends BaseReferences<_$AppDatabase, $PillarAssetsTable, PillarAsset> {
   $$PillarAssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $PillarsTable _pillarIdTable(_$AppDatabase db) => db.pillars.createAlias(
-    $_aliasNameGenerator(db.pillarAssets.pillarId, db.pillars.id),
-  );
+  static $PillarsTable _pillarIdTable(_$AppDatabase db) => db.pillars.createAlias('pillar_assets__pillar_id__pillars__id');
 
   $$PillarsTableProcessedTableManager get pillarId {
     final $_column = $_itemColumn<String>('pillar_id')!;
@@ -25210,9 +25145,7 @@ final class $$PillarAssetsTableReferences extends BaseReferences<_$AppDatabase, 
     );
   }
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.pillarAssets.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('pillar_assets__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -25450,7 +25383,7 @@ class $$PillarAssetsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PillarAssetsTable, PillarAsset>(table),
                   $$PillarAssetsTableReferences(db, table, e),
                 ),
               )

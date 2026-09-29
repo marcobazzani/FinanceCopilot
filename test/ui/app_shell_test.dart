@@ -304,7 +304,7 @@ void main() {
     sqlite.sqlite3.open(path)
       ..execute('PRAGMA user_version = 7')
       ..execute('CREATE TABLE accounts (id INTEGER PRIMARY KEY)')
-      ..dispose();
+      ..close();
     return path;
   }
 

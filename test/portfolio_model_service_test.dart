@@ -197,7 +197,7 @@ void main() {
       raw.execute('ALTER TABLE pillars DROP COLUMN portfolio_model_id');
       raw.execute('PRAGMA user_version = 40');
     } finally {
-      raw.dispose();
+      raw.close();
     }
 
     final migrated = AppDatabase.forTesting(NativeDatabase(File(path)));

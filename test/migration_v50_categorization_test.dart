@@ -48,7 +48,7 @@ void main() {
       }
       raw.execute('PRAGMA user_version = 49');
     } finally {
-      raw.dispose();
+      raw.close();
     }
   }
 

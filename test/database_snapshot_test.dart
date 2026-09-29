@@ -58,7 +58,7 @@ void main() {
       final assetRows = raw.select('SELECT name FROM assets');
       expect(assetRows.map((r) => r['name']), ['Fund']);
     } finally {
-      raw.dispose();
+      raw.close();
     }
 
     await db.close();
@@ -79,7 +79,7 @@ void main() {
 
     final raw = sqlite3.open(destPath);
     final snapshotNames = raw.select('SELECT name FROM intermediaries').map((r) => r['name'] as String).toSet();
-    raw.dispose();
+    raw.close();
     expect(snapshotNames, {'Before'}, reason: 'the snapshot is frozen at the moment it was taken');
 
     await db.close();
@@ -115,7 +115,7 @@ void main() {
     expect(p.dirname(first), tmpDir.path);
     final raw = sqlite3.open(first);
     expect(raw.select('SELECT name FROM intermediaries').map((r) => r['name']), ['Broker']);
-    raw.dispose();
+    raw.close();
 
     await db.close();
   });
