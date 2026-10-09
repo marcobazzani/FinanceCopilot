@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
+import 'package:finance_copilot/services/classification/rule_transfer_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/widgets/category_edit_dialog.dart';
 import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
@@ -18,9 +21,12 @@ import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 import 'package:finance_copilot/utils/dialogs.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
+import 'package:finance_copilot/utils/logger.dart';
+
+final _log = getLogger('CategoriesRulesScreen');
 
 /// Settings → Categories & rules. Two tabs: the category list and the rule
-/// list, plus the two classifier actions.
+/// list, plus the two classifier actions and the rules export / import.
 class CategoriesRulesScreen extends ConsumerStatefulWidget {
   const CategoriesRulesScreen({super.key});
 
@@ -76,6 +82,17 @@ class _CategoriesRulesScreenState extends ConsumerState<CategoriesRulesScreen> w
                 }
               },
             ),
+            AppBarAction(
+              icon: Icons.rule_folder_outlined,
+              tooltip: s.rulesTransfer,
+              // Disabled while the classifier or an import runs.
+              submenu: _busy
+                  ? const []
+                  : [
+                      AppBarSubAction(label: s.exportRules, onSelected: _exportRules),
+                      AppBarSubAction(label: s.importRules, onSelected: _importRules),
+                    ],
+            ),
           ],
         ),
       ),
@@ -111,6 +128,75 @@ class _CategoriesRulesScreenState extends ConsumerState<CategoriesRulesScreen> w
       final r = await ref.read(transactionClassifierServiceProvider).classifyAll(overwrite: overwrite);
       dirty.state = false;
       if (mounted) showInfoSnack(context, s.classifyResultSnack(r.changed, r.uncategorizedAfter));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Saves the categories and rules to a JSON file the user picks, to import
+  /// them on another database.
+  Future<void> _exportRules() async {
+    final s = ref.read(appStringsProvider);
+    final service = ref.read(ruleTransferServiceProvider);
+    try {
+      final export = await service.exportJson();
+      final saved = await FilePicker.saveFile(
+        dialogTitle: s.exportRulesPickerTitle,
+        fileName: RuleTransferService.fileNameFor(DateTime.now()),
+        bytes: utf8.encode(export.json),
+        mimeType: 'application/json',
+      );
+      if (saved == null || !mounted) return;
+      showInfoSnack(context, s.rulesExported(export.rules, export.categories));
+    } catch (e, st) {
+      _log.warning('rules export failed', e, st);
+      if (mounted) showInfoSnack(context, s.rulesExportFailed);
+    }
+  }
+
+  /// Replaces the rules with those of a rules file the user picks, once they
+  /// confirm what it holds and what it replaces. Like any rule change, it is
+  /// applied to the transactions by the next classifier run.
+  Future<void> _importRules() async {
+    final s = ref.read(appStringsProvider);
+    final RuleFile file;
+    try {
+      final picked = await FilePicker.pickFile(dialogTitle: s.importRulesPickerTitle, type: FileType.custom, allowedExtensions: ['json']);
+      if (picked == null) return;
+      file = RuleTransferService.parse(await picked.readAsBytes());
+    } on RuleFileException catch (e) {
+      _log.warning('rules import refused: $e');
+      if (mounted) showInfoSnack(context, s.ruleFileProblem(e.problem));
+      return;
+    } catch (e, st) {
+      _log.warning('rules import failed', e, st);
+      if (mounted) showInfoSnack(context, s.rulesImportFailed);
+      return;
+    }
+    final current = (await ref.read(ruleServiceProvider).getAll()).length;
+    if (!mounted) return;
+    final ok = await showConfirmDialog(
+      context,
+      title: s.importRulesConfirmTitle,
+      content: s.importRulesConfirmBody(file.rules.length, file.categories.length, current),
+      confirmLabel: current > 0 ? s.importRulesReplace : s.importRulesConfirm,
+      cancelLabel: s.cancel,
+      confirmColor: current > 0 ? Theme.of(context).colorScheme.error : null,
+    );
+    if (!ok || !mounted) return;
+    // Read before the import: the screen may be closed by the time it ends.
+    final dirty = ref.read(rulesDirtyProvider.notifier);
+    final service = ref.read(ruleTransferServiceProvider);
+    setState(() => _busy = true);
+    try {
+      final r = await service.importFile(file);
+      if (r.rulesImported > 0 || r.rulesReplaced > 0) dirty.state = true;
+      if (mounted) {
+        showInfoSnack(context, s.rulesImported(r.rulesImported, r.categoriesAdded, skipped: r.rulesSkipped, missingAccounts: r.missingAccounts));
+      }
+    } catch (e, st) {
+      _log.warning('rules import failed', e, st);
+      if (mounted) showInfoSnack(context, s.rulesImportFailed);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

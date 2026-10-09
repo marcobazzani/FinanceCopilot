@@ -15,6 +15,7 @@ import 'package:finance_copilot/services/charts/editable_charts_notifier.dart';
 import 'package:finance_copilot/services/classification/category_service.dart';
 import 'package:finance_copilot/services/classification/ledger_roles.dart';
 import 'package:finance_copilot/services/classification/rule_service.dart';
+import 'package:finance_copilot/services/classification/rule_transfer_service.dart';
 import 'package:finance_copilot/services/classification/transaction_classifier_service.dart';
 import 'package:finance_copilot/services/domain/account_service.dart';
 import 'package:finance_copilot/services/domain/adjustment_items.dart';

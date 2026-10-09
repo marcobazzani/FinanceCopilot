@@ -6,12 +6,14 @@ import 'package:file_picker/file_picker.dart';
 /// The file picker for widget tests ([FilePickerPlatform.instance]): records
 /// every dialog it is asked to open in [calls] (`'pick'` / `'save'`) and
 /// [titles], answers a pick with the file at [picked] and a save with the
-/// location [saveTo] — null means the user cancelled.
+/// location [saveTo] — null means the user cancelled. What the app hands a
+/// save dialog is kept in [saved], whether or not the user then cancels.
 class FakeFilePicker extends FilePickerPlatform {
   String? picked;
   String? saveTo;
   final calls = <String>[];
   final titles = <String?>[];
+  final saved = <({String fileName, String mimeType, Uint8List bytes})>[];
 
   @override
   Future<PlatformFile?> pickFile({
@@ -47,6 +49,7 @@ class FakeFilePicker extends FilePickerPlatform {
   }) async {
     calls.add('save');
     titles.add(dialogTitle);
+    saved.add((fileName: fileName, mimeType: mimeType, bytes: bytes));
     final path = saveTo;
     return path == null ? null : Uri.file(path);
   }

@@ -13,6 +13,7 @@ final assetEventServiceProvider = _dbService(AssetEventService.new);
 final importConfigServiceProvider = _dbService(ImportConfigService.new);
 final categoryServiceProvider = _dbService(CategoryService.new);
 final ruleServiceProvider = _dbService(RuleService.new);
+final ruleTransferServiceProvider = _dbService(RuleTransferService.new);
 final transactionClassifierServiceProvider = _dbService(TransactionClassifierService.new);
 
 final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {

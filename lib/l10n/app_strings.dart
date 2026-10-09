@@ -1,5 +1,6 @@
 import '../database/tables.dart';
 import '../services/classification/ledger_roles.dart';
+import '../services/classification/rule_transfer_service.dart' show RuleFileProblem;
 
 /// Simple two-language (EN / IT) string table.
 /// Access via [appStringsProvider] in Riverpod widgets.
@@ -1351,6 +1352,65 @@ class AppStrings {
   String get merchant => _it ? 'Controparte' : 'Merchant';
   String get entryType => _it ? 'Tipo di movimento' : 'Entry type';
   String get categoryFilterTitle => _it ? 'Categorie' : 'Categories';
+
+  // ── Rules export / import ──
+  String get rulesTransfer => _it ? 'Esporta o importa regole' : 'Export or import rules';
+  String get exportRules => _it ? 'Esporta regole e categorie…' : 'Export rules & categories…';
+  String get importRules => _it ? 'Importa regole e categorie…' : 'Import rules & categories…';
+  String get exportRulesPickerTitle => _it ? 'Esporta regole' : 'Export rules';
+  String get importRulesPickerTitle => _it ? 'Importa regole' : 'Import rules';
+  String _ruleCount(int n) => _it ? (n == 1 ? '1 regola' : '$n regole') : (n == 1 ? '1 rule' : '$n rules');
+  String _categoryCount(int n) => _it ? (n == 1 ? '1 categoria' : '$n categorie') : (n == 1 ? '1 category' : '$n categories');
+  String rulesExported(int rules, int categories) =>
+      _it ? 'Esportate ${_ruleCount(rules)} e ${_categoryCount(categories)}' : 'Exported ${_ruleCount(rules)} and ${_categoryCount(categories)}';
+  String get rulesExportFailed => _it ? 'Esportazione delle regole non riuscita' : 'Rules export failed';
+  String get rulesImportFailed => _it ? 'Importazione delle regole non riuscita' : 'Rules import failed';
+  String get importRulesConfirmTitle => _it ? 'Importare le regole?' : 'Import rules?';
+  String importRulesConfirmBody(int fileRules, int fileCategories, int currentRules) {
+    final head = _it
+        ? 'Il file contiene ${_ruleCount(fileRules)} e ${_categoryCount(fileCategories)}.'
+        : 'The file holds ${_ruleCount(fileRules)} and ${_categoryCount(fileCategories)}.';
+    final replaced = currentRules == 0
+        ? ''
+        : _it
+        ? (currentRules == 1 ? ' La tua regola attuale verrà sostituita.' : ' Le tue $currentRules regole attuali verranno sostituite.')
+        : (currentRules == 1 ? ' Your current rule will be replaced.' : ' Your $currentRules current rules will be replaced.');
+    final categories = _it
+        ? ' Le categorie del file vengono aggiunte o aggiornate; le altre tue categorie restano come sono.'
+        : ' Categories in the file are added or updated; your other categories stay as they are.';
+    return '$head$replaced$categories';
+  }
+
+  String get importRulesConfirm => _it ? 'Importa' : 'Import';
+  String get importRulesReplace => _it ? 'Sostituisci le regole' : 'Replace rules';
+  String rulesImported(int rules, int categoriesAdded, {int skipped = 0, List<String> missingAccounts = const []}) {
+    final imported = _it ? (rules == 1 ? 'Importata 1 regola' : 'Importate $rules regole') : 'Imported ${_ruleCount(rules)}';
+    final added = categoriesAdded == 0
+        ? ''
+        : _it
+        ? (categoriesAdded == 1 ? ', aggiunta 1 categoria' : ', aggiunte $categoriesAdded categorie')
+        : ', added ${_categoryCount(categoriesAdded)}';
+    final left = skipped == 0
+        ? ''
+        : _it
+        ? '. ${skipped == 1 ? '1 regola saltata' : '$skipped regole saltate'}: ${missingAccounts.length == 1 ? 'conto non trovato' : 'conti non trovati'} (${missingAccounts.join(', ')})'
+        : '. ${skipped == 1 ? '1 rule' : '$skipped rules'} skipped: ${missingAccounts.length == 1 ? 'account' : 'accounts'} not found (${missingAccounts.join(', ')})';
+    return '$imported$added$left';
+  }
+
+  String ruleFileProblem(RuleFileProblem p) => switch (p) {
+    RuleFileProblem.notRulesFile => _it ? 'Questo file non è un\'esportazione di regole' : 'This file is not a rules export',
+    RuleFileProblem.newerVersion =>
+      _it
+          ? 'File creato da una versione più recente dell\'app: aggiorna l\'app e riprova'
+          : 'This file was made by a newer version of the app: update the app and try again',
+    RuleFileProblem.normalizerMismatch =>
+      _it
+          ? 'File esportato da un\'altra versione dell\'app: qui le sue regole sulle controparti non funzionerebbero. Esportalo di nuovo con questa versione'
+          : 'This file was exported by another version of the app: its merchant rules would not match here. Export it again with this version',
+    RuleFileProblem.invalidContent =>
+      _it ? 'Il file delle regole è danneggiato: non è stato importato nulla' : 'The rules file is damaged: nothing was imported',
+  };
 
   // Wizard
   String get classificationWizardTitle => _it ? 'Classifica le transazioni' : 'Classify transactions';
