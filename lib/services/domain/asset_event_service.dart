@@ -1,8 +1,11 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/query_helpers.dart';
 import 'package:finance_copilot/database/tables.dart';
+import 'package:finance_copilot/utils/asset_value_math.dart';
 import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 final _log = getLogger('AssetEventService');
 
@@ -11,25 +14,15 @@ class AssetEventService {
 
   AssetEventService(this._db);
 
-  Stream<List<AssetEvent>> watchByAsset(int assetId, {DateTime? through}) {
+  SimpleSelectStatement<$AssetEventsTable, AssetEvent> _byAsset(int assetId, {DateTime? through}) {
     final query = _db.select(_db.assetEvents)..where((e) => e.assetId.equals(assetId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
-    return query.watch();
+    if (through != null) query.where((e) => e.valueDate.isSmallerThanValue(startOfNextDay(through)));
+    return query..orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
   }
 
-  Future<List<AssetEvent>> getByAsset(int assetId, {DateTime? through}) {
-    final query = _db.select(_db.assetEvents)..where((e) => e.assetId.equals(assetId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
-    return query.get();
-  }
+  Stream<List<AssetEvent>> watchByAsset(int assetId, {DateTime? through}) => _byAsset(assetId, through: through).watch();
+
+  Future<List<AssetEvent>> getByAsset(int assetId, {DateTime? through}) => _byAsset(assetId, through: through).get();
 
   /// Fetch events for multiple assets in a single query, grouped by asset ID.
   Future<Map<int, List<AssetEvent>>> getByAssets(
@@ -38,10 +31,7 @@ class AssetEventService {
   }) async {
     if (assetIds.isEmpty) return {};
     final query = _db.select(_db.assetEvents)..where((e) => e.assetId.isIn(assetIds));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((e) => e.valueDate.isSmallerThanValue(endExclusive));
-    }
+    if (through != null) query.where((e) => e.valueDate.isSmallerThanValue(startOfNextDay(through)));
     query.orderBy([(e) => OrderingTerm.desc(e.valueDate)]);
     final events = await query.get();
     final result = <int, List<AssetEvent>>{};
@@ -60,6 +50,7 @@ class AssetEventService {
     double? price,
     required String currency,
     double? exchangeRate,
+    String? exchangeRateBase,
     double? commission,
     String? notes,
   }) async {
@@ -79,6 +70,10 @@ class AssetEventService {
             price: Value(price),
             currency: Value(currency),
             exchangeRate: Value(exchangeRate),
+            // Stamp which base the caller's rate was quoted against, so a
+            // later base change preserves it without reusing it. Only
+            // meaningful when a rate is actually supplied.
+            exchangeRateBase: Value(exchangeRate == null ? null : exchangeRateBase),
             commission: Value(commission),
             notes: Value(notes),
           ),
@@ -253,7 +248,7 @@ class AssetEventService {
     // the materialised close_price by the divisor — otherwise `amount / qty`
     // gets divided by 100 a second time at read time and the position collapses
     // to ~1/100 of its real value (issue #87).
-    final bondDivisor = assetRow.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
+    final bondDivisor = bondPriceDivisor(assetRow.instrumentType);
 
     for (final rDate in revalueDates) {
       // When two revalues share a value_date, the latest-inserted wins (same
@@ -365,7 +360,7 @@ class AssetEventService {
           "FROM asset_events WHERE asset_id = ? AND type = 'buy' "
           "AND quantity IS NOT NULL AND price IS NOT NULL "
           "${bounded ? 'AND value_date < ? ' : ''}",
-          variables: [Variable.withInt(assetId), ..._throughVars(through)],
+          variables: [Variable.withInt(assetId), ...throughVars(through)],
         )
         .getSingleOrNull();
     final totalCost = row?.readNullable<double>('total_cost') ?? 0;
@@ -385,24 +380,55 @@ class AssetEventService {
           "SELECT amount FROM asset_events WHERE asset_id = ? AND type = 'revalue' "
           "${bounded ? 'AND value_date < ? ' : ''}"
           "ORDER BY value_date DESC, id DESC LIMIT 1",
-          variables: [Variable.withInt(assetId), ..._throughVars(through)],
+          variables: [Variable.withInt(assetId), ...throughVars(through)],
         )
         .getSingleOrNull();
     return row?.readNullable<double>('amount');
   }
 
-  static DateTime? _throughEndExclusive(DateTime? through) {
-    if (through == null) return null;
-    return DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
+  /// Record which base currency every not-yet-stamped `exchangeRate` was
+  /// quoted against, so a base-currency change can no longer silently reuse
+  /// a rate that belonged to the OLD base.
+  ///
+  /// `exchangeRate` is "units of the event's currency per one base currency"
+  /// (consumers divide by it to reach base), so its meaning depends on the
+  /// configured base. The column is written from three places — a user typing
+  /// an execution rate in the event editor, an imported rate column, and the
+  /// `convertToBase` helpers caching a resolved rate — and NONE of those are
+  /// safe to reuse once the base changes.
+  ///
+  /// This is deliberately NOT a delete. A rate the user typed (or a broker
+  /// file supplied) is original data that no market lookup can reconstruct:
+  /// an execution rate differs from that day's reference rate, and switching
+  /// the base back would not bring it back. So instead of clearing the value,
+  /// [outgoingBase] is stamped onto every row that has a rate but no base
+  /// recorded yet. The rate is preserved; consumers simply stop trusting it
+  /// for the new base (see `exchangeRateBase` in `tables.dart`) and resolve a
+  /// fresh one, leaving the original visible in the event editor.
+  ///
+  /// Call this BEFORE persisting the new base currency, passing the base being
+  /// replaced. Returns the number of rows stamped.
+  Future<int> stampExchangeRateBase(String outgoingBase) {
+    _log.info('stampExchangeRateBase: base currency changing away from $outgoingBase, stamping unattributed rates');
+    return _db.customUpdate(
+      'UPDATE asset_events SET exchange_rate_base = ? '
+      'WHERE exchange_rate IS NOT NULL AND exchange_rate_base IS NULL',
+      variables: [Variable.withString(outgoingBase)],
+      updates: {_db.assetEvents},
+    );
   }
 
-  static List<Variable<int>> _throughVars(DateTime? through) {
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive == null) return const [];
-    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
+  /// Whether [event]'s stored `exchangeRate` can be used to convert into
+  /// [baseCurrency].
+  ///
+  /// A rate is usable when it is positive AND was quoted against the base we
+  /// are converting into. A NULL `exchangeRateBase` means "never stamped",
+  /// i.e. quoted against the current base — see `tables.dart`. A stamped rate
+  /// belonging to a different base is preserved data, not a usable rate.
+  static bool isExchangeRateUsableFor(AssetEvent event, String baseCurrency) {
+    final rate = event.exchangeRate;
+    if (rate == null || rate <= 0) return false;
+    final quotedAgainst = event.exchangeRateBase;
+    return quotedAgainst == null || quotedAgainst == baseCurrency;
   }
 }

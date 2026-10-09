@@ -24,6 +24,16 @@ class _LedgerFilterBar extends StatelessWidget {
   final String locale;
   final AppStrings s;
 
+  /// Categories offered in the sheet (active + any archived one still in use
+  /// is resolved by the caller). Empty = category section hidden.
+  final List<Category> categories;
+
+  /// Uncategorized rows in this ledger (for the "Uncategorized (N)" chip).
+  final int uncategorizedCount;
+
+  /// Opens the classification wizard for this ledger's scope.
+  final VoidCallback? onReviewUncategorized;
+
   const _LedgerFilterBar({
     required this.filter,
     required this.onChanged,
@@ -31,6 +41,9 @@ class _LedgerFilterBar extends StatelessWidget {
     required this.showAdjustment,
     required this.locale,
     required this.s,
+    this.categories = const [],
+    this.uncategorizedCount = 0,
+    this.onReviewUncategorized,
   });
 
   List<EntryKind> get _availableKinds => [
@@ -62,9 +75,18 @@ class _LedgerFilterBar extends StatelessWidget {
         kindLabel: _kindLabel,
         locale: locale,
         s: s,
+        categories: categories,
+        uncategorizedCount: uncategorizedCount,
+        onReviewUncategorized: onReviewUncategorized,
       ),
     );
     if (result != null) onChanged(result);
+  }
+
+  String _categoryLabel(int? id) {
+    if (id == null) return s.uncategorized;
+    final c = categories.where((c) => c.id == id).firstOrNull;
+    return c == null ? s.uncategorized : categoryLabel(c, s);
   }
 
   @override
@@ -92,7 +114,14 @@ class _LedgerFilterBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: filter.isActive
-                ? _ActiveFilterPills(filter: filter, kindLabel: _kindLabel, locale: locale, s: s, onChanged: onChanged)
+                ? _ActiveFilterPills(
+                    filter: filter,
+                    kindLabel: _kindLabel,
+                    categoryLabel: _categoryLabel,
+                    locale: locale,
+                    s: s,
+                    onChanged: onChanged,
+                  )
                 : Text(
                     s.filterNone,
                     style: TextStyle(color: Theme.of(context).disabledColor, fontSize: 12),
@@ -114,6 +143,7 @@ class _LedgerFilterBar extends StatelessWidget {
 class _ActiveFilterPills extends StatelessWidget {
   final TransactionFilter filter;
   final String Function(EntryKind) kindLabel;
+  final String Function(int?) categoryLabel;
   final String locale;
   final AppStrings s;
   final ValueChanged<TransactionFilter> onChanged;
@@ -121,6 +151,7 @@ class _ActiveFilterPills extends StatelessWidget {
   const _ActiveFilterPills({
     required this.filter,
     required this.kindLabel,
+    required this.categoryLabel,
     required this.locale,
     required this.s,
     required this.onChanged,
@@ -168,6 +199,9 @@ class _ActiveFilterPills extends StatelessWidget {
     if (filter.excludesText.isNotEmpty) {
       add('"${filter.excludesText}"', () => onChanged(filter.copyWith(excludesText: '')), negative: true);
     }
+    for (final id in filter.categoryIds) {
+      add(categoryLabel(id), () => onChanged(filter.toggleCategory(id)));
+    }
 
     pills.add(
       ActionChip(
@@ -198,6 +232,9 @@ class _FilterSheet extends StatefulWidget {
   final String Function(EntryKind) kindLabel;
   final String locale;
   final AppStrings s;
+  final List<Category> categories;
+  final int uncategorizedCount;
+  final VoidCallback? onReviewUncategorized;
 
   const _FilterSheet({
     required this.initial,
@@ -205,6 +242,9 @@ class _FilterSheet extends StatefulWidget {
     required this.kindLabel,
     required this.locale,
     required this.s,
+    this.categories = const [],
+    this.uncategorizedCount = 0,
+    this.onReviewUncategorized,
   });
 
   @override
@@ -280,6 +320,34 @@ class _FilterSheetState extends State<_FilterSheet> {
     );
   }
 
+  Widget _categoryGroup() {
+    final s = widget.s;
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        FilterChip(
+          key: const Key('categoryChip_uncategorized'),
+          avatar: const Icon(Icons.help_outline, size: 16),
+          label: Text(s.uncategorizedCount(widget.uncategorizedCount)),
+          selected: _draft.categoryIds.contains(null),
+          onSelected: (_) => setState(() => _draft = _draft.toggleCategory(null)),
+          visualDensity: VisualDensity.compact,
+        ),
+        for (final c in widget.categories)
+          FilterChip(
+            key: ValueKey('categoryChip_${c.id}'),
+            avatar: Icon(categoryIcon(c), size: 16, color: categoryPaint(c, scheme)),
+            label: Text(categoryLabel(c, s)),
+            selected: _draft.categoryIds.contains(c.id),
+            onSelected: (_) => setState(() => _draft = _draft.toggleCategory(c.id)),
+            visualDensity: VisualDensity.compact,
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = widget.s;
@@ -328,6 +396,29 @@ class _FilterSheetState extends State<_FilterSheet> {
                   const SizedBox(height: 4),
                   _kindGroup(hide: true),
                   const Divider(height: 28),
+
+                  // ── Category ──
+                  if (widget.categories.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Text(s.categoryFilterTitle, style: sectionStyle),
+                        const Spacer(),
+                        if (widget.onReviewUncategorized != null && widget.uncategorizedCount > 0)
+                          TextButton.icon(
+                            key: const Key('reviewUncategorizedButton'),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              widget.onReviewUncategorized!();
+                            },
+                            icon: const Icon(Icons.auto_fix_high, size: 18),
+                            label: Text(s.reviewUncategorized),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    _categoryGroup(),
+                    const Divider(height: 28),
+                  ],
 
                   // ── Date ──
                   Text(s.filterDateRange, style: sectionStyle),
@@ -416,7 +507,7 @@ class _FilterSheetState extends State<_FilterSheet> {
 }
 
 /// "Jun 1 → Jun 30" style label for a date range; open bounds render as "…".
-String _dateRangeLabel(DateRangeFilter dr, dynamic dateFmt, AppStrings s) {
+String _dateRangeLabel(DateRangeFilter dr, DateFormat dateFmt, AppStrings s) {
   if (dr.isEmpty) return s.filterAnyDate;
   final from = dr.start != null ? dateFmt.format(dr.start!) : '…';
   final to = dr.end != null ? dateFmt.format(dr.end!) : '…';
@@ -425,7 +516,7 @@ String _dateRangeLabel(DateRangeFilter dr, dynamic dateFmt, AppStrings s) {
 
 /// "+ 100 – 500" style label for an amount range; a leading "∉" marks an
 /// outside-range (negated) bound, and +/− marks a direction scope.
-String _amountRangeLabel(AmountRangeFilter ar, dynamic amtFmt, AppStrings s) {
+String _amountRangeLabel(AmountRangeFilter ar, NumberFormat amtFmt, AppStrings s) {
   final lo = ar.min != null ? amtFmt.format(ar.min) : '…';
   final hi = ar.max != null ? amtFmt.format(ar.max) : '…';
   final dir = switch (ar.direction) {
@@ -456,6 +547,11 @@ class _AmountRangeDialogState extends State<_AmountRangeDialog> {
   late AmountDirection _direction;
   late bool _outside;
 
+  // Bounds the locale could not read at the last Apply: flagged on their
+  // field until edited, and nothing was applied.
+  bool _minInvalid = false;
+  bool _maxInvalid = false;
+
   @override
   void initState() {
     super.initState();
@@ -484,13 +580,19 @@ class _AmountRangeDialogState extends State<_AmountRangeDialog> {
           TextField(
             controller: _minCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-            decoration: InputDecoration(labelText: s.filterAmountMin),
+            decoration: InputDecoration(labelText: s.filterAmountMin, errorText: _minInvalid ? s.invalidNumber : null),
+            onChanged: (_) {
+              if (_minInvalid) setState(() => _minInvalid = false);
+            },
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _maxCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-            decoration: InputDecoration(labelText: s.filterAmountMax),
+            decoration: InputDecoration(labelText: s.filterAmountMax, errorText: _maxInvalid ? s.invalidNumber : null),
+            onChanged: (_) {
+              if (_maxInvalid) setState(() => _maxInvalid = false);
+            },
           ),
           const SizedBox(height: 16),
           // Whether the magnitude bound matches inside or outside the window.
@@ -526,11 +628,21 @@ class _AmountRangeDialogState extends State<_AmountRangeDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
         FilledButton(
           onPressed: () {
-            final min = fmt.parseFlexibleNumber(_minCtrl.text.trim());
-            final max = fmt.parseFlexibleNumber(_maxCtrl.text.trim());
+            // Read in the ledger's locale, strictly: under it_IT "1.000" is a
+            // thousand, and text the locale cannot read is flagged, never
+            // applied as some other number.
+            final min = fmt.readOptionalNumber(_minCtrl.text, locale: widget.locale);
+            final max = fmt.readOptionalNumber(_maxCtrl.text, locale: widget.locale);
+            if (min.invalid || max.invalid) {
+              setState(() {
+                _minInvalid = min.invalid;
+                _maxInvalid = max.invalid;
+              });
+              return;
+            }
             Navigator.pop(
               context,
-              AmountRangeFilter(min: min?.abs(), max: max?.abs(), direction: _direction, outside: _outside),
+              AmountRangeFilter(min: min.value?.abs(), max: max.value?.abs(), direction: _direction, outside: _outside),
             );
           },
           child: Text(s.filterApply),

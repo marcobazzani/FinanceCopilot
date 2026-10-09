@@ -1,4 +1,4 @@
-"""Fetch ETF composition data from justETF."""
+"""Fetch ETF composition data from the composition data source."""
 import json
 import sys
 from playwright.sync_api import sync_playwright
@@ -74,7 +74,7 @@ def main():
                     }
                 }
 
-                // Look for div-based lists (justETF uses divs for some data)
+                // Look for div-based lists (the profile page uses divs for some data)
                 const chartContainers = document.querySelectorAll('[class*="allocation"], [class*="composition"], [class*="breakdown"], [id*="allocation"], [id*="composition"]');
                 results.chartContainers = Array.from(chartContainers).map(c => ({
                     id: c.id,

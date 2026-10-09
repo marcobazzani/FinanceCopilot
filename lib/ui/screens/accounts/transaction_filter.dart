@@ -144,6 +144,10 @@ class TransactionFilter {
   final String containsText;
   final String excludesText;
 
+  /// Category ids to show; `null` inside the set means "uncategorized".
+  /// Empty = no category restriction.
+  final Set<int?> categoryIds;
+
   const TransactionFilter({
     this.includeKinds = const {},
     this.excludeKinds = const {},
@@ -151,13 +155,18 @@ class TransactionFilter {
     this.amountRange = const AmountRangeFilter(),
     this.containsText = '',
     this.excludesText = '',
+    this.categoryIds = const {},
   });
 
   static const TransactionFilter none = TransactionFilter();
 
-  /// True when a per-row (kind/date/amount, i.e. non-text) restriction is set.
-  /// Text is matched separately, pre-collapse, over the raw transactions.
-  bool get hasRowFilter => includeKinds.isNotEmpty || excludeKinds.isNotEmpty || !dateRange.isEmpty || !amountRange.isEmpty;
+  /// True when a per-row (kind/date/amount/category, i.e. non-text)
+  /// restriction is set. Text is matched separately, pre-collapse, over the
+  /// raw transactions.
+  bool get hasRowFilter =>
+      includeKinds.isNotEmpty || excludeKinds.isNotEmpty || !dateRange.isEmpty || !amountRange.isEmpty || categoryIds.isNotEmpty;
+
+  bool get hasCategoryFilter => categoryIds.isNotEmpty;
 
   bool get hasTextFilter => containsText.isNotEmpty || excludesText.isNotEmpty;
 
@@ -171,7 +180,8 @@ class TransactionFilter {
       (dateRange.isEmpty ? 0 : 1) +
       (amountRange.isEmpty ? 0 : 1) +
       (containsText.isEmpty ? 0 : 1) +
-      (excludesText.isEmpty ? 0 : 1);
+      (excludesText.isEmpty ? 0 : 1) +
+      (categoryIds.isEmpty ? 0 : 1);
 
   TransactionFilter copyWith({
     Set<EntryKind>? includeKinds,
@@ -180,6 +190,7 @@ class TransactionFilter {
     AmountRangeFilter? amountRange,
     String? containsText,
     String? excludesText,
+    Set<int?>? categoryIds,
   }) {
     return TransactionFilter(
       includeKinds: includeKinds ?? this.includeKinds,
@@ -188,8 +199,20 @@ class TransactionFilter {
       amountRange: amountRange ?? this.amountRange,
       containsText: containsText ?? this.containsText,
       excludesText: excludesText ?? this.excludesText,
+      categoryIds: categoryIds ?? this.categoryIds,
     );
   }
+
+  /// Toggle one category (or `null` = uncategorized) in the category set.
+  TransactionFilter toggleCategory(int? id) {
+    final next = Set<int?>.of(categoryIds);
+    if (!next.remove(id)) next.add(id);
+    return copyWith(categoryIds: next);
+  }
+
+  /// Category test for a real transaction row. Passes when no category
+  /// restriction is set or the row's category (null = uncategorized) is in it.
+  bool matchesCategory(int? categoryId) => categoryIds.isEmpty || categoryIds.contains(categoryId);
 
   KindSel kindSel(EntryKind kind) {
     if (includeKinds.contains(kind)) return KindSel.include;

@@ -10,7 +10,10 @@ import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/schedule_math.dart' as schedule_math;
+import 'package:finance_copilot/utils/visualization_clock.dart' show dateOnly;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
+import 'package:finance_copilot/ui/widgets/edit_form_fields.dart';
+import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 
 /// Create / edit an ExtraordinaryEvent. Handles all four quadrants of the
 /// direction × treatment matrix via two segmented controls at the top.
@@ -55,27 +58,40 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
 
   late EventDirection _direction;
   late EventTreatment _treatment;
-  late String _currency;
+
+  /// The event's, the seed's or the one the user picked; null for a new event
+  /// until a currency is picked (see [_currency]).
+  String? _chosenCurrency;
   late StepFrequency _stepFrequency;
   late DateTime _eventDate;
   late bool _isEphemeral;
+  bool _saving = false;
 
   bool get _canBeEphemeral => _direction == EventDirection.inflow && _treatment == EventTreatment.instant;
 
   bool get _isEditing => widget.event != null;
-  String get _baseCurrency => ref.read(baseCurrencyProvider).value ?? 'EUR';
 
-  /// Parsed step count, clamped to at least 1.
-  int get _stepCount {
-    final n = int.tryParse(_stepsCtrl.text);
-    return (n == null || n < 1) ? 1 : n;
+  /// The currency the event is saved in: the chosen one, else the stored base
+  /// currency — null until that has loaded, and nothing is created meanwhile
+  /// in a guessed one.
+  String? get _currency => _chosenCurrency ?? ref.read(baseCurrencyProvider).value;
+
+  /// A step count as typed: null unless it is a whole number from 1.
+  static int? _readSteps(String text) {
+    final n = int.tryParse(text.trim());
+    return (n == null || n < 1) ? null : n;
   }
+
+  /// The typed step count; null when it is not one — flagged on the field,
+  /// never saved as some other count.
+  int? get _stepCount => _readSteps(_stepsCtrl.text);
 
   /// The spread window covers the [_stepCount] periods immediately BEFORE the
   /// event: it starts `stepCount` steps back (frequency × steps) and the final
   /// step lands one period before the event date. Example: 12 monthly steps →
-  /// starts one year before the event, 12 entries in total.
-  DateTime get _spreadStart => schedule_math.stepBack(_eventDate, _stepCount, _stepFrequency);
+  /// starts one year before the event, 12 entries in total. Only read with a
+  /// valid step count.
+  DateTime get _spreadStart => schedule_math.stepBack(_eventDate, _stepCount!, _stepFrequency);
   DateTime get _spreadEnd => schedule_math.stepBack(_eventDate, 1, _stepFrequency);
 
   @override
@@ -89,20 +105,22 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     final seedName = e == null ? widget.seedName : null;
     final seedAmount = e == null ? widget.seedAmount : null;
     _nameCtrl = TextEditingController(text: e?.name ?? seedName ?? '');
+    // Every digit of a stored total (or of a seed transaction's amount, which
+    // the event must match to the cent): an untouched field saves unchanged.
+    final amtFmt = fmt.amountFormat(initLocale);
+    final initialAmount = e?.totalAmount ?? seedAmount;
     _amountCtrl = TextEditingController(
-      text: e != null
-          ? fmt.amountFormat(initLocale).format(e.totalAmount)
-          : seedAmount != null
-          ? fmt.amountFormat(initLocale).format(seedAmount)
-          : '',
+      text: initialAmount != null ? fmt.editableFigure(initialAmount, amtFmt, locale: initLocale) : '',
     );
     _stepsCtrl = TextEditingController(text: '12');
     _notesCtrl = TextEditingController(text: e?.notes ?? '');
-    _currency = e?.currency ?? widget.seedCurrency ?? _baseCurrency;
+    _chosenCurrency = e?.currency ?? widget.seedCurrency;
     _direction = e?.direction ?? widget.seedDirection ?? EventDirection.outflow;
     _treatment = e?.treatment ?? widget.seedTreatment ?? EventTreatment.instant;
     _stepFrequency = e?.stepFrequency ?? StepFrequency.monthly;
-    _eventDate = e?.eventDate ?? widget.seedDate ?? DateTime.now();
+    // A new event is dated on a calendar day (the seed's or today's), never
+    // at a clock time.
+    _eventDate = e?.eventDate ?? dateOnly(widget.seedDate ?? DateTime.now());
     _isEphemeral = e?.isEphemeral ?? false;
 
     // When editing a spread event, reconstruct the step count from the stored
@@ -124,7 +142,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   }
 
   List<DateTime> get _previewDates {
-    if (_treatment != EventTreatment.spread) return const [];
+    if (_treatment != EventTreatment.spread || _stepCount == null) return const [];
     return schedule_math.computeStepDates(_spreadStart, _spreadEnd, _stepFrequency);
   }
 
@@ -138,46 +156,53 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    // A second tap while the first save is in flight must not create twice.
+    final currency = _currency;
+    if (_saving || currency == null || !_formKey.currentState!.validate()) return;
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     final amount = _parsedAmount(locale);
     if (amount == null) return;
     final svc = ref.read(extraordinaryEventServiceProvider);
     final ephemeral = _canBeEphemeral && _isEphemeral;
 
-    if (_isEditing) {
-      await svc.update(
-        widget.event!.id,
-        ExtraordinaryEventsCompanion(
-          name: Value(_nameCtrl.text.trim()),
-          direction: Value(_direction),
-          treatment: Value(_treatment),
-          totalAmount: Value(amount),
-          currency: Value(_currency),
-          eventDate: Value(_eventDate),
-          stepFrequency: Value(_treatment == EventTreatment.spread ? _stepFrequency : null),
-          spreadStart: Value(_treatment == EventTreatment.spread ? _spreadStart : null),
-          spreadEnd: Value(_treatment == EventTreatment.spread ? _spreadEnd : null),
-          notes: Value(_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
-          isEphemeral: Value(ephemeral),
-        ),
-      );
-    } else {
-      await svc.create(
-        name: _nameCtrl.text.trim(),
-        direction: _direction,
-        treatment: _treatment,
-        totalAmount: amount,
-        currency: _currency,
-        eventDate: _eventDate,
-        stepFrequency: _treatment == EventTreatment.spread ? _stepFrequency : null,
-        spreadStart: _treatment == EventTreatment.spread ? _spreadStart : null,
-        spreadEnd: _treatment == EventTreatment.spread ? _spreadEnd : null,
-        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-        isEphemeral: ephemeral,
-      );
+    setState(() => _saving = true);
+    try {
+      if (_isEditing) {
+        await svc.update(
+          widget.event!.id,
+          ExtraordinaryEventsCompanion(
+            name: Value(_nameCtrl.text.trim()),
+            direction: Value(_direction),
+            treatment: Value(_treatment),
+            totalAmount: Value(amount),
+            currency: Value(currency),
+            eventDate: Value(_eventDate),
+            stepFrequency: Value(_treatment == EventTreatment.spread ? _stepFrequency : null),
+            spreadStart: Value(_treatment == EventTreatment.spread ? _spreadStart : null),
+            spreadEnd: Value(_treatment == EventTreatment.spread ? _spreadEnd : null),
+            notes: Value(_notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim()),
+            isEphemeral: Value(ephemeral),
+          ),
+        );
+      } else {
+        await svc.create(
+          name: _nameCtrl.text.trim(),
+          direction: _direction,
+          treatment: _treatment,
+          totalAmount: amount,
+          currency: currency,
+          eventDate: _eventDate,
+          stepFrequency: _treatment == EventTreatment.spread ? _stepFrequency : null,
+          spreadStart: _treatment == EventTreatment.spread ? _spreadStart : null,
+          spreadEnd: _treatment == EventTreatment.spread ? _spreadEnd : null,
+          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          isEphemeral: ephemeral,
+        );
+      }
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    if (mounted) Navigator.pop(context);
   }
 
   Future<void> _delete() async {
@@ -196,17 +221,16 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
     }
   }
 
-  Future<void> _pickDate(DateTime initial, void Function(DateTime) onPicked) async {
-    final picked = await pickDate(context, initial, firstYear: 2000);
-    if (picked != null) setState(() => onPicked(picked));
-  }
-
   @override
   Widget build(BuildContext context) {
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
     final amtFmt = fmt.amountFormat(locale);
-    final sym = currencySymbol(_currency);
+    // Rebuilds once the base currency has loaded: a new event's currency is
+    // then known, which turns Create on.
+    ref.watch(baseCurrencyProvider);
+    final currency = _currency;
+    final sym = currency == null ? '' : currencySymbol(currency);
     final s = ref.watch(appStringsProvider);
 
     final previewDates = _previewDates;
@@ -293,31 +317,28 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                           decoration: InputDecoration(labelText: s.amount, suffixText: sym),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onChanged: (_) => setState(() {}),
-                          validator: (v) {
-                            final parsed = fmt.tryParseLocalized(v ?? '', locale: locale);
-                            return parsed == null ? s.required : null;
-                          },
+                          validator: (v) => requiredNumberError(v, s, locale: locale),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         flex: 1,
                         child: DropdownButtonFormField<String>(
-                          initialValue: _currency,
+                          initialValue: currency,
                           decoration: InputDecoration(labelText: s.currency),
                           items: ExchangeRateService.allCurrencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                          onChanged: (v) => setState(() => _currency = v ?? _baseCurrency),
+                          onChanged: (v) => setState(() => _chosenCurrency = v),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  InkWell(
-                    onTap: () => _pickDate(_eventDate, (d) => _eventDate = d),
-                    child: InputDecorator(
-                      decoration: InputDecoration(labelText: s.eventDateLabel),
-                      child: Text(dateFmt.format(_eventDate)),
-                    ),
+                  DateFormField(
+                    date: _eventDate,
+                    onPicked: (picked) => setState(() => _eventDate = picked),
+                    label: s.eventDateLabel,
+                    firstYear: 2000,
+                    outlined: false,
                   ),
                 ],
               ),
@@ -342,12 +363,18 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                       decoration: InputDecoration(labelText: s.stepCountLabel),
                       keyboardType: TextInputType.number,
                       onChanged: (_) => setState(() {}),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return s.required;
+                        return _readSteps(v) == null ? s.stepCountInvalid : null;
+                      },
                     ),
-                    // Preview
+                    // Preview: the step count is shape, the per-step amount
+                    // is position size (N × it is the total).
                     if (previewDates.isNotEmpty && perStep != null) ...[
                       const SizedBox(height: 16),
-                      Text(
-                        s.spreadPreview(previewDates.length, '${amtFmt.format(perStep)} $sym'),
+                      PrivacySentence(
+                        s.spreadPreview(previewDates.length, privacySlot(0)),
+                        figures: ['${amtFmt.format(perStep)} $sym'],
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -386,7 +413,7 @@ class _EventEditScreenState extends ConsumerState<EventEditScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _save,
+                    onPressed: _saving || currency == null ? null : _save,
                     child: Text(_isEditing ? s.save : s.create),
                   ),
                 ),

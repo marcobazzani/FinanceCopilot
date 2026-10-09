@@ -11,7 +11,9 @@ import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import 'package:finance_copilot/services/market/market_price_service.dart' show exchangeCurrency;
+import 'package:finance_copilot/utils/asset_value_math.dart';
 import 'package:finance_copilot/utils/formatters.dart' show formatYmd;
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 part 'portfolio_rebalance_models.dart';
 
@@ -36,7 +38,7 @@ class PortfolioRebalanceService {
     if (mode == PortfolioRebalanceMode.buyOnly && contributionAmount < 0) {
       throw ArgumentError('contributionAmount must be >= 0');
     }
-    final date = _dateOnly(asOf ?? DateTime.now());
+    final date = dateOnly(asOf ?? DateTime.now());
     final baseCurrency = await _baseCurrency();
     final defaultTaxRate = await _defaultTaxRate();
     final pillars = await _pillarsForScope(scope);
@@ -117,64 +119,55 @@ class PortfolioRebalanceService {
     AssetEventService eventService, {
     DateTime? date,
   }) async {
-    final appliedAt = _dateOnly(date ?? DateTime.now());
+    final appliedAt = dateOnly(date ?? DateTime.now());
     final ids = <int>[];
-    for (final row in draft.rows) {
-      if (row.isPlaceholder) continue;
-      var assetId = row.assetId;
-      if (assetId == null) {
-        final spec = row.autoCreateSpec;
-        if (row.type != EventType.buy || spec == null || row.isin == null) continue;
-        assetId = await _createTargetAssetForDraftRow(
-          draft: draft,
-          row: row,
-          spec: spec,
-          appliedAt: appliedAt,
+    // All-or-nothing: a failure half-way must not leave a partially applied
+    // draft (some trades booked, an auto-created asset without its event or
+    // pillar assignment). [eventService] writes through the same database,
+    // so its inserts join this transaction.
+    await _db.transaction(() async {
+      for (final row in draft.rows) {
+        if (row.isPlaceholder) continue;
+        var assetId = row.assetId;
+        if (assetId == null) {
+          final spec = row.autoCreateSpec;
+          if (row.type != EventType.buy || spec == null || row.isin == null) continue;
+          assetId = await _createTargetAssetForDraftRow(
+            row: row,
+            spec: spec,
+            appliedAt: appliedAt,
+          );
+        }
+        ids.add(
+          await eventService.create(
+            assetId: assetId,
+            date: appliedAt,
+            type: row.type,
+            amount: row.amount,
+            quantity: row.estimatedQuantity,
+            price: row.price,
+            currency: row.currency,
+            notes: row.notes,
+          ),
         );
+        if (row.assetId == null && row.type == EventType.buy) {
+          await _db
+              .into(_db.pillarAssets)
+              .insertOnConflictUpdate(
+                PillarAssetsCompanion.insert(
+                  pillarId: row.pillarId,
+                  assetId: assetId,
+                  quantity: row.estimatedQuantity,
+                ),
+              );
+        }
       }
-      ids.add(
-        await eventService.create(
-          assetId: assetId,
-          date: appliedAt,
-          type: row.type,
-          amount: row.amount,
-          quantity: row.estimatedQuantity,
-          price: row.price,
-          currency: row.currency,
-          notes: row.notes,
-        ),
-      );
-      if (row.assetId == null && row.type == EventType.buy) {
-        await _db
-            .into(_db.pillarAssets)
-            .insertOnConflictUpdate(
-              PillarAssetsCompanion.insert(
-                pillarId: row.pillarId,
-                assetId: assetId,
-                quantity: row.estimatedQuantity,
-              ),
-            );
-      }
-    }
+    });
     _log.info('applyDraft: inserted ${ids.length} asset events');
     return ids;
   }
 
-  Future<
-    ({
-      List<PortfolioRebalanceDraftRow> rows,
-      List<PortfolioRebalanceUnresolved> unresolved,
-      double availableCashBase,
-      double targetBuyBase,
-      double executedBuyBase,
-      double buyShortfallBase,
-      double leftoverCashBase,
-      double grossSellBase,
-      double currentPortfolioValueBase,
-      double projectedPortfolioValueBase,
-    })
-  >
-  _buildPillarDraft({
+  Future<_PillarDraft> _buildPillarDraft({
     required Pillar pillar,
     required PortfolioRebalanceMode mode,
     required double contributionAmount,
@@ -184,46 +177,9 @@ class PortfolioRebalanceService {
     required bool resolveMissingTargets,
   }) async {
     final modelId = pillar.portfolioModelId;
-    if (modelId == null || modelId.isEmpty) {
-      return (
-        rows: const <PortfolioRebalanceDraftRow>[],
-        unresolved: [
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            reason: PortfolioRebalanceUnresolvedReason.missingModel,
-          ),
-        ],
-        availableCashBase: 0.0,
-        targetBuyBase: 0.0,
-        executedBuyBase: 0.0,
-        buyShortfallBase: 0.0,
-        leftoverCashBase: 0.0,
-        grossSellBase: 0.0,
-        currentPortfolioValueBase: 0.0,
-        projectedPortfolioValueBase: 0.0,
-      );
-    }
-    final model = await _models.getWithItems(modelId);
+    final model = modelId == null || modelId.isEmpty ? null : await _models.getWithItems(modelId);
     if (model == null) {
-      return (
-        rows: const <PortfolioRebalanceDraftRow>[],
-        unresolved: [
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            reason: PortfolioRebalanceUnresolvedReason.missingModel,
-          ),
-        ],
-        availableCashBase: 0.0,
-        targetBuyBase: 0.0,
-        executedBuyBase: 0.0,
-        buyShortfallBase: 0.0,
-        leftoverCashBase: 0.0,
-        grossSellBase: 0.0,
-        currentPortfolioValueBase: 0.0,
-        projectedPortfolioValueBase: 0.0,
-      );
+      return _noPillarDraft([_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingModel)]);
     }
 
     final unresolved = <PortfolioRebalanceUnresolved>[];
@@ -233,20 +189,17 @@ class PortfolioRebalanceService {
       baseCurrency: baseCurrency,
       unresolved: unresolved,
     );
+    // A held asset without a value (price, FX rate) or a convertible cost
+    // basis leaves the pillar's total — so every target amount and the tax on
+    // every sale — unknown. Drafting around it treated it as worth zero: it
+    // bought more of that asset and sold the rest to "reach" the weights.
+    if (unresolved.any((u) => _unvaluedHolding.contains(u.reason))) {
+      _log.warning('buildDraft: ${pillar.name} holds an asset that cannot be valued; no trades drafted');
+      return _noPillarDraft(unresolved);
+    }
     final resolvedValue = positions.fold<double>(0, (sum, p) => sum + p.currentValueBase);
     if (resolvedValue <= 0 && contributionAmount <= 0) {
-      return (
-        rows: const <PortfolioRebalanceDraftRow>[],
-        unresolved: unresolved,
-        availableCashBase: 0.0,
-        targetBuyBase: 0.0,
-        executedBuyBase: 0.0,
-        buyShortfallBase: 0.0,
-        leftoverCashBase: 0.0,
-        grossSellBase: 0.0,
-        currentPortfolioValueBase: resolvedValue,
-        projectedPortfolioValueBase: resolvedValue,
-      );
+      return _noPillarDraft(unresolved, valueBase: resolvedValue);
     }
 
     final targetsByIsin = {
@@ -257,15 +210,7 @@ class PortfolioRebalanceService {
     for (final position in positions) {
       final isin = position.isin;
       if (isin == null) {
-        unresolved.add(
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            assetId: position.asset.id,
-            assetName: position.asset.name,
-            reason: PortfolioRebalanceUnresolvedReason.missingIsin,
-          ),
-        );
+        unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingIsin, asset: position.asset));
         extraPositions.add(position);
       } else if (targetsByIsin.containsKey(isin)) {
         positionsByIsin.putIfAbsent(isin, () => []).add(position);
@@ -434,6 +379,40 @@ class PortfolioRebalanceService {
     );
   }
 
+  /// Unresolved reasons that mean a HELD asset has no usable value or cost
+  /// basis. Any one of them blocks its pillar's draft.
+  static const _unvaluedHolding = {
+    PortfolioRebalanceUnresolvedReason.missingMarketPrice,
+    PortfolioRebalanceUnresolvedReason.missingFxRate,
+    PortfolioRebalanceUnresolvedReason.missingCostBasisFx,
+  };
+
+  /// What [pillar] cannot draft, for [reason]: about [asset] when the reason
+  /// concerns one, with [isin] when it is about the asset's listing.
+  static PortfolioRebalanceUnresolved _unresolved(Pillar pillar, PortfolioRebalanceUnresolvedReason reason, {Asset? asset, String? isin}) =>
+      PortfolioRebalanceUnresolved(
+        pillarId: pillar.id,
+        pillarName: pillar.name,
+        assetId: asset?.id,
+        assetName: asset?.name,
+        isin: isin,
+        reason: reason,
+      );
+
+  /// A pillar that gets no trades: nothing spent, sold or bought.
+  _PillarDraft _noPillarDraft(List<PortfolioRebalanceUnresolved> unresolved, {double valueBase = 0.0}) => (
+    rows: const <PortfolioRebalanceDraftRow>[],
+    unresolved: unresolved,
+    availableCashBase: 0.0,
+    targetBuyBase: 0.0,
+    executedBuyBase: 0.0,
+    buyShortfallBase: 0.0,
+    leftoverCashBase: 0.0,
+    grossSellBase: 0.0,
+    currentPortfolioValueBase: valueBase,
+    projectedPortfolioValueBase: valueBase,
+  );
+
   PortfolioRebalanceDraftRow _placeholderBuyRow(_PositionGroup group, double desiredBase) {
     final placeholder = group.placeholder!;
     final description = placeholder.target.description.trim();
@@ -476,37 +455,17 @@ class PortfolioRebalanceService {
     if (asset == null) return null;
     final price = await _latestMarketPrice(asset.id, asOf);
     if (price == null) {
-      unresolved.add(
-        PortfolioRebalanceUnresolved(
-          pillarId: pillar.id,
-          pillarName: pillar.name,
-          assetId: asset.id,
-          assetName: asset.name,
-          isin: asset.isin,
-          reason: PortfolioRebalanceUnresolvedReason.missingMarketPrice,
-        ),
-      );
+      unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingMarketPrice, asset: asset, isin: asset.isin));
       return null;
     }
     final fxRate = asset.currency == baseCurrency ? 1.0 : await _rates.getRate(asset.currency, baseCurrency, asOf);
     if (fxRate == null || fxRate <= 0) {
-      unresolved.add(
-        PortfolioRebalanceUnresolved(
-          pillarId: pillar.id,
-          pillarName: pillar.name,
-          assetId: asset.id,
-          assetName: asset.name,
-          isin: asset.isin,
-          reason: PortfolioRebalanceUnresolvedReason.missingFxRate,
-        ),
-      );
+      unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingFxRate, asset: asset, isin: asset.isin));
       return null;
     }
     return _Position(
       pillar: pillar,
       asset: asset,
-      totalQuantity: 0,
-      pillarQuantity: 0,
       price: price,
       fxRate: fxRate,
       currentValueBase: 0,
@@ -737,7 +696,6 @@ class PortfolioRebalanceService {
   }
 
   Future<int> _createTargetAssetForDraftRow({
-    required PortfolioRebalanceDraft draft,
     required PortfolioRebalanceDraftRow row,
     required PortfolioRebalanceAutoCreateSpec spec,
     required DateTime appliedAt,
@@ -815,67 +773,34 @@ class PortfolioRebalanceService {
       if (asset == null) continue;
       final totalQty = await _totalQuantity(asset.id, asOf: asOf);
       if (totalQty <= 0) {
-        unresolved.add(
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            assetId: asset.id,
-            assetName: asset.name,
-            reason: PortfolioRebalanceUnresolvedReason.missingCurrentQuantity,
-          ),
-        );
+        unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingCurrentQuantity, asset: asset));
         continue;
       }
       final price = await _latestMarketPrice(asset.id, asOf);
       if (price == null) {
-        unresolved.add(
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            assetId: asset.id,
-            assetName: asset.name,
-            isin: asset.isin,
-            reason: PortfolioRebalanceUnresolvedReason.missingMarketPrice,
-          ),
-        );
+        unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingMarketPrice, asset: asset, isin: asset.isin));
         continue;
       }
       final fxRate = asset.currency == baseCurrency ? 1.0 : await _rates.getRate(asset.currency, baseCurrency, asOf);
       if (fxRate == null || fxRate <= 0) {
-        unresolved.add(
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            assetId: asset.id,
-            assetName: asset.name,
-            isin: asset.isin,
-            reason: PortfolioRebalanceUnresolvedReason.missingFxRate,
-          ),
-        );
+        unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingFxRate, asset: asset, isin: asset.isin));
         continue;
       }
       final investedBase = await _investedBase(asset, totalQty, baseCurrency, asOf);
       if (investedBase == null) {
-        unresolved.add(
-          PortfolioRebalanceUnresolved(
-            pillarId: pillar.id,
-            pillarName: pillar.name,
-            assetId: asset.id,
-            assetName: asset.name,
-            isin: asset.isin,
-            reason: PortfolioRebalanceUnresolvedReason.missingCostBasisFx,
-          ),
-        );
+        unresolved.add(_unresolved(pillar, PortfolioRebalanceUnresolvedReason.missingCostBasisFx, asset: asset, isin: asset.isin));
         continue;
       }
-      final bondDivisor = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
-      final currentValueBase = assignment.quantity * price / bondDivisor * fxRate;
+      final currentValueBase = computeAssetBaseValue(
+        quantity: assignment.quantity,
+        price: price,
+        bondDivisor: bondPriceDivisor(asset.instrumentType),
+        fxRate: fxRate,
+      )!;
       positions.add(
         _Position(
           pillar: pillar,
           asset: asset,
-          totalQuantity: totalQty,
-          pillarQuantity: assignment.quantity,
           price: price,
           fxRate: fxRate,
           currentValueBase: currentValueBase,
@@ -887,7 +812,7 @@ class PortfolioRebalanceService {
   }
 
   Future<double> _totalQuantity(int assetId, {required DateTime asOf}) async {
-    final endExclusive = asOf.add(const Duration(days: 1));
+    final endExclusive = startOfNextDay(asOf);
     final row = await _db
         .customSelect(
           'SELECT COALESCE(SUM(CASE WHEN type = ? THEN ABS(COALESCE(quantity, 0)) '
@@ -906,7 +831,7 @@ class PortfolioRebalanceService {
   }
 
   Future<double?> _latestMarketPrice(int assetId, DateTime asOf) async {
-    final endExclusive = asOf.add(const Duration(days: 1));
+    final endExclusive = startOfNextDay(asOf);
     final row = await _db
         .customSelect(
           'SELECT close_price FROM market_prices WHERE asset_id = ? AND date < ? ORDER BY date DESC LIMIT 1',
@@ -920,36 +845,50 @@ class PortfolioRebalanceService {
     return row?.readNullable<double>('close_price');
   }
 
+  /// Cost basis in base currency of the [currentQuantity] held on [asOf]:
+  /// each buy converted at its own rate, then the moving-average pool of
+  /// [CostBasisPool] — a full sale empties it, so a re-buy is not blended
+  /// with the disposed lot's price. Null when a buy cannot be converted.
   Future<double?> _investedBase(
     Asset asset,
     double currentQuantity,
     String baseCurrency,
     DateTime asOf,
   ) async {
-    final endExclusive = asOf.add(const Duration(days: 1));
+    final endExclusive = startOfNextDay(asOf);
     final events =
-        await (_db.select(_db.assetEvents)..where(
-              (e) => e.assetId.equals(asset.id) & e.type.equalsValue(EventType.buy) & e.valueDate.isSmallerThanValue(endExclusive),
-            ))
+        await (_db.select(_db.assetEvents)
+              ..where(
+                (e) =>
+                    e.assetId.equals(asset.id) &
+                    e.type.isInValues(const [EventType.buy, EventType.sell]) &
+                    e.valueDate.isSmallerThanValue(endExclusive),
+              )
+              ..orderBy([(e) => OrderingTerm.asc(e.valueDate), (e) => OrderingTerm.asc(e.id)]))
             .get();
-    var buyBase = 0.0;
-    var buyQty = 0.0;
+    final pool = CostBasisPool();
     for (final event in events) {
+      final quantity = (event.quantity ?? 0.0).abs();
+      if (event.type == EventType.sell) {
+        pool.sell(quantity);
+        continue;
+      }
       final amount = await _eventAmountBase(event, baseCurrency);
       if (amount == null) return null;
-      buyBase += amount.abs();
-      buyQty += event.quantity?.abs() ?? 0;
+      pool.buy(amount, quantity);
     }
-    if (buyQty <= 0) return buyBase;
-    if (currentQuantity <= 0) return 0;
-    return buyBase / buyQty * currentQuantity;
+    return pool.costBasis(heldQuantity: currentQuantity);
   }
 
   Future<double?> _eventAmountBase(AssetEvent event, String baseCurrency) async {
     final amount = event.amount.abs();
     if (event.currency == baseCurrency) return amount;
-    final stored = event.exchangeRate;
-    if (stored != null && stored > 0) return amount / stored;
+    // Only a rate quoted against the current base converts correctly; one
+    // stamped with a previous base is preserved data (see
+    // AssetEventService.isExchangeRateUsableFor).
+    if (AssetEventService.isExchangeRateUsableFor(event, baseCurrency)) {
+      return amount / event.exchangeRate!;
+    }
     final baseToEvent = await _rates.getRate(baseCurrency, event.currency, event.valueDate);
     if (baseToEvent != null && baseToEvent > 0) return amount / baseToEvent;
     final eventToBase = await _rates.getRate(event.currency, baseCurrency, event.valueDate);
@@ -978,9 +917,6 @@ class PortfolioRebalanceService {
 
   Future<double> _defaultTaxRate() async {
     final row = await (_db.select(_db.appConfigs)..where((c) => c.key.equals('TAX_RATE'))).getSingleOrNull();
-    final parsed = double.tryParse(row?.value ?? '');
-    return (parsed ?? 0.26).clamp(0.0, 1.0);
+    return parseStoredTaxRate(row?.value);
   }
-
-  DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
 }

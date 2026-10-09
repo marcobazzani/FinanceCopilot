@@ -8,12 +8,18 @@ import '../../../l10n/app_strings.dart';
 import 'package:finance_copilot/services/pillars/pillar_performance.dart';
 import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/footnote.dart';
 import '../../widgets/global_app_bar_actions.dart';
+import '../../widgets/mobile_pull_to_refresh.dart';
 import '../../widgets/privacy_text.dart';
+import '../../widgets/swipe_to_delete.dart';
 import '../../../utils/formatters.dart' as fmt;
+import '../dashboard/dashboard_screen.dart' show currencySymbol;
 import 'pillar_create_dialog.dart';
 import 'pillar_detail_screen.dart';
 import 'portfolio_model_dialog.dart';
+import 'portfolio_model_tree_data.dart';
 import 'rebalance_preview_dialog.dart';
 
 class PillarsScreen extends ConsumerStatefulWidget {
@@ -126,7 +132,7 @@ class _PillarList extends ConsumerWidget {
 
     return pillarsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('$e')),
+      error: (e, _) => Center(child: Text(s.error(e))),
       data: (pillars) {
         final assignments = assignmentsAsync.value ?? const [];
         final performanceByPillar = performanceAsync.value ?? const <String, PillarPerformanceSnapshot>{};
@@ -134,68 +140,72 @@ class _PillarList extends ConsumerWidget {
         int assetCount(String id) => assignments.where((x) => x.pillarId == id).length;
 
         if (pillars.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    kind == PillarKind.virtual ? Icons.folder_special_outlined : Icons.view_quilt_outlined,
-                    size: 48,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    kind == PillarKind.virtual ? s.virtualPortfoliosEmptyTitle : s.pillarsEmptyTitle,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: Text(kind == PillarKind.virtual ? s.virtualPortfoliosEmptyCta : s.pillarsEmptyCta),
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (_) => PillarCreateDialog(kind: kind),
-                    ),
-                  ),
-                ],
+          final isVirtual = kind == PillarKind.virtual;
+          return Padding(
+            padding: const EdgeInsets.all(32),
+            child: EmptyState(
+              icon: isVirtual ? Icons.folder_special_outlined : Icons.view_quilt_outlined,
+              message: isVirtual ? s.virtualPortfoliosEmptyTitle : s.pillarsEmptyTitle,
+              actionLabel: isVirtual ? s.virtualPortfoliosEmptyCta : s.pillarsEmptyCta,
+              onAction: () => showDialog(
+                context: context,
+                builder: (_) => PillarCreateDialog(kind: kind),
               ),
             ),
           );
         }
 
         // Unassigned card only makes sense for standard pillars (the partition model).
+        // An asset without a price or exchange rate has no value: it is left
+        // out of the card's value (never counted as 0) and counted under it.
         final showUnassigned = kind == PillarKind.standard;
         double unassignedValue = 0;
         int unassignedCount = 0;
+        int unassignedUnpriced = 0;
         if (showUnassigned) {
-          final marketValues = ref.watch(assetMarketValuesProvider).value ?? {};
-          unassignedFracs.forEach((assetId, frac) {
-            unassignedValue += (marketValues[assetId] ?? 0) * frac;
-          });
-          unassignedCount = unassignedFracs.values.where((f) => f > 0).length;
+          final marketValues = ref.watch(assetMarketValuesProvider).value;
+          if (marketValues != null) {
+            unassignedFracs.forEach((assetId, frac) {
+              if (frac <= 0) return;
+              unassignedCount++;
+              final mv = marketValues[assetId];
+              if (mv == null) {
+                unassignedUnpriced++;
+              } else {
+                unassignedValue += mv * frac;
+              }
+            });
+          }
         }
 
-        return ListView(
-          padding: const EdgeInsets.all(8),
-          children: [
-            for (final p in pillars)
-              _PillarCard(
-                pillar: p,
-                performance: performanceByPillar[p.id],
-                assetCount: assetCount(p.id),
-                baseCurrency: baseCurrency,
-                locale: locale,
-              ),
-            if (showUnassigned && unassignedValue > 0)
-              _UnassignedCard(
-                value: unassignedValue,
-                assetCount: unassignedCount,
-                baseCurrency: baseCurrency,
-                locale: locale,
-              ),
-          ],
+        return MobilePullToRefresh(
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(8),
+            children: [
+              for (final p in pillars)
+                SwipeToDelete.custom(
+                  key: ValueKey('dismiss_pillar_${p.id}'),
+                  // The same confirmation as the pillar's own trashcan.
+                  confirmAndDelete: () => confirmAndDeletePillar(context, ref, p),
+                  child: _PillarCard(
+                    pillar: p,
+                    performance: performanceByPillar[p.id],
+                    assetCount: assetCount(p.id),
+                    baseCurrency: baseCurrency,
+                    locale: locale,
+                  ),
+                ),
+              if (showUnassigned && (unassignedValue > 0 || unassignedUnpriced > 0))
+                _UnassignedCard(
+                  value: unassignedCount > unassignedUnpriced ? unassignedValue : null,
+                  assetCount: unassignedCount,
+                  unpricedCount: unassignedUnpriced,
+                  baseCurrency: baseCurrency,
+                  locale: locale,
+                ),
+            ],
+          ),
         );
       },
     );
@@ -220,9 +230,20 @@ class _PillarCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
-    final value = performance?.marketValue ?? 0;
-    final fmtCur = NumberFormat.simpleCurrency(locale: locale, name: baseCurrency);
-    final progress = (pillar.targetValue != null && pillar.targetValue! > 0) ? (value / pillar.targetValue!).clamp(0.0, 1.0) : null;
+    final snap = performance;
+    // The value and the performance leave out the assets without a value
+    // (counted under the card); the asset count does not.
+    final excluded = snap?.excludedAssetCount ?? 0;
+    // Unknown while the performance loads or when it failed, and when every
+    // asset is left out: a dash, not 0.
+    final value = (snap == null || (excluded > 0 && snap.marketValue == 0 && snap.netInvested == 0)) ? null : snap.marketValue;
+    // The target is stored in its own currency, not the base one.
+    final fmtCur = fmt.currencyFormat(locale, currencySymbol(pillar.targetCurrency));
+    final hasTarget = pillar.targetValue != null && pillar.targetValue! > 0;
+    // The progress compares the value with the target in the same currency;
+    // without the value or an exchange rate for the target there is none.
+    final targetInBase = pillarTargetInBase(ref, pillar, baseCurrency);
+    final progress = (value == null || targetInBase == null) ? null : (value / targetInBase).clamp(0.0, 1.0);
     return Card(
       child: ListTile(
         leading: const Icon(Icons.view_quilt_outlined, size: 28),
@@ -231,26 +252,29 @@ class _PillarCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
-            if (pillar.targetValue != null && pillar.targetValue! > 0) ...[
+            _ValueAndCount(value: value, baseCurrency: baseCurrency, assetCount: assetCount, locale: locale, s: s),
+            if (hasTarget) ...[
               const SizedBox(height: 6),
-              LinearProgressIndicator(value: progress),
-              const SizedBox(height: 4),
-              PrivacyText(
-                '${(progress! * 100).toStringAsFixed(0)}% · ${s.pillarTarget(fmtCur.format(pillar.targetValue))}',
-                style: Theme.of(context).textTheme.bodySmall,
+              if (progress != null) ...[
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 4),
+              ],
+              // Progress toward the target is a percentage (shape); the target
+              // amount itself is money and stays masked.
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${progress == null ? '—' : NumberFormat.percentPattern(locale).format(progress)} · ',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  PrivacyText(s.pillarTarget(fmtCur.format(pillar.targetValue)), style: Theme.of(context).textTheme.bodySmall),
+                ],
               ),
             ],
             const SizedBox(height: 4),
-            PrivacyText(
-              _pillarPerformanceSummary(
-                s: s,
-                locale: locale,
-                baseCurrency: baseCurrency,
-                snapshot: performance,
-              ),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            _PerformanceSummary(s: s, locale: locale, baseCurrency: baseCurrency, snapshot: performance),
+            if (excluded > 0) Footnote(s.pillarValueAndPerformanceExcluded(excluded)),
           ],
         ),
         trailing: const Icon(Icons.chevron_right),
@@ -266,38 +290,99 @@ class _PillarCard extends ConsumerWidget {
   }
 }
 
-String _pillarPerformanceSummary({
-  required AppStrings s,
-  required String locale,
-  required String baseCurrency,
-  required PillarPerformanceSnapshot? snapshot,
-}) {
-  if (snapshot == null) {
-    return '${s.pillarAbsoluteReturnShort} — · ${s.pillarTwrrShort} — · ${s.pillarCagrShort} —';
+/// Pillar value plus how many assets it holds. The value is position size and
+/// is masked; an unknown value (null) is a plain dash. The asset count is a
+/// count of entities and stays readable.
+class _ValueAndCount extends StatelessWidget {
+  final double? value;
+  final String baseCurrency;
+  final int assetCount;
+  final String locale;
+  final AppStrings s;
+
+  const _ValueAndCount({
+    required this.value,
+    required this.baseCurrency,
+    required this.assetCount,
+    required this.locale,
+    required this.s,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Wrap so a long amount plus the asset count degrades to a second line
+    // instead of overflowing the ListTile subtitle.
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (value == null) const Text('—') else PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency'),
+        Text(' · ${s.pillarAssetCount(assetCount)}'),
+      ],
+    );
   }
-  final amountFormat = fmt.amountFormat(locale);
-  final percentFormat = NumberFormat.percentPattern(locale)
-    ..minimumFractionDigits = 1
-    ..maximumFractionDigits = 1;
-  final absAmount = (snapshot.marketValue == 0 && snapshot.netInvested == 0)
-      ? '—'
-      : '${amountFormat.format(snapshot.absoluteReturnAmount)} $baseCurrency';
-  final absPct = snapshot.absoluteReturnPct == null ? '—' : percentFormat.format(snapshot.absoluteReturnPct);
-  final twrr = snapshot.twrr == null ? '—' : percentFormat.format(snapshot.twrr);
-  final cagr = snapshot.cagr == null ? '—' : percentFormat.format(snapshot.cagr);
-  return '${s.pillarAbsoluteReturnShort} $absAmount ($absPct) · '
-      '${s.pillarTwrrShort} $twrr · '
-      '${s.pillarCagrShort} $cagr';
+}
+
+/// Absolute return / TWRR / CAGR on one line. Only the return AMOUNT is masked;
+/// the three percentages are shape, and blurring them to protect one number hid
+/// exactly what privacy mode is supposed to keep visible.
+class _PerformanceSummary extends StatelessWidget {
+  final AppStrings s;
+  final String locale;
+  final String baseCurrency;
+  final PillarPerformanceSnapshot? snapshot;
+
+  const _PerformanceSummary({
+    required this.s,
+    required this.locale,
+    required this.baseCurrency,
+    required this.snapshot,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    final snap = snapshot;
+    if (snap == null) {
+      return Text('${s.pillarAbsoluteReturnShort} — · ${s.pillarTwrrShort} — · ${s.pillarCagrShort} —', style: style);
+    }
+    final percentFormat = NumberFormat.percentPattern(locale)
+      ..minimumFractionDigits = 1
+      ..maximumFractionDigits = 1;
+    final absAmount = (snap.marketValue == 0 && snap.netInvested == 0)
+        ? '—'
+        : '${fmt.amountFormat(locale).format(snap.absoluteReturnAmount)} $baseCurrency';
+    final absPct = snap.absoluteReturnPct == null ? '—' : percentFormat.format(snap.absoluteReturnPct);
+    final twrr = snap.twrr == null ? '—' : percentFormat.format(snap.twrr);
+    final cagr = snap.cagr == null ? '—' : percentFormat.format(snap.cagr);
+    return Row(
+      children: [
+        Text('${s.pillarAbsoluteReturnShort} ', style: style),
+        PrivacyText(absAmount, style: style),
+        Expanded(
+          child: Text(
+            ' ($absPct) · ${s.pillarTwrrShort} $twrr · ${s.pillarCagrShort} $cagr',
+            style: style,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _UnassignedCard extends ConsumerWidget {
-  final double value;
+  /// Value of the priced assets; null when none of them has one.
+  final double? value;
   final int assetCount;
+
+  /// Assets left out of [value]: no price or exchange rate.
+  final int unpricedCount;
   final String baseCurrency;
   final String locale;
   const _UnassignedCard({
     required this.value,
     required this.assetCount,
+    required this.unpricedCount,
     required this.baseCurrency,
     required this.locale,
   });
@@ -309,7 +394,13 @@ class _UnassignedCard extends ConsumerWidget {
       child: ListTile(
         leading: const Icon(Icons.help_outline, size: 28),
         title: Text(s.pillarUnassigned),
-        subtitle: PrivacyText('${fmt.amountFormat(locale).format(value)} $baseCurrency · ${s.pillarAssetCount(assetCount)}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ValueAndCount(value: value, baseCurrency: baseCurrency, assetCount: assetCount, locale: locale, s: s),
+            if (unpricedCount > 0) Footnote(s.pillarUnpricedExcluded(unpricedCount)),
+          ],
+        ),
       ),
     );
   }
@@ -372,59 +463,69 @@ class _PortfolioModelsTab extends ConsumerWidget {
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (models) {
         if (models.isEmpty) {
-          return Center(child: Text(s.portfolioModelsEmpty));
+          return Padding(
+            padding: const EdgeInsets.all(32),
+            child: EmptyState(icon: Icons.inventory_2_outlined, message: s.portfolioModelsEmpty),
+          );
         }
-        final builtIn = models.where((m) => m.isBuiltIn).toList();
-        final custom = models.where((m) => !m.isBuiltIn).toList();
-        final builtInYears = builtIn.map((m) => m.year ?? 0).toSet().toList()..sort();
-        return ListView(
-          padding: const EdgeInsets.all(8),
-          children: [
-            if (builtIn.isNotEmpty) ...[
-              _SectionHeader(label: s.portfolioModelsBuiltIn),
-              for (final year in builtInYears)
-                _BuiltInYearGroup(
-                  s: s,
-                  year: year,
-                  models: builtIn.where((m) => (m.year ?? 0) == year).toList(),
-                ),
+        // Mini first: the order the tab has always listed the variants in.
+        final tree = buildPortfolioModelTreeData(models: models, preferredBuiltInVariant: PortfolioModelVariant.mini);
+        final years = {
+          for (final variant in tree.builtInGroups)
+            for (final group in variant.years) group.year,
+        }.toList()..sort();
+        return MobilePullToRefresh(
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(8),
+            children: [
+              if (years.isNotEmpty) ...[
+                _SectionHeader(label: s.portfolioModelsBuiltIn),
+                for (final year in years) _BuiltInYearGroup(s: s, year: year, variants: tree.builtInGroups),
+              ],
+              if (tree.customModels.isNotEmpty) ...[
+                _SectionHeader(label: s.portfolioModelsCustom),
+                for (final model in tree.customModels)
+                  SwipeToDelete.custom(
+                    key: ValueKey('dismiss_model_${model.id}'),
+                    confirmAndDelete: () => confirmAndDeletePortfolioModel(context, ref, model),
+                    child: _PortfolioModelTile(model: model),
+                  ),
+              ],
             ],
-            if (custom.isNotEmpty) ...[
-              _SectionHeader(label: s.portfolioModelsCustom),
-              for (final model in custom) _PortfolioModelCard(model: model),
-            ],
-          ],
+          ),
         );
       },
     );
   }
 }
 
+/// How far a model tile, and each level of the built-in tree, indents its
+/// children.
+const _nestedIndent = EdgeInsetsDirectional.only(start: 16);
+
 class _BuiltInYearGroup extends StatelessWidget {
   final AppStrings s;
   final int year;
-  final List<PortfolioModel> models;
+
+  /// Every built-in variant with its models by year, in the tab's order.
+  final List<PortfolioModelTreeVariantGroup> variants;
 
   const _BuiltInYearGroup({
     required this.s,
     required this.year,
-    required this.models,
+    required this.variants,
   });
 
   @override
   Widget build(BuildContext context) {
-    final variants = [PortfolioModelVariant.mini, PortfolioModelVariant.full];
     return ExpansionTile(
-      tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-      childrenPadding: const EdgeInsets.only(left: 8),
-      title: Text('$year'),
+      childrenPadding: _nestedIndent,
+      title: Text('$year', style: const TextStyle(fontWeight: FontWeight.w600)),
       children: [
         for (final variant in variants)
-          _BuiltInVariantGroup(
-            s: s,
-            variant: variant,
-            models: models.where((m) => m.variant == variant).toList()..sort((a, b) => (a.equityPercent ?? 0).compareTo(b.equityPercent ?? 0)),
-          ),
+          if (variant.years.where((group) => group.year == year).firstOrNull case final group?)
+            _BuiltInVariantGroup(s: s, variant: variant.variant, models: group.models),
       ],
     );
   }
@@ -433,6 +534,8 @@ class _BuiltInYearGroup extends StatelessWidget {
 class _BuiltInVariantGroup extends StatelessWidget {
   final AppStrings s;
   final PortfolioModelVariant variant;
+
+  /// Sorted by equity, then name.
   final List<PortfolioModel> models;
 
   const _BuiltInVariantGroup({
@@ -443,31 +546,16 @@ class _BuiltInVariantGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (models.isEmpty) return const SizedBox.shrink();
-    final title = switch (variant) {
-      PortfolioModelVariant.full => s.portfolioModelFull,
-      PortfolioModelVariant.mini => s.portfolioModelMini,
-      PortfolioModelVariant.custom => s.portfolioModelCustom,
-    };
     final equityGroups = <int, List<PortfolioModel>>{};
     for (final model in models) {
       equityGroups.putIfAbsent(model.equityPercent ?? 0, () => []).add(model);
     }
-    final equities = equityGroups.keys.toList()..sort();
-    return Padding(
-      padding: const EdgeInsets.only(left: 16),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-        childrenPadding: const EdgeInsets.only(left: 8),
-        title: Text(title),
-        children: [
-          for (final equity in equities)
-            _BuiltInEquityGroup(
-              equityPercent: equity,
-              models: equityGroups[equity]!..sort((a, b) => a.name.compareTo(b.name)),
-            ),
-        ],
-      ),
+    return ExpansionTile(
+      childrenPadding: _nestedIndent,
+      title: Text(portfolioModelVariantLabel(s, variant), style: const TextStyle(fontWeight: FontWeight.w600)),
+      children: [
+        for (final MapEntry(key: equity, value: group) in equityGroups.entries) _BuiltInEquityGroup(equityPercent: equity, models: group),
+      ],
     );
   }
 }
@@ -483,75 +571,41 @@ class _BuiltInEquityGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 16),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 8),
-        childrenPadding: const EdgeInsets.only(left: 8),
-        title: Text('$equityPercent%'),
-        children: [
-          for (final model in models) _BuiltInModelTile(model: model),
-        ],
-      ),
-    );
-  }
-}
-
-class _BuiltInModelTile extends ConsumerWidget {
-  final PortfolioModel model;
-
-  const _BuiltInModelTile({required this.model});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(appStringsProvider);
-    final itemsAsync = ref.watch(portfolioModelItemsProvider(model.id));
     return ExpansionTile(
-      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-      childrenPadding: const EdgeInsets.only(left: 16, bottom: 8),
-      leading: const Icon(Icons.inventory_2_outlined),
-      title: Text(model.name),
-      subtitle: Text(_subtitle(s, model)),
-      children: itemsAsync.when(
-        loading: () => const [
-          Padding(
-            padding: EdgeInsets.all(16),
-            child: LinearProgressIndicator(),
-          ),
-        ],
-        error: (e, _) => [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(s.error(e)),
-          ),
-        ],
-        data: (items) => [
-          for (final item in items)
-            ListTile(
-              dense: true,
-              title: Text(item.isin),
-              subtitle: Text(item.description),
-              trailing: Text('${item.targetWeight.toStringAsFixed(2)}%'),
-            ),
-        ],
-      ),
+      childrenPadding: _nestedIndent,
+      title: Text('$equityPercent%', style: const TextStyle(fontWeight: FontWeight.w600)),
+      children: [
+        for (final model in models) _PortfolioModelTile(model: model),
+      ],
     );
   }
-
-  String _subtitle(AppStrings s, PortfolioModel model) {
-    final parts = <String>[];
-    if (model.year != null) parts.add(s.portfolioModelYear(model.year!));
-    if (model.equityPercent != null) {
-      parts.add(s.portfolioModelEquity(model.equityPercent!));
-    }
-    parts.add(switch (model.variant) {
-      PortfolioModelVariant.full => s.portfolioModelFull,
-      PortfolioModelVariant.mini => s.portfolioModelMini,
-      PortfolioModelVariant.custom => s.portfolioModelCustom,
-    });
-    return parts.join(' · ');
-  }
 }
+
+/// The rows of an expanded portfolio model — ISIN, description and target
+/// weight (in the locale) — or a progress bar / error line while they load.
+List<Widget> _portfolioModelItemTiles(AppStrings s, String locale, AsyncValue<List<PortfolioModelItem>> itemsAsync) => itemsAsync.when(
+  loading: () => const [
+    Padding(
+      padding: EdgeInsets.all(16),
+      child: LinearProgressIndicator(),
+    ),
+  ],
+  error: (e, _) => [
+    Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(s.error(e)),
+    ),
+  ],
+  data: (items) => [
+    for (final item in items)
+      ListTile(
+        dense: true,
+        title: Text(item.isin),
+        subtitle: Text(item.description),
+        trailing: Text('${NumberFormat('0.00', locale).format(item.targetWeight)}%'),
+      ),
+  ],
+);
 
 class _SectionHeader extends StatelessWidget {
   final String label;
@@ -567,61 +621,36 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _PortfolioModelCard extends ConsumerWidget {
+/// A portfolio model: its rows when expanded. A built-in model is read-only;
+/// a custom one then offers the action that edits it in its dialog (which
+/// also deletes it; the row swipes to delete as well).
+class _PortfolioModelTile extends ConsumerWidget {
   final PortfolioModel model;
 
-  const _PortfolioModelCard({required this.model});
+  const _PortfolioModelTile({required this.model});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? 'en';
     final itemsAsync = ref.watch(portfolioModelItemsProvider(model.id));
-    return Card(
-      child: ExpansionTile(
-        leading: Icon(model.isBuiltIn ? Icons.inventory_2_outlined : Icons.tune),
-        title: Text(model.name),
-        subtitle: Text(_subtitle(s, model)),
-        trailing: model.isBuiltIn
-            ? null
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: s.edit,
-                    icon: const Icon(Icons.edit),
-                    onPressed: () => _edit(context, ref),
-                  ),
-                  IconButton(
-                    tooltip: s.delete,
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _delete(context, ref),
-                  ),
-                ],
-              ),
-        children: itemsAsync.when(
-          loading: () => const [
-            Padding(
-              padding: EdgeInsets.all(16),
-              child: LinearProgressIndicator(),
+    return ExpansionTile(
+      childrenPadding: _nestedIndent,
+      leading: Icon(model.isBuiltIn ? Icons.inventory_2_outlined : Icons.tune),
+      title: Text(model.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(portfolioModelSummary(s, model), style: Theme.of(context).textTheme.bodySmall),
+      children: [
+        ..._portfolioModelItemTiles(s, locale, itemsAsync),
+        if (!model.isBuiltIn)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              icon: const Icon(Icons.edit),
+              label: Text(s.edit),
+              onPressed: () => _edit(context, ref),
             ),
-          ],
-          error: (e, _) => [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(s.error(e)),
-            ),
-          ],
-          data: (items) => [
-            for (final item in items)
-              ListTile(
-                dense: true,
-                title: Text(item.isin),
-                subtitle: Text(item.description),
-                trailing: Text('${item.targetWeight.toStringAsFixed(2)}%'),
-              ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 
@@ -632,37 +661,5 @@ class _PortfolioModelCard extends ConsumerWidget {
       context: context,
       builder: (_) => PortfolioModelDialog(existing: model, existingItems: items),
     );
-  }
-
-  Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final s = ref.read(appStringsProvider);
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.delete),
-        content: Text(s.portfolioModelDeleteConfirm),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.delete)),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      await ref.read(portfolioModelServiceProvider).deleteCustomModel(model.id);
-    }
-  }
-
-  String _subtitle(AppStrings s, PortfolioModel model) {
-    final parts = <String>[];
-    if (model.year != null) parts.add(s.portfolioModelYear(model.year!));
-    if (model.equityPercent != null) {
-      parts.add(s.portfolioModelEquity(model.equityPercent!));
-    }
-    parts.add(switch (model.variant) {
-      PortfolioModelVariant.full => s.portfolioModelFull,
-      PortfolioModelVariant.mini => s.portfolioModelMini,
-      PortfolioModelVariant.custom => s.portfolioModelCustom,
-    });
-    return parts.join(' · ');
   }
 }

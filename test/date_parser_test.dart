@@ -84,6 +84,16 @@ void main() {
       expect(result.day, 15);
     });
 
+    test('rejects 8-digit numbers that are not calendar dates', () {
+      // Account/reference numbers grabbed by a loose regex must never
+      // roll over into a "date" (86547083 used to become 8659-12-22).
+      expect(() => parseDate('86547083'), throwsFormatException);
+      expect(() => parseDate('00623446'), throwsFormatException);
+      expect(tryParseDate('20241301'), isNull, reason: 'month 13');
+      expect(tryParseDate('20240100'), isNull, reason: 'day 0');
+      expect(tryParseDate('20240229'), isNotNull, reason: 'a real date still parses');
+    });
+
     test('parses 2-digit year "15/01/24"', () {
       final result = parseDate('15/01/24');
       expect(result.year, 2024);

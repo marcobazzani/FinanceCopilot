@@ -121,39 +121,33 @@ List<KpiCategory> computeKpis({
       name: s.kpiLiquidityRatio,
       value: liquidityRatio,
       rating: liquidityRating,
-      description: s.kpiLiquidityDesc(
-        liquidityRating == Rating.ottimo
-            ? 'ottimo'
-            : liquidityRating == Rating.buono
-            ? 'buono'
-            : liquidityRating == Rating.sufficiente
-            ? 'sufficiente'
-            : 'scarso',
-      ),
-      formula: 'Cash / Net Worth x 100\n${n(cash)} / ${n(netWorth)} x 100',
+      description: switch (liquidityRating) {
+        Rating.ottimo => s.kpiLiquidityDescOttimo,
+        Rating.buono => s.kpiLiquidityDescBuono,
+        Rating.sufficiente => s.kpiLiquidityDescSufficiente,
+        _ => s.kpiLiquidityDescScarso,
+      },
+      formula: '${s.kpiFormulaLiquidityRatio}\n${n(cash)} / ${n(netWorth)} x 100',
     ),
     HealthKpi(
       name: s.kpiExpenseCoverage,
       value: coverageMonths,
-      unit: unitMonths(s),
+      unit: s.kpiUnitMonths,
       rating: coverageRating,
       description: s.kpiCoverageDesc(coverageMonths.round()),
-      formula: 'Cash / Monthly Expenses\n${n(cash)} / ${n(monthlyExpenses)}',
+      formula: '${s.kpiFormulaExpenseCoverage}\n${n(cash)} / ${n(monthlyExpenses)}',
     ),
     HealthKpi(
       name: s.kpiSavingsRate,
       value: savingsRate,
       rating: savingsRating,
-      description: s.kpiSavingsDesc(
-        savingsRating == Rating.ottimo
-            ? 'ottimo'
-            : savingsRating == Rating.buono
-            ? 'buono'
-            : savingsRating == Rating.sufficiente
-            ? 'sufficiente'
-            : 'scarso',
-      ),
-      formula: 'Savings / Income x 100\n${n(annualSavings)} / ${n(annualIncome)} x 100',
+      description: switch (savingsRating) {
+        Rating.ottimo => s.kpiSavingsDescOttimo,
+        Rating.buono => s.kpiSavingsDescBuono,
+        Rating.sufficiente => s.kpiSavingsDescSufficiente,
+        _ => s.kpiSavingsDescScarso,
+      },
+      formula: '${s.kpiFormulaSavingsRate}\n${n(annualSavings)} / ${n(annualIncome)} x 100',
     ),
   ];
 
@@ -173,22 +167,24 @@ List<KpiCategory> computeKpis({
       name: s.kpiInvestmentWeight,
       value: investWeight,
       rating: investWeightRating,
-      description: s.kpiInvestWeightDesc(investWeightRating.name),
-      formula: 'Investments / Gross Assets x 100\n${n(investments)} / ${n(grossAssets)} x 100',
+      description: s.kpiInvestWeightDescText,
+      formula: '${s.kpiFormulaInvestmentWeight}\n${n(investments)} / ${n(grossAssets)} x 100',
     ),
     HealthKpi(
       name: s.kpiLiquidAssetRatio,
       value: liquidAssetRatio,
       rating: liquidAssetRating,
-      description: s.kpiLiquidAssetDesc(liquidAssetRating == Rating.ottimo || liquidAssetRating == Rating.buono ? 'ottimo' : 'altro'),
-      formula: '(Cash + Liquid Investments) / Gross Assets x 100\n(${n(cash)} + ${n(liquidInvestments)}) / ${n(grossAssets)} x 100',
+      description: liquidAssetRating == Rating.ottimo || liquidAssetRating == Rating.buono ? s.kpiLiquidAssetDescGood : s.kpiLiquidAssetDescLow,
+      formula: '${s.kpiFormulaLiquidAssetRatio}\n(${n(cash)} + ${n(liquidInvestments)}) / ${n(grossAssets)} x 100',
     ),
     HealthKpi(
       name: s.kpiIncomeToWealth,
       value: incomeToWealth,
       rating: incomeToWealthRating,
-      description: s.kpiIncomeWealthDesc(incomeToWealthRating == Rating.ottimo || incomeToWealthRating == Rating.buono ? 'ottimo' : 'altro'),
-      formula: 'Income (12m) / Net Worth x 100\n${n(incomeForWealth)} / ${n(netWorth)} x 100',
+      description: incomeToWealthRating == Rating.ottimo || incomeToWealthRating == Rating.buono
+          ? s.kpiIncomeWealthDescGood
+          : s.kpiIncomeWealthDescLow,
+      formula: '${s.kpiFormulaIncomeToWealth}\n${n(incomeForWealth)} / ${n(netWorth)} x 100',
     ),
   ];
 
@@ -198,7 +194,13 @@ List<KpiCategory> computeKpis({
   ];
 }
 
-String unitMonths(AppStrings s) => s.ratingOttimo == 'Ottimo' ? ' mesi' : ' months';
+/// The FI Target Progress description for [rating] (see [rateFire]).
+String fireDescription(Rating rating, AppStrings s) => switch (rating) {
+  Rating.ottimo => s.kpiFireDescOttimo,
+  Rating.buono => s.kpiFireDescBuono,
+  Rating.sufficiente => s.kpiFireDescSufficiente,
+  _ => s.kpiFireDescScarso,
+};
 
 /// Compute portfolio price change % from a list of (previousValue, currentValue) pairs.
 /// Each pair represents an asset's base-currency value at the reference date vs today.
@@ -230,6 +232,15 @@ Rating rateHhi(double hhi) => hhi < 1500
     ? Rating.ottimo
     : hhi < 2500
     ? Rating.buono
+    : Rating.scarso;
+
+/// Rate a weighted TER (%): the cheaper, the better.
+Rating rateTer(double ter) => ter <= 0.2
+    ? Rating.ottimo
+    : ter <= 0.5
+    ? Rating.buono
+    : ter <= 1.0
+    ? Rating.sufficiente
     : Rating.scarso;
 
 // ── FIRE (Financial Independence, Retire Early) ──

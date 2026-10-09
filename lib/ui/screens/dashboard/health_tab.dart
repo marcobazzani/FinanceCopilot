@@ -16,31 +16,42 @@ class _FinancialHealthTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(activeAssetsProvider);
+    final statsAsync = ref.watch(assetStatsProvider);
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final accountStatsAsync = ref.watch(convertedAccountStatsProvider);
     final allDataAsync = ref.watch(allSeriesDataProvider);
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
+    // Income records left out of the yearly figures for want of a rate.
+    final incomeRowsWithoutRate = ref.watch(incomeRowsWithoutRateProvider).value;
     final locale = ref.watch(appLocaleProvider).value ?? 'en_US';
     final swrPct = ref.watch(fireSwrProvider).value ?? kDefaultFireSwrPct;
 
-    // Price changes for Today, YTD, All — use midnight dates to match History tab
+    // Price changes for Today, YTD, All — use midnight dates to match History
+    // tab. Yesterday is one calendar day back: 24 hours before a local
+    // midnight is 23:00 two days before (or 01:00) around a daylight-saving
+    // change.
     final today = ref.watch(currentDateProvider);
-    final todayChanges = ref.watch(assetDailyChangesProvider(today.subtract(const Duration(days: 1))));
+    final todayChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, today.month, today.day - 1)));
     final ytdChanges = ref.watch(assetDailyChangesProvider(DateTime(today.year, 1, 1)));
     final allChanges = ref.watch(assetDailyChangesProvider(DateTime(2000, 1, 1)));
     final pctFmt = NumberFormat('0.00', locale);
 
-    // Wait for all required data before rendering — avoids flicker with zeros
-    if (assetsAsync.isLoading || marketValuesAsync.isLoading || accountStatsAsync.isLoading || allDataAsync.isLoading) {
+    // Wait for every input before rendering: a KPI computed from an input
+    // still loading, or one that failed, would read its placeholder 0 as a
+    // real figure.
+    final inputs = <AsyncValue<Object?>>[assetsAsync, statsAsync, marketValuesAsync, accountStatsAsync, allDataAsync, ieAsync];
+    if (inputs.any((a) => a.isLoading)) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (assetsAsync.hasError) return Center(child: Text(s.error(assetsAsync.error ?? '')));
+    final failed = inputs.where((a) => a.hasError).firstOrNull;
+    if (failed != null) return Center(child: Text(s.error(failed.error!)));
 
     return assetsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (assets) {
         final marketValues = marketValuesAsync.value ?? {};
+        final stats = statsAsync.value ?? const {};
         final ieData = ieAsync.value;
 
         // Cash / Portfolio / Liquid Investments flow from the user's
@@ -89,6 +100,46 @@ class _FinancialHealthTab extends ConsumerWidget {
           s: s,
           locale: locale,
         );
+        // A KPI whose inputs are missing is N/A: computeKpis reads a zero
+        // base as a 0 ratio and rates it, so no balances, no income or no
+        // expenses would come out as a Poor 0% / 0 months. The net worth is
+        // missing when neither the cash nor the portfolio total has a value —
+        // nothing held, or all of it left out for want of a rate.
+        final netWorthRatios = [s.kpiLiquidityRatio, s.kpiInvestmentWeight, s.kpiLiquidAssetRatio, s.kpiIncomeToWealth];
+        final netWorthKnown =
+            allData != null &&
+            ['cash', 'portfolio'].any((role) => _DashboardScreenState.spotsForRole(role, userCharts, allData, activeAssets).isNotEmpty);
+        final missingInputs = <String>{
+          if (!netWorthKnown) ...netWorthRatios,
+          if (allData == null || monthlyExpenses <= 0) s.kpiExpenseCoverage,
+          if (annualIncome <= 0) s.kpiSavingsRate,
+          if (rollingIncome <= 0) s.kpiIncomeToWealth,
+        };
+        // A ratio over a known net worth of zero or less is N/A as well: it
+        // means nothing. Its data is there, so it says that instead.
+        final unavailable = <String, String>{
+          for (final kpi in missingInputs) kpi: s.noData,
+          if (netWorthKnown && cash + investments <= 0)
+            for (final kpi in netWorthRatios)
+              if (!missingInputs.contains(kpi)) kpi: s.kpiNetWorthNotPositive,
+        };
+        categories = [for (final cat in categories) _withUnavailable(cat, unavailable)];
+        // What the balances above and the concentration below leave out for
+        // want of a price or an exchange rate — never valued at cost, at 0 or
+        // converted 1:1 — is counted under the summary, each contributor
+        // once: whatever a role total leaves out ([totalExclusions]), and the
+        // held assets without a market value today.
+        final excluded = [
+          if (allData != null)
+            for (final role in const ['cash', 'portfolio', 'liquid_investments', 'net_asset_value'])
+              totalExclusions(_DashboardScreenState._seriesForRole(role, userCharts, allData, activeAssets), allData),
+          TotalExclusions(
+            unpricedAssetIds: {
+              for (final asset in activeAssets)
+                if ((stats[asset.id]?.totalQuantity ?? 0) != 0 && !marketValues.containsKey(asset.id)) asset.id,
+            },
+          ),
+        ].fold(const TotalExclusions(), (all, next) => all.union(next));
 
         // ── FIRE KPI: appended to the Wealth category ──
         //
@@ -97,8 +148,9 @@ class _FinancialHealthTab extends ConsumerWidget {
         // The current calendar year is not consolidated, so use a smoothed
         // expense estimate = avg(EoY projection, full last year). When no
         // prior year is available the KPI is marked N/A — using YTD-only
-        // would understate expenses and overstate FIRE progress.
-        final amtFmt = fmt.amountFormat(locale);
+        // would understate expenses and overstate FIRE progress. Its info icon
+        // opens the FIRE dialog (see [_showFireDialog]), which spells out the
+        // figures: the KPI carries no formula text of its own.
         final netWorth = netAssetValue;
         SmoothedAnnualExpenses? smoothed;
         if (ieData != null && ieData.years.isNotEmpty) {
@@ -115,51 +167,12 @@ class _FinancialHealthTab extends ConsumerWidget {
           annualExpenses: fireExpenses,
           swrPct: swrPct,
         );
-        final swrFmt = NumberFormat('0.00', locale);
-        String fireFormula() {
-          if (fire.insufficientData) return 'SWR = ${swrFmt.format(swrPct)}%';
-          final lines = <String>[
-            '${s.fireExpensesEstimateLabel}: ${amtFmt.format(fireExpenses)}',
-          ];
-          if (smoothed!.projectedCurrent != null && smoothed.prevTotal != null) {
-            lines.add(
-              '  = (${s.fireProjectedCurrent}: '
-              '${amtFmt.format(smoothed.projectedCurrent!)} + '
-              '${s.fireLastYearTotal}: ${amtFmt.format(smoothed.prevTotal!)}) / 2',
-            );
-          } else if (smoothed.prevTotal != null) {
-            lines.add('  = ${s.fireLastYearTotal}: ${amtFmt.format(smoothed.prevTotal!)}');
-          }
-          lines.add('');
-          lines.add(
-            '${s.fireNumberLabel} = ${s.fireExpensesEstimateLabel} / SWR\n'
-            '${amtFmt.format(fireExpenses)} / ${swrFmt.format(swrPct)}% '
-            '= ${amtFmt.format(fire.fiNumber)}',
-          );
-          lines.add(
-            '${s.fireProgressLabel} = ${s.healthCatWealth}\n'
-            '${amtFmt.format(netWorth)} / ${amtFmt.format(fire.fiNumber)} '
-            '= ${swrFmt.format(fire.progressPct)}%',
-          );
-          return lines.join('\n');
-        }
 
         final fireKpi = HealthKpi(
           name: s.kpiFireProgress,
           value: fire.insufficientData ? null : fire.progressPct,
           rating: fire.rating,
-          description: fire.insufficientData
-              ? s.kpiFireInsufficientData()
-              : s.kpiFireDesc(
-                  fire.rating == Rating.ottimo
-                      ? 'ottimo'
-                      : fire.rating == Rating.buono
-                      ? 'buono'
-                      : fire.rating == Rating.sufficiente
-                      ? 'sufficiente'
-                      : 'scarso',
-                ),
-          formula: fireFormula(),
+          description: fire.insufficientData ? s.kpiFireInsufficientData() : fireDescription(fire.rating, s),
         );
         categories = [
           for (final cat in categories)
@@ -173,8 +186,7 @@ class _FinancialHealthTab extends ConsumerWidget {
               cat,
         ];
 
-        // Augment the Savings Rate KPI's info dialog with an EoY projection
-        // (formerly shown as the "EOY~" row in the Yearly Summary table).
+        // Augment the Savings Rate KPI's info dialog with an EoY projection.
         if (ieData != null && ieData.years.length >= 2) {
           final current = ieData.years.last;
           final prev = ieData.years[ieData.years.length - 2];
@@ -182,18 +194,27 @@ class _FinancialHealthTab extends ConsumerWidget {
             current: _toEoyYear(current),
             prev: _toEoyYear(prev),
             amtFmt: fmt.amountFormat(locale),
-            pctFmt: NumberFormat('0.0%'),
+            pctFmt: NumberFormat('0.0%', locale),
             sym: currencySymbol(ieData.baseCurrency),
             s: s,
+            locale: locale,
           );
           if (eoySpan != null) {
             categories = categories.map((cat) {
               if (cat.name != s.healthCatLiquidity) return cat;
               final newKpis = cat.kpis.map((k) {
                 if (k.name != s.kpiSavingsRate) return k;
+                // The symbolic first line of the formula, with its line break,
+                // is the first child: privacy mode keeps it readable and
+                // selectable ([_KpiFormula]). The figures plugged into it are
+                // position size, marked like the projection's amounts; an N/A
+                // rate has none.
+                final [symbolic, ...figures] = k.formula.split('\n');
                 final rich = TextSpan(
                   children: [
-                    TextSpan(text: '${k.formula}\n\n'),
+                    TextSpan(text: '$symbolic\n'),
+                    if (figures.isNotEmpty) ...[PositionFigureSpan(text: figures.join('\n')), const TextSpan(text: '\n')],
+                    const TextSpan(text: '\n'),
                     eoySpan,
                   ],
                 );
@@ -213,9 +234,17 @@ class _FinancialHealthTab extends ConsumerWidget {
         }
 
         // Build Performance & Diversification category
+        // What a price-change KPI left out, by KPI name: shown under it.
+        final footnotes = <String, String>{};
         HealthKpi changeKpi(String name, AsyncValue<List<AssetDailyChange>> changes) {
           final data = changes.value;
-          if (data == null || data.isEmpty) return HealthKpi(name: name, value: 0, rating: Rating.na);
+          // Held assets without a price (today or at the reference date) or an
+          // exchange rate are not in the change: counted under it, as the
+          // Price Changes card counts them under its total.
+          final unlisted = data == null ? 0 : _unlistedHeldAssets(activeAssets, stats, data);
+          if (unlisted > 0) footnotes[name] = s.unpricedExcludedFromTotal(unlisted);
+          // No price data: no value and no rating, not a 0.00% change.
+          if (data == null || data.isEmpty) return HealthKpi(name: name, description: s.noData);
           final pairs = data
               .map(
                 (c) => (
@@ -228,46 +257,44 @@ class _FinancialHealthTab extends ConsumerWidget {
           return HealthKpi(name: name, value: pct, rating: ratePriceChange(pct));
         }
 
+        // A position without a market value is left out (counted under the
+        // summary, see [excluded]), never weighed as worth 0.
         final byPosition = <String, double>{};
         for (final asset in activeAssets) {
-          final mv = marketValues[asset.id] ?? 0.0;
-          if (mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
+          final mv = marketValues[asset.id];
+          if (mv != null && mv > 0) byPosition[asset.ticker ?? asset.name] = (byPosition[asset.ticker ?? asset.name] ?? 0) + mv;
         }
         final positionTotal = byPosition.values.fold(0.0, (a, b) => a + b);
         final conc = computeConcentration(byPosition.entries.toList(), positionTotal);
 
-        var terCost = 0.0, terTotal = 0.0;
-        for (final asset in activeAssets) {
-          final mv = marketValues[asset.id] ?? 0.0;
-          if (mv <= 0) continue;
-          terTotal += mv;
-          if (asset.ter != null && asset.ter! > 0) terCost += mv * asset.ter! / 100;
-        }
-        final weightedTer = terTotal > 0 ? terCost / terTotal * 100 : 0.0;
+        // Funds without a TER on record are left out and counted (see
+        // computeWeightedTer); nothing to weigh leaves the KPI unrated.
+        final weightedTer = computeWeightedTer(activeAssets, marketValues);
+        final ter = weightedTer.ter;
 
         final perfKpis = [
           changeKpi(s.kpiToday, todayChanges),
           changeKpi(s.kpiYtd, ytdChanges),
           changeKpi(s.kpiAllTime, allChanges),
+          // No valued holding: no concentration to measure, not an HHI of 0
+          // rated as perfectly diversified.
           HealthKpi(
-            name: 'HHI',
-            value: conc.hhi,
+            name: s.hhiLabel,
+            value: byPosition.isEmpty ? null : conc.hhi,
             unit: '',
-            rating: rateHhi(conc.hhi),
-            formula: 'Herfindahl-Hirschman Index\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}',
+            rating: byPosition.isEmpty ? Rating.na : rateHhi(conc.hhi),
+            formula: '${s.hhiFullName}\n< 1500 = ${s.allocWellDiversified}\n< 2500 = ${s.allocModeratelyConcentrated}',
           ),
           HealthKpi(
             name: s.healthTer,
-            value: weightedTer,
+            value: ter,
             unit: '%',
-            rating: weightedTer <= 0.2
-                ? Rating.ottimo
-                : weightedTer <= 0.5
-                ? Rating.buono
-                : weightedTer <= 1.0
-                ? Rating.sufficiente
-                : Rating.scarso,
-            formula: 'Weighted Avg TER\n${pctFmt.format(weightedTer)}%',
+            rating: ter == null ? Rating.na : rateTer(ter),
+            formula: [
+              s.healthWeightedTer,
+              ter == null ? '-' : '${pctFmt.format(ter)}%',
+              if (weightedTer.unknownTerFunds > 0) s.terUnknownExcluded(weightedTer.unknownTerFunds),
+            ].join('\n'),
           ),
         ];
         final perfCategory = KpiCategory(
@@ -277,11 +304,13 @@ class _FinancialHealthTab extends ConsumerWidget {
         );
         final allCategories = [...categories, perfCategory];
 
-        // Overall score includes all categories
+        // Overall score includes all categories; nothing rated, no score.
         final allKpis = allCategories.expand((c) => c.kpis).toList();
         final ratedKpis = allKpis.where((k) => k.rating != Rating.na).toList();
-        final overallScore = ratedKpis.isEmpty ? 0.0 : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
-        final overallRating = overallScore >= 87
+        final overallScore = ratedKpis.isEmpty ? null : ratedKpis.map((k) => k.rating.score).reduce((a, b) => a + b) / ratedKpis.length;
+        final overallRating = overallScore == null
+            ? Rating.na
+            : overallScore >= 87
             ? Rating.ottimo
             : overallScore >= 62
             ? Rating.buono
@@ -303,6 +332,11 @@ class _FinancialHealthTab extends ConsumerWidget {
                   categories: allCategories,
                   s: s,
                 ),
+                _ExcludedFromTotalNote(excluded, plural: true, top: 8),
+                if (incomeRowsWithoutRate != null && incomeRowsWithoutRate > 0) ...[
+                  const SizedBox(height: 8),
+                  Footnote(s.incomeFxExcluded(incomeRowsWithoutRate)),
+                ],
                 const SizedBox(height: 24),
 
                 // ── KPI Cards (all categories including Performance & Diversification) ──
@@ -325,10 +359,14 @@ class _FinancialHealthTab extends ConsumerWidget {
                               kpi: kpi,
                               pctFmt: pctFmt,
                               s: s,
+                              footnote: footnotes[kpi.name],
+                              // Liquidity and Wealth formulas plug in cash, income,
+                              // expenses and net worth; the Performance ones only
+                              // percentages and index thresholds.
+                              formulaFiguresArePrivate: cat != perfCategory,
                               onInfoTap: kpi.name == s.kpiFireProgress
                                   ? () => _showFireDialog(
                                       context: context,
-                                      ref: ref,
                                       s: s,
                                       locale: locale,
                                       netWorth: netWorth,
@@ -376,10 +414,33 @@ class _FinancialHealthTab extends ConsumerWidget {
   }
 }
 
+/// [cat] with the KPIs named in [unavailable] made N/A, each saying why with
+/// the description it is mapped to (see [_naKpi]), and its rating taken over
+/// the rest.
+KpiCategory _withUnavailable(KpiCategory cat, Map<String, String> unavailable) {
+  if (!cat.kpis.any((k) => unavailable.containsKey(k.name))) return cat;
+  final kpis = [
+    for (final k in cat.kpis)
+      if (unavailable[k.name] case final why?) _naKpi(k, why) else k,
+  ];
+  return KpiCategory(name: cat.name, kpis: kpis, overallRating: categoryRating(kpis));
+}
+
+/// [kpi] that cannot be computed, for the reason [description] gives: no
+/// value ("-"), no rating, and only the symbolic first line of its formula —
+/// no placeholder figures.
+HealthKpi _naKpi(HealthKpi kpi, String description) => HealthKpi(
+  name: kpi.name,
+  unit: kpi.unit,
+  description: description,
+  formula: kpi.formula.split('\n').first,
+);
+
 // ── Summary section ──
 
 class _SummarySection extends StatelessWidget {
-  final double score;
+  /// Average score of the rated KPIs; null when none is rated.
+  final double? score;
   final Rating overallRating;
   final List<KpiCategory> categories;
   final AppStrings s;
@@ -404,13 +465,13 @@ class _SummarySection extends StatelessWidget {
               width: 120,
               height: 120,
               child: CustomPaint(
-                painter: _ScoreGaugePainter(score: score, color: overallRating.color),
+                painter: _ScoreGaugePainter(score: score ?? 0, color: overallRating.color),
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        score.round().toString(),
+                        score == null ? '-' : score!.round().toString(),
                         style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: overallRating.color),
                       ),
                       Text(overallRating.label(s), style: TextStyle(fontSize: 12, color: overallRating.color)),
@@ -514,11 +575,21 @@ class _KpiCard extends StatefulWidget {
   /// formula dialog is bypassed.
   final VoidCallback? onInfoTap;
 
+  /// The figures plugged into the formula are position size, masked in
+  /// privacy mode. False when they are only percentages or thresholds.
+  final bool formulaFiguresArePrivate;
+
+  /// What the value leaves out (e.g. the assets without a price), shown
+  /// under the KPI name.
+  final String? footnote;
+
   const _KpiCard({
     required this.kpi,
     required this.pctFmt,
     required this.s,
     this.onInfoTap,
+    this.formulaFiguresArePrivate = true,
+    this.footnote,
   });
 
   @override
@@ -568,6 +639,10 @@ class _KpiCardState extends State<_KpiCard> {
             const SizedBox(height: 4),
             // KPI name
             Text(kpi.name, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+            if (widget.footnote case final footnote?) ...[
+              const SizedBox(height: 2),
+              Footnote(footnote),
+            ],
             const SizedBox(height: 6),
             // Expand toggle + info
             Row(
@@ -601,12 +676,7 @@ class _KpiCardState extends State<_KpiCard> {
                           content: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 480),
                             child: SingleChildScrollView(
-                              child: kpi.formulaRich != null
-                                  ? SelectableText.rich(
-                                      kpi.formulaRich!,
-                                      style: baseStyle,
-                                    )
-                                  : SelectableText(kpi.formula, style: baseStyle),
+                              child: _KpiFormula(kpi: kpi, style: baseStyle, figuresArePrivate: widget.formulaFiguresArePrivate),
                             ),
                           ),
                           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(widget.s.close))],
@@ -617,35 +687,108 @@ class _KpiCardState extends State<_KpiCard> {
                   ),
               ],
             ),
-            if (_expanded) ...[
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    kpi.rating == Rating.scarso
-                        ? Icons.error
-                        : kpi.rating == Rating.sufficiente
-                        ? Icons.warning
-                        : Icons.check_circle,
-                    size: 16,
-                    color: kpi.rating.color,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(kpi.description, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _TrafficLightGauge(rating: kpi.rating, value: kpi.value ?? 0),
-            ],
+            // Details grow in and out; the header above never changes.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _expanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              kpi.rating == Rating.scarso
+                                  ? Icons.error
+                                  : kpi.rating == Rating.sufficiente
+                                  ? Icons.warning
+                                  : Icons.check_circle,
+                              size: 16,
+                              color: kpi.rating.color,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(kpi.description, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // An unrated KPI has no place on the scale: the marker
+                        // would sit in the red zone.
+                        if (kpi.rating != Rating.na) _TrafficLightGauge(rating: kpi.rating, value: kpi.value ?? 0),
+                      ],
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
+/// A KPI's formula: the symbolic formula on its first line, then the user's
+/// own figures plugged into it (and, for some KPIs, a longer explanation).
+///
+/// When those figures are position size ([figuresArePrivate]), privacy mode
+/// masks them and renders everything below the first line as plain text, so
+/// the amounts can be neither read nor copied out; the symbolic formula stays
+/// readable and selectable. A plain [HealthKpi.formula] is all figures below
+/// its first line and blurs as one block; a [HealthKpi.formulaRich] carries
+/// its first line, with its line break, as its first child, and marks its
+/// figures itself ([PositionFigureSpan]): only they blur — the words, months
+/// and percentages around them stay readable.
+class _KpiFormula extends ConsumerWidget {
+  final HealthKpi kpi;
+  final TextStyle style;
+  final bool figuresArePrivate;
+
+  const _KpiFormula({required this.kpi, required this.style, required this.figuresArePrivate});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isPrivate = ref.watch(privacyModeProvider) && figuresArePrivate;
+    final rich = kpi.formulaRich;
+    if (!isPrivate) {
+      return rich != null ? SelectableText.rich(rich, style: style) : SelectableText(kpi.formula, style: style);
+    }
+    final String symbolic;
+    final Widget figures;
+    if (rich == null) {
+      final [first, ...rest] = kpi.formula.split('\n');
+      symbolic = first;
+      figures = PrivacyBlur(child: Text(rest.join('\n'), style: style));
+    } else {
+      final [head, ...rest] = rich.children!;
+      // Its line break is the one between the two texts below.
+      symbolic = head.toPlainText().split('\n').first;
+      figures = Text.rich(TextSpan(children: [for (final span in rest) _maskFigures(span, style)]), style: style);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SelectableText(symbolic, style: style),
+        figures,
+      ],
+    );
+  }
+}
+
+/// [span] with every [PositionFigureSpan] in it masked ([privacyFigureSpan])
+/// in [style], merged with the styles of the spans it sits in.
+InlineSpan _maskFigures(InlineSpan span, TextStyle style) => switch (span) {
+  PositionFigureSpan(text: final text, style: final own) => privacyFigureSpan(text ?? '', style: style.merge(own)),
+  TextSpan(text: final text, style: final own, children: final children?) => TextSpan(
+    text: text,
+    style: own,
+    children: [for (final child in children) _maskFigures(child, style.merge(own))],
+  ),
+  _ => span,
+};
 
 // ── Traffic light gauge ──
 
@@ -721,146 +864,191 @@ class _GaugePainter extends CustomPainter {
 
 Future<void> _showFireDialog({
   required BuildContext context,
-  required WidgetRef ref,
   required AppStrings s,
   required String locale,
   required double netWorth,
   required double annualExpenses,
   required SmoothedAnnualExpenses? smoothed,
   required double currentSwr,
-}) async {
-  final swrFmt = NumberFormat('0.00', locale);
-  final amtFmt = fmt.amountFormat(locale);
-  final controller = TextEditingController(text: swrFmt.format(currentSwr));
-  final formKey = GlobalKey<FormState>();
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (ctx, setSt) {
-          final parsed = fmt.parseFlexibleNumber(controller.text);
-          final effectiveSwr = (parsed != null && parsed > 0) ? parsed : currentSwr;
-          final preview = computeFire(
-            netWorth: netWorth,
-            annualExpenses: annualExpenses,
-            swrPct: effectiveSwr,
-          );
-          final theme = Theme.of(ctx);
-          return AlertDialog(
-            title: Text(s.fireDialogTitle, style: const TextStyle(fontSize: 14)),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(s.fireDialogIntro, style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurfaceVariant)),
-                    const SizedBox(height: 16),
-                    Form(
-                      key: formKey,
-                      autovalidateMode: AutovalidateMode.onUserInteraction,
-                      child: TextFormField(
-                        controller: controller,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(
-                          labelText: s.fireSwrLabel,
-                          hintText: s.fireSwrHint,
-                          suffixText: '%',
-                          isDense: true,
-                          border: const OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          final n = fmt.parseFlexibleNumber(v ?? '');
-                          if (n == null || n <= 0) return s.fireSwrInvalid;
-                          return null;
-                        },
-                        onChanged: (_) => setSt(() {}),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (!preview.insufficientData) ...[
-                      _FireDialogRow(
-                        label: s.fireExpensesEstimateLabel,
-                        value: amtFmt.format(annualExpenses),
-                      ),
-                      if (smoothed != null && smoothed.projectedCurrent != null) ...[
-                        const SizedBox(height: 2),
-                        _FireDialogRow(
-                          label:
-                              '  ${s.fireProjectedCurrent}'
-                              '${smoothed.projectionMonths != null ? ' (${smoothed.projectionMonths}m)' : ''}',
-                          value: amtFmt.format(smoothed.projectedCurrent!),
-                          subtle: true,
-                        ),
-                      ],
-                      if (smoothed != null && smoothed.prevTotal != null) ...[
-                        const SizedBox(height: 2),
-                        _FireDialogRow(
-                          label: '  ${s.fireLastYearTotal}',
-                          value: amtFmt.format(smoothed.prevTotal!),
-                          subtle: true,
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      _FireDialogRow(label: s.fireNumberLabel, value: amtFmt.format(preview.fiNumber)),
-                      const SizedBox(height: 4),
-                      _FireDialogRow(
-                        label: s.fireProgressLabel,
-                        value: '${swrFmt.format(preview.progressPct)}%',
-                      ),
-                    ] else
-                      Text(s.kpiFireInsufficientData(), style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
-                  ],
+}) => showDialog<void>(
+  context: context,
+  builder: (_) => _FireDialog(
+    s: s,
+    locale: locale,
+    netWorth: netWorth,
+    annualExpenses: annualExpenses,
+    smoothed: smoothed,
+    currentSwr: currentSwr,
+  ),
+);
+
+/// FIRE explanation with a live SWR editor. Owns its text controller and
+/// disposes it with the dialog, after the closing animation stopped
+/// rebuilding the field.
+class _FireDialog extends ConsumerStatefulWidget {
+  final AppStrings s;
+  final String locale;
+  final double netWorth;
+  final double annualExpenses;
+  final SmoothedAnnualExpenses? smoothed;
+  final double currentSwr;
+
+  const _FireDialog({
+    required this.s,
+    required this.locale,
+    required this.netWorth,
+    required this.annualExpenses,
+    required this.smoothed,
+    required this.currentSwr,
+  });
+
+  @override
+  ConsumerState<_FireDialog> createState() => _FireDialogState();
+}
+
+class _FireDialogState extends ConsumerState<_FireDialog> {
+  late final NumberFormat _swrFmt = NumberFormat('0.00', widget.locale);
+  // Every digit of the stored rate: an untouched save keeps it as it is.
+  late final TextEditingController _controller = TextEditingController(
+    text: fmt.editableFigure(widget.currentSwr, _swrFmt, locale: widget.locale),
+  );
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _storeSwr(double swr) {
+    final db = ref.read(databaseProvider);
+    return db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: 'FIRE_SWR', value: swr.toString()));
+  }
+
+  /// The typed rate, read strictly in the display locale; null while the
+  /// field is empty or holds text the locale cannot read.
+  double? get _typedSwr => fmt.readOptionalNumber(_controller.text, locale: widget.locale).value;
+
+  /// Why [text] is not a usable rate, or null when it is a positive number.
+  String? _swrError(String text) {
+    final typed = fmt.readOptionalNumber(text, locale: widget.locale);
+    if (typed.invalid) return widget.s.invalidNumber;
+    final value = typed.value;
+    return value == null || value <= 0 ? widget.s.fireSwrInvalid : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.s;
+    final smoothed = widget.smoothed;
+    final swrFmt = _swrFmt;
+    final amtFmt = fmt.amountFormat(widget.locale);
+    final parsed = _typedSwr;
+    final effectiveSwr = (parsed != null && parsed > 0) ? parsed : widget.currentSwr;
+    final preview = computeFire(
+      netWorth: widget.netWorth,
+      annualExpenses: widget.annualExpenses,
+      swrPct: effectiveSwr,
+    );
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Text(s.fireDialogTitle, style: const TextStyle(fontSize: 14)),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(s.fireDialogIntro, style: TextStyle(fontSize: 12, height: 1.5, color: theme.colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              Form(
+                key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                child: TextFormField(
+                  controller: _controller,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: s.fireSwrLabel,
+                    hintText: s.fireSwrHint,
+                    suffixText: '%',
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                  validator: (v) => _swrError(v ?? ''),
+                  onChanged: (_) => setState(() {}),
                 ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  controller.text = swrFmt.format(kDefaultFireSwrPct);
-                  setSt(() {});
-                  final db = ref.read(databaseProvider);
-                  await db
-                      .into(db.appConfigs)
-                      .insertOnConflictUpdate(
-                        AppConfigsCompanion.insert(
-                          key: 'FIRE_SWR',
-                          value: kDefaultFireSwrPct.toString(),
-                        ),
-                      );
-                },
-                child: Text(s.fireResetDefault),
-              ),
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-              FilledButton(
-                onPressed: () async {
-                  if (formKey.currentState?.validate() != true) return;
-                  final n = fmt.parseFlexibleNumber(controller.text)!;
-                  final db = ref.read(databaseProvider);
-                  await db
-                      .into(db.appConfigs)
-                      .insertOnConflictUpdate(
-                        AppConfigsCompanion.insert(key: 'FIRE_SWR', value: n.toString()),
-                      );
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                child: Text(s.save),
-              ),
+              const SizedBox(height: 12),
+              if (!preview.insufficientData) ...[
+                _FireDialogRow(
+                  label: s.fireExpensesEstimateLabel,
+                  value: amtFmt.format(widget.annualExpenses),
+                ),
+                if (smoothed != null && smoothed.projectedCurrent != null) ...[
+                  const SizedBox(height: 2),
+                  _FireDialogRow(
+                    label:
+                        '  ${s.fireProjectedCurrent}'
+                        '${smoothed.projectionMonths != null ? ' ${s.fireProjectionMonths(smoothed.projectionMonths!)}' : ''}',
+                    value: amtFmt.format(smoothed.projectedCurrent!),
+                    subtle: true,
+                  ),
+                ],
+                if (smoothed != null && smoothed.prevTotal != null) ...[
+                  const SizedBox(height: 2),
+                  _FireDialogRow(
+                    label: '  ${s.fireLastYearTotal}',
+                    value: amtFmt.format(smoothed.prevTotal!),
+                    subtle: true,
+                  ),
+                ],
+                const SizedBox(height: 8),
+                _FireDialogRow(label: s.fireNumberLabel, value: amtFmt.format(preview.fiNumber)),
+                const SizedBox(height: 4),
+                _FireDialogRow(
+                  label: s.fireProgressLabel,
+                  value: '${swrFmt.format(preview.progressPct)}%',
+                  masked: false,
+                ),
+              ] else
+                Text(s.kpiFireInsufficientData(), style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
             ],
-          );
-        },
-      );
-    },
-  );
-  controller.dispose();
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            _controller.text = fmt.editableFigure(kDefaultFireSwrPct, swrFmt, locale: widget.locale);
+            setState(() {});
+            await _storeSwr(kDefaultFireSwrPct);
+          },
+          child: Text(s.fireResetDefault),
+        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
+        FilledButton(
+          onPressed: () async {
+            if (_formKey.currentState?.validate() != true) return;
+            await _storeSwr(_typedSwr!);
+            if (context.mounted) Navigator.pop(context);
+          },
+          child: Text(s.save),
+        ),
+      ],
+    );
+  }
 }
 
 class _FireDialogRow extends StatelessWidget {
   final String label;
   final String value;
   final bool subtle;
-  const _FireDialogRow({required this.label, required this.value, this.subtle = false});
+
+  /// [value] is position size (expenses, the FI target), masked in privacy
+  /// mode. False for the coverage percentage: shape, not magnitude.
+  final bool masked;
+  const _FireDialogRow({required this.label, required this.value, this.subtle = false, this.masked = true});
 
   @override
   Widget build(BuildContext context) {
@@ -879,7 +1067,7 @@ class _FireDialogRow extends StatelessWidget {
             ),
           ),
         ),
-        Text(value, style: valStyle),
+        PrivacyText(value, style: valStyle, masked: masked),
       ],
     );
   }

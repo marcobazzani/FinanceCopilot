@@ -10,6 +10,7 @@ import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/domain/asset_service.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
 import 'package:finance_copilot/services/market/market_price_service.dart' show exchangeCurrency, isKnownExchange, supportedExchanges;
+import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart' show isIsin, isinCacheKey;
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/utils/dialogs.dart';
@@ -17,12 +18,14 @@ import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/ui/screens/assets/asset_detail_screen.dart';
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
 import 'package:finance_copilot/ui/widgets/asset_search.dart';
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_action_bar.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_controller.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 
 part 'asset_tile.dart';
 part 'create_dialog.dart';
@@ -75,23 +78,13 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           body: assetsAsync.when(
             data: (assets) {
               if (assets.isEmpty && (intermediariesAsync.value ?? []).isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.pie_chart, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 16),
-                      Text(s.noAssetsYet, textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (ctx) => _CreateAssetDialog(ref: ref),
-                        ),
-                        icon: const Icon(Icons.add),
-                        label: Text(s.createAsset),
-                      ),
-                    ],
+                return EmptyState(
+                  icon: Icons.pie_chart,
+                  message: s.noAssetsYet,
+                  actionLabel: s.createAsset,
+                  onAction: () => showDialog(
+                    context: context,
+                    builder: (ctx) => _CreateAssetDialog(ref: ref),
                   ),
                 );
               }
@@ -114,7 +107,6 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                         _buildGroup(
                           context,
                           s,
-                          i.id,
                           i,
                           grouped[i.id] ?? [],
                           stats,
@@ -168,7 +160,6 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   Widget _buildGroup(
     BuildContext context,
     AppStrings s,
-    int groupId,
     Intermediary intermediary,
     List<Asset> assets,
     Map<int, AssetStats> stats,
@@ -182,48 +173,31 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.business, size: 18, color: Colors.grey),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${intermediary.name} (${assets.length})',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        IntermediaryGroupHeader(intermediary: intermediary, count: assets.length),
         ...assets.map((asset) {
           final stat = stats[asset.id];
           return SelectableItem<int>(
             key: ValueKey(asset.id),
             controller: _selection,
             id: asset.id,
-            child: _AssetTile(
-              asset: asset,
-              stats: stat,
-              convertedInvested: convertedStats[asset.id],
-              marketValue: marketValues[asset.id],
-              hasNoMarketData: noMarketData.contains(asset.id),
-              baseCurrency: baseCurrency,
-              locale: locale,
-              strings: s,
-              intermediaries: intermediaries,
-              onMove: (newId) {
-                if (newId != asset.intermediaryId) {
-                  ref.read(intermediaryServiceProvider).moveAsset(asset.id, newId);
-                }
-              },
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
+            child: SwipeToDelete.custom(
+              key: ValueKey('dismiss_asset_${asset.id}'),
+              confirmAndDelete: () => confirmAndDeleteAsset(context, ref, asset),
+              child: _AssetTile(
+                asset: asset,
+                stats: stat,
+                convertedInvested: convertedStats[asset.id],
+                marketValue: marketValues[asset.id],
+                hasNoMarketData: noMarketData.contains(asset.id),
+                baseCurrency: baseCurrency,
+                locale: locale,
+                strings: s,
+                intermediaries: intermediaries,
+                onMove: (newId) => ref.read(intermediaryServiceProvider).moveAsset(asset.id, newId),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AssetDetailScreen(asset: asset)),
+                ),
               ),
             ),
           );

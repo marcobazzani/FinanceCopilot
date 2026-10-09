@@ -159,10 +159,7 @@ class _YearlyBarChartState extends ConsumerState<_YearlyBarChart> with _Toggleab
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 80,
-                      getTitlesWidget: (v, _) => Text(
-                        isPrivate ? '\u2022\u2022\u2022\u2022' : _shortAmount(v, sym),
-                        style: const TextStyle(fontSize: 10),
-                      ),
+                      getTitlesWidget: (v, _) => _axisAmount(v, sym, widget.locale, isPrivate: isPrivate),
                     ),
                   ),
                   bottomTitles: AxisTitles(
@@ -206,11 +203,6 @@ class _MonthlyByYearLineChart extends ConsumerStatefulWidget {
 }
 
 class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart> with _ToggleableChartMixin {
-  List<String> _monthAbbr() {
-    final f = DateFormat('MMM', widget.language);
-    return ['', for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
-  }
-
   static const _palette = [
     Colors.blue,
     Colors.red,
@@ -320,7 +312,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
               final yearIdx = yearIndexMap[barIdx] ?? -1;
               final yearLabel = yearIdx >= 0 ? '${years[yearIdx].year}' : '';
               return LineTooltipItem(
-                '$yearLabel ${_monthAbbr()[s.x.round()]}\n${amtFmt.format(s.y)} $sym',
+                '$yearLabel ${monthAbbr(s.x.round(), widget.language)}\n${amtFmt.format(s.y)} $sym',
                 TextStyle(color: s.bar.color ?? Colors.white, fontSize: 11),
               );
             }).toList(),
@@ -373,7 +365,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
               final yearIdx = visibleYearIdx[rodIndex];
               final yearLabel = '${years[yearIdx].year}';
               return BarTooltipItem(
-                '$yearLabel ${_monthAbbr()[group.x]}\n${amtFmt.format(rod.toY)} $sym',
+                '$yearLabel ${monthAbbr(group.x, widget.language)}\n${amtFmt.format(rod.toY)} $sym',
                 TextStyle(color: rod.color ?? Colors.white, fontSize: 11),
               );
             },
@@ -394,7 +386,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
           if (m < 1 || m > 12) return const SizedBox.shrink();
           return Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(_monthAbbr()[m], style: const TextStyle(fontSize: 9)),
+            child: Text(monthAbbr(m, widget.language), style: const TextStyle(fontSize: 9)),
           );
         },
       ),
@@ -403,10 +395,7 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
       sideTitles: SideTitles(
         showTitles: true,
         reservedSize: 80,
-        getTitlesWidget: (v, _) => Text(
-          isPrivate ? '\u2022\u2022\u2022\u2022' : _shortAmount(v, sym),
-          style: const TextStyle(fontSize: 10),
-        ),
+        getTitlesWidget: (v, _) => _axisAmount(v, sym, widget.locale, isPrivate: isPrivate),
       ),
     ),
     topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -415,10 +404,14 @@ class _MonthlyByYearLineChartState extends ConsumerState<_MonthlyByYearLineChart
 }
 
 // Shared helpers
-String _shortAmount(double v, String sym) {
-  if (v.abs() >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M $sym';
-  if (v.abs() >= 1000) return '${(v / 1000).toStringAsFixed(0)}k $sym';
-  return '${v.toStringAsFixed(0)} $sym';
-}
+
+/// A value-axis label of these charts: [v] in the compact notation of
+/// [locale] (e.g. "25K" in English, "1,5 Mln" in Italian) followed by the
+/// currency symbol, blurred in privacy mode like the History charts' axes —
+/// on a money chart the scale is position size.
+Widget _axisAmount(double v, String sym, String locale, {required bool isPrivate}) => PrivacyMask(
+  isPrivate: isPrivate,
+  child: Text('${NumberFormat.compact(locale: locale).format(v)} $sym', style: const TextStyle(fontSize: 10)),
+);
 
 // (Cash flow rendering is handled by _ChartCard + _UnifiedChart above)

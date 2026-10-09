@@ -57,12 +57,16 @@ class _FireworksLayerState extends State<_FireworksLayer> with SingleTickerProvi
   /// peaks spread across the upper 60% of the screen. Each shell is
   /// allowed to spawn 2-3 secondary "child" shells from its burst, so
   /// the show keeps cascading well past the last initial launch.
+  ///
+  /// [_lastTick] is left alone: it follows the ticker's own clock, which
+  /// keeps running when a wave is added mid-show (it is reset only when the
+  /// ticker stops). Zeroing it here fed the next frame the whole elapsed time
+  /// as a single step, fast-forwarding every shell on screen.
   void _spawnBatch() {
     const shellsPerBatch = 20;
     for (var i = 0; i < shellsPerBatch; i++) {
       _shells.add(_buildPrimaryShell(launchDelayMs: i * 250));
     }
-    _lastTick = Duration.zero;
   }
 
   _Shell _buildPrimaryShell({required int launchDelayMs}) {

@@ -106,8 +106,17 @@ class AthCelebrationController extends ChangeNotifier {
     if (_cards.isEmpty && _entry == null) return;
     _cards.clear();
     notifyListeners();
-    _entry?.remove();
+    _removeEntry();
+  }
+
+  /// Takes the overlay down: its entry is removed, then disposed (an entry
+  /// is never reused once removed).
+  void _removeEntry() {
+    final entry = _entry;
+    if (entry == null) return;
     _entry = null;
+    entry.remove();
+    entry.dispose();
   }
 
   /// Fire the celebration for [label]. Inserts the overlay on first call,
@@ -149,10 +158,7 @@ class AthCelebrationController extends ChangeNotifier {
         _cards.removeAt(idx);
         notifyListeners();
       }
-      if (_cards.isEmpty) {
-        _entry?.remove();
-        _entry = null;
-      }
+      if (_cards.isEmpty) _removeEntry();
     });
   }
 
@@ -191,8 +197,7 @@ class AthCelebrationController extends ChangeNotifier {
       t.cancel();
     }
     _pendingTimers.clear();
-    _entry?.remove();
-    _entry = null;
+    _removeEntry();
     for (final c in _confetti) {
       c.dispose();
     }
@@ -202,11 +207,6 @@ class AthCelebrationController extends ChangeNotifier {
     super.dispose();
   }
 
-  // Visible for tests.
-  @visibleForTesting
-  List<ConfettiController> get confettiControllers => _confetti;
-  @visibleForTesting
-  List<ConfettiController> get starburstControllers => _starbursts;
   // Public — _FireworksLayer reads this to detect new fires.
   int get fireGen => _fireGen;
 }

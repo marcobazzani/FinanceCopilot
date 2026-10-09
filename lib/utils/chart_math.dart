@@ -45,32 +45,6 @@ List<FlSpot> computeVelocity(List<FlSpot> dense) {
   return result;
 }
 
-/// Projects a trailing-rate series (e.g. velocity) past real "today" by holding
-/// the value at [x] constant for all later points.
-///
-/// A trailing 365-day velocity computed over a flat, carried-forward future
-/// replays the historical curve from a year earlier (`S(t−365)`), producing a
-/// misleading rise/sawtooth for a *projected* rate. Holding the last real value
-/// flat instead means "current rate carried forward" — the line still extends
-/// to the future date (not truncated), just without the trailing-window replay.
-/// Points at/before [x] are unchanged; if nothing is at/before [x] (e.g. a past
-/// wayback date), the series is returned unchanged.
-List<FlSpot> holdFlatAfter(List<FlSpot> spots, double x) {
-  double? holdY;
-  for (final s in spots) {
-    if (s.x <= x) {
-      holdY = s.y;
-    } else {
-      break;
-    }
-  }
-  if (holdY == null) return spots;
-  return [
-    for (final s in spots)
-      if (s.x <= x) s else FlSpot(s.x, holdY),
-  ];
-}
-
 /// Build spending spots: cumulative sum of negative daily deltas of the saving
 /// series (mirrors Excel's "Uscite cumulate" = cumsum of MIN(0, daily_P&L)).
 /// Output spots share the same X axis (days from firstDate) as saving spots.
@@ -98,4 +72,25 @@ List<FlSpot> computeDiff(List<FlSpot> a, List<FlSpot> b) {
     for (final sa in da)
       if (bMap.containsKey(sa.x)) FlSpot(sa.x, sa.y - bMap[sa.x]!),
   ];
+}
+
+// ════════════════════════════════════════════════════
+// DST-safe calendar-day arithmetic for chart X-axis mapping
+// ════════════════════════════════════════════════════
+// Chart X positions are "days since firstDate". Computing them with
+// `a.difference(b).inDays` truncates across a DST boundary — the elapsed
+// wall-clock time between two LOCAL midnights is N×24h ± 1h, so `.inDays`
+// rounds toward zero and every summer date is mislabelled by a day.
+// Normalizing to UTC (which has no DST) makes the day count exact and the
+// reverse map land on the correct calendar date.
+
+/// Whole calendar days from [from] to [to] (date-only, DST-safe).
+int calendarDaysBetween(DateTime from, DateTime to) =>
+    DateTime.utc(to.year, to.month, to.day).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
+
+/// The calendar date [days] after [from] (date-only, DST-safe), returned at
+/// local midnight for display/formatting.
+DateTime dateAddDays(DateTime from, int days) {
+  final u = DateTime.utc(from.year, from.month, from.day).add(Duration(days: days));
+  return DateTime(u.year, u.month, u.day);
 }

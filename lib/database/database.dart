@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -7,9 +6,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
+import '../services/import/stored_import_data.dart';
 import '../utils/logger.dart';
+import 'category_seeds.dart';
 import 'db_file_name.dart';
 import 'tables.dart';
 
@@ -82,7 +82,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 48;
+  int get schemaVersion => 50;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -91,6 +91,8 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
       await _createIndexes();
       await _seedAppConfig();
+      await seedDefaultCategories();
+      await _writeCategorySeedVersion();
       _log.info('Database schema created and seeded');
     },
     onUpgrade: (Migrator m, int from, int to) async {
@@ -572,23 +574,24 @@ class AppDatabase extends _$AppDatabase {
         }
       }
       if (from < 39) {
-        // Drop the never-read assets.yahoo_ticker column (carry-over from
-        // a long-removed provider integration) and the unused
-        // registered_events table + RegisteredEventType enum.
+        // Drop the never-read legacy price-provider column of assets
+        // (carry-over from a long-removed provider integration) and the
+        // unused registered_events table + RegisteredEventType enum.
         // (Cache-key + asset.exchange normalisation deferred to v40 —
         // v39's own UPDATE was clobbered by an earlier rename pass.)
         if (await _hasColumn('assets', 'yahoo_ticker')) {
           await customStatement('ALTER TABLE assets DROP COLUMN yahoo_ticker');
         }
         await customStatement('DROP TABLE IF EXISTS registered_events');
-        _log.info('Migration 39: dropped yahoo_ticker, registered_events');
+        _log.info('Migration 39: dropped the legacy price-provider column, registered_events');
       }
       if (from < 40) {
-        // (a) Rename legacy app_configs cache keys INVESTING_*→PROVIDER_*
-        //     using INSERT-OR-IGNORE then DELETE so we survive the
-        //     partial state v39 left behind (where some PROVIDER_* rows
-        //     already exist alongside their INVESTING_* counterparts).
-        //     The PROVIDER_* row wins; INVESTING_* gets cleaned up.
+        // (a) Rename the legacy cache keys of app_configs to their
+        //     PROVIDER_* names using INSERT-OR-IGNORE then DELETE so we
+        //     survive the partial state v39 left behind (where some
+        //     PROVIDER_* rows already exist alongside their legacy
+        //     counterparts). The PROVIDER_* row wins; the legacy key gets
+        //     cleaned up.
         // (b) Heal stored description text that still mentions the
         //     external provider by name (cosmetic, but eliminates a
         //     grep hit on a fresh-from-old-DB install).
@@ -674,7 +677,7 @@ class AppDatabase extends _$AppDatabase {
           }
         }
         _log.info(
-          'Migration 40: cache keys renamed INVESTING_*→PROVIDER_*; '
+          'Migration 40: legacy cache keys renamed to PROVIDER_*; '
           'asset.exchange + cache-key suffixes normalised to canonical names',
         );
       }
@@ -755,9 +758,68 @@ class AppDatabase extends _$AppDatabase {
         }
         _log.info('Migration 48: added pillars.kind (default standard)');
       }
+      if (from < 49) {
+        // asset_events.exchange_rate is "units of event currency per one base
+        // currency", but carried no record of WHICH base it was quoted
+        // against — so switching base currency silently reused rates that
+        // belonged to the old base. Existing rows are left NULL, which reads
+        // as "quoted against the current base": correct, because a base
+        // change is exactly what stamps the outgoing base onto them.
+        if (!await _hasColumn('asset_events', 'exchange_rate_base')) {
+          await customStatement('ALTER TABLE asset_events ADD COLUMN exchange_rate_base TEXT NULL');
+        }
+        _log.info('Migration 49: added asset_events.exchange_rate_base');
+      }
+      if (from < 50) {
+        // Transaction categorization. Categories/Transactions.category_id/
+        // auto_categorization_rules existed since v1 but were never used;
+        // extend them and seed the default category list (categories only —
+        // classification is always driven by user-defined rules).
+        if (!await _hasColumn('categories', 'key')) {
+          await customStatement('ALTER TABLE categories ADD COLUMN key TEXT NULL');
+        }
+        if (!await _hasColumn('categories', 'is_archived')) {
+          await customStatement('ALTER TABLE categories ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0');
+        }
+        if (!await _hasColumn('categories', 'sort_order')) {
+          await customStatement('ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+        }
+        if (!await _hasColumn('transactions', 'merchant_key')) {
+          await customStatement('ALTER TABLE transactions ADD COLUMN merchant_key TEXT NULL');
+        }
+        if (!await _hasColumn('transactions', 'counterparty')) {
+          await customStatement('ALTER TABLE transactions ADD COLUMN counterparty TEXT NULL');
+        }
+        if (!await _hasColumn('transactions', 'entry_kind')) {
+          await customStatement('ALTER TABLE transactions ADD COLUMN entry_kind TEXT NULL');
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'match_type')) {
+          await customStatement(
+            "ALTER TABLE auto_categorization_rules ADD COLUMN match_type TEXT NOT NULL DEFAULT 'merchantKey'",
+          );
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'account_id')) {
+          await customStatement('ALTER TABLE auto_categorization_rules ADD COLUMN account_id INTEGER NULL');
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'direction')) {
+          await customStatement(
+            "ALTER TABLE auto_categorization_rules ADD COLUMN direction TEXT NOT NULL DEFAULT 'any'",
+          );
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'amount_min')) {
+          await customStatement('ALTER TABLE auto_categorization_rules ADD COLUMN amount_min REAL NULL');
+        }
+        if (!await _hasColumn('auto_categorization_rules', 'amount_max')) {
+          await customStatement('ALTER TABLE auto_categorization_rules ADD COLUMN amount_max REAL NULL');
+        }
+        await _createIndexes();
+        await seedDefaultCategories();
+        _log.info('Migration 50: transaction categorization columns + default categories');
+      }
     },
     beforeOpen: (details) async {
       await _purgeOrphanedTransactions();
+      await _seedNewDefaultCategories();
     },
   );
 
@@ -810,34 +872,15 @@ class AppDatabase extends _$AppDatabase {
     var totalFlipped = 0;
     for (final cfg in configRows) {
       final accountId = cfg.read<int>('account_id');
-      Map<String, dynamic> mappings;
-      try {
-        mappings = jsonDecode(cfg.read<String>('mappings_json')) as Map<String, dynamic>;
-      } catch (_) {
-        continue; // unparseable config — skip rather than guess
-      }
-      if (mappings['__balanceMode'] != 'filtered') continue;
-      final filterColumn = mappings['__balanceFilterColumn'] as String?;
+      // Unreadable settings (logged): skip rather than guess.
+      final balance = SavedImportMappings.decode(cfg.read<String>('mappings_json')).balance;
+      if (balance == null || balance.mode != BalanceMode.filtered) continue;
+      final filterColumn = balance.filterColumn;
       if (filterColumn == null || filterColumn.isEmpty) continue;
 
-      // `__balanceFilterInclude` is stored as a JSON-encoded string list.
-      final includeRaw = mappings['__balanceFilterInclude'];
-      final include = <String>{};
-      if (includeRaw is String && includeRaw.isNotEmpty) {
-        try {
-          for (final v in jsonDecode(includeRaw) as List) {
-            include.add(v.toString());
-          }
-        } catch (_) {
-          continue;
-        }
-      } else if (includeRaw is List) {
-        for (final v in includeRaw) {
-          include.add(v.toString());
-        }
-      }
       // Empty include set means "include everything" (mirrors the importer);
       // nothing to cancel.
+      final include = balance.filterInclude;
       if (include.isEmpty) continue;
 
       // For each settled transaction on this account, read its filter value
@@ -850,12 +893,8 @@ class AppDatabase extends _$AppDatabase {
 
       final toCancel = <int>[];
       for (final t in txRows) {
-        Map<String, dynamic> meta;
-        try {
-          meta = jsonDecode(t.read<String>('raw_metadata')) as Map<String, dynamic>;
-        } catch (_) {
-          continue; // no parseable metadata — leave untouched (no guessing)
-        }
+        final meta = decodeRawMetadata(t.read<String>('raw_metadata'));
+        if (meta == null) continue; // no parseable metadata — leave untouched (no guessing)
         if (!meta.containsKey(filterColumn)) continue;
         final value = (meta[filterColumn] ?? '').toString().trim();
         if (!include.contains(value)) {
@@ -1002,7 +1041,66 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_pillars_portfolio_model '
       'ON pillars(portfolio_model_id)',
     );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_transactions_merchant_key '
+      'ON transactions(merchant_key)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_transactions_category '
+      'ON transactions(category_id)',
+    );
   }
+
+  /// Insert the default categories that are not present yet (matched by
+  /// [Categories.key]). Idempotent: safe on fresh DBs, on upgrade, and as a
+  /// "restore defaults" action. Never touches user-created rows.
+  ///
+  /// [sinceAfter] restricts the pass to seeds introduced after that seed-set
+  /// version, so a startup top-up only adds genuinely new defaults.
+  Future<int> seedDefaultCategories({int sinceAfter = 0}) async {
+    final existing = await (select(categories)..where((c) => c.key.isNotNull())).get();
+    final present = existing.map((c) => c.key).toSet();
+    var inserted = 0;
+    for (var i = 0; i < defaultCategorySeeds.length; i++) {
+      final seed = defaultCategorySeeds[i];
+      if (seed.since <= sinceAfter || present.contains(seed.key)) continue;
+      await into(categories).insert(
+        CategoriesCompanion.insert(
+          // Fallback display name when no l10n bundle is at hand (tests,
+          // raw SQL). The UI always resolves the localized name via `key`.
+          name: seed.key,
+          type: seed.type,
+          key: Value(seed.key),
+          icon: Value(seed.icon),
+          color: Value(seed.color),
+          isEssential: Value(seed.isEssential),
+          sortOrder: Value(i),
+        ),
+      );
+      inserted++;
+    }
+    return inserted;
+  }
+
+  /// Startup top-up: add defaults introduced since the seed-set version this
+  /// DB last saw. Defaults the user deleted earlier are NOT re-added.
+  Future<void> _seedNewDefaultCategories() async {
+    final row = await (select(appConfigs)..where((c) => c.key.equals(kCategorySeedVersionKey))).getSingleOrNull();
+    // DBs created before versioning (v50) carry the full v1 seed set.
+    final stored = int.tryParse(row?.value ?? '') ?? 1;
+    if (stored >= kCategorySeedVersion) return;
+    final n = await seedDefaultCategories(sinceAfter: stored);
+    await _writeCategorySeedVersion();
+    _log.info('Category seed top-up: v$stored → v$kCategorySeedVersion, added $n');
+  }
+
+  Future<void> _writeCategorySeedVersion() => into(appConfigs).insertOnConflictUpdate(
+    AppConfigsCompanion.insert(
+      key: kCategorySeedVersionKey,
+      value: kCategorySeedVersion.toString(),
+      description: const Value('Version of the default category set already seeded'),
+    ),
+  );
 
   /// Seed default AppConfig values from MoneyHistory Graph row 3455.
   Future<void> _seedAppConfig() async {
@@ -1111,13 +1209,44 @@ class AppDatabase extends _$AppDatabase {
       }
     }
   }
+
+  /// Create a transactionally-consistent, standalone snapshot of this
+  /// database at [destinationPath] using SQLite's `VACUUM INTO`.
+  ///
+  /// Unlike copying the live `.db` file byte-for-byte, this is safe to run
+  /// while other connections (background price sync, the app's own writes)
+  /// are reading/writing: SQLite guarantees the output is a complete,
+  /// self-consistent copy as of the moment the statement runs. A raw file
+  /// copy cannot make that guarantee for either journal mode — a commit
+  /// landing mid-copy can hand back a file whose pages span two different
+  /// database states, silently corrupting the exported/backed-up copy
+  /// while leaving the live database untouched.
+  ///
+  /// `VACUUM INTO` refuses to overwrite an existing file, so
+  /// [destinationPath] must not already exist; [snapshotToTempFile] picks
+  /// a fresh path for callers that don't need a specific destination.
+  Future<void> vacuumInto(String destinationPath) async {
+    final escaped = destinationPath.replaceAll("'", "''");
+    await customStatement("VACUUM INTO '$escaped'");
+  }
+
+  /// Snapshot this database (see [vacuumInto]) to a fresh file in the
+  /// system temp directory and return its path. Callers are responsible
+  /// for deleting the file once they're done with it (export/upload).
+  Future<String> snapshotToTempFile() async {
+    final dir = await getTemporaryDirectory();
+    final path = p.join(
+      dir.path,
+      'financecopilot_snapshot_${DateTime.now().microsecondsSinceEpoch}.db',
+    );
+    await vacuumInto(path);
+    return path;
+  }
 }
 
-/// Ensure sqlite3 native library is configured (needed on Android).
+/// Point SQLite's temporary files at the app's cache directory (the native
+/// library itself is bundled by package:sqlite3's build hooks).
 Future<void> _ensureSqliteConfigured() async {
-  if (Platform.isAndroid) {
-    await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
-  }
   final cacheDir = await getTemporaryDirectory();
   sqlite3.tempDirectory = cacheDir.path;
 }
@@ -1131,8 +1260,6 @@ LazyDatabase _openConnection() {
       await dir.create(recursive: true);
     }
     final file = File(p.join(dir.path, dbFileName));
-    // ignore: avoid_print
-    print('DB:  ${file.path}');
     _log.info('Opening database: ${file.path}');
     return NativeDatabase(file);
   });
@@ -1147,8 +1274,6 @@ LazyDatabase _openAtPath(String path) {
       _log.info('Creating database directory: ${parent.path}');
       await parent.create(recursive: true);
     }
-    // ignore: avoid_print
-    print('DB:  $path');
     _log.info('Opening database at path: $path');
     return NativeDatabase(file);
   });

@@ -71,9 +71,11 @@ class _AssetSearchSectionState extends State<AssetSearchSection> {
     }
     setState(() => _searching = true);
     _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final service = widget.widgetRef.read(marketPriceServiceProvider) as WebMarketDataService;
       try {
-        final results = await service.search(query.trim());
+        final service = widget.widgetRef.read(marketPriceServiceProvider);
+        // Only the web provider can search instruments; any other price
+        // service (an override, an offline one) has nothing to offer.
+        final results = service is WebMarketDataService ? await service.search(query.trim()) : const <ProviderSearchResult>[];
         if (mounted && _searchCtrl.text.trim() == query.trim()) {
           setState(() {
             _results = results;

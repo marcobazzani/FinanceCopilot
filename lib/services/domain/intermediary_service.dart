@@ -30,28 +30,33 @@ class IntermediaryService {
     return (_db.update(_db.intermediaries)..where((i) => i.id.equals(id))).write(data.copyWith(updatedAt: Value(DateTime.now())));
   }
 
+  /// Deletes the intermediary and unlinks its accounts in one transaction: a
+  /// failure part-way changes nothing. Refused (StateError) while it still
+  /// holds assets.
   Future<void> delete(int id) async {
     _log.info('delete: id=$id');
-    // Assets need an intermediary since schema v29 — refuse to delete if any
-    // are still attached. Caller should prompt the user to move them first.
-    final assetCount =
-        (await _db
-                .customSelect(
-                  'SELECT COUNT(*) AS c FROM assets WHERE intermediary_id = ?',
-                  variables: [Variable.withInt(id)],
-                )
-                .getSingle())
-            .read<int>('c');
-    if (assetCount > 0) {
-      throw StateError('intermediary_has_assets:$assetCount');
-    }
-    // Accounts are still nullable — unlink them.
-    await _db.customUpdate(
-      'UPDATE accounts SET intermediary_id = NULL WHERE intermediary_id = ?',
-      variables: [Variable.withInt(id)],
-      updates: {_db.accounts},
-    );
-    await (_db.delete(_db.intermediaries)..where((i) => i.id.equals(id))).go();
+    await _db.transaction(() async {
+      // Assets need an intermediary since schema v29 — refuse to delete if any
+      // are still attached. Caller should prompt the user to move them first.
+      final assetCount =
+          (await _db
+                  .customSelect(
+                    'SELECT COUNT(*) AS c FROM assets WHERE intermediary_id = ?',
+                    variables: [Variable.withInt(id)],
+                  )
+                  .getSingle())
+              .read<int>('c');
+      if (assetCount > 0) {
+        throw StateError('intermediary_has_assets:$assetCount');
+      }
+      // Accounts are still nullable — unlink them.
+      await _db.customUpdate(
+        'UPDATE accounts SET intermediary_id = NULL WHERE intermediary_id = ?',
+        variables: [Variable.withInt(id)],
+        updates: {_db.accounts},
+      );
+      await (_db.delete(_db.intermediaries)..where((i) => i.id.equals(id))).go();
+    });
     _log.info('delete: id=$id - removed (accounts unlinked)');
   }
 

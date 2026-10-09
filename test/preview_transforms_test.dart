@@ -87,13 +87,69 @@ void main() {
       expect(split.splitCell('no digits'), ['']);
     });
 
+    test('fallback column fills derived columns when the split does not apply', () {
+      const split = ColumnSplit(
+        sourceColumn: 'Desc',
+        newColumns: ['TxDate'],
+        byRegex: true,
+        pattern: r'(\d{8})$',
+        fallbackColumn: 'Booked',
+      );
+      const t = PreviewTransforms(splits: [split]);
+      final rows = t.transformRows([
+        {'Booked': '11 May 2022', 'Desc': 'POS Revolut1946 20220509'},
+        {'Booked': '12 May 2022', 'Desc': 'Non-Euro Point Of Sales Fee'},
+        {'Booked': '', 'Desc': 'no date, no fallback value'},
+      ]);
+      expect(rows[0]['TxDate'], '20220509', reason: 'match wins');
+      expect(rows[1]['TxDate'], '12 May 2022', reason: 'no match → fallback column');
+      expect(rows[2]['TxDate'], '', reason: 'fallback empty → empty');
+      // Without a fallback the unmatched row stays empty (previous behaviour).
+      final plain = PreviewTransforms(splits: [split.copyWith(fallbackColumn: null)]);
+      expect(
+        plain.transformRows([
+          {'Booked': 'x', 'Desc': 'Fee'},
+        ]).single['TxDate'],
+        isNull,
+        reason: 'unmatched rows without a fallback get no derived value (previous behaviour)',
+      );
+    });
+
+    test('fallback never overwrites what a coexisting split produced', () {
+      const a = ColumnSplit(sourceColumn: 'Desc', newColumns: ['Out'], byRegex: true, pattern: r'^A-(\w+)');
+      const b = ColumnSplit(sourceColumn: 'Desc', newColumns: ['Out'], byRegex: true, pattern: r'^B-(\w+)', fallbackColumn: 'Alt');
+      const t = PreviewTransforms(splits: [a, b]);
+      final rows = t.transformRows([
+        {'Desc': 'A-one', 'Alt': 'alt'},
+        {'Desc': 'B-two', 'Alt': 'alt'},
+        {'Desc': 'C-three', 'Alt': 'alt'},
+      ]);
+      expect(rows.map((r) => r['Out']), ['one', 'two', 'alt']);
+    });
+
+    test('copyWith keeps fallbackColumn unless explicitly changed', () {
+      const s = ColumnSplit(sourceColumn: 'D', newColumns: ['X'], fallbackColumn: 'F');
+      expect(s.copyWith(pattern: 'p').fallbackColumn, 'F');
+      expect(s.copyWith(fallbackColumn: null).fallbackColumn, isNull);
+      expect(s.copyWith(fallbackColumn: 'G').fallbackColumn, 'G');
+    });
+
     test('json round-trip', () {
-      const split = ColumnSplit(sourceColumn: 'Op', newColumns: ['t', 'p'], byRegex: true, pattern: 'x');
+      const split = ColumnSplit(sourceColumn: 'Op', newColumns: ['t', 'p'], byRegex: true, pattern: 'x', fallbackColumn: 'Fb');
       final back = ColumnSplit.fromJson(split.toJson());
       expect(back.sourceColumn, 'Op');
       expect(back.newColumns, ['t', 'p']);
       expect(back.byRegex, isTrue);
       expect(back.pattern, 'x');
+      expect(back.fallbackColumn, 'Fb');
+      // Older saved configs without the key still load.
+      expect(
+        ColumnSplit.fromJson({
+          'sourceColumn': 'Op',
+          'newColumns': ['t'],
+        }).fallbackColumn,
+        isNull,
+      );
     });
 
     test('matches() — delimiter present / absent', () {

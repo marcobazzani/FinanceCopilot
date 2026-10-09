@@ -11,27 +11,39 @@ extension _ColumnMapperStep on _ImportScreenState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Data source toolbar FIRST — pick the file (or paste) up front.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.folder_open),
-              label: Text(s.openFile),
-              onPressed: _parsing ? null : _pickFile,
+        // Re-run from stored data: the source is the account itself.
+        if (_fromStoredRows)
+          Card(
+            key: const Key('rerunImportBanner'),
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            child: ListTile(
+              leading: const Icon(Icons.history),
+              title: Text(s.rerunImportFromStored),
+              subtitle: Text(s.rerunImportBanner(preview?.totalRows ?? 0)),
             ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.content_paste),
-              label: Text(s.pasteFromClipboard),
-              onPressed: _parsing ? null : _pasteFromClipboard,
-            ),
-            if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
-            if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
-            if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-          ],
-        ),
+          )
+        else
+          // Data source toolbar FIRST — pick the file (or paste) up front.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton.icon(
+                icon: const Icon(Icons.folder_open),
+                label: Text(s.openFile),
+                onPressed: _parsing ? null : _pickFile,
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.content_paste),
+                label: Text(s.pasteFromClipboard),
+                onPressed: _parsing ? null : _pasteFromClipboard,
+              ),
+              if (_filePath != null) Chip(label: Text(_filePath!.split('/').last)),
+              if (_filePath == null && _preview != null) Chip(label: Text(s.clipboardData)),
+              if (_parsing) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+            ],
+          ),
         if (_error != null) ...[
           const SizedBox(height: 8),
           Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -46,29 +58,11 @@ extension _ColumnMapperStep on _ImportScreenState {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(s.importAs, style: const TextStyle(fontWeight: FontWeight.bold)),
-              SegmentedButton<ImportTarget>(
-                segments: [
-                  ButtonSegment(
-                    value: ImportTarget.transaction,
-                    icon: const Icon(Icons.receipt_long, size: 18),
-                    label: Text(s.importTypeTransaction, style: const TextStyle(fontSize: 12)),
-                  ),
-                  ButtonSegment(
-                    value: ImportTarget.assetEvent,
-                    icon: const Icon(Icons.trending_up, size: 18),
-                    label: Text(s.importTypeAssetEvent, style: const TextStyle(fontSize: 12)),
-                  ),
-                  ButtonSegment(
-                    value: ImportTarget.income,
-                    icon: const Icon(Icons.payments, size: 18),
-                    label: Text(s.importTypeIncome, style: const TextStyle(fontSize: 12)),
-                  ),
-                ],
-                selected: {_target},
-                showSelectedIcon: false,
-                onSelectionChanged: (v) async {
+              ImportTargetSelector(
+                selected: _target,
+                onChanged: (target) async {
                   _setState(() {
-                    _target = v.first;
+                    _target = target;
                     _targetId = null;
                     _isQuickMode = false;
                     _savedConfig = null;
@@ -79,7 +73,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                   // Income has no per-target key — load its single global
                   // config as soon as the user picks the Income target.
                   if (_target == ImportTarget.income && _preview != null) {
-                    await _loadSavedConfig(_preview!.columns);
+                    await _loadSavedConfig();
                   }
                 },
               ),
@@ -146,6 +140,8 @@ extension _ColumnMapperStep on _ImportScreenState {
             SizedBox(
               width: 260,
               child: DropdownButtonFormField<int>(
+                // Long names are ellipsized within the 260 px, not overflowing it.
+                isExpanded: true,
                 initialValue: _singleAssetTargetId,
                 decoration: InputDecoration(
                   border: const OutlineInputBorder(),
@@ -154,7 +150,13 @@ extension _ColumnMapperStep on _ImportScreenState {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
                 items: manual.isEmpty
-                    ? [DropdownMenuItem<int>(value: null, enabled: false, child: Text(s.noAssetsAvailable))]
+                    ? [
+                        DropdownMenuItem<int>(
+                          value: null,
+                          enabled: false,
+                          child: Text(s.noAssetsAvailable, overflow: TextOverflow.ellipsis),
+                        ),
+                      ]
                     : manual
                           .map(
                             (a) => DropdownMenuItem(
@@ -176,7 +178,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                         });
                         // Load any saved single-asset config for this target.
                         if (v != null && _preview != null) {
-                          await _loadSavedConfig(_preview!.columns);
+                          await _loadSavedConfig();
                         }
                       },
               ),
@@ -203,87 +205,23 @@ extension _ColumnMapperStep on _ImportScreenState {
   Future<void> _showCreateEmptyAssetDialog() async {
     final s = ref.read(appStringsProvider);
     final intermediaries = await ref.read(intermediaryServiceProvider).getAll();
+    if (!mounted) return;
     if (intermediaries.isEmpty) {
-      if (mounted) showInfoSnack(context, s.noIntermediariesAvailable);
+      showInfoSnack(context, s.noIntermediariesAvailable);
       return;
     }
-    int? pickedIntermediary = _selectedIntermediaryId ?? intermediaries.first.id;
-    final baseCurrency = ref.read(baseCurrencyProvider).value ?? 'EUR';
-    String currency = baseCurrency;
-    if (!mounted) return;
-
-    final nameCtrl = TextEditingController();
-    final int? created;
-    try {
-      created = await showDialog<int>(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setLocal) => AlertDialog(
-            title: Text(s.createEmptyAsset),
-            content: SizedBox(
-              width: 380,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    decoration: InputDecoration(labelText: s.name),
-                    onChanged: (_) => setLocal(() {}),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: pickedIntermediary,
-                    decoration: InputDecoration(labelText: s.intermediaryName),
-                    items: intermediaries.map((i) => DropdownMenuItem(value: i.id, child: Text(i.name))).toList(),
-                    onChanged: (v) => setLocal(() => pickedIntermediary = v),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: currency,
-                    decoration: InputDecoration(labelText: s.currency),
-                    textCapitalization: TextCapitalization.characters,
-                    onChanged: (v) => currency = v.trim().toUpperCase(),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-              FilledButton(
-                onPressed: (nameCtrl.text.trim().isNotEmpty && pickedIntermediary != null)
-                    ? () async {
-                        final id = await ref
-                            .read(assetServiceProvider)
-                            .create(
-                              name: nameCtrl.text.trim(),
-                              currency: currency.isEmpty ? baseCurrency : currency,
-                              // Single-asset import targets are manual by
-                              // definition (no feed) — create them event-driven
-                              // so they appear in the picker immediately, before
-                              // any revalue auto-toggles the flag.
-                              valuationMethod: ValuationMethod.eventDriven,
-                              instrumentType: InstrumentType.alternative,
-                              assetClass: AssetClass.alternative,
-                              intermediaryId: pickedIntermediary!,
-                            );
-                        if (ctx.mounted) Navigator.pop(ctx, id);
-                      }
-                    : null,
-                child: Text(s.create),
-              ),
-            ],
-          ),
-        ),
-      );
-    } finally {
-      nameCtrl.dispose();
-    }
+    final created = await showDialog<({int assetId, int intermediaryId})>(
+      context: context,
+      builder: (_) => _CreateEmptyAssetDialog(
+        intermediaries: intermediaries,
+        initialIntermediaryId: _selectedIntermediaryId ?? intermediaries.first.id,
+      ),
+    );
 
     if (created != null && mounted) {
       _setState(() {
-        _singleAssetTargetId = created;
-        _selectedIntermediaryId = pickedIntermediary;
+        _singleAssetTargetId = created.assetId;
+        _selectedIntermediaryId = created.intermediaryId;
       });
     }
   }
@@ -328,7 +266,7 @@ extension _ColumnMapperStep on _ImportScreenState {
                   });
                   // Reload saved config for the newly chosen account if a file is already loaded.
                   if (v != null && _preview != null) {
-                    await _loadSavedConfig(_preview!.columns);
+                    await _loadSavedConfig();
                   }
                 },
               ),
@@ -346,6 +284,116 @@ extension _ColumnMapperStep on _ImportScreenState {
       error: (e, _) => Text(s.error(e)),
     );
   }
+}
 
-  /// The mapping UI content (skip rows, column mapping, preview table, Next button).
+/// Name, intermediary and currency of a new manual asset; creates it and pops
+/// its id with the chosen intermediary. The currency is pre-filled with the
+/// stored base currency once it has loaded — never with a guess — and Create
+/// stays off without one, and while the asset is being created. Owns its text
+/// controllers and disposes them only once the dialog is gone: disposing them
+/// as soon as the dialog returned broke the closing animation, which still
+/// rebuilds the focused field.
+class _CreateEmptyAssetDialog extends ConsumerStatefulWidget {
+  const _CreateEmptyAssetDialog({required this.intermediaries, required this.initialIntermediaryId});
+
+  final List<Intermediary> intermediaries;
+  final int initialIntermediaryId;
+
+  @override
+  ConsumerState<_CreateEmptyAssetDialog> createState() => _CreateEmptyAssetDialogState();
+}
+
+class _CreateEmptyAssetDialogState extends ConsumerState<_CreateEmptyAssetDialog> {
+  final _name = TextEditingController();
+  final _currency = TextEditingController();
+  late int? _intermediaryId = widget.initialIntermediaryId;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currency.text = ref.read(baseCurrencyProvider).value ?? '';
+    // A base currency that loads once the dialog is open fills the field,
+    // unless the user already typed one.
+    ref.listenManual(baseCurrencyProvider, (_, next) {
+      final base = next.value;
+      if (base != null && _currency.text.trim().isEmpty) setState(() => _currency.text = base);
+    });
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _currency.dispose();
+    super.dispose();
+  }
+
+  Future<void> _create(int intermediaryId) async {
+    final currency = _currency.text.trim().toUpperCase();
+    if (_saving || currency.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      final id = await ref
+          .read(assetServiceProvider)
+          .create(
+            name: _name.text.trim(),
+            currency: currency,
+            // Single-asset import targets are manual by definition (no feed) —
+            // create them event-driven so they appear in the picker immediately,
+            // before any revalue auto-toggles the flag.
+            valuationMethod: ValuationMethod.eventDriven,
+            instrumentType: InstrumentType.alternative,
+            assetClass: AssetClass.alternative,
+            intermediaryId: intermediaryId,
+          );
+      if (mounted) Navigator.pop(context, (assetId: id, intermediaryId: intermediaryId));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(appStringsProvider);
+    final intermediaryId = _intermediaryId;
+    final canCreate = !_saving && _name.text.trim().isNotEmpty && _currency.text.trim().isNotEmpty && intermediaryId != null;
+    return AlertDialog(
+      title: Text(s.createEmptyAsset),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              autofocus: true,
+              decoration: InputDecoration(labelText: s.name),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              initialValue: _intermediaryId,
+              decoration: InputDecoration(labelText: s.intermediaryName),
+              items: widget.intermediaries.map((i) => DropdownMenuItem(value: i.id, child: Text(i.name))).toList(),
+              onChanged: (v) => setState(() => _intermediaryId = v),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _currency,
+              decoration: InputDecoration(labelText: s.currency),
+              textCapitalization: TextCapitalization.characters,
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
+        FilledButton(
+          onPressed: canCreate ? () => _create(intermediaryId) : null,
+          child: Text(s.create),
+        ),
+      ],
+    );
+  }
 }

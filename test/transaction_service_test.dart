@@ -401,6 +401,81 @@ void main() {
     });
   });
 
+  group('column mode: value-date running balance anchored on the bank closing', () {
+    Future<int> bankRow(int acct, DateTime value, DateTime booked, double amount, String stated) => db
+        .into(db.transactions)
+        .insert(
+          TransactionsCompanion.insert(
+            accountId: acct,
+            operationDate: booked,
+            valueDate: value,
+            amount: amount,
+            description: const Value('x'),
+            rawMetadata: Value(jsonEncode({'Column 4': stated})),
+          ),
+        );
+    const mappings = {'__balanceMode': 'column', 'balanceAfter': 'Column 4', '__balanceDiffColumn': 'Column 4'};
+
+    test('rows booked after their value date get the balance of their value day, closing equals the bank closing', () async {
+      final acct = await createAccount('KBC');
+      // Bank order (balances in booking order): 3 transfers on the 9th, card payment
+      // of the 8th booked on the 10th, card payment of the 9th booked on the 11th, closing 0.
+      final t1 = await bankRow(acct, DateTime(2022, 5, 9), DateTime(2022, 5, 9), -5000, '15,134.33');
+      final t2 = await bankRow(acct, DateTime(2022, 5, 9), DateTime(2022, 5, 9), -5000, '10,134.33');
+      final t3 = await bankRow(acct, DateTime(2022, 5, 9), DateTime(2022, 5, 9), -5000, '5,134.33');
+      final card8 = await bankRow(acct, DateTime(2022, 5, 8), DateTime(2022, 5, 10), -2500, '2,634.33');
+      final card9 = await bankRow(acct, DateTime(2022, 5, 9), DateTime(2022, 5, 11), -2500, '134.33');
+      final last = await bankRow(acct, DateTime(2022, 5, 10), DateTime(2022, 5, 11), -134.33, '0.00');
+      // A hand-entered row: no bank figure, still on the timeline.
+      final manual = await service.create(
+        accountId: acct,
+        operationDate: DateTime(2022, 5, 7),
+        valueDate: DateTime(2022, 5, 7),
+        amount: -0.5,
+        currency: 'EUR',
+        description: 'manual',
+      );
+
+      final r = await service.recalculateBalancesDetailed(acct, balanceMode: 'column', savedMappings: mappings, numberLocale: 'en_US');
+      expect(r.anchored, isTrue);
+      expect(r.bankClosing, 0);
+      expect(r.opening, closeTo(20134.83, 1e-9), reason: 'closing − Σ amounts, the manual row included');
+
+      final bal = {for (final t in await service.getByAccount(acct)) t.id: t.balanceAfter};
+      expect(bal[manual], closeTo(20134.33, 1e-9));
+      expect(bal[card8], closeTo(17634.33, 1e-9), reason: 'on the 8th the transfers of the 9th have NOT happened yet');
+      expect(bal[t1], closeTo(12634.33, 1e-9));
+      expect(bal[t2], closeTo(7634.33, 1e-9));
+      expect(bal[t3], closeTo(2634.33, 1e-9));
+      expect(bal[card9], closeTo(134.33, 1e-9));
+      expect(bal[last], closeTo(0, 1e-9));
+
+      // The chart's read (last balance per value day) is now the true end-of-day balance: no dip on the 8th.
+      final rows = await db
+          .customSelect(
+            "SELECT date(value_date,'unixepoch') d, balance_after b FROM transactions WHERE account_id = ? ORDER BY value_date, id",
+            variables: [Variable.withInt(acct)],
+          )
+          .get();
+      final lastPerDay = <String, double>{};
+      for (final r in rows) {
+        lastPerDay[r.read<String>('d')] = r.read<double>('b');
+      }
+      expect(lastPerDay.values.toList(), [20134.33, 17634.33, 134.33, 0.0]);
+      // Idempotent.
+      expect((await service.recalculateBalances(acct, balanceMode: 'column', savedMappings: mappings, numberLocale: 'en_US')), 0);
+    });
+
+    test('without any stated balance the series is not anchored and starts at 0', () async {
+      final acct = await createAccount('NoBank');
+      await service.create(accountId: acct, operationDate: DateTime(2024, 1, 1), valueDate: DateTime(2024, 1, 1), amount: 10, currency: 'EUR');
+      final r = await service.recalculateBalancesDetailed(acct, balanceMode: 'column', savedMappings: mappings);
+      expect(r.anchored, isFalse);
+      expect(r.opening, 0);
+      expect((await service.getByAccount(acct)).single.balanceAfter, 10);
+    });
+  });
+
   group('chart balance series uses valueDate', () {
     test('balances read in value_date order produce correct time series', () async {
       final accountId = await createAccount('ChartSeries');

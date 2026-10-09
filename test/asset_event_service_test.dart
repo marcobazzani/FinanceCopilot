@@ -649,4 +649,104 @@ void main() {
       expect(result, 100);
     });
   });
+
+  group('stampExchangeRateBase', () {
+    // Regression: a stored `exchangeRate` carries no record of which base
+    // currency it was quoted against, so changing the app's base currency
+    // would silently reuse a rate belonging to the OLD base — see
+    // `computed_providers.dart`'s `convertToBase`/`convertedEventAmountsProvider`.
+    //
+    // The fix must NOT delete the rates to achieve that. The column also
+    // holds rates the user typed in the event editor and rates a broker file
+    // supplied; an execution rate differs from that day's reference rate and
+    // no market lookup can reconstruct it. Stamping the outgoing base keeps
+    // the value while making it unusable for the new base.
+    test('preserves every rate while recording the base it was quoted against', () async {
+      final assetId = await createAsset('USD Fund');
+      final id1 = await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100,
+        currency: 'USD',
+        exchangeRate: 1.1,
+        exchangeRateBase: 'EUR',
+      );
+      final id2 = await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 2, 1),
+        type: EventType.buy,
+        amount: 200,
+        currency: 'USD',
+        exchangeRate: 1.2,
+      );
+
+      // id2 was stored without provenance (the legacy/unstamped shape).
+      expect((await service.getByAsset(assetId)).firstWhere((e) => e.id == id2).exchangeRateBase, isNull);
+
+      final stamped = await service.stampExchangeRateBase('EUR');
+      expect(stamped, 1, reason: 'only the unattributed row needs stamping; id1 already records its base');
+
+      final events = await service.getByAsset(assetId);
+      expect(
+        events.map((e) => e.exchangeRate).toList()..sort(),
+        [1.1, 1.2],
+        reason: 'user-entered and imported execution rates are original data — never destroyed',
+      );
+      expect(events.every((e) => e.exchangeRateBase == 'EUR'), isTrue);
+      expect(events.map((e) => e.id).toSet(), {id1, id2});
+    });
+
+    test('a stamped rate is no longer usable for a different base, but stays usable for its own', () async {
+      final assetId = await createAsset('USD Fund');
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100,
+        currency: 'USD',
+        exchangeRate: 1.1,
+        exchangeRateBase: 'EUR',
+      );
+      final event = (await service.getByAsset(assetId)).single;
+
+      expect(AssetEventService.isExchangeRateUsableFor(event, 'EUR'), isTrue);
+      expect(
+        AssetEventService.isExchangeRateUsableFor(event, 'GBP'),
+        isFalse,
+        reason: 'a EUR-quoted rate must not be applied to a GBP base',
+      );
+    });
+
+    test('an unstamped rate counts as quoted against the current base', () async {
+      final assetId = await createAsset('USD Fund');
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100,
+        currency: 'USD',
+        exchangeRate: 1.1,
+      );
+      final event = (await service.getByAsset(assetId)).single;
+
+      expect(
+        AssetEventService.isExchangeRateUsableFor(event, 'EUR'),
+        isTrue,
+        reason: 'rows predating the provenance column must keep working while the base is unchanged',
+      );
+    });
+
+    test('is a no-op when no event has a rate', () async {
+      final assetId = await createAsset('EUR Fund');
+      await service.create(
+        assetId: assetId,
+        date: DateTime(2024, 1, 1),
+        type: EventType.buy,
+        amount: 100,
+        currency: 'EUR',
+      );
+      expect(await service.stampExchangeRateBase('EUR'), 0);
+    });
+  });
 }

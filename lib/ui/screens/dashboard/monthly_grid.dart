@@ -7,11 +7,6 @@ class _MonthlyGrid extends ConsumerWidget {
   final String field; // 'income' or 'expenses'
   const _MonthlyGrid({required this.data, required this.locale, required this.language, required this.field});
 
-  List<String> _localizedMonths() {
-    final f = DateFormat('MMM', language);
-    return [for (int m = 1; m <= 12; m++) f.format(DateTime(2000, m))];
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
@@ -54,7 +49,7 @@ class _MonthlyGrid extends ConsumerWidget {
           for (int m = 1; m <= 12; m++) ...[
             TableRow(
               children: [
-                _td(_localizedMonths()[m - 1], bold: true),
+                _td(monthAbbr(m, language), bold: true),
                 for (final y in years) ...[
                   Builder(
                     builder: (ctx) {

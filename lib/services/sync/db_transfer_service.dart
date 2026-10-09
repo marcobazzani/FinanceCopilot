@@ -18,31 +18,44 @@ class DbTransferService {
   }
 
   /// Export the internal DB to a user-chosen location.
+  ///
+  /// Exports a `VACUUM INTO` snapshot (see [AppDatabase.snapshotToTempFile])
+  /// rather than the live DB file: reading the live file directly could
+  /// capture a torn copy mid-write (background price sync, an in-progress
+  /// import, etc.), producing an export that looks fine but is silently
+  /// inconsistent. The snapshot's bytes are passed to [FilePicker.saveFile]
+  /// so this also works on Android/iOS, where the plugin performs the
+  /// actual write itself and requires `bytes` up front — a bare
+  /// `saveFile(...)` call without `bytes` throws on those platforms.
+  ///
+  /// [dialogTitle] titles the picker, in the UI language.
+  ///
   /// Returns the export path on success, null if cancelled.
-  static Future<String?> exportDb() async {
-    final path = await dbPath;
-    final file = File(path);
-    if (!await file.exists()) {
-      _log.warning('exportDb: DB file not found at $path');
-      return null;
-    }
-
-    final result = await FilePicker.saveFile(
-      dialogTitle: 'Export Database',
-      fileName: 'FinanceCopilot.db',
-      type: FileType.any,
-    );
-    if (result == null) return null;
-
+  static Future<String?> exportDb(AppDatabase db, {required String dialogTitle}) async {
+    final snapshotPath = await db.snapshotToTempFile();
     try {
-      final target = File(result);
-      if (await target.exists()) await target.delete();
-      await file.copy(result);
+      final bytes = await File(snapshotPath).readAsBytes();
+      final saved = await FilePicker.saveFile(
+        dialogTitle: dialogTitle,
+        fileName: 'FinanceCopilot.db',
+        type: FileType.any,
+        bytes: bytes,
+      );
+      if (saved == null) return null;
+      // A file on disk reads as its path; a platform document (e.g. an
+      // Android content URI) as its URI.
+      final result = saved.scheme == 'file' ? saved.toFilePath() : saved.toString();
       _log.info('exportDb: exported to $result');
       return result;
     } catch (e) {
-      _log.severe('exportDb: failed to copy: $e');
+      _log.severe('exportDb: failed to export: $e');
       rethrow;
+    } finally {
+      try {
+        await File(snapshotPath).delete();
+      } catch (e) {
+        _log.warning('exportDb: failed to delete snapshot tmp file (harmless): $e');
+      }
     }
   }
 
@@ -51,16 +64,15 @@ class DbTransferService {
   /// Uses SQLite ATTACH via [AppDatabase.mergeFromAttachedDb] instead of
   /// replacing the database file. This keeps the import safe while Drift has
   /// active stream subscribers and avoids Windows file-lock failures.
+  /// [dialogTitle] titles the picker, in the UI language.
   /// Returns the import source path on success, null if cancelled.
-  static Future<String?> importDb(AppDatabase db) async {
-    final picked = await FilePicker.pickFiles(
-      dialogTitle: 'Import Database',
+  static Future<String?> importDb(AppDatabase db, {required String dialogTitle}) async {
+    final picked = await FilePicker.pickFile(
+      dialogTitle: dialogTitle,
       type: FileType.custom,
       allowedExtensions: ['db'],
     );
-    if (picked == null || picked.files.isEmpty) return null;
-
-    final sourcePath = picked.files.single.path;
+    final sourcePath = picked?.path;
     if (sourcePath == null) return null;
 
     return importDbFromPath(db, sourcePath);

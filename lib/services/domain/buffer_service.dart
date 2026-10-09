@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/database/query_helpers.dart';
 import 'package:finance_copilot/utils/logger.dart';
+import 'package:finance_copilot/utils/visualization_clock.dart';
 
 final _log = getLogger('BufferService');
 
@@ -43,39 +45,36 @@ class BufferService {
     )..where((b) => b.id.equals(id))).write(companion.copyWith(updatedAt: Value(DateTime.now()))).then((rows) => rows > 0);
   }
 
-  Future<int> delete(int id) async {
+  /// Deletes the buffer with its transactions in one transaction: a failure
+  /// part-way deletes nothing.
+  Future<int> delete(int id) {
     _log.warning('delete: buffer id=$id');
-    await (_db.delete(_db.bufferTransactions)..where((t) => t.bufferId.equals(id))).go();
-    return (_db.delete(_db.buffers)..where((b) => b.id.equals(id))).go();
+    return _db.transaction(() async {
+      await (_db.delete(_db.bufferTransactions)..where((t) => t.bufferId.equals(id))).go();
+      return (_db.delete(_db.buffers)..where((b) => b.id.equals(id))).go();
+    });
   }
 
   // ── BufferTransaction CRUD ──
 
+  /// The buffer's transactions as of [through]; each read sets its own order.
+  SimpleSelectStatement<$BufferTransactionsTable, BufferTransaction> _byBuffer(int bufferId, {DateTime? through}) {
+    final query = _db.select(_db.bufferTransactions)..where((t) => t.bufferId.equals(bufferId));
+    if (through != null) query.where((t) => t.valueDate.isSmallerThanValue(startOfNextDay(through)));
+    return query;
+  }
+
+  /// Newest first.
   Stream<List<BufferTransaction>> watchByBuffer(
     int bufferId, {
     DateTime? through,
-  }) {
-    final query = _db.select(_db.bufferTransactions)..where((t) => t.bufferId.equals(bufferId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(t) => OrderingTerm.desc(t.valueDate)]);
-    return query.watch();
-  }
+  }) => (_byBuffer(bufferId, through: through)..orderBy([(t) => OrderingTerm.desc(t.valueDate)])).watch();
 
+  /// Oldest first.
   Future<List<BufferTransaction>> getByBuffer(
     int bufferId, {
     DateTime? through,
-  }) {
-    final query = _db.select(_db.bufferTransactions)..where((t) => t.bufferId.equals(bufferId));
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive != null) {
-      query.where((t) => t.valueDate.isSmallerThanValue(endExclusive));
-    }
-    query.orderBy([(t) => OrderingTerm.asc(t.valueDate)]);
-    return query.get();
-  }
+  }) => (_byBuffer(bufferId, through: through)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
 
   Future<int> createTransaction({
     required int bufferId,
@@ -121,24 +120,9 @@ class BufferService {
           'SELECT COALESCE(SUM(amount), 0.0) AS total '
           'FROM buffer_transactions WHERE buffer_id = ? '
           "${bounded ? 'AND value_date < ?' : ''}",
-          variables: [Variable.withInt(bufferId), ..._throughVars(through)],
+          variables: [Variable.withInt(bufferId), ...throughVars(through)],
         )
         .getSingle();
     return row.read<double>('total');
-  }
-
-  static DateTime? _throughEndExclusive(DateTime? through) {
-    if (through == null) return null;
-    return DateTime(
-      through.year,
-      through.month,
-      through.day,
-    ).add(const Duration(days: 1));
-  }
-
-  static List<Variable<int>> _throughVars(DateTime? through) {
-    final endExclusive = _throughEndExclusive(through);
-    if (endExclusive == null) return const [];
-    return [Variable.withInt(endExclusive.millisecondsSinceEpoch ~/ 1000)];
   }
 }

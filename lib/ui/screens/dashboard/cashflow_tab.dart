@@ -39,7 +39,7 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     _velocityWinCtl = TextEditingController(text: '$_velocityWindow');
 
     // Default zoom: last 365 days
-    final totalDays = ref.read(currentDateProvider).difference(widget.allData.firstDate).inDays.toDouble();
+    final totalDays = chart_math.calendarDaysBetween(widget.allData.firstDate, ref.read(currentDateProvider)).toDouble();
     final xMax = totalDays.clamp(0.0, double.infinity);
     final xMin365 = (xMax - 365).clamp(0.0, double.infinity);
     for (final id in [_idSaving, _idSpending, _idVelocity]) {
@@ -133,6 +133,8 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     final locale = widget.locale;
     final ieAsync = ref.watch(_incomeExpenseDataProvider);
     final ieData = ieAsync.value;
+    // Income records left out of the yearly figures for want of a rate.
+    final incomeRowsWithoutRate = ref.watch(incomeRowsWithoutRateProvider).value;
 
     // Cash and Saving flow from the user's configured History-tab charts
     // (stored in dashboard_charts) — option B. Fallback to hard-coded
@@ -164,21 +166,21 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
     final chartDefs = [
       (
         id: _idSaving,
-        chart: _fakeChart(_idSaving, '${s.dashSaving} vs MA'),
+        chart: _fakeChart(_idSaving, s.cfVsMovingAverage(s.dashSaving)),
         series: <ChartSeries>[
           ChartSeries(key: 'cf:saving', name: s.dashSaving, color: Colors.blue, spots: savingSpots),
-          ChartSeries(key: 'cf:saving_ma', name: 'MA', color: Colors.blue.shade200, spots: savingMA, isDashed: true),
-          ChartSeries(key: 'cf:diff', name: 'Diff', color: Colors.orange, spots: savingDiff, rightAxis: true),
+          ChartSeries(key: 'cf:saving_ma', name: s.cfMovingAverage, color: Colors.blue.shade200, spots: savingMA, isDashed: true),
+          ChartSeries(key: 'cf:diff', name: s.cfDiff, color: Colors.orange, spots: savingDiff, rightAxis: true),
         ],
         ctl: _savingWinCtl,
         onWin: (int w) => setState(() => _savingWindow = w),
       ),
       (
         id: _idSpending,
-        chart: _fakeChart(_idSpending, '${s.legendExpenses} vs MA & ${s.dashCash}'),
+        chart: _fakeChart(_idSpending, s.cfVsMovingAverageAnd(s.legendExpenses, s.dashCash)),
         series: <ChartSeries>[
           ChartSeries(key: 'cf:spending', name: s.legendExpenses, color: Colors.red, spots: spendingSpots),
-          ChartSeries(key: 'cf:spending_ma', name: 'MA', color: Colors.red.shade200, spots: spendingMA, isDashed: true),
+          ChartSeries(key: 'cf:spending_ma', name: s.cfMovingAverage, color: Colors.red.shade200, spots: spendingMA, isDashed: true),
           ChartSeries(key: 'cf:cash', name: s.dashCash, color: Colors.green, spots: cashSpots, rightAxis: true),
         ],
         ctl: _spendingWinCtl,
@@ -186,10 +188,10 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
       ),
       (
         id: _idVelocity,
-        chart: _fakeChart(_idVelocity, '${s.cfVelocity} (MA)'),
+        chart: _fakeChart(_idVelocity, s.cfOfMovingAverage(s.cfVelocity)),
         series: <ChartSeries>[
-          ChartSeries(key: 'cf:saving_vel', name: '${s.dashSaving} vel.', color: Colors.blue, spots: savingVel),
-          ChartSeries(key: 'cf:spending_vel', name: '${s.legendExpenses} vel.', color: Colors.red, spots: spendingVel),
+          ChartSeries(key: 'cf:saving_vel', name: s.cfVelocityOf(s.dashSaving), color: Colors.blue, spots: savingVel),
+          ChartSeries(key: 'cf:spending_vel', name: s.cfVelocityOf(s.legendExpenses), color: Colors.red, spots: spendingVel),
         ],
         ctl: _velocityWinCtl,
         onWin: (int w) => setState(() => _velocityWindow = w),
@@ -229,6 +231,47 @@ class _CashFlowTabState extends ConsumerState<_CashFlowTab> {
             ),
             const SizedBox(height: 24),
           ],
+          // The income records the yearly figures below leave out (never
+          // converted 1:1), counted once above them.
+          if (incomeRowsWithoutRate != null && incomeRowsWithoutRate > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Footnote(s.incomeFxExcluded(incomeRowsWithoutRate), key: const Key('incomeFxFootnote')),
+            ),
+          // Where the money goes: one year as a Sankey. Income, savings and
+          // expenses are the yearly Income/Expense/Savings figures below (one
+          // source of truth); the ledger only splits expenses by category.
+          ExpansionTile(
+            key: const Key('spendingByCategoryTile'),
+            title: Text(ref.watch(appStringsProvider).spendingByCategoryTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(ref.watch(appStringsProvider).spendingByCategorySubtitle, style: Theme.of(context).textTheme.bodySmall),
+            initiallyExpanded: true,
+            children: [
+              ref
+                  .watch(_spendingByCategoryProvider)
+                  .when(
+                    loading: () => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                    error: (e, _) => Padding(padding: const EdgeInsets.all(16), child: Text(s.error(e))),
+                    data: (d) => ieAsync.isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        : CashFlowSankeyCard(
+                            spending: d,
+                            years: {
+                              for (final y in ieData?.years ?? const <_YearBucket>[])
+                                y.year: (income: y.income, savings: y.savings, refunds: y.refunds),
+                            },
+                            currentYear: ref.watch(currentDateProvider).year,
+                            locale: locale,
+                          ),
+                  ),
+            ],
+          ),
           // Income/expense analytics sections
           if (ieAsync.isLoading) ...[
             const Center(child: CircularProgressIndicator()),

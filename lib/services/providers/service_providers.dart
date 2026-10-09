@@ -11,11 +11,10 @@ final importServiceProvider = _dbService(ImportService.new);
 final transactionServiceProvider = _dbService(TransactionService.new);
 final assetEventServiceProvider = _dbService(AssetEventService.new);
 final importConfigServiceProvider = _dbService(ImportConfigService.new);
-
-final isinLookupServiceProvider = Provider<IsinLookupService>((ref) {
-  final priceService = ref.watch(marketPriceServiceProvider);
-  return IsinLookupService(priceService as WebMarketDataService);
-});
+final categoryServiceProvider = _dbService(CategoryService.new);
+final ruleServiceProvider = _dbService(RuleService.new);
+final ruleTransferServiceProvider = _dbService(RuleTransferService.new);
+final transactionClassifierServiceProvider = _dbService(TransactionClassifierService.new);
 
 final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
   final priceService = ref.watch(marketPriceServiceProvider);
@@ -23,17 +22,24 @@ final exchangeRateServiceProvider = Provider<ExchangeRateService>((ref) {
   return ExchangeRateService(ref.watch(databaseProvider), providerService: provider);
 });
 
+// Both rebuild whenever the DB reloads (import, restore, wipe); the replaced
+// instance must release its network client (and the market service its
+// headless WebView and solve timers).
 final marketPriceServiceProvider = Provider<MarketPriceService>((ref) {
   final db = ref.watch(databaseProvider);
-  return WebMarketDataService(db);
+  final service = WebMarketDataService(db);
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 final compositionServiceProvider = Provider<CompositionService>((ref) {
   final priceService = ref.watch(marketPriceServiceProvider);
-  return CompositionService(
+  final service = CompositionService(
     ref.watch(databaseProvider),
     providerService: priceService is WebMarketDataService ? priceService : null,
   );
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 // Dashboard chart configuration is no longer DB-backed; see
@@ -64,6 +70,3 @@ final portfolioRebalanceServiceProvider = Provider<PortfolioRebalanceService>((r
     marketDataService: priceService is WebMarketDataService ? priceService : null,
   );
 });
-
-/// Currently selected pillar scope on dashboards (default: All).
-final selectedPillarScopeProvider = StateProvider<PillarScope>((ref) => const PillarScope.all());

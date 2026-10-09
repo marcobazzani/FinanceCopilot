@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -6,8 +7,75 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-IOSink? _logSink;
+RotatingLogFile? _logFile;
 String? logFilePath;
+
+/// The app log file: appends lines and, on request, moves the file aside to
+/// `<path>.1` once it has grown past a size limit.
+///
+/// Rotation is asynchronous: the sink must be flushed and closed before the
+/// file can be renamed (Windows refuses to rename an open file, and an IOSink
+/// rejects both close() and writes while a flush is pending). Lines written
+/// meanwhile are held back and appended, in order, to the fresh file.
+@visibleForTesting
+class RotatingLogFile {
+  RotatingLogFile(this.path) : _sink = File(path).openWrite(mode: FileMode.append);
+
+  final String path;
+  IOSink _sink;
+
+  /// Lines logged while a rotation is in flight; null otherwise.
+  List<String>? _held;
+  Future<void>? _rotation;
+
+  void writeln(String line) {
+    final held = _held;
+    if (held != null) {
+      held.add(line);
+    } else {
+      _sink.writeln(line);
+    }
+  }
+
+  /// Rotate when the file on disk is larger than [maxBytes]. A rotation
+  /// already in flight is joined rather than started twice.
+  Future<void> rotateIfLargerThan(int maxBytes) {
+    final inFlight = _rotation;
+    if (inFlight != null) return inFlight;
+    final logFile = File(path);
+    if (!logFile.existsSync() || logFile.lengthSync() <= maxBytes) return Future.value();
+    return _rotation = _rotate().whenComplete(() => _rotation = null);
+  }
+
+  Future<void> _rotate() async {
+    final held = _held = <String>[];
+    var rotated = false;
+    try {
+      await _sink.flush();
+      await _sink.close();
+      final backup = File('$path.1');
+      if (backup.existsSync()) backup.deleteSync();
+      File(path).renameSync(backup.path);
+      rotated = true;
+    } catch (e) {
+      // Keep appending to the current file rather than losing lines.
+      _debugLog('Log rotation failed: $e');
+    }
+    _sink = File(path).openWrite(mode: FileMode.append);
+    if (rotated) _sink.writeln('--- Log rotated at ${DateTime.now().toIso8601String()} ---');
+    _held = null;
+    for (final line in held) {
+      _sink.writeln(line);
+    }
+  }
+
+  /// Flush and close the file, after any rotation in flight.
+  Future<void> close() async {
+    await _rotation;
+    await _sink.flush();
+    await _sink.close();
+  }
+}
 
 /// Resolve the configured minimum log level from `--dart-define=LOG_LEVEL`.
 /// Defaults to INFO. DEBUG/TRACE map to FINE/FINEST; ALL captures everything.
@@ -80,8 +148,8 @@ Future<void> initLogging() async {
       }
     }
 
-    _logSink = logFile.openWrite(mode: FileMode.append);
-    _logSink!.writeln('\n--- App started at ${DateTime.now().toIso8601String()} ---');
+    final sessionLog = _logFile = RotatingLogFile(logFile.path);
+    sessionLog.writeln('\n--- App started at ${DateTime.now().toIso8601String()} ---');
   } catch (e) {
     _debugLog('Failed to open log file: $e');
   }
@@ -109,14 +177,14 @@ Future<void> initLogging() async {
       if (repeatCount == 5) {
         final suppressed =
             '$ts WARN  [Logger] Suppressing repeated: ${record.message.length > 60 ? record.message.substring(0, 60) : record.message}...';
-        _logSink?.writeln(suppressed);
+        _logFile?.writeln(suppressed);
         _debugLog(suppressed);
       }
       if (repeatCount >= 5) return; // suppress after 5 repeats
     } else {
       if (repeatCount > 5) {
         final note = '$ts INFO  [Logger] (suppressed ${repeatCount - 5} repeats)';
-        _logSink?.writeln(note);
+        _logFile?.writeln(note);
       }
       lastMsg = dedupKey;
       repeatCount = 0;
@@ -126,23 +194,15 @@ Future<void> initLogging() async {
     // Skip stack traces for warnings (DioException etc.) — just the message
     final withStack = record.stackTrace != null && record.level >= Level.SEVERE ? '$fullMsg\n  ${record.stackTrace}' : fullMsg;
 
-    _logSink?.writeln(withStack);
+    _logFile?.writeln(withStack);
     _debugLog(withStack);
     developer.log(record.message, name: record.loggerName, level: record.level.value);
 
-    // Periodic rotation check (every 10000 lines)
+    // Periodic rotation check (every 10000 lines). Not awaited: a log call
+    // never waits on the file; lines logged meanwhile are held and replayed.
     lineCount++;
-    if (lineCount % 10000 == 0 && logFilePath != null) {
-      final logFile = File(logFilePath!);
-      if (logFile.existsSync() && logFile.lengthSync() > 10 * 1024 * 1024) {
-        _logSink?.flush();
-        _logSink?.close();
-        final backup = File('${logFilePath!}.1');
-        if (backup.existsSync()) backup.deleteSync();
-        logFile.renameSync(backup.path);
-        _logSink = logFile.openWrite(mode: FileMode.append);
-        _logSink!.writeln('--- Log rotated at ${DateTime.now().toIso8601String()} ---');
-      }
+    if (lineCount % 10000 == 0) {
+      unawaited(_logFile?.rotateIfLargerThan(10 * 1024 * 1024));
     }
   });
 }

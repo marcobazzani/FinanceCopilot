@@ -44,7 +44,7 @@ class PdfTableReconstruction {
 /// amount column) come first, then middle columns are filled in by
 /// gap-stable left-edge clustering, then the result is validated row-by-row
 /// before emission. Any failure throws a [PdfImportException] subclass —
-/// per CLAUDE.md "never silently fall back".
+/// per AGENTS.md "never silently fall back".
 class PdfTableReconstructor {
   /// Locales the rest of the import wizard supports. Used as the candidate
   /// set when probing whether a fragment is "numeric" — a fragment counts
@@ -186,7 +186,6 @@ class PdfTableReconstructor {
       lines: lines,
       lineCells: lineCells,
       dataLineSet: dataLineSet,
-      dateAnchor: dateAnchor,
       amountAnchor: amountAnchor,
       balanceAnchor: balanceAnchor,
       dateColIdx: dateColIdx,
@@ -393,7 +392,6 @@ class PdfTableReconstructor {
     // the per-row stitch because of the leading "Totale" word, but the
     // date is still semantically in the same column).
     final lefts = <double>[];
-    final rights = <double>[];
     var bandLo = best.lo - charWidth;
     var bandHi = best.hi + charWidth;
     bool changed = true;
@@ -417,12 +415,10 @@ class PdfTableReconstructor {
       for (final p in list) {
         if (p.xCenter >= bandLo && p.xCenter <= bandHi) {
           lefts.add(p.left);
-          rights.add(p.right);
         }
       }
     }
     return _ColAnchor(
-      role: _ColRole.date,
       xLeft: _median(lefts),
       xLo: bandLo,
       xHi: bandHi,
@@ -530,7 +526,6 @@ class PdfTableReconstructor {
         .map((n) => n.fragment.left)
         .toList();
     return _ColAnchor(
-      role: _ColRole.amount,
       xLeft: _median(lefts),
       xLo: chosen.lo - charWidth,
       xHi: chosen.hi + charWidth,
@@ -595,9 +590,9 @@ class PdfTableReconstructor {
     }
 
     // The plan calls this the *balance* column and places it semantically
-    // before the amount column. We anchor it on `_ColRole.balance` so the
-    // header detector can label it generically; the wizard's auto-mapper
-    // and the user's column picker take care of routing.
+    // before the amount column. The header detector labels it generically;
+    // the wizard's auto-mapper and the user's column picker take care of
+    // routing.
     final lefts = candidates
         .where(
           (c) =>
@@ -608,7 +603,6 @@ class PdfTableReconstructor {
         .map((c) => c.fragment.left)
         .toList();
     return _ColAnchor(
-      role: _ColRole.balance,
       xLeft: _median(lefts),
       xLo: secondMost.lo - charWidth,
       xHi: secondMost.hi + charWidth,
@@ -632,9 +626,7 @@ class PdfTableReconstructor {
     // we don't use it as a boundary, because the amount column itself
     // would otherwise become a middle-column candidate.
     final lefts = <_FragmentInLine>[];
-    final perLineCounts = <int, Set<int>>{};
     for (final i in dataLineIndices) {
-      perLineCounts[i] = <int>{};
       for (final f in lines[i].fragments) {
         if (f.xCenter <= dateAnchor.xHi) continue;
         if (f.xCenter >= amountAnchor.xLo) continue;
@@ -670,7 +662,6 @@ class PdfTableReconstructor {
           .toList();
       accepted.add(
         _ColAnchor(
-          role: _ColRole.middle,
           xLeft: _median(memberLefts),
           xLo: c.lo,
           xHi: c.hi,
@@ -698,7 +689,6 @@ class PdfTableReconstructor {
     final spanRight = fallbackRights.reduce((a, b) => a > b ? a : b) + charWidth * 0.5;
     return [
       _ColAnchor(
-        role: _ColRole.middle,
         xLeft: _median(fallbackLefts),
         xLo: spanLeft,
         xHi: spanRight,
@@ -759,7 +749,6 @@ class PdfTableReconstructor {
     required List<_Line> lines,
     required List<List<String>> lineCells,
     required Set<int> dataLineSet,
-    required _ColAnchor dateAnchor,
     required _ColAnchor amountAnchor,
     required _ColAnchor? balanceAnchor,
     required int dateColIdx,
@@ -894,9 +883,8 @@ class PdfTableReconstructor {
   /// new synthetic anchors at their own xLeft — that's how a column
   /// like "Uscite" (debits, empty in this report) gets its own slot.
   ///
-  /// Synthetic anchors carry the `_ColRole.middle` role since they're
-  /// neither date nor amount; downstream code only relies on xLeft / xLo
-  /// / xHi for layout, not the role tag.
+  /// Downstream code only relies on xLeft / xLo / xHi for layout, so a
+  /// synthetic anchor is placed like any other.
   static List<_ColAnchor> _augmentAnchorsWithHeader(
     List<_ColAnchor> dataAnchors,
     _Line headerLine,
@@ -933,7 +921,6 @@ class PdfTableReconstructor {
         if (identical(w, closest)) continue;
         synthetic.add(
           _ColAnchor(
-            role: _ColRole.middle,
             xLeft: w.xCenter,
             xLo: w.left - charWidth,
             xHi: w.right + charWidth,
@@ -1030,8 +1017,7 @@ class PdfTableReconstructor {
   static String _safeCell(List<String> row, int index) => (index >= 0 && index < row.length) ? row[index] : '';
 
   /// 1D agglomerative clustering: sort, merge consecutive points whose gap
-  /// is below [mergeThreshold]. Returns clusters with min/max/center and
-  /// member count.
+  /// is below [mergeThreshold]. Returns clusters with min/max/center.
   static List<_Cluster1D> _cluster1D(
     List<double> values, {
     required double mergeThreshold,
@@ -1050,14 +1036,14 @@ class PdfTableReconstructor {
         count++;
         sum += v;
       } else {
-        clusters.add(_Cluster1D(lo: lo, hi: hi, center: sum / count, count: count));
+        clusters.add(_Cluster1D(lo: lo, hi: hi, center: sum / count));
         lo = v;
         hi = v;
         count = 1;
         sum = v;
       }
     }
-    clusters.add(_Cluster1D(lo: lo, hi: hi, center: sum / count, count: count));
+    clusters.add(_Cluster1D(lo: lo, hi: hi, center: sum / count));
     return clusters;
   }
 }

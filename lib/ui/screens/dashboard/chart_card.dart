@@ -58,45 +58,19 @@ class ChartCard extends ConsumerWidget {
     this.showTotal = true,
   });
 
-  /// Build total spots with smart asset handling:
-  /// - If `asset_net:<id>` is visible it supersedes invested/market for that
-  ///   asset (avoid double-counting).
-  /// - Else if both invested and market are visible, only sum market.
-  List<FlSpot> _buildSmartTotalSpots(List<ChartSeries> visible) {
-    final visibleInvestedIds = <int>{};
-    final visibleMarketIds = <int>{};
-    final visibleNetIds = <int>{};
-    for (final s in visible) {
-      final parts = s.key.split(':');
-      if (parts.length != 2) continue;
-      final id = int.tryParse(parts[1]);
-      if (id == null) continue;
-      if (parts[0] == 'asset_invested') visibleInvestedIds.add(id);
-      if (parts[0] == 'asset_market') visibleMarketIds.add(id);
-      if (parts[0] == 'asset_net') visibleNetIds.add(id);
-    }
-    final excludeFromTotal = <String>{};
-    for (final id in visibleNetIds) {
-      excludeFromTotal.add('asset_invested:$id');
-      excludeFromTotal.add('asset_market:$id');
-    }
-    for (final id in visibleInvestedIds) {
-      if (visibleMarketIds.contains(id)) {
-        excludeFromTotal.add('asset_invested:$id');
-      }
-    }
-    final spotsForTotal = visible.where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis).map((s) => s.spots).toList();
-    return buildTotalSpots(spotsForTotal);
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final isPrivate = ref.watch(privacyModeProvider);
     final visible = series.where((s) => !hidden.contains(s.key)).toList();
-    final totalSpots = _buildSmartTotalSpots(visible);
+    final totalSpots = buildSmartTotalSpots(visible);
+    // What the header total leaves out for want of a price or an exchange
+    // rate, counted under it; a combined chart shows no header total.
+    final excluded = chart.sourceChartIds == null ? totalExclusions(visible, allData) : const TotalExclusions();
     final symbol = currencySymbol(allData.baseCurrency);
-    final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : 0.0;
+    // Null without a Total to read (every series hidden, or no data behind
+    // them): the latest value is unknown, not zero.
+    final currentTotal = totalSpots.isNotEmpty ? totalSpots.last.y : null;
     final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
 
     // Series to actually draw (empty if hideComponents, but total is unaffected)
@@ -127,9 +101,12 @@ class ChartCard extends ConsumerWidget {
                 child: Text(chart.title, style: Theme.of(context).textTheme.titleMedium),
               ),
               if (chart.sourceChartIds == null)
+                // An unknown total reads "—", which carries no magnitude:
+                // only a real total is masked.
                 PrivacyText(
-                  currFmt.format(currentTotal),
+                  currentTotal == null ? '\u2014' : currFmt.format(currentTotal),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                  masked: currentTotal != null,
                 ),
               const SizedBox(width: 4),
               // Hide components toggle (not for combined charts — they only show contributors)
@@ -158,7 +135,6 @@ class ChartCard extends ConsumerWidget {
                         showTotal: showTotal && chart.sourceChartIds == null && !hidden.contains('_total'),
                         firstDate: allData.firstDate,
                         baseCurrency: allData.baseCurrency,
-                        isPrivate: isPrivate,
                       ),
                     ),
                   );
@@ -192,6 +168,7 @@ class ChartCard extends ConsumerWidget {
               ?headerExtra,
             ],
           ),
+          _ExcludedFromTotalNote(excluded),
           const SizedBox(height: 4),
 
           // Legend
@@ -223,18 +200,24 @@ class ChartCard extends ConsumerWidget {
             child: totalSpots.length >= 2
                 ? Builder(
                     builder: (context) {
-                      // Compute Y range so _DragZoomWrapper can map pixels to chart Y
-                      // Must match _UnifiedChart's Y range: include total only when shown
                       final showTotalLine = showTotal && chart.sourceChartIds == null && !hidden.contains('_total');
-                      final allY = [
-                        if (showTotalLine) ...totalSpots.map((s) => s.y),
-                        ...drawnSeries.where((s) => !s.rightAxis).expand((s) => s.spots.map((p) => p.y)),
-                      ];
-                      final autoMinY = allY.isEmpty ? 0.0 : allY.reduce(min);
-                      final autoMaxY = allY.isEmpty ? 100.0 : allY.reduce(max);
-                      final autoRange = autoMaxY - autoMinY;
-                      final effectiveMinY = zoomMinY ?? (autoRange > 0 ? autoMinY - autoRange * 0.05 : autoMinY - 100);
-                      final effectiveMaxY = zoomMaxY ?? (autoRange > 0 ? autoMaxY + autoRange * 0.05 : autoMaxY + 100);
+                      final unifiedChart = UnifiedChart(
+                        firstDate: allData.firstDate,
+                        visible: drawnSeries,
+                        totalSpots: totalSpots,
+                        showTotal: showTotalLine,
+                        baseCurrency: allData.baseCurrency,
+                        locale: locale,
+                        language: language,
+                        zoomMinX: zoomMinX,
+                        zoomMaxX: zoomMaxX,
+                        zoomMinY: zoomMinY,
+                        zoomMaxY: zoomMaxY,
+                        isPrivate: isPrivate,
+                      );
+                      // DragZoomWrapper maps pixels to chart Y through the
+                      // range the chart draws.
+                      final yRange = unifiedChart.drawnYRange;
 
                       return GestureDetector(
                         // Long-press anywhere on the chart opens the
@@ -253,7 +236,6 @@ class ChartCard extends ConsumerWidget {
                                 showTotal: showTotalLine,
                                 firstDate: allData.firstDate,
                                 baseCurrency: allData.baseCurrency,
-                                isPrivate: isPrivate,
                               ),
                             ),
                           );
@@ -261,8 +243,8 @@ class ChartCard extends ConsumerWidget {
                         child: DragZoomWrapper(
                           xMin: zoomMinX ?? 0,
                           xMax: zoomMaxX ?? (totalSpots.isNotEmpty ? totalSpots.last.x : 1),
-                          yMin: effectiveMinY,
-                          yMax: effectiveMaxY,
+                          yMin: yRange.minY,
+                          yMax: yRange.maxY,
                           totalDays: totalSpots.isNotEmpty ? totalSpots.last.x : 1,
                           firstDate: allData.firstDate,
                           baseCurrency: allData.baseCurrency,
@@ -270,20 +252,8 @@ class ChartCard extends ConsumerWidget {
                           onZoom: onZoom,
                           rightReserved: drawnSeries.any((s) => s.rightAxis) ? kChartRightReservedDual : 0,
                           zoomedY: zoomMinY != null || zoomMaxY != null,
-                          child: UnifiedChart(
-                            firstDate: allData.firstDate,
-                            visible: drawnSeries,
-                            totalSpots: totalSpots,
-                            showTotal: showTotal && chart.sourceChartIds == null && !hidden.contains('_total'),
-                            baseCurrency: allData.baseCurrency,
-                            locale: locale,
-                            language: language,
-                            zoomMinX: zoomMinX,
-                            zoomMaxX: zoomMaxX,
-                            zoomMinY: zoomMinY,
-                            zoomMaxY: zoomMaxY,
-                            isPrivate: isPrivate,
-                          ),
+                          isPrivate: isPrivate,
+                          child: unifiedChart,
                         ),
                       );
                     },
@@ -393,35 +363,38 @@ class _ChartLegend extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildGroup(BuildContext context, String label, List<ChartSeries> series) {
-    final keys = series.map((s) => s.key).toSet();
-    final allHidden = keys.every(hidden.contains);
-
-    return [
-      GestureDetector(
-        onTap: () => onToggleGroup(keys),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: !allHidden
-                  ? Theme.of(context).colorScheme.surfaceContainerHighest
-                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            ),
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: !allHidden ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                decoration: !allHidden ? null : TextDecoration.lineThrough,
-              ),
+  /// The chip that shows or hides every series of a group ([keys]) at once:
+  /// struck through and faded while all of them are hidden.
+  Widget _groupChip(BuildContext context, String label, Set<String> keys, {double fontSize = 13}) {
+    final allHidden = keys.isNotEmpty && keys.every(hidden.contains);
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () => onToggleGroup(keys),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(4),
+            color: !allHidden ? scheme.surfaceContainerHighest : scheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: !allHidden ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.4),
+              decoration: !allHidden ? null : TextDecoration.lineThrough,
             ),
           ),
         ),
       ),
+    );
+  }
+
+  List<Widget> _buildGroup(BuildContext context, String label, List<ChartSeries> series) {
+    return [
+      _groupChip(context, label, series.map((s) => s.key).toSet()),
       for (final s in series)
         _ToggleLegendItem(
           color: s.color,
@@ -437,39 +410,13 @@ class _ChartLegend extends StatelessWidget {
   List<Widget> _buildAssetGroup(BuildContext context) {
     // Combine invested + market keys for group toggle
     final allKeys = {...investedSeries.map((s) => s.key), ...marketSeries.map((s) => s.key)};
-    final allHidden = allKeys.isNotEmpty && allKeys.every(hidden.contains);
 
-    final widgets = <Widget>[
-      GestureDetector(
-        onTap: () => onToggleGroup(allKeys),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: !allHidden
-                  ? Theme.of(context).colorScheme.surfaceContainerHighest
-                  : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            ),
-            child: Text(
-              assetsLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: !allHidden ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                decoration: !allHidden ? null : TextDecoration.lineThrough,
-              ),
-            ),
-          ),
-        ),
-      ),
-    ];
+    final widgets = <Widget>[_groupChip(context, assetsLabel, allKeys, fontSize: 11)];
 
     // Show each unique asset with one legend item per series type present
     final shownAssets = <int>{};
     for (final s in [...marketSeries, ...investedSeries]) {
-      final id = int.tryParse(s.key.split(':').last);
+      final id = parseSeriesKey(s.key)?.id;
       if (id == null || !shownAssets.add(id)) continue;
       final inv = investedSeries.where((s) => s.key == 'asset_invested:$id');
       final mkt = marketSeries.where((s) => s.key == 'asset_market:$id');

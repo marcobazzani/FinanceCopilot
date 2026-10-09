@@ -1161,6 +1161,42 @@ class $CategoriesTable extends Categories with TableInfo<$CategoriesTable, Categ
       'REFERENCES categories (id)',
     ),
   );
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isArchivedMeta = const VerificationMeta(
+    'isArchived',
+  );
+  @override
+  late final GeneratedColumn<bool> isArchived = GeneratedColumn<bool>(
+    'is_archived',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_archived" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1171,6 +1207,9 @@ class $CategoriesTable extends Categories with TableInfo<$CategoriesTable, Categ
     icon,
     color,
     parentId,
+    key,
+    isArchived,
+    sortOrder,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1222,6 +1261,24 @@ class $CategoriesTable extends Categories with TableInfo<$CategoriesTable, Categ
         parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
       );
     }
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    }
+    if (data.containsKey('is_archived')) {
+      context.handle(
+        _isArchivedMeta,
+        isArchived.isAcceptableOrUnknown(data['is_archived']!, _isArchivedMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
     return context;
   }
 
@@ -1267,6 +1324,18 @@ class $CategoriesTable extends Categories with TableInfo<$CategoriesTable, Categ
         DriftSqlType.int,
         data['${effectivePrefix}parent_id'],
       ),
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      ),
+      isArchived: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_archived'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
     );
   }
 
@@ -1293,6 +1362,13 @@ class Category extends DataClass implements Insertable<Category> {
   final String? icon;
   final String? color;
   final int? parentId;
+
+  /// Stable l10n key for seeded categories (display name comes from
+  /// `AppStrings.categoryName(key)`). NULL for user-created categories, and
+  /// cleared when the user renames a seeded one — from then on [name] wins.
+  final String? key;
+  final bool isArchived;
+  final int sortOrder;
   const Category({
     required this.id,
     required this.name,
@@ -1302,6 +1378,9 @@ class Category extends DataClass implements Insertable<Category> {
     this.icon,
     this.color,
     this.parentId,
+    this.key,
+    required this.isArchived,
+    required this.sortOrder,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1330,6 +1409,11 @@ class Category extends DataClass implements Insertable<Category> {
     if (!nullToAbsent || parentId != null) {
       map['parent_id'] = Variable<int>(parentId);
     }
+    if (!nullToAbsent || key != null) {
+      map['key'] = Variable<String>(key);
+    }
+    map['is_archived'] = Variable<bool>(isArchived);
+    map['sort_order'] = Variable<int>(sortOrder);
     return map;
   }
 
@@ -1343,6 +1427,9 @@ class Category extends DataClass implements Insertable<Category> {
       icon: icon == null && nullToAbsent ? const Value.absent() : Value(icon),
       color: color == null && nullToAbsent ? const Value.absent() : Value(color),
       parentId: parentId == null && nullToAbsent ? const Value.absent() : Value(parentId),
+      key: key == null && nullToAbsent ? const Value.absent() : Value(key),
+      isArchived: Value(isArchived),
+      sortOrder: Value(sortOrder),
     );
   }
 
@@ -1362,6 +1449,9 @@ class Category extends DataClass implements Insertable<Category> {
       icon: serializer.fromJson<String?>(json['icon']),
       color: serializer.fromJson<String?>(json['color']),
       parentId: serializer.fromJson<int?>(json['parentId']),
+      key: serializer.fromJson<String?>(json['key']),
+      isArchived: serializer.fromJson<bool>(json['isArchived']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
     );
   }
   @override
@@ -1382,6 +1472,9 @@ class Category extends DataClass implements Insertable<Category> {
       'icon': serializer.toJson<String?>(icon),
       'color': serializer.toJson<String?>(color),
       'parentId': serializer.toJson<int?>(parentId),
+      'key': serializer.toJson<String?>(key),
+      'isArchived': serializer.toJson<bool>(isArchived),
+      'sortOrder': serializer.toJson<int>(sortOrder),
     };
   }
 
@@ -1394,6 +1487,9 @@ class Category extends DataClass implements Insertable<Category> {
     Value<String?> icon = const Value.absent(),
     Value<String?> color = const Value.absent(),
     Value<int?> parentId = const Value.absent(),
+    Value<String?> key = const Value.absent(),
+    bool? isArchived,
+    int? sortOrder,
   }) => Category(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1403,6 +1499,9 @@ class Category extends DataClass implements Insertable<Category> {
     icon: icon.present ? icon.value : this.icon,
     color: color.present ? color.value : this.color,
     parentId: parentId.present ? parentId.value : this.parentId,
+    key: key.present ? key.value : this.key,
+    isArchived: isArchived ?? this.isArchived,
+    sortOrder: sortOrder ?? this.sortOrder,
   );
   Category copyWithCompanion(CategoriesCompanion data) {
     return Category(
@@ -1414,6 +1513,9 @@ class Category extends DataClass implements Insertable<Category> {
       icon: data.icon.present ? data.icon.value : this.icon,
       color: data.color.present ? data.color.value : this.color,
       parentId: data.parentId.present ? data.parentId.value : this.parentId,
+      key: data.key.present ? data.key.value : this.key,
+      isArchived: data.isArchived.present ? data.isArchived.value : this.isArchived,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
     );
   }
 
@@ -1427,7 +1529,10 @@ class Category extends DataClass implements Insertable<Category> {
           ..write('defaultExpenseType: $defaultExpenseType, ')
           ..write('icon: $icon, ')
           ..write('color: $color, ')
-          ..write('parentId: $parentId')
+          ..write('parentId: $parentId, ')
+          ..write('key: $key, ')
+          ..write('isArchived: $isArchived, ')
+          ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
   }
@@ -1442,6 +1547,9 @@ class Category extends DataClass implements Insertable<Category> {
     icon,
     color,
     parentId,
+    key,
+    isArchived,
+    sortOrder,
   );
   @override
   bool operator ==(Object other) =>
@@ -1454,7 +1562,10 @@ class Category extends DataClass implements Insertable<Category> {
           other.defaultExpenseType == this.defaultExpenseType &&
           other.icon == this.icon &&
           other.color == this.color &&
-          other.parentId == this.parentId);
+          other.parentId == this.parentId &&
+          other.key == this.key &&
+          other.isArchived == this.isArchived &&
+          other.sortOrder == this.sortOrder);
 }
 
 class CategoriesCompanion extends UpdateCompanion<Category> {
@@ -1466,6 +1577,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
   final Value<String?> icon;
   final Value<String?> color;
   final Value<int?> parentId;
+  final Value<String?> key;
+  final Value<bool> isArchived;
+  final Value<int> sortOrder;
   const CategoriesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1475,6 +1589,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     this.icon = const Value.absent(),
     this.color = const Value.absent(),
     this.parentId = const Value.absent(),
+    this.key = const Value.absent(),
+    this.isArchived = const Value.absent(),
+    this.sortOrder = const Value.absent(),
   });
   CategoriesCompanion.insert({
     this.id = const Value.absent(),
@@ -1485,6 +1602,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     this.icon = const Value.absent(),
     this.color = const Value.absent(),
     this.parentId = const Value.absent(),
+    this.key = const Value.absent(),
+    this.isArchived = const Value.absent(),
+    this.sortOrder = const Value.absent(),
   }) : name = Value(name),
        type = Value(type);
   static Insertable<Category> custom({
@@ -1496,6 +1616,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Expression<String>? icon,
     Expression<String>? color,
     Expression<int>? parentId,
+    Expression<String>? key,
+    Expression<bool>? isArchived,
+    Expression<int>? sortOrder,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1506,6 +1629,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       if (icon != null) 'icon': icon,
       if (color != null) 'color': color,
       if (parentId != null) 'parent_id': parentId,
+      if (key != null) 'key': key,
+      if (isArchived != null) 'is_archived': isArchived,
+      if (sortOrder != null) 'sort_order': sortOrder,
     });
   }
 
@@ -1518,6 +1644,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     Value<String?>? icon,
     Value<String?>? color,
     Value<int?>? parentId,
+    Value<String?>? key,
+    Value<bool>? isArchived,
+    Value<int>? sortOrder,
   }) {
     return CategoriesCompanion(
       id: id ?? this.id,
@@ -1528,6 +1657,9 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
       icon: icon ?? this.icon,
       color: color ?? this.color,
       parentId: parentId ?? this.parentId,
+      key: key ?? this.key,
+      isArchived: isArchived ?? this.isArchived,
+      sortOrder: sortOrder ?? this.sortOrder,
     );
   }
 
@@ -1564,6 +1696,15 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
     if (parentId.present) {
       map['parent_id'] = Variable<int>(parentId.value);
     }
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (isArchived.present) {
+      map['is_archived'] = Variable<bool>(isArchived.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
     return map;
   }
 
@@ -1577,7 +1718,10 @@ class CategoriesCompanion extends UpdateCompanion<Category> {
           ..write('defaultExpenseType: $defaultExpenseType, ')
           ..write('icon: $icon, ')
           ..write('color: $color, ')
-          ..write('parentId: $parentId')
+          ..write('parentId: $parentId, ')
+          ..write('key: $key, ')
+          ..write('isArchived: $isArchived, ')
+          ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
   }
@@ -1771,6 +1915,36 @@ class $TransactionsTable extends Transactions with TableInfo<$TransactionsTable,
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _merchantKeyMeta = const VerificationMeta(
+    'merchantKey',
+  );
+  @override
+  late final GeneratedColumn<String> merchantKey = GeneratedColumn<String>(
+    'merchant_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _counterpartyMeta = const VerificationMeta(
+    'counterparty',
+  );
+  @override
+  late final GeneratedColumn<String> counterparty = GeneratedColumn<String>(
+    'counterparty',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<BankEntryKind?, String> entryKind = GeneratedColumn<String>(
+    'entry_kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  ).withConverter<BankEntryKind?>($TransactionsTable.$converterentryKindn);
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1789,6 +1963,9 @@ class $TransactionsTable extends Transactions with TableInfo<$TransactionsTable,
     rawMetadata,
     importHash,
     createdAt,
+    merchantKey,
+    counterparty,
+    entryKind,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1906,6 +2083,24 @@ class $TransactionsTable extends Transactions with TableInfo<$TransactionsTable,
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('merchant_key')) {
+      context.handle(
+        _merchantKeyMeta,
+        merchantKey.isAcceptableOrUnknown(
+          data['merchant_key']!,
+          _merchantKeyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('counterparty')) {
+      context.handle(
+        _counterpartyMeta,
+        counterparty.isAcceptableOrUnknown(
+          data['counterparty']!,
+          _counterpartyMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1983,6 +2178,20 @@ class $TransactionsTable extends Transactions with TableInfo<$TransactionsTable,
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      merchantKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}merchant_key'],
+      ),
+      counterparty: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}counterparty'],
+      ),
+      entryKind: $TransactionsTable.$converterentryKindn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}entry_kind'],
+        ),
+      ),
     );
   }
 
@@ -1996,6 +2205,8 @@ class $TransactionsTable extends Transactions with TableInfo<$TransactionsTable,
   );
   static JsonTypeConverter2<ExpenseType, String, String> $converterexpenseType = const EnumNameConverter<ExpenseType>(ExpenseType.values);
   static JsonTypeConverter2<ExpenseType?, String?, String?> $converterexpenseTypen = JsonTypeConverter2.asNullable($converterexpenseType);
+  static JsonTypeConverter2<BankEntryKind, String, String> $converterentryKind = const EnumNameConverter<BankEntryKind>(BankEntryKind.values);
+  static JsonTypeConverter2<BankEntryKind?, String?, String?> $converterentryKindn = JsonTypeConverter2.asNullable($converterentryKind);
 }
 
 class Transaction extends DataClass implements Insertable<Transaction> {
@@ -2015,6 +2226,16 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final String? rawMetadata;
   final String? importHash;
   final DateTime createdAt;
+
+  /// Stable counterparty key: uppercase alphanumerics only, bank noise
+  /// (dates, card masks, reference ids) stripped. NULL until computed.
+  final String? merchantKey;
+
+  /// Human-readable counterparty as extracted from the description.
+  final String? counterparty;
+
+  /// Bank-declared entry kind parsed from the statement.
+  final BankEntryKind? entryKind;
   const Transaction({
     required this.id,
     required this.accountId,
@@ -2032,6 +2253,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     this.rawMetadata,
     this.importHash,
     required this.createdAt,
+    this.merchantKey,
+    this.counterparty,
+    this.entryKind,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2070,6 +2294,17 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       map['import_hash'] = Variable<String>(importHash);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || merchantKey != null) {
+      map['merchant_key'] = Variable<String>(merchantKey);
+    }
+    if (!nullToAbsent || counterparty != null) {
+      map['counterparty'] = Variable<String>(counterparty);
+    }
+    if (!nullToAbsent || entryKind != null) {
+      map['entry_kind'] = Variable<String>(
+        $TransactionsTable.$converterentryKindn.toSql(entryKind),
+      );
+    }
     return map;
   }
 
@@ -2091,6 +2326,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       rawMetadata: rawMetadata == null && nullToAbsent ? const Value.absent() : Value(rawMetadata),
       importHash: importHash == null && nullToAbsent ? const Value.absent() : Value(importHash),
       createdAt: Value(createdAt),
+      merchantKey: merchantKey == null && nullToAbsent ? const Value.absent() : Value(merchantKey),
+      counterparty: counterparty == null && nullToAbsent ? const Value.absent() : Value(counterparty),
+      entryKind: entryKind == null && nullToAbsent ? const Value.absent() : Value(entryKind),
     );
   }
 
@@ -2120,6 +2358,11 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       rawMetadata: serializer.fromJson<String?>(json['rawMetadata']),
       importHash: serializer.fromJson<String?>(json['importHash']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      merchantKey: serializer.fromJson<String?>(json['merchantKey']),
+      counterparty: serializer.fromJson<String?>(json['counterparty']),
+      entryKind: $TransactionsTable.$converterentryKindn.fromJson(
+        serializer.fromJson<String?>(json['entryKind']),
+      ),
     );
   }
   @override
@@ -2146,6 +2389,11 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'rawMetadata': serializer.toJson<String?>(rawMetadata),
       'importHash': serializer.toJson<String?>(importHash),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'merchantKey': serializer.toJson<String?>(merchantKey),
+      'counterparty': serializer.toJson<String?>(counterparty),
+      'entryKind': serializer.toJson<String?>(
+        $TransactionsTable.$converterentryKindn.toJson(entryKind),
+      ),
     };
   }
 
@@ -2166,6 +2414,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     Value<String?> rawMetadata = const Value.absent(),
     Value<String?> importHash = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> merchantKey = const Value.absent(),
+    Value<String?> counterparty = const Value.absent(),
+    Value<BankEntryKind?> entryKind = const Value.absent(),
   }) => Transaction(
     id: id ?? this.id,
     accountId: accountId ?? this.accountId,
@@ -2183,6 +2434,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     rawMetadata: rawMetadata.present ? rawMetadata.value : this.rawMetadata,
     importHash: importHash.present ? importHash.value : this.importHash,
     createdAt: createdAt ?? this.createdAt,
+    merchantKey: merchantKey.present ? merchantKey.value : this.merchantKey,
+    counterparty: counterparty.present ? counterparty.value : this.counterparty,
+    entryKind: entryKind.present ? entryKind.value : this.entryKind,
   );
   Transaction copyWithCompanion(TransactionsCompanion data) {
     return Transaction(
@@ -2202,6 +2456,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       rawMetadata: data.rawMetadata.present ? data.rawMetadata.value : this.rawMetadata,
       importHash: data.importHash.present ? data.importHash.value : this.importHash,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      merchantKey: data.merchantKey.present ? data.merchantKey.value : this.merchantKey,
+      counterparty: data.counterparty.present ? data.counterparty.value : this.counterparty,
+      entryKind: data.entryKind.present ? data.entryKind.value : this.entryKind,
     );
   }
 
@@ -2223,7 +2480,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('expenseType: $expenseType, ')
           ..write('rawMetadata: $rawMetadata, ')
           ..write('importHash: $importHash, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('merchantKey: $merchantKey, ')
+          ..write('counterparty: $counterparty, ')
+          ..write('entryKind: $entryKind')
           ..write(')'))
         .toString();
   }
@@ -2246,6 +2506,9 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     rawMetadata,
     importHash,
     createdAt,
+    merchantKey,
+    counterparty,
+    entryKind,
   );
   @override
   bool operator ==(Object other) =>
@@ -2266,7 +2529,10 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.expenseType == this.expenseType &&
           other.rawMetadata == this.rawMetadata &&
           other.importHash == this.importHash &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.merchantKey == this.merchantKey &&
+          other.counterparty == this.counterparty &&
+          other.entryKind == this.entryKind);
 }
 
 class TransactionsCompanion extends UpdateCompanion<Transaction> {
@@ -2286,6 +2552,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<String?> rawMetadata;
   final Value<String?> importHash;
   final Value<DateTime> createdAt;
+  final Value<String?> merchantKey;
+  final Value<String?> counterparty;
+  final Value<BankEntryKind?> entryKind;
   const TransactionsCompanion({
     this.id = const Value.absent(),
     this.accountId = const Value.absent(),
@@ -2303,6 +2572,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.rawMetadata = const Value.absent(),
     this.importHash = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.merchantKey = const Value.absent(),
+    this.counterparty = const Value.absent(),
+    this.entryKind = const Value.absent(),
   });
   TransactionsCompanion.insert({
     this.id = const Value.absent(),
@@ -2321,6 +2593,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     this.rawMetadata = const Value.absent(),
     this.importHash = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.merchantKey = const Value.absent(),
+    this.counterparty = const Value.absent(),
+    this.entryKind = const Value.absent(),
   }) : accountId = Value(accountId),
        operationDate = Value(operationDate),
        valueDate = Value(valueDate),
@@ -2342,6 +2617,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<String>? rawMetadata,
     Expression<String>? importHash,
     Expression<DateTime>? createdAt,
+    Expression<String>? merchantKey,
+    Expression<String>? counterparty,
+    Expression<String>? entryKind,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2360,6 +2638,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (rawMetadata != null) 'raw_metadata': rawMetadata,
       if (importHash != null) 'import_hash': importHash,
       if (createdAt != null) 'created_at': createdAt,
+      if (merchantKey != null) 'merchant_key': merchantKey,
+      if (counterparty != null) 'counterparty': counterparty,
+      if (entryKind != null) 'entry_kind': entryKind,
     });
   }
 
@@ -2380,6 +2661,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<String?>? rawMetadata,
     Value<String?>? importHash,
     Value<DateTime>? createdAt,
+    Value<String?>? merchantKey,
+    Value<String?>? counterparty,
+    Value<BankEntryKind?>? entryKind,
   }) {
     return TransactionsCompanion(
       id: id ?? this.id,
@@ -2398,6 +2682,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       rawMetadata: rawMetadata ?? this.rawMetadata,
       importHash: importHash ?? this.importHash,
       createdAt: createdAt ?? this.createdAt,
+      merchantKey: merchantKey ?? this.merchantKey,
+      counterparty: counterparty ?? this.counterparty,
+      entryKind: entryKind ?? this.entryKind,
     );
   }
 
@@ -2456,6 +2743,17 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (merchantKey.present) {
+      map['merchant_key'] = Variable<String>(merchantKey.value);
+    }
+    if (counterparty.present) {
+      map['counterparty'] = Variable<String>(counterparty.value);
+    }
+    if (entryKind.present) {
+      map['entry_kind'] = Variable<String>(
+        $TransactionsTable.$converterentryKindn.toSql(entryKind.value),
+      );
+    }
     return map;
   }
 
@@ -2477,7 +2775,10 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('expenseType: $expenseType, ')
           ..write('rawMetadata: $rawMetadata, ')
           ..write('importHash: $importHash, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('merchantKey: $merchantKey, ')
+          ..write('counterparty: $counterparty, ')
+          ..write('entryKind: $entryKind')
           ..write(')'))
         .toString();
   }
@@ -2566,6 +2867,66 @@ class $AutoCategorizationRulesTable extends AutoCategorizationRules with TableIn
     defaultValue: currentDateAndTime,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<RuleMatchType, String> matchType =
+      GeneratedColumn<String>(
+        'match_type',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: Constant(RuleMatchType.merchantKey.name),
+      ).withConverter<RuleMatchType>(
+        $AutoCategorizationRulesTable.$convertermatchType,
+      );
+  static const VerificationMeta _accountIdMeta = const VerificationMeta(
+    'accountId',
+  );
+  @override
+  late final GeneratedColumn<int> accountId = GeneratedColumn<int>(
+    'account_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES accounts (id)',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<RuleDirection, String> direction =
+      GeneratedColumn<String>(
+        'direction',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: Constant(RuleDirection.any.name),
+      ).withConverter<RuleDirection>(
+        $AutoCategorizationRulesTable.$converterdirection,
+      );
+  static const VerificationMeta _amountMinMeta = const VerificationMeta(
+    'amountMin',
+  );
+  @override
+  late final GeneratedColumn<double> amountMin = GeneratedColumn<double>(
+    'amount_min',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _amountMaxMeta = const VerificationMeta(
+    'amountMax',
+  );
+  @override
+  late final GeneratedColumn<double> amountMax = GeneratedColumn<double>(
+    'amount_max',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  @override
   List<GeneratedColumn> get $columns => [
     id,
     pattern,
@@ -2573,6 +2934,11 @@ class $AutoCategorizationRulesTable extends AutoCategorizationRules with TableIn
     priority,
     isActive,
     createdAt,
+    matchType,
+    accountId,
+    direction,
+    amountMin,
+    amountMax,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2623,6 +2989,24 @@ class $AutoCategorizationRulesTable extends AutoCategorizationRules with TableIn
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('account_id')) {
+      context.handle(
+        _accountIdMeta,
+        accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta),
+      );
+    }
+    if (data.containsKey('amount_min')) {
+      context.handle(
+        _amountMinMeta,
+        amountMin.isAcceptableOrUnknown(data['amount_min']!, _amountMinMeta),
+      );
+    }
+    if (data.containsKey('amount_max')) {
+      context.handle(
+        _amountMaxMeta,
+        amountMax.isAcceptableOrUnknown(data['amount_max']!, _amountMaxMeta),
+      );
+    }
     return context;
   }
 
@@ -2656,6 +3040,30 @@ class $AutoCategorizationRulesTable extends AutoCategorizationRules with TableIn
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      matchType: $AutoCategorizationRulesTable.$convertermatchType.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}match_type'],
+        )!,
+      ),
+      accountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}account_id'],
+      ),
+      direction: $AutoCategorizationRulesTable.$converterdirection.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}direction'],
+        )!,
+      ),
+      amountMin: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount_min'],
+      ),
+      amountMax: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount_max'],
+      ),
     );
   }
 
@@ -2663,6 +3071,9 @@ class $AutoCategorizationRulesTable extends AutoCategorizationRules with TableIn
   $AutoCategorizationRulesTable createAlias(String alias) {
     return $AutoCategorizationRulesTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<RuleMatchType, String, String> $convertermatchType = const EnumNameConverter<RuleMatchType>(RuleMatchType.values);
+  static JsonTypeConverter2<RuleDirection, String, String> $converterdirection = const EnumNameConverter<RuleDirection>(RuleDirection.values);
 }
 
 class AutoCategorizationRule extends DataClass implements Insertable<AutoCategorizationRule> {
@@ -2672,6 +3083,15 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
   final int priority;
   final bool isActive;
   final DateTime createdAt;
+  final RuleMatchType matchType;
+
+  /// Restrict the rule to one account; NULL = all accounts.
+  final int? accountId;
+  final RuleDirection direction;
+
+  /// Optional absolute-amount bounds (inclusive), in transaction currency.
+  final double? amountMin;
+  final double? amountMax;
   const AutoCategorizationRule({
     required this.id,
     required this.pattern,
@@ -2679,6 +3099,11 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
     required this.priority,
     required this.isActive,
     required this.createdAt,
+    required this.matchType,
+    this.accountId,
+    required this.direction,
+    this.amountMin,
+    this.amountMax,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2689,6 +3114,25 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
     map['priority'] = Variable<int>(priority);
     map['is_active'] = Variable<bool>(isActive);
     map['created_at'] = Variable<DateTime>(createdAt);
+    {
+      map['match_type'] = Variable<String>(
+        $AutoCategorizationRulesTable.$convertermatchType.toSql(matchType),
+      );
+    }
+    if (!nullToAbsent || accountId != null) {
+      map['account_id'] = Variable<int>(accountId);
+    }
+    {
+      map['direction'] = Variable<String>(
+        $AutoCategorizationRulesTable.$converterdirection.toSql(direction),
+      );
+    }
+    if (!nullToAbsent || amountMin != null) {
+      map['amount_min'] = Variable<double>(amountMin);
+    }
+    if (!nullToAbsent || amountMax != null) {
+      map['amount_max'] = Variable<double>(amountMax);
+    }
     return map;
   }
 
@@ -2700,6 +3144,11 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
       priority: Value(priority),
       isActive: Value(isActive),
       createdAt: Value(createdAt),
+      matchType: Value(matchType),
+      accountId: accountId == null && nullToAbsent ? const Value.absent() : Value(accountId),
+      direction: Value(direction),
+      amountMin: amountMin == null && nullToAbsent ? const Value.absent() : Value(amountMin),
+      amountMax: amountMax == null && nullToAbsent ? const Value.absent() : Value(amountMax),
     );
   }
 
@@ -2715,6 +3164,15 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
       priority: serializer.fromJson<int>(json['priority']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      matchType: $AutoCategorizationRulesTable.$convertermatchType.fromJson(
+        serializer.fromJson<String>(json['matchType']),
+      ),
+      accountId: serializer.fromJson<int?>(json['accountId']),
+      direction: $AutoCategorizationRulesTable.$converterdirection.fromJson(
+        serializer.fromJson<String>(json['direction']),
+      ),
+      amountMin: serializer.fromJson<double?>(json['amountMin']),
+      amountMax: serializer.fromJson<double?>(json['amountMax']),
     );
   }
   @override
@@ -2727,6 +3185,15 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
       'priority': serializer.toJson<int>(priority),
       'isActive': serializer.toJson<bool>(isActive),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'matchType': serializer.toJson<String>(
+        $AutoCategorizationRulesTable.$convertermatchType.toJson(matchType),
+      ),
+      'accountId': serializer.toJson<int?>(accountId),
+      'direction': serializer.toJson<String>(
+        $AutoCategorizationRulesTable.$converterdirection.toJson(direction),
+      ),
+      'amountMin': serializer.toJson<double?>(amountMin),
+      'amountMax': serializer.toJson<double?>(amountMax),
     };
   }
 
@@ -2737,6 +3204,11 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
     int? priority,
     bool? isActive,
     DateTime? createdAt,
+    RuleMatchType? matchType,
+    Value<int?> accountId = const Value.absent(),
+    RuleDirection? direction,
+    Value<double?> amountMin = const Value.absent(),
+    Value<double?> amountMax = const Value.absent(),
   }) => AutoCategorizationRule(
     id: id ?? this.id,
     pattern: pattern ?? this.pattern,
@@ -2744,6 +3216,11 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
     priority: priority ?? this.priority,
     isActive: isActive ?? this.isActive,
     createdAt: createdAt ?? this.createdAt,
+    matchType: matchType ?? this.matchType,
+    accountId: accountId.present ? accountId.value : this.accountId,
+    direction: direction ?? this.direction,
+    amountMin: amountMin.present ? amountMin.value : this.amountMin,
+    amountMax: amountMax.present ? amountMax.value : this.amountMax,
   );
   AutoCategorizationRule copyWithCompanion(
     AutoCategorizationRulesCompanion data,
@@ -2755,6 +3232,11 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
       priority: data.priority.present ? data.priority.value : this.priority,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      matchType: data.matchType.present ? data.matchType.value : this.matchType,
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      direction: data.direction.present ? data.direction.value : this.direction,
+      amountMin: data.amountMin.present ? data.amountMin.value : this.amountMin,
+      amountMax: data.amountMax.present ? data.amountMax.value : this.amountMax,
     );
   }
 
@@ -2766,13 +3248,30 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
           ..write('categoryId: $categoryId, ')
           ..write('priority: $priority, ')
           ..write('isActive: $isActive, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('matchType: $matchType, ')
+          ..write('accountId: $accountId, ')
+          ..write('direction: $direction, ')
+          ..write('amountMin: $amountMin, ')
+          ..write('amountMax: $amountMax')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, pattern, categoryId, priority, isActive, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    pattern,
+    categoryId,
+    priority,
+    isActive,
+    createdAt,
+    matchType,
+    accountId,
+    direction,
+    amountMin,
+    amountMax,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2782,7 +3281,12 @@ class AutoCategorizationRule extends DataClass implements Insertable<AutoCategor
           other.categoryId == this.categoryId &&
           other.priority == this.priority &&
           other.isActive == this.isActive &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.matchType == this.matchType &&
+          other.accountId == this.accountId &&
+          other.direction == this.direction &&
+          other.amountMin == this.amountMin &&
+          other.amountMax == this.amountMax);
 }
 
 class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizationRule> {
@@ -2792,6 +3296,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
   final Value<int> priority;
   final Value<bool> isActive;
   final Value<DateTime> createdAt;
+  final Value<RuleMatchType> matchType;
+  final Value<int?> accountId;
+  final Value<RuleDirection> direction;
+  final Value<double?> amountMin;
+  final Value<double?> amountMax;
   const AutoCategorizationRulesCompanion({
     this.id = const Value.absent(),
     this.pattern = const Value.absent(),
@@ -2799,6 +3308,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
     this.priority = const Value.absent(),
     this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.matchType = const Value.absent(),
+    this.accountId = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.amountMin = const Value.absent(),
+    this.amountMax = const Value.absent(),
   });
   AutoCategorizationRulesCompanion.insert({
     this.id = const Value.absent(),
@@ -2807,6 +3321,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
     this.priority = const Value.absent(),
     this.isActive = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.matchType = const Value.absent(),
+    this.accountId = const Value.absent(),
+    this.direction = const Value.absent(),
+    this.amountMin = const Value.absent(),
+    this.amountMax = const Value.absent(),
   }) : pattern = Value(pattern),
        categoryId = Value(categoryId);
   static Insertable<AutoCategorizationRule> custom({
@@ -2816,6 +3335,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
     Expression<int>? priority,
     Expression<bool>? isActive,
     Expression<DateTime>? createdAt,
+    Expression<String>? matchType,
+    Expression<int>? accountId,
+    Expression<String>? direction,
+    Expression<double>? amountMin,
+    Expression<double>? amountMax,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2824,6 +3348,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
       if (priority != null) 'priority': priority,
       if (isActive != null) 'is_active': isActive,
       if (createdAt != null) 'created_at': createdAt,
+      if (matchType != null) 'match_type': matchType,
+      if (accountId != null) 'account_id': accountId,
+      if (direction != null) 'direction': direction,
+      if (amountMin != null) 'amount_min': amountMin,
+      if (amountMax != null) 'amount_max': amountMax,
     });
   }
 
@@ -2834,6 +3363,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
     Value<int>? priority,
     Value<bool>? isActive,
     Value<DateTime>? createdAt,
+    Value<RuleMatchType>? matchType,
+    Value<int?>? accountId,
+    Value<RuleDirection>? direction,
+    Value<double?>? amountMin,
+    Value<double?>? amountMax,
   }) {
     return AutoCategorizationRulesCompanion(
       id: id ?? this.id,
@@ -2842,6 +3376,11 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
       priority: priority ?? this.priority,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
+      matchType: matchType ?? this.matchType,
+      accountId: accountId ?? this.accountId,
+      direction: direction ?? this.direction,
+      amountMin: amountMin ?? this.amountMin,
+      amountMax: amountMax ?? this.amountMax,
     );
   }
 
@@ -2866,6 +3405,29 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (matchType.present) {
+      map['match_type'] = Variable<String>(
+        $AutoCategorizationRulesTable.$convertermatchType.toSql(
+          matchType.value,
+        ),
+      );
+    }
+    if (accountId.present) {
+      map['account_id'] = Variable<int>(accountId.value);
+    }
+    if (direction.present) {
+      map['direction'] = Variable<String>(
+        $AutoCategorizationRulesTable.$converterdirection.toSql(
+          direction.value,
+        ),
+      );
+    }
+    if (amountMin.present) {
+      map['amount_min'] = Variable<double>(amountMin.value);
+    }
+    if (amountMax.present) {
+      map['amount_max'] = Variable<double>(amountMax.value);
+    }
     return map;
   }
 
@@ -2877,7 +3439,12 @@ class AutoCategorizationRulesCompanion extends UpdateCompanion<AutoCategorizatio
           ..write('categoryId: $categoryId, ')
           ..write('priority: $priority, ')
           ..write('isActive: $isActive, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('matchType: $matchType, ')
+          ..write('accountId: $accountId, ')
+          ..write('direction: $direction, ')
+          ..write('amountMin: $amountMin, ')
+          ..write('amountMax: $amountMax')
           ..write(')'))
         .toString();
   }
@@ -4219,6 +4786,17 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _exchangeRateBaseMeta = const VerificationMeta(
+    'exchangeRateBase',
+  );
+  @override
+  late final GeneratedColumn<String> exchangeRateBase = GeneratedColumn<String>(
+    'exchange_rate_base',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _commissionMeta = const VerificationMeta(
     'commission',
   );
@@ -4305,6 +4883,7 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
     amount,
     currency,
     exchangeRate,
+    exchangeRateBase,
     commission,
     taxWithheld,
     source,
@@ -4384,6 +4963,15 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
         exchangeRate.isAcceptableOrUnknown(
           data['exchange_rate']!,
           _exchangeRateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('exchange_rate_base')) {
+      context.handle(
+        _exchangeRateBaseMeta,
+        exchangeRateBase.isAcceptableOrUnknown(
+          data['exchange_rate_base']!,
+          _exchangeRateBaseMeta,
         ),
       );
     }
@@ -4486,6 +5074,10 @@ class $AssetEventsTable extends AssetEvents with TableInfo<$AssetEventsTable, As
         DriftSqlType.double,
         data['${effectivePrefix}exchange_rate'],
       ),
+      exchangeRateBase: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}exchange_rate_base'],
+      ),
       commission: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}commission'],
@@ -4536,6 +5128,22 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
   final double amount;
   final String currency;
   final double? exchangeRate;
+
+  /// The base currency [exchangeRate] was quoted against.
+  ///
+  /// [exchangeRate] expresses "units of [currency] per one base currency"
+  /// (consumers divide by it to reach base), so its meaning depends entirely
+  /// on WHICH base currency was configured when it was stored. Without this
+  /// column a rate resolved against a EUR base would be silently reused
+  /// after the user switches to a GBP base, producing a wrong conversion.
+  ///
+  /// NULL means "quoted against the currently-configured base" — the state
+  /// of every row written before this column existed, and of rows written
+  /// while the base has never changed. On a base-currency change, rows with
+  /// a rate are stamped with the OUTGOING base (see
+  /// `AssetEventService.stampExchangeRateBase`) so they are preserved but no
+  /// longer trusted for the new base.
+  final String? exchangeRateBase;
   final double? commission;
   final double? taxWithheld;
   final String? source;
@@ -4554,6 +5162,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     required this.amount,
     required this.currency,
     this.exchangeRate,
+    this.exchangeRateBase,
     this.commission,
     this.taxWithheld,
     this.source,
@@ -4584,6 +5193,9 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     map['currency'] = Variable<String>(currency);
     if (!nullToAbsent || exchangeRate != null) {
       map['exchange_rate'] = Variable<double>(exchangeRate);
+    }
+    if (!nullToAbsent || exchangeRateBase != null) {
+      map['exchange_rate_base'] = Variable<String>(exchangeRateBase);
     }
     if (!nullToAbsent || commission != null) {
       map['commission'] = Variable<double>(commission);
@@ -4619,6 +5231,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       amount: Value(amount),
       currency: Value(currency),
       exchangeRate: exchangeRate == null && nullToAbsent ? const Value.absent() : Value(exchangeRate),
+      exchangeRateBase: exchangeRateBase == null && nullToAbsent ? const Value.absent() : Value(exchangeRateBase),
       commission: commission == null && nullToAbsent ? const Value.absent() : Value(commission),
       taxWithheld: taxWithheld == null && nullToAbsent ? const Value.absent() : Value(taxWithheld),
       source: source == null && nullToAbsent ? const Value.absent() : Value(source),
@@ -4647,6 +5260,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       amount: serializer.fromJson<double>(json['amount']),
       currency: serializer.fromJson<String>(json['currency']),
       exchangeRate: serializer.fromJson<double?>(json['exchangeRate']),
+      exchangeRateBase: serializer.fromJson<String?>(json['exchangeRateBase']),
       commission: serializer.fromJson<double?>(json['commission']),
       taxWithheld: serializer.fromJson<double?>(json['taxWithheld']),
       source: serializer.fromJson<String?>(json['source']),
@@ -4672,6 +5286,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       'amount': serializer.toJson<double>(amount),
       'currency': serializer.toJson<String>(currency),
       'exchangeRate': serializer.toJson<double?>(exchangeRate),
+      'exchangeRateBase': serializer.toJson<String?>(exchangeRateBase),
       'commission': serializer.toJson<double?>(commission),
       'taxWithheld': serializer.toJson<double?>(taxWithheld),
       'source': serializer.toJson<String?>(source),
@@ -4693,6 +5308,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     double? amount,
     String? currency,
     Value<double?> exchangeRate = const Value.absent(),
+    Value<String?> exchangeRateBase = const Value.absent(),
     Value<double?> commission = const Value.absent(),
     Value<double?> taxWithheld = const Value.absent(),
     Value<String?> source = const Value.absent(),
@@ -4711,6 +5327,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     amount: amount ?? this.amount,
     currency: currency ?? this.currency,
     exchangeRate: exchangeRate.present ? exchangeRate.value : this.exchangeRate,
+    exchangeRateBase: exchangeRateBase.present ? exchangeRateBase.value : this.exchangeRateBase,
     commission: commission.present ? commission.value : this.commission,
     taxWithheld: taxWithheld.present ? taxWithheld.value : this.taxWithheld,
     source: source.present ? source.value : this.source,
@@ -4731,6 +5348,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
       amount: data.amount.present ? data.amount.value : this.amount,
       currency: data.currency.present ? data.currency.value : this.currency,
       exchangeRate: data.exchangeRate.present ? data.exchangeRate.value : this.exchangeRate,
+      exchangeRateBase: data.exchangeRateBase.present ? data.exchangeRateBase.value : this.exchangeRateBase,
       commission: data.commission.present ? data.commission.value : this.commission,
       taxWithheld: data.taxWithheld.present ? data.taxWithheld.value : this.taxWithheld,
       source: data.source.present ? data.source.value : this.source,
@@ -4754,6 +5372,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
           ..write('amount: $amount, ')
           ..write('currency: $currency, ')
           ..write('exchangeRate: $exchangeRate, ')
+          ..write('exchangeRateBase: $exchangeRateBase, ')
           ..write('commission: $commission, ')
           ..write('taxWithheld: $taxWithheld, ')
           ..write('source: $source, ')
@@ -4777,6 +5396,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
     amount,
     currency,
     exchangeRate,
+    exchangeRateBase,
     commission,
     taxWithheld,
     source,
@@ -4799,6 +5419,7 @@ class AssetEvent extends DataClass implements Insertable<AssetEvent> {
           other.amount == this.amount &&
           other.currency == this.currency &&
           other.exchangeRate == this.exchangeRate &&
+          other.exchangeRateBase == this.exchangeRateBase &&
           other.commission == this.commission &&
           other.taxWithheld == this.taxWithheld &&
           other.source == this.source &&
@@ -4819,6 +5440,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
   final Value<double> amount;
   final Value<String> currency;
   final Value<double?> exchangeRate;
+  final Value<String?> exchangeRateBase;
   final Value<double?> commission;
   final Value<double?> taxWithheld;
   final Value<String?> source;
@@ -4837,6 +5459,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     this.amount = const Value.absent(),
     this.currency = const Value.absent(),
     this.exchangeRate = const Value.absent(),
+    this.exchangeRateBase = const Value.absent(),
     this.commission = const Value.absent(),
     this.taxWithheld = const Value.absent(),
     this.source = const Value.absent(),
@@ -4856,6 +5479,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     required double amount,
     this.currency = const Value.absent(),
     this.exchangeRate = const Value.absent(),
+    this.exchangeRateBase = const Value.absent(),
     this.commission = const Value.absent(),
     this.taxWithheld = const Value.absent(),
     this.source = const Value.absent(),
@@ -4879,6 +5503,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     Expression<double>? amount,
     Expression<String>? currency,
     Expression<double>? exchangeRate,
+    Expression<String>? exchangeRateBase,
     Expression<double>? commission,
     Expression<double>? taxWithheld,
     Expression<String>? source,
@@ -4898,6 +5523,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
       if (amount != null) 'amount': amount,
       if (currency != null) 'currency': currency,
       if (exchangeRate != null) 'exchange_rate': exchangeRate,
+      if (exchangeRateBase != null) 'exchange_rate_base': exchangeRateBase,
       if (commission != null) 'commission': commission,
       if (taxWithheld != null) 'tax_withheld': taxWithheld,
       if (source != null) 'source': source,
@@ -4919,6 +5545,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     Value<double>? amount,
     Value<String>? currency,
     Value<double?>? exchangeRate,
+    Value<String?>? exchangeRateBase,
     Value<double?>? commission,
     Value<double?>? taxWithheld,
     Value<String?>? source,
@@ -4938,6 +5565,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,
       exchangeRate: exchangeRate ?? this.exchangeRate,
+      exchangeRateBase: exchangeRateBase ?? this.exchangeRateBase,
       commission: commission ?? this.commission,
       taxWithheld: taxWithheld ?? this.taxWithheld,
       source: source ?? this.source,
@@ -4983,6 +5611,9 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
     if (exchangeRate.present) {
       map['exchange_rate'] = Variable<double>(exchangeRate.value);
     }
+    if (exchangeRateBase.present) {
+      map['exchange_rate_base'] = Variable<String>(exchangeRateBase.value);
+    }
     if (commission.present) {
       map['commission'] = Variable<double>(commission.value);
     }
@@ -5020,6 +5651,7 @@ class AssetEventsCompanion extends UpdateCompanion<AssetEvent> {
           ..write('amount: $amount, ')
           ..write('currency: $currency, ')
           ..write('exchangeRate: $exchangeRate, ')
+          ..write('exchangeRateBase: $exchangeRateBase, ')
           ..write('commission: $commission, ')
           ..write('taxWithheld: $taxWithheld, ')
           ..write('source: $source, ')
@@ -13655,10 +14287,7 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.accounts,
-    aliasName: $_aliasNameGenerator(
-      db.intermediaries.id,
-      db.accounts.intermediaryId,
-    ),
+    aliasName: 'intermediaries__id__accounts__intermediary_id',
   );
 
   $$AccountsTableProcessedTableManager get accountsRefs {
@@ -13677,10 +14306,7 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.assets,
-    aliasName: $_aliasNameGenerator(
-      db.intermediaries.id,
-      db.assets.intermediaryId,
-    ),
+    aliasName: 'intermediaries__id__assets__intermediary_id',
   );
 
   $$AssetsTableProcessedTableManager get assetsRefs {
@@ -13697,10 +14323,7 @@ final class $$IntermediariesTableReferences extends BaseReferences<_$AppDatabase
 
   static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.importConfigs,
-    aliasName: $_aliasNameGenerator(
-      db.intermediaries.id,
-      db.importConfigs.intermediaryId,
-    ),
+    aliasName: 'intermediaries__id__import_configs__intermediary_id',
   );
 
   $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
@@ -14026,7 +14649,7 @@ class $$IntermediariesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$IntermediariesTable, Intermediary>(table),
                   $$IntermediariesTableReferences(db, table, e),
                 ),
               )
@@ -14147,9 +14770,8 @@ typedef $$AccountsTableUpdateCompanionBuilder =
 final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $AccountsTable, Account> {
   $$AccountsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
-    $_aliasNameGenerator(db.accounts.intermediaryId, db.intermediaries.id),
-  );
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias('accounts__intermediary_id__intermediaries__id');
 
   $$IntermediariesTableProcessedTableManager? get intermediaryId {
     final $_column = $_itemColumn<int>('intermediary_id');
@@ -14167,7 +14789,7 @@ final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $Acc
 
   static MultiTypedResultKey<$TransactionsTable, List<Transaction>> _transactionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.transactions,
-    aliasName: $_aliasNameGenerator(db.accounts.id, db.transactions.accountId),
+    aliasName: 'accounts__id__transactions__account_id',
   );
 
   $$TransactionsTableProcessedTableManager get transactionsRefs {
@@ -14182,9 +14804,29 @@ final class $$AccountsTableReferences extends BaseReferences<_$AppDatabase, $Acc
     );
   }
 
+  static MultiTypedResultKey<$AutoCategorizationRulesTable, List<AutoCategorizationRule>> _autoCategorizationRulesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.autoCategorizationRules,
+        aliasName: 'accounts__id__auto_categorization_rules__account_id',
+      );
+
+  $$AutoCategorizationRulesTableProcessedTableManager get autoCategorizationRulesRefs {
+    final manager = $$AutoCategorizationRulesTableTableManager(
+      $_db,
+      $_db.autoCategorizationRules,
+    ).filter((f) => f.accountId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _autoCategorizationRulesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.importConfigs,
-    aliasName: $_aliasNameGenerator(db.accounts.id, db.importConfigs.accountId),
+    aliasName: 'accounts__id__import_configs__account_id',
   );
 
   $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
@@ -14296,6 +14938,30 @@ class $$AccountsTableFilterComposer extends Composer<_$AppDatabase, $AccountsTab
           }) => $$TransactionsTableFilterComposer(
             $db: $db,
             $table: $db.transactions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> autoCategorizationRulesRefs(
+    Expression<bool> Function($$AutoCategorizationRulesTableFilterComposer f) f,
+  ) {
+    final $$AutoCategorizationRulesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.autoCategorizationRules,
+      getReferencedColumn: (t) => t.accountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AutoCategorizationRulesTableFilterComposer(
+            $db: $db,
+            $table: $db.autoCategorizationRules,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
@@ -14490,6 +15156,30 @@ class $$AccountsTableAnnotationComposer extends Composer<_$AppDatabase, $Account
     return f(composer);
   }
 
+  Expression<T> autoCategorizationRulesRefs<T extends Object>(
+    Expression<T> Function($$AutoCategorizationRulesTableAnnotationComposer a) f,
+  ) {
+    final $$AutoCategorizationRulesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.autoCategorizationRules,
+      getReferencedColumn: (t) => t.accountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AutoCategorizationRulesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.autoCategorizationRules,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> importConfigsRefs<T extends Object>(
     Expression<T> Function($$ImportConfigsTableAnnotationComposer a) f,
   ) {
@@ -14531,6 +15221,7 @@ class $$AccountsTableTableManager
           PrefetchHooks Function({
             bool intermediaryId,
             bool transactionsRefs,
+            bool autoCategorizationRulesRefs,
             bool importConfigsRefs,
           })
         > {
@@ -14597,7 +15288,7 @@ class $$AccountsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AccountsTable, Account>(table),
                   $$AccountsTableReferences(db, table, e),
                 ),
               )
@@ -14606,12 +15297,14 @@ class $$AccountsTableTableManager
               ({
                 intermediaryId = false,
                 transactionsRefs = false,
+                autoCategorizationRulesRefs = false,
                 importConfigsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (transactionsRefs) db.transactions,
+                    if (autoCategorizationRulesRefs) db.autoCategorizationRules,
                     if (importConfigsRefs) db.importConfigs,
                   ],
                   addJoins:
@@ -14659,6 +15352,20 @@ class $$AccountsTableTableManager
                           ),
                           typedResults: items,
                         ),
+                      if (autoCategorizationRulesRefs)
+                        await $_getPrefetchedData<Account, $AccountsTable, AutoCategorizationRule>(
+                          currentTable: table,
+                          referencedTable: $$AccountsTableReferences._autoCategorizationRulesRefsTable(db),
+                          managerFromTypedResult: (p0) => $$AccountsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).autoCategorizationRulesRefs,
+                          referencedItemsForCurrentItem: (item, referencedItems) => referencedItems.where(
+                            (e) => e.accountId == item.id,
+                          ),
+                          typedResults: items,
+                        ),
                       if (importConfigsRefs)
                         await $_getPrefetchedData<Account, $AccountsTable, ImportConfig>(
                           currentTable: table,
@@ -14696,6 +15403,7 @@ typedef $$AccountsTableProcessedTableManager =
       PrefetchHooks Function({
         bool intermediaryId,
         bool transactionsRefs,
+        bool autoCategorizationRulesRefs,
         bool importConfigsRefs,
       })
     >;
@@ -14709,6 +15417,9 @@ typedef $$CategoriesTableCreateCompanionBuilder =
       Value<String?> icon,
       Value<String?> color,
       Value<int?> parentId,
+      Value<String?> key,
+      Value<bool> isArchived,
+      Value<int> sortOrder,
     });
 typedef $$CategoriesTableUpdateCompanionBuilder =
     CategoriesCompanion Function({
@@ -14720,14 +15431,15 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
       Value<String?> icon,
       Value<String?> color,
       Value<int?> parentId,
+      Value<String?> key,
+      Value<bool> isArchived,
+      Value<int> sortOrder,
     });
 
 final class $$CategoriesTableReferences extends BaseReferences<_$AppDatabase, $CategoriesTable, Category> {
   $$CategoriesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $CategoriesTable _parentIdTable(_$AppDatabase db) => db.categories.createAlias(
-    $_aliasNameGenerator(db.categories.parentId, db.categories.id),
-  );
+  static $CategoriesTable _parentIdTable(_$AppDatabase db) => db.categories.createAlias('categories__parent_id__categories__id');
 
   $$CategoriesTableProcessedTableManager? get parentId {
     final $_column = $_itemColumn<int>('parent_id');
@@ -14745,10 +15457,7 @@ final class $$CategoriesTableReferences extends BaseReferences<_$AppDatabase, $C
 
   static MultiTypedResultKey<$TransactionsTable, List<Transaction>> _transactionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.transactions,
-    aliasName: $_aliasNameGenerator(
-      db.categories.id,
-      db.transactions.categoryId,
-    ),
+    aliasName: 'categories__id__transactions__category_id',
   );
 
   $$TransactionsTableProcessedTableManager get transactionsRefs {
@@ -14766,10 +15475,7 @@ final class $$CategoriesTableReferences extends BaseReferences<_$AppDatabase, $C
   static MultiTypedResultKey<$AutoCategorizationRulesTable, List<AutoCategorizationRule>> _autoCategorizationRulesRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.autoCategorizationRules,
-        aliasName: $_aliasNameGenerator(
-          db.categories.id,
-          db.autoCategorizationRules.categoryId,
-        ),
+        aliasName: 'categories__id__auto_categorization_rules__category_id',
       );
 
   $$AutoCategorizationRulesTableProcessedTableManager get autoCategorizationRulesRefs {
@@ -14827,6 +15533,21 @@ class $$CategoriesTableFilterComposer extends Composer<_$AppDatabase, $Categorie
 
   ColumnFilters<String> get color => $composableBuilder(
     column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14944,6 +15665,21 @@ class $$CategoriesTableOrderingComposer extends Composer<_$AppDatabase, $Categor
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$CategoriesTableOrderingComposer get parentId {
     final $$CategoriesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -14994,6 +15730,15 @@ class $$CategoriesTableAnnotationComposer extends Composer<_$AppDatabase, $Categ
   GeneratedColumn<String> get icon => $composableBuilder(column: $table.icon, builder: (column) => column);
 
   GeneratedColumn<String> get color => $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<String> get key => $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder => $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
   $$CategoriesTableAnnotationComposer get parentId {
     final $$CategoriesTableAnnotationComposer composer = $composerBuilder(
@@ -15103,6 +15848,9 @@ class $$CategoriesTableTableManager
                 Value<String?> icon = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 Value<int?> parentId = const Value.absent(),
+                Value<String?> key = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
               }) => CategoriesCompanion(
                 id: id,
                 name: name,
@@ -15112,6 +15860,9 @@ class $$CategoriesTableTableManager
                 icon: icon,
                 color: color,
                 parentId: parentId,
+                key: key,
+                isArchived: isArchived,
+                sortOrder: sortOrder,
               ),
           createCompanionCallback:
               ({
@@ -15123,6 +15874,9 @@ class $$CategoriesTableTableManager
                 Value<String?> icon = const Value.absent(),
                 Value<String?> color = const Value.absent(),
                 Value<int?> parentId = const Value.absent(),
+                Value<String?> key = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
               }) => CategoriesCompanion.insert(
                 id: id,
                 name: name,
@@ -15132,11 +15886,14 @@ class $$CategoriesTableTableManager
                 icon: icon,
                 color: color,
                 parentId: parentId,
+                key: key,
+                isArchived: isArchived,
+                sortOrder: sortOrder,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$CategoriesTable, Category>(table),
                   $$CategoriesTableReferences(db, table, e),
                 ),
               )
@@ -15256,6 +16013,9 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       Value<String?> rawMetadata,
       Value<String?> importHash,
       Value<DateTime> createdAt,
+      Value<String?> merchantKey,
+      Value<String?> counterparty,
+      Value<BankEntryKind?> entryKind,
     });
 typedef $$TransactionsTableUpdateCompanionBuilder =
     TransactionsCompanion Function({
@@ -15275,14 +16035,15 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<String?> rawMetadata,
       Value<String?> importHash,
       Value<DateTime> createdAt,
+      Value<String?> merchantKey,
+      Value<String?> counterparty,
+      Value<BankEntryKind?> entryKind,
     });
 
 final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, $TransactionsTable, Transaction> {
   $$TransactionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias(
-    $_aliasNameGenerator(db.transactions.accountId, db.accounts.id),
-  );
+  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias('transactions__account_id__accounts__id');
 
   $$AccountsTableProcessedTableManager get accountId {
     final $_column = $_itemColumn<int>('account_id')!;
@@ -15298,9 +16059,7 @@ final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, 
     );
   }
 
-  static $CategoriesTable _categoryIdTable(_$AppDatabase db) => db.categories.createAlias(
-    $_aliasNameGenerator(db.transactions.categoryId, db.categories.id),
-  );
+  static $CategoriesTable _categoryIdTable(_$AppDatabase db) => db.categories.createAlias('transactions__category_id__categories__id');
 
   $$CategoriesTableProcessedTableManager? get categoryId {
     final $_column = $_itemColumn<int>('category_id');
@@ -15319,10 +16078,7 @@ final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, 
   static MultiTypedResultKey<$BufferTransactionsTable, List<BufferTransaction>> _bufferTransactionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.bufferTransactions,
-        aliasName: $_aliasNameGenerator(
-          db.transactions.id,
-          db.bufferTransactions.linkedTransactionId,
-        ),
+        aliasName: 'transactions__id__buffer_transactions__linked_transaction_id',
       );
 
   $$BufferTransactionsTableProcessedTableManager get bufferTransactionsRefs {
@@ -15345,10 +16101,7 @@ final class $$TransactionsTableReferences extends BaseReferences<_$AppDatabase, 
   static MultiTypedResultKey<$ExtraordinaryEventsTable, List<ExtraordinaryEvent>> _extraordinaryEventsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.extraordinaryEvents,
-        aliasName: $_aliasNameGenerator(
-          db.transactions.id,
-          db.extraordinaryEvents.transactionId,
-        ),
+        aliasName: 'transactions__id__extraordinary_events__transaction_id',
       );
 
   $$ExtraordinaryEventsTableProcessedTableManager get extraordinaryEventsRefs {
@@ -15442,6 +16195,21 @@ class $$TransactionsTableFilterComposer extends Composer<_$AppDatabase, $Transac
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get merchantKey => $composableBuilder(
+    column: $table.merchantKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get counterparty => $composableBuilder(
+    column: $table.counterparty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<BankEntryKind?, BankEntryKind, String> get entryKind => $composableBuilder(
+    column: $table.entryKind,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
   $$AccountsTableFilterComposer get accountId {
@@ -15615,6 +16383,21 @@ class $$TransactionsTableOrderingComposer extends Composer<_$AppDatabase, $Trans
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get merchantKey => $composableBuilder(
+    column: $table.merchantKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get counterparty => $composableBuilder(
+    column: $table.counterparty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entryKind => $composableBuilder(
+    column: $table.entryKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$AccountsTableOrderingComposer get accountId {
     final $$AccountsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -15717,6 +16500,19 @@ class $$TransactionsTableAnnotationComposer extends Composer<_$AppDatabase, $Tra
   );
 
   GeneratedColumn<DateTime> get createdAt => $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get merchantKey => $composableBuilder(
+    column: $table.merchantKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get counterparty => $composableBuilder(
+    column: $table.counterparty,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<BankEntryKind?, String> get entryKind =>
+      $composableBuilder(column: $table.entryKind, builder: (column) => column);
 
   $$AccountsTableAnnotationComposer get accountId {
     final $$AccountsTableAnnotationComposer composer = $composerBuilder(
@@ -15857,6 +16653,9 @@ class $$TransactionsTableTableManager
                 Value<String?> rawMetadata = const Value.absent(),
                 Value<String?> importHash = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> merchantKey = const Value.absent(),
+                Value<String?> counterparty = const Value.absent(),
+                Value<BankEntryKind?> entryKind = const Value.absent(),
               }) => TransactionsCompanion(
                 id: id,
                 accountId: accountId,
@@ -15874,6 +16673,9 @@ class $$TransactionsTableTableManager
                 rawMetadata: rawMetadata,
                 importHash: importHash,
                 createdAt: createdAt,
+                merchantKey: merchantKey,
+                counterparty: counterparty,
+                entryKind: entryKind,
               ),
           createCompanionCallback:
               ({
@@ -15893,6 +16695,9 @@ class $$TransactionsTableTableManager
                 Value<String?> rawMetadata = const Value.absent(),
                 Value<String?> importHash = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> merchantKey = const Value.absent(),
+                Value<String?> counterparty = const Value.absent(),
+                Value<BankEntryKind?> entryKind = const Value.absent(),
               }) => TransactionsCompanion.insert(
                 id: id,
                 accountId: accountId,
@@ -15910,11 +16715,14 @@ class $$TransactionsTableTableManager
                 rawMetadata: rawMetadata,
                 importHash: importHash,
                 createdAt: createdAt,
+                merchantKey: merchantKey,
+                counterparty: counterparty,
+                entryKind: entryKind,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$TransactionsTable, Transaction>(table),
                   $$TransactionsTableReferences(db, table, e),
                 ),
               )
@@ -16036,6 +16844,11 @@ typedef $$AutoCategorizationRulesTableCreateCompanionBuilder =
       Value<int> priority,
       Value<bool> isActive,
       Value<DateTime> createdAt,
+      Value<RuleMatchType> matchType,
+      Value<int?> accountId,
+      Value<RuleDirection> direction,
+      Value<double?> amountMin,
+      Value<double?> amountMax,
     });
 typedef $$AutoCategorizationRulesTableUpdateCompanionBuilder =
     AutoCategorizationRulesCompanion Function({
@@ -16045,6 +16858,11 @@ typedef $$AutoCategorizationRulesTableUpdateCompanionBuilder =
       Value<int> priority,
       Value<bool> isActive,
       Value<DateTime> createdAt,
+      Value<RuleMatchType> matchType,
+      Value<int?> accountId,
+      Value<RuleDirection> direction,
+      Value<double?> amountMin,
+      Value<double?> amountMax,
     });
 
 final class $$AutoCategorizationRulesTableReferences
@@ -16055,12 +16873,8 @@ final class $$AutoCategorizationRulesTableReferences
     super.$_typedResult,
   );
 
-  static $CategoriesTable _categoryIdTable(_$AppDatabase db) => db.categories.createAlias(
-    $_aliasNameGenerator(
-      db.autoCategorizationRules.categoryId,
-      db.categories.id,
-    ),
-  );
+  static $CategoriesTable _categoryIdTable(_$AppDatabase db) =>
+      db.categories.createAlias('auto_categorization_rules__category_id__categories__id');
 
   $$CategoriesTableProcessedTableManager get categoryId {
     final $_column = $_itemColumn<int>('category_id')!;
@@ -16070,6 +16884,22 @@ final class $$AutoCategorizationRulesTableReferences
       $_db.categories,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_categoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias('auto_categorization_rules__account_id__accounts__id');
+
+  $$AccountsTableProcessedTableManager? get accountId {
+    final $_column = $_itemColumn<int>('account_id');
+    if ($_column == null) return null;
+    final manager = $$AccountsTableTableManager(
+      $_db,
+      $_db.accounts,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_accountIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -16110,6 +16940,26 @@ class $$AutoCategorizationRulesTableFilterComposer extends Composer<_$AppDatabas
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnWithTypeConverterFilters<RuleMatchType, RuleMatchType, String> get matchType => $composableBuilder(
+    column: $table.matchType,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<RuleDirection, RuleDirection, String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<double> get amountMin => $composableBuilder(
+    column: $table.amountMin,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amountMax => $composableBuilder(
+    column: $table.amountMax,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$CategoriesTableFilterComposer get categoryId {
     final $$CategoriesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -16124,6 +16974,28 @@ class $$AutoCategorizationRulesTableFilterComposer extends Composer<_$AppDatabas
           }) => $$CategoriesTableFilterComposer(
             $db: $db,
             $table: $db.categories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AccountsTableFilterComposer get accountId {
+    final $$AccountsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountId,
+      referencedTable: $db.accounts,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountsTableFilterComposer(
+            $db: $db,
+            $table: $db.accounts,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
@@ -16166,6 +17038,26 @@ class $$AutoCategorizationRulesTableOrderingComposer extends Composer<_$AppDatab
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get matchType => $composableBuilder(
+    column: $table.matchType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get direction => $composableBuilder(
+    column: $table.direction,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amountMin => $composableBuilder(
+    column: $table.amountMin,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amountMax => $composableBuilder(
+    column: $table.amountMax,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$CategoriesTableOrderingComposer get categoryId {
     final $$CategoriesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -16180,6 +17072,28 @@ class $$AutoCategorizationRulesTableOrderingComposer extends Composer<_$AppDatab
           }) => $$CategoriesTableOrderingComposer(
             $db: $db,
             $table: $db.categories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AccountsTableOrderingComposer get accountId {
+    final $$AccountsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountId,
+      referencedTable: $db.accounts,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountsTableOrderingComposer(
+            $db: $db,
+            $table: $db.accounts,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
@@ -16207,6 +17121,16 @@ class $$AutoCategorizationRulesTableAnnotationComposer extends Composer<_$AppDat
 
   GeneratedColumn<DateTime> get createdAt => $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  GeneratedColumnWithTypeConverter<RuleMatchType, String> get matchType =>
+      $composableBuilder(column: $table.matchType, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<RuleDirection, String> get direction =>
+      $composableBuilder(column: $table.direction, builder: (column) => column);
+
+  GeneratedColumn<double> get amountMin => $composableBuilder(column: $table.amountMin, builder: (column) => column);
+
+  GeneratedColumn<double> get amountMax => $composableBuilder(column: $table.amountMax, builder: (column) => column);
+
   $$CategoriesTableAnnotationComposer get categoryId {
     final $$CategoriesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -16221,6 +17145,28 @@ class $$AutoCategorizationRulesTableAnnotationComposer extends Composer<_$AppDat
           }) => $$CategoriesTableAnnotationComposer(
             $db: $db,
             $table: $db.categories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AccountsTableAnnotationComposer get accountId {
+    final $$AccountsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountId,
+      referencedTable: $db.accounts,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accounts,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer: $removeJoinBuilderFromRootComposer,
@@ -16243,7 +17189,7 @@ class $$AutoCategorizationRulesTableTableManager
           $$AutoCategorizationRulesTableUpdateCompanionBuilder,
           (AutoCategorizationRule, $$AutoCategorizationRulesTableReferences),
           AutoCategorizationRule,
-          PrefetchHooks Function({bool categoryId})
+          PrefetchHooks Function({bool categoryId, bool accountId})
         > {
   $$AutoCategorizationRulesTableTableManager(
     _$AppDatabase db,
@@ -16272,6 +17218,11 @@ class $$AutoCategorizationRulesTableTableManager
                 Value<int> priority = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<RuleMatchType> matchType = const Value.absent(),
+                Value<int?> accountId = const Value.absent(),
+                Value<RuleDirection> direction = const Value.absent(),
+                Value<double?> amountMin = const Value.absent(),
+                Value<double?> amountMax = const Value.absent(),
               }) => AutoCategorizationRulesCompanion(
                 id: id,
                 pattern: pattern,
@@ -16279,6 +17230,11 @@ class $$AutoCategorizationRulesTableTableManager
                 priority: priority,
                 isActive: isActive,
                 createdAt: createdAt,
+                matchType: matchType,
+                accountId: accountId,
+                direction: direction,
+                amountMin: amountMin,
+                amountMax: amountMax,
               ),
           createCompanionCallback:
               ({
@@ -16288,6 +17244,11 @@ class $$AutoCategorizationRulesTableTableManager
                 Value<int> priority = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<RuleMatchType> matchType = const Value.absent(),
+                Value<int?> accountId = const Value.absent(),
+                Value<RuleDirection> direction = const Value.absent(),
+                Value<double?> amountMin = const Value.absent(),
+                Value<double?> amountMax = const Value.absent(),
               }) => AutoCategorizationRulesCompanion.insert(
                 id: id,
                 pattern: pattern,
@@ -16295,16 +17256,21 @@ class $$AutoCategorizationRulesTableTableManager
                 priority: priority,
                 isActive: isActive,
                 createdAt: createdAt,
+                matchType: matchType,
+                accountId: accountId,
+                direction: direction,
+                amountMin: amountMin,
+                amountMax: amountMax,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AutoCategorizationRulesTable, AutoCategorizationRule>(table),
                   $$AutoCategorizationRulesTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({categoryId = false}) {
+          prefetchHooksCallback: ({categoryId = false, accountId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -16334,6 +17300,16 @@ class $$AutoCategorizationRulesTableTableManager
                               )
                               as T;
                     }
+                    if (accountId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.accountId,
+                                referencedTable: $$AutoCategorizationRulesTableReferences._accountIdTable(db),
+                                referencedColumn: $$AutoCategorizationRulesTableReferences._accountIdTable(db).id,
+                              )
+                              as T;
+                    }
 
                     return state;
                   },
@@ -16358,7 +17334,7 @@ typedef $$AutoCategorizationRulesTableProcessedTableManager =
       $$AutoCategorizationRulesTableUpdateCompanionBuilder,
       (AutoCategorizationRule, $$AutoCategorizationRulesTableReferences),
       AutoCategorizationRule,
-      PrefetchHooks Function({bool categoryId})
+      PrefetchHooks Function({bool categoryId, bool accountId})
     >;
 typedef $$AssetsTableCreateCompanionBuilder =
     AssetsCompanion Function({
@@ -16416,9 +17392,8 @@ typedef $$AssetsTableUpdateCompanionBuilder =
 final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $AssetsTable, Asset> {
   $$AssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
-    $_aliasNameGenerator(db.assets.intermediaryId, db.intermediaries.id),
-  );
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias('assets__intermediary_id__intermediaries__id');
 
   $$IntermediariesTableProcessedTableManager get intermediaryId {
     final $_column = $_itemColumn<int>('intermediary_id')!;
@@ -16436,7 +17411,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$AssetEventsTable, List<AssetEvent>> _assetEventsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.assetEvents,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.assetEvents.assetId),
+    aliasName: 'assets__id__asset_events__asset_id',
   );
 
   $$AssetEventsTableProcessedTableManager get assetEventsRefs {
@@ -16454,7 +17429,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
   static MultiTypedResultKey<$AssetSnapshotsTable, List<AssetSnapshot>> _assetSnapshotsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.assetSnapshots,
-        aliasName: $_aliasNameGenerator(db.assets.id, db.assetSnapshots.assetId),
+        aliasName: 'assets__id__asset_snapshots__asset_id',
       );
 
   $$AssetSnapshotsTableProcessedTableManager get assetSnapshotsRefs {
@@ -16471,7 +17446,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$MarketPricesTable, List<MarketPrice>> _marketPricesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.marketPrices,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.marketPrices.assetId),
+    aliasName: 'assets__id__market_prices__asset_id',
   );
 
   $$MarketPricesTableProcessedTableManager get marketPricesRefs {
@@ -16488,7 +17463,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$ImportConfigsTable, List<ImportConfig>> _importConfigsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.importConfigs,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.importConfigs.assetId),
+    aliasName: 'assets__id__import_configs__asset_id',
   );
 
   $$ImportConfigsTableProcessedTableManager get importConfigsRefs {
@@ -16507,7 +17482,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.incomes,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.incomes.assetId),
+    aliasName: 'assets__id__incomes__asset_id',
   );
 
   $$IncomesTableProcessedTableManager get incomesRefs {
@@ -16525,10 +17500,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
   static MultiTypedResultKey<$AssetCompositionsTable, List<AssetComposition>> _assetCompositionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.assetCompositions,
-        aliasName: $_aliasNameGenerator(
-          db.assets.id,
-          db.assetCompositions.assetId,
-        ),
+        aliasName: 'assets__id__asset_compositions__asset_id',
       );
 
   $$AssetCompositionsTableProcessedTableManager get assetCompositionsRefs {
@@ -16547,7 +17519,7 @@ final class $$AssetsTableReferences extends BaseReferences<_$AppDatabase, $Asset
 
   static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>> _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.pillarAssets,
-    aliasName: $_aliasNameGenerator(db.assets.id, db.pillarAssets.assetId),
+    aliasName: 'assets__id__pillar_assets__asset_id',
   );
 
   $$PillarAssetsTableProcessedTableManager get pillarAssetsRefs {
@@ -17405,7 +18377,10 @@ class $$AssetsTableTableManager
               ),
           withReferenceMapper: (p0) => p0
               .map(
-                (e) => (e.readTable(table), $$AssetsTableReferences(db, table, e)),
+                (e) => (
+                  e.readTable<$AssetsTable, Asset>(table),
+                  $$AssetsTableReferences(db, table, e),
+                ),
               )
               .toList(),
           prefetchHooksCallback:
@@ -17602,6 +18577,7 @@ typedef $$AssetEventsTableCreateCompanionBuilder =
       required double amount,
       Value<String> currency,
       Value<double?> exchangeRate,
+      Value<String?> exchangeRateBase,
       Value<double?> commission,
       Value<double?> taxWithheld,
       Value<String?> source,
@@ -17622,6 +18598,7 @@ typedef $$AssetEventsTableUpdateCompanionBuilder =
       Value<double> amount,
       Value<String> currency,
       Value<double?> exchangeRate,
+      Value<String?> exchangeRateBase,
       Value<double?> commission,
       Value<double?> taxWithheld,
       Value<String?> source,
@@ -17634,9 +18611,7 @@ typedef $$AssetEventsTableUpdateCompanionBuilder =
 final class $$AssetEventsTableReferences extends BaseReferences<_$AppDatabase, $AssetEventsTable, AssetEvent> {
   $$AssetEventsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.assetEvents.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('asset_events__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -17703,6 +18678,11 @@ class $$AssetEventsTableFilterComposer extends Composer<_$AppDatabase, $AssetEve
 
   ColumnFilters<double> get exchangeRate => $composableBuilder(
     column: $table.exchangeRate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get exchangeRateBase => $composableBuilder(
+    column: $table.exchangeRateBase,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17817,6 +18797,11 @@ class $$AssetEventsTableOrderingComposer extends Composer<_$AppDatabase, $AssetE
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get exchangeRateBase => $composableBuilder(
+    column: $table.exchangeRateBase,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get commission => $composableBuilder(
     column: $table.commission,
     builder: (column) => ColumnOrderings(column),
@@ -17904,6 +18889,11 @@ class $$AssetEventsTableAnnotationComposer extends Composer<_$AppDatabase, $Asse
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get exchangeRateBase => $composableBuilder(
+    column: $table.exchangeRateBase,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get commission => $composableBuilder(
     column: $table.commission,
     builder: (column) => column,
@@ -17988,6 +18978,7 @@ class $$AssetEventsTableTableManager
                 Value<double> amount = const Value.absent(),
                 Value<String> currency = const Value.absent(),
                 Value<double?> exchangeRate = const Value.absent(),
+                Value<String?> exchangeRateBase = const Value.absent(),
                 Value<double?> commission = const Value.absent(),
                 Value<double?> taxWithheld = const Value.absent(),
                 Value<String?> source = const Value.absent(),
@@ -18006,6 +18997,7 @@ class $$AssetEventsTableTableManager
                 amount: amount,
                 currency: currency,
                 exchangeRate: exchangeRate,
+                exchangeRateBase: exchangeRateBase,
                 commission: commission,
                 taxWithheld: taxWithheld,
                 source: source,
@@ -18026,6 +19018,7 @@ class $$AssetEventsTableTableManager
                 required double amount,
                 Value<String> currency = const Value.absent(),
                 Value<double?> exchangeRate = const Value.absent(),
+                Value<String?> exchangeRateBase = const Value.absent(),
                 Value<double?> commission = const Value.absent(),
                 Value<double?> taxWithheld = const Value.absent(),
                 Value<String?> source = const Value.absent(),
@@ -18044,6 +19037,7 @@ class $$AssetEventsTableTableManager
                 amount: amount,
                 currency: currency,
                 exchangeRate: exchangeRate,
+                exchangeRateBase: exchangeRateBase,
                 commission: commission,
                 taxWithheld: taxWithheld,
                 source: source,
@@ -18055,7 +19049,7 @@ class $$AssetEventsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AssetEventsTable, AssetEvent>(table),
                   $$AssetEventsTableReferences(db, table, e),
                 ),
               )
@@ -18150,9 +19144,7 @@ final class $$AssetSnapshotsTableReferences extends BaseReferences<_$AppDatabase
     super.$_typedResult,
   );
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.assetSnapshots.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('asset_snapshots__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -18452,7 +19444,7 @@ class $$AssetSnapshotsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AssetSnapshotsTable, AssetSnapshot>(table),
                   $$AssetSnapshotsTableReferences(db, table, e),
                 ),
               )
@@ -18540,10 +19532,7 @@ final class $$BuffersTableReferences extends BaseReferences<_$AppDatabase, $Buff
   static MultiTypedResultKey<$BufferTransactionsTable, List<BufferTransaction>> _bufferTransactionsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.bufferTransactions,
-        aliasName: $_aliasNameGenerator(
-          db.buffers.id,
-          db.bufferTransactions.bufferId,
-        ),
+        aliasName: 'buffers__id__buffer_transactions__buffer_id',
       );
 
   $$BufferTransactionsTableProcessedTableManager get bufferTransactionsRefs {
@@ -18563,10 +19552,7 @@ final class $$BuffersTableReferences extends BaseReferences<_$AppDatabase, $Buff
   static MultiTypedResultKey<$ExtraordinaryEventsTable, List<ExtraordinaryEvent>> _extraordinaryEventsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.extraordinaryEvents,
-        aliasName: $_aliasNameGenerator(
-          db.buffers.id,
-          db.extraordinaryEvents.bufferId,
-        ),
+        aliasName: 'buffers__id__extraordinary_events__buffer_id',
       );
 
   $$ExtraordinaryEventsTableProcessedTableManager get extraordinaryEventsRefs {
@@ -18862,7 +19848,7 @@ class $$BuffersTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$BuffersTable, Buffer>(table),
                   $$BuffersTableReferences(db, table, e),
                 ),
               )
@@ -18974,9 +19960,7 @@ final class $$BufferTransactionsTableReferences extends BaseReferences<_$AppData
     super.$_typedResult,
   );
 
-  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias(
-    $_aliasNameGenerator(db.bufferTransactions.bufferId, db.buffers.id),
-  );
+  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias('buffer_transactions__buffer_id__buffers__id');
 
   $$BuffersTableProcessedTableManager get bufferId {
     final $_column = $_itemColumn<int>('buffer_id')!;
@@ -18993,10 +19977,7 @@ final class $$BufferTransactionsTableReferences extends BaseReferences<_$AppData
   }
 
   static $TransactionsTable _linkedTransactionIdTable(_$AppDatabase db) => db.transactions.createAlias(
-    $_aliasNameGenerator(
-      db.bufferTransactions.linkedTransactionId,
-      db.transactions.id,
-    ),
+    'buffer_transactions__linked_transaction_id__transactions__id',
   );
 
   $$TransactionsTableProcessedTableManager? get linkedTransactionId {
@@ -19411,7 +20392,9 @@ class $$BufferTransactionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$BufferTransactionsTable, BufferTransaction>(
+                    table,
+                  ),
                   $$BufferTransactionsTableReferences(db, table, e),
                 ),
               )
@@ -19502,9 +20485,7 @@ typedef $$MarketPricesTableUpdateCompanionBuilder =
 final class $$MarketPricesTableReferences extends BaseReferences<_$AppDatabase, $MarketPricesTable, MarketPrice> {
   $$MarketPricesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.marketPrices.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('market_prices__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -19707,7 +20688,7 @@ class $$MarketPricesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$MarketPricesTable, MarketPrice>(table),
                   $$MarketPricesTableReferences(db, table, e),
                 ),
               )
@@ -19920,7 +20901,14 @@ class $$ExchangeRatesTableTableManager
                 rate: rate,
                 rowid: rowid,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ExchangeRatesTable, ExchangeRate>(table),
+                  BaseReferences<_$AppDatabase, $ExchangeRatesTable, ExchangeRate>(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -20283,7 +21271,16 @@ class $$HealthReimbursementsTableTableManager
                 processingDays: processingDays,
                 isCovered: isCovered,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$HealthReimbursementsTable, HealthReimbursement>(
+                    table,
+                  ),
+                  BaseReferences<_$AppDatabase, $HealthReimbursementsTable, HealthReimbursement>(db, table, e),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -20437,7 +21434,18 @@ class $$AppConfigsTableTableManager
                 description: description,
                 rowid: rowid,
               ),
-          withReferenceMapper: (p0) => p0.map((e) => (e.readTable(table), BaseReferences(db, table, e))).toList(),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AppConfigsTable, AppConfig>(table),
+                  BaseReferences<_$AppDatabase, $AppConfigsTable, AppConfig>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
           prefetchHooksCallback: null,
         ),
       );
@@ -20493,9 +21501,7 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     super.$_typedResult,
   );
 
-  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias(
-    $_aliasNameGenerator(db.importConfigs.accountId, db.accounts.id),
-  );
+  static $AccountsTable _accountIdTable(_$AppDatabase db) => db.accounts.createAlias('import_configs__account_id__accounts__id');
 
   $$AccountsTableProcessedTableManager? get accountId {
     final $_column = $_itemColumn<int>('account_id');
@@ -20511,12 +21517,8 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     );
   }
 
-  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) => db.intermediaries.createAlias(
-    $_aliasNameGenerator(
-      db.importConfigs.intermediaryId,
-      db.intermediaries.id,
-    ),
-  );
+  static $IntermediariesTable _intermediaryIdTable(_$AppDatabase db) =>
+      db.intermediaries.createAlias('import_configs__intermediary_id__intermediaries__id');
 
   $$IntermediariesTableProcessedTableManager? get intermediaryId {
     final $_column = $_itemColumn<int>('intermediary_id');
@@ -20532,9 +21534,7 @@ final class $$ImportConfigsTableReferences extends BaseReferences<_$AppDatabase,
     );
   }
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.importConfigs.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('import_configs__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager? get assetId {
     final $_column = $_itemColumn<int>('asset_id');
@@ -20966,7 +21966,7 @@ class $$ImportConfigsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ImportConfigsTable, ImportConfig>(table),
                   $$ImportConfigsTableReferences(db, table, e),
                 ),
               )
@@ -21077,9 +22077,7 @@ typedef $$IncomesTableUpdateCompanionBuilder =
 final class $$IncomesTableReferences extends BaseReferences<_$AppDatabase, $IncomesTable, Income> {
   $$IncomesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.incomes.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('incomes__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager? get assetId {
     final $_column = $_itemColumn<int>('asset_id');
@@ -21339,7 +22337,7 @@ class $$IncomesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$IncomesTable, Income>(table),
                   $$IncomesTableReferences(db, table, e),
                 ),
               )
@@ -21426,9 +22424,7 @@ final class $$AssetCompositionsTableReferences extends BaseReferences<_$AppDatab
     super.$_typedResult,
   );
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.assetCompositions.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('asset_compositions__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -21661,7 +22657,7 @@ class $$AssetCompositionsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$AssetCompositionsTable, AssetComposition>(table),
                   $$AssetCompositionsTableReferences(db, table, e),
                 ),
               )
@@ -21770,12 +22766,8 @@ final class $$ExtraordinaryEventsTableReferences extends BaseReferences<_$AppDat
     super.$_typedResult,
   );
 
-  static $TransactionsTable _transactionIdTable(_$AppDatabase db) => db.transactions.createAlias(
-    $_aliasNameGenerator(
-      db.extraordinaryEvents.transactionId,
-      db.transactions.id,
-    ),
-  );
+  static $TransactionsTable _transactionIdTable(_$AppDatabase db) =>
+      db.transactions.createAlias('extraordinary_events__transaction_id__transactions__id');
 
   $$TransactionsTableProcessedTableManager? get transactionId {
     final $_column = $_itemColumn<int>('transaction_id');
@@ -21791,9 +22783,7 @@ final class $$ExtraordinaryEventsTableReferences extends BaseReferences<_$AppDat
     );
   }
 
-  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias(
-    $_aliasNameGenerator(db.extraordinaryEvents.bufferId, db.buffers.id),
-  );
+  static $BuffersTable _bufferIdTable(_$AppDatabase db) => db.buffers.createAlias('extraordinary_events__buffer_id__buffers__id');
 
   $$BuffersTableProcessedTableManager? get bufferId {
     final $_column = $_itemColumn<int>('buffer_id');
@@ -21813,10 +22803,7 @@ final class $$ExtraordinaryEventsTableReferences extends BaseReferences<_$AppDat
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.extraordinaryEventEntries,
-    aliasName: $_aliasNameGenerator(
-      db.extraordinaryEvents.id,
-      db.extraordinaryEventEntries.eventId,
-    ),
+    aliasName: 'extraordinary_events__id__extraordinary_event_entries__event_id',
   );
 
   $$ExtraordinaryEventEntriesTableProcessedTableManager get extraordinaryEventEntriesRefs {
@@ -22349,7 +23336,9 @@ class $$ExtraordinaryEventsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ExtraordinaryEventsTable, ExtraordinaryEvent>(
+                    table,
+                  ),
                   $$ExtraordinaryEventsTableReferences(db, table, e),
                 ),
               )
@@ -22480,10 +23469,7 @@ final class $$ExtraordinaryEventEntriesTableReferences
   );
 
   static $ExtraordinaryEventsTable _eventIdTable(_$AppDatabase db) => db.extraordinaryEvents.createAlias(
-    $_aliasNameGenerator(
-      db.extraordinaryEventEntries.eventId,
-      db.extraordinaryEvents.id,
-    ),
+    'extraordinary_event_entries__event_id__extraordinary_events__id',
   );
 
   $$ExtraordinaryEventsTableProcessedTableManager get eventId {
@@ -22778,7 +23764,7 @@ class $$ExtraordinaryEventEntriesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$ExtraordinaryEventEntriesTable, ExtraordinaryEventEntry>(table),
                   $$ExtraordinaryEventEntriesTableReferences(db, table, e),
                 ),
               )
@@ -22876,10 +23862,7 @@ final class $$PortfolioModelsTableReferences extends BaseReferences<_$AppDatabas
   static MultiTypedResultKey<$PortfolioModelItemsTable, List<PortfolioModelItem>> _portfolioModelItemsRefsTable(_$AppDatabase db) =>
       MultiTypedResultKey.fromTable(
         db.portfolioModelItems,
-        aliasName: $_aliasNameGenerator(
-          db.portfolioModels.id,
-          db.portfolioModelItems.modelId,
-        ),
+        aliasName: 'portfolio_models__id__portfolio_model_items__model_id',
       );
 
   $$PortfolioModelItemsTableProcessedTableManager get portfolioModelItemsRefs {
@@ -22900,10 +23883,7 @@ final class $$PortfolioModelsTableReferences extends BaseReferences<_$AppDatabas
     _$AppDatabase db,
   ) => MultiTypedResultKey.fromTable(
     db.pillars,
-    aliasName: $_aliasNameGenerator(
-      db.portfolioModels.id,
-      db.pillars.portfolioModelId,
-    ),
+    aliasName: 'portfolio_models__id__pillars__portfolio_model_id',
   );
 
   $$PillarsTableProcessedTableManager get pillarsRefs {
@@ -23232,7 +24212,7 @@ class $$PortfolioModelsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PortfolioModelsTable, PortfolioModel>(table),
                   $$PortfolioModelsTableReferences(db, table, e),
                 ),
               )
@@ -23327,12 +24307,8 @@ final class $$PortfolioModelItemsTableReferences extends BaseReferences<_$AppDat
     super.$_typedResult,
   );
 
-  static $PortfolioModelsTable _modelIdTable(_$AppDatabase db) => db.portfolioModels.createAlias(
-    $_aliasNameGenerator(
-      db.portfolioModelItems.modelId,
-      db.portfolioModels.id,
-    ),
-  );
+  static $PortfolioModelsTable _modelIdTable(_$AppDatabase db) =>
+      db.portfolioModels.createAlias('portfolio_model_items__model_id__portfolio_models__id');
 
   $$PortfolioModelsTableProcessedTableManager get modelId {
     final $_column = $_itemColumn<String>('model_id')!;
@@ -23612,7 +24588,9 @@ class $$PortfolioModelItemsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PortfolioModelItemsTable, PortfolioModelItem>(
+                    table,
+                  ),
                   $$PortfolioModelItemsTableReferences(db, table, e),
                 ),
               )
@@ -23703,12 +24681,8 @@ typedef $$PillarsTableUpdateCompanionBuilder =
 final class $$PillarsTableReferences extends BaseReferences<_$AppDatabase, $PillarsTable, Pillar> {
   $$PillarsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $PortfolioModelsTable _portfolioModelIdTable(_$AppDatabase db) => db.portfolioModels.createAlias(
-    $_aliasNameGenerator(
-      db.pillars.portfolioModelId,
-      db.portfolioModels.id,
-    ),
-  );
+  static $PortfolioModelsTable _portfolioModelIdTable(_$AppDatabase db) =>
+      db.portfolioModels.createAlias('pillars__portfolio_model_id__portfolio_models__id');
 
   $$PortfolioModelsTableProcessedTableManager? get portfolioModelId {
     final $_column = $_itemColumn<String>('portfolio_model_id');
@@ -23726,7 +24700,7 @@ final class $$PillarsTableReferences extends BaseReferences<_$AppDatabase, $Pill
 
   static MultiTypedResultKey<$PillarAssetsTable, List<PillarAsset>> _pillarAssetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.pillarAssets,
-    aliasName: $_aliasNameGenerator(db.pillars.id, db.pillarAssets.pillarId),
+    aliasName: 'pillars__id__pillar_assets__pillar_id',
   );
 
   $$PillarAssetsTableProcessedTableManager get pillarAssetsRefs {
@@ -24059,7 +25033,7 @@ class $$PillarsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PillarsTable, Pillar>(table),
                   $$PillarsTableReferences(db, table, e),
                 ),
               )
@@ -24155,9 +25129,7 @@ typedef $$PillarAssetsTableUpdateCompanionBuilder =
 final class $$PillarAssetsTableReferences extends BaseReferences<_$AppDatabase, $PillarAssetsTable, PillarAsset> {
   $$PillarAssetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $PillarsTable _pillarIdTable(_$AppDatabase db) => db.pillars.createAlias(
-    $_aliasNameGenerator(db.pillarAssets.pillarId, db.pillars.id),
-  );
+  static $PillarsTable _pillarIdTable(_$AppDatabase db) => db.pillars.createAlias('pillar_assets__pillar_id__pillars__id');
 
   $$PillarsTableProcessedTableManager get pillarId {
     final $_column = $_itemColumn<String>('pillar_id')!;
@@ -24173,9 +25145,7 @@ final class $$PillarAssetsTableReferences extends BaseReferences<_$AppDatabase, 
     );
   }
 
-  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias(
-    $_aliasNameGenerator(db.pillarAssets.assetId, db.assets.id),
-  );
+  static $AssetsTable _assetIdTable(_$AppDatabase db) => db.assets.createAlias('pillar_assets__asset_id__assets__id');
 
   $$AssetsTableProcessedTableManager get assetId {
     final $_column = $_itemColumn<int>('asset_id')!;
@@ -24413,7 +25383,7 @@ class $$PillarAssetsTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$PillarAssetsTable, PillarAsset>(table),
                   $$PillarAssetsTableReferences(db, table, e),
                 ),
               )

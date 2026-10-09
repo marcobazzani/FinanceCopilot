@@ -1,5 +1,7 @@
 part of 'dashboard_screen.dart';
 
+final _allSeriesLog = getLogger('AllSeriesData');
+
 // ════════════════════════════════════════════════════
 // Unified data provider — computes ALL series at once
 // ════════════════════════════════════════════════════
@@ -21,13 +23,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   final currentDate = ref.watch(currentDateProvider);
   final waybackDate = ref.watch(waybackDateProvider);
   final cutoffDayKey = waybackDate == null ? null : toDayKey(currentDate);
-  final cutoffEndDate = waybackDate == null
-      ? null
-      : DateTime(
-          currentDate.year,
-          currentDate.month,
-          currentDate.day,
-        ).add(const Duration(days: 1));
+  final cutoffEndDate = waybackDate == null ? null : startOfNextDay(currentDate);
   final cutoffEndExclusive = waybackDate == null ? null : cutoffEndDate!.millisecondsSinceEpoch ~/ 1000;
   bool includeDayKey(int dayKey) => cutoffDayKey == null || dayKey <= cutoffDayKey;
 
@@ -87,13 +83,15 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   final perAssetDeltas = <int, Map<int, double>>{};
   final perAssetQtyDeltas = <int, Map<int, double>>{};
+  // Assets with a buy or sell amount left out of the invested series: their
+  // cost basis is incomplete, so no gain or net value is drawn against it.
+  final costBasisIncomplete = <int>{};
 
   if (assetIds.isNotEmpty) {
     final assetPlaceholders = assetIds.map((_) => '?').join(',');
-    final evRows = await db
+    final events = await db
         .customSelect(
-          'SELECT asset_id, value_date, type, amount, quantity, currency, exchange_rate, commission '
-          'FROM asset_events '
+          'SELECT * FROM asset_events '
           'WHERE asset_id IN ($assetPlaceholders) '
           "${cutoffEndExclusive != null ? 'AND value_date < ? ' : ''}"
           'ORDER BY value_date ASC',
@@ -102,52 +100,53 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
             if (cutoffEndExclusive != null) Variable.withInt(cutoffEndExclusive),
           ],
         )
+        .map((row) => db.assetEvents.map(row.data))
         .get();
 
-    for (final row in evRows) {
-      final assetId = row.read<int>('asset_id');
-      final epochSec = row.read<int>('value_date');
-      final type = row.read<String>('type');
-      final amount = row.read<double>('amount');
-      final commission = row.readNullable<double>('commission') ?? 0;
-      final quantity = row.readNullable<double>('quantity') ?? 0;
-      final currency = row.read<String>('currency');
-      final storedRate = row.readNullable<double>('exchange_rate');
-
+    for (final ev in events) {
+      final assetId = ev.assetId;
       double sign;
-      if (type == 'buy') {
+      if (ev.type == EventType.buy) {
         sign = 1.0;
-      } else if (type == 'sell') {
+      } else if (ev.type == EventType.sell) {
         sign = -1.0;
       } else {
         continue;
       }
 
-      final dt = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
-      final dayKey = toDayKey(dt);
+      final dayKey = toDayKey(ev.valueDate);
       if (!includeDayKey(dayKey)) continue;
 
-      final netAmount = amount - commission;
+      // Units bought or sold move the held quantity whether or not the
+      // amount converts to base, so the market value always sees them.
+      perAssetQtyDeltas.putIfAbsent(assetId, () => {});
+      perAssetQtyDeltas[assetId]![dayKey] = (perAssetQtyDeltas[assetId]![dayKey] ?? 0) + sign * (ev.quantity ?? 0).abs();
+      allDayKeys.add(dayKey);
+
+      final netAmount = ev.amount - (ev.commission ?? 0);
       final baseAmount = await convertToBase(
         amount: netAmount,
-        currency: currency,
+        currency: ev.currency,
         baseCurrency: baseCurrency,
-        storedRate: storedRate,
+        // A rate stamped with a previous base is preserved data, not a
+        // conversion into this one: resolve it from rate history instead.
+        storedRate: AssetEventService.isExchangeRateUsableFor(ev, baseCurrency) ? ev.exchangeRate : null,
         resolver: rates,
         dayKey: dayKey,
       );
-      // No rate available -> drop this event from the chart series rather
-      // than feed a wrong number into cumulative totals. The resolver has
-      // already emitted a warning when this happens.
-      if (baseAmount == null) continue;
+      // No rate available -> leave the amount out of the invested series
+      // rather than feed a wrong number into cumulative totals.
+      if (baseAmount == null) {
+        _allSeriesLog.warning(
+          'asset $assetId ${ev.type.name} on ${fmt.formatYmd(ev.valueDate)}: no ${ev.currency}/$baseCurrency rate - '
+          'amount left out of the invested series, quantity kept, no gain or net value drawn',
+        );
+        costBasisIncomplete.add(assetId);
+        continue;
+      }
 
       perAssetDeltas.putIfAbsent(assetId, () => {});
       perAssetDeltas[assetId]![dayKey] = (perAssetDeltas[assetId]![dayKey] ?? 0) + sign * baseAmount;
-
-      perAssetQtyDeltas.putIfAbsent(assetId, () => {});
-      perAssetQtyDeltas[assetId]![dayKey] = (perAssetQtyDeltas[assetId]![dayKey] ?? 0) + sign * quantity.abs();
-
-      allDayKeys.add(dayKey);
     }
   }
 
@@ -211,13 +210,15 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         )
         .get();
     for (final row in priceDateRows) {
-      final dayKey = row.read<int>('date');
+      // A price stored with a clock time (a revalue at 15:42) belongs to its
+      // calendar day: every series is keyed by local midnight.
+      final dayKey = toDayKey(DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000));
       if (includeDayKey(dayKey)) allDayKeys.add(dayKey);
     }
   }
 
   // Need actual data beyond just today's placeholder
-  if (allDayKeys.length <= 1 && perAccount.isEmpty && perAssetDeltas.isEmpty && activeEvents.isEmpty) {
+  if (allDayKeys.length <= 1 && perAccount.isEmpty && perAssetQtyDeltas.isEmpty && activeEvents.isEmpty) {
     return null;
   }
 
@@ -226,6 +227,9 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   // ── Build account series ──
   final accountSeries = <ChartSeries>[];
+  // Accounts with a balance but no rate to base on any day: their series has
+  // no spots — every total leaves them out, and counts them.
+  final excludedAccountIds = <int>{};
   for (final account in activeAccounts) {
     if (!perAccount.containsKey(account.id)) continue;
     final dayMap = perAccount[account.id]!;
@@ -238,9 +242,13 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         final rate = await rates.getRate(account.currency, dayKey);
         if (rate == null) continue;
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
+        final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
         spots.add(FlSpot(x, running * rate));
       }
+    }
+    if (spots.isEmpty) {
+      _allSeriesLog.warning('account ${account.id}: no ${account.currency}/$baseCurrency rate - left out of every total');
+      excludedAccountIds.add(account.id);
     }
 
     accountSeries.add(
@@ -257,8 +265,11 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   // ── Build asset invested series (cumulative) ──
   final assetInvestedSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
-    if (!perAssetDeltas.containsKey(asset.id)) continue;
-    final deltaMap = perAssetDeltas[asset.id]!;
+    // None of its amounts converts to base: the series is kept without spots,
+    // like its gain and net series, so a total built from it leaves the asset
+    // out and counts it (see [totalExclusions]).
+    final deltaMap = perAssetDeltas[asset.id] ?? (costBasisIncomplete.contains(asset.id) ? const <int, double>{} : null);
+    if (deltaMap == null) continue;
     final spots = <FlSpot>[];
     var cumulative = 0.0;
     var started = false;
@@ -270,7 +281,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       }
       if (started) {
         final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
+        final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
         spots.add(FlSpot(x, cumulative));
       }
     }
@@ -293,7 +304,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   // Batch-fetch FX rates via SQL for all asset currencies (direct + inverse)
   final assetCurrencies = activeAssets
-      .where((a) => a.currency != baseCurrency && perAssetDeltas.containsKey(a.id))
+      .where((a) => a.currency != baseCurrency && perAssetQtyDeltas.containsKey(a.id))
       .map((a) => a.currency)
       .toSet();
   final fxBatch = <String, List<(int, double)>>{}; // currency -> sorted [(dayKey, rate)]
@@ -361,8 +372,10 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   final assetMarketSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
-    if (!perAssetDeltas.containsKey(asset.id)) continue;
-    final qtyDeltaMap = perAssetQtyDeltas[asset.id] ?? {};
+    // Keyed on the quantity deltas, not the invested ones: a held position
+    // has a market value even when its cost cannot be converted to base.
+    if (!perAssetQtyDeltas.containsKey(asset.id)) continue;
+    final qtyDeltaMap = perAssetQtyDeltas[asset.id]!;
 
     final prices = allPriceHistories[asset.id] ?? [];
     final priceMap = <int, double>{};
@@ -374,7 +387,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
     // Iterate all global dates (like accounts do) so FX rates are applied
     // daily, not just on price-data days. This fixes stale FX in ATH.
-    final firstEventKey = perAssetDeltas[asset.id]!.keys.reduce(min);
+    final firstEventKey = qtyDeltaMap.keys.reduce(min);
     final spots = <FlSpot>[];
     var cumQuantity = 0.0;
     double? lastPrice;
@@ -391,17 +404,28 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
         lastPrice = priceMap[dayKey]!;
       }
       if (!started) continue;
-      if (lastPrice != null && cumQuantity > 0) {
-        // Batch lookup; fall back to async resolver for EUR cross-rates.
-        // If neither yields a rate, skip the spot rather than plot a value
-        // computed with an implicit 1.0 FX rate.
-        final fxRate = lookupFx(asset.currency, dayKey) ?? await rates.getRate(asset.currency, dayKey);
-        if (fxRate == null) continue;
-        final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-        final x = dt.difference(firstDate).inDays.toDouble();
-        final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
-        spots.add(FlSpot(x, cumQuantity * lastPrice / bondDiv * fxRate));
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
+      final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
+      if (cumQuantity <= 0) {
+        // Position fully closed (bought then fully sold). This is an exact,
+        // known-zero value — independent of price/FX availability — so it
+        // must still be emitted. Without it, buildTotalSpots' carry-forward
+        // would keep plotting the last pre-sale market value forever.
+        spots.add(FlSpot(x, 0.0));
+        continue;
       }
+      if (lastPrice == null) continue;
+      // Batch lookup; fall back to async resolver for EUR cross-rates.
+      // If neither yields a rate, skip the spot rather than plot a value
+      // computed with an implicit 1.0 FX rate.
+      final value = computeAssetBaseValue(
+        quantity: cumQuantity,
+        price: lastPrice,
+        bondDivisor: bondPriceDivisor(asset.instrumentType),
+        fxRate: lookupFx(asset.currency, dayKey) ?? await rates.getRate(asset.currency, dayKey),
+      );
+      if (value == null) continue;
+      spots.add(FlSpot(x, value));
     }
 
     // Use same color as invested counterpart
@@ -419,11 +443,21 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   }
 
   // ── Build asset gain series (market - invested) ──
+  // An asset whose cost basis is incomplete keeps its series, without spots
+  // (see [costBasisIncompleteAssetIds]): against part of what it cost, a buy
+  // left out would read as profit and a sell left out as a loss.
   final assetGainSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     final invMatch = assetInvestedSeries.where((s) => s.key == 'asset_invested:${asset.id}');
     final mktMatch = assetMarketSeries.where((s) => s.key == 'asset_market:${asset.id}');
-    if (invMatch.isEmpty || mktMatch.isEmpty) continue;
+    if (mktMatch.isEmpty) continue;
+    if (costBasisIncomplete.contains(asset.id)) {
+      assetGainSeries.add(
+        ChartSeries(key: 'asset_gain:${asset.id}', name: asset.ticker ?? asset.name, color: mktMatch.first.color, spots: const []),
+      );
+      continue;
+    }
+    if (invMatch.isEmpty) continue;
     final invSpots = invMatch.first.spots;
     final mktSpots = mktMatch.first.spots;
     // Build lookup for invested values
@@ -450,12 +484,21 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
 
   // ── Build asset net series (invested + max(0,gain) * (1 - τ)) ──
   // τ = per-asset taxRate if set, otherwise the global default. Used for
-  // the optional "Net" chart series toggled in the chart editor.
+  // the optional "Net" chart series toggled in the chart editor, and for the
+  // Net Asset Value. Without spots for an incomplete cost basis, like the gain:
+  // a total built from it leaves the asset out and counts it.
   final assetNetSeries = <ChartSeries>[];
   for (final asset in activeAssets) {
     final invMatch = assetInvestedSeries.where((s) => s.key == 'asset_invested:${asset.id}');
     final mktMatch = assetMarketSeries.where((s) => s.key == 'asset_market:${asset.id}');
-    if (invMatch.isEmpty || mktMatch.isEmpty) continue;
+    if (mktMatch.isEmpty) continue;
+    if (costBasisIncomplete.contains(asset.id)) {
+      assetNetSeries.add(
+        ChartSeries(key: 'asset_net:${asset.id}', name: asset.ticker ?? asset.name, color: mktMatch.first.color, spots: const []),
+      );
+      continue;
+    }
+    if (invMatch.isEmpty) continue;
     final invSpots = invMatch.first.spots;
     final mktSpots = mktMatch.first.spots;
     final invLookup = <double, double>{};
@@ -498,6 +541,8 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   final adjustmentSeries = <ChartSeries>[];
   final incomeAdjSeries = <ChartSeries>[];
   final ephemeralInflowSeries = <ChartSeries>[];
+  // Adjustments with amounts but no rate to base on any of their days.
+  final excludedAdjustmentIds = <int>{};
 
   // Compute carry-forward spots from a day→delta map, using the event's FX
   // rate on each day. Pure helper — returns empty when the map is empty.
@@ -515,7 +560,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       cumulative += deltaMap[dayKey]!;
       if (rate == null) continue;
       final dt = DateTime.fromMillisecondsSinceEpoch(dayKey * 1000);
-      final x = dt.difference(firstDate).inDays.toDouble();
+      final x = chart_math.calendarDaysBetween(firstDate, dt).toDouble();
       if (prevY != null && spots.isNotEmpty && x > (spots.last.x + 1)) {
         spots.add(FlSpot(x - 0.5, prevY));
       }
@@ -527,7 +572,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
   }
 
   for (final event in activeEvents) {
-    final entries = allEventEntries[event.id] ?? const [];
+    final entries = allEventEntries[event.id] ?? const <ExtraordinaryEventEntry>[];
     final isOutflow = event.direction == EventDirection.outflow;
     final anchorSign = isOutflow ? 1.0 : -1.0;
 
@@ -548,8 +593,8 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       allDayKeys.add(dayKey);
     }
     if (event.bufferId != null) {
-      for (final r in allReimbursements[event.bufferId!] ?? const []) {
-        // valueDate per CLAUDE.md — chart day-keys use the canonical
+      for (final r in allReimbursements[event.bufferId!] ?? const <BufferTransaction>[]) {
+        // valueDate per AGENTS.md — chart day-keys use the canonical
         // "money moved" date, never operation_date.
         final dayKey = toDayKey(r.valueDate);
         if (!includeDayKey(dayKey)) continue;
@@ -590,7 +635,14 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       bucket = incomeAdjSeries;
     }
 
-    if (valueSpots.isNotEmpty) {
+    // Amounts without a rate to base on any of their days have no spots. The
+    // series is kept all the same — like an asset's without a price — so a
+    // total built from it leaves the adjustment out and counts it.
+    if ((valueMap.isNotEmpty && valueSpots.isEmpty) || (eventsMap.isNotEmpty && eventSpots.isEmpty)) {
+      _allSeriesLog.warning('adjustment ${event.id}: no ${event.currency}/$baseCurrency rate - left out of every total');
+      excludedAdjustmentIds.add(event.id);
+    }
+    if (valueMap.isNotEmpty) {
       bucket.add(
         ChartSeries(
           key: '$valuePrefix:${event.id}',
@@ -602,7 +654,7 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
       );
       colorIdx++;
     }
-    if (eventSpots.isNotEmpty) {
+    if (eventsMap.isNotEmpty) {
       bucket.add(
         ChartSeries(
           key: '$eventsPrefix:${event.id}',
@@ -627,13 +679,37 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     incomeAdjustments: incomeAdjSeries,
     ephemeralInflows: ephemeralInflowSeries,
     baseCurrency: baseCurrency,
+    excludedAccountIds: excludedAccountIds,
+    excludedAdjustmentIds: excludedAdjustmentIds,
   );
 });
+
+/// Assets of [data] whose cost basis is incomplete: a buy or sell whose
+/// amount has no rate to base is left out of their invested series (kept
+/// without spots when no amount converts) while its units still count in
+/// their market value, so [allSeriesDataProvider] keeps their gain and net
+/// series without spots rather than compute them against part of what they
+/// cost. A total built from those series leaves them out; its footnote counts
+/// them ([totalExclusions]). An asset without any market value is not one of
+/// them: it is unpriced (see [TotalExclusions.unpricedAssetIds]).
+Set<int> costBasisIncompleteAssetIds(AllSeriesData data) {
+  final ids = <int>{};
+  for (final gain in data.assetGain) {
+    final id = parseSeriesKey(gain.key)?.id;
+    if (id == null || gain.spots.isNotEmpty) continue;
+    final market = data.assetMarket.where((s) => s.key == 'asset_market:$id').firstOrNull;
+    if (market != null && market.spots.isNotEmpty) ids.add(id);
+  }
+  return ids;
+}
 
 // ════════════════════════════════════════════════════
 // Income/Expense data provider
 // ════════════════════════════════════════════════════
 
+/// The yearly Income / Expense / Savings figures, with the number of income
+/// records they leave out for want of a rate
+/// ([_IncomeExpenseData.rowsWithoutRate]).
 final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) async {
   final allSeriesData = await ref.watch(allSeriesDataProvider.future);
   if (allSeriesData == null) return null;
@@ -648,32 +724,54 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   final rates = _RateResolver(rateService, baseCurrency);
 
+  // The income records [sql] selects (`date` = value date, `amount`,
+  // `currency`, optionally `asset_id` for [keep]), up to the as-of cutoff and
+  // in query order, as (value date, amount in base at that day's rate). A
+  // record whose currency has no rate that day is left out rather than
+  // mis-summed — and counted.
+  var rowsWithoutRate = 0;
+  Future<List<(DateTime, double)>> incomeInBase(String sql, {bool Function(int? assetId)? keep}) async {
+    final converted = <(DateTime, double)>[];
+    for (final row in await db.customSelect(sql).get()) {
+      if (keep != null && !keep(row.readNullable<int>('asset_id'))) continue;
+      final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
+      if (!includeDayKey(toDayKey(dt))) continue;
+      final rate = await rates.getRate(row.read<String>('currency'), toDayKey(dt));
+      if (rate == null) {
+        rowsWithoutRate++;
+        continue;
+      }
+      converted.add((dt, row.read<double>('amount') * rate));
+    }
+    return converted;
+  }
+
   // 1. Load incomes (excluding refunds and pension contributions),
   // convert to base currency. Both refund and pensionContribution are
   // money received but not "personal income" — the user reports them in
   // the ledger but doesn't want them inflating salary totals.
-  // Ordered by value_date per CLAUDE.md convention — operation_date is
+  // Ordered by value_date per AGENTS.md convention — operation_date is
   // only for import dedup, never for display/aggregation.
-  final rows = await db
-      .customSelect(
-        "SELECT value_date AS date, amount, currency FROM incomes "
-        "WHERE type NOT IN ('refund', 'pensionContribution') "
-        "ORDER BY value_date ASC",
-      )
-      .get();
-
   final incomeByMonth = <(int, int), double>{};
   final monthsWithIncomeData = <(int, int)>{};
-  for (final row in rows) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
-    if (!includeDayKey(toDayKey(dt))) continue;
-    final amount = row.read<double>('amount');
-    final currency = row.read<String>('currency');
-    final rate = await rates.getRate(currency, toDayKey(dt));
-    if (rate == null) continue; // no rate -> exclude rather than mis-sum
+  for (final (dt, amount) in await incomeInBase(
+    "SELECT value_date AS date, amount, currency FROM incomes "
+    "WHERE type NOT IN ('refund', 'pensionContribution') "
+    "ORDER BY value_date ASC",
+  )) {
     final key = (dt.year, dt.month);
-    incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount * rate;
+    incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount;
     monthsWithIncomeData.add(key);
+  }
+
+  // 1b. Refund Income records: money received that is not personal income
+  // but lands in the bank, so it is inside the savings change and lowers
+  // the derived expenses. Kept per year so the cash-flow Sankey can show it.
+  final refundByYear = <int, double>{};
+  for (final (dt, amount) in await incomeInBase(
+    "SELECT value_date AS date, amount, currency FROM incomes WHERE type = 'refund' ORDER BY value_date ASC",
+  )) {
+    refundByYear[dt.year] = (refundByYear[dt.year] ?? 0) + amount;
   }
 
   // 2. Build total saving series — resolved from the user's configured
@@ -705,31 +803,26 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // Only subtract contribution rows whose asset is actually included in
   // the resolved Saving total. If a pension fund is excluded from Saving,
   // subtracting its mirrored income rows here would double-exclude it.
-  final rawPensionRows = await db
-      .customSelect(
-        "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
-        "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
-      )
-      .get();
-  final pensionRows = rawPensionRows.where((row) {
-    final assetId = row.readNullable<int>('asset_id');
-    return assetId != null && savingAssetIds.contains(assetId);
-  }).toList();
+  final pensionRows = await incomeInBase(
+    "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
+    "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
+    keep: (assetId) => assetId != null && savingAssetIds.contains(assetId),
+  );
   final pensionContribByMonth = <(int, int), double>{};
-  for (final row in pensionRows) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
-    if (!includeDayKey(toDayKey(dt))) continue;
-    final amount = row.read<double>('amount');
-    final currency = row.read<String>('currency');
-    final rate = await rates.getRate(currency, toDayKey(dt));
-    if (rate == null) continue;
+  for (final (dt, amount) in pensionRows) {
     final key = (dt.year, dt.month);
-    pensionContribByMonth[key] = (pensionContribByMonth[key] ?? 0) + amount * rate;
+    pensionContribByMonth[key] = (pensionContribByMonth[key] ?? 0) + amount;
   }
 
+  // Before its first data point the saving total is not 0 — it is not known
+  // yet. The first observed value is where the tracked history opens, so the
+  // first period's savings are measured from there: balances that already
+  // existed when tracking began are not a period of savings (which would
+  // also read as negative expenses).
+  final openingNav = savingSpots.isEmpty ? 0.0 : savingSpots.first.y;
   double lookupNAV(DateTime date) {
-    final x = date.difference(allSeriesData.firstDate).inDays.toDouble();
-    double nav = 0;
+    final x = chart_math.calendarDaysBetween(allSeriesData.firstDate, date).toDouble();
+    double nav = openingNav;
     for (final s in savingSpots) {
       if (s.x <= x) {
         nav = s.y;
@@ -751,7 +844,9 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     final yStart = DateTime(y, 1, 1);
     final isCurrentYear = y == now.year;
     final effectiveEnd = isCurrentYear ? now : DateTime(y, 12, 31);
-    final days = effectiveEnd.difference(yStart).inDays + 1;
+    // Calendar days, both ends included: elapsed hours fall an hour short of
+    // whole days while summer time is on.
+    final days = chart_math.calendarDaysBetween(yStart, effectiveEnd) + 1;
 
     double yearIncome = 0;
     double yearPensionContrib = 0;
@@ -759,11 +854,11 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
     for (int m = 1; m <= 12; m++) {
       if (isCurrentYear && m > now.month) break;
-      // Use last day of previous month so 1st-of-month txns are captured.
-      final mStartRef = DateTime(y, m, 1).subtract(const Duration(days: 1));
-      final mEnd = (isCurrentYear && m == now.month)
-          ? now
-          : (m < 12 ? DateTime(y, m + 1, 1).subtract(const Duration(days: 1)) : DateTime(y, 12, 31));
+      // Use last day of previous month (day 0) so 1st-of-month txns are
+      // captured. Calendar days, not the 1st minus 24 hours: when DST starts
+      // on 31 March that lands on 30 March and books 31 March in April.
+      final mStartRef = DateTime(y, m, 0);
+      final mEnd = (isCurrentYear && m == now.month) ? now : DateTime(y, m + 1, 0);
       final mIncome = incomeByMonth[(y, m)] ?? 0;
       final mPensionContrib = pensionContribByMonth[(y, m)] ?? 0;
       yearIncome += mIncome;
@@ -787,6 +882,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         income: yearIncome,
         navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
         pensionContrib: yearPensionContrib,
+        refunds: refundByYear[y] ?? 0,
         months: months,
       ),
     );
@@ -797,25 +893,57 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // from savingSpots without re-running a query. Each spot's x is the
   // day offset of that contribution; y is the running total in base
   // currency. Used to build a "personal saving" series for velocity.
-  final sortedPension = pensionRows.toList()..sort((a, b) => a.read<int>('date').compareTo(b.read<int>('date')));
   final pensionContribSpots = <FlSpot>[];
   double cumulative = 0;
-  for (final row in sortedPension) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(row.read<int>('date') * 1000);
-    if (!includeDayKey(toDayKey(dt))) continue;
-    final amount = row.read<double>('amount');
-    final currency = row.read<String>('currency');
-    final rate = await rates.getRate(currency, toDayKey(dt));
-    if (rate == null) continue;
-    cumulative += amount * rate;
-    final x = dt.difference(allSeriesData.firstDate).inDays.toDouble();
+  for (final (dt, amount) in pensionRows) {
+    cumulative += amount;
+    final x = chart_math.calendarDaysBetween(allSeriesData.firstDate, dt).toDouble();
     pensionContribSpots.add(FlSpot(x, cumulative));
   }
 
+  if (rowsWithoutRate > 0) {
+    _allSeriesLog.warning(
+      'income: $rowsWithoutRate record(s) without a rate to $baseCurrency on their value date - left out of the yearly figures',
+    );
+  }
   return _IncomeExpenseData(
     years: years,
     baseCurrency: baseCurrency,
     firstDate: allSeriesData.firstDate,
     pensionContribCumulativeSpots: pensionContribSpots,
+    rowsWithoutRate: rowsWithoutRate,
+  );
+});
+
+/// Income records (salaries, refunds, pension contributions) whose currency
+/// had no rate to base on their value date: left out of the yearly Income /
+/// Expense / Savings figures rather than converted 1:1. The Cash Flow and
+/// Health tabs footnote this count next to those figures. None without any
+/// figures.
+final incomeRowsWithoutRateProvider = FutureProvider<int>(
+  (ref) async => (await ref.watch(_incomeExpenseDataProvider.future))?.rowsWithoutRate ?? 0,
+);
+
+// ════════════════════════════════════════════════════
+// Spending by category (splits the yearly expenses in the Sankey)
+// ════════════════════════════════════════════════════
+
+final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref) async {
+  final txs = await ref.watch(allTransactionsProvider.future);
+  final cats = await ref.watch(allCategoriesProvider.future);
+  final baseCurrency = await ref.watch(baseCurrencyProvider.future);
+  final rates = _RateResolver(ref.watch(exchangeRateServiceProvider), baseCurrency);
+  final now = ref.watch(currentDateProvider);
+  final roles = await ref.watch(ledgerRolesProvider.future);
+  // Same cutoff as the yearly Income/Expense/Savings figures.
+  final wayback = ref.watch(waybackDateProvider) != null;
+  return aggregateSpendingByCategory(
+    transactions: txs,
+    categories: {for (final c in cats) c.id: c},
+    rate: rates.getRate,
+    baseCurrency: baseCurrency,
+    now: now,
+    through: wayback ? now : null,
+    excludedIds: roles.keys.toSet(),
   );
 });

@@ -1,13 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../database/database.dart';
 import '../../../l10n/app_strings.dart';
 import 'package:finance_copilot/services/portfolio/portfolio_model_service.dart';
 import '../../../services/providers/providers.dart';
 import 'package:finance_copilot/services/market/web_market_data_service.dart';
+import '../../../utils/dialogs.dart';
 import '../../../utils/formatters.dart' as fmt;
 import '../../widgets/asset_search.dart';
+
+/// Asks, then deletes the custom [model] (its pillar associations are
+/// removed); says whether it did. Behind the model dialog's trashcan and the
+/// swipe of the models list.
+Future<bool> confirmAndDeletePortfolioModel(BuildContext context, WidgetRef ref, PortfolioModel model) async {
+  final s = ref.read(appStringsProvider);
+  final service = ref.read(portfolioModelServiceProvider);
+  final confirmed = await showConfirmDialog(
+    context,
+    title: s.delete,
+    content: s.portfolioModelDeleteConfirm,
+    confirmLabel: s.delete,
+    cancelLabel: s.cancel,
+    confirmColor: Colors.red,
+  );
+  if (!confirmed) return false;
+  await service.deleteCustomModel(model.id);
+  return true;
+}
 
 class PortfolioModelDialog extends ConsumerStatefulWidget {
   final PortfolioModel? existing;
@@ -28,6 +49,7 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
   final List<_ModelItemControllers> _rows = [];
   String? _error;
   bool _resolvingSearchSelection = false;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -36,8 +58,10 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
     if (widget.existingItems.isEmpty) {
       _rows.add(_ModelItemControllers.empty());
     } else {
+      // Same locale (and fallback) the save parses the weights with.
+      final locale = ref.read(appLocaleProvider).value ?? 'en';
       for (final item in widget.existingItems) {
-        _rows.add(_ModelItemControllers.fromItem(item));
+        _rows.add(_ModelItemControllers.fromItem(item, locale));
       }
     }
   }
@@ -61,7 +85,23 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
       (sum, row) => sum + (fmt.tryParseLocalized(row.weight.text, locale: locale) ?? 0),
     );
     return AlertDialog(
-      title: Text(isEdit ? s.portfolioModelEditTitle : s.portfolioModelCreateTitle),
+      title: Row(
+        children: [
+          Expanded(child: Text(isEdit ? s.portfolioModelEditTitle : s.portfolioModelCreateTitle)),
+          if (isEdit)
+            // Filled, unlike the outlined remove button of each row: this
+            // deletes the whole model.
+            IconButton(
+              key: const Key('portfolioModelDeleteButton'),
+              icon: const Icon(Icons.delete, color: Colors.red),
+              tooltip: s.delete,
+              onPressed: () async {
+                final deleted = await confirmAndDeletePortfolioModel(context, ref, widget.existing!);
+                if (deleted && context.mounted) Navigator.of(context).pop();
+              },
+            ),
+        ],
+      ),
       content: SizedBox(
         width: 680,
         child: SingleChildScrollView(
@@ -77,9 +117,12 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
               const SizedBox(height: 12),
               for (var i = 0; i < _rows.length; i++) ...[
                 _ModelItemRow(
+                  // The fields (their focus, selection, controllers) belong
+                  // to the row: without a key, removing a row shifted the
+                  // next rows' texts into the fields above them.
+                  key: ValueKey(_rows[i]),
                   controllers: _rows[i],
                   s: s,
-                  ref: ref,
                   onChanged: () => setState(() {}),
                   onSearch: () => _pickAssetForRow(_rows[i]),
                   onRemove: _rows.length == 1
@@ -99,7 +142,7 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
                 onPressed: () => setState(() => _rows.add(_ModelItemControllers.empty())),
               ),
               const SizedBox(height: 8),
-              Text(s.portfolioModelWeightTotal(total.toStringAsFixed(2))),
+              Text(s.portfolioModelWeightTotal(NumberFormat('0.00', locale).format(total))),
               if (_resolvingSearchSelection) ...[
                 const SizedBox(height: 8),
                 const LinearProgressIndicator(),
@@ -118,7 +161,7 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
           child: Text(s.cancel),
         ),
         FilledButton(
-          onPressed: () => _save(context, locale),
+          onPressed: _saving ? null : () => _save(context, locale),
           child: Text(isEdit ? s.save : s.create),
         ),
       ],
@@ -126,6 +169,8 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
   }
 
   Future<void> _save(BuildContext context, String locale) async {
+    // A second tap while the first save is in flight must not create twice.
+    if (_saving) return;
     final items = <PortfolioModelInputItem>[];
     for (final row in _rows) {
       final weight = fmt.tryParseLocalized(row.weight.text, locale: locale);
@@ -139,6 +184,7 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
         ),
       );
     }
+    setState(() => _saving = true);
     try {
       final service = ref.read(portfolioModelServiceProvider);
       if (widget.existing == null) {
@@ -152,14 +198,16 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
       }
       if (context.mounted) Navigator.of(context).pop();
     } on PortfolioModelValidationException catch (e) {
-      setState(() => _error = e.messages.join('\n'));
+      // In the UI language, the weights' total in the display locale.
+      final s = ref.read(appStringsProvider);
+      if (mounted) setState(() => _error = e.localizedMessages(s, locale: locale).join('\n'));
     } on PortfolioModelReadOnlyException {
       final s = ref.read(appStringsProvider);
       setState(() => _error = s.portfolioModelReadOnly);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
-
-  static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
 
   Future<void> _pickAssetForRow(_ModelItemControllers row) async {
     var typedQuery = '';
@@ -180,7 +228,7 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
               ));
             },
             recoveryDefaultExchange: 'Milan',
-            recoveryCacheKeyBuilder: (q) => _kIsinRegex.hasMatch(q.toUpperCase()) ? q.toUpperCase() : q,
+            recoveryCacheKeyBuilder: isinCacheKey,
             onQueryChanged: (q) => typedQuery = q.trim(),
           ),
           actions: [
@@ -201,14 +249,14 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
 
     try {
       final query = selected.query.trim().toUpperCase();
-      var resolvedIsin = _kIsinRegex.hasMatch(query) ? query : selected.result.isin;
+      var resolvedIsin = isIsin(query) ? query : selected.result.isin;
 
       if (resolvedIsin == null || resolvedIsin.isEmpty) {
         final service = ref.read(marketPriceServiceProvider);
         if (service is WebMarketDataService) {
           final resolved = await service.resolveSearchResultDetails(selected.result);
           final candidate = resolved?.isin?.trim().toUpperCase();
-          if (candidate != null && _kIsinRegex.hasMatch(candidate)) {
+          if (candidate != null && isIsin(candidate)) {
             resolvedIsin = candidate;
           }
         }
@@ -236,15 +284,14 @@ class _PortfolioModelDialogState extends ConsumerState<PortfolioModelDialog> {
 class _ModelItemRow extends StatelessWidget {
   final _ModelItemControllers controllers;
   final AppStrings s;
-  final WidgetRef ref;
   final VoidCallback onChanged;
   final VoidCallback onSearch;
   final VoidCallback? onRemove;
 
   const _ModelItemRow({
+    super.key,
     required this.controllers,
     required this.s,
-    required this.ref,
     required this.onChanged,
     required this.onSearch,
     required this.onRemove,
@@ -321,9 +368,12 @@ class _ModelItemControllers {
     preferredExchange: TextEditingController(),
   );
 
-  factory _ModelItemControllers.fromItem(PortfolioModelItem item) => _ModelItemControllers(
+  /// [locale] is the one the save parses the weight back with: the locale's
+  /// spelling with every digit ("12,5" in it_IT) reads back as exactly the
+  /// stored value.
+  factory _ModelItemControllers.fromItem(PortfolioModelItem item, String locale) => _ModelItemControllers(
     isin: TextEditingController(text: item.isin),
-    weight: TextEditingController(text: item.targetWeight.toStringAsFixed(2)),
+    weight: TextEditingController(text: fmt.editableFigure(item.targetWeight, fmt.qtyFormat(locale), locale: locale)),
     description: TextEditingController(text: item.description),
     preferredTicker: TextEditingController(text: item.preferredTicker ?? ''),
     preferredExchange: TextEditingController(text: item.preferredExchange ?? ''),

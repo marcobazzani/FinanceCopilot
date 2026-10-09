@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter_riverpod/legacy.dart';
@@ -112,16 +111,4 @@ class EditableChartsNotifier extends StateNotifier<EditableChartsState> {
   void replaceAll(List<DashboardChart> charts) {
     state = state.copyWith(charts: charts);
   }
-}
-
-/// Helper used by the JSON loader and the resolver to read sourceChartIds —
-/// kept here for visibility. `*` → null (resolver decides), JSON list of
-/// strings or ints → decoded to its element type.
-List<dynamic>? decodeSourceChartIds(String? raw) {
-  if (raw == null || raw == '*') return null;
-  try {
-    final v = jsonDecode(raw);
-    if (v is List) return v;
-  } catch (_) {}
-  return null;
 }

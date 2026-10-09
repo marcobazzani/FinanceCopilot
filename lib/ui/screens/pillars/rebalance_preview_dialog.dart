@@ -6,7 +6,9 @@ import '../../../database/tables.dart';
 import '../../../l10n/app_strings.dart';
 import 'package:finance_copilot/services/portfolio/portfolio_rebalance_service.dart';
 import '../../../services/providers/providers.dart';
+import '../../../utils/dialogs.dart';
 import '../../../utils/formatters.dart' as fmt;
+import '../../widgets/privacy_text.dart';
 
 class RebalancePreviewDialog extends ConsumerStatefulWidget {
   final String pillarId;
@@ -25,7 +27,13 @@ class RebalancePreviewDialog extends ConsumerStatefulWidget {
 class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog> {
   PortfolioRebalanceMode _mode = PortfolioRebalanceMode.sellAndBuy;
   late final TextEditingController _contribution;
-  late Stream<PortfolioRebalanceDraft> _draftStream;
+
+  /// Null while the buy-only contribution cannot be read: nothing is planned.
+  Stream<PortfolioRebalanceDraft>? _draftStream;
+
+  /// True from the Apply tap until the draft is booked (or the confirmation
+  /// is declined): a second Apply meanwhile would book the trades twice.
+  bool _applying = false;
 
   @override
   void initState() {
@@ -83,7 +91,10 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
                 TextField(
                   controller: _contribution,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(labelText: s.rebalanceContribution),
+                  decoration: InputDecoration(
+                    labelText: s.rebalanceContribution,
+                    errorText: _contributionAmount(locale) == null ? s.invalidNumber : null,
+                  ),
                   onChanged: (_) {
                     setState(() {
                       _draftStream = _buildDraftStream();
@@ -92,23 +103,27 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
                 ),
               ],
               const SizedBox(height: 16),
-              StreamBuilder<PortfolioRebalanceDraft>(
-                stream: _draftStream,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final draft = snapshot.data!;
-                  final isUpdating = snapshot.connectionState != ConnectionState.done;
-                  return _DraftView(
-                    draft: draft,
-                    locale: locale,
-                    s: s,
-                    isUpdating: isUpdating,
-                    onApply: !isUpdating && draft.hasExecutableTrades ? () => _applyDraft(context, draft) : null,
-                  );
-                },
-              ),
+              if (_draftStream != null)
+                StreamBuilder<PortfolioRebalanceDraft>(
+                  stream: _draftStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text(s.error(snapshot.error!)));
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final draft = snapshot.data!;
+                    final isUpdating = snapshot.connectionState != ConnectionState.done;
+                    return _DraftView(
+                      draft: draft,
+                      locale: locale,
+                      s: s,
+                      isUpdating: isUpdating,
+                      onApply: !isUpdating && !_applying && draft.hasExecutableTrades ? () => _applyDraft(context, draft) : null,
+                    );
+                  },
+                ),
             ],
           ),
         ),
@@ -122,9 +137,18 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
     );
   }
 
-  Stream<PortfolioRebalanceDraft> _buildDraftStream() {
+  /// The typed contribution: 0 when empty, null when [locale] cannot read it.
+  double? _contributionAmount(String locale) {
+    final typed = fmt.readOptionalNumber(_contribution.text, locale: locale);
+    return typed.invalid ? null : typed.value ?? 0;
+  }
+
+  Stream<PortfolioRebalanceDraft>? _buildDraftStream() {
     final locale = ref.read(appLocaleProvider).value ?? 'en';
-    final contribution = fmt.tryParseLocalized(_contribution.text, locale: locale) ?? 0;
+    final contribution = _contributionAmount(locale);
+    // Buy-only plans the contribution: one the locale cannot read is flagged
+    // on the field and plans nothing, never a plan for 0.
+    if (_mode == PortfolioRebalanceMode.buyOnly && contribution == null) return null;
     final scope = widget.initialScopeKind == PortfolioRebalanceScopeKind.currentPillar
         ? PortfolioRebalanceScope.currentPillar(widget.pillarId)
         : const PortfolioRebalanceScope.allAssociatedPillars();
@@ -133,31 +157,34 @@ class _RebalancePreviewDialogState extends ConsumerState<RebalancePreviewDialog>
         .buildDraftStream(
           scope: scope,
           mode: _mode,
-          contributionAmount: contribution,
+          // Sell-and-buy takes no contribution (its field is hidden).
+          contributionAmount: contribution ?? 0,
         );
   }
 
   Future<void> _applyDraft(BuildContext context, PortfolioRebalanceDraft draft) async {
-    final s = ref.read(appStringsProvider);
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.rebalanceApplyConfirmTitle),
-        content: Text(s.rebalanceApplyConfirmBody),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.rebalanceApplyDraft)),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    await ref
-        .read(portfolioRebalanceServiceProvider)
-        .applyDraft(
-          draft,
-          ref.read(assetEventServiceProvider),
-        );
-    if (context.mounted) Navigator.of(context).pop(true);
+    if (_applying) return;
+    setState(() => _applying = true);
+    try {
+      final s = ref.read(appStringsProvider);
+      final confirm = await showConfirmDialog(
+        context,
+        title: s.rebalanceApplyConfirmTitle,
+        content: s.rebalanceApplyConfirmBody,
+        confirmLabel: s.rebalanceApplyDraft,
+        cancelLabel: s.cancel,
+      );
+      if (!confirm) return;
+      await ref
+          .read(portfolioRebalanceServiceProvider)
+          .applyDraft(
+            draft,
+            ref.read(assetEventServiceProvider),
+          );
+      if (context.mounted) Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
   }
 }
 
@@ -180,9 +207,10 @@ class _DraftView extends StatelessWidget {
   Widget build(BuildContext context) {
     final amountFormat = fmt.amountFormat(locale);
     final quantityFormat = NumberFormat('#,##0', locale);
+    final weightFormat = NumberFormat('0.00', locale);
     String percent(double value, double total) {
-      if (total <= 0) return '0.0';
-      return (value / total * 100.0).toStringAsFixed(2);
+      if (total <= 0) return weightFormat.format(0);
+      return weightFormat.format(value / total * 100.0);
     }
 
     final cashLabel = draft.mode == PortfolioRebalanceMode.sellAndBuy ? s.rebalanceCashAfterSales : s.rebalanceAvailableCash;
@@ -273,17 +301,20 @@ class _DraftView extends StatelessWidget {
               title: Text(row.isPlaceholder ? '${row.assetName} · ${s.rebalanceTargetPlaceholder}' : row.assetName),
               subtitle: Builder(
                 builder: (context) {
-                  final taxText = row.estimatedTax > 0
-                      ? ' · ${s.rebalanceEstimatedTax}: ${amountFormat.format(row.estimatedTax)} ${draft.baseCurrency}'
-                      : '';
-                  final quantityText = row.isPlaceholder
-                      ? s.rebalanceNotExecutable
-                      : '${s.rebalanceQuantity}: ${quantityFormat.format(row.estimatedQuantity)}';
-                  return Text(
-                    '${amountFormat.format(row.baseAmount)} ${draft.baseCurrency} · '
+                  // Trade amount, quantity and tax are position size (masked
+                  // in privacy mode); the before → after weights are shape.
+                  final taxText = row.estimatedTax > 0 ? ' · ${s.rebalanceEstimatedTax}: ${privacySlot(2)}' : '';
+                  final quantityText = row.isPlaceholder ? s.rebalanceNotExecutable : '${s.rebalanceQuantity}: ${privacySlot(1)}';
+                  return PrivacySentence(
+                    '${privacySlot(0)} · '
                     '$quantityText'
                     ' · ${percent(row.currentBaseValue, draft.currentPortfolioValueBase)}% → ${percent(row.projectedBaseValue, draft.projectedPortfolioValueBase)}%'
                     '$taxText',
+                    figures: [
+                      '${amountFormat.format(row.baseAmount)} ${draft.baseCurrency}',
+                      quantityFormat.format(row.estimatedQuantity),
+                      '${amountFormat.format(row.estimatedTax)} ${draft.baseCurrency}',
+                    ],
                   );
                 },
               ),
@@ -378,7 +409,8 @@ class _SummaryMetric extends StatelessWidget {
           const SizedBox(height: 8),
           Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
           const SizedBox(height: 4),
-          Text(
+          // Cash, buys and taxes of the draft are position size.
+          PrivacyText(
             value,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
           ),

@@ -54,7 +54,6 @@ class AppBarAction {
   final List<AppBarSubAction> submenu;
 
   bool get hasSubmenu => submenu.isNotEmpty;
-  bool get isEnabled => onPressed != null || hasSubmenu;
 }
 
 /// Renders a local action as a top-level AppBar widget (wide layout).

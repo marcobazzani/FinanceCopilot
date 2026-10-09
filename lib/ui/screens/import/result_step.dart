@@ -8,6 +8,7 @@ extension _ResultStep on _ImportScreenState {
   Widget _buildResult() {
     final r = _result!;
     final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     return Center(
       child: Card(
         child: Padding(
@@ -27,10 +28,32 @@ extension _ResultStep on _ImportScreenState {
               _resultRow(s.importedLabel, '${r.importedRows}', color: Colors.green),
               if (r.deletedRows > 0) _resultRow(s.replacedOverlap, '${r.deletedRows}', color: Colors.orange),
               if (r.errorRows > 0) _resultRow(s.skippedLabel, '${r.errorRows}', color: Colors.red),
-              if (r.errors.isNotEmpty) ...[
+              if (_classifyResult != null) ...[
+                _resultRow(s.categorizedLabel, '${_classifyResult!.changed}', color: Colors.blue),
+                if (_classifyResult!.uncategorizedAfter > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: TextButton.icon(
+                      key: const Key('importReviewUncategorized'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => ClassificationWizardScreen(accountId: _targetId)),
+                      ),
+                      icon: const Icon(Icons.auto_fix_high, size: 18),
+                      label: Text(s.reviewUncategorizedCount(_classifyResult!.uncategorizedAfter)),
+                    ),
+                  ),
+              ],
+              if (r.issues.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                ...r.errors.take(5).map((e) => Text(e, style: const TextStyle(fontSize: 12, color: Colors.red))),
-                if (r.errors.length > 5) Text(s.andMore(r.errors.length - 5), style: const TextStyle(fontSize: 12)),
+                ...r.issues
+                    .take(5)
+                    .map(
+                      (i) => Text(
+                        importIssueText(s, i, locale: locale),
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                      ),
+                    ),
+                if (r.issues.length > 5) Text(s.andMore(r.issues.length - 5), style: const TextStyle(fontSize: 12)),
               ],
               const SizedBox(height: 24),
               Row(

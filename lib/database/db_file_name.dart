@@ -9,7 +9,7 @@ String get dbFileName {
     throw StateError(
       'DB_FILE_NAME dart-define is required. '
       'Pass --dart-define=DB_FILE_NAME=<name> to flutter build/test/run. '
-      'See CLAUDE.md for per-channel values.',
+      'See AGENTS.md for per-channel values.',
     );
   }
   return _rawDbFileName;

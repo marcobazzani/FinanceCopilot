@@ -23,7 +23,7 @@ class ProviderSearchResult {
   });
 }
 
-/// Outcome of [WebMarketDataService.resolveFromInstrumentUrl].
+/// Outcome of [WebMarketDataService.resolveFromInstrumentUrlString].
 sealed class UrlResolveResult {
   const UrlResolveResult();
 }

@@ -43,10 +43,11 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     final amtFmt = fmt.currencyFormat(widget.locale, symbol, decimalDigits: 2);
     final theme = Theme.of(context);
 
-    // Compute last value and historical max (excluding last point) for each group
-    (double current, double histMax) lastValueAndMax(List<List<FlSpot>> spotLists) {
+    // Compute last value and historical max (excluding last point) for each
+    // group. A total without spots has no value at all: null, never 0.
+    (double? current, double histMax) lastValueAndMax(List<List<FlSpot>> spotLists) {
       final total = buildTotalSpots(spotLists);
-      if (total.isEmpty) return (0.0, 0.0);
+      if (total.isEmpty) return (null, 0.0);
       final current = total.last.y;
       // Historical max excluding the last point (today)
       var hMax = double.negativeInfinity;
@@ -58,13 +59,17 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     }
 
     // Build one row per chart — totals are derived from the chart's own series
-    // using the same "smart" aggregation as the chart cards (when an asset has
-    // both invested and market series visible, only market counts toward total).
+    // using the same "smart" aggregation as the chart cards
+    // ([buildSmartTotalSpots]: an asset is never counted twice). What any of
+    // them leaves out for want of a price or an exchange rate is counted under
+    // the table, each contributor once ([totalExclusions]).
     final rows = <_TotalRow>[];
+    var excluded = const TotalExclusions();
     for (final cr in widget.chartRows) {
-      final totalSpots = _DashboardScreenState._buildSmartTotalSpotsStatic(cr.series);
+      final totalSpots = buildSmartTotalSpots(cr.series);
+      excluded = excluded.union(totalExclusions(cr.series, widget.allData));
       final (curr, histMax) = lastValueAndMax([totalSpots]);
-      rows.add(_TotalRow(cr.title, curr, curr - histMax, cr.series));
+      rows.add(_TotalRow(cr.title, curr, curr == null ? 0 : curr - histMax, cr.series));
     }
 
     // Nothing to show? Hide the card entirely.
@@ -74,8 +79,11 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
     // never fire on startup, and by a per-session "already fired" set so
     // dashboard rebuilds don't keep re-triggering. Scope is the three
     // canonical series (kAthEligibleLabels). Fires post-frame to avoid
-    // mutating state during build.
-    final historySeen = ref.read(historyTabSeenThisSessionProvider);
+    // mutating state during build. The gate is WATCHED: the History page is
+    // built during the tab animation, before the flag flips when it settles,
+    // so only a rebuild on the flip runs the scan when the user arrives —
+    // otherwise it waited for an unrelated rebuild (e.g. a price refresh).
+    final historySeen = ref.watch(historyTabSeenThisSessionProvider);
     if (historySeen) {
       final firedSet = ref.read(athFiredThisSessionProvider);
       final newFires = <String>[];
@@ -84,7 +92,8 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
         if (firedSet.contains(row.label)) continue;
         // curr > histMax ⇒ today's total broke the prior max ⇒ new ATH.
         // row.deltaVsMax == curr - histMax (already computed above).
-        if (row.deltaVsMax > 0 && row.total > 0) {
+        final total = row.total;
+        if (row.deltaVsMax > 0 && total != null && total > 0) {
           newFires.add(row.label);
         }
       }
@@ -129,6 +138,7 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
             ),
             const Divider(height: 1),
             ...rows.map((row) => _buildTotalRow(row, amtFmt, theme)),
+            _ExcludedFromTotalNote(excluded, plural: true, top: 8),
           ],
         ),
       ),
@@ -173,12 +183,10 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                 ),
                 SizedBox(
                   width: 120,
-                  child: PrivacyText(
-                    '${row.total >= 0 ? '+' : ''}${amtFmt.format(row.total)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: row.total >= 0 ? Colors.green.shade400 : Colors.red.shade400,
-                    ),
+                  child: _signedAmount(
+                    row.total,
+                    amtFmt,
+                    (v) => TextStyle(fontWeight: FontWeight.bold, color: v >= 0 ? Colors.green.shade400 : Colors.red.shade400),
                     textAlign: TextAlign.right,
                   ),
                 ),
@@ -186,7 +194,13 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
             ),
           ),
         ),
-        if (isExpanded) ..._buildDrillDown(row.series, amtFmt, theme),
+        // The drill-down grows in and out below the row; the row never changes.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: isExpanded ? Column(children: _buildDrillDown(row.series, amtFmt, theme)) : const SizedBox(width: double.infinity),
+        ),
         const Divider(height: 1),
       ],
     );
@@ -246,12 +260,13 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
   }
 
   List<Widget> _buildDrillDown(List<ChartSeries> series, NumberFormat amtFmt, ThemeData theme) {
-    final items = <({String key, String name, double value})>[];
+    // A series without spots has no value (no price or exchange rate): a
+    // dash, listed last — never +0.00.
+    final items = <({String key, String name, double? value})>[];
     for (final s in series) {
-      final val = s.spots.isNotEmpty ? s.spots.last.y : 0.0;
-      items.add((key: s.key, name: s.name, value: val));
+      items.add((key: s.key, name: s.name, value: s.spots.isNotEmpty ? s.spots.last.y : null));
     }
-    items.sort((a, b) => b.value.abs().compareTo(a.value.abs()));
+    items.sort((a, b) => (b.value?.abs() ?? -1).compareTo(a.value?.abs() ?? -1));
 
     return items
         .map(
@@ -267,12 +282,10 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
                     style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
-                PrivacyText(
-                  '${entry.value >= 0 ? '+' : ''}${amtFmt.format(entry.value)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: entry.value >= 0 ? Colors.green.shade300 : Colors.red.shade300,
-                  ),
+                _signedAmount(
+                  entry.value,
+                  amtFmt,
+                  (v) => TextStyle(fontSize: 12, color: v >= 0 ? Colors.green.shade300 : Colors.red.shade300),
                 ),
               ],
             ),
@@ -280,12 +293,52 @@ class _SummaryTotalsTableState extends ConsumerState<_SummaryTotalsTable> {
         )
         .toList();
   }
+
+  /// A signed amount, position size and masked in privacy mode; a plain grey
+  /// dash when [value] is unknown.
+  static Widget _signedAmount(double? value, NumberFormat amtFmt, TextStyle Function(double v) style, {TextAlign? textAlign}) => value == null
+      ? Text(
+          '—',
+          style: style(0).copyWith(color: Colors.grey),
+          textAlign: textAlign,
+        )
+      : PrivacyText('${value >= 0 ? '+' : ''}${amtFmt.format(value)}', style: style(value), textAlign: textAlign);
 }
 
 class _TotalRow {
   final String label;
-  final double total;
+
+  /// Latest total; null when the chart has nothing to add up.
+  final double? total;
   final double deltaVsMax; // current - historical max (excluding today)
   final List<ChartSeries> series;
   const _TotalRow(this.label, this.total, this.deltaVsMax, this.series);
+}
+
+// ════════════════════════════════════════════════════
+// What a total leaves out
+// ════════════════════════════════════════════════════
+
+/// The line under a total — or under several, when [plural] — counting the
+/// contributors [exclusions] leaves out for want of a price or an exchange
+/// rate ([TotalExclusions.excludedFromTotalCount]), [top] below what is above
+/// it; nothing when none is left out. Used under the Totals table, the Health
+/// summary and a chart card's header total, so they count alike.
+class _ExcludedFromTotalNote extends ConsumerWidget {
+  final TotalExclusions exclusions;
+  final bool plural;
+  final double top;
+
+  const _ExcludedFromTotalNote(this.exclusions, {this.plural = false, this.top = 0});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(appStringsProvider);
+    final count = exclusions.excludedFromTotalCount;
+    if (count == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: Footnote(plural ? s.unpricedExcludedFromTotals(count) : s.unpricedExcludedFromTotal(count)),
+    );
+  }
 }

@@ -7,6 +7,7 @@ import '../../database/tables.dart';
 import '../../services/providers/providers.dart';
 import '../../utils/formatters.dart' as fmt;
 import '../../utils/income_split.dart';
+import 'privacy_text.dart';
 
 /// Ask the user how a single inflow splits across [IncomeType]s.
 ///
@@ -109,19 +110,25 @@ class _IncomeSplitDialogState extends ConsumerState<IncomeSplitDialog> {
     final plan = planIncomeSplit(total: widget.total, parts: _parts);
     final canSave = plan.isValid && !_hasInvalidText;
 
+    // The inflow and what is left of it are position size: masked in privacy
+    // mode, the labels around them are not.
     final String statusText;
+    var statusFigures = const <String>[];
     final Color statusColor;
     if (_hasInvalidText) {
       statusText = s.incomeSplitInvalidAmount;
       statusColor = Theme.of(context).colorScheme.error;
     } else if (plan.remainderCents > 0) {
-      statusText = '${s.remaining}${amtFmt.format(plan.remainder)}';
+      statusText = '${s.remaining}${privacySlot(0)}';
+      statusFigures = [amtFmt.format(plan.remainder)];
       statusColor = Colors.orange.shade800;
     } else if (plan.remainderCents < 0) {
-      statusText = '${s.incomeSplitOverAllocated}${amtFmt.format(-plan.remainder)}';
+      statusText = '${s.incomeSplitOverAllocated}${privacySlot(0)}';
+      statusFigures = [amtFmt.format(-plan.remainder)];
       statusColor = Theme.of(context).colorScheme.error;
     } else {
-      statusText = '${s.remaining}${amtFmt.format(0)}';
+      statusText = '${s.remaining}${privacySlot(0)}';
+      statusFigures = [amtFmt.format(0)];
       statusColor = Colors.green.shade700;
     }
 
@@ -134,8 +141,9 @@ class _IncomeSplitDialogState extends ConsumerState<IncomeSplitDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${s.totalLabel}: ${amtFmt.format(widget.total)}',
+              PrivacySentence(
+                '${s.totalLabel}: ${privacySlot(0)}',
+                figures: [amtFmt.format(widget.total)],
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
@@ -168,8 +176,9 @@ class _IncomeSplitDialogState extends ConsumerState<IncomeSplitDialog> {
                 ),
                 const SizedBox(height: 8),
               ],
-              Text(
+              PrivacySentence(
                 statusText,
+                figures: statusFigures,
                 style: TextStyle(fontWeight: FontWeight.w600, color: statusColor),
               ),
             ],

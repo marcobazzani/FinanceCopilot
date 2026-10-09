@@ -177,6 +177,8 @@ void main() {
           'idx_pillar_assets_asset',
           'idx_portfolio_model_items_model',
           'idx_pillars_portfolio_model',
+          'idx_transactions_merchant_key',
+          'idx_transactions_category',
         ]),
       );
     });

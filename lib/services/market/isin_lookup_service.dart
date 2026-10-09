@@ -57,7 +57,8 @@ class IsinLookupService {
   Future<IsinLookupResult> lookup(String isin) async {
     final key = isin.trim().toUpperCase();
     if (key.isEmpty) return const IsinLookupResult();
-    if (_cache.containsKey(key)) return _cache[key]!;
+    final cached = _cache[key];
+    if (cached != null) return cached;
 
     try {
       _log.info('lookup: searching the market data provider for ISIN=$key');

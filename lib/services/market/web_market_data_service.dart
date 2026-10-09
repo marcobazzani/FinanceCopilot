@@ -119,7 +119,11 @@ class WebMarketDataService extends MarketPriceService {
   /// True after Dio gets a 403 — all subsequent fetches use JS fetch.
   bool _dioBlocked = false;
 
-  /// [pageFetcher] is a test seam: when non-null, [resolveFromInstrumentUrl]
+  /// Stops the Cloudflare solve in flight (timers + waiters); see [dispose].
+  void Function()? _abortSolve;
+  bool _disposed = false;
+
+  /// [pageFetcher] is a test seam: when non-null, [resolveFromInstrumentUrlString]
   /// uses it instead of the built-in Dio + WebView fetch path.
   /// [solveHeadless] is a test seam for the Cloudflare solve step.
   WebMarketDataService(
@@ -141,13 +145,38 @@ class WebMarketDataService extends MarketPriceService {
        _solveOverride = solveHeadless,
        _jsFetchOverride = jsFetchOverride;
 
+  @visibleForTesting
+  bool get isDisposed => _disposed;
+
+  /// Releases what this instance owns: stops a Cloudflare solve in flight
+  /// (its timers, and whoever awaits it), disposes the headless WebView and
+  /// closes the network client. The provider calls this when it rebuilds the
+  /// service (the DB reloads after an import, restore or wipe), so replaced
+  /// instances don't keep a browser and sockets alive. Calls still in flight
+  /// then wind down with null/empty results; the instance must not be reused.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _abortSolve?.call();
+    _abortSolve = null;
+    final webView = _webView;
+    _webView = null;
+    _webViewController = null;
+    _webViewReadyAt = null;
+    // Fire-and-forget: nothing waits for a replaced instance to wind down.
+    unawaited(webView?.dispose().catchError((Object e) => _log.fine('dispose: WebView dispose failed: $e')));
+    _dio.close(force: true);
+  }
+
   // ──────────────────────────────────────────────
   // Headless WebView: solve CF + make API calls in same browser context
   // ──────────────────────────────────────────────
 
   /// Whether the WebView is ready (CF solved, not expired).
-  bool get _isWebViewReady =>
-      _webViewController != null && _webViewReadyAt != null && DateTime.now().difference(_webViewReadyAt!).inMinutes < 30;
+  bool get _isWebViewReady {
+    final readyAt = _webViewReadyAt;
+    return _webViewController != null && readyAt != null && DateTime.now().difference(readyAt).inMinutes < 30;
+  }
 
   /// Mutex: only one CF solve at a time.
   Completer<bool>? _cfSolving;
@@ -178,8 +207,10 @@ class WebMarketDataService extends MarketPriceService {
   /// Ensure WebView is running and CF is solved.
   /// After solving, probes Dio once to check if it works or gets 403.
   Future<bool> _ensureWebView() async {
+    if (_disposed) return false;
     if (_isWebViewReady) return true;
-    if (_cfSolving != null) return _cfSolving!.future;
+    final inFlight = _cfSolving;
+    if (inFlight != null) return inFlight.future;
     final solving = Completer<bool>();
     _cfSolving = solving;
     var result = false;
@@ -219,15 +250,37 @@ class WebMarketDataService extends MarketPriceService {
   /// lifecycle can be verified without a real headless WebView.
   Future<bool> ensureWebViewForTest() => _ensureWebView();
 
+  /// Test seam: installs [controller] as the solved WebView context, as a
+  /// completed Cloudflare solve does; null detaches it, as a re-solve does.
+  @visibleForTesting
+  set webViewControllerForTest(InAppWebViewController? controller) {
+    _webViewController = controller;
+    _webViewReadyAt = controller == null ? null : DateTime.now();
+  }
+
   /// A small real API request used to (a) probe whether this JS/Dio context
   /// can reach the API and (b) trigger the managed challenge via top-level
   /// navigation. cid 46925 is a liquid, always-available instrument.
   String get _probeApiUrl {
     final now = DateTime.now();
-    final from = now.subtract(const Duration(days: 7));
-    return '$kProviderApiBase/api/financialdata/historical/46925'
-        '?start-date=${formatYmd(from)}&end-date=${formatYmd(now)}'
-        '&time-frame=Daily&add-missing-rows=false';
+    return _historicalUrl(46925, now.subtract(const Duration(days: 7)), now, addMissingRows: false);
+  }
+
+  /// The daily price history of instrument [cid] from [from] to [to].
+  /// [addMissingRows] has the provider fill the days without a trade.
+  static String _historicalUrl(int cid, DateTime from, DateTime to, {required bool addMissingRows}) =>
+      '$kProviderApiBase/api/financialdata/historical/$cid'
+      '?start-date=${formatYmd(from)}&end-date=${formatYmd(to)}'
+      '&time-frame=Daily&add-missing-rows=$addMissingRows';
+
+  /// The close of one price-history row: `last_closeRaw`, a number or a
+  /// numeric string. Null when missing, unreadable or not positive, and for a
+  /// row that is not an object.
+  static double? _closeOf(Object? row) {
+    if (row is! Map) return null;
+    final raw = row['last_closeRaw'];
+    final price = raw is num ? raw.toDouble() : (raw is String ? double.tryParse(raw) : null);
+    return price != null && price > 0 ? price : null;
   }
 
   /// Runs a same-origin fetch() of [_probeApiUrl] inside the WebView and
@@ -257,26 +310,35 @@ class WebMarketDataService extends MarketPriceService {
 
   Future<bool> _solveHeadless() async {
     _log.info('Solving CF via headless WebView...');
-    if (_webView != null) {
+    final previous = _webView;
+    if (previous != null) {
       try {
-        await _webView!.dispose();
+        await previous.dispose();
       } catch (_) {}
       _webView = null;
       _webViewController = null;
     }
+    // Disposed while the old WebView was torn down: a new one would leak.
+    if (_disposed) return false;
     _dioBlocked = false; // reset — will probe after solve
     final completer = Completer<bool>();
     Timer? timeout;
     Timer? cookiePoll;
     bool challengeNavStarted = false;
     bool handling = false;
+    _abortSolve = () {
+      timeout?.cancel();
+      cookiePoll?.cancel();
+      if (!completer.isCompleted) completer.complete(false);
+    };
 
     Future<void> finish(InAppWebViewController controller) async {
       if (completer.isCompleted) return;
       timeout?.cancel();
       cookiePoll?.cancel();
       await _onCfSolved(controller);
-      completer.complete(true);
+      // An abort may have resolved the solve while cookies were extracted.
+      if (!completer.isCompleted) completer.complete(true);
     }
 
     // Top-level navigation to the API URL: a real navigation can pass the
@@ -308,7 +370,7 @@ class WebMarketDataService extends MarketPriceService {
       });
     }
 
-    _webView = HeadlessInAppWebView(
+    final webView = _webView = HeadlessInAppWebView(
       // Start on the api host so subsequent fetch() calls are same-origin.
       initialUrlRequest: URLRequest(url: WebUri('$kProviderApiBase/')),
       initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
@@ -357,7 +419,7 @@ class WebMarketDataService extends MarketPriceService {
       _webView = null;
       if (!completer.isCompleted) completer.complete(false);
     });
-    await _webView!.run();
+    await webView.run();
     return completer.future;
   }
 
@@ -367,7 +429,10 @@ class WebMarketDataService extends MarketPriceService {
     if (_jsFetchOverride != null) {
       return _jsFetchOverride(url, domainId);
     }
-    if (_webViewController == null) return null;
+    // Read once: a re-solve nulls the field while the first script is in
+    // flight, and the fallback below must run on the same page anyway.
+    final controller = _webViewController;
+    if (controller == null) return null;
     try {
       final js =
           '''
@@ -383,7 +448,7 @@ class WebMarketDataService extends MarketPriceService {
           }
         })()
       ''';
-      final result = await _webViewController!
+      final result = await controller
           .callAsyncJavaScript(
             functionBody:
                 '''
@@ -398,7 +463,7 @@ class WebMarketDataService extends MarketPriceService {
       if (result == null || result.value == null) {
         // Fallback to evaluateJavascript for platforms where callAsyncJavaScript
         // doesn't work as expected
-        final resultStr = await _webViewController!.evaluateJavascript(source: js).timeout(_requestTimeout);
+        final resultStr = await controller.evaluateJavascript(source: js).timeout(_requestTimeout);
         if (resultStr == null) return null;
         final decoded = jsonDecode(resultStr is String ? resultStr : resultStr.toString());
         if (decoded is Map<String, dynamic> && decoded.containsKey('__error')) {
@@ -438,9 +503,11 @@ class WebMarketDataService extends MarketPriceService {
       final ok = await _ensureWebView().timeout(_webViewReadyTimeout, onTimeout: () => false);
       if (!ok) return null;
     }
-    if (_webViewController == null) return null;
+    // Read once, after the wait above: a re-solve or dispose nulls the field.
+    final controller = _webViewController;
+    if (controller == null) return null;
     try {
-      final result = await _webViewController!
+      final result = await controller
           .evaluateJavascript(
             source:
                 '''
@@ -519,7 +586,8 @@ class WebMarketDataService extends MarketPriceService {
         headers['Cookie'] = _cfCookieStr;
       }
 
-      final response = await _dio.get(
+      // Typed as what it is before the checks below: any JSON value.
+      final response = await _dio.get<Object?>(
         url,
         options: Options(
           responseType: ResponseType.json,
@@ -663,8 +731,8 @@ class WebMarketDataService extends MarketPriceService {
   Future<Map<DateTime, double>> fetchHistoricalPricesForListing(
     ProviderSearchResult listing,
     DateTime from,
-  ) async {
-    if (listing.cid <= 0) return const {};
+  ) {
+    if (listing.cid <= 0) return Future.value(const {});
     final label = listing.symbol.trim().isNotEmpty ? listing.symbol : listing.description;
     return _fetchByCid(listing.cid, from, label: label);
   }
@@ -711,28 +779,12 @@ class WebMarketDataService extends MarketPriceService {
     final ticker = preferredTicker?.trim();
     final exchange = preferredExchange?.trim();
     if (ticker == null || ticker.isEmpty || exchange == null || exchange.isEmpty) return null;
-    final cidRow = await db
-        .customSelect(
-          'SELECT value FROM app_configs WHERE key = ?',
-          variables: [Variable.withString('PROVIDER_CID_${isin}_$exchange')],
-        )
-        .getSingleOrNull();
-    final cid = cidRow == null ? null : int.tryParse(cidRow.read<String>('value'));
+    final cachedCid = await _readConfig('PROVIDER_CID_${isin}_$exchange');
+    final cid = cachedCid == null ? null : int.tryParse(cachedCid);
     if (cid == null || cid <= 0) return null;
 
-    final urlRow = await db
-        .customSelect(
-          'SELECT value FROM app_configs WHERE key = ?',
-          variables: [Variable.withString('PROVIDER_URL_${isin}_$exchange')],
-        )
-        .getSingleOrNull();
-    final typeRow = await db
-        .customSelect(
-          'SELECT value FROM app_configs WHERE key = ?',
-          variables: [Variable.withString('PROVIDER_TYPE_${isin}_$exchange')],
-        )
-        .getSingleOrNull();
-    var type = typeRow?.read<String>('value') ?? '';
+    final url = await _readConfig('PROVIDER_URL_${isin}_$exchange');
+    var type = await _readConfig('PROVIDER_TYPE_${isin}_$exchange') ?? '';
     if (type.isEmpty) {
       final recovered = await _recoverListingType(
         ticker: ticker,
@@ -749,7 +801,7 @@ class WebMarketDataService extends MarketPriceService {
       exchange: exchange,
       flag: '',
       type: type,
-      url: urlRow?.read<String>('value'),
+      url: url,
       isin: isin,
     );
   }
@@ -840,84 +892,60 @@ class WebMarketDataService extends MarketPriceService {
     );
   }
 
+  /// The settings value cached under [key], or null.
+  Future<String?> _readConfig(String key) async {
+    final row = await db
+        .customSelect(
+          'SELECT value FROM app_configs WHERE key = ?',
+          variables: [Variable.withString(key)],
+        )
+        .getSingleOrNull();
+    return row?.read<String>('value');
+  }
+
+  /// Caches [value] under [key] (replacing an older one) with a note of what
+  /// it is.
+  Future<void> _writeConfig(String key, String value, String description) =>
+      db.into(db.appConfigs).insertOnConflictUpdate(AppConfigsCompanion.insert(key: key, value: value, description: Value(description)));
+
   Future<void> _cacheResolvedListing(String isin, ProviderSearchResult listing) async {
     final exchange = exchangeSynonyms[listing.exchange] ?? listing.exchange;
     if (exchange.isEmpty) return;
-    final cidKey = 'PROVIDER_CID_${isin}_$exchange';
-    await db
-        .into(db.appConfigs)
-        .insertOnConflictUpdate(
-          AppConfigsCompanion.insert(
-            key: cidKey,
-            value: listing.cid.toString(),
-            description: Value('the market data provider cid for $isin on $exchange'),
-          ),
-        );
+    await _writeConfig('PROVIDER_CID_${isin}_$exchange', listing.cid.toString(), 'the market data provider cid for $isin on $exchange');
     if (listing.url != null && listing.url!.isNotEmpty) {
-      final urlKey = 'PROVIDER_URL_${isin}_$exchange';
-      await db
-          .into(db.appConfigs)
-          .insertOnConflictUpdate(
-            AppConfigsCompanion.insert(
-              key: urlKey,
-              value: listing.url!,
-              description: Value('the market data provider URL for $isin'),
-            ),
-          );
+      await _writeConfig('PROVIDER_URL_${isin}_$exchange', listing.url!, 'the market data provider URL for $isin');
     }
     if (listing.type.trim().isNotEmpty) {
-      final typeKey = 'PROVIDER_TYPE_${isin}_$exchange';
-      await db
-          .into(db.appConfigs)
-          .insertOnConflictUpdate(
-            AppConfigsCompanion.insert(
-              key: typeKey,
-              value: listing.type,
-              description: Value('the market data provider type for $isin'),
-            ),
-          );
+      await _writeConfig('PROVIDER_TYPE_${isin}_$exchange', listing.type, 'the market data provider type for $isin');
     }
   }
 
   /// Resolve a user-pasted instrument page URL into an [ProviderSearchResult]
-  /// by fetching the page and parsing its embedded `__NEXT_DATA__` JSON.
+  /// by fetching the page and parsing its embedded `__NEXT_DATA__` JSON,
+  /// running canonicalisation up-front and surfacing categorised rejection
+  /// reasons for the UI.
   ///
   /// Used when the search API has an indexing gap (some bonds / niche
   /// instruments are reachable by URL but missing from the search corpus).
   /// Caches the resolved cid and URL under the existing
   /// `PROVIDER_CID_<cacheKey>_<exchange>` / `PROVIDER_URL_<cacheKey>_<exchange>`
   /// keys so subsequent [_searchCid] calls hit cache.
-  Future<UrlResolveResult> resolveFromInstrumentUrl(
-    Uri url, {
-    required String cacheKey,
-    required String exchange,
-  }) async {
-    return resolveFromInstrumentUrlString(
-      url.toString(),
-      cacheKey: cacheKey,
-      exchange: exchange,
-    );
-  }
-
-  /// String overload that runs canonicalisation up-front and surfaces
-  /// categorised rejection reasons for the UI.
   Future<UrlResolveResult> resolveFromInstrumentUrlString(
     String raw, {
     required String cacheKey,
     required String exchange,
   }) async {
     final outcome = canonicaliseInstrumentUrl(raw);
-    if (outcome.uri == null) {
-      switch (outcome.rejection!) {
-        case InstrumentUrlRejection.invalidFormat:
-          return const UrlResolveInvalidFormat();
-        case InstrumentUrlRejection.wrongHost:
-          return const UrlResolveWrongHost();
-        case InstrumentUrlRejection.unsupportedCategory:
-          return const UrlResolveUnsupportedCategory();
-      }
+    final canonical = outcome.uri;
+    if (canonical == null) {
+      // A rejected outcome always names its reason; one that names none is
+      // no usable address either.
+      return switch (outcome.rejection) {
+        InstrumentUrlRejection.invalidFormat || null => const UrlResolveInvalidFormat(),
+        InstrumentUrlRejection.wrongHost => const UrlResolveWrongHost(),
+        InstrumentUrlRejection.unsupportedCategory => const UrlResolveUnsupportedCategory(),
+      };
     }
-    final canonical = outcome.uri!;
 
     String? html;
     try {
@@ -936,27 +964,9 @@ class WebMarketDataService extends MarketPriceService {
     }
 
     // Cache cid + URL so future _searchCid calls short-circuit.
-    final cidKey = 'PROVIDER_CID_${cacheKey}_$exchange';
-    final urlKey = 'PROVIDER_URL_${cacheKey}_$exchange';
-    await db
-        .into(db.appConfigs)
-        .insertOnConflictUpdate(
-          AppConfigsCompanion.insert(
-            key: cidKey,
-            value: parsed.cid.toString(),
-            description: Value('the market data provider cid for $cacheKey on $exchange'),
-          ),
-        );
+    await _writeConfig('PROVIDER_CID_${cacheKey}_$exchange', parsed.cid.toString(), 'the market data provider cid for $cacheKey on $exchange');
     if (parsed.url != null && parsed.url!.isNotEmpty) {
-      await db
-          .into(db.appConfigs)
-          .insertOnConflictUpdate(
-            AppConfigsCompanion.insert(
-              key: urlKey,
-              value: parsed.url!,
-              description: Value('the market data provider URL for $cacheKey'),
-            ),
-          );
+      await _writeConfig('PROVIDER_URL_${cacheKey}_$exchange', parsed.url!, 'the market data provider URL for $cacheKey');
     }
     _log.info('resolveFromInstrumentUrl: $cacheKey on $exchange -> cid=${parsed.cid}');
     return UrlResolveOk(parsed);
@@ -1035,7 +1045,7 @@ class WebMarketDataService extends MarketPriceService {
   ///  * `ISIN` is returned directly. The legacy endpoint never was, which is
   ///    why [resolveListingsByIsin] had to fetch the instrument page just to
   ///    verify a match; it can now short-circuit.
-  static ProviderSearchResult? _parseSearchResult(dynamic entry) {
+  static ProviderSearchResult? _parseSearchResult(Object? entry) {
     if (entry is! Map) return null;
     final cid = entry['id'];
     if (cid is! int) return null;
@@ -1064,14 +1074,9 @@ class WebMarketDataService extends MarketPriceService {
   Future<int?> _searchCid(String searchTerm, String exchange) async {
     // Check cached cid first
     final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
-    final cidRow = await db
-        .customSelect(
-          'SELECT value FROM app_configs WHERE key = ?',
-          variables: [Variable.withString(cidKey)],
-        )
-        .getSingleOrNull();
-    if (cidRow != null) {
-      final cached = int.tryParse(cidRow.read<String>('value'));
+    final cachedCid = await _readConfig(cidKey);
+    if (cachedCid != null) {
+      final cached = int.tryParse(cachedCid);
       if (cached != null) return cached;
     }
 
@@ -1084,26 +1089,9 @@ class WebMarketDataService extends MarketPriceService {
 
     // Cache helper
     Future<int> cacheAndReturn(ProviderSearchResult r) async {
-      await db
-          .into(db.appConfigs)
-          .insertOnConflictUpdate(
-            AppConfigsCompanion.insert(
-              key: cidKey,
-              value: r.cid.toString(),
-              description: Value('the market data provider cid for $searchTerm on ${exchangeNameList.first}'),
-            ),
-          );
+      await _writeConfig(cidKey, r.cid.toString(), 'the market data provider cid for $searchTerm on ${exchangeNameList.first}');
       if (r.url != null && r.url!.isNotEmpty) {
-        final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
-        await db
-            .into(db.appConfigs)
-            .insertOnConflictUpdate(
-              AppConfigsCompanion.insert(
-                key: urlKey,
-                value: r.url!,
-                description: Value('the market data provider URL for $searchTerm'),
-              ),
-            );
+        await _writeConfig('PROVIDER_URL_${searchTerm}_$exchange', r.url!, 'the market data provider URL for $searchTerm');
       }
       _log.info('searchCid: found $searchTerm -> cid=${r.cid} symbol=${r.symbol} (${r.exchange})');
       return r.cid;
@@ -1172,106 +1160,37 @@ class WebMarketDataService extends MarketPriceService {
     return !priceDay.isBefore(today);
   }
 
-  /// Get today's live price for an asset, persisting it to the DB.
-  /// Returns the cached value if fresh (< 10 min), otherwise fetches from API.
-  /// Falls back to the latest stored price in the DB.
-  Future<double?> getLivePrice(int assetId) async {
-    // Check cache
-    final cached = _livePriceCache[assetId];
-    if (cached != null && DateTime.now().difference(cached.$2) < _fxRateTtl) {
-      return cached.$1;
-    }
-
-    // Resolve CID for this asset (ISIN-first, same logic as syncPrices/_searchCid)
-    final assetRow = await db
-        .customSelect(
-          'SELECT ticker, isin, exchange, currency FROM assets WHERE id = ?',
-          variables: [Variable.withInt(assetId)],
-        )
-        .getSingleOrNull();
-    if (assetRow == null) return getPrice(assetId, DateTime.now());
-
-    final isin = assetRow.readNullable<String>('isin');
-    final ticker = assetRow.readNullable<String>('ticker');
-    final exchange = assetRow.readNullable<String>('exchange') ?? 'Milan';
-    final currency = assetRow.read<String>('currency');
-    final searchTerm = (isin?.isNotEmpty == true) ? isin! : (ticker ?? '');
-    if (searchTerm.isEmpty) return getPrice(assetId, DateTime.now());
-
-    final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
-    final cidRow = await db
-        .customSelect(
-          'SELECT value FROM app_configs WHERE key = ?',
-          variables: [Variable.withString(cidKey)],
-        )
-        .getSingleOrNull();
-    final cid = cidRow != null ? int.tryParse(cidRow.read<String>('value')) : null;
-    if (cid == null) return getPrice(assetId, DateTime.now());
-
-    // Fetch last 3 days via WebView (same browser context as CF solve)
-    final now = DateTime.now();
-    final from = now.subtract(const Duration(days: 3));
-    final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
-    final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-
-    final url =
-        '$kProviderApiBase/api/financialdata/historical/$cid'
-        '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
-
-    final data = await _webViewFetch(url);
-    if (data != null) {
-      final rows = (data['data'] as List?) ?? [];
-      for (final row in rows) {
-        final closeRaw = row['last_closeRaw'];
-        if (closeRaw == null) continue;
-        double? price;
-        if (closeRaw is num) {
-          price = closeRaw.toDouble();
-        } else if (closeRaw is String) {
-          price = double.tryParse(closeRaw);
-        }
-        if (price != null && price > 0) {
-          final dateStr = row['rowDateTimestamp'] as String?;
-          final priceDate = dateStr != null ? DateTime.tryParse(dateStr) : null;
-          _livePriceCache[assetId] = (price, priceDate ?? now);
-          // Persist to DB for offline access
-          final day = DateTime(now.year, now.month, now.day);
-          final c = MarketPricesCompanion(
-            assetId: Value(assetId),
-            date: Value(day),
-            closePrice: Value(price),
-            currency: Value(currency),
-          );
-          unawaited(
-            db
-                .into(db.marketPrices)
-                .insertOnConflictUpdate(c)
-                .then(
-                  (_) {},
-                  onError: (e) => _log.warning('Failed to persist live price for asset $assetId: $e'),
-                ),
-          );
-          return price;
-        }
-      }
-    }
-
-    return getPrice(assetId, DateTime.now());
-  }
-
   /// Get the live exchange rate from [from] to [to] via the market data provider.
   /// Searches for the currency pair, then fetches the latest price.
-  Future<double?> getLiveFxRate(String from, String to) async {
-    if (from == to) return 1.0;
+  ///
+  /// Callers asking for a pair whose lookup is already in flight share it
+  /// (the asset valuations ask per asset while the rate sync runs, all for
+  /// the same few pairs); the shared lookup is dropped once done, so a pair
+  /// with no rate is asked again next time.
+  Future<double?> getLiveFxRate(String from, String to) {
+    if (from == to) return Future.value(1.0);
 
     final pairKey = '$from/$to';
-    final inversePairKey = '$to/$from';
 
     // Check cache
     final cached = _fxRateCache[pairKey];
     if (cached != null && DateTime.now().difference(cached.$2) < _fxRateTtl) {
-      return cached.$1;
+      return Future.value(cached.$1);
     }
+
+    // A block body: `remove` returns this very future, and a future handed
+    // back from `whenComplete` would be waited for — by itself.
+    return _fxRateInFlight[pairKey] ??= _fetchLiveFxRate(from, to).whenComplete(() {
+      _fxRateInFlight.remove(pairKey);
+    });
+  }
+
+  /// Live-rate lookups in flight, by pair (see [getLiveFxRate]).
+  final _fxRateInFlight = <String, Future<double?>>{};
+
+  Future<double?> _fetchLiveFxRate(String from, String to) async {
+    final pairKey = '$from/$to';
+    final inversePairKey = '$to/$from';
 
     // Try direct pair first, then inverse
     var rate = await _fetchFxRate(pairKey);
@@ -1295,100 +1214,56 @@ class WebMarketDataService extends MarketPriceService {
   /// Persist an FX rate (both directions) to the DB for offline access.
   /// Uses DoNothing on conflict so syncRates (which uses DoUpdate) always wins,
   /// ensuring a single consistent quoting convention (EUR/X) across devices.
+  ///
+  /// Fire-and-forget: the live rate is returned without waiting for the
+  /// offline copy, and a failed write is only logged.
   void _persistFxRate(String from, String to, double rate) {
     final now = DateTime.now();
     final day = DateTime(now.year, now.month, now.day);
-    db
-        .into(db.exchangeRates)
-        .insert(
-          ExchangeRatesCompanion(
-            fromCurrency: Value(from),
-            toCurrency: Value(to),
-            date: Value(day),
-            rate: Value(rate),
-          ),
-          onConflict: DoNothing(),
-        )
-        .then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $from/$to: $e'));
-    db
-        .into(db.exchangeRates)
-        .insert(
-          ExchangeRatesCompanion(
-            fromCurrency: Value(to),
-            toCurrency: Value(from),
-            date: Value(day),
-            rate: Value(1.0 / rate),
-          ),
-          onConflict: DoNothing(),
-        )
-        .then((_) {}, onError: (e) => _log.warning('Failed to persist FX rate $to/$from: $e'));
+    unawaited(
+      db
+          .into(db.exchangeRates)
+          .insert(
+            ExchangeRatesCompanion(
+              fromCurrency: Value(from),
+              toCurrency: Value(to),
+              date: Value(day),
+              rate: Value(rate),
+            ),
+            onConflict: DoNothing(),
+          )
+          .then((_) {}, onError: (Object e) => _log.warning('Failed to persist FX rate $from/$to: $e')),
+    );
+    unawaited(
+      db
+          .into(db.exchangeRates)
+          .insert(
+            ExchangeRatesCompanion(
+              fromCurrency: Value(to),
+              toCurrency: Value(from),
+              date: Value(day),
+              rate: Value(1.0 / rate),
+            ),
+            onConflict: DoNothing(),
+          )
+          .then((_) {}, onError: (Object e) => _log.warning('Failed to persist FX rate $to/$from: $e')),
+    );
   }
 
   Future<double?> _fetchFxRate(String pairKey) async {
     try {
-      // Resolve cid for currency pair
-      var cid = _fxCidCache[pairKey];
-      if (cid == null) {
-        // Also check DB cache
-        final cidKey = 'PROVIDER_FX_CID_$pairKey';
-        final cidRow = await db
-            .customSelect(
-              'SELECT value FROM app_configs WHERE key = ?',
-              variables: [Variable.withString(cidKey)],
-            )
-            .getSingleOrNull();
-        if (cidRow != null) {
-          cid = int.tryParse(cidRow.read<String>('value'));
-        }
-
-        if (cid == null) {
-          final results = await search(pairKey);
-          for (final r in results) {
-            if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') || r.symbol == pairKey) {
-              cid = r.cid;
-              break;
-            }
-          }
-          if (cid == null) return null;
-
-          // Cache in DB
-          await db
-              .into(db.appConfigs)
-              .insertOnConflictUpdate(
-                AppConfigsCompanion.insert(
-                  key: cidKey,
-                  value: cid.toString(),
-                  description: Value('the market data provider FX cid for $pairKey'),
-                ),
-              );
-        }
-        _fxCidCache[pairKey] = cid;
-      }
+      final cid = await _fxPairCid(pairKey);
+      if (cid == null) return null;
 
       // Fetch via WebView (same browser context as CF solve)
       final now = DateTime.now();
-      final from = now.subtract(const Duration(days: 3));
-      final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
-      final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-
-      final url =
-          '$kProviderApiBase/api/financialdata/historical/$cid'
-          '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
-
-      final data = await _webViewFetch(url);
+      final data = await _webViewFetch(_historicalUrl(cid, now.subtract(const Duration(days: 3)), now, addMissingRows: false));
       if (data == null) return null;
 
       final rows = (data['data'] as List?) ?? [];
       for (final row in rows) {
-        final closeRaw = row['last_closeRaw'];
-        if (closeRaw == null) continue;
-        double? price;
-        if (closeRaw is num) {
-          price = closeRaw.toDouble();
-        } else if (closeRaw is String) {
-          price = double.tryParse(closeRaw);
-        }
-        if (price != null && price > 0) return price;
+        final price = _closeOf(row);
+        if (price != null) return price;
       }
       return null;
     } catch (e) {
@@ -1397,44 +1272,36 @@ class WebMarketDataService extends MarketPriceService {
     }
   }
 
+  /// The instrument id of the currency pair [pairKey] (e.g. "EUR/USD"): from
+  /// memory, else the settings cache, else a search (then cached in both).
+  /// Null when no listing matches the pair.
+  Future<int?> _fxPairCid(String pairKey) async {
+    final known = _fxCidCache[pairKey];
+    if (known != null) return known;
+    final cidKey = 'PROVIDER_FX_CID_$pairKey';
+    final cached = await _readConfig(cidKey);
+    var cid = cached == null ? null : int.tryParse(cached);
+    if (cid == null) {
+      final results = await search(pairKey);
+      for (final r in results) {
+        if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') || r.symbol == pairKey) {
+          cid = r.cid;
+          break;
+        }
+      }
+      if (cid == null) return null;
+      await _writeConfig(cidKey, cid.toString(), 'the market data provider FX cid for $pairKey');
+    }
+    _fxCidCache[pairKey] = cid;
+    return cid;
+  }
+
   /// Fetch historical FX rates for a currency pair from [since] to today.
   /// Returns a map of date → rate (closing price).
   Future<Map<DateTime, double>> fetchHistoricalFxRates(String from, String to, DateTime since) async {
     final pairKey = '$from/$to';
-    // Resolve CID (same pattern as _fetchFxRate)
-    var cid = _fxCidCache[pairKey];
-    if (cid == null) {
-      final cidKey = 'PROVIDER_FX_CID_$pairKey';
-      final cidRow = await db
-          .customSelect(
-            'SELECT value FROM app_configs WHERE key = ?',
-            variables: [Variable.withString(cidKey)],
-          )
-          .getSingleOrNull();
-      if (cidRow != null) {
-        cid = int.tryParse(cidRow.read<String>('value'));
-      }
-      if (cid == null) {
-        final results = await search(pairKey);
-        for (final r in results) {
-          if (r.symbol.replaceAll(' ', '') == pairKey.replaceAll('/', '') || r.symbol == pairKey) {
-            cid = r.cid;
-            break;
-          }
-        }
-        if (cid == null) return {};
-        await db
-            .into(db.appConfigs)
-            .insertOnConflictUpdate(
-              AppConfigsCompanion.insert(
-                key: cidKey,
-                value: cid.toString(),
-                description: Value('the market data provider FX cid for $pairKey'),
-              ),
-            );
-      }
-      _fxCidCache[pairKey] = cid;
-    }
+    final cid = await _fxPairCid(pairKey);
+    if (cid == null) return {};
     return _fetchByCid(cid, since, label: pairKey);
   }
 
@@ -1444,15 +1311,10 @@ class WebMarketDataService extends MarketPriceService {
 
   Future<Map<DateTime, double>> _fetchByCid(int cid, DateTime from, {String? label}) async {
     final tag = label ?? 'cid=$cid';
-    final fromStr = '${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
     final now = DateTime.now();
-    final toStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final url = _historicalUrl(cid, from, now, addMissingRows: true);
 
-    final url =
-        '$kProviderApiBase/api/financialdata/historical/$cid'
-        '?start-date=$fromStr&end-date=$toStr&time-frame=Daily&add-missing-rows=false';
-
-    _log.info('fetch: $tag (cid=$cid) from $fromStr to $toStr');
+    _log.info('fetch: $tag (cid=$cid) from ${formatYmd(from)} to ${formatYmd(now)}');
 
     final dataMap = await _webViewFetch(url);
     if (dataMap == null) {
@@ -1465,22 +1327,12 @@ class WebMarketDataService extends MarketPriceService {
     for (final row in rows) {
       // Use raw fields — they have proper types (ISO date, numeric close)
       final dateStr = row['rowDateTimestamp'] as String?;
-      final closeRaw = row['last_closeRaw'];
-      if (dateStr == null || closeRaw == null) continue;
+      final price = _closeOf(row);
+      if (dateStr == null || price == null) continue;
 
       final dt = DateTime.tryParse(dateStr);
       if (dt == null) continue;
-      final day = DateTime(dt.year, dt.month, dt.day);
-
-      double? price;
-      if (closeRaw is num) {
-        price = closeRaw.toDouble();
-      } else if (closeRaw is String) {
-        price = double.tryParse(closeRaw);
-      }
-      if (price == null || price <= 0) continue;
-
-      prices[day] = price;
+      prices[DateTime(dt.year, dt.month, dt.day)] = price;
     }
 
     _log.info('fetch: $tag (cid=$cid) -> ${prices.length} prices');
@@ -1519,31 +1371,36 @@ class WebMarketDataService extends MarketPriceService {
     return parts.join(' ');
   }
 
+  /// The term an asset is searched by: its ISIN, else its ticker.
+  static String? _searchTermOf(Asset asset) {
+    final isin = asset.isin;
+    return isin != null && isin.isNotEmpty ? isin : asset.ticker;
+  }
+
+  /// The provider page of [asset], as cached when its listing was resolved
+  /// (under its search term and exchange, Milan when unset), made absolute on
+  /// the provider host. Null when the asset has no search term or no page is
+  /// cached.
+  Future<String?> providerPageUrl(Asset asset) async {
+    final searchTerm = _searchTermOf(asset);
+    if (searchTerm == null || searchTerm.isEmpty) return null;
+    final path = await _readConfig('PROVIDER_URL_${searchTerm}_${asset.exchange ?? 'Milan'}');
+    if (path == null) return null;
+    return path.startsWith('http') ? path : '$kProviderBase$path';
+  }
+
   /// Backfill missing the market data provider URLs for assets that already have cached CIDs.
   Future<void> _backfillMissingUrls(List<Asset> assets) async {
     final missing = <(String, String, int)>[]; // (searchTerm, exchange, cachedCid)
     for (final asset in assets) {
-      final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
+      final searchTerm = _searchTermOf(asset);
       if (searchTerm == null || searchTerm.isEmpty) continue;
       final exchange = asset.exchange ?? 'Milan';
-      final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
-      final urlRow = await db
-          .customSelect(
-            'SELECT value FROM app_configs WHERE key = ?',
-            variables: [Variable.withString(urlKey)],
-          )
-          .getSingleOrNull();
-      if (urlRow != null) continue; // already has URL
+      if (await _readConfig('PROVIDER_URL_${searchTerm}_$exchange') != null) continue; // already has URL
 
-      final cidKey = 'PROVIDER_CID_${searchTerm}_$exchange';
-      final cidRow = await db
-          .customSelect(
-            'SELECT value FROM app_configs WHERE key = ?',
-            variables: [Variable.withString(cidKey)],
-          )
-          .getSingleOrNull();
-      if (cidRow == null) continue; // no CID cached, will be resolved later
-      final cid = int.tryParse(cidRow.read<String>('value'));
+      final cachedCid = await _readConfig('PROVIDER_CID_${searchTerm}_$exchange');
+      if (cachedCid == null) continue; // no CID cached, will be resolved later
+      final cid = int.tryParse(cachedCid);
       if (cid == null) continue;
 
       missing.add((searchTerm, exchange, cid));
@@ -1558,16 +1415,7 @@ class WebMarketDataService extends MarketPriceService {
         final results = await search(searchTerm);
         for (final r in results) {
           if (r.cid == cid && r.url != null && r.url!.isNotEmpty) {
-            final urlKey = 'PROVIDER_URL_${searchTerm}_$exchange';
-            await db
-                .into(db.appConfigs)
-                .insertOnConflictUpdate(
-                  AppConfigsCompanion.insert(
-                    key: urlKey,
-                    value: r.url!,
-                    description: Value('the market data provider URL for $searchTerm'),
-                  ),
-                );
+            await _writeConfig('PROVIDER_URL_${searchTerm}_$exchange', r.url!, 'the market data provider URL for $searchTerm');
             _log.info('backfillUrls: cached URL for $searchTerm -> ${r.url}');
             break;
           }
@@ -1602,12 +1450,15 @@ class WebMarketDataService extends MarketPriceService {
   /// because nothing ever revisited it. Runs as part of the price sync, which
   /// is already the moment the app reconciles assets with the provider.
   Future<void> _backfillUnresolvedNames(List<Asset> assets) async {
-    final pending = assets.where(hasUnresolvedName).where((a) => (a.isin?.isNotEmpty ?? false) || (a.ticker?.isNotEmpty ?? false)).toList();
+    final pending = [
+      for (final asset in assets.where(hasUnresolvedName))
+        if (_searchTermOf(asset) case final searchTerm? when searchTerm.isNotEmpty) (asset, searchTerm),
+    ];
     if (pending.isEmpty) return;
     _log.info('backfillNames: ${pending.length} assets still named after their raw identifier');
 
-    await _runBatched(pending, _maxConcurrency, (asset) async {
-      final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker!;
+    await _runBatched(pending, _maxConcurrency, (record) async {
+      final (asset, searchTerm) = record;
       try {
         final results = await search(searchTerm);
         if (results.isEmpty) {
@@ -1673,7 +1524,7 @@ class WebMarketDataService extends MarketPriceService {
       final candidates = <(Asset, String)>[]; // (asset, searchTerm)
       final backfillRanges = <int, DateTime>{}; // assetId → backfill-from date
       for (final asset in assets) {
-        final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
+        final searchTerm = _searchTermOf(asset);
         if (searchTerm == null || searchTerm.isEmpty) continue;
 
         final lastDate = await getLastSyncDate(asset.id);

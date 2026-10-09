@@ -1,6 +1,7 @@
 part of 'import_screen.dart';
 
 extension _ColumnMapperMappingContent on _ImportScreenState {
+  /// The mapping UI content (preview table, refine panel, column mapping, Next button).
   Widget _buildMappingContent(FilePreview? preview) {
     final s = ref.watch(appStringsProvider);
     final columns = preview?.columns ?? [];
@@ -24,7 +25,18 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 const Divider(),
               ],
               // Required fields -- date required except for asset events in current mode
-              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic') _buildMappingRow('date', columns, required: true),
+              // The operation date is the bank's booking date: it is the
+              // statement order and the wipe/dedup key of every later import.
+              // A computed (split) column can never be it — a loose regex
+              // would rewrite the account's history in one click. The real
+              // transaction date belongs to the value date below.
+              if (_target != ImportTarget.assetEvent || _assetImportMode == 'historic')
+                _buildMappingRow('date', columns.where((c) => !_transforms.derivedColumns.contains(c)).toList(), required: true),
+              if (_target == ImportTarget.transaction && _transforms.derivedColumns.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text(s.operationDateIsBankColumn, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                ),
               if (_target == ImportTarget.transaction)
                 _buildAmountFormulaRow(columns, s)
               else if (_target == ImportTarget.assetEvent)
@@ -46,20 +58,8 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                 )
               else
                 _buildMappingRow('amount', columns, required: true),
-              // Value date: either mapped or same as operation date (transactions only)
-              if (_target == ImportTarget.transaction)
-                _buildDerivedFieldRow(
-                  field: 'valueDate',
-                  columns: columns,
-                  derived: _sameSettlementDate,
-                  formulaLabel: '= ${s.fieldLabel('date')}',
-                  toggleLabel: s.sameAsOperationDate,
-                  required: true,
-                  onToggle: (v) {
-                    _sameSettlementDate = v;
-                    if (v) _mappings['valueDate'] = null;
-                  },
-                ),
+              // Value date: optional column; defaults to the operation date.
+              if (_target == ImportTarget.transaction) _buildValueDateRow(columns, s),
               ..._requiredFields
                   .where((f) => f != 'date' && f != 'amount' && f != 'valueDate')
                   .map((f) => _buildMappingRow(f, columns, required: true, multiColumn: f == 'description')),
@@ -100,7 +100,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
               const SizedBox(height: 12),
               // Optional fields
               Text(s.optional, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              ..._optionalFields.map((f) => _buildMappingRow(f, columns, multiColumn: true)),
+              ..._optionalFields.where((f) => f != 'valueDate').map((f) => _buildMappingRow(f, columns, multiColumn: true)),
               const SizedBox(height: 4),
               Text(s.unmappedHelp, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               if (_target == ImportTarget.transaction && preview != null) ...[
@@ -111,20 +111,15 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FilledButton(
-              onPressed: _canProceedToConfirm()
-                  ? () {
-                      _setState(() => _step = 2);
-                      if (_target == ImportTarget.assetEvent) _lookupIsins();
-                      _computePreview();
-                    }
-                  : null,
-              child: Text(s.next),
-            ),
-          ],
+        WizardNavBar(
+          primaryLabel: s.next,
+          onPrimary: _canProceedToConfirm()
+              ? () {
+                  _setState(() => _step = 2);
+                  if (_target == ImportTarget.assetEvent) _lookupIsins();
+                  _computePreview();
+                }
+              : null,
         ),
       ],
     );
@@ -252,11 +247,12 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
       ];
     }
 
+    final positionSize = _positionSizeColumns;
     DataRow buildRow(Map<String, String>? row) {
       if (row == null) {
         // Separator: a tinted band spanning the table, labelled with the
         // hidden-row count, so it clearly reads as a divider (not a row).
-        final label = '⋯  ${s.hiddenRows(hiddenCount)}  ⋯';
+        final label = s.hiddenRows(hiddenCount);
         return DataRow(
           color: WidgetStateProperty.all(Colors.grey.withValues(alpha: 0.12)),
           cells: List.generate(
@@ -277,7 +273,9 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
         );
       }
       return DataRow(
-        cells: columns.map((c) => DataCell(Text(row[c] ?? '', style: const TextStyle(fontSize: 12)))).toList(),
+        cells: columns
+            .map((c) => DataCell(_previewCell(c, row[c] ?? '', style: const TextStyle(fontSize: 12), positionSize: positionSize)))
+            .toList(),
       );
     }
 
@@ -385,8 +383,25 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
     );
   }
 
+  /// Value date: a plain optional column. Unmapped = operation date. When the
+  /// real transaction date lives inside a text column, derive it with a
+  /// column split (regex + fallback column) and map the derived column here.
+  Widget _buildValueDateRow(List<String> columns, AppStrings s) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildMappingRow('valueDate', columns),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(s.valueDateDefaultsToOperationDate, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMappingRow(String field, List<String> columns, {bool required = false, bool multiColumn = false}) {
     final s = ref.watch(appStringsProvider);
+    final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final multiCols = _multiMappings[field] ?? [];
     final isMulti = multiColumn && multiCols.length > 1;
     final showAddBtn = multiColumn && !isMulti && _mappings[field] != null;
@@ -423,7 +438,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                       hintText: required
                           ? s.required
                           : field == 'date'
-                          ? '${s.notMapped} (→ ${DateTime.now().toIso8601String().substring(0, 10)})'
+                          ? '${s.notMapped} (→ ${fmt.shortDateFormat(locale).format(DateTime.now())})'
                           : s.notMapped,
                     ),
                     items: [
@@ -433,17 +448,20 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                       ),
                       ...columns.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                     ],
-                    onChanged: (v) => _setState(() {
-                      _mappings[field] = v;
-                      // Mapping an explicit column and its "Auto calc" toggle
-                      // are mutually exclusive — turn the derivation off so
-                      // they can't silently conflict. A mapped column always
-                      // wins over a derived value.
-                      if (v != null) {
-                        if (field == 'amount') _autoCalcAmount = false;
-                        if (field == 'price') _autoCalcPrice = false;
-                      }
-                    }),
+                    onChanged: (v) {
+                      _setState(() {
+                        _mappings[field] = v;
+                        // Mapping an explicit column and its "Auto calc" toggle
+                        // are mutually exclusive — turn the derivation off so
+                        // they can't silently conflict. A mapped column always
+                        // wins over a derived value.
+                        if (v != null) {
+                          if (field == 'amount') _autoCalcAmount = false;
+                          if (field == 'price') _autoCalcPrice = false;
+                        }
+                      });
+                      if (field == 'type') _ensureTypeValues();
+                    },
                   ),
                 ),
               if (isMulti)
@@ -559,7 +577,7 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Preview: ${_previewMultiMapping(field, multiCols)}',
+                        '${s.previewLabel}: ${_previewMultiMapping(field, multiCols)}',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -572,6 +590,4 @@ extension _ColumnMapperMappingContent on _ImportScreenState {
       ),
     );
   }
-
-  /// Build the "Balance per row" configuration section.
 }

@@ -13,7 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'helpers/test_app.dart';
 
-/// These tests hit real APIs (the market data provider, justETF).
+/// These tests hit real APIs (the market data provider, the composition data source).
 /// Run with: flutter test integration_test/live_data_fetch_test.dart -d macos
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();

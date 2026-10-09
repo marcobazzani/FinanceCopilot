@@ -18,6 +18,7 @@ import 'import_asset_price_autocalc_test.dart' as import_asset_price_autocalc;
 import 'import_sheet_cancel_test.dart' as import_sheet_cancel;
 import 'income_saved_config_restore_test.dart' as income_saved_config_restore;
 import 'ledger_filter_test.dart' as ledger_filter;
+import 'privacy_masking_test.dart' as privacy_masking;
 import 'legacy_migration_test.dart' as legacy_migration;
 
 void main() {
@@ -29,4 +30,5 @@ void main() {
   import_asset_price_autocalc.main();
   income_saved_config_restore.main();
   ledger_filter.main();
+  privacy_masking.main();
 }

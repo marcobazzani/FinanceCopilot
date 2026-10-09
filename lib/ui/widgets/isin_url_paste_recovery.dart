@@ -60,6 +60,9 @@ class _IsinUrlPasteRecoveryState extends ConsumerState<IsinUrlPasteRecovery> {
   }
 
   Future<void> _resolve() async {
+    // Enter in the field can fire while a paste is already being resolved
+    // (the Verify button is disabled then, the field is not).
+    if (_resolving) return;
     final s = ref.read(appStringsProvider);
     final raw = _ctrl.text.trim();
     if (raw.isEmpty) {

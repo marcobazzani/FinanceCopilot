@@ -5,18 +5,24 @@ import 'package:finance_copilot/utils/dialogs.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
-import 'package:finance_copilot/ui/screens/accounts/entry_pairing.dart';
-import 'package:finance_copilot/ui/screens/accounts/adjustment_items.dart';
+import 'package:finance_copilot/services/classification/ledger_roles.dart' show ledgerDayKey;
+import 'package:finance_copilot/services/domain/entry_pairing.dart';
+import 'package:finance_copilot/services/domain/adjustment_items.dart';
+import 'package:finance_copilot/services/import/stored_import_data.dart';
 import 'package:finance_copilot/ui/screens/accounts/transaction_filter.dart';
 import 'package:finance_copilot/utils/formatters.dart' as fmt;
 import 'package:finance_copilot/utils/logger.dart';
 import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 import 'package:finance_copilot/ui/screens/events/transaction_edit_screen.dart';
 import 'package:finance_copilot/ui/screens/events/event_edit_screen.dart';
+import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
+import 'package:finance_copilot/ui/widgets/category_ui.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
 import 'package:finance_copilot/ui/widgets/global_app_bar_actions.dart';
 import 'package:finance_copilot/ui/widgets/income_split_dialog.dart';
 import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
@@ -24,6 +30,7 @@ import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 import 'package:finance_copilot/ui/widgets/selection/selectable_item.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_action_bar.dart';
 import 'package:finance_copilot/ui/widgets/selection/selection_controller.dart';
+import 'package:finance_copilot/ui/widgets/swipe_to_delete.dart';
 
 part 'entries.dart';
 part 'list_widgets.dart';
@@ -37,6 +44,11 @@ final _log = getLogger('AccountDetailScreen');
 /// Sentinel account id used by the virtual "All accounts" entry. The detail
 /// screen detects this id and switches into a read-only, all-accounts mode.
 const int kAllAccountsId = -1;
+
+/// The rendered ledger (see `_composeEntries`): its rows once searched and
+/// filtered, the transactions shown as adjustments (id → badge), and whether
+/// the ledger holds no row at all — before any search or filter.
+typedef _ComposedLedger = ({List<_Entry> entries, Map<int, String> annotatedTxIds, bool ledgerEmpty});
 
 /// Builds the virtual Account row used by the "All accounts" parent entry.
 /// id == [kAllAccountsId]. Currency is intentionally a placeholder — the
@@ -79,9 +91,9 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
   List<Transaction>? _memoTxns;
   TransactionFilter? _memoFilter;
   AdjustmentInputs? _memoAdj;
-  ({List<_Entry> entries, Map<int, String> annotatedTxIds})? _memoComposed;
+  _ComposedLedger? _memoComposed;
 
-  ({List<_Entry> entries, Map<int, String> annotatedTxIds}) _composeEntriesCached(
+  _ComposedLedger _composeEntriesCached(
     List<Transaction> transactions, {
     required AdjustmentInputs? adjInputs,
     required AppStrings s,
@@ -106,17 +118,27 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
   bool get _isReadOnly => widget.account.id == kAllAccountsId;
 
+  /// Account scope for classification providers: null = whole ledger.
+  int? get _scopeAccountId => _isReadOnly ? null : widget.account.id;
+
+  /// This account's live row in [accounts], not the snapshot the screen was
+  /// opened with: an edit made here shows at once, and the next edit starts
+  /// from it instead of reverting it.
+  Account _liveAccount(List<Account>? accounts) => accounts?.where((a) => a.id == widget.account.id).firstOrNull ?? widget.account;
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
     final txStream = _isReadOnly ? ref.watch(allTransactionsProvider) : ref.watch(accountTransactionsProvider(widget.account.id));
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
     final dateFmt = fmt.shortDateFormat(locale);
-    final amtFmt = fmt.currencyFormat(locale, widget.account.currency);
+    final accounts = ref.watch(accountsProvider).value;
+    final account = _liveAccount(accounts);
+    final amtFmt = fmt.currencyFormat(locale, account.currency);
     // Map accountId → name for the read-only All-accounts subtitle badge.
     final accountNameById = _isReadOnly
         ? {
-            for (final a in (ref.watch(accountsProvider).value ?? const <Account>[])) a.id: a.name,
+            for (final a in (accounts ?? const <Account>[])) a.id: a.name,
           }
         : const <int, String>{};
 
@@ -147,7 +169,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(widget.account.name),
+            title: Text(account.name),
             actions: globalAppBarActions(
               context,
               ref,
@@ -160,6 +182,11 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                       context,
                       MaterialPageRoute(builder: (_) => ImportScreen(preselectedAccountId: widget.account.id)),
                     ),
+                  ),
+                  AppBarAction(
+                    icon: Icons.history,
+                    tooltip: s.rerunImportFromStored,
+                    onPressed: () => _rerunImportFromStored(context),
                   ),
                   AppBarAction(
                     icon: Icons.account_balance_wallet,
@@ -226,6 +253,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   showAdjustment: (adjInputs?.events.isNotEmpty ?? false),
                   locale: locale,
                   s: s,
+                  categories: ref.watch(categoriesProvider).value ?? const [],
+                  uncategorizedCount: ref.watch(classificationProgressProvider(_scopeAccountId)).value?.uncategorized ?? 0,
+                  onReviewUncategorized: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ClassificationWizardScreen(accountId: _scopeAccountId)),
+                  ),
                   onChanged: (f) => setState(() {
                     _filter = f;
                     // Keep the search box in sync when contains-text is changed
@@ -240,19 +273,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
               Expanded(
                 child: txStream.when(
                   data: (transactions) {
-                    if (transactions.isEmpty) {
-                      return Center(
-                        child: Text(
-                          s.noTransactionsImport,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      );
-                    }
-
                     final dayHeaderFmt = fmt.fullDateFormat(locale);
                     final monthHeaderFmt = fmt.monthYearFormat(locale);
-                    int dayKey(DateTime d) => DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
                     int monthKey(DateTime d) => d.year * 12 + (d.month - 1);
 
                     // Single source of truth: search + collapse + adjustments +
@@ -263,14 +285,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     final entries = composed.entries;
                     final annotatedTxIds = composed.annotatedTxIds;
 
+                    // Nothing to list: either the ledger holds no row at all
+                    // (the All-accounts view lists its synthetic saving rows
+                    // even before any account holds a transaction), or the
+                    // search and filters match none of its rows.
                     if (entries.isEmpty) {
-                      return Center(
-                        child: Text(
-                          s.noMatchingTransactions,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      );
+                      return composed.ledgerEmpty
+                          ? EmptyState(icon: Icons.receipt_long, message: s.noTransactionsImport)
+                          : EmptyState(icon: Icons.search_off, message: s.noMatchingTransactions);
                     }
 
                     // Pre-compute per-day/per-month income/expense totals, grouped
@@ -300,13 +322,14 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         // are accounted for via the adjustment mechanism (NAV),
                         // not as cashflow — show but exclude from totals.
                         if (annotatedTxIds.containsKey(e.tx.id)) continue;
-                        accumulate(dayTotals, dayKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
+                        accumulate(dayTotals, ledgerDayKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
                         accumulate(monthTotals, monthKey(e.tx.valueDate), e.tx.currency, e.tx.amount);
                       } else if (e is _AdjustmentEntry) {
                         // Synthetic "Saving for X" rows DO count, mirroring NAV's
-                        // distribution of the spread over time (currency = base EUR).
-                        accumulate(dayTotals, dayKey(e.valueDate), 'EUR', e.amount);
-                        accumulate(monthTotals, monthKey(e.valueDate), 'EUR', e.amount);
+                        // distribution of the spread over time, in the spread
+                        // event's currency.
+                        accumulate(dayTotals, ledgerDayKey(e.valueDate), e.currency, e.amount);
+                        accumulate(monthTotals, monthKey(e.valueDate), e.currency, e.amount);
                       }
                     }
                     return MobilePullToRefresh(
@@ -316,7 +339,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         itemBuilder: (ctx, i) {
                           final entry = entries[i];
                           final prevDate = i > 0 ? entries[i - 1].valueDate : null;
-                          final showDayHeader = prevDate == null || dayKey(prevDate) != dayKey(entry.valueDate);
+                          final showDayHeader = prevDate == null || ledgerDayKey(prevDate) != ledgerDayKey(entry.valueDate);
                           final showMonthHeader = prevDate == null || monthKey(prevDate) != monthKey(entry.valueDate);
 
                           Widget body;
@@ -335,16 +358,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                             );
                           }
 
-                          if (entry is _TransferEntry) {
-                            body = _TransferTile(
-                              entry: entry,
-                              accountNameById: accountNameById,
-                              locale: locale,
-                              s: s,
-                              legTileBuilder: buildSingleTxTile,
-                            );
-                          } else if (entry is _NoOpEntry) {
-                            body = _NoOpTile(
+                          if (entry is _PairEntry) {
+                            body = _PairTile(
+                              // The expanded state belongs to the pair: without
+                              // a key it stayed with the list position, and a
+                              // search or refresh expanded another pair.
+                              key: ValueKey(('pair', entry.outflow.id, entry.inflow.id)),
                               entry: entry,
                               accountNameById: accountNameById,
                               locale: locale,
@@ -369,7 +388,7 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               if (showDayHeader)
                                 _PeriodHeader(
                                   label: dayHeaderFmt.format(entry.valueDate),
-                                  totals: dayTotals[dayKey(entry.valueDate)] ?? const {},
+                                  totals: dayTotals[ledgerDayKey(entry.valueDate)] ?? const {},
                                   locale: locale,
                                   isMonth: false,
                                 )
@@ -399,19 +418,25 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                         border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
                       ),
                       child: Text(
-                        '${transactions.length} ${s.transactions}',
+                        s.transactionCount(transactions.length),
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     );
                   }
-                  // Use the last transaction in chronological order (latest date, then highest id)
-                  // to match balance computation order.
-                  final lastTx = transactions.reduce((a, b) {
-                    final cmp = a.valueDate.compareTo(b.valueDate);
-                    if (cmp != 0) return cmp > 0 ? a : b;
-                    return a.id > b.id ? a : b;
-                  });
-                  final balance = lastTx.balanceAfter;
+                  // The account's balance by the accounts list's rule
+                  // (AccountService): the latest row — by value date, then
+                  // highest id — among those that HAVE a balance, so a
+                  // hand-entered row without one does not hide it.
+                  final balance = transactions.where((t) => t.balanceAfter != null).fold<Transaction?>(null, (latest, t) {
+                    if (latest == null) return t;
+                    final cmp = t.valueDate.compareTo(latest.valueDate);
+                    return cmp > 0 || (cmp == 0 && t.id > latest.id) ? t : latest;
+                  })?.balanceAfter;
+                  final summaryStyle = TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: balance != null && balance >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                  );
                   return Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -421,17 +446,12 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('${transactions.length} ${s.transactions}', style: const TextStyle(fontSize: 13)),
-                        PrivacyText(
-                          balance != null
-                              ? '${s.balance}: ${balance >= 0 ? '+' : ''}${amtFmt.format(balance)}'
-                              : '${transactions.length} ${s.records}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: balance != null && balance >= 0 ? Colors.green.shade700 : Colors.red.shade700,
-                          ),
-                        ),
+                        Text(s.transactionCount(transactions.length), style: const TextStyle(fontSize: 13)),
+                        if (balance != null)
+                          PrivacyText('${s.balance}: ${balance >= 0 ? '+' : ''}${amtFmt.format(balance)}', style: summaryStyle)
+                        else
+                          // No balance to show, just a count of records: shape, not magnitude.
+                          Text(s.recordCount(transactions.length), style: summaryStyle),
                       ],
                     ),
                   );
@@ -446,18 +466,20 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                   controller: _selection,
                   visibleIds: visibleIds,
                   onDelete: (ids) => ref.read(transactionServiceProvider).deleteMany(ids.toList()),
+                  extraActions: [
+                    IconButton(
+                      key: const Key('bulkSetCategory'),
+                      icon: const Icon(Icons.label_outline),
+                      tooltip: s.setCategory,
+                      onPressed: () => _bulkSetCategory(context),
+                    ),
+                  ],
                 )
               : null,
         );
       },
     );
   }
-
-  /// Detects inter-account transfers in [filtered] (same day, same currency,
-  /// equal & opposite amounts, different accounts) and returns a list of
-  /// display entries where each transfer collapses its two legs into a single
-  /// [_TransferEntry]. Non-transfer txs become [_TxEntry]s. Original order is
-  /// preserved; transfers slot in at the position of whichever leg came first.
 }
 
 /// A row in the All-accounts list. Either a single transaction or an

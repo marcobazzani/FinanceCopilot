@@ -4,6 +4,12 @@ part of 'dashboard_screen.dart';
 // Asset Daily Changes Card
 // ════════════════════════════════════════════════════
 
+/// Held assets that [assetDailyChangesProvider] left out of [changes] for want
+/// of a price (today or at the reference date) or an exchange rate: it lists
+/// one change per held asset otherwise.
+int _unlistedHeldAssets(List<Asset> assets, Map<int, AssetStats>? stats, List<AssetDailyChange> changes) =>
+    assets.where((a) => a.isActive && (stats?[a.id]?.totalQuantity ?? 0) != 0).length - changes.length;
+
 class _AssetDailyChangesCard extends ConsumerStatefulWidget {
   final String locale;
   final String baseCurrency;
@@ -22,22 +28,38 @@ enum _SortCol { name, pct, valueDiff, marketValue }
 enum _SortDir { asc, desc, none }
 
 class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> {
-  static const _units = ['d', 'w', 'm', 'y', 'YTD', 'All'];
+  static const _units = ['d', 'w', 'm', 'y', 'WTD', 'MTD', 'YTD', 'All'];
+  // Units with no numeric multiplier: they anchor to the start of a calendar
+  // period (or a fixed epoch), so the number field is disabled for them.
+  static const _specialUnits = {'WTD', 'MTD', 'YTD', 'All'};
   late final TextEditingController _numberController;
   _SortCol _sortCol = _SortCol.name;
   _SortDir _sortDir = _SortDir.asc;
 
-  int get _number => ref.read(_priceChangeNumberProvider);
-  set _number(int v) => ref.read(_priceChangeNumberProvider.notifier).state = v;
-  String get _unit => ref.read(_priceChangeUnitProvider);
-  set _unit(String v) => ref.read(_priceChangeUnitProvider.notifier).state = v;
+  // Effective values: session override (this run) wins; else the persisted
+  // default from AppConfigs; else the built-in fallback. Validated against
+  // [_units] so a stale/unknown persisted unit can't select a missing chip.
+  int get _number => ref.read(_priceChangeNumberOverrideProvider) ?? ref.read(defaultPriceChangeNumberProvider).value ?? 1;
+  set _number(int v) => ref.read(_priceChangeNumberOverrideProvider.notifier).state = v;
+  String get _unit {
+    final override = ref.read(_priceChangeUnitOverrideProvider);
+    if (override != null) return override;
+    final persisted = ref.read(defaultPriceChangeUnitProvider).value;
+    return (persisted != null && _units.contains(persisted)) ? persisted : 'd';
+  }
+
+  set _unit(String v) => ref.read(_priceChangeUnitOverrideProvider.notifier).state = v;
+
+  /// The persisted default unit to mark with a pin, or null when unset/unknown.
+  String? get _markedUnit {
+    final persisted = ref.read(defaultPriceChangeUnitProvider).value;
+    return (persisted != null && _units.contains(persisted)) ? persisted : null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _numberController = TextEditingController(
-      text: ref.read(_priceChangeNumberProvider).toString(),
-    );
+    _numberController = TextEditingController(text: _number.toString());
   }
 
   @override
@@ -90,31 +112,39 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     return sorted;
   }
 
-  bool get _isSpecialUnit => _unit == 'YTD' || _unit == 'All';
+  bool get _isSpecialUnit => _specialUnits.contains(_unit);
 
-  DateTime _referenceDate(DateTime today) {
-    return switch (_unit) {
-      'd' => today.subtract(Duration(days: _number)),
-      'w' => today.subtract(Duration(days: _number * 7)),
-      'm' => DateTime(today.year, today.month - _number, today.day),
-      'y' => DateTime(today.year - _number, today.month, today.day),
-      'YTD' => DateTime(today.year, 1, 1),
-      'All' => DateTime(2000, 1, 1),
-      _ => today.subtract(const Duration(days: 1)),
-    };
-  }
+  DateTime _referenceDate(DateTime today) => priceChangeReferenceDate(
+    today: today,
+    unit: _unit,
+    number: _number,
+    firstDayOfWeekIndex: MaterialLocalizations.of(context).firstDayOfWeekIndex,
+  );
 
   @override
   Widget build(BuildContext context) {
-    // Watch providers to rebuild when period changes
-    ref.watch(_priceChangeNumberProvider);
-    ref.watch(_priceChangeUnitProvider);
+    // Watch overrides + persisted defaults so the card rebuilds when the period
+    // changes this session OR when a long-press persists a new default.
+    ref.watch(_priceChangeNumberOverrideProvider);
+    ref.watch(_priceChangeUnitOverrideProvider);
+    ref.watch(defaultPriceChangeUnitProvider);
+    // When the persisted default number resolves/changes and the user hasn't
+    // overridden it this session, reflect it in the spinner (after build, so we
+    // never mutate a controller mid-build). Special units keep the field empty.
+    ref.listen(defaultPriceChangeNumberProvider, (_, next) {
+      if (ref.read(_priceChangeNumberOverrideProvider) != null) return;
+      if (_specialUnits.contains(_unit)) return;
+      final text = (next.value ?? 1).toString();
+      if (_numberController.text != text) _numberController.text = text;
+    });
     final today = ref.watch(currentDateProvider);
     final s = ref.watch(appStringsProvider);
     final changesAsync = ref.watch(assetDailyChangesProvider(_referenceDate(today)));
     final theme = Theme.of(context);
     final amtFmt = fmt.amountFormat(widget.locale);
+    final pctFmt = NumberFormat('0.00', widget.locale);
     final symbol = currencySymbol(widget.baseCurrency);
+    final markedUnit = _markedUnit;
 
     return Card(
       child: Padding(
@@ -186,22 +216,54 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                   ),
                   ..._units.map((u) {
                     final selected = u == _unit;
-                    return ChoiceChip(
-                      label: Text(u),
-                      selected: selected,
-                      onSelected: (_) => setState(() {
-                        _unit = u;
-                        if (_isSpecialUnit) {
-                          _numberController.text = '';
-                        } else if (_numberController.text.isEmpty) {
-                          _number = 1;
-                          _numberController.text = '1';
-                        }
-                      }),
-                      labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      padding: EdgeInsets.zero,
+                    final isDefault = u == markedUnit;
+                    return GestureDetector(
+                      // Long-press persists this period as the default for next
+                      // launch (tap still just selects it for this session).
+                      onLongPress: () async {
+                        final number = _number;
+                        await savePriceChangePeriodDefault(ref.read(databaseProvider), unit: u, number: number);
+                        setState(() {
+                          _unit = u;
+                          if (_isSpecialUnit) {
+                            _numberController.text = '';
+                          } else if (_numberController.text.isEmpty) {
+                            _number = 1;
+                            _numberController.text = '1';
+                          }
+                        });
+                        if (!context.mounted) return;
+                        showInfoSnack(context, s.dashDefaultPeriodSet(s.priceChangeUnitLabel(u)));
+                      },
+                      child: ChoiceChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(s.priceChangeUnitLabel(u)),
+                            if (isDefault) ...[
+                              const SizedBox(width: 3),
+                              Semantics(
+                                label: s.dashDefaultPeriodMarker,
+                                child: Icon(Icons.push_pin, size: 9, color: theme.colorScheme.primary),
+                              ),
+                            ],
+                          ],
+                        ),
+                        selected: selected,
+                        onSelected: (_) => setState(() {
+                          _unit = u;
+                          if (_isSpecialUnit) {
+                            _numberController.text = '';
+                          } else if (_numberController.text.isEmpty) {
+                            _number = 1;
+                            _numberController.text = '1';
+                          }
+                        }),
+                        labelStyle: TextStyle(fontSize: 11, fontWeight: selected ? FontWeight.w700 : FontWeight.w400),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: EdgeInsets.zero,
+                      ),
                     );
                   }),
                 ];
@@ -247,6 +309,14 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                 final totalDiff = sorted.fold(0.0, (sum, c) => sum + c.valueDiff);
                 final totalPreviousValue = sorted.fold(0.0, (sum, c) => sum + c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate);
                 final totalPct = totalPreviousValue != 0 ? (totalDiff / totalPreviousValue) * 100 : 0.0;
+                // Held assets without a price (today or at the reference date)
+                // or an exchange rate are not listed and stay out of the total:
+                // counted under it.
+                final excluded = _unlistedHeldAssets(
+                  ref.watch(assetsProvider).value ?? const <Asset>[],
+                  ref.watch(assetStatsProvider).value,
+                  changes,
+                );
 
                 Widget headerCell(String label, _SortCol col, {int flex = 2, TextAlign align = TextAlign.right}) {
                   final isActive = _sortCol == col;
@@ -280,7 +350,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                           headerCell(s.colAsset, _SortCol.name, flex: 3, align: TextAlign.left),
                           headerCell(s.colPrice, _SortCol.marketValue, flex: 2),
                           headerCell('%', _SortCol.pct),
-                          headerCell('Value \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
+                          headerCell('${s.value} \u0394 ($symbol)', _SortCol.valueDiff, flex: 3),
                         ],
                       ),
                     ),
@@ -288,6 +358,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       final hasFx = c.currency != c.baseCurrency;
                       final prevValueBase = c.previousPrice * c.quantity / c.priceDivisor * c.previousFxRate;
                       final basePct = prevValueBase != 0 ? (c.valueDiff / prevValueBase) * 100 : 0.0;
+                      final privatePrice = unitPriceIsPrivate(c.valuationMethod);
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Column(
@@ -296,21 +367,24 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                               theme: theme,
                               name: c.ticker ?? c.name,
                               marketValue: c.todayPrice * c.todayFxRate,
+                              privatePrice: privatePrice,
                               pricePct: basePct,
                               valueDiff: c.valueDiff,
                               amtFmt: amtFmt,
+                              pctFmt: pctFmt,
                               url: c.providerUrl,
                               marketOpen: c.marketOpen,
                               s: s,
                             ),
                             if (hasFx)
                               _buildSubRow(
-                                theme: theme,
                                 assetPrice: c.todayPrice,
+                                privatePrice: privatePrice,
                                 assetPricePct: c.pricePct,
                                 assetValueDiff: c.priceDiff * c.quantity / c.priceDivisor,
                                 assetCurrency: c.currency,
                                 amtFmt: amtFmt,
+                                pctFmt: pctFmt,
                               ),
                           ],
                         ),
@@ -324,8 +398,17 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
                       pricePct: totalPct,
                       valueDiff: totalDiff,
                       amtFmt: amtFmt,
+                      pctFmt: pctFmt,
                       bold: true,
                     ),
+                    if (excluded > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Footnote(s.unpricedExcludedFromTotal(excluded)),
+                        ),
+                      ),
                   ],
                 );
               },
@@ -342,9 +425,11 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
     required ThemeData theme,
     required String name,
     required double? marketValue,
+    bool privatePrice = false,
     required double pricePct,
     required double valueDiff,
     required NumberFormat amtFmt,
+    required NumberFormat pctFmt,
     bool bold = false,
     String? url,
     bool? marketOpen,
@@ -405,10 +490,13 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         Expanded(
           flex: 2,
           child: marketValue != null
-              ? Text(
+              // A unit price: public market data stays readable, a manually
+              // valued asset's price ([privatePrice]) is position size.
+              ? PrivacyText(
                   amtFmt.format(marketValue),
                   style: theme.textTheme.bodySmall?.copyWith(fontWeight: weight, fontSize: 11),
                   textAlign: TextAlign.right,
+                  masked: privatePrice,
                 )
               : Text(
                   '',
@@ -419,7 +507,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
         Expanded(
           flex: 2,
           child: Text(
-            '${pricePct >= 0 ? '+' : ''}${pricePct.toStringAsFixed(2)}%',
+            '${pricePct >= 0 ? '+' : ''}${pctFmt.format(pricePct)}%',
             style: theme.textTheme.bodySmall?.copyWith(color: color, fontWeight: weight, fontSize: 11),
             textAlign: TextAlign.right,
           ),
@@ -442,17 +530,18 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
   /// asset's native-currency price/pct/diff. Rendered only when the
   /// asset's currency differs from base.
   Widget _buildSubRow({
-    required ThemeData theme,
     required double assetPrice,
+    required bool privatePrice,
     required double assetPricePct,
     required double assetValueDiff,
     required String assetCurrency,
     required NumberFormat amtFmt,
+    required NumberFormat pctFmt,
   }) {
     final pctColor = _bracketColor(assetPricePct);
     final diffColor = _bracketColor(assetValueDiff);
     final priceStr = amtFmt.format(assetPrice);
-    final pctStr = '${assetPricePct >= 0 ? '+' : ''}${assetPricePct.toStringAsFixed(2)}%';
+    final pctStr = '${assetPricePct >= 0 ? '+' : ''}${pctFmt.format(assetPricePct)}%';
     final diffStr = '${assetValueDiff >= 0 ? '+' : ''}${amtFmt.format(assetValueDiff)}';
 
     final subStyle = TextStyle(fontSize: 9, color: Colors.grey.shade500);
@@ -470,7 +559,7 @@ class _AssetDailyChangesCardState extends ConsumerState<_AssetDailyChangesCard> 
           ),
           Expanded(
             flex: 2,
-            child: Text(priceStr, style: subStyle, textAlign: TextAlign.right),
+            child: PrivacyText(priceStr, style: subStyle, textAlign: TextAlign.right, masked: privatePrice),
           ),
           Expanded(
             flex: 2,

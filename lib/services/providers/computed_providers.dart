@@ -7,10 +7,16 @@ class PillarAllocationData {
   final Map<int, double> marketValues;
   final String baseCurrency;
 
+  /// Held assets of the pillar left out of [assets] and [marketValues]
+  /// because they have no market value (no price, or no exchange rate to
+  /// [baseCurrency]) — never counted as worth 0.
+  final int unvaluedAssetCount;
+
   const PillarAllocationData({
     required this.assets,
     required this.marketValues,
     required this.baseCurrency,
+    this.unvaluedAssetCount = 0,
   });
 }
 
@@ -51,12 +57,16 @@ final convertedAccountStatsProvider = FutureProvider<Map<int, double?>>((ref) as
 
 /// Asset stats with totalInvested converted to base currency.
 ///
-/// Same semantic as [AssetStats.totalInvested] — weighted-average cost basis
-/// of currently-held shares — but computed in the user's base currency. For
-/// foreign-currency assets each buy is converted at its own historical FX
-/// rate (so a position bought when EUR/USD was very different from today
-/// keeps the contemporaneous cost), then the weighted-avg base-currency
-/// cost is multiplied by the remaining quantity.
+/// Same semantic as [AssetStats.totalInvested] — moving-average cost basis
+/// of currently-held shares — but computed in the user's base currency. Each
+/// buy is converted from the currency it was recorded in at its own
+/// historical FX rate (so a position bought when EUR/USD was very different
+/// from today keeps the contemporaneous cost), then run through the same
+/// moving-average-cost pool as [AssetService._computeAssetStats]
+/// ([CostBasisPool]): a sell removes quantity at the pool's current average,
+/// and a full liquidation resets the pool so a later re-buy starts fresh
+/// instead of blending in a disposed lot's price. Null when a buy cannot be
+/// converted: the cost basis — and any gain against it — is unknown.
 final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) async {
   final assets = await ref.watch(assetsProvider.future);
   final stats = await ref.watch(assetStatsProvider.future);
@@ -68,62 +78,87 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
 
   final result = <int, double?>{};
 
-  // Same-currency assets: use pre-aggregated stats directly.
-  // Inactive assets are excluded — same convention as
-  // assetDailyChangesProvider and the dashboard chart provider.
-  final foreignAssetIds = <int>[];
+  // Every asset goes through the per-buy conversion, a base-currency one too:
+  // its stats add up each buy's amount as recorded, and a buy recorded in
+  // another currency is not in the base one. Inactive assets are excluded —
+  // same convention as assetDailyChangesProvider and the dashboard chart
+  // provider.
+  final assetIds = <int>[];
   for (final asset in assets) {
     if (!asset.isActive) continue;
     final stat = stats[asset.id];
     if (stat == null || stat.totalInvested == 0) continue;
-    if (asset.currency == baseCurrency) {
-      result[asset.id] = stat.totalInvested;
-    } else {
-      foreignAssetIds.add(asset.id);
-    }
+    assetIds.add(asset.id);
   }
 
-  // Foreign-currency assets: convert each buy at its own FX rate, then
-  // apply the weighted-avg × remaining-qty formula in base currency.
-  if (foreignAssetIds.isNotEmpty) {
-    final allEvents = await eventService.getByAssets(foreignAssetIds, through: waybackDate);
+  // Convert each buy at its own FX rate, then walk the events in
+  // chronological order through a moving-average-cost pool.
+  if (assetIds.isNotEmpty) {
+    final allEvents = await eventService.getByAssets(assetIds, through: waybackDate);
     for (final asset in assets) {
       final events = allEvents[asset.id];
       if (events == null || events.isEmpty) continue;
 
-      var buyAmountBase = 0.0;
-      var buyQty = 0.0;
-      var unresolved = false;
+      // getByAssets orders DESC by valueDate for display purposes; the
+      // moving-average pool below requires ascending chronological order
+      // (oldest first), with id as a same-day tiebreak.
+      final ordered = events.toList()
+        ..sort((a, b) {
+          final byDate = a.valueDate.compareTo(b.valueDate);
+          return byDate != 0 ? byDate : a.id.compareTo(b.id);
+        });
 
-      // Convert one event amount from event.currency → baseCurrency, using
-      // the same fallback ladder as before (stored rate → historical rate →
-      // live rate). Returns null when no rate is available — the asset's
-      // total cannot be trusted, mark unresolved.
+      // Convert one event amount from event.currency → baseCurrency: the
+      // rate stored on the event, else the latest rate on or before its
+      // value date. Returns null when neither exists — the asset's total
+      // cannot be trusted, mark unresolved. Never today's rate: a past cost
+      // converted at the live rate is a wrong figure.
       Future<double?> convertToBase(double amount, AssetEvent ev) async {
         if (ev.currency == baseCurrency) return amount;
-        if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
+        // Only reuse a stored rate that was quoted against the CURRENT base
+        // (see AssetEventService.isExchangeRateUsableFor) — a rate belonging
+        // to a previous base is preserved data, not a usable conversion.
+        if (AssetEventService.isExchangeRateUsableFor(ev, baseCurrency)) {
           return amount / ev.exchangeRate!;
         }
         final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
         if (rate != null && rate > 0) {
-          if (waybackDate == null) {
-            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
+          // Only FILL a missing rate — never overwrite one that is already
+          // stored. A stored rate is user- or broker-supplied data (and after
+          // a base change, data quoted against the previous base); clobbering
+          // it with a derived value would destroy it just as surely as
+          // deleting it. Re-resolving is cheap: getRate is a local lookup in
+          // the exchange_rates table, no network.
+          if (waybackDate == null && ev.exchangeRate == null) {
+            await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+              AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+            );
           }
           return amount / rate;
         }
-        if (waybackDate != null) return null;
-        return rateService.convertLive(amount, ev.currency, baseCurrency);
+        _log.warning(
+          'convertedAssetStats: asset ${ev.assetId} event ${ev.id} - no ${ev.currency}/$baseCurrency rate on or before its value date, '
+          'cost basis unknown',
+        );
+        return null;
       }
 
-      for (final ev in events) {
-        if (ev.type != EventType.buy) continue;
-        final amtBase = await convertToBase(ev.amount.abs(), ev);
-        if (amtBase == null) {
-          unresolved = true;
-          break;
+      final pool = CostBasisPool();
+      var unresolved = false;
+
+      for (final ev in ordered) {
+        if (ev.type != EventType.buy && ev.type != EventType.sell) continue;
+        final qty = (ev.quantity ?? 0.0).abs();
+        if (ev.type == EventType.buy) {
+          final amtBase = await convertToBase(ev.amount.abs(), ev);
+          if (amtBase == null) {
+            unresolved = true;
+            break;
+          }
+          pool.buy(amtBase, qty);
+        } else {
+          pool.sell(qty);
         }
-        buyAmountBase += amtBase;
-        buyQty += (ev.quantity ?? 0).abs();
       }
 
       if (unresolved) {
@@ -131,17 +166,10 @@ final convertedAssetStatsProvider = FutureProvider<Map<int, double?>>((ref) asyn
         continue;
       }
 
-      final remainingQty = stats[asset.id]?.totalQuantity ?? 0;
-      double invested;
-      if (buyQty <= 0) {
-        // Cash-only events (no per-share qty) — gross fallback in base.
-        invested = buyAmountBase;
-      } else if (remainingQty <= 0) {
-        invested = 0;
-      } else {
-        invested = (buyAmountBase / buyQty) * remainingQty;
-      }
-      result[asset.id] = invested;
+      // Same composition as AssetService._computeAssetStats: the per-share
+      // pool (zeroed once every share is sold) plus cash-only contributions,
+      // which share sales don't affect.
+      result[asset.id] = pool.costBasis(heldQuantity: stats[asset.id]?.totalQuantity ?? 0.0);
     }
   }
   return result;
@@ -184,11 +212,10 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
         continue;
       }
     }
-    final bondDiv = asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0;
     final value = computeAssetBaseValue(
       quantity: stat.totalQuantity,
       price: price,
-      bondDivisor: bondDiv,
+      bondDivisor: bondPriceDivisor(asset.instrumentType),
       fxRate: fxRate,
     );
     if (value != null) result[asset.id] = value;
@@ -199,25 +226,40 @@ final assetMarketValuesProvider = FutureProvider<Map<int, double>>((ref) async {
 
 final pillarAllocationDataProvider = FutureProvider.family<PillarAllocationData, String>((ref, pillarId) async {
   final assets = await ref.watch(activeAssetsProvider.future);
+  final stats = await ref.watch(assetStatsProvider.future);
   final marketValues = await ref.watch(assetMarketValuesProvider.future);
   final fractions = await ref.watch(pillarFractionProvider(pillarId).future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
 
   final scopedAssets = <Asset>[];
   final scopedMarketValues = <int, double>{};
+  final inPillar = [
+    for (final asset in assets)
+      if ((fractions[asset.id] ?? 0) > 0) asset,
+  ];
 
-  for (final asset in assets) {
-    final fraction = fractions[asset.id];
-    if (fraction == null || fraction <= 0) continue;
-    final fullValue = marketValues[asset.id] ?? 0.0;
+  for (final asset in inPillar) {
+    final fullValue = marketValues[asset.id];
+    if (fullValue == null) continue;
     scopedAssets.add(asset);
-    scopedMarketValues[asset.id] = fullValue * fraction;
+    scopedMarketValues[asset.id] = fullValue * fractions[asset.id]!;
   }
 
   return PillarAllocationData(
     assets: scopedAssets,
     marketValues: scopedMarketValues,
     baseCurrency: baseCurrency,
+    // Held but without a market value (no price, or no rate to base): left
+    // out and counted, never shown as worth 0. An asset not held on the
+    // viewed date has no value to miss.
+    unvaluedAssetCount: unvaluedAssetCount(
+      inPillar,
+      marketValues,
+      heldIds: {
+        for (final e in stats.entries)
+          if (e.value.totalQuantity != 0) e.key,
+      },
+    ),
   );
 });
 
@@ -277,11 +319,17 @@ class AssetDailyChange {
   final double previousPrice;
   final double quantity;
   final double todayFxRate; // asset currency -> base currency (today)
-  final double previousFxRate; // asset currency -> base currency (reference date)
+  // asset currency -> base currency (reference date); for a reference before
+  // the first buy, the rate the position was bought at (cost-weighted).
+  final double previousFxRate;
   final String baseCurrency;
   final String? providerUrl; // the market data provider page URL
   final double priceDivisor; // 100 for bonds (quoted per 100 nominal), 1 otherwise
   final bool marketOpen; // true if today's date has a stored price
+
+  /// How the asset is valued. A manually valued asset has no market price:
+  /// its "price" is the user's own revaluation per unit held.
+  final ValuationMethod valuationMethod;
 
   const AssetDailyChange({
     required this.name,
@@ -296,6 +344,7 @@ class AssetDailyChange {
     this.providerUrl,
     this.priceDivisor = 1.0,
     this.marketOpen = false,
+    this.valuationMethod = ValuationMethod.marketPrice,
   });
 
   double get priceDiff => todayPrice - previousPrice;
@@ -317,6 +366,11 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
   final priceService = ref.watch(marketPriceServiceProvider);
   final rateService = ref.watch(exchangeRateServiceProvider);
   final waybackDate = ref.watch(waybackDateProvider);
+  // What each position cost in base currency, every buy at its own rate: the
+  // reference of a foreign asset bought after [referenceDate]. Late: watched
+  // only once such an asset needs it, so no other figure waits for — or fails
+  // with — that walk over every asset's events.
+  late final costInBase = ref.watch(convertedAssetStatsProvider.future);
 
   final today = ref.watch(currentDateProvider);
 
@@ -359,8 +413,18 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
       final avgPrice = await ref.read(assetEventServiceProvider).getAverageBuyPrice(asset.id, through: waybackDate);
       if (avgPrice != null) {
         previousPrice = avgPrice;
-        // For cost-basis, use today's FX for both sides (we're comparing price, not FX)
-        prevFx = todayFx;
+        if (isForeign) {
+          // At the rates the buys were made at, weighted by what each cost —
+          // the cost in base over the cost in the asset's currency — so the
+          // change carries the currency gain or loss since purchase, like the
+          // gain on the Assets screen. Today's rate on both sides dropped it.
+          final cost = (await costInBase)[asset.id];
+          if (cost == null || stat.totalInvested <= 0) {
+            _log.warning('dailyChanges: ${asset.ticker ?? asset.name} - a buy has no ${asset.currency}/$baseCurrency rate, skipping');
+            continue;
+          }
+          prevFx = cost / stat.totalInvested;
+        }
       }
     } else {
       previousPrice = await priceService.getPrice(asset.id, referenceDate);
@@ -380,22 +444,7 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
     }
     if (previousPrice == null) continue;
 
-    // Look up cached the market data provider URL for the link (same key logic as _searchCid)
-    String? providerUrl;
-    final searchTerm = (asset.isin?.isNotEmpty == true) ? asset.isin! : asset.ticker;
-    if (searchTerm != null && searchTerm.isNotEmpty) {
-      final urlKey = 'PROVIDER_URL_${searchTerm}_${asset.exchange ?? 'Milan'}';
-      final urlRow = await priceService.db
-          .customSelect(
-            'SELECT value FROM app_configs WHERE key = ?',
-            variables: [Variable.withString(urlKey)],
-          )
-          .getSingleOrNull();
-      if (urlRow != null) {
-        final path = urlRow.read<String>('value');
-        providerUrl = path.startsWith('http') ? path : '$kProviderBase$path';
-      }
-    }
+    final providerUrl = priceService is WebMarketDataService ? await priceService.providerPageUrl(asset) : null;
 
     // Market is open if live price was fetched within the last 15 minutes
     final isMarketOpen = waybackDate == null && priceService is WebMarketDataService && priceService.isMarketOpen(asset.id);
@@ -412,17 +461,22 @@ final assetDailyChangesProvider = FutureProvider.family<List<AssetDailyChange>, 
         previousFxRate: prevFx,
         baseCurrency: baseCurrency,
         providerUrl: providerUrl,
-        priceDivisor: asset.instrumentType == InstrumentType.bond ? 100.0 : 1.0,
+        priceDivisor: bondPriceDivisor(asset.instrumentType),
         marketOpen: isMarketOpen,
+        valuationMethod: asset.valuationMethod,
       ),
     );
   }
   return result;
 });
 
-/// Converted event amounts for an asset (live rate for current value display).
-/// Uses stored exchangeRate (BASE/ASSET format) if available, otherwise live rate.
-final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, int>((ref, assetId) async {
+/// Converted event amounts for an asset, in base currency at the event's own
+/// rate: the stored exchangeRate (BASE/ASSET format) if usable, otherwise the
+/// latest rate on or before the event's value date. An event with neither is
+/// left out (never converted at today's rate) — the UI gates on containsKey,
+/// so its converted line is simply hidden. Released with the screen showing
+/// the asset, and with it the asset's event stream.
+final convertedEventAmountsProvider = FutureProvider.autoDispose.family<Map<int, double>, int>((ref, assetId) async {
   final events = await ref.watch(assetEventsProvider(assetId).future);
   final baseCurrency = await ref.watch(baseCurrencyProvider.future);
   final rateService = ref.watch(exchangeRateServiceProvider);
@@ -433,23 +487,27 @@ final convertedEventAmountsProvider = FutureProvider.family<Map<int, double>, in
   for (final ev in events) {
     if (ev.currency == baseCurrency) {
       result[ev.id] = ev.amount;
-    } else if (ev.exchangeRate != null && ev.exchangeRate! > 0) {
-      // Stored rate is BASE/ASSET, so divide to get base currency amount
+    } else if (AssetEventService.isExchangeRateUsableFor(ev, baseCurrency)) {
+      // Stored rate is BASE/ASSET, so divide to get base currency amount.
+      // Only a rate quoted against the current base is usable — one stamped
+      // with a previous base is preserved data, not a conversion factor.
       result[ev.id] = ev.amount / ev.exchangeRate!;
     } else {
       final rate = await rateService.getRate(baseCurrency, ev.currency, ev.valueDate);
       if (rate != null && rate > 0) {
         result[ev.id] = ev.amount / rate;
-        if (waybackDate == null) {
-          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(AssetEventsCompanion(exchangeRate: Value(rate)));
+        // Fill only — never overwrite a stored (user/broker-supplied, or
+        // previous-base) rate with a derived one. See convertToBase above.
+        if (waybackDate == null && ev.exchangeRate == null) {
+          await (db.update(db.assetEvents)..where((e) => e.id.equals(ev.id))).write(
+            AssetEventsCompanion(exchangeRate: Value(rate), exchangeRateBase: Value(baseCurrency)),
+          );
         }
       } else {
-        // Live fallback. Skip the event if no rate is available — the UI
-        // gates on containsKey, so the converted line is simply hidden.
-        if (waybackDate == null) {
-          final live = await rateService.convertLive(ev.amount, ev.currency, baseCurrency);
-          if (live != null) result[ev.id] = live;
-        }
+        _log.warning(
+          'convertedEventAmounts: asset $assetId event ${ev.id} - no ${ev.currency}/$baseCurrency rate on or before its value date, '
+          'no converted amount',
+        );
       }
     }
   }

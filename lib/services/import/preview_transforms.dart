@@ -76,13 +76,38 @@ class ColumnSplit {
   final String delimiter;
   final String pattern;
 
+  /// When the split does not apply to a row (delimiter absent / regex
+  /// without a match), every derived column takes this column's value
+  /// instead of staying empty. Typical use: `TxDate` = date captured from
+  /// the description, else the booking-date column. Null = leave empty.
+  final String? fallbackColumn;
+
   const ColumnSplit({
     required this.sourceColumn,
     required this.newColumns,
     this.byRegex = false,
     this.delimiter = '',
     this.pattern = '',
+    this.fallbackColumn,
   });
+
+  static const _unset = Object();
+
+  ColumnSplit copyWith({
+    String? sourceColumn,
+    List<String>? newColumns,
+    bool? byRegex,
+    String? delimiter,
+    String? pattern,
+    Object? fallbackColumn = _unset,
+  }) => ColumnSplit(
+    sourceColumn: sourceColumn ?? this.sourceColumn,
+    newColumns: newColumns ?? this.newColumns,
+    byRegex: byRegex ?? this.byRegex,
+    delimiter: delimiter ?? this.delimiter,
+    pattern: pattern ?? this.pattern,
+    fallbackColumn: identical(fallbackColumn, _unset) ? this.fallbackColumn : fallbackColumn as String?,
+  );
 
   /// Compute the split values for a single source cell, aligned to
   /// [newColumns]. Each named column maps positionally to a split part;
@@ -137,6 +162,7 @@ class ColumnSplit {
     'byRegex': byRegex,
     'delimiter': delimiter,
     'pattern': pattern,
+    if (fallbackColumn != null) 'fallbackColumn': fallbackColumn,
   };
 
   static ColumnSplit fromJson(Map<String, dynamic> j) => ColumnSplit(
@@ -145,6 +171,7 @@ class ColumnSplit {
     byRegex: j['byRegex'] as bool? ?? false,
     delimiter: (j['delimiter'] as String?) ?? '',
     pattern: (j['pattern'] as String?) ?? '',
+    fallbackColumn: j['fallbackColumn'] as String?,
   );
 }
 
@@ -173,6 +200,14 @@ class PreviewTransforms {
     return cols;
   }
 
+  /// Names of the columns the splits create. They are computed, not part of
+  /// the statement: the importer must never persist them as raw data.
+  Set<String> get derivedColumns => {
+    for (final split in splits)
+      for (final nc in split.newColumns)
+        if (nc.isNotEmpty) nc,
+  };
+
   /// Apply splits then filters to [rows], returning a new list. Pure; does
   /// not mutate the input rows.
   List<Map<String, String>> transformRows(List<Map<String, String>> rows) {
@@ -192,7 +227,18 @@ class PreviewTransforms {
           final cell = original[split.sourceColumn] ?? '';
           // Skip rows this split doesn't apply to, so a coexisting split's
           // result for those rows survives.
-          if (!split.matches(cell)) continue;
+          if (!split.matches(cell)) {
+            // Fill still-empty outputs from the fallback column when configured;
+            // never overwrite what a coexisting split produced for this row.
+            final fb = split.fallbackColumn;
+            if (fb != null) {
+              final value = row[fb] ?? '';
+              for (final name in split.newColumns) {
+                if (name.isNotEmpty && (row[name] ?? '').isEmpty) row[name] = value;
+              }
+            }
+            continue;
+          }
           final parts = split.splitCell(cell);
           for (var i = 0; i < split.newColumns.length; i++) {
             final name = split.newColumns[i];

@@ -8,6 +8,8 @@ class _CompositionSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final compositionsAsync = ref.watch(assetCompositionsProvider);
     final ss = ref.watch(appStringsProvider);
+    // Weights spelled in the display locale: "57,1%" in it_IT.
+    final weightFmt = NumberFormat.decimalPatternDigits(locale: ref.watch(appLocaleProvider).value ?? Platform.localeName, decimalDigits: 1);
     final entries = compositionsAsync.value?[assetId] ?? const <AssetComposition>[];
     // Panel is always rendered so manual assets (no fetched composition)
     // can still get rows added via the per-section pencil icons. The
@@ -46,122 +48,122 @@ class _CompositionSection extends ConsumerWidget {
       sourceLabel = ss.sourceLabelGeneric;
     }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: ExpansionTile(
-        title: Row(
-          children: [
-            Text(ss.composition, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const Spacer(),
-            // Refresh: wipes rows and re-runs sync to fetch fresh market
-            // data. Hidden when there's no data yet — nothing to refresh
-            // and the network call would only return rows for assets that
-            // a market data provider can identify (typically by ISIN).
-            if (entries.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.refresh, size: 18),
-                tooltip: ss.compositionRefreshTooltip,
-                onPressed: () => _confirmRefresh(context, ref, ss),
-                padding: const EdgeInsets.all(4),
-                constraints: const BoxConstraints(),
-              ),
-          ],
-        ),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+    // Collapsible like the Cash Flow tab's sections: the refresh action sits
+    // in the title row, so the tile keeps its own rotating chevron.
+    return ExpansionTile(
+      title: Row(
         children: [
-          for (final type in typeOrder) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 4),
-              child: Row(
-                children: [
-                  Text(
-                    typeLabels[type] ?? type,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 14),
-                    tooltip: ss.compositionEditTooltip,
-                    onPressed: () => _openEditor(context, ref, type, byType[type] ?? const []),
-                    padding: const EdgeInsets.all(2),
-                    constraints: const BoxConstraints(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
-              ),
+          Expanded(
+            child: Text(ss.composition, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          // Refresh: wipes rows and re-runs sync to fetch fresh market
+          // data. Hidden when there's no data yet — nothing to refresh
+          // and the network call would only return rows for assets that
+          // a market data provider can identify (typically by ISIN).
+          if (entries.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 18),
+              tooltip: ss.compositionRefreshTooltip,
+              onPressed: () => _confirmRefresh(context, ref, ss),
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(),
             ),
-            if (byType[type]?.isNotEmpty ?? false)
-              ...byType[type]!.map(
-                (c) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 1),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(c.name, style: const TextStyle(fontSize: 12)),
-                      ),
-                      SizedBox(
-                        width: 80,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(2),
-                                child: LinearProgressIndicator(
-                                  value: (c.weight / 100).clamp(0, 1),
-                                  minHeight: 6,
-                                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            SizedBox(
-                              width: 38,
-                              child: Text(
-                                '${c.weight.toStringAsFixed(1)}%',
-                                style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                textAlign: TextAlign.right,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+        ],
+      ),
+      initiallyExpanded: false,
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      children: [
+        for (final type in typeOrder) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Row(
+              children: [
+                Text(
+                  typeLabels[type] ?? type,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-              ),
-          ],
-          if (sourceUrl != null && sourceLabel != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: InkWell(
-                onTap: () => launchUrl(Uri.parse(sourceUrl!)),
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
-                      const SizedBox(width: 6),
-                      Text(
-                        sourceLabel,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 14),
+                  tooltip: ss.compositionEditTooltip,
+                  onPressed: () => _openEditor(context, ref, type, byType[type] ?? const []),
+                  padding: const EdgeInsets.all(2),
+                  constraints: const BoxConstraints(),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ),
+          if (byType[type]?.isNotEmpty ?? false)
+            ...byType[type]!.map(
+              (c) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 1),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(c.name, style: const TextStyle(fontSize: 12)),
+                    ),
+                    SizedBox(
+                      width: 80,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: (c.weight / 100).clamp(0, 1),
+                                minHeight: 6,
+                                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 38,
+                            child: Text(
+                              '${weightFmt.format(c.weight)}%',
+                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
         ],
-      ),
+        if (sourceUrl != null && sourceLabel != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: InkWell(
+              onTap: () => launchUrl(Uri.parse(sourceUrl!)),
+              borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      sourceLabel,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -182,24 +184,14 @@ class _CompositionSection extends ConsumerWidget {
   }
 
   Future<void> _confirmRefresh(BuildContext context, WidgetRef ref, AppStrings ss) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(ss.compositionRefreshTooltip),
-        content: Text(ss.cannotBeUndone),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(ss.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(ss.update),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: ss.compositionRefreshTooltip,
+      content: ss.cannotBeUndone,
+      confirmLabel: ss.update,
+      cancelLabel: ss.cancel,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await ref.read(compositionServiceProvider).clearAndResync(assetId);
   }
 }
@@ -231,12 +223,14 @@ class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDial
   void initState() {
     super.initState();
     _locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
-    final fmt = NumberFormat.decimalPattern(_locale);
+    // Every digit of a stored weight (fmt.editableFigure): a section saved
+    // untouched keeps its weights instead of rounding them to three decimals.
+    final display = NumberFormat.decimalPattern(_locale);
     _nameCtrls = [
       for (final e in widget.initial) TextEditingController(text: e.name),
     ];
     _weightCtrls = [
-      for (final e in widget.initial) TextEditingController(text: fmt.format(e.weight)),
+      for (final e in widget.initial) TextEditingController(text: fmt.editableFigure(e.weight, display, locale: _locale)),
     ];
     if (_nameCtrls.isEmpty) {
       _nameCtrls.add(TextEditingController());
@@ -269,10 +263,15 @@ class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDial
     });
   }
 
+  /// The weight typed in row [i], read in the display locale: `invalid` for
+  /// text the locale cannot read — flagged on its field, never counted as 0
+  /// nor its row dropped on save.
+  ({double? value, bool invalid}) _weight(int i) => fmt.readOptionalNumber(_weightCtrls[i].text, locale: _locale);
+
   double get _sum {
     double total = 0;
-    for (final c in _weightCtrls) {
-      total += fmt.tryParseLocalized(c.text, locale: _locale) ?? 0;
+    for (var i = 0; i < _weightCtrls.length; i++) {
+      total += _weight(i).value ?? 0;
     }
     return total;
   }
@@ -280,10 +279,12 @@ class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDial
   Future<void> _save() async {
     final entries = <CompositionEntry>[];
     for (var i = 0; i < _nameCtrls.length; i++) {
+      final weight = _weight(i);
+      // Flagged on its field: nothing is saved until it is fixed.
+      if (weight.invalid) return;
       final name = _nameCtrls[i].text.trim();
-      final weight = fmt.tryParseLocalized(_weightCtrls[i].text, locale: _locale);
-      if (name.isEmpty || weight == null || weight <= 0) continue;
-      entries.add(CompositionEntry(name, weight));
+      if (name.isEmpty || weight.value == null || weight.value! <= 0) continue;
+      entries.add(CompositionEntry(name, weight.value!));
     }
     await ref.read(compositionServiceProvider).setEntries(widget.assetId, widget.type, entries);
     if (mounted) Navigator.pop(context);
@@ -312,6 +313,9 @@ class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDial
             children: [
               for (var i = 0; i < _nameCtrls.length; i++)
                 Padding(
+                  // A row keeps its fields (focus, cursor) when a row above
+                  // it is deleted, instead of handing them to the next row.
+                  key: ValueKey(_nameCtrls[i]),
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
@@ -334,6 +338,7 @@ class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDial
                           decoration: InputDecoration(
                             labelText: ss.compositionEntryWeight,
                             isDense: true,
+                            errorText: _weight(i).invalid ? ss.invalidNumber : null,
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onChanged: (_) => setState(() {}),
@@ -358,7 +363,7 @@ class _CompositionEditorDialogState extends ConsumerState<_CompositionEditorDial
                     onPressed: _addRow,
                   ),
                   Text(
-                    'Σ ${sum.toStringAsFixed(1)}%',
+                    'Σ ${NumberFormat.decimalPatternDigits(locale: _locale, decimalDigits: 1).format(sum)}%',
                     style: TextStyle(
                       fontSize: 12,
                       color: sumOk ? Colors.grey : Colors.orange,

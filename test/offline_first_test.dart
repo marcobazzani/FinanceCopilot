@@ -24,7 +24,7 @@ void main() {
   tearDown(() async => await db.close());
 
   /// Helper to insert a market price. Uses insertOnConflictUpdate to mirror
-  /// the production investing.com sync (which overwrites same-day rows
+  /// the production market data sync (which overwrites same-day rows
   /// previously written by the revalue resync).
   Future<void> insertPrice(int assetId, DateTime date, double price) async {
     await db
@@ -209,8 +209,8 @@ void main() {
     test('schema version is 48 after the current migration chain', () async {
       // v36 added Pillars + PillarAssets. v37 dropped
       // pillars.reference_portfolio. v38 dropped pillars.emoji. v39 dropped
-      // assets.yahoo_ticker + registered_events. v40 renamed legacy
-      // app_configs INVESTING_* keys to PROVIDER_* and normalised
+      // a legacy provider ticker column + registered_events. v40 renamed
+      // legacy provider-prefixed app_configs keys to PROVIDER_* and normalised
       // assets.exchange (and cache-key suffixes) from internal codes /
       // Italian variants to canonical English provider names. v41 added
       // portfolio model tables and the nullable pillar model association.
@@ -221,9 +221,15 @@ void main() {
       // v46 dropped ValuationMethod.balance (assets converted to marketPrice).
       // v47 marked cancelled transactions from filtered import configs.
       // v48 added pillars.kind (standard vs virtual portfolios).
+      // v49 added asset_events.exchange_rate_base (which base currency a
+      // stored exchange_rate was quoted against).
+      // v50 added transaction categorization columns (categories.key/
+      // is_archived/sort_order, transactions.merchant_key/counterparty/
+      // entry_kind, rule match_type/account_id/direction/amount bounds) and
+      // seeded the default category list.
       final rows = await db.customSelect('PRAGMA user_version').get();
       final version = rows.first.read<int>('user_version');
-      expect(version, 48);
+      expect(version, 50);
     });
 
     test('dashboard_charts table is gone', () async {

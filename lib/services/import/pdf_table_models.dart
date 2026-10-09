@@ -15,15 +15,13 @@ class _Line {
   });
 }
 
-enum _ColRole { date, amount, balance, middle }
-
+/// A column of the table: its representative left edge and the x band its
+/// cells fall in.
 class _ColAnchor {
-  final _ColRole role;
   final double xLeft;
   final double xLo;
   final double xHi;
   const _ColAnchor({
-    required this.role,
     required this.xLeft,
     required this.xLo,
     required this.xHi,
@@ -49,12 +47,10 @@ class _Cluster1D {
   final double lo;
   final double hi;
   final double center;
-  final int count;
   const _Cluster1D({
     required this.lo,
     required this.hi,
     required this.center,
-    required this.count,
   });
 }
 

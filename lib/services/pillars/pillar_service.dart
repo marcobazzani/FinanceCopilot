@@ -131,12 +131,13 @@ class PillarService {
 
   /// Total holding of an asset (sum of buy − sell quantities). Mirrors
   /// AssetService stats math, but kept local to avoid a service-to-service
-  /// dependency cycle.
+  /// dependency cycle. ABS(quantity) like everywhere else: the event type
+  /// carries the direction, and some exports store sells negative (#77).
   Future<double> _totalQuantity(int assetId) async {
     final row = await _db
         .customSelect(
-          'SELECT COALESCE(SUM(CASE WHEN type = ? THEN quantity '
-          'WHEN type = ? THEN -quantity ELSE 0 END), 0) AS qty '
+          'SELECT COALESCE(SUM(CASE WHEN type = ? THEN ABS(quantity) '
+          'WHEN type = ? THEN -ABS(quantity) ELSE 0 END), 0) AS qty '
           'FROM asset_events WHERE asset_id = ? AND quantity IS NOT NULL',
           variables: [
             Variable.withString('buy'),
@@ -201,12 +202,13 @@ class PillarService {
     final pillar = await getById(pillarId);
     final isVirtual = pillar == null || pillar.kind == PillarKind.virtual;
 
-    // 1. Total holding per asset (buys add, sells subtract).
+    // 1. Total holding per asset (buys add, sells subtract) — same ABS math
+    //    as [_totalQuantity].
     final totals = <int, double>{};
     final totalRows = await _db
         .customSelect(
-          'SELECT asset_id, COALESCE(SUM(CASE WHEN type = ? THEN quantity '
-          'WHEN type = ? THEN -quantity ELSE 0 END), 0) AS qty '
+          'SELECT asset_id, COALESCE(SUM(CASE WHEN type = ? THEN ABS(quantity) '
+          'WHEN type = ? THEN -ABS(quantity) ELSE 0 END), 0) AS qty '
           'FROM asset_events WHERE quantity IS NOT NULL GROUP BY asset_id',
           variables: [Variable.withString('buy'), Variable.withString('sell')],
         )
@@ -290,41 +292,6 @@ class PillarService {
     await (_db.delete(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId) & pa.assetId.equals(assetId))).go();
   }
 
-  /// Batch-apply a map of (assetId → quantity) to one pillar in a single
-  /// transaction. Validates the invariant per row before any write. qty=0
-  /// removes the row.
-  Future<void> applyBatch({
-    required String pillarId,
-    required Map<int, double> qtyByAsset,
-  }) async {
-    // Validate up front so partial writes never happen.
-    for (final entry in qtyByAsset.entries) {
-      if (entry.value < 0) throw ArgumentError('qty must be >= 0 (asset ${entry.key})');
-      if (entry.value == 0) continue;
-      final available = await availableToAssign(pillarId, entry.key);
-      if (entry.value > available + 1e-9) {
-        throw PillarOverAssignedException(entry.key, entry.value, available);
-      }
-    }
-    await _db.transaction(() async {
-      for (final entry in qtyByAsset.entries) {
-        if (entry.value == 0) {
-          await (_db.delete(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId) & pa.assetId.equals(entry.key))).go();
-        } else {
-          await _db
-              .into(_db.pillarAssets)
-              .insertOnConflictUpdate(
-                PillarAssetsCompanion.insert(
-                  pillarId: pillarId,
-                  assetId: entry.key,
-                  quantity: entry.value,
-                ),
-              );
-        }
-      }
-    });
-  }
-
   /// Sets the row to `availableToAssign` so the invariant holds after a sell
   /// dropped the holding below the previously-assigned quantity.
   ///
@@ -357,9 +324,6 @@ class PillarService {
     final rows = await (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId))).get();
     return rows.map((r) => (assetId: r.assetId, quantity: r.quantity)).toList();
   }
-
-  Stream<List<PillarAsset>> watchAssetsInPillar(String pillarId) =>
-      (_db.select(_db.pillarAssets)..where((pa) => pa.pillarId.equals(pillarId))).watch();
 
   Stream<List<PillarAsset>> watchAllAssignments() => _db.select(_db.pillarAssets).watch();
 

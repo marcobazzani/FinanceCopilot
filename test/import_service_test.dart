@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNotNull, isNull;
@@ -1637,6 +1638,82 @@ Date,Amount
       expect(tx.amount, closeTo(1234.56, 1e-9));
     });
 
+    test('a file in another number format than the stored history is re-spelled into the account format on write', () async {
+      // The Revolut case: history imported as comma-decimal ("-90,5"), then
+      // the bank switched its export to dot-decimal ("-258.35").
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'Revolut'));
+      final dir = await Directory.systemTemp.createTemp('fc_respell_');
+      addTearDown(() async => await dir.delete(recursive: true));
+      const maps = [
+        ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ColumnMapping(sourceColumn: 'Balance', targetField: 'balanceAfter'),
+        ColumnMapping(sourceColumn: 'Note', targetField: 'description'),
+      ];
+      final f1 = File('${dir.path}/old.csv')..writeAsStringSync('Date,Amount,Balance,Note\n01/01/2024,"-90,5","1.003,98",bar 12.5\n');
+      await importer.importTransactions(
+        preview: await importer.parseFile(f1.path),
+        mappings: maps,
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        balanceMode: 'column',
+      );
+      var cfg = await (db.select(db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingle();
+      expect(cfg.numberLocale, 'it_IT', reason: 'first import fixes the stored format');
+
+      // New export, dot-decimal. Parsed under en_US (the user's choice for THIS file).
+      final f2 = File('${dir.path}/new.csv')..writeAsStringSync('Date,Amount,Balance,Note\n02/01/2024,-258.35,"2,000.00",bar 12.5\n');
+      final r = await importer.importTransactions(
+        preview: await importer.parseFile(f2.path),
+        mappings: maps,
+        accountId: accountId,
+        numberLocaleOverride: 'en_US',
+        balanceMode: 'column',
+      );
+      expect(r.errorRows, 0);
+      final rows = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.operationDate)])).get();
+      expect(rows.map((t) => t.amount), [-90.5, -258.35]);
+      expect(rows[1].balanceAfter, 2000);
+      // The account format is unchanged, and the new row's numeric cells are stored in it.
+      cfg = await (db.select(db.importConfigs)..where((c) => c.accountId.equals(accountId))).getSingle();
+      expect(cfg.numberLocale, 'it_IT');
+      final meta = jsonDecode(rows[1].rawMetadata!) as Map<String, dynamic>;
+      expect(meta['Amount'], '-258,35');
+      expect(meta['Balance'], '2000');
+      expect(meta['Note'], 'bar 12.5', reason: 'only mapped numeric cells are re-spelled');
+      // The whole history re-parses under the saved format: the account is re-runnable.
+      final stored = (await importer.previewFromStoredRows(accountId, numberLocale: 'it_IT'))!;
+      final again = await importer.importTransactions(
+        preview: stored,
+        mappings: maps,
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        balanceMode: 'column',
+        replaceOnlyImportedRows: true,
+      );
+      expect(again.errorRows, 0);
+      expect((await db.select(db.transactions).get()).map((t) => t.amount).toSet(), {-90.5, -258.35});
+    });
+
+    test('a file whose numbers do not fit the chosen format is rejected row by row, never rescaled', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'X'));
+      final dir = await Directory.systemTemp.createTemp('fc_reject_');
+      addTearDown(() async => await dir.delete(recursive: true));
+      final f = File('${dir.path}/t.csv')..writeAsStringSync('Date,Amount\n01/01/2024,-258.35\n02/01/2024,"-90,5"\n');
+      final r = await importer.importTransactions(
+        preview: await importer.parseFile(f.path),
+        mappings: const [
+          ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+          ColumnMapping(sourceColumn: 'Amount', targetField: 'amount'),
+        ],
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+      );
+      expect(r.importedRows, 1);
+      expect(r.errorRows, 1, reason: '-258.35 is not an Italian number; it used to import as -25835');
+      expect((await db.select(db.transactions).get()).single.amount, -90.5);
+    });
+
     test('appLocale fallback when no override and no saved value', () async {
       final intId = await db
           .into(db.intermediaries)
@@ -1770,6 +1847,87 @@ Date,Balance
       expect(txs[0].amount, 0.0, reason: 'first row has no prior balance, must be 0 not 1000');
       expect(txs[1].amount, closeTo(100.0, 1e-9));
       expect(txs[2].amount, closeTo(-20.0, 1e-9));
+    });
+
+    test('appending a later statement diffs its first row against the last stored statement balance', () async {
+      final accountId = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'BankX'));
+      const mappings = [
+        ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
+      ];
+      final first = await importer.parseFile(
+        writeCsv('bal1.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,1100
+''').path,
+      );
+      await importer.importTransactions(preview: first, mappings: mappings, accountId: accountId);
+      final second = await importer.parseFile(
+        writeCsv('bal2.csv', '''
+Date,Balance
+20/01/2024,1250
+21/01/2024,1200
+''').path,
+      );
+      final prev = await importer.previewTransactionImport(preview: second, mappings: mappings, accountId: accountId);
+      await importer.importTransactions(preview: second, mappings: mappings, accountId: accountId);
+      final txs = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+      expect(txs.map((t) => t.amount).toList(), [
+        0.0,
+        closeTo(100, 1e-9),
+        closeTo(150, 1e-9),
+        closeTo(-50, 1e-9),
+      ], reason: 'the appended chunk continues from 1100, so its first row is +150, not 0');
+      expect(prev.importSum, closeTo(100, 1e-9), reason: 'preview parity');
+    });
+
+    test('re-running the whole account keeps its established opening balance', () async {
+      const mappings = [
+        ColumnMapping(sourceColumn: 'Date', targetField: 'date'),
+        ColumnMapping(sourceColumn: 'Balance', targetField: 'amount', balanceDiffColumn: 'Balance'),
+      ];
+      // Account that started from zero: its first stored row IS the opening deposit (+2000).
+      final fromZero = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'FromZero'));
+      final csv = writeCsv('z.csv', '''
+Date,Balance
+20/02/2017,2000
+24/02/2017,2000.05
+11/05/2022,0
+''');
+      final preview = await importer.parseFile(csv.path);
+      await importer.importTransactions(preview: preview, mappings: mappings, accountId: fromZero);
+      // Historical data imported before the first-row rule changed: opening deposit stored as +2000.
+      final firstRow = (await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get()).first;
+      await (db.update(db.transactions)..where((t) => t.id.equals(firstRow.id))).write(const TransactionsCompanion(amount: Value(2000)));
+
+      final stored = (await importer.previewFromStoredRows(fromZero, numberLocale: 'en_US'))!;
+      final prev = await importer.previewTransactionImport(preview: stored, mappings: mappings, accountId: fromZero);
+      expect(prev.importSum, closeTo(0, 1e-6), reason: 'deltas telescope to last − opening = 0 − 0');
+      await importer.importTransactions(preview: stored, mappings: mappings, accountId: fromZero, replaceOnlyImportedRows: true);
+      final txs =
+          await (db.select(db.transactions)
+                ..where((t) => t.accountId.equals(fromZero))
+                ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+              .get();
+      expect(txs.map((t) => t.amount).toList(), [closeTo(2000, 1e-9), closeTo(0.05, 1e-9), closeTo(-2000.05, 1e-9)]);
+
+      // Account whose statement starts mid-life (opening balance 1000 is not a transaction): stays 0 on re-run.
+      final midLife = await db.into(db.accounts).insert(AccountsCompanion.insert(name: 'MidLife'));
+      final csv2 = writeCsv('m.csv', '''
+Date,Balance
+15/01/2024,1000
+16/01/2024,1100
+''');
+      await importer.importTransactions(preview: await importer.parseFile(csv2.path), mappings: mappings, accountId: midLife);
+      final stored2 = (await importer.previewFromStoredRows(midLife, numberLocale: 'en_US'))!;
+      await importer.importTransactions(preview: stored2, mappings: mappings, accountId: midLife, replaceOnlyImportedRows: true);
+      final txs2 =
+          await (db.select(db.transactions)
+                ..where((t) => t.accountId.equals(midLife))
+                ..orderBy([(t) => OrderingTerm.asc(t.valueDate)]))
+              .get();
+      expect(txs2.map((t) => t.amount).toList(), [0.0, closeTo(100, 1e-9)]);
     });
 
     test('gap in balance column carries the last known balance', () async {

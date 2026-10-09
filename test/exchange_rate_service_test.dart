@@ -190,7 +190,7 @@ void main() {
       expect(rate, 1.0);
     });
 
-    test('falls back to stored rate when no investing service', () async {
+    test('falls back to stored rate when no market data provider', () async {
       // Service has no WebMarketDataService, so it falls back to DB
       await insertRate('USD', DateTime.now(), 1.10);
 
@@ -198,7 +198,7 @@ void main() {
       expect(rate, 1.10);
     });
 
-    test('returns null when no investing service and no stored rate', () async {
+    test('returns null when no market data provider and no stored rate', () async {
       final rate = await service.getLiveRate('EUR', 'USD');
       expect(rate, isNull);
     });
@@ -218,7 +218,7 @@ void main() {
     });
 
     test('returns null when rate missing', () async {
-      // No rates in DB, no investing service. Must not silently return the
+      // No rates in DB, no market data provider. Must not silently return the
       // unconverted amount.
       final result = await service.convertLive(200.0, 'EUR', 'JPY');
       expect(result, isNull);

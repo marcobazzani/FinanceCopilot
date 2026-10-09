@@ -199,6 +199,10 @@ class DragZoomWrapper extends StatefulWidget {
   final String baseCurrency;
   final String locale;
 
+  /// Decimal places for the drag-selection value label. Matches the wrapped
+  /// [UnifiedChart]'s valueDecimals (0 for money magnitudes, 2 for unit price).
+  final int valueDecimals;
+
   /// True when the parent has explicitly zoomed Y (rectangle zoom set
   /// non-null `zoomMinY`/`zoomMaxY`). Used to skip Y panning when Y is
   /// just auto-fit — otherwise Shift+drag would jolt the auto-fit window.
@@ -210,6 +214,12 @@ class DragZoomWrapper extends StatefulWidget {
   /// mini-charts where a 2-finger pinch fights the parent TabBarView
   /// page-swipe.
   final bool fullPinch;
+
+  /// Privacy mode for the drag-selection readout: its value range is masked
+  /// (on a money chart it is position size), its date range stays readable.
+  /// Leave false on a chart of public market data, such as the unit price of
+  /// a listed instrument.
+  final bool isPrivate;
   final void Function(double? minX, double? maxX, double? minY, double? maxY) onZoom;
 
   const DragZoomWrapper({
@@ -223,10 +233,12 @@ class DragZoomWrapper extends StatefulWidget {
     required this.firstDate,
     required this.baseCurrency,
     required this.locale,
+    this.valueDecimals = 0,
     required this.onZoom,
     this.rightReserved = 0,
     this.zoomedY = false,
     this.fullPinch = false,
+    this.isPrivate = false,
   });
 
   @override
@@ -420,7 +432,7 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
         final chartWidth = constraints.maxWidth - widget.leftReserved - widget.rightReserved;
         final chartHeight = constraints.maxHeight - widget.bottomReserved;
         final dateFmt = fmt.fullDateFormat(widget.locale);
-        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: 0);
+        final currFmt = fmt.currencyFormat(widget.locale, currencySymbol(widget.baseCurrency), decimalDigits: widget.valueDecimals);
 
         return Listener(
           behavior: HitTestBehavior.translucent,
@@ -536,13 +548,25 @@ class _DragZoomWrapperState extends State<DragZoomWrapper> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                               color: Colors.blue.withValues(alpha: 0.7),
-                              child: Text(
-                                '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))} \u2013 '
-                                '${dateFmt.format(widget.firstDate.add(Duration(days: _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt())))}\n'
-                                '${currFmt.format(_pixelToChartY(max(_dragStart!.dy, _dragCurrent!.dy), chartHeight))} \u2013 '
-                                '${currFmt.format(_pixelToChartY(min(_dragStart!.dy, _dragCurrent!.dy), chartHeight))}',
-                                style: const TextStyle(color: Colors.white, fontSize: 10),
-                                textAlign: TextAlign.center,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${dateFmt.format(chart_math.dateAddDays(widget.firstDate, _pixelToChartX(min(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt()))} \u2013 '
+                                    '${dateFmt.format(chart_math.dateAddDays(widget.firstDate, _pixelToChartX(max(_dragStart!.dx, _dragCurrent!.dx), chartWidth).toInt()))}',
+                                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  PrivacyMask(
+                                    isPrivate: widget.isPrivate,
+                                    child: Text(
+                                      '${currFmt.format(_pixelToChartY(max(_dragStart!.dy, _dragCurrent!.dy), chartHeight))} \u2013 '
+                                      '${currFmt.format(_pixelToChartY(min(_dragStart!.dy, _dragCurrent!.dy), chartHeight))}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -570,12 +594,23 @@ class UnifiedChart extends StatelessWidget {
   final bool showTotal;
   final String baseCurrency;
   final String locale;
+
+  /// Display language (e.g. `it_IT`): the date labels and the tooltip's words.
   final String language;
   final double? zoomMinX;
   final double? zoomMaxX;
   final double? zoomMinY;
   final double? zoomMaxY;
+
+  /// Privacy mode: the value axes are masked (on a money chart they are
+  /// position size) and the tooltip is off; the dates stay readable. Leave
+  /// false on a chart of public market data.
   final bool isPrivate;
+
+  /// Decimal places for value formatting (Y-axis labels + tooltip). 0 suits
+  /// money magnitudes (net worth in the thousands); 2 is needed for a
+  /// unit-price series so e.g. 108.57 is not rounded to "109".
+  final int valueDecimals;
 
   /// True for the immersive full-screen view, where zoom updates fire at
   /// pointer-frequency and the 150ms LineChart tween becomes the
@@ -596,8 +631,39 @@ class UnifiedChart extends StatelessWidget {
     this.zoomMinY,
     this.zoomMaxY,
     this.isPrivate = false,
+    this.valueDecimals = 0,
     this.liveZoom = false,
   });
+
+  /// Right edge of the unzoomed X window: the last day of the Total.
+  double get _totalDays => totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
+
+  /// The left-axis Y range this chart draws: the explicit Y zoom when set,
+  /// else the left-axis data (the Total when shown, and every left-axis
+  /// series) inside the visible X window, padded by 5%.
+  ///
+  /// Fitting to the window CURRENTLY IN VIEW, not the whole dataset, keeps an
+  /// old out-of-view spike (e.g. the first MA point) from squeezing the
+  /// recent, visible data flat. A [DragZoomWrapper] around this chart must
+  /// map pixels through this same range, or a drag selects values that are
+  /// not under the pointer — read it from here, never recompute it.
+  ({double minY, double maxY}) get drawnYRange {
+    final bounds = autoYBoundsInVisibleX(
+      [
+        if (showTotal) ...totalSpots,
+        ...visible.where((s) => !s.rightAxis).expand((s) => s.spots),
+      ],
+      zoomMinX ?? 0,
+      zoomMaxX ?? _totalDays,
+    );
+    final autoMin = bounds?.minY ?? 0.0;
+    final autoMax = bounds?.maxY ?? 100.0;
+    final autoRange = autoMax - autoMin;
+    return (
+      minY: zoomMinY ?? (autoRange > 0 ? autoMin - autoRange * 0.05 : autoMin - 100),
+      maxY: zoomMaxY ?? (autoRange > 0 ? autoMax + autoRange * 0.05 : autoMax + 100),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -607,33 +673,21 @@ class UnifiedChart extends StatelessWidget {
     final textColor = isDark ? Colors.white54 : Colors.black54;
     final symbol = currencySymbol(baseCurrency);
 
-    final totalDays = totalSpots.isNotEmpty ? totalSpots.last.x : 1.0;
     final dateFmt = fmt.monthYearFormat(language);
     final fullFmt = fmt.fullDateFormat(language);
-    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: 0);
+    final currFmt = fmt.currencyFormat(locale, symbol, decimalDigits: valueDecimals);
 
     // ── Dual Y-axis setup ──
-    final leftVisible = visible.where((s) => !s.rightAxis).toList();
     final rightVisible = visible.where((s) => s.rightAxis).toList();
     final hasDualAxis = rightVisible.isNotEmpty;
 
-    // Visible X window — the y-axis must auto-fit the data CURRENTLY IN VIEW,
-    // not the whole dataset. Otherwise an old out-of-view spike (e.g. the
-    // first MA point) squeezes the recent, visible data flat.
+    // Visible X window: both Y axes auto-fit the data in view (see
+    // [drawnYRange]).
     final visXMin = zoomMinX ?? 0;
-    final visXMax = zoomMaxX ?? totalDays;
+    final visXMax = zoomMaxX ?? _totalDays;
 
     // Left Y range (left series + total), bounded to the visible X window.
-    final leftSpotsForBounds = <FlSpot>[
-      if (showTotal) ...totalSpots,
-      ...leftVisible.expand((s) => s.spots),
-    ];
-    final leftBounds = autoYBoundsInVisibleX(leftSpotsForBounds, visXMin, visXMax);
-    final leftAutoMin = leftBounds?.minY ?? 0.0;
-    final leftAutoMax = leftBounds?.maxY ?? 100.0;
-    final leftAutoRange = leftAutoMax - leftAutoMin;
-    final chartMinY = zoomMinY ?? (leftAutoRange > 0 ? leftAutoMin - leftAutoRange * 0.05 : leftAutoMin - 100);
-    final chartMaxY = zoomMaxY ?? (leftAutoRange > 0 ? leftAutoMax + leftAutoRange * 0.05 : leftAutoMax + 100);
+    final (minY: chartMinY, maxY: chartMaxY) = drawnYRange;
     final chartRange = chartMaxY - chartMinY;
     final yRange = chartRange;
 
@@ -727,11 +781,12 @@ class UnifiedChart extends StatelessWidget {
               showTitles: hasDualAxis,
               reservedSize: hasDualAxis ? kChartRightReservedDual : 0,
               interval: yRange > 0 ? yRange / 4 : 100,
-              getTitlesWidget: (scaledY, meta) {
-                final actualY = unscaleRight(scaledY);
-                final label = isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(actualY);
-                return Text(label, style: TextStyle(fontSize: 11, color: textColor));
-              },
+              // Masked like the drag readout: on a money chart the scale is
+              // position size.
+              getTitlesWidget: (scaledY, meta) => PrivacyMask(
+                isPrivate: isPrivate,
+                child: Text(currFmt.format(unscaleRight(scaledY)), style: TextStyle(fontSize: 11, color: textColor)),
+              ),
             ),
           ),
           bottomTitles: AxisTitles(
@@ -740,7 +795,7 @@ class UnifiedChart extends StatelessWidget {
               reservedSize: kChartBottomReserved,
               interval: xRange > 0 ? xRange / 5 : 1,
               getTitlesWidget: (value, meta) {
-                final date = firstDate.add(Duration(days: value.toInt()));
+                final date = chart_math.dateAddDays(firstDate, value.toInt());
                 return SideTitleWidget(
                   meta: meta,
                   angle: -0.5,
@@ -754,13 +809,13 @@ class UnifiedChart extends StatelessWidget {
               showTitles: true,
               reservedSize: kChartLeftReserved,
               interval: yRange > 0 ? yRange / 4 : 100,
-              getTitlesWidget: (value, meta) {
-                final label = isPrivate ? '\u2022\u2022\u2022\u2022' : currFmt.format(value);
-                return SideTitleWidget(
-                  meta: meta,
-                  child: Text(label, style: TextStyle(fontSize: 12, color: textColor)),
-                );
-              },
+              getTitlesWidget: (value, meta) => SideTitleWidget(
+                meta: meta,
+                child: PrivacyMask(
+                  isPrivate: isPrivate,
+                  child: Text(currFmt.format(value), style: TextStyle(fontSize: 12, color: textColor)),
+                ),
+              ),
             ),
           ),
         ),
@@ -795,13 +850,13 @@ class UnifiedChart extends StatelessWidget {
                 final barIndex = spot.barIndex;
                 final isTotal = showTotal && barIndex == 0;
                 final seriesIdx = barIndex - (showTotal ? 1 : 0);
-                final date = firstDate.add(Duration(days: spot.x.toInt()));
+                final date = chart_math.dateAddDays(firstDate, spot.x.toInt());
                 final datePrefix = spotIdx == 0 ? '${fullFmt.format(date)}\n' : '';
 
                 if (isTotal) {
                   items.add(
                     LineTooltipItem(
-                      '${fullFmt.format(date)}\nTotal: ${currFmt.format(spot.y)}',
+                      '${fullFmt.format(date)}\n${AppStrings.of(language).legendTotal}: ${currFmt.format(spot.y)}',
                       const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                   );

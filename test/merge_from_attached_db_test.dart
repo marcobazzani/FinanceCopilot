@@ -54,7 +54,7 @@ void main() {
       await remoteDb.close();
       final raw = sqlite3.open(remotePath);
       raw.execute('PRAGMA user_version = 1');
-      raw.dispose();
+      raw.close();
 
       final localDb = AppDatabase.forTesting(NativeDatabase.memory());
       addTearDown(localDb.close);

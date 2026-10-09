@@ -119,7 +119,7 @@ Future<AppDatabase> pumpApp(
   ];
 
   if (!useRealServices) {
-    // Stubbed mode: NoOp market prices and FX without an investing service.
+    // Stubbed mode: NoOp market prices and FX without a market data provider.
     overrides.add(
       marketPriceServiceProvider.overrideWith((ref) {
         return NoOpMarketPriceService(db);
@@ -133,7 +133,7 @@ Future<AppDatabase> pumpApp(
   }
   // useRealServices=true: leave marketPriceServiceProvider and
   // exchangeRateServiceProvider at their defaults so the real
-  // WebMarketDataService + investing-backed FX run with real HTTP.
+  // WebMarketDataService + provider-backed FX run with real HTTP.
 
   // Suppress non-logic Flutter errors in integration tests:
   // - KeyUpEvent: keyboard state leak between tests in same process

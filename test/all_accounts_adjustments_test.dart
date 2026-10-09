@@ -15,7 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/ui/screens/accounts/adjustment_items.dart';
+import 'package:finance_copilot/services/domain/adjustment_items.dart';
 
 void main() {
   late AppDatabase db;

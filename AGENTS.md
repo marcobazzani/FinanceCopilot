@@ -122,7 +122,8 @@ The script writes the last `-Tail` lines to `C:\fc_applog.txt` and appends `READ
   2. `flutter test` -- all unit tests must pass
   3. `flutter test integration_test/all_tests.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- all integration tests must pass. ALWAYS pass `_test.db`; integration tests delete that DB file, and using `finance_copilot_dev.db` will wipe local dev data.
   4. `flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- live data fetch test must pass
-  5. NEVER commit with known failing tests. NEVER skip any test suite.
+  5. Coverage gate (same as CI): `flutter test --coverage`, run the integration suite of step 3 with `--coverage --coverage-path=coverage/lcov.integration.info`, then `tool/check_coverage.sh`. It merges both reports; line coverage of `lib/` (generated `*.g.dart`, `l10n/app_strings.dart` and `database/tables.dart` declarations excluded) must not drop below `tool/coverage_baseline.txt`. When it goes up, run `tool/check_coverage.sh --update` and commit the new baseline with the change.
+  6. NEVER commit with known failing tests. NEVER skip any test suite.
 
 ## Releasing a new version
 
@@ -167,6 +168,13 @@ Version is derived from the git tag. Never hand-edit `lib/version.dart`.
 - **Bottom-of-screen "Next" buttons in wizards** MUST share a common navbar widget. Fix consistently across all wizards, never one-by-one.
 - **Empty states** and **error toasts/snackbars** use one shared component each, with consistent placement.
 - Before adding a new widget, grep for existing equivalents. Reuse > re-implement.
+- **Privacy mode hides the size of your position, not public market facts.** Classify every number rendered in `lib/ui/` into one of three buckets, and wrap only the first in `PrivacyText`/`PrivacyBlur`:
+  1. **Position size — MASK.** Anything from which the absolute size of the user's holdings or cash can be derived: balances, market value, invested / cost basis, income, expenses, contributions, commissions paid, net worth, projections, adjustments — **and quantities of units or shares held**. A quantity carries no currency symbol, but the unit price is public, so `quantity` alone reveals what the position is worth.
+  2. **Public market data — DO NOT MASK.** Unit price, execution price of a trade, last close, 52-week range, per-unit change, TER, exchange rates. These are identical for every user regardless of how much they own, and they are exactly the analysis the mode exists to preserve. Blurring them is a bug in the other direction.
+  3. **Shape, not magnitude — DO NOT MASK.** Percentages, allocation weights, ratios, ratings, savings rate, counts of entities (assets, transactions), dates and durations (months, years). They describe composition, not how much money is there.
+- **The deciding question**: would this number be identical for someone holding one share and someone holding a thousand? If yes it is market data — leave it readable. If it scales with what the user owns, mask it.
+- **Never leave a product reconstructable.** When a row, formula or tooltip shows `quantity x price = value`, mask the quantity AND the value and keep the price. Masking only the total lets the reader multiply it back out.
+- Wrapping a whole `Card`, dialog or table to cover one amount breaks this in both directions at once — it over-masks market data and percentages while looking safe. Nothing appears wrong on screen when too much is blurred, so every fix needs a widget test that asserts a masked figure and a visible one **in the same test**.
 - **Every primary screen** plugs into the global app shell via two paired conventions, both required so new screens automatically inherit shell features:
   1. AppBar: `AppBar(actions: globalAppBarActions(context, ref, local: [...]))` — refresh, settings, import/export, privacy, network retry.
   2. Body: wrap the main scrollable in `MobilePullToRefresh(child: ListView/SingleChildScrollView(physics: AlwaysScrollableScrollPhysics(), ...))` so the same global refresh fires on a pull-down (Android/iOS only; no-op on desktop).
@@ -229,7 +237,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 
 # Pre-Release Checklist
 
-- Before tagging a release on `main`, run `/pre-release-cleanup` on `develop`. Merge to `main` only after it reports zero findings across all phases (UI consistency, dedup, silent defaults, locale, date semantics, LoC, dead code, provider-name leaks, bug hunt, overreach).
+- Before tagging a release on `main`, run `/pre-release-cleanup` on `develop`. Merge to `main` only after it reports zero findings across all phases (UI consistency, dedup, silent defaults, locale, date semantics, LoC, dead code, provider-name leaks, bug hunt, overreach) and its dependency bump is green on all suites.
 
 # Key Project Files
 
@@ -241,6 +249,7 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/import/file_parser_service.dart` — CSV/Excel/PDF file parsing (isolate-based for CSV/XLSX; main isolate for PDF via pdfrx)
 - `lib/services/import/pdf_table_reconstructor.dart` — Anchor-based PDF table extractor (date+amount domain priors, no provider templates)
 - `lib/services/import/import_service.dart` — Import mapping, dedup, balance recompute
+- `lib/services/import/stored_metadata_repair.dart` — One-shot per DB (AppConfigs `RAW_METADATA_LOCALE_VERSION`): re-spells stored statement numbers to each account's saved locale, only when re-parsing reproduces the stored amount; persists the locale
 - `lib/services/market/market_price_service.dart` — Abstract market price service
 - `lib/services/market/web_market_data_service.dart` — Market price/search/composition provider (WebView + Dio)
 - `lib/services/market/composition_service.dart` — ETF/stock composition fetcher
@@ -251,6 +260,21 @@ The app runs sandboxed on macOS. All internal data lives inside the container.
 - `lib/services/domain/income_service.dart` — Income tracking
 - `lib/services/domain/extraordinary_event_service.dart` — Extraordinary events / adjustments / depreciation schedules
 - `lib/services/domain/buffer_service.dart` — Buffer management
+- `lib/services/domain/running_balance.dart` — Value-date running balance anchored on the bank closing (single timeline for stored `balance_after`; the bank's per-row balance column is booking-order data, never copied per row)
+- `lib/services/domain/entry_pairing.dart` — Deterministic cross-account transfer / same-account no-op pairing (shared by the ledger UI and the classifier)
+- `lib/services/domain/adjustment_items.dart` — Links transactions to extraordinary events by exact (day, cents, sign); `AdjustmentInputs` loader lives on `ExtraordinaryEventService`
+- `lib/services/classification/ledger_roles.dart` — `LedgerRole` (transfer / no-op / adjustment / cancelled): rows the ledger already explains; they never take part in categorization, wizard queue, progress or spending charts
+- `lib/services/classification/description_normalizer.dart` — Pure bank-line parser: entry kind + counterparty + stable merchant key (`normalizerVersion` bump ⇒ keys recomputed at startup). Regex-free pipeline in `normalizer/`: `statement_tokens.dart` (segment tokenizer + named noise rules), `line_formats.dart` (typed `LineFormat` parsers, first match wins, name kept as trace), `entry_kind_lexicon.dart` (ordered phrase table with `^`/`$`/`*` mini-syntax). Add a bank layout = add a `LineFormat` + a fixture test; never a regex.
+- `lib/services/classification/rule_service.dart` — Categorization rules CRUD + `CompiledRule.matches` (merchantKey / contains / regex / entryKind, scoped by account/direction/amount)
+- `lib/services/classification/category_service.dart` — Category CRUD, seeded defaults (`lib/database/category_seeds.dart`), delete-with-reassign
+- `lib/services/classification/transaction_classifier_service.dart` — The single classifier: `classifyAll({overwrite})` over the whole ledger, merchant groups + progress for the wizard, derived-key recompute
+- `lib/services/classification/spending_by_category.dart` — Pure YoY spending-per-category aggregation (FX-missing rows excluded and counted, never defaulted)
+- `lib/services/classification/cash_flow_sankey.dart` — Pure yearly cash-flow Sankey graph. Income/savings/expenses are the yearly Income/Expense/Savings bucket figures (expenses = income − savings). Ledger spending = categorized + uncategorized (uncategorized is tracked, never "untracked"); the gap to the yearly expenses is explicit: refunds received (reimbursement/expense-category inflows) are their own source because ledger spending is gross; "untracked expenses" when ledger − refunds < expenses, "untracked income" when ledger − refunds > expenses; never clamped
+- `lib/ui/widgets/sankey_chart.dart` — Generic Sankey widget + pure `computeSankeyLayout`; used by Cash Flow → "Where the money goes"
+- `lib/ui/screens/classification/classification_wizard_screen.dart` — One-transaction-at-a-time wizard: answer ⇒ rule ⇒ reclassify ledger
+- `lib/ui/screens/classification/transaction_classify_card.dart` — `TransactionClassifyCard`: the single classification card (category, rule scope, Skip/Apply) used by the wizard and the Sankey drill-down; re-classifying a categorized row also moves the rule's matches sharing its old category (`recategorizeMatching`)
+- `lib/ui/screens/classification/categories_rules_screen.dart` — Settings → Categories & rules (CRUD, classify actions, dirty banner)
+- `lib/ui/widgets/category_ui.dart` — Single source for category label/icon/color, `CategoryChip`, `showCategoryPicker`, `CategoryField`
 - `lib/services/sync/google_drive_sync_service.dart` — Google Drive auto-sync with conflict detection
 - `lib/services/sync/db_transfer_service.dart` — Import/export DB file
 - `lib/ui/screens/dashboard/dashboard_screen.dart` — Charts (net worth + investment, split into part files)

@@ -197,12 +197,12 @@ void main() {
       raw.execute('ALTER TABLE pillars DROP COLUMN portfolio_model_id');
       raw.execute('PRAGMA user_version = 40');
     } finally {
-      raw.dispose();
+      raw.close();
     }
 
     final migrated = AppDatabase.forTesting(NativeDatabase(File(path)));
     final version = (await migrated.customSelect('PRAGMA user_version').get()).first.read<int>('user_version');
-    expect(version, 48);
+    expect(version, 50);
     final modelTables = await migrated
         .customSelect(
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('portfolio_models', 'portfolio_model_items')",

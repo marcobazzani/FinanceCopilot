@@ -16,6 +16,14 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
   String _filter = '';
   bool _onlyInPillar = false;
   String? _error;
+
+  /// Why the last load failed; cleared by the next one that succeeds.
+  Object? _loadError;
+
+  /// Bumped by every load and by every slider move. A load applies its result
+  /// only while it is still the latest: an older load finishing late, or one
+  /// that read the database before the user moved a slider, is stale.
+  int _loadGeneration = 0;
   final _chartState = _ChartViewState();
 
   @override
@@ -25,40 +33,80 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
   }
 
   Future<void> _load() async {
-    final svc = ref.read(pillarServiceProvider);
-    final assets = await ref.read(activeAssetsProvider.future);
-    final marketValues = await ref.read(assetMarketValuesProvider.future);
-    // One batched call instead of five queries per asset: the per-asset loop
-    // meant 65 sequential round trips on a 13-asset portfolio before the first
-    // frame could render, which is why this screen used to sit on a spinner for
-    // seconds. `quantitiesForPillar` is kind-aware exactly like
-    // availableToAssign was (standard → total − other standard assigned;
-    // virtual → total), and test/pillar_service_batch_test.dart pins the
-    // equivalence.
-    final quantities = await svc.quantitiesForPillar(widget.pillarId, assets.map((a) => a.id));
-    final out = <int, _AssetRowState>{};
-    for (final a in assets) {
-      final q = quantities[a.id];
-      if (q == null || q.total <= 0) continue;
-      out[a.id] = _AssetRowState(
-        assetId: a.id,
-        total: q.total,
-        available: q.available,
-        current: q.current,
-      );
-    }
-    final ordered = out.keys.toList()
-      ..sort((aId, bId) {
-        final aV = marketValues[aId] ?? 0;
-        final bV = marketValues[bId] ?? 0;
-        return bV.compareTo(aV);
+    final generation = ++_loadGeneration;
+    try {
+      final svc = ref.read(pillarServiceProvider);
+      // Read once through the service: awaiting activeAssetsProvider never
+      // completes on a screen where nothing else listens to it (Riverpod
+      // pauses unlistened providers). The market values are watched by this
+      // screen's build, so awaiting them here is safe.
+      final assets = (await ref.read(assetServiceProvider).getAll()).where((a) => a.isActive).toList();
+      final marketValues = await ref.read(assetMarketValuesProvider.future);
+      // One batched call for every asset: queries per asset would run one
+      // after the other before the first frame could render.
+      // `quantitiesForPillar` is kind-aware exactly like availableToAssign
+      // (standard → total − other standard assigned; virtual → total), and
+      // test/pillar_service_batch_test.dart pins the equivalence.
+      final quantities = await svc.quantitiesForPillar(widget.pillarId, assets.map((a) => a.id));
+      final out = <int, _AssetRowState>{};
+      for (final a in assets) {
+        final q = quantities[a.id];
+        if (q == null || q.total <= 0) continue;
+        out[a.id] = _AssetRowState(
+          assetId: a.id,
+          total: q.total,
+          available: q.available,
+          current: q.current,
+        );
+      }
+      // Display order is decided when the screen OPENS and then FROZEN.
+      //
+      // The ranking is what the screen is about: how much each asset contributes
+      // to THIS pillar, largest first. Total holding value only breaks ties, so a
+      // pillar with nothing assigned yet still opens in a sensible order — and an
+      // asset held entirely by other pillars sinks to the bottom instead of
+      // heading the list with a 0 slice.
+      //
+      // Frozen, because the slice is derived from `current`, which a slider
+      // mutates on every drag frame: re-ranking mid-drag would relocate the row
+      // (each carries a ValueKey) out from under the user's finger and hand the
+      // rest of the gesture to another asset. Commits also re-run this load via the
+      // `pillarAssetsProvider` listener, so recomputing here would reshuffle the
+      // list the moment a slider is released. Assets already on screen keep their
+      // position; ones that appeared since are ranked and appended.
+      //
+      // An asset without a price or exchange rate has no slice to rank by: it
+      // goes after every valued one instead of being ranked as if worth 0.
+      double sliceOf(int id, double value) {
+        final r = out[id]!;
+        return value * (r.total <= 0 ? 0 : r.current / r.total);
+      }
+
+      final known = _orderedAssetIds.where(out.containsKey).toList();
+      final fresh = out.keys.where((id) => !known.contains(id)).toList()
+        ..sort((aId, bId) {
+          final a = marketValues[aId];
+          final b = marketValues[bId];
+          if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0);
+          final bySlice = sliceOf(bId, b).compareTo(sliceOf(aId, a));
+          if (bySlice != 0) return bySlice;
+          return b.compareTo(a);
+        });
+      final ordered = [...known, ...fresh];
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _rows = out;
+        _orderedAssetIds = ordered;
+        _loading = false;
+        _loadError = null;
       });
-    if (!mounted) return;
-    setState(() {
-      _rows = out;
-      _orderedAssetIds = ordered;
-      _loading = false;
-    });
+    } catch (e) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loading = false;
+        _loadError = e;
+      });
+    }
   }
 
   Future<void> _commit(int assetId) async {
@@ -75,7 +123,11 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
       if (mounted) setState(() => _error = null);
     } on PillarOverAssignedException catch (e) {
       if (!mounted) return;
-      setState(() => _error = '$e');
+      // Name the asset, not the units: quantities are position size.
+      final asset = (ref.read(assetsProvider).value ?? const <Asset>[]).where((a) => a.id == e.assetId).firstOrNull;
+      setState(() => _error = ref.read(appStringsProvider).pillarOverAssigned(asset?.name ?? '#${e.assetId}'));
+      // Nothing was stored: show the assignment the database actually holds.
+      _load();
     }
   }
 
@@ -94,9 +146,10 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
   Widget build(BuildContext context) {
     // External mutations to pillar_assets (other windows, service-level
     // assigns, deletes) must reflow `_rows` — otherwise sliders + chart
-    // show stale fractions until the screen is reopened.
+    // show stale fractions until the screen is reopened. A load still in
+    // flight is superseded (see [_loadGeneration]).
     ref.listen(pillarAssetsProvider, (_, _) {
-      if (mounted && !_loading) _load();
+      if (mounted) _load();
     });
     final s = ref.watch(appStringsProvider);
     final assetsAsync = ref.watch(assetsProvider);
@@ -116,19 +169,33 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
     final targetWeightByIsin = <String, double>{};
     if (modelItemsAsync?.value != null) {
       for (final item in modelItemsAsync!.value!) {
-        targetWeightByIsin[_normaliseIsin(item.isin)] = item.targetWeight;
+        targetWeightByIsin[normaliseIsin(item.isin)] = item.targetWeight;
       }
     }
 
-    double pillarValue = 0;
+    // An asset in the pillar without a price or exchange rate has no value:
+    // it is left out of the pillar value, the target progress and the weights
+    // (never counted as 0), and the exclusion is counted under the value.
+    // With every asset left out the value is unknown, not 0; an empty pillar
+    // is worth 0.
+    double? pricedValue;
+    var unpricedCount = 0;
     for (final r in _rows.values) {
       if (r.current <= 0) continue;
-      final mv = marketValues[r.assetId] ?? 0;
-      pillarValue += mv * (r.current / r.total);
+      final mv = marketValues[r.assetId];
+      if (mv == null) {
+        unpricedCount++;
+        continue;
+      }
+      pricedValue = (pricedValue ?? 0) + mv * (r.current / r.total);
     }
+    final pillarValue = unpricedCount == 0 ? (pricedValue ?? 0) : pricedValue;
 
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (_loadError != null) {
+      return Center(child: Text(s.error(_loadError!)));
     }
 
     final visibleRows = <_AssetRowState>[];
@@ -145,11 +212,12 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
       }
       visibleRows.add(r);
     }
-    visibleRows.sort((a, b) {
-      final aValue = (marketValues[a.assetId] ?? 0) * (a.total <= 0 ? 0 : a.current / a.total);
-      final bValue = (marketValues[b.assetId] ?? 0) * (b.total <= 0 ? 0 : b.current / b.total);
-      return bValue.compareTo(aValue);
-    });
+    // Deliberately NOT sorted here: the slice value is derived from
+    // `row.current`, which a slider mutates continuously while being dragged,
+    // and re-sorting by it mid-drag would move the row (each has a ValueKey,
+    // so Flutter relocates the widget) out from under the user's finger and
+    // hand the rest of the gesture to a different asset. Order is decided once
+    // in `_load` and stays put; see the comment there.
 
     final fractions = _liveFractions();
     final livePerformance = allAsync.value == null
@@ -169,6 +237,7 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
             child: _ObjectiveCard(
               pillar: pillar,
               value: pillarValue,
+              unpricedCount: unpricedCount,
               performance: performance,
               locale: locale,
               baseCurrency: baseCurrency,
@@ -186,6 +255,7 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
               locale: locale,
               language: language,
               onChanged: () => setState(() {}),
+              s: s,
             ),
           ),
         Padding(
@@ -226,58 +296,74 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
             ),
           ),
         Expanded(
-          child: visibleRows.isEmpty
-              ? Center(child: Text(s.pillarsEmptyTitle))
-              : ListView(
-                  children: [
-                    for (var i = 0; i < visibleRows.length; i++) ...[
-                      if (i > 0) const Divider(height: 1),
-                      Builder(
-                        builder: (ctx) {
-                          final row = visibleRows[i];
-                          final asset = assetById[row.assetId];
-                          final sliceValue = (marketValues[row.assetId] ?? 0) * (row.total <= 0 ? 0 : row.current / row.total);
-                          final isin = asset?.isin?.trim();
-                          final targetWeight = isin == null ? null : targetWeightByIsin[_normaliseIsin(isin)];
-                          final currentWeight = pillarValue <= 0 ? 0.0 : sliceValue / pillarValue * 100.0;
-                          return _AssetSliderRow(
-                            key: ValueKey('pillar-row-${row.assetId}'),
-                            row: row,
-                            asset: asset,
-                            assetMarketValue: marketValues[row.assetId] ?? 0,
-                            baseCurrency: baseCurrency,
-                            locale: locale,
-                            targetWeight: targetWeight,
-                            currentWeight: currentWeight,
-                            onChanged: (newQty) {
-                              setState(() => row.current = newQty);
-                            },
-                            onChangeEnd: () => _commit(row.assetId),
-                            s: s,
-                          );
+          child: MobilePullToRefresh(
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                // Nothing held, or a filter hiding every held asset.
+                if (visibleRows.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: _rows.isEmpty
+                        ? EmptyState(icon: Icons.pie_chart, message: s.noAssetsYet)
+                        : EmptyState(icon: Icons.search_off, message: s.noResultsFound),
+                  ),
+                for (var i = 0; i < visibleRows.length; i++) ...[
+                  if (i > 0) const Divider(height: 1),
+                  Builder(
+                    builder: (ctx) {
+                      final row = visibleRows[i];
+                      final asset = assetById[row.assetId];
+                      // Null without a price or exchange rate: no slice, no weight.
+                      final assetValue = marketValues[row.assetId];
+                      final sliceValue = assetValue == null ? null : assetValue * (row.total <= 0 ? 0 : row.current / row.total);
+                      final isin = asset?.isin?.trim();
+                      final targetWeight = isin == null ? null : targetWeightByIsin[normaliseIsin(isin)];
+                      final currentWeight = sliceValue == null
+                          ? null
+                          : (pillarValue == null || pillarValue <= 0 ? 0.0 : sliceValue / pillarValue * 100.0);
+                      return _AssetSliderRow(
+                        key: ValueKey('pillar-row-${row.assetId}'),
+                        row: row,
+                        asset: asset,
+                        assetMarketValue: assetValue,
+                        baseCurrency: baseCurrency,
+                        locale: locale,
+                        targetWeight: targetWeight,
+                        currentWeight: currentWeight,
+                        onChanged: (newQty) {
+                          // A load that read the database before this move
+                          // must not put the old quantity back.
+                          _loadGeneration++;
+                          setState(() => row.current = newQty);
                         },
-                      ),
-                    ],
-                    if (pillar?.portfolioModelId != null) ...[
-                      const Divider(height: 1),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                        child: Text(s.portfolioDivergenceTitle, style: Theme.of(context).textTheme.titleSmall),
-                      ),
-                      if (targetWeightByIsin.isNotEmpty)
-                        ..._divergenceFooterRows(
-                          context: context,
-                          s: s,
-                          locale: locale,
-                          baseCurrency: baseCurrency,
-                          marketValues: marketValues,
-                          visibleRows: visibleRows,
-                          assetById: assetById,
-                          targetWeightByIsin: targetWeightByIsin,
-                        ),
-                    ],
-                  ],
-                ),
+                        onChangeEnd: () => _commit(row.assetId),
+                        s: s,
+                      );
+                    },
+                  ),
+                ],
+                if (visibleRows.isNotEmpty && pillar?.portfolioModelId != null) ...[
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    child: Text(s.portfolioDivergenceTitle, style: Theme.of(context).textTheme.titleSmall),
+                  ),
+                  if (targetWeightByIsin.isNotEmpty)
+                    ..._divergenceFooterRows(
+                      context: context,
+                      s: s,
+                      locale: locale,
+                      baseCurrency: baseCurrency,
+                      marketValues: marketValues,
+                      visibleRows: visibleRows,
+                      assetById: assetById,
+                      targetWeightByIsin: targetWeightByIsin,
+                    ),
+                ],
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -287,8 +373,8 @@ class _OverviewViewState extends ConsumerState<_OverviewView> {
 /// Reuses the dashboard's [ChartCard] widget. Renders TWO lines per asset:
 /// the per-asset invested series (dashed) and the per-asset market series
 /// (filled), each scaled by the pillar's fraction. Series keys stay
-/// identical to the dashboard's so ChartCard's smart-total logic keeps
-/// the running total = market value of the pillar's slice.
+/// identical to the dashboard's so the smart total (`buildSmartTotalSpots`)
+/// keeps the running total = market value of the pillar's slice.
 class _PillarMarketInvestedChart extends StatelessWidget {
   final String pillarId;
   final String title;
@@ -298,6 +384,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
   final String locale;
   final String language;
   final VoidCallback onChanged;
+  final AppStrings s;
   const _PillarMarketInvestedChart({
     required this.pillarId,
     required this.title,
@@ -307,6 +394,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
     required this.locale,
     required this.language,
     required this.onChanged,
+    required this.s,
   });
 
   @override
@@ -327,7 +415,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
       if (investedTotal.isNotEmpty)
         ChartSeries(
           key: 'asset_invested:-1',
-          name: 'Invested',
+          name: s.chartAssetInvested,
           color: Colors.orange,
           spots: investedTotal,
           isDashed: true,
@@ -335,7 +423,7 @@ class _PillarMarketInvestedChart extends StatelessWidget {
       if (marketTotal.isNotEmpty)
         ChartSeries(
           key: 'asset_market:-1',
-          name: 'Value',
+          name: s.value,
           color: Colors.blue,
           spots: marketTotal,
         ),

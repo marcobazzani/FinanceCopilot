@@ -181,8 +181,8 @@ Map<String, dynamic>? _findInstrument(Map<String, dynamic> state) {
   return null;
 }
 
-dynamic _readPath(dynamic root, List<String> path) {
-  dynamic node = root;
+Object? _readPath(Object? root, List<String> path) {
+  var node = root;
   for (final p in path) {
     if (node is Map && node.containsKey(p)) {
       node = node[p];
@@ -193,7 +193,7 @@ dynamic _readPath(dynamic root, List<String> path) {
   return node;
 }
 
-String? _strField(dynamic obj, String key) {
+String? _strField(Object? obj, String key) {
   if (obj is! Map) return null;
   final v = obj[key];
   if (v == null) return null;

@@ -12,41 +12,61 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   bool _manual = false;
   bool _unlocked = false;
 
+  /// A create is running: Create is off, and a second tap that lands before
+  /// the rebuild creates nothing.
+  bool _saving = false;
+
   /// Apply the dialog's shared overrides (ter, taxRate, valuationMethod,
   /// assetType, isActive, includeInSavings — all gated on `_unlocked`)
   /// to a single create call. Caller passes the per-flow fields (name,
   /// intermediary, currency, optional ticker/isin/exchange).
-  Future<int> _createAsset({
+  ///
+  /// False, with nothing created, when an unlocked TER or tax rate is text
+  /// the locale cannot read: it is flagged on its field instead. False too
+  /// while another create is running.
+  Future<bool> _createAsset({
     required String name,
     required int intermediaryId,
     required String currency,
     String? ticker,
     String? isin,
     String? exchange,
-  }) {
-    return widget.ref
-        .read(assetServiceProvider)
-        .create(
-          name: name,
-          ticker: ticker,
-          isin: isin,
-          exchange: exchange,
-          currency: currency,
-          intermediaryId: intermediaryId,
-          instrumentType: _instrumentType,
-          assetClass: _assetClass,
-          valuationMethod: ValuationMethod.marketPrice,
-          assetType: _unlocked ? _assetType : AssetType.stockEtf,
-          ter: _unlocked ? fmt.tryParseLocalized(_terCtrl.text, locale: _locale) : null,
-          taxRate: _unlocked
-              ? (() {
-                  final v = fmt.tryParseLocalized(_taxRateCtrl.text, locale: _locale);
-                  return v == null ? null : v / 100;
-                })()
-              : null,
-          isActive: _unlocked ? _isActive : null,
-          includeInSavings: _unlocked ? _includeInSavings : null,
-        );
+  }) async {
+    if (_saving) return false;
+    final ter = fmt.readOptionalNumber(_terCtrl.text, locale: _locale);
+    // Accepts percentage (26 → stored as 0.26).
+    final taxPercent = fmt.readOptionalNumber(_taxRateCtrl.text, locale: _locale);
+    if (_unlocked && (ter.invalid || taxPercent.invalid)) {
+      setState(() {
+        _terInvalid = ter.invalid;
+        _taxRateInvalid = taxPercent.invalid;
+      });
+      return false;
+    }
+    setState(() => _saving = true);
+    try {
+      await widget.ref
+          .read(assetServiceProvider)
+          .create(
+            name: name,
+            ticker: ticker,
+            isin: isin,
+            exchange: exchange,
+            currency: currency,
+            intermediaryId: intermediaryId,
+            instrumentType: _instrumentType,
+            assetClass: _assetClass,
+            valuationMethod: ValuationMethod.marketPrice,
+            assetType: _unlocked ? _assetType : AssetType.stockEtf,
+            ter: _unlocked ? ter.value : null,
+            taxRate: _unlocked && taxPercent.value != null ? taxPercent.value! / 100 : null,
+            isActive: _unlocked ? _isActive : null,
+            includeInSavings: _unlocked ? _includeInSavings : null,
+          );
+      return true;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   // Step 1: search state mirrored from AssetSearchSection so step 2 can
@@ -80,6 +100,11 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   bool _includeInSavings = true;
   bool _isActive = true;
 
+  // TER / tax rate text the locale could not read at the last create
+  // attempt: flagged on the field until edited, and nothing was created.
+  bool _terInvalid = false;
+  bool _taxRateInvalid = false;
+
   String get _locale => widget.ref.read(appLocaleProvider).value ?? Platform.localeName;
 
   @override
@@ -97,74 +122,31 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
     onPressed: () => setState(() => _unlocked = !_unlocked),
   );
 
-  List<Widget> _buildAdvancedFields(AppStrings s) {
-    return [
-      const Divider(height: 24),
-      DropdownButtonFormField<AssetType>(
-        initialValue: _assetType,
-        decoration: InputDecoration(labelText: s.assetTypeFieldLabel, isDense: true),
-        items: AssetType.values
-            .map(
-              (t) => DropdownMenuItem(
-                value: t,
-                child: Text(s.assetTypeLabel(t), style: const TextStyle(fontSize: 13)),
-              ),
-            )
-            .toList(),
-        onChanged: (v) {
-          if (v != null) setState(() => _assetType = v);
-        },
-      ),
-      // Valuation method is auto-managed by revalue add/remove (new assets
-      // start market-priced) — no manual control here.
-      const SizedBox(height: 12),
-      TextField(
-        controller: _currencyCtrl,
-        decoration: InputDecoration(
-          labelText: s.currencyFieldLabel,
-          isDense: true,
-          counterText: '',
-        ),
-        textCapitalization: TextCapitalization.characters,
-        maxLength: 3,
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _terCtrl,
-        decoration: InputDecoration(
-          labelText: '${s.healthTer} (%)',
-          // Locale-aware hint: "0,22" in it_IT, "0.22" in en_US.
-          hintText: NumberFormat.decimalPattern(_locale).format(0.22),
-          isDense: true,
-        ),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      ),
-      const SizedBox(height: 12),
-      TextField(
-        controller: _taxRateCtrl,
-        decoration: InputDecoration(
-          labelText: s.taxRateOverrideLabel,
-          // Accepts percentage (26 → stored as 0.26 by create call).
-          hintText: '26',
-          isDense: true,
-        ),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      ),
-      const SizedBox(height: 8),
-      SwitchListTile(
-        title: Text(s.active),
-        value: _isActive,
-        onChanged: (v) => setState(() => _isActive = v),
-        contentPadding: EdgeInsets.zero,
-      ),
-      SwitchListTile(
-        title: Text(s.includeInSavingsLabel),
-        value: _includeInSavings,
-        onChanged: (v) => setState(() => _includeInSavings = v),
-        contentPadding: EdgeInsets.zero,
-      ),
-    ];
-  }
+  // A new asset starts market-priced (the valuation method is then
+  // auto-managed by revalue add/remove) and its intermediary is picked above;
+  // the TER and the Active switch are unlock-only here.
+  List<Widget> _buildAdvancedFields(AppStrings s) => assetAdvancedFields(
+    s,
+    assetType: _assetType,
+    onAssetType: (v) => setState(() => _assetType = v),
+    currencyCtrl: _currencyCtrl,
+    taxRateCtrl: _taxRateCtrl,
+    taxRateInvalid: _taxRateInvalid,
+    onTaxRateEdited: () {
+      if (_taxRateInvalid) setState(() => _taxRateInvalid = false);
+    },
+    includeInSavings: _includeInSavings,
+    onIncludeInSavings: (v) => setState(() => _includeInSavings = v),
+    ter: (
+      controller: _terCtrl,
+      locale: _locale,
+      invalid: _terInvalid,
+      onEdited: () {
+        if (_terInvalid) setState(() => _terInvalid = false);
+      },
+    ),
+    active: (value: _isActive, onChanged: (v) => setState(() => _isActive = v)),
+  );
 
   void _selectResult(ProviderSearchResult result) {
     final (instrument, assetCls) = _classifyFromType(result.type);
@@ -180,9 +162,6 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   /// Derive instrument type + asset class from the provider's `type` field
   /// (e.g. "Equities", "etf", or the legacy "Stocks - Milano").
   static (InstrumentType, AssetClass) _classifyFromType(String type) => classifyFromProviderType(type);
-
-  static final _kIsinRegex = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$');
-  static bool _isinShaped(String s) => _kIsinRegex.hasMatch(s.toUpperCase());
 
   void _backToSearch() {
     setState(() {
@@ -208,7 +187,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
         widgetRef: widget.ref,
         onSelect: _selectResult,
         recoveryDefaultExchange: _selectedExchange ?? 'Milan',
-        recoveryCacheKeyBuilder: (q) => _isinShaped(q) ? q.toUpperCase() : q,
+        recoveryCacheKeyBuilder: isinCacheKey,
         onQueryChanged: (q) => _typedQuery = q,
         onResultsChanged: (rs) => _allResults = rs,
       ),
@@ -244,47 +223,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
             const SizedBox(height: 16),
             _buildExchangeDropdown(s),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<InstrumentType>(
-                    initialValue: _instrumentType,
-                    decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
-                    hint: const Text('-', style: TextStyle(fontSize: 13)),
-                    items: InstrumentType.values
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _instrumentType = v);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<AssetClass>(
-                    initialValue: _assetClass,
-                    decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
-                    hint: const Text('-', style: TextStyle(fontSize: 13)),
-                    items: AssetClass.values
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _assetClass = v);
-                    },
-                  ),
-                ),
-              ],
-            ),
+            _buildClassificationRow(s),
             const SizedBox(height: 16),
             _buildIntermediaryPicker(s),
             if (_unlocked) ..._buildAdvancedFields(s),
@@ -293,32 +232,93 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
-        FilledButton(
-          onPressed: _selectedIntermediaryId != null
-              ? () async {
-                  final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-                  final exchange = _selectedExchange ?? 'Milan';
-                  final defaultCurrency = exchangeCurrency[exchange] ?? baseCurrency;
-                  final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
-                  final currency = (_unlocked && overrideCurrency.length == 3) ? overrideCurrency : defaultCurrency;
-                  // If the user searched by an ISIN-shaped string, persist it
-                  // so price sync can use it as the cache key (otherwise the
-                  // ticker — e.g. a bond's "BE000035160=MI" — is not a valid
-                  // search term and price sync silently fails).
-                  final typed = _typedQuery.trim().toUpperCase();
-                  final isin = RegExp(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$').hasMatch(typed) ? typed : null;
-                  await _createAsset(
-                    name: r.description,
-                    intermediaryId: _selectedIntermediaryId!,
-                    currency: currency,
-                    ticker: r.symbol.isNotEmpty ? r.symbol : null,
-                    isin: isin,
-                    exchange: exchange,
-                  );
-                  if (mounted) Navigator.pop(context);
-                }
-              : null,
+        _buildCreateButton(
+          s,
+          enabled: _selectedIntermediaryId != null,
+          onCreate: (baseCurrency) async {
+            final exchange = _selectedExchange ?? 'Milan';
+            final defaultCurrency = exchangeCurrency[exchange] ?? baseCurrency;
+            final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
+            final currency = (_unlocked && overrideCurrency.length == 3) ? overrideCurrency : defaultCurrency;
+            // If the user searched by an ISIN-shaped string, persist it
+            // so price sync can use it as the cache key (otherwise the
+            // ticker — e.g. a bond's "BE000035160=MI" — is not a valid
+            // search term and price sync silently fails).
+            final typed = _typedQuery.trim().toUpperCase();
+            final isin = isIsin(typed) ? typed : null;
+            final created = await _createAsset(
+              name: r.description,
+              intermediaryId: _selectedIntermediaryId!,
+              currency: currency,
+              ticker: r.symbol.isNotEmpty ? r.symbol : null,
+              isin: isin,
+              exchange: exchange,
+            );
+            if (created && mounted) Navigator.pop(context);
+          },
+        ),
+      ],
+    );
+  }
+
+  /// The Create button of both flows. It hands [onCreate] the stored base
+  /// currency, the fallback currency of a new asset: until that has loaded
+  /// the button is off, so nothing is created with a guessed one. It is off
+  /// while a create runs, too.
+  Widget _buildCreateButton(AppStrings s, {required bool enabled, required Future<void> Function(String baseCurrency) onCreate}) {
+    // Watched by the dialog itself: the button turns on once it has loaded.
+    return Consumer(
+      builder: (context, ref, _) {
+        final baseCurrency = ref.watch(baseCurrencyProvider).value;
+        return FilledButton(
+          onPressed: enabled && baseCurrency != null && !_saving ? () => onCreate(baseCurrency) : null,
           child: Text(s.create),
+        );
+      },
+    );
+  }
+
+  /// Instrument type + asset class pickers, shared by the search-result and
+  /// the manual flow.
+  Widget _buildClassificationRow(AppStrings s) {
+    return Row(
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<InstrumentType>(
+            initialValue: _instrumentType,
+            decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
+            hint: const Text('-', style: TextStyle(fontSize: 13)),
+            items: InstrumentType.values
+                .map(
+                  (t) => DropdownMenuItem(
+                    value: t,
+                    child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13)),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _instrumentType = v);
+            },
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DropdownButtonFormField<AssetClass>(
+            initialValue: _assetClass,
+            decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
+            hint: const Text('-', style: TextStyle(fontSize: 13)),
+            items: AssetClass.values
+                .map(
+                  (c) => DropdownMenuItem(
+                    value: c,
+                    child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13)),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) {
+              if (v != null) setState(() => _assetClass = v);
+            },
+          ),
         ),
       ],
     );
@@ -386,67 +386,49 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
   }
 
   Widget _buildIntermediaryPicker(AppStrings s) {
-    final intermediariesAsync = widget.ref.watch(intermediariesProvider);
-    final list = intermediariesAsync.value ?? const <Intermediary>[];
-    if (list.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(s.selectIntermediaryEmpty, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.add, size: 18),
-            label: Text(s.addIntermediary),
-            onPressed: _createIntermediaryInline,
-          ),
-        ],
-      );
-    }
-    return DropdownButtonFormField<int>(
-      initialValue: _selectedIntermediaryId,
-      decoration: InputDecoration(labelText: s.selectIntermediary, isDense: true),
-      items: list
-          .map(
-            (i) => DropdownMenuItem(
-              value: i.id,
-              child: Text(i.name, style: const TextStyle(fontSize: 13)),
-            ),
-          )
-          .toList(),
-      onChanged: (v) {
-        if (v != null) setState(() => _selectedIntermediaryId = v);
+    // Watched by the dialog itself, not through the Assets screen's ref: the
+    // list changing (e.g. an intermediary added inline) must rebuild this.
+    return Consumer(
+      builder: (context, ref, _) {
+        final list = ref.watch(intermediariesProvider).value ?? const <Intermediary>[];
+        if (list.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(s.selectIntermediaryEmpty, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(s.addIntermediary),
+                onPressed: _createIntermediaryInline,
+              ),
+            ],
+          );
+        }
+        return DropdownButtonFormField<int>(
+          initialValue: list.any((i) => i.id == _selectedIntermediaryId) ? _selectedIntermediaryId : null,
+          decoration: InputDecoration(labelText: s.selectIntermediary, isDense: true),
+          items: list
+              .map(
+                (i) => DropdownMenuItem(
+                  value: i.id,
+                  child: Text(i.name, style: const TextStyle(fontSize: 13)),
+                ),
+              )
+              .toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _selectedIntermediaryId = v);
+          },
+        );
       },
     );
   }
 
+  /// Adds an intermediary through the app's one intermediary form (which owns
+  /// its text field) and selects the intermediary it created.
   Future<void> _createIntermediaryInline() async {
-    final s = widget.ref.read(appStringsProvider);
-    final nameCtrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(s.addIntermediary),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: InputDecoration(labelText: s.intermediaryName),
-            autofocus: true,
-            onChanged: (_) => setDialogState(() {}),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
-            FilledButton(
-              onPressed: nameCtrl.text.trim().isNotEmpty ? () => Navigator.pop(ctx, nameCtrl.text.trim()) : null,
-              child: Text(s.create),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (name == null || name.isEmpty) return;
-    final svc = widget.ref.read(intermediaryServiceProvider);
-    final id = await svc.create(name: name);
-    if (mounted) setState(() => _selectedIntermediaryId = id);
+    final created = await showIntermediaryEditDialog(context, widget.ref);
+    if (mounted && created != null) setState(() => _selectedIntermediaryId = created);
   }
 
   Widget _buildManualDialog() {
@@ -469,47 +451,7 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<InstrumentType>(
-                    initialValue: _instrumentType,
-                    decoration: InputDecoration(labelText: s.allocInstrument, isDense: true),
-                    hint: const Text('-', style: TextStyle(fontSize: 13)),
-                    items: InstrumentType.values
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(s.instrumentTypeLabel(t), style: const TextStyle(fontSize: 13)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _instrumentType = v);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<AssetClass>(
-                    initialValue: _assetClass,
-                    decoration: InputDecoration(labelText: s.allocAssetClass, isDense: true),
-                    hint: const Text('-', style: TextStyle(fontSize: 13)),
-                    items: AssetClass.values
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(s.assetClassLabel(c), style: const TextStyle(fontSize: 13)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _assetClass = v);
-                    },
-                  ),
-                ),
-              ],
-            ),
+            _buildClassificationRow(s),
             const SizedBox(height: 16),
             _buildIntermediaryPicker(s),
             if (_unlocked) ..._buildAdvancedFields(s),
@@ -518,22 +460,20 @@ class _CreateAssetDialogState extends State<_CreateAssetDialog> {
       ),
       actions: [
         TextButton(onPressed: _backToSearch, child: Text(s.back)),
-        FilledButton(
-          onPressed: (_manualNameCtrl.text.trim().isNotEmpty && _selectedIntermediaryId != null)
-              ? () async {
-                  final name = _manualNameCtrl.text.trim();
-                  final baseCurrency = widget.ref.read(baseCurrencyProvider).value ?? 'EUR';
-                  final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
-                  final currency = (_unlocked && overrideCurrency.length == 3) ? overrideCurrency : baseCurrency;
-                  await _createAsset(
-                    name: name,
-                    intermediaryId: _selectedIntermediaryId!,
-                    currency: currency,
-                  );
-                  if (mounted) Navigator.pop(context);
-                }
-              : null,
-          child: Text(s.create),
+        _buildCreateButton(
+          s,
+          enabled: _manualNameCtrl.text.trim().isNotEmpty && _selectedIntermediaryId != null,
+          onCreate: (baseCurrency) async {
+            final name = _manualNameCtrl.text.trim();
+            final overrideCurrency = _currencyCtrl.text.trim().toUpperCase();
+            final currency = (_unlocked && overrideCurrency.length == 3) ? overrideCurrency : baseCurrency;
+            final created = await _createAsset(
+              name: name,
+              intermediaryId: _selectedIntermediaryId!,
+              currency: currency,
+            );
+            if (created && mounted) Navigator.pop(context);
+          },
         ),
       ],
     );

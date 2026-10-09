@@ -6,7 +6,7 @@ import 'dart:ui';
 import '../../../build_flags.dart';
 
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,7 +17,10 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../utils/asset_value_math.dart';
 import '../../../utils/chart_math.dart' as chart_math;
+import '../../../utils/dialogs.dart';
 import '../../../utils/formatters.dart' as fmt;
+import 'package:finance_copilot/utils/logger.dart' show getLogger;
+import 'package:finance_copilot/utils/visualization_clock.dart' show startOfNextDay;
 
 import '../../../database/database.dart';
 import '../../../database/tables.dart';
@@ -26,6 +29,12 @@ import '../../../l10n/app_strings.dart';
 import '../../../models/dashboard_chart.dart';
 import 'package:finance_copilot/services/charts/default_charts_exporter.dart';
 import 'package:finance_copilot/services/charts/default_charts_loader.dart';
+import 'package:finance_copilot/services/classification/cash_flow_sankey.dart';
+import 'package:finance_copilot/services/classification/transaction_classifier_service.dart' show MerchantGroup;
+import 'package:finance_copilot/ui/screens/classification/transaction_classify_card.dart';
+import 'package:finance_copilot/services/classification/spending_by_category.dart';
+import 'package:finance_copilot/services/domain/asset_event_service.dart' show AssetEventService;
+import 'package:finance_copilot/services/domain/asset_service.dart' show AssetStats;
 import 'package:finance_copilot/services/market/exchange_rate_service.dart';
 import 'package:finance_copilot/services/pillars/financial_health_service.dart';
 import 'package:finance_copilot/services/portfolio/allocation_computation_service.dart';
@@ -33,6 +42,10 @@ import '../../../services/providers/providers.dart';
 import '../../widgets/ath_celebration_overlay.dart';
 import '../../widgets/global_app_bar_actions.dart';
 import '../../widgets/privacy_text.dart';
+import '../../widgets/category_ui.dart';
+import '../../widgets/empty_state.dart';
+import '../../widgets/footnote.dart';
+import '../../widgets/sankey_chart.dart';
 import 'package:finance_copilot/ui/screens/allocation/allocation_tab.dart';
 import '../../widgets/mobile_pull_to_refresh.dart';
 import 'eoy_projection.dart';
@@ -51,6 +64,7 @@ part 'yearly_summary_table.dart';
 part 'monthly_grid.dart';
 part 'yoy_diff_table.dart';
 part 'cashflow_charts.dart';
+part 'cash_flow_sankey_chart.dart';
 part 'totals_table.dart';
 part 'health_tab.dart';
 part 'chart_editor_dialog.dart';
@@ -58,6 +72,16 @@ part 'chart_editor_dialog.dart';
 // ════════════════════════════════════════════════════
 // Dashboard screen with dynamic custom charts
 // ════════════════════════════════════════════════════
+
+/// A series key `'<type>:<id>'` (e.g. `'asset_market:5'`) split into its type
+/// and numeric id; null for a key of any other shape (`'_total'`,
+/// `'cf:saving'`).
+({String type, int id})? parseSeriesKey(String key) {
+  final parts = key.split(':');
+  if (parts.length != 2) return null;
+  final id = int.tryParse(parts[1]);
+  return id == null ? null : (type: parts[0], id: id);
+}
 
 /// Public facade over the role resolvers living on `_DashboardScreenState`.
 /// Lets tests (and any future external caller) compute role-driven totals
@@ -175,11 +199,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
         children: [
           const _FinancialHealthTab(),
           _buildChartsTab(allDataAsync, locale, language, context, s),
-          _buildCashFlowTab(allDataAsync, locale, language, context, s),
+          _buildCashFlowTab(allDataAsync, locale, language, s),
           const AllocationTab(),
         ],
       ),
     );
+  }
+
+  /// Render bucket of a dashboard chart: the Price Changes widget first (0),
+  /// then the combined overlays (1), then every other chart (2) — regular and
+  /// role-tagged (cash / saving / portfolio / liquid_investments). Only
+  /// bucket-2 charts are reorderable.
+  static int _bucket(DashboardChart c) {
+    if (c.widgetType == 'price_changes') return 0;
+    if (c.sourceChartIds != null) return 1;
+    return 2;
   }
 
   Widget _buildChartsTab(
@@ -193,11 +227,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
-        if (allData == null) {
-          return Center(
-            child: Text(s.dashNoData, style: const TextStyle(color: Colors.grey)),
-          );
-        }
+        if (allData == null) return scrollableEmptyState(Icons.show_chart, s.dashNoData);
 
         final rawCharts = ref.watch(dashboardChartsProvider);
         // dashboardChartsProvider returns DB rows in debug mode and the
@@ -205,16 +235,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
         // Render order: Price Changes widget first, then combined-overlay
         // charts (Totals), then everything else (regular + role-tagged).
         // Within each bucket, preserve the user's sort_order.
-        int bucket(DashboardChart c) {
-          if (c.widgetType == 'price_changes') return 0;
-          if (c.sourceChartIds != null) return 1; // combined overlays
-          return 2; // regular charts + role-tagged (cash/saving/portfolio/liquid_investments)
-        }
-
         final charts = [...rawCharts]
           ..sort((a, b) {
-            final ba = bucket(a);
-            final bb = bucket(b);
+            final ba = _bucket(a);
+            final bb = _bucket(b);
             if (ba != bb) return ba.compareTo(bb);
             return a.sortOrder.compareTo(b.sortOrder);
           });
@@ -293,8 +317,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
                   final isUserChart = debugChartsEnabled;
                   // Only bucket-2 charts (regular + role-tagged) are reorderable.
                   // Price Changes and the combined Totals overlay stay fixed.
-                  final isReorderable = isUserChart && bucket(chart) == 2;
-                  final bucket2 = charts.where((c) => bucket(c) == 2).toList();
+                  final isReorderable = isUserChart && _bucket(chart) == 2;
+                  final bucket2 = charts.where((c) => _bucket(c) == 2).toList();
                   final pos = bucket2.indexWhere((c) => c.id == chart.id);
                   final canMoveUp = isReorderable && pos > 0;
                   final canMoveDown = isReorderable && pos >= 0 && pos < bucket2.length - 1;
@@ -344,45 +368,46 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
                     }),
                   );
 
-                  // Source charts: collapsible (same as Cash Flow tab)
+                  // Source charts: collapsible (same as Cash Flow tab). The
+                  // chart actions sit in the title row so the tile keeps its
+                  // standard chevron, which rotates on expand.
                   if (collapsedChartIds.contains(chart.id)) {
                     return Padding(
                       key: ValueKey(chart.id),
                       padding: const EdgeInsets.only(bottom: 8),
                       child: ExpansionTile(
-                        title: Text(chart.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        trailing: isUserChart
-                            ? Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (canMoveUp)
-                                    IconButton(
-                                      icon: const Icon(Icons.arrow_upward, size: 18),
-                                      onPressed: () => _moveChart(charts, chart, -1),
-                                      tooltip: s.moveUp,
-                                    ),
-                                  if (canMoveDown)
-                                    IconButton(
-                                      icon: const Icon(Icons.arrow_downward, size: 18),
-                                      onPressed: () => _moveChart(charts, chart, 1),
-                                      tooltip: s.moveDown,
-                                    ),
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined, size: 18),
-                                    onPressed: () => isCombined
-                                        ? _showCombineChartsDialog(context, charts, chart)
-                                        : _showChartEditor(context, allData, chart),
-                                    tooltip: s.edit,
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, size: 18),
-                                    onPressed: () => _deleteChart(context, chart),
-                                    tooltip: s.delete,
-                                  ),
-                                  const Icon(Icons.expand_more),
-                                ],
-                              )
-                            : null,
+                        title: Row(
+                          children: [
+                            Expanded(
+                              child: Text(chart.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                            if (isUserChart) ...[
+                              if (canMoveUp)
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_upward, size: 18),
+                                  onPressed: () => _moveChart(charts, chart, -1),
+                                  tooltip: s.moveUp,
+                                ),
+                              if (canMoveDown)
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_downward, size: 18),
+                                  onPressed: () => _moveChart(charts, chart, 1),
+                                  tooltip: s.moveDown,
+                                ),
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 18),
+                                onPressed: () =>
+                                    isCombined ? _showCombineChartsDialog(context, charts, chart) : _showChartEditor(context, allData, chart),
+                                tooltip: s.edit,
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18),
+                                onPressed: () => _deleteChart(context, chart),
+                                tooltip: s.delete,
+                              ),
+                            ],
+                          ],
+                        ),
                         children: [chartCard],
                       ),
                     );
@@ -441,7 +466,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
                     FloatingActionButton.small(
                       heroTag: 'dash_reset',
                       tooltip: s.chartResetDefaults,
-                      onPressed: () => _resetToDefaults(context, allData),
+                      onPressed: () => _resetToDefaults(context),
                       child: const Icon(Icons.restart_alt),
                     ),
                     const SizedBox(height: 8),
@@ -475,7 +500,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
                             leadingIcon: const Icon(Icons.add_chart),
                             onPressed: charts.any((c) => c.widgetType == role)
                                 ? null // already present — disabled
-                                : () => _restoreRoleChart(role, allData, s),
+                                : () => _restoreRoleChart(role),
                             child: Text(s.chartRestoreRole(_roleLabel(role, s))),
                           ),
                       ],
@@ -569,26 +594,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
     }
   }
 
-  Future<void> _resetToDefaults(BuildContext context, AllSeriesData allData) async {
+  Future<void> _resetToDefaults(BuildContext context) async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.chartResetConfirmTitle),
-        content: Text(s.chartResetConfirmBody),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(s.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.chartResetDefaults),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.chartResetConfirmTitle,
+      content: s.chartResetConfirmBody,
+      confirmLabel: s.chartResetDefaults,
+      cancelLabel: s.cancel,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     // Reset is a one-liner against the in-memory notifier — no DB
     // round-trip. The pristine list is the most-recently loaded JSON.
     ref.read(editableChartsProvider.notifier).reset();
@@ -602,28 +617,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
     DashboardChart chart,
     int direction,
   ) async {
-    // bucket() is defined above in _buildChartsTab's scope, but reorder is
-    // called from a handler outside it — recompute here for clarity.
-    int bucket(DashboardChart c) {
-      if (c.widgetType == 'price_changes') return 0;
-      if (c.sourceChartIds != null) return 1;
-      return 2;
-    }
-
-    final bucket2 = charts.where((c) => bucket(c) == 2).toList();
+    // Only within the bucket: never past its first or last chart.
+    final bucket2 = charts.where((c) => _bucket(c) == 2).toList();
     final idx = bucket2.indexWhere((c) => c.id == chart.id);
     if (idx < 0) return;
     final target = idx + direction;
     if (target < 0 || target >= bucket2.length) return;
-
-    final tmp = bucket2[idx];
-    bucket2[idx] = bucket2[target];
-    bucket2[target] = tmp;
-
-    // Reassemble the full order — fixed items keep the top, bucket-2 gets
-    // the new arrangement — and write back via the service.
-    // The notifier's `move` operates on adjacent indices in the full list.
-    // We just convert (chart, direction) to a notifier call.
     ref.read(editableChartsProvider.notifier).move(chart.id, direction);
   }
 
@@ -706,11 +705,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
   /// touching any other dashboard_charts row. Used by the "+" FAB menu so
   /// the user can restore an accidentally-deleted Cash / Saving / Portfolio
   /// / Liquid Investments chart with one click.
-  Future<void> _restoreRoleChart(
-    String role,
-    AllSeriesData allData,
-    AppStrings s,
-  ) async {
+  Future<void> _restoreRoleChart(String role) async {
     // The notifier's `restoreRole` already grabs a fresh template from
     // the pristine list (which itself was the most recent JSON load).
     ref.read(editableChartsProvider.notifier).restoreRole(role);
@@ -726,25 +721,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
 
   Future<void> _deleteChart(BuildContext context, DashboardChart chart) async {
     final s = ref.read(appStringsProvider);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.chartDeleteTitle),
-        content: Text(s.chartDeleteConfirm(chart.title)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(s.cancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.chartDeleteTitle,
+      content: s.chartDeleteConfirm(chart.title),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Colors.red,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       ref.read(editableChartsProvider.notifier).delete(chart.id);
     }
   }
@@ -753,18 +738,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
     AsyncValue<AllSeriesData?> allDataAsync,
     String locale,
     String language,
-    BuildContext context,
     AppStrings s,
   ) {
     return allDataAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(s.error(e))),
       data: (allData) {
-        if (allData == null) {
-          return Center(
-            child: Text(s.noDataYet, style: const TextStyle(color: Colors.grey)),
-          );
-        }
+        if (allData == null) return scrollableEmptyState(Icons.bar_chart, s.noDataYet);
         return _CashFlowTab(allData: allData, locale: locale, language: language);
       },
     );
@@ -823,7 +803,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
       if (srcSeries.isEmpty) continue;
 
       // Compute total spots for this source chart using the smart logic
-      final totalSpots = _buildSmartTotalSpotsStatic(srcSeries);
+      final totalSpots = buildSmartTotalSpots(srcSeries);
       if (totalSpots.isEmpty) continue;
 
       result.add(
@@ -838,39 +818,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
     }
 
     return result;
-  }
-
-  /// Static version of smart total spots for use outside ChartCard.
-  /// See `_ChartCardState._buildSmartTotalSpots` for the dedup rules.
-  static List<FlSpot> _buildSmartTotalSpotsStatic(List<ChartSeries> visible) {
-    final spotsForTotal = _seriesContributingToSmartTotal(visible).map((s) => s.spots).toList();
-    return buildTotalSpots(spotsForTotal);
-  }
-
-  static List<ChartSeries> _seriesContributingToSmartTotal(List<ChartSeries> visible) {
-    final visibleInvestedIds = <int>{};
-    final visibleMarketIds = <int>{};
-    final visibleNetIds = <int>{};
-    for (final s in visible) {
-      final parts = s.key.split(':');
-      if (parts.length != 2) continue;
-      final id = int.tryParse(parts[1]);
-      if (id == null) continue;
-      if (parts[0] == 'asset_invested') visibleInvestedIds.add(id);
-      if (parts[0] == 'asset_market') visibleMarketIds.add(id);
-      if (parts[0] == 'asset_net') visibleNetIds.add(id);
-    }
-    final excludeFromTotal = <String>{};
-    for (final id in visibleNetIds) {
-      excludeFromTotal.add('asset_invested:$id');
-      excludeFromTotal.add('asset_market:$id');
-    }
-    for (final id in visibleInvestedIds) {
-      if (visibleMarketIds.contains(id)) {
-        excludeFromTotal.add('asset_invested:$id');
-      }
-    }
-    return visible.where((s) => !excludeFromTotal.contains(s.key) && !s.rightAxis).toList();
   }
 
   static List<Map<String, dynamic>> _parseSeriesJson(String json) {
@@ -922,6 +869,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
     return result;
   }
 
+  /// The series of [series] whose key names one of the assets [ids].
+  static List<ChartSeries> _seriesOfAssets(List<ChartSeries> series, Set<int> ids) =>
+      series.where((ser) => ids.contains(parseSeriesKey(ser.key)?.id)).toList();
+
   /// Pick asset_market series whose asset's instrumentType is NOT in
   /// `illiquidTypes` (pension / realEstate / alternative / liability).
   /// Used both at seed time (default Liquid Investments chart) and in the
@@ -936,33 +887,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
       InstrumentType.alternative,
       InstrumentType.liability,
     };
-    final liquidIds = {
+    return _seriesOfAssets(allData.assetMarket, {
       for (final a in activeAssets)
         if (!illiquid.contains(a.instrumentType)) a.id,
-    };
-    return allData.assetMarket.where((ser) {
-      final parts = ser.key.split(':');
-      if (parts.length != 2) return false;
-      final id = int.tryParse(parts[1]);
-      return id != null && liquidIds.contains(id);
-    }).toList();
+    });
   }
 
   static List<ChartSeries> _savingsAssetInvested(
     AllSeriesData allData,
     List<Asset> activeAssets,
-  ) {
-    final savingsIds = {
-      for (final a in activeAssets)
-        if (a.includeInSavings) a.id,
-    };
-    return allData.assetInvested.where((ser) {
-      final parts = ser.key.split(':');
-      if (parts.length != 2) return false;
-      final id = int.tryParse(parts[1]);
-      return id != null && savingsIds.contains(id);
-    }).toList();
-  }
+  ) => _seriesOfAssets(allData.assetInvested, {
+    for (final a in activeAssets)
+      if (a.includeInSavings) a.id,
+  });
 
   static List<ChartSeries> _seriesForRole(
     String role,
@@ -1003,7 +940,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
     List<DashboardChart> charts,
     AllSeriesData allData,
     List<Asset> activeAssets,
-  ) => _buildSmartTotalSpotsStatic(_seriesForRole(role, charts, allData, activeAssets));
+  ) => buildSmartTotalSpots(_seriesForRole(role, charts, allData, activeAssets));
 
   static Set<int> assetIdsForRoleTotal(
     String role,
@@ -1013,11 +950,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with SingleTi
   ) {
     const assetTotalTypes = {'asset_invested', 'asset_market', 'asset_net'};
     final ids = <int>{};
-    for (final series in _seriesContributingToSmartTotal(_seriesForRole(role, charts, allData, activeAssets))) {
-      final parts = series.key.split(':');
-      if (parts.length != 2 || !assetTotalTypes.contains(parts[0])) continue;
-      final id = int.tryParse(parts[1]);
-      if (id != null) ids.add(id);
+    for (final series in smartTotalSeries(_seriesForRole(role, charts, allData, activeAssets))) {
+      final key = parseSeriesKey(series.key);
+      if (key != null && assetTotalTypes.contains(key.type)) ids.add(key.id);
     }
     return ids;
   }

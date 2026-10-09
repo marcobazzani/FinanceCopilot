@@ -8,8 +8,11 @@ import 'package:finance_copilot/ui/widgets/mobile_pull_to_refresh.dart';
 import 'package:finance_copilot/ui/widgets/privacy_text.dart';
 
 import 'package:finance_copilot/database/database.dart';
+import 'package:finance_copilot/services/pillars/financial_health_service.dart' show RatingExt, rateTer;
 import 'package:finance_copilot/services/portfolio/allocation_computation_service.dart' as alloc;
 import 'package:finance_copilot/ui/screens/dashboard/dashboard_screen.dart' show currencySymbol;
+import 'package:finance_copilot/ui/widgets/empty_state.dart';
+import 'package:finance_copilot/ui/widgets/footnote.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:intl/intl.dart';
 
@@ -46,7 +49,10 @@ Color _colorAt(int index) => _palette[index % _palette.length];
 // Helpers
 // ════════════════════════════════════════════════════
 
-String _pct(double value, double total) => total > 0 ? '${(value / total * 100).toStringAsFixed(1)}%' : '0%';
+/// A percentage with one decimal, spelled in [locale] ("60,0%" in it_IT).
+String _pctText(double pct, String locale) => '${NumberFormat('0.0', locale).format(pct)}%';
+
+String _pct(double value, double total, String locale) => total > 0 ? _pctText(value / total * 100, locale) : '0%';
 
 String _fmtMoney(double value, String locale, String currency) =>
     NumberFormat.currency(locale: locale, symbol: currency, decimalDigits: 0).format(value);
@@ -65,6 +71,7 @@ class AllocationTab extends ConsumerWidget {
     final marketValuesAsync = ref.watch(assetMarketValuesProvider);
     final compositionsAsync = ref.watch(assetCompositionsProvider);
     final baseCurrencyAsync = ref.watch(baseCurrencyProvider);
+    final stats = ref.watch(assetStatsProvider).value ?? const {};
 
     return assetsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -74,11 +81,20 @@ class AllocationTab extends ConsumerWidget {
         error: (e, _) => Center(child: Text(s.error(e))),
         data: (marketValues) {
           final baseCurrency = baseCurrencyAsync.value ?? 'EUR';
+          final active = assets.where((a) => a.isActive).toList();
           return AllocationOverviewBody(
-            assets: assets.where((a) => a.isActive).toList(),
+            assets: active,
             marketValues: marketValues,
             baseCurrency: baseCurrency,
             compositions: compositionsAsync.value ?? const {},
+            unvaluedCount: alloc.unvaluedAssetCount(
+              active,
+              marketValues,
+              heldIds: {
+                for (final e in stats.entries)
+                  if (e.value.totalQuantity != 0) e.key,
+              },
+            ),
           );
         },
       ),
@@ -92,25 +108,27 @@ class AllocationOverviewBody extends ConsumerWidget {
   final String baseCurrency;
   final Map<int, List<AssetComposition>> compositions;
 
+  /// Held assets without a value (no price or exchange rate): in no chart,
+  /// counted in a note above them.
+  final int unvaluedCount;
+
   const AllocationOverviewBody({
     super.key,
     required this.assets,
     required this.marketValues,
     required this.baseCurrency,
     required this.compositions,
+    this.unvaluedCount = 0,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
     final locale = ref.watch(appLocaleProvider).value ?? Platform.localeName;
-    final total = marketValues.values.fold(0.0, (a, b) => a + b);
+    // Over the holdings the slices are drawn from, so they add up to 100%.
+    final total = alloc.allocationTotal(assets, marketValues);
 
-    if (total == 0) {
-      return Center(
-        child: Text(s.noMarketValues, style: const TextStyle(color: Colors.grey)),
-      );
-    }
+    if (total == 0) return scrollableEmptyState(Icons.pie_chart_outline, s.noMarketValues);
 
     final byCountry = alloc.weightedBreakdown(
       assets,
@@ -177,23 +195,23 @@ class AllocationOverviewBody extends ConsumerWidget {
     final cards = <Widget>[
       _ChartCard(
         title: s.allocGeographic,
-        child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill),
+        child: _DrillableDonut(data: byCountry, total: total, drillDown: countryDrill, locale: locale),
       ),
       _ChartCard(
         title: s.allocSector,
-        child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill),
+        child: _DrillableDonut(data: bySector, total: total, drillDown: sectorDrill, locale: locale),
       ),
       _ChartCard(
         title: s.allocAssetClass,
-        child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill),
+        child: _DrillableDonut(data: byType, total: total, drillDown: typeDrill, locale: locale),
       ),
       _ChartCard(
         title: s.allocInstrument,
-        child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill),
+        child: _DrillableDonut(data: byInstrument, total: total, drillDown: instrumentDrill, locale: locale),
       ),
       _ChartCard(
         title: s.allocCurrency,
-        child: _DonutChart(data: byCurrency, total: total),
+        child: _DonutChart(data: byCurrency, total: total, locale: locale),
       ),
       _ChartCard(
         title: s.allocTopHoldings,
@@ -229,7 +247,17 @@ class AllocationOverviewBody extends ConsumerWidget {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(children: rows),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (unvaluedCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Footnote(s.unpricedExcludedFromTotal(unvaluedCount)),
+                  ),
+                ...rows,
+              ],
+            ),
           ),
         );
       },
@@ -277,11 +305,13 @@ class _DrillableDonut extends StatefulWidget {
   final Map<String, double> data;
   final double total;
   final Map<String, Map<String, double>> drillDown;
+  final String locale;
 
   const _DrillableDonut({
     required this.data,
     required this.total,
     required this.drillDown,
+    required this.locale,
   });
 
   @override
@@ -319,7 +349,7 @@ class _DrillableDonutState extends State<_DrillableDonut> {
                     const Icon(Icons.arrow_back, size: 16),
                     const SizedBox(width: 6),
                     Text(
-                      '$_selectedSlice  ${_pct(subTotal, widget.total)}',
+                      '$_selectedSlice  ${_pct(subTotal, widget.total, widget.locale)}',
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                   ],
@@ -381,7 +411,7 @@ class _DrillableDonutState extends State<_DrillableDonut> {
                       value: entries[i].value,
                       color: _colorAt(i),
                       radius: 60,
-                      title: pct >= 5 ? '${pct.toStringAsFixed(1)}%' : '',
+                      title: pct >= 5 ? _pctText(pct, widget.locale) : '',
                       titleStyle: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -403,7 +433,7 @@ class _DrillableDonutState extends State<_DrillableDonut> {
               if (entries[i].value / total * 100 >= 0.5) ...[
                 Builder(
                   builder: (_) {
-                    final label = '${entries[i].key} ${_pct(entries[i].value, total)}';
+                    final label = '${entries[i].key} ${_pct(entries[i].value, total, widget.locale)}';
                     final child = Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -440,8 +470,9 @@ class _DrillableDonutState extends State<_DrillableDonut> {
 class _DonutChart extends ConsumerWidget {
   final Map<String, double> data;
   final double total;
+  final String locale;
 
-  const _DonutChart({required this.data, required this.total});
+  const _DonutChart({required this.data, required this.total, required this.locale});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -464,7 +495,7 @@ class _DonutChart extends ConsumerWidget {
                   value: entries[i].value,
                   color: _colorAt(i),
                   radius: 60,
-                  title: pct >= 5 ? '${pct.toStringAsFixed(1)}%' : '',
+                  title: pct >= 5 ? _pctText(pct, locale) : '',
                   titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                 );
               }),
@@ -483,7 +514,7 @@ class _DonutChart extends ConsumerWidget {
                   children: [
                     Container(width: 10, height: 10, color: _colorAt(i)),
                     const SizedBox(width: 4),
-                    Text('${entries[i].key} ${_pct(entries[i].value, total)}', style: const TextStyle(fontSize: 12)),
+                    Text('${entries[i].key} ${_pct(entries[i].value, total, locale)}', style: const TextStyle(fontSize: 12)),
                   ],
                 ),
           ],
@@ -580,7 +611,7 @@ class _TopHoldingsInteractiveState extends ConsumerState<_TopHoldingsInteractive
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${pct.toStringAsFixed(1)}%',
+                  _pctText(pct, widget.locale),
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
                 ),
                 if (!isPrivate) ...[
@@ -628,7 +659,6 @@ class _ConcentrationCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isPrivate = ref.watch(privacyModeProvider);
     final sl = ref.watch(appStringsProvider);
     final count = holdings.length;
     final conc = alloc.computeConcentration(holdings, total);
@@ -642,14 +672,14 @@ class _ConcentrationCard extends ConsumerWidget {
           children: [
             Text(sl.concentrationRisk, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
-            _metricRow(sl.allocPortfolioVal, _fmtMoney(total, locale, baseCurrency), blur: isPrivate),
+            _metricRow(sl.allocPortfolioVal, _fmtMoney(total, locale, baseCurrency), positionSize: true),
             _metricRow(sl.allocHoldings, '$count'),
             const Divider(),
-            _metricRow('Top 1', '${conc.top1.toStringAsFixed(1)}%${count >= 1 ? '  (${holdings[0].key})' : ''}'),
-            _metricRow('Top 3', '${conc.top3.toStringAsFixed(1)}%'),
-            _metricRow('Top 5', '${conc.top5.toStringAsFixed(1)}%'),
+            _metricRow(sl.top1, '${_pctText(conc.top1, locale)}${count >= 1 ? '  (${holdings[0].key})' : ''}'),
+            _metricRow(sl.top3, _pctText(conc.top3, locale)),
+            _metricRow(sl.top5, _pctText(conc.top5, locale)),
             const Divider(),
-            _metricRow('HHI', conc.hhi.toStringAsFixed(0)),
+            _metricRow(sl.hhiLabel, NumberFormat('0', locale).format(conc.hhi)),
             Text(
               conc.classification == 'diversified'
                   ? sl.allocWellDiversified
@@ -671,16 +701,20 @@ class _ConcentrationCard extends ConsumerWidget {
     );
   }
 
-  Widget _metricRow(String label, String value, {bool blur = false}) {
+  /// [positionSize] values are masked in privacy mode; counts, weights and
+  /// the HHI are shape and stay readable.
+  Widget _metricRow(String label, String value, {bool positionSize = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-          blur
-              ? PrivacyText(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))
-              : Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          PrivacyText(
+            value,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            masked: positionSize,
+          ),
         ],
       ),
     );
@@ -707,37 +741,38 @@ class _InvestmentCostsCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
-    final isPrivate = ref.watch(privacyModeProvider);
     final symbol = currencySymbol(baseCurrency);
     final amtFmt = NumberFormat.currency(locale: locale, symbol: symbol, decimalDigits: 0);
     final pctFmt = NumberFormat('0.00', locale);
     final theme = Theme.of(context);
 
     final rows = <({String name, String fullName, double? ter, double mv, double cost})>[];
-    double totalValue = 0, totalCost = 0;
+    double totalValue = 0;
 
     for (final asset in assets) {
-      final mv = marketValues[asset.id] ?? 0.0;
-      if (mv <= 0) continue;
+      // Same holdings as the charts: an unvalued asset is counted in the note
+      // above them, a liability has no running cost.
+      final mv = marketValues[asset.id];
+      if (mv == null || mv <= 0) continue;
       totalValue += mv;
       final cost = (asset.ter != null && asset.ter! > 0) ? mv * asset.ter! / 100 : 0.0;
-      if (cost > 0) totalCost += cost;
       rows.add((name: asset.ticker ?? asset.name, fullName: asset.name, ter: asset.ter, mv: mv, cost: cost));
     }
     rows.sort((a, b) => b.cost.compareTo(a.cost));
-    final weightedTer = totalValue > 0 ? totalCost / totalValue * 100 : 0.0;
+    // Funds without a TER on record are left out of the weighted TER instead
+    // of counting as free, and counted in a note below the total.
+    final weighted = alloc.computeWeightedTer(assets, marketValues);
+    final weightedTer = weighted.ter;
 
-    Color terColor(double ter) => ter <= 0.20
-        ? Colors.green.shade400
-        : ter <= 0.50
-        ? Colors.lightGreen
-        : ter <= 1.00
-        ? Colors.orange
-        : Colors.red.shade400;
+    // The rating's own colour: a TER reads the same colour here as on the
+    // Health tab.
+    Color terColor(double ter) => rateTer(ter).color;
 
     final hs = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant);
     final vs = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
 
+    // Values and costs are position size (PrivacyText masks them in privacy
+    // mode); TERs are percentages and stay readable.
     return SizedBox(
       width: 960,
       child: Card(
@@ -795,19 +830,15 @@ class _InvestmentCostsCard extends ConsumerWidget {
                         ),
                         Expanded(
                           flex: 3,
-                          child: isPrivate
-                              ? PrivacyText(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right)
-                              : Text(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right),
+                          child: PrivacyText(amtFmt.format(row.mv), style: vs, textAlign: TextAlign.right),
                         ),
                         Expanded(
                           flex: 3,
-                          child: isPrivate
-                              ? PrivacyText(amtFmt.format(row.cost), style: vs, textAlign: TextAlign.right)
-                              : Text(
-                                  row.ter != null ? amtFmt.format(row.cost) : '-',
-                                  style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey),
-                                  textAlign: TextAlign.right,
-                                ),
+                          child: PrivacyText(
+                            row.ter != null ? amtFmt.format(row.cost) : '-',
+                            style: vs?.copyWith(color: row.ter != null ? Colors.red.shade300 : Colors.grey),
+                            textAlign: TextAlign.right,
+                          ),
                         ),
                       ],
                     ),
@@ -824,42 +855,31 @@ class _InvestmentCostsCard extends ConsumerWidget {
                       Expanded(
                         flex: 2,
                         child: Text(
-                          '${pctFmt.format(weightedTer)}%',
-                          style: vs?.copyWith(fontWeight: FontWeight.bold, color: terColor(weightedTer)),
+                          weightedTer == null ? '-' : '${pctFmt.format(weightedTer)}%',
+                          style: vs?.copyWith(fontWeight: FontWeight.bold, color: weightedTer == null ? Colors.grey : terColor(weightedTer)),
                           textAlign: TextAlign.right,
                         ),
                       ),
                       Expanded(
                         flex: 3,
-                        child: isPrivate
-                            ? PrivacyText(
-                                amtFmt.format(totalValue),
-                                style: vs?.copyWith(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.right,
-                              )
-                            : Text(
-                                amtFmt.format(totalValue),
-                                style: vs?.copyWith(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.right,
-                              ),
+                        child: PrivacyText(
+                          amtFmt.format(totalValue),
+                          style: vs?.copyWith(fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.right,
+                        ),
                       ),
                       Expanded(
                         flex: 3,
-                        child: isPrivate
-                            ? PrivacyText(
-                                amtFmt.format(totalCost),
-                                style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400),
-                                textAlign: TextAlign.right,
-                              )
-                            : Text(
-                                amtFmt.format(totalCost),
-                                style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400),
-                                textAlign: TextAlign.right,
-                              ),
+                        child: PrivacyText(
+                          amtFmt.format(weighted.annualCost),
+                          style: vs?.copyWith(fontWeight: FontWeight.bold, color: Colors.red.shade400),
+                          textAlign: TextAlign.right,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                if (weighted.unknownTerFunds > 0) Footnote(s.terUnknownExcluded(weighted.unknownTerFunds)),
               ],
             ],
           ),

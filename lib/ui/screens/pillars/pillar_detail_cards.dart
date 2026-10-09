@@ -3,10 +3,15 @@ part of 'pillar_detail_screen.dart';
 class _AssetSliderRow extends StatelessWidget {
   final _AssetRowState row;
   final Asset? asset;
-  final double assetMarketValue;
+
+  /// Value of the whole holding; null without a price or exchange rate, shown
+  /// as a dash and never as 0.
+  final double? assetMarketValue;
   final String baseCurrency;
   final String locale;
   final double? targetWeight;
+
+  /// Null when the asset has no value to weigh.
   final double? currentWeight;
   final void Function(double newQty) onChanged;
   final VoidCallback onChangeEnd;
@@ -32,8 +37,20 @@ class _AssetSliderRow extends StatelessWidget {
     final percent = row.currentPercent;
     final maxPct = row.maxPercent;
     final disabled = maxPct <= 0;
+    // A cap below 100% means other STANDARD pillars already hold part of the
+    // position (they partition it; virtual portfolios overlap and always cap at
+    // 100%). Say how much is elsewhere, otherwise the slider just looks stuck.
+    final elsewhere = row.total - row.available;
+    // The units held elsewhere are a quantity: masked in privacy mode, since
+    // next to the cap they give the whole position away. The cap itself is a
+    // share of the holding and stays readable.
+    final maxLabel = elsewhere > 1e-9 ? s.pillarMaxPercentElsewhere(maxPct.round(), privacySlot(0)) : s.pillarMaxPercent(maxPct.round());
     final pf = NumberFormat.percentPattern(locale)..maximumFractionDigits = 1;
-    final sliceValue = row.total <= 0 ? 0.0 : assetMarketValue * (row.current / row.total);
+    final marketValue = assetMarketValue;
+    final sliceValue = marketValue == null ? null : (row.total <= 0 ? 0.0 : marketValue * (row.current / row.total));
+    String money(double? v) => v == null ? '—' : '${amf.format(v)} $baseCurrency';
+    final weightFormat = NumberFormat('0.00', locale);
+    String weight(double? v) => v == null ? '—' : '${weightFormat.format(v)}%';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
@@ -49,7 +66,7 @@ class _AssetSliderRow extends StatelessWidget {
                 ),
               ),
               PrivacyText(
-                '${amf.format(assetMarketValue)} $baseCurrency',
+                money(marketValue),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(width: 8),
@@ -100,17 +117,33 @@ class _AssetSliderRow extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 4, top: 0),
-            child: PrivacyText(
-              '${s.pillarUnitsOf(qf.format(row.current), qf.format(row.total))} · ${amf.format(sliceValue)} $baseCurrency · ${s.pillarMaxPercent(maxPct.round())}',
-              style: Theme.of(context).textTheme.bodySmall,
+            // Units held and the slice value are position size (masked); the
+            // "max N%" cap is a share of the holding, not its magnitude, so it
+            // stays readable.
+            // Wrap, not Row: the max-label can carry the "units in other
+            // pillars" explanation, and a fixed row would overflow on narrow
+            // cards, hiding the very text that explains the cap.
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                PrivacyText(
+                  '${s.pillarUnitsOf(qf.format(row.current), qf.format(row.total))} · ${money(sliceValue)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                PrivacySentence(' · $maxLabel', figures: [qf.format(elsewhere)], style: Theme.of(context).textTheme.bodySmall),
+              ],
             ),
           ),
-          if (targetWeight != null && currentWeight != null) ...[
+          if (targetWeight != null) ...[
             const SizedBox(height: 4),
-            PrivacyText(
-              '${s.portfolioDivergenceTarget}: ${targetWeight!.toStringAsFixed(2)}% · '
-              '${s.portfolioDivergenceCurrent}: ${currentWeight!.toStringAsFixed(2)}% · '
-              '${s.portfolioDivergenceDelta}: ${(currentWeight! - targetWeight!).toStringAsFixed(2)}%',
+            // Target / current / delta weights are all percentages: composition,
+            // not magnitude. Masking them told the user nothing about their
+            // position and hid the only thing the screen is for. An asset with
+            // no value has no current weight: a dash, not 0%.
+            Text(
+              '${s.portfolioDivergenceTarget}: ${weight(targetWeight)} · '
+              '${s.portfolioDivergenceCurrent}: ${weight(currentWeight)} · '
+              '${s.portfolioDivergenceDelta}: ${weight(currentWeight == null ? null : currentWeight! - targetWeight!)}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -136,6 +169,7 @@ List<Widget> _divergenceFooterRows({
   required Map<String, double> targetWeightByIsin,
 }) {
   final amountFormat = fmt.amountFormat(locale);
+  final weightFormat = NumberFormat('0.00', locale);
   final targetIsins = targetWeightByIsin.keys.toSet();
   final heldIsins = <String>{};
   final extraRows = <Widget>[];
@@ -144,8 +178,11 @@ List<Widget> _divergenceFooterRows({
   for (final row in visibleRows) {
     final asset = assetById[row.assetId];
     final isin = asset?.isin?.trim();
-    final assetValue = marketValues[row.assetId] ?? 0;
-    final sliceValue = row.total <= 0 ? 0.0 : assetValue * (row.current / row.total);
+    // Without a price or exchange rate there is no slice value: a dash.
+    final assetValue = marketValues[row.assetId];
+    final slice = assetValue == null
+        ? '—'
+        : '${amountFormat.format(row.total <= 0 ? 0.0 : assetValue * (row.current / row.total))} $baseCurrency';
     if (isin == null || isin.isEmpty) {
       extraRows.add(
         ListTile(
@@ -153,12 +190,12 @@ List<Widget> _divergenceFooterRows({
           leading: const Icon(Icons.add_circle_outline),
           title: Text(asset?.name ?? '#${row.assetId}'),
           subtitle: Text(s.rebalanceMissingIsin),
-          trailing: Text('${amountFormat.format(sliceValue)} $baseCurrency'),
+          trailing: PrivacyText(slice),
         ),
       );
       continue;
     }
-    final key = _normaliseIsin(isin);
+    final key = normaliseIsin(isin);
     heldIsins.add(key);
     if (!targetIsins.contains(key)) {
       extraRows.add(
@@ -167,7 +204,7 @@ List<Widget> _divergenceFooterRows({
           leading: const Icon(Icons.add_circle_outline),
           title: Text(asset?.name ?? '#${row.assetId}'),
           subtitle: Text(isin),
-          trailing: Text('${amountFormat.format(sliceValue)} $baseCurrency'),
+          trailing: PrivacyText(slice),
         ),
       );
     }
@@ -180,7 +217,7 @@ List<Widget> _divergenceFooterRows({
         dense: true,
         leading: const Icon(Icons.link_off),
         title: Text(entry.key),
-        subtitle: Text('${s.portfolioDivergenceTarget}: ${entry.value.toStringAsFixed(2)}%'),
+        subtitle: Text('${s.portfolioDivergenceTarget}: ${weightFormat.format(entry.value)}%'),
       ),
     );
   }
@@ -217,17 +254,22 @@ List<Widget> _divergenceFooterRows({
   return widgets;
 }
 
-String _normaliseIsin(String value) => value.trim().toUpperCase();
-
 class _ObjectiveCard extends ConsumerWidget {
   final Pillar pillar;
-  final double value;
+
+  /// Null when every asset of the pillar is left out of it (see
+  /// [unpricedCount]): unknown, shown as a dash and never as 0.
+  final double? value;
+
+  /// Assets in the pillar left out of [value]: no price or exchange rate.
+  final int unpricedCount;
   final PillarPerformanceSnapshot? performance;
   final String locale;
   final String baseCurrency;
   const _ObjectiveCard({
     required this.pillar,
     required this.value,
+    this.unpricedCount = 0,
     required this.performance,
     required this.locale,
     required this.baseCurrency,
@@ -236,11 +278,16 @@ class _ObjectiveCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(appStringsProvider);
+    final value = this.value;
     final hasTarget = pillar.targetValue != null && pillar.targetValue! > 0;
+    // The target lives in its own currency: the progress needs it in the base
+    // currency of [value], and there is none without an exchange rate.
+    final targetInBase = pillarTargetInBase(ref, pillar, baseCurrency);
     final amountFormat = fmt.amountFormat(locale);
     final percentFormat = NumberFormat.percentPattern(locale)
       ..minimumFractionDigits = 1
       ..maximumFractionDigits = 1;
+    final excludedFromPerformance = performance?.excludedAssetCount ?? 0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -254,43 +301,50 @@ class _ObjectiveCard extends ConsumerWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            PrivacyText(s.pillarValue('${fmt.amountFormat(locale).format(value)} $baseCurrency')),
+            // An unknown value reads "—", which carries no magnitude: only a
+            // real value is masked.
+            if (value == null)
+              Text(s.pillarValue('—'))
+            else
+              PrivacyText(s.pillarValue('${fmt.amountFormat(locale).format(value)} $baseCurrency')),
+            if (unpricedCount > 0) Footnote(s.pillarUnpricedExcluded(unpricedCount)),
             if (hasTarget) ...[
               const SizedBox(height: 4),
               PrivacyText(s.pillarTarget('${fmt.amountFormat(locale).format(pillar.targetValue)} ${pillar.targetCurrency}')),
               const SizedBox(height: 8),
-              LinearProgressIndicator(
-                value: (value / pillar.targetValue!).clamp(0.0, 1.0),
-              ),
+              if (targetInBase == null || value == null)
+                const Text('—')
+              else
+                LinearProgressIndicator(
+                  value: (value / targetInBase).clamp(0.0, 1.0),
+                ),
             ],
             const SizedBox(height: 12),
             const Divider(height: 1),
             const SizedBox(height: 12),
             _PerformanceRow(
               label: s.pillarAbsoluteReturn,
-              value: _formatAbsoluteReturn(
+              maskedValue: _formatReturnAmount(
                 amountFormat: amountFormat,
-                percentFormat: percentFormat,
                 baseCurrency: baseCurrency,
                 snapshot: performance,
               ),
+              plainValue: _hasPerformance(performance) ? _formatPercent(performance?.absoluteReturnPct, percentFormat) : '—',
             ),
             const SizedBox(height: 8),
             _PerformanceRow(
               label: s.pillarTwrr,
-              value: _formatPercent(
-                performance?.twrr,
-                percentFormat,
-              ),
+              plainValue: _formatPercent(performance?.twrr, percentFormat),
             ),
             const SizedBox(height: 8),
             _PerformanceRow(
               label: s.pillarCagr,
-              value: _formatPercent(
-                performance?.cagr,
-                percentFormat,
-              ),
+              plainValue: _formatPercent(performance?.cagr, percentFormat),
             ),
+            if (excludedFromPerformance > 0) ...[
+              const SizedBox(height: 8),
+              Footnote(s.pillarPerformanceExcluded(excludedFromPerformance)),
+            ],
           ],
         ),
       ),
@@ -298,46 +352,51 @@ class _ObjectiveCard extends ConsumerWidget {
   }
 }
 
+/// One performance line, split along the privacy boundary.
+///
+/// [maskedValue] is position size (a return in currency) and is blurred in
+/// privacy mode; [plainValue] is shape (a percentage) and always stays
+/// readable. TWRR and CAGR pass only [plainValue]: blurring them with the rest
+/// would hide the very numbers privacy mode is meant to preserve.
 class _PerformanceRow extends StatelessWidget {
   final String label;
-  final String value;
+  final String? maskedValue;
+  final String? plainValue;
 
   const _PerformanceRow({
     required this.label,
-    required this.value,
+    this.maskedValue,
+    this.plainValue,
   });
 
   @override
   Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodyMedium;
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium,
+        Expanded(child: Text(label, style: style)),
+        if (maskedValue != null)
+          Flexible(
+            child: PrivacyText(maskedValue!, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
-        ),
-        PrivacyText(
-          value,
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        if (maskedValue != null && plainValue != null) Text(' · ', style: style),
+        if (plainValue != null) Text(plainValue!, style: style),
       ],
     );
   }
 }
 
-String _formatAbsoluteReturn({
+bool _hasPerformance(PillarPerformanceSnapshot? snapshot) => snapshot != null && !(snapshot.marketValue == 0 && snapshot.netInvested == 0);
+
+/// The currency half of the absolute return. Kept separate from the percentage
+/// so the amount can be masked while the percentage stays readable.
+String _formatReturnAmount({
   required NumberFormat amountFormat,
-  required NumberFormat percentFormat,
   required String baseCurrency,
   required PillarPerformanceSnapshot? snapshot,
 }) {
-  if (snapshot == null || (snapshot.marketValue == 0 && snapshot.netInvested == 0)) {
-    return '—';
-  }
-  final amount = '${amountFormat.format(snapshot.absoluteReturnAmount)} $baseCurrency';
-  final pct = _formatPercent(snapshot.absoluteReturnPct, percentFormat);
-  return '$amount · $pct';
+  if (!_hasPerformance(snapshot)) return '—';
+  return '${amountFormat.format(snapshot!.absoluteReturnAmount)} $baseCurrency';
 }
 
 String _formatPercent(double? value, NumberFormat percentFormat) {

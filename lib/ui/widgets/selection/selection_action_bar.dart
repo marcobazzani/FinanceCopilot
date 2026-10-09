@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/app_strings.dart';
 import '../../../services/providers/providers.dart';
+import '../../../utils/dialogs.dart';
 import 'selection_controller.dart';
 
 /// Persistent bottom action bar shown while a [SelectionController] is active.
@@ -23,11 +24,16 @@ class SelectionActionBar<T> extends ConsumerWidget {
   /// dialog. On success, the controller is cleared automatically.
   final Future<void> Function(Set<T> ids) onDelete;
 
+  /// Optional screen-specific actions rendered before the delete button
+  /// (e.g. "Set category" on a transaction ledger).
+  final List<Widget> extraActions;
+
   const SelectionActionBar({
     super.key,
     required this.controller,
     required this.visibleIds,
     required this.onDelete,
+    this.extraActions = const [],
   });
 
   @override
@@ -77,6 +83,7 @@ class SelectionActionBar<T> extends ConsumerWidget {
                           },
                   ),
                   const SizedBox(width: 4),
+                  ...extraActions,
                   IconButton(
                     icon: Icon(Icons.delete, color: theme.colorScheme.error),
                     tooltip: s.delete,
@@ -95,25 +102,16 @@ class SelectionActionBar<T> extends ConsumerWidget {
     final count = controller.count;
     final ids = controller.ids;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(s.bulkDeleteTitle),
-        content: Text(s.bulkDeleteBody(count)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(s.delete),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: s.bulkDeleteTitle,
+      content: s.bulkDeleteBody(count),
+      confirmLabel: s.delete,
+      cancelLabel: s.cancel,
+      confirmColor: Theme.of(context).colorScheme.error,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     await onDelete(ids);
     controller.clear();

@@ -237,4 +237,86 @@ void main() {
       expect(txns.first.amount, closeTo(expected, 0.01));
     });
   });
+
+  group('Clipboard import honors the pasted locale (regression)', () {
+    // Clipboard previews never carry a `numberLocale` (there is no XLSX
+    // cell-formatting step to remember it from) — `_ensurePreviewLocale`
+    // used to treat that as "locale changed, needs XLSX-style
+    // re-formatting" and ran EVERY clipboard cell shaped like a plain
+    // dot-decimal number (e.g. "1.234") through the XLSX
+    // stringified-double reinterpretation path. For it_IT that silently
+    // turned a genuine four-figure amount into a fraction: "1.234"
+    // (one thousand two hundred thirty-four) became 1.234.
+    test('it_IT thousands-separated amount is not reinterpreted as a decimal', () async {
+      final accountId = await seedAccount('ClipboardItIT');
+      final preview = await importer.parseClipboard('date;amount;description\n01/01/2026;1.234;Stipendio\n');
+      await importer.importTransactions(
+        preview: preview,
+        accountId: accountId,
+        numberLocaleOverride: 'it_IT',
+        appLocale: 'it_IT',
+        mappings: const [
+          ColumnMapping(targetField: 'date', sourceColumn: 'date'),
+          ColumnMapping(targetField: 'amount', sourceColumn: 'amount'),
+          ColumnMapping(targetField: 'description', sourceColumn: 'description'),
+        ],
+      );
+      final txns = await db.select(db.transactions).get();
+      expect(txns.single.amount, 1234, reason: 'it_IT "1.234" means 1234, not the fraction 1.234');
+    });
+
+    test('en_US decimal amount is not reinterpreted as an XLSX-style value', () async {
+      final accountId = await seedAccount('ClipboardEnUS');
+      final preview = await importer.parseClipboard('date,amount,description\n01/01/2026,1.234,Paycheck\n');
+      await importer.importTransactions(
+        preview: preview,
+        accountId: accountId,
+        numberLocaleOverride: 'en_US',
+        appLocale: 'en_US',
+        mappings: const [
+          ColumnMapping(targetField: 'date', sourceColumn: 'date'),
+          ColumnMapping(targetField: 'amount', sourceColumn: 'amount'),
+          ColumnMapping(targetField: 'description', sourceColumn: 'description'),
+        ],
+      );
+      final txns = await db.select(db.transactions).get();
+      expect(txns.single.amount, closeTo(1.234, 0.0001));
+    });
+  });
+
+  group('XLSX numeric cells preserve full precision (regression)', () {
+    test('a quantity with more than 3 fractional digits survives import unrounded', () async {
+      final file = writeXlsx('precision.xlsx', [
+        {'date': '01/01/2026', 'valueDate': '01/01/2026', 'entrate': 0.00012345, 'uscite': null, 'descrizione': 'Fractional'},
+      ]);
+      final accountId = await seedAccount('Precision');
+      final (previewSum, importedSum, count) = await previewAndImport(
+        file: file,
+        accountId: accountId,
+        numberLocale: 'en_US',
+        appLocale: 'en_US',
+      );
+      expect(count, 1);
+      // NumberFormat.decimalPattern's default 3-fraction-digit rounding
+      // would have collapsed this to 0.
+      expect(previewSum, closeTo(0.00012345, 1e-9));
+      expect(importedSum, closeTo(0.00012345, 1e-9));
+    });
+
+    test('a high-precision price under it_IT survives import unrounded', () async {
+      final file = writeXlsx('precision_it.xlsx', [
+        {'date': '01/01/2026', 'valueDate': '01/01/2026', 'entrate': 108.567891, 'uscite': null, 'descrizione': 'Fractional'},
+      ]);
+      final accountId = await seedAccount('PrecisionIt');
+      final (previewSum, importedSum, count) = await previewAndImport(
+        file: file,
+        accountId: accountId,
+        numberLocale: 'it_IT',
+        appLocale: 'it_IT',
+      );
+      expect(count, 1);
+      expect(previewSum, closeTo(108.567891, 1e-6));
+      expect(importedSum, closeTo(108.567891, 1e-6));
+    });
+  });
 }

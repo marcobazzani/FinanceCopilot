@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../l10n/app_strings.dart';
 import '../services/providers/providers.dart';
 import '../version.dart';
 import 'logger.dart';
@@ -25,64 +26,14 @@ Future<void> openBugReporter(
   final s = ref.read(appStringsProvider);
 
   // Step 1: Confirmation dialog with description & steps fields
-  final descController = TextEditingController();
-  final stepsController = TextEditingController();
-
-  final confirmed = await showDialog<bool>(
+  final report = await showDialog<({String description, String steps})>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Row(
-        children: [
-          const Icon(Icons.support_agent),
-          const SizedBox(width: 8),
-          Text(s.support),
-        ],
-      ),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(ctx).width - 80),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(s.ticketerConfirmDesc),
-            const SizedBox(height: 12),
-            Text(s.ticketerLoginReminder, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: descController,
-              decoration: InputDecoration(
-                labelText: s.ticketerDescriptionLabel,
-                border: const OutlineInputBorder(),
-              ),
-              maxLines: 3,
-              minLines: 2,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: stepsController,
-              decoration: InputDecoration(
-                labelText: s.ticketerStepsLabel,
-                hintText: s.ticketerStepsHint,
-                border: const OutlineInputBorder(),
-              ),
-              maxLines: 4,
-              minLines: 2,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(s.cancel)),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(s.ticketerContinue)),
-      ],
-    ),
+    builder: (_) => _BugReportFormDialog(strings: s),
   );
-  if (confirmed != true || !context.mounted) return;
+  if (report == null || !context.mounted) return;
 
-  final userDescription = descController.text.trim();
-  final userSteps = stepsController.text.trim();
-  descController.dispose();
-  stepsController.dispose();
+  final userDescription = report.description;
+  final userSteps = report.steps;
 
   // Step 2: Collect data
   bool? previousPrivacy;
@@ -235,13 +186,6 @@ Future<void> openBugReporter(
         ),
       ),
       actions: [
-        FilledButton.icon(
-          icon: const Icon(Icons.open_in_new),
-          label: Text(s.ticketerOpenIssue),
-          onPressed: () {
-            launchUrl(issueUrl, mode: LaunchMode.externalApplication);
-          },
-        ),
         TextButton(
           onPressed: () {
             // Clean up temp files
@@ -255,9 +199,94 @@ Future<void> openBugReporter(
           },
           child: Text(s.ticketerClose),
         ),
+        FilledButton.icon(
+          icon: const Icon(Icons.open_in_new),
+          label: Text(s.ticketerOpenIssue),
+          onPressed: () {
+            launchUrl(issueUrl, mode: LaunchMode.externalApplication);
+          },
+        ),
       ],
     ),
   );
+}
+
+/// Step 1 of the reporter: what the flow does, plus the issue description and
+/// steps. Owns its text controllers (disposed with the dialog, after its
+/// closing animation) and pops the trimmed texts, or null when cancelled.
+class _BugReportFormDialog extends StatefulWidget {
+  const _BugReportFormDialog({required this.strings});
+
+  final AppStrings strings;
+
+  @override
+  State<_BugReportFormDialog> createState() => _BugReportFormDialogState();
+}
+
+class _BugReportFormDialogState extends State<_BugReportFormDialog> {
+  final _descController = TextEditingController();
+  final _stepsController = TextEditingController();
+
+  @override
+  void dispose() {
+    _descController.dispose();
+    _stepsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.strings;
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.support_agent),
+          const SizedBox(width: 8),
+          Text(s.support),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 80),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(s.ticketerConfirmDesc),
+            const SizedBox(height: 12),
+            Text(s.ticketerLoginReminder, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _descController,
+              decoration: InputDecoration(
+                labelText: s.ticketerDescriptionLabel,
+                border: const OutlineInputBorder(),
+              ),
+              maxLines: 3,
+              minLines: 2,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _stepsController,
+              decoration: InputDecoration(
+                labelText: s.ticketerStepsLabel,
+                hintText: s.ticketerStepsHint,
+                border: const OutlineInputBorder(),
+              ),
+              maxLines: 4,
+              minLines: 2,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(s.cancel)),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, (description: _descController.text.trim(), steps: _stepsController.text.trim())),
+          child: Text(s.ticketerContinue),
+        ),
+      ],
+    );
+  }
 }
 
 /// Whether the current platform supports revealing files in a file manager.
