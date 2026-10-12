@@ -119,10 +119,10 @@ The script writes the last `-Tail` lines to `C:\fc_applog.txt` and appends `READ
 - **NEVER run git add/commit/push while tests are still running.** Wait for all test results first.
 - Before every commit, run ALL of these and verify green:
   1. `dart fix --apply && dart analyze lib/ test/ integration_test/` -- zero warnings/infos allowed
-  2. `flutter test` -- all unit tests must pass
-  3. `flutter test integration_test/all_tests.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- all integration tests must pass. ALWAYS pass `_test.db`; integration tests delete that DB file, and using `finance_copilot_dev.db` will wipe local dev data.
+  2. `flutter test --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- all unit tests must pass. ALWAYS pass this define: 3 test files (`test/google_drive_sync_*_test.dart`) silently SKIP without it (CI always sets it, so a baseline-looking local run that omits it undercounts true coverage by several points — this is not optional).
+  3. `flutter test integration_test/all_tests.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- all integration tests must pass. ALWAYS pass `_test.db`; integration tests delete that DB file, and using `finance_copilot_dev.db` will wipe local dev data. CI also passes `--dart-define=SLOW_TESTS=true` (longer settle margins for its slower/shared runners); verified locally it changes coverage by <0.1 point (noise), so skip it here — it would only slow the run down.
   4. `flutter test integration_test/live_data_fetch_test.dart -d macos --dart-define=DB_FILE_NAME=finance_copilot_test.db` -- live data fetch test must pass
-  5. Coverage gate (same as CI): `flutter test --coverage`, run the integration suite of step 3 with `--coverage --coverage-path=coverage/lcov.integration.info`, then `tool/check_coverage.sh`. It merges both reports; line coverage of `lib/` (generated `*.g.dart`, `l10n/app_strings.dart` and `database/tables.dart` declarations excluded) must not drop below `tool/coverage_baseline.txt`. When it goes up, run `tool/check_coverage.sh --update` and commit the new baseline with the change.
+  5. Coverage gate (same as CI): `flutter test --coverage --dart-define=DB_FILE_NAME=finance_copilot_test.db`, run the integration suite of step 3 with `--coverage --coverage-path=coverage/lcov.integration.info`, then `tool/check_coverage.sh`. It merges both reports; line coverage of `lib/` (generated `*.g.dart`, `l10n/app_strings.dart` and `database/tables.dart` declarations excluded) must not drop below `tool/coverage_baseline.txt`. When it goes up, run `tool/check_coverage.sh --update` and commit the new baseline with the change.
   6. NEVER commit with known failing tests. NEVER skip any test suite.
 
 ## Releasing a new version
