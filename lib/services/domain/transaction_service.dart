@@ -354,20 +354,29 @@ class TransactionService {
     } else {
       // Cumulative and filtered modes: the running sum from 0, which a
       // filtered-out row does not move.
-      bool included(Transaction tx) {
-        if (balanceMode != BalanceMode.filtered) return true;
-        String filterVal = '';
-        if (filterColumn != null) {
-          final meta = decodeRawMetadata(tx.rawMetadata);
-          if (meta != null) filterVal = (meta[filterColumn]?.toString() ?? '').trim();
+      //
+      // Filtered mode judges a row by its filter column, but only a row that
+      // actually carries one: a row with no statement data at all — hand-
+      // entered, or an older export before the bank added this column — is
+      // not evidence the filter can read, so it is not guessed excluded.
+      // Such a row follows its own status instead, as in cumulative mode; a
+      // row that does carry the column is judged exactly as before,
+      // including being set to cancelled when its value is not included.
+      ({bool moves, bool judged}) judge(Transaction tx) {
+        if (balanceMode != BalanceMode.filtered || filterColumn == null) return (moves: true, judged: false);
+        final meta = decodeRawMetadata(tx.rawMetadata);
+        if (meta == null || !meta.containsKey(filterColumn)) {
+          return (moves: tx.status != TransactionStatus.cancelled, judged: false);
         }
-        return filterInclude.isEmpty || filterInclude.contains(filterVal);
+        final filterVal = (meta[filterColumn]?.toString() ?? '').trim();
+        return (moves: filterInclude.isEmpty || filterInclude.contains(filterVal), judged: true);
       }
 
-      final moves = [for (final tx in sorted) included(tx)];
+      final judgements = [for (final tx in sorted) judge(tx)];
+      final moves = [for (final j in judgements) j.moves];
       balances = runningBalances(timeline, opening: 0, moves: (i) => moves[i]);
       for (final (i, tx) in sorted.indexed) {
-        if (!moves[i] && tx.status != TransactionStatus.cancelled && tx.id != keepStatusOf) {
+        if (judgements[i].judged && !moves[i] && tx.status != TransactionStatus.cancelled && tx.id != keepStatusOf) {
           statusUpdates[tx.id] = TransactionStatus.cancelled;
         }
       }
@@ -402,6 +411,62 @@ class TransactionService {
       bankClosing: anchored?.bankClosing,
     );
   }
+
+  /// What adding an opening-balance transaction to [accountId] would
+  /// create: the amount that brings its current balance — the latest row
+  /// that has one, by the engine's own ordering — to [actualBalance], dated
+  /// the day before the account's earliest row (either timeline) so it
+  /// sorts first and survives a later import that reaches further back.
+  ///
+  /// Null (nothing to add, logged when it is a refusal rather than a match):
+  /// the balances already agree; the account has no transactions; none of
+  /// them has a computed balance yet (not recalculated, or an account whose
+  /// balances are left as typed); or [balanceMode] is [BalanceMode.column]
+  /// (its opening already comes from the bank's own balance column — see
+  /// running_balance.dart) or [BalanceMode.none] (no balance is computed at
+  /// all).
+  ///
+  /// Read-only: the caller creates the transaction itself via [create], the
+  /// same path "Add transaction" uses, so nothing downstream has to treat it
+  /// specially — it is categorized, edited and deleted like any other row.
+  Future<OpeningBalancePlan?> planOpeningBalance({
+    required int accountId,
+    required BalanceMode balanceMode,
+    required double actualBalance,
+  }) async {
+    if (balanceMode != BalanceMode.cumulative && balanceMode != BalanceMode.filtered) {
+      _log.info('planOpeningBalance: account=$accountId mode=${balanceMode.name} - not supported, nothing planned');
+      return null;
+    }
+    // Newest first (valueDate desc, id desc): the engine's own ordering.
+    final rows = await getByAccount(accountId);
+    if (rows.isEmpty) return null;
+    Transaction? latest;
+    for (final tx in rows) {
+      if (tx.balanceAfter != null) {
+        latest = tx;
+        break;
+      }
+    }
+    if (latest == null) {
+      _log.warning('planOpeningBalance: account=$accountId - no row has a computed balance to compare against');
+      return null;
+    }
+    final diffCents = (actualBalance * 100).round() - (latest.balanceAfter! * 100).round();
+    if (diffCents == 0) return null;
+
+    final earliestValueDate = rows.map((tx) => tx.valueDate).reduce((a, b) => a.isBefore(b) ? a : b);
+    final earliestBookingDate = rows.map((tx) => tx.operationDate).reduce((a, b) => a.isBefore(b) ? a : b);
+    final earliest = earliestValueDate.isBefore(earliestBookingDate) ? earliestValueDate : earliestBookingDate;
+    // Subtract first, then round down to local midnight: a date built as
+    // DateTime(y, m, d) is already local midnight, but subtracting a day
+    // from it is not guaranteed to land on the previous day's midnight
+    // across a DST change.
+    final dayBefore = earliest.subtract(const Duration(days: 1));
+    final anchorDate = DateTime(dayBefore.year, dayBefore.month, dayBefore.day);
+
+    return OpeningBalancePlan(amount: diffCents / 100, anchorDate: anchorDate);
+  }
 }
 
 /// Outcome of a balance recalculation. The reconciliation fields are set in
@@ -417,4 +482,12 @@ class BalanceRecalcResult {
   final double? opening;
   final double? bankClosing;
   const BalanceRecalcResult({required this.updated, this.anchored, this.opening, this.bankClosing});
+}
+
+/// [TransactionService.planOpeningBalance]: the transaction that would bring
+/// an account's balance to the amount the user stated.
+class OpeningBalancePlan {
+  final double amount;
+  final DateTime anchorDate;
+  const OpeningBalancePlan({required this.amount, required this.anchorDate});
 }

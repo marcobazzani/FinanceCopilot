@@ -401,6 +401,9 @@ extension _ConfirmStep on _ImportScreenState {
     // with no amount column silently writes all-zero events.
     if (!_canProceedToConfirm()) return false;
     if (_numberLocaleMissing) return false;
+    // A balance the active locale cannot read must block the import, not be
+    // silently dropped (see _buildActualBalanceField).
+    if (_actualBalanceInvalid) return false;
     // Incomes and asset events are recorded in the stored base currency, and
     // asset rates quoted against it: the button comes on once it has loaded,
     // as the create-account dialog's does. Watched, so it does.
@@ -519,6 +522,7 @@ extension _ConfirmStep on _ImportScreenState {
                 )
               else if (p.openingBalanceUnknown)
                 _previewRow(s.predictedBalance, s.predictedBalanceUnknown, color: Colors.orange),
+              ..._buildActualBalanceField(s, locale, p),
               if (p.issues.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 ...p.issues
@@ -602,6 +606,59 @@ extension _ConfirmStep on _ImportScreenState {
     );
   }
 
+  /// A bank export rarely starts at the account's beginning. If the typed
+  /// balance differs from [p.predictedBalance], the app adds an ordinary
+  /// "Opening balance" transaction for the difference after the import (see
+  /// TransactionService.planOpeningBalance and _addOpeningBalance below) —
+  /// only for the balance modes that compute a running sum from 0: column
+  /// mode already derives its opening from the bank's own balance column,
+  /// and "none" computes no balance at all.
+  List<Widget> _buildActualBalanceField(AppStrings s, String locale, TransactionImportPreview p) {
+    if ((_balance != BalanceMode.cumulative && _balance != BalanceMode.filtered) || p.lastDay == null) return const [];
+    final value = _actualBalanceValue;
+    final diff = value != null && p.predictedBalance != null ? value - p.predictedBalance! : null;
+    return [
+      const SizedBox(height: 8),
+      TextField(
+        key: const Key('actualBalanceField'),
+        controller: _actualBalanceCtrl,
+        decoration: InputDecoration(
+          labelText: s.actualBalanceOn(fmt.shortDateFormat(locale).format(p.lastDay!)),
+          helperText: s.actualBalanceHelp,
+          helperMaxLines: 2,
+          isDense: true,
+          border: const OutlineInputBorder(),
+          errorText: _actualBalanceInvalid ? s.invalidNumber : null,
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+        onChanged: (_) => _setState(() {}),
+      ),
+      if (diff != null && diff.abs() >= 0.005) ...[
+        const SizedBox(height: 4),
+        _previewRow(
+          s.openingBalanceLabel,
+          '${diff >= 0 ? '+' : ''}${fmt.amountFormat(locale).format(diff)}',
+          color: Theme.of(context).colorScheme.primary,
+          masked: true,
+        ),
+      ],
+    ];
+  }
+
+  bool get _actualBalanceInvalid {
+    final text = _actualBalanceCtrl.text.trim();
+    if (text.isEmpty) return false;
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+    return fmt.readOptionalNumber(text, locale: locale).invalid;
+  }
+
+  double? get _actualBalanceValue {
+    final text = _actualBalanceCtrl.text.trim();
+    if (text.isEmpty) return null;
+    final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+    return fmt.readOptionalNumber(text, locale: locale).value;
+  }
+
   /// The Accounts screen's New Account form (the account is created in the
   /// stored base currency); the account picker lists the new account.
   Future<void> _showCreateAccountDialog() => showCreateAccountDialog(context);
@@ -644,6 +701,7 @@ extension _ConfirmStep on _ImportScreenState {
     final configSvc = ref.read(importConfigServiceProvider);
     final txSvc = ref.read(transactionServiceProvider);
     final classifier = ref.read(transactionClassifierServiceProvider);
+    final catService = ref.read(categoryServiceProvider);
     final appLocale = ref.read(appLocaleProvider).value;
     // The number format the file is read in (explicit choice, else the app's).
     final fileLocale = _effectiveNumberLocale();
@@ -659,6 +717,7 @@ extension _ConfirmStep on _ImportScreenState {
       _importedSoFar = 0;
       _importTotal = _preview?.totalRows ?? 0;
       _error = null;
+      _openingBalanceAdded = null;
     });
 
     try {
@@ -766,6 +825,32 @@ extension _ConfirmStep on _ImportScreenState {
             savedMappings: saved.values,
             numberLocale: savedConfig?.numberLocale ?? fileLocale,
           );
+          // A bank export that doesn't start at the account's beginning: the
+          // typed balance becomes an ordinary "Opening balance" transaction
+          // for the difference — see TransactionService.planOpeningBalance.
+          final actual = _actualBalanceValue;
+          if (actual != null) {
+            final plan = await txSvc.planOpeningBalance(accountId: targetId, balanceMode: mode, actualBalance: actual);
+            if (plan != null) {
+              final categoryId = await catService.openingBalanceCategoryFor(plan.amount);
+              final account = await ref.read(accountServiceProvider).getById(targetId);
+              await txSvc.create(
+                accountId: targetId,
+                operationDate: plan.anchorDate,
+                amount: plan.amount,
+                description: s.openingBalanceLabel,
+                currency: account.currency,
+                categoryId: categoryId,
+              );
+              await txSvc.recalculateBalances(
+                targetId,
+                balanceMode: mode.name,
+                savedMappings: saved.values,
+                numberLocale: savedConfig?.numberLocale ?? fileLocale,
+              );
+              _openingBalanceAdded = plan.amount;
+            }
+          }
         }
         // Apply the user's rules to the freshly imported rows (never
         // overwrites an existing category).

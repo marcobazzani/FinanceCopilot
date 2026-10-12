@@ -28,6 +28,11 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
     if (filterColumn != null && !columns.contains(filterColumn)) filterColumn = null;
     final filterInclude = <String>{...?savedFilter?.filterInclude};
     final hasBalanceColumn = saved.balanceFor(BalanceMode.column)?.balanceColumn != null;
+    // The balance the user's bank shows (opening balance — see
+    // TransactionService.planOpeningBalance); not offered for column mode,
+    // which already derives its opening from the bank's own balance column.
+    final actualBalanceCtrl = TextEditingController();
+    String? actualBalanceError;
     // Get unique values for filter column from rawMetadata
     List<String> uniqueValues(String col) {
       final vals = <String>{};
@@ -145,6 +150,31 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                       ),
                     ],
                   ],
+
+                  if (balanceMode != BalanceMode.column) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('actualBalanceField'),
+                      controller: actualBalanceCtrl,
+                      decoration: InputDecoration(
+                        labelText: s.actualBalanceOn(
+                          fmt.shortDateFormat(ref.read(appLocaleProvider).value ?? Platform.localeName).format(txs.first.valueDate),
+                        ),
+                        helperText: s.actualBalanceHelp,
+                        helperMaxLines: 2,
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                        errorText: actualBalanceError,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                      onChanged: (v) => setDialogState(() {
+                        final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+                        actualBalanceError = v.trim().isEmpty
+                            ? null
+                            : (fmt.readOptionalNumber(v, locale: locale).invalid ? s.invalidNumber : null);
+                      }),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -153,7 +183,9 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.cancel)),
             FilledButton(
               onPressed:
-                  (balanceMode == BalanceMode.filtered && filterColumn == null) || (balanceMode == BalanceMode.column && !hasBalanceColumn)
+                  (balanceMode == BalanceMode.filtered && filterColumn == null) ||
+                      (balanceMode == BalanceMode.column && !hasBalanceColumn) ||
+                      actualBalanceError != null
                   ? null
                   : () async {
                       Navigator.pop(ctx);
@@ -186,7 +218,17 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                       // Read before awaiting: the screen may be gone when the
                       // recalculation ends, and the mode must still be saved.
                       final configs = ref.read(importConfigServiceProvider);
-                      await _executeBalanceRecalc(txs, balanceMode, filterColumn, filterInclude, updatedMappings, savedConfig?.numberLocale);
+                      final txSvc = ref.read(transactionServiceProvider);
+                      final catSvc = ref.read(categoryServiceProvider);
+                      final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
+                      final recalc = await _executeBalanceRecalc(
+                        txs,
+                        balanceMode,
+                        filterColumn,
+                        filterInclude,
+                        updatedMappings,
+                        savedConfig?.numberLocale,
+                      );
                       await configs.save(
                         accountId: widget.account.id,
                         skipRows: savedConfig?.skipRows ?? 0,
@@ -196,6 +238,51 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
                         // Keep the account's number format: it describes the stored text.
                         numberLocale: savedConfig?.numberLocale,
                       );
+                      // A bank export that doesn't start at the account's
+                      // beginning: the typed balance becomes an ordinary
+                      // "Opening balance" transaction for the difference —
+                      // see TransactionService.planOpeningBalance.
+                      final actualText = actualBalanceCtrl.text.trim();
+                      final actual = actualText.isEmpty ? null : fmt.readOptionalNumber(actualText, locale: locale).value;
+                      double? openingAmountAdded;
+                      if (actual != null) {
+                        final plan = await txSvc.planOpeningBalance(
+                          accountId: widget.account.id,
+                          balanceMode: balanceMode,
+                          actualBalance: actual,
+                        );
+                        if (plan != null) {
+                          final categoryId = await catSvc.openingBalanceCategoryFor(plan.amount);
+                          await txSvc.create(
+                            accountId: widget.account.id,
+                            operationDate: plan.anchorDate,
+                            amount: plan.amount,
+                            description: s.openingBalanceLabel,
+                            currency: widget.account.currency,
+                            categoryId: categoryId,
+                          );
+                          await txSvc.recalculateBalances(
+                            widget.account.id,
+                            balanceMode: balanceMode.name,
+                            savedMappings: updatedMappings,
+                            numberLocale: savedConfig?.numberLocale,
+                          );
+                          openingAmountAdded = plan.amount;
+                        }
+                      }
+                      // One combined snack bar: a queued second one would not
+                      // show until the first's default duration elapses.
+                      if (context.mounted) {
+                        final figures = [...?recalc?.figures];
+                        var msg = recalc?.message ?? '';
+                        if (openingAmountAdded != null) {
+                          final slot = privacySlot(figures.length);
+                          figures.add(fmt.amountFormat(locale).format(openingAmountAdded));
+                          final openingMsg = s.openingBalanceAdded(slot);
+                          msg = msg.isEmpty ? openingMsg : '$msg $openingMsg';
+                        }
+                        if (msg.isNotEmpty) showInfoSnack(context, msg, maskedFigures: figures);
+                      }
                     },
               child: Text(s.recalculate),
             ),
@@ -205,7 +292,10 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
     );
   }
 
-  Future<void> _executeBalanceRecalc(
+  /// Recalculates and reports what happened, as text + the position-size
+  /// figures it quotes (never shown directly — [showInfoSnack] masks them).
+  /// Null when the screen is gone by the time it's done.
+  Future<({String message, List<String> figures})?> _executeBalanceRecalc(
     List<Transaction> transactions,
     BalanceMode balanceMode,
     String? filterColumn,
@@ -223,7 +313,7 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
       savedMappings: mappings,
       numberLocale: numberLocale,
     );
-    if (!mounted) return;
+    if (!mounted) return null;
     var msg = s.recalculatedBalances(result.updated);
     var figures = const <String>[];
     // Column mode reconciliation: say what the bank closing implied, never
@@ -237,6 +327,6 @@ extension _AccountDetailBalanceDialog on _AccountDetailScreenState {
       msg = '$msg ${s.balanceAnchoredOpening(privacySlot(0), privacySlot(1))}';
       figures = [f.format(result.opening), f.format(result.bankClosing)];
     }
-    showInfoSnack(context, msg, maskedFigures: figures);
+    return (message: msg, figures: figures);
   }
 }

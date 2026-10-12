@@ -239,6 +239,12 @@ class TransactionImportPreview {
   final bool openingBalanceUnknown;
   final int rowsToReplace;
 
+  /// The latest date touched by the file, on either timeline (booking or
+  /// value date, whichever of the two is later for a given row). Null when
+  /// no row parsed. Shown next to an "actual balance" input, so the user
+  /// knows which day's balance to type.
+  final DateTime? lastDay;
+
   const TransactionImportPreview({
     required this.parsedRows,
     required this.errorRows,
@@ -247,6 +253,7 @@ class TransactionImportPreview {
     this.predictedBalance,
     this.openingBalanceUnknown = false,
     required this.rowsToReplace,
+    this.lastDay,
   });
 }
 
@@ -1126,6 +1133,7 @@ class ImportService {
     final issues = <ImportIssue>[];
     double importSum = 0;
     DateTime? oldestDate;
+    DateTime? lastDay;
 
     for (var i = 0; i < preview.rows.length; i++) {
       final row = preview.rows[i];
@@ -1152,6 +1160,8 @@ class ImportService {
         }
 
         if (oldestDate == null || date.isBefore(oldestDate)) oldestDate = date;
+        final rowLastDay = valueDate != null && valueDate.isAfter(date) ? valueDate : date;
+        if (lastDay == null || rowLastDay.isAfter(lastDay)) lastDay = rowLastDay;
         parsed++;
       } catch (e) {
         errorCount++;
@@ -1200,6 +1210,7 @@ class ImportService {
       predictedBalance: predictedBalance,
       openingBalanceUnknown: openingBalanceUnknown,
       rowsToReplace: rowsToReplace,
+      lastDay: lastDay,
     );
   }
 

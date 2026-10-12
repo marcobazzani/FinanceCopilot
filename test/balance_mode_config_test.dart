@@ -272,7 +272,7 @@ void main() {
         expect(await balances(), [1100, 1070, 1080]);
       });
 
-      test('filtered mode, $what: read like a row without statement data', () async {
+      test('filtered mode, $what: counts like a row without statement data', () async {
         await row(1, 100, raw: '{"State":"DONE"}');
         await row(2, -30, raw: raw);
         await row(3, 10, raw: '{"State":"DONE"}');
@@ -281,8 +281,8 @@ void main() {
           balanceMode: 'filtered',
           savedMappings: const {'__balanceFilterColumn': 'State', '__balanceFilterInclude': '["DONE"]'},
         );
-        expect(await balances(), [100, 100, 110]);
-        expect(await statuses(), [TransactionStatus.settled, TransactionStatus.cancelled, TransactionStatus.settled]);
+        expect(await balances(), [100, 70, 80]);
+        expect(await statuses(), [TransactionStatus.settled, TransactionStatus.settled, TransactionStatus.settled]);
       });
     }
 

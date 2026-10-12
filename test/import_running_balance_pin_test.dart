@@ -363,7 +363,7 @@ void main() {
       expect(await service.recalculateBalances(acct, balanceMode: 'cumulative'), 0);
     });
 
-    test('filtered: an excluded row carries the balance and is cancelled; a row without statement data is excluded', () async {
+    test('filtered: an excluded row carries the balance and is cancelled; a row without statement data counts', () async {
       await row('A', 1, 100, state: 'DONE');
       await row('B', 2, -30, state: 'FAILED');
       await row('C', 3, -7, state: 'FAILED', status: TransactionStatus.cancelled);
@@ -379,8 +379,8 @@ void main() {
         'A': (100, TransactionStatus.settled),
         'B': (100, TransactionStatus.cancelled),
         'C': (100, TransactionStatus.cancelled),
-        'D': (100, TransactionStatus.cancelled),
-        'E': (100.66, TransactionStatus.pending),
+        'D': (112.34, TransactionStatus.settled),
+        'E': (113.0, TransactionStatus.pending),
       });
     });
 
@@ -404,7 +404,7 @@ void main() {
           );
       await row('A', 1, 100, state: 'DONE');
       await service.create(accountId: acct, operationDate: DateTime(2025, 1, 2), amount: -10, currency: 'EUR', description: 'cash');
-      expect(await byDescription(), {'A': (100, TransactionStatus.settled), 'cash': (100, TransactionStatus.settled)});
+      expect(await byDescription(), {'A': (100, TransactionStatus.settled), 'cash': (90, TransactionStatus.settled)});
     });
   });
 }
