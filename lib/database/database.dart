@@ -1234,7 +1234,7 @@ class AppDatabase extends _$AppDatabase {
   /// system temp directory and return its path. Callers are responsible
   /// for deleting the file once they're done with it (export/upload).
   Future<String> snapshotToTempFile() async {
-    final dir = await getTemporaryDirectory();
+    final dir = await _tempDirectory();
     final path = p.join(
       dir.path,
       'financecopilot_snapshot_${DateTime.now().microsecondsSinceEpoch}.db',
@@ -1244,10 +1244,24 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
+/// The app's temp directory, created when missing. path_provider only
+/// returns the path; the OS may purge it at any time (macOS empties
+/// `Library/Caches` under disk pressure), and SQLite cannot create a file —
+/// a `VACUUM INTO` snapshot, its own temp files — in a directory that is
+/// gone.
+Future<Directory> _tempDirectory() async {
+  final dir = await getTemporaryDirectory();
+  if (!await dir.exists()) {
+    _log.info('Creating temp directory: ${dir.path}');
+    await dir.create(recursive: true);
+  }
+  return dir;
+}
+
 /// Point SQLite's temporary files at the app's cache directory (the native
 /// library itself is bundled by package:sqlite3's build hooks).
 Future<void> _ensureSqliteConfigured() async {
-  final cacheDir = await getTemporaryDirectory();
+  final cacheDir = await _tempDirectory();
   sqlite3.tempDirectory = cacheDir.path;
 }
 
