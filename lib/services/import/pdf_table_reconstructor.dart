@@ -44,7 +44,7 @@ class PdfTableReconstruction {
 /// amount column) come first, then middle columns are filled in by
 /// gap-stable left-edge clustering, then the result is validated row-by-row
 /// before emission. Any failure throws a [PdfImportException] subclass —
-/// per AGENTS.md "never silently fall back".
+/// never a silent fallback.
 class PdfTableReconstructor {
   /// Locales the rest of the import wizard supports. Used as the candidate
   /// set when probing whether a fragment is "numeric" — a fragment counts

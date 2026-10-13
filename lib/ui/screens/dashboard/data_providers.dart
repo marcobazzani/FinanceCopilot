@@ -594,8 +594,8 @@ final allSeriesDataProvider = FutureProvider<AllSeriesData?>((ref) async {
     }
     if (event.bufferId != null) {
       for (final r in allReimbursements[event.bufferId!] ?? const <BufferTransaction>[]) {
-        // valueDate per AGENTS.md — chart day-keys use the canonical
-        // "money moved" date, never operation_date.
+        // valueDate: chart day-keys use the canonical "money moved" date,
+        // never operation_date.
         final dayKey = toDayKey(r.valueDate);
         if (!includeDayKey(dayKey)) continue;
         eventsMap[dayKey] = (eventsMap[dayKey] ?? 0) - r.amount.abs();
@@ -750,7 +750,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // convert to base currency. Both refund and pensionContribution are
   // money received but not "personal income" — the user reports them in
   // the ledger but doesn't want them inflating salary totals.
-  // Ordered by value_date per AGENTS.md convention — operation_date is
+  // Ordered by value_date (the date the money moved) — operation_date is
   // only for import dedup, never for display/aggregation.
   final incomeByMonth = <(int, int), double>{};
   final monthsWithIncomeData = <(int, int)>{};

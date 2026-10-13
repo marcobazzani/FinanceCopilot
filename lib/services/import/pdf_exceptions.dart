@@ -1,6 +1,6 @@
 /// Explicit failure modes when ingesting a PDF for import. Each subclass
-/// maps to a distinct localized message in `AppStrings`. Per AGENTS.md, we
-/// never silently fall back: if any of these triggers, the wizard surfaces
+/// maps to a distinct localized message in `AppStrings`. There is never a
+/// silent fallback: if any of these triggers, the wizard surfaces
 /// the error and writes nothing to the database.
 sealed class PdfImportException implements Exception {
   final String message;

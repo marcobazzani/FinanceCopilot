@@ -476,7 +476,7 @@ class _TimelineItem {
   _TimelineItem.reimbursement(this.reimbursement) : entry = null;
 
   bool get isReimbursement => reimbursement != null;
-  // valueDate per AGENTS.md (canonical "money moved" date for ordering/display).
+  // valueDate: the canonical "money moved" date for ordering/display.
   // ExtraordinaryEventEntry has only a single date column; BufferTransaction
   // has both, and we always want valueDate.
   DateTime get date => entry?.date ?? reimbursement!.valueDate;

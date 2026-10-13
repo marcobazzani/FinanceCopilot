@@ -7,9 +7,9 @@ const _rawDbFileName = String.fromEnvironment('DB_FILE_NAME');
 String get dbFileName {
   if (_rawDbFileName.isEmpty) {
     throw StateError(
-      'DB_FILE_NAME dart-define is required. '
-      'Pass --dart-define=DB_FILE_NAME=<name> to flutter build/test/run. '
-      'See AGENTS.md for per-channel values.',
+      'DB_FILE_NAME dart-define is required: pass --dart-define=DB_FILE_NAME=<name> '
+      'to flutter build/test/run - finance_copilot.db for release builds, '
+      'finance_copilot_dev.db for local builds, finance_copilot_test.db for tests.',
     );
   }
   return _rawDbFileName;

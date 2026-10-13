@@ -1551,10 +1551,9 @@ class ImportService {
   ) {
     if (rows.isEmpty || balanceMode == BalanceMode.none) return;
 
-    // The value-date timeline (the canonical "money moved" date, per
-    // AGENTS.md), file order breaking ties: the one the ledger's
-    // recalculation walks too, so both store the same balances for the same
-    // set of transactions.
+    // The value-date timeline (the canonical "money moved" date), file order
+    // breaking ties: the one the ledger's recalculation walks too, so both
+    // store the same balances for the same set of transactions.
     final timeline = [
       for (final r in rows)
         RunningBalanceRow(
