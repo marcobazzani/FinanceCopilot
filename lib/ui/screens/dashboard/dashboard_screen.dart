@@ -31,6 +31,7 @@ import 'package:finance_copilot/services/charts/default_charts_exporter.dart';
 import 'package:finance_copilot/services/charts/default_charts_loader.dart';
 import 'package:finance_copilot/services/classification/cash_flow_explanation.dart';
 import 'package:finance_copilot/services/classification/cash_flow_sankey.dart';
+import 'package:finance_copilot/services/classification/ledger_roles.dart' show resolveSavingItems;
 import 'package:finance_copilot/services/classification/transaction_classifier_service.dart' show MerchantGroup;
 import 'package:finance_copilot/ui/screens/classification/transaction_classify_card.dart';
 import 'package:finance_copilot/services/classification/spending_by_category.dart';

@@ -950,6 +950,7 @@ final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref)
   final rates = _RateResolver(ref.watch(exchangeRateServiceProvider), baseCurrency);
   final now = ref.watch(currentDateProvider);
   final roles = await ref.watch(ledgerRolesProvider.future);
+  final adjustments = await ref.watch(adjustmentInputsProvider.future);
   // Same cutoff as the yearly Income/Expense/Savings figures.
   final wayback = ref.watch(waybackDateProvider) != null;
   return aggregateSpendingByCategory(
@@ -960,5 +961,8 @@ final _spendingByCategoryProvider = FutureProvider<SpendingByCategoryData>((ref)
     now: now,
     through: wayback ? now : null,
     excludedIds: roles.keys.toSet(),
+    // The ledger's "Saving for X" rows: what the spread saving plans set
+    // aside, which the yearly savings already went down by.
+    savingItems: resolveSavingItems(transactions: txs, adjustments: adjustments),
   );
 });

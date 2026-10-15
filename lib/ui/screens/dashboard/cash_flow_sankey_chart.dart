@@ -7,13 +7,14 @@ typedef CashFlowYearTotals = ({double income, double savings, double refunds});
 
 /// "Where the money goes": one year of cash flow as a Sankey — income (+ from
 /// savings / untracked income) → available → essential / discretionary /
-/// uncategorized / untracked expenses / saved
+/// saving plans / uncategorized / untracked expenses / saved
 /// → expense categories. The current year is year to date.
 ///
 /// Income, savings and expenses are [years] (the yearly chart's figures); the
-/// ledger in [spending] only splits the expenses by category, and what it
-/// does not account for stays visible as untracked income / expenses. Privacy mode
-/// masks the amounts; band widths and percentages (shape, not size) stay.
+/// ledger in [spending] only splits the expenses by category and saving plan,
+/// and what it does not account for stays visible as untracked income /
+/// expenses. Privacy mode masks the amounts; band widths and percentages
+/// (shape, not size) stay.
 class CashFlowSankeyCard extends ConsumerStatefulWidget {
   final SpendingByCategoryData spending;
   final Map<int, CashFlowYearTotals> years;
@@ -99,6 +100,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       CashFlowNodeKind.refunds => Colors.teal.shade400,
       CashFlowNodeKind.untrackedIncome => Colors.green.shade300,
       CashFlowNodeKind.uncategorized => scheme.outlineVariant,
+      CashFlowNodeKind.savingPlan => Colors.amber.shade700,
       CashFlowNodeKind.untrackedExpenses => scheme.outline,
       CashFlowNodeKind.saved => Colors.green.shade600,
     };
@@ -112,6 +114,8 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       CashFlowNodeKind.refunds => s.sankeyRefunds,
       CashFlowNodeKind.untrackedIncome => s.sankeyUntrackedIncome,
       CashFlowNodeKind.uncategorized => s.uncategorized,
+      // The ledger's own label for these rows.
+      CashFlowNodeKind.savingPlan => s.savingForLabel(n.eventName!),
       CashFlowNodeKind.untrackedExpenses => s.sankeyUntrackedExpenses,
       CashFlowNodeKind.saved => s.sankeySaved,
     };

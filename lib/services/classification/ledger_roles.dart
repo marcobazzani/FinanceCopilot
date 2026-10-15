@@ -57,21 +57,32 @@ Map<int, LedgerRole> resolveLedgerRoles({required List<Transaction> transactions
   }
 
   if (adjustments.events.isNotEmpty) {
-    String same(String n) => n;
-    final adj = resolveAdjustments(
-      events: adjustments.events,
-      entriesByEvent: adjustments.entriesByEvent,
-      reimbursementsByEvent: adjustments.reimbursementsByEvent,
-      transactions: transactions,
-      dayKey: ledgerDayKey,
-      adjustedLabel: same,
-      reimbLabel: same,
-      savingForLabel: same,
-      financedLabel: same,
-    );
-    for (final id in adj.annotatedTxIds.keys) {
+    for (final id in _resolveAdjustments(transactions, adjustments).annotatedTxIds.keys) {
       roles.putIfAbsent(id, () => LedgerRole.adjustment);
     }
   }
   return roles;
+}
+
+/// The ledger's synthetic "Saving for X" rows: the scheduled steps of spread
+/// events no transaction accounts for, exactly as the All-Accounts ledger
+/// shows them ([resolveAdjustments]). Pure: no IO.
+List<SavingScheduleItem> resolveSavingItems({required List<Transaction> transactions, required AdjustmentInputs adjustments}) =>
+    adjustments.events.isEmpty ? const [] : _resolveAdjustments(transactions, adjustments).savingItems;
+
+/// [resolveAdjustments] over [transactions], labels left as the event names:
+/// the one resolution [resolveLedgerRoles] and [resolveSavingItems] read.
+AdjustmentResolution _resolveAdjustments(List<Transaction> transactions, AdjustmentInputs adjustments) {
+  String same(String n) => n;
+  return resolveAdjustments(
+    events: adjustments.events,
+    entriesByEvent: adjustments.entriesByEvent,
+    reimbursementsByEvent: adjustments.reimbursementsByEvent,
+    transactions: transactions,
+    dayKey: ledgerDayKey,
+    adjustedLabel: same,
+    reimbLabel: same,
+    savingForLabel: same,
+    financedLabel: same,
+  );
 }
