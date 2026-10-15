@@ -779,8 +779,10 @@ class AppStrings {
   String get notesOptional => _it ? 'Note (opzionale)' : 'Notes (optional)';
   String get stepFrequencyLabel => _it ? 'Frequenza' : 'Frequency';
   String get stepCountLabel => _it ? 'Numero passi' : 'Step count';
+  String get spreadStartLabel => _it ? 'Inizio dilazione' : 'Spread start';
   String spreadPreview(int n, String amt) =>
       _it ? (n == 1 ? '1 passo × $amt' : '$n passi × $amt') : (n == 1 ? '1 step × $amt' : '$n steps × $amt');
+  String spreadNetOfReimbursed(String amt) => _it ? 'Al netto di $amt di rimborsi' : 'Net of $amt reimbursed';
   String get freqWeekly => _it ? 'Settimanale' : 'Weekly';
   String get freqMonthly => _it ? 'Mensile' : 'Monthly';
   String get freqQuarterly => _it ? 'Trimestrale' : 'Quarterly';

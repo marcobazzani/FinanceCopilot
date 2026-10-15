@@ -236,9 +236,9 @@ class ExtraordinaryEventService {
     );
     if (dates.isEmpty) return;
 
-    final reimbursed = await _totalReimbursed(event);
+    final reimbursed = await totalReimbursed(event);
     final amountToSpread = event.totalAmount - reimbursed;
-    final stepAmount = amountToSpread / dates.length;
+    final stepAmount = scheduledStepAmount(totalAmount: event.totalAmount, reimbursed: reimbursed, steps: dates.length);
     // Sign flip: outflow entries reduce saving (negative); inflow entries add (positive).
     final signedStep = event.direction == EventDirection.outflow ? -stepAmount : stepAmount;
     _log.fine(
@@ -271,7 +271,15 @@ class ExtraordinaryEventService {
     });
   }
 
-  Future<double> _totalReimbursed(ExtraordinaryEvent event) async {
+  /// The unsigned amount of each of the [steps] scheduled entries of a spread:
+  /// its [totalAmount] less what its buffer was [reimbursed], in equal parts.
+  /// The edit form previews this very figure, so the one it shows is the one
+  /// written.
+  static double scheduledStepAmount({required double totalAmount, required double reimbursed, required int steps}) =>
+      (totalAmount - reimbursed) / steps;
+
+  /// What [event]'s buffer was reimbursed, net of refunds; 0 without a buffer.
+  Future<double> totalReimbursed(ExtraordinaryEvent event) async {
     if (event.bufferId == null) return 0;
     // Net reimbursement: a negative entry is a refund/clawback and must
     // *reduce* the total, not add to it (which is what SUM(ABS) does).
@@ -427,7 +435,7 @@ class ExtraordinaryEventService {
         final reimbRows = await _db
             .customSelect(
               // Net reimbursement: refunds (negative entries) reduce the total;
-              // SUM(ABS) would double-count them. See _totalReimbursed.
+              // SUM(ABS) would double-count them. See totalReimbursed.
               'SELECT buffer_id, COALESCE(ABS(SUM(amount)), 0.0) AS total '
               'FROM buffer_transactions '
               'WHERE buffer_id IN ($bufPlaceholders) AND is_reimbursement = 1 '
