@@ -250,46 +250,62 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
       _ => null,
     };
     if (idsOf == null || idsOf(widget.spending).isEmpty) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        builder: (ctx, controller) => _NodeTransactionsSheet(
-          spending: _spendingLive,
-          year: year,
-          idsOf: idsOf,
-          label: label,
-          locale: widget.locale,
-          controller: controller,
-        ),
-      ),
-    );
+    // The node's rows follow the ledger: a row re-classified out of the node
+    // leaves the list.
+    final ids = _MappedListenable(_spendingLive, idsOf);
+    try {
+      await showTransactionsSheet(context, ids: ids, title: '$label · $year', locale: widget.locale);
+    } finally {
+      ids.dispose();
+    }
   }
 }
+
+/// [source] seen through [map]: notifies whenever [source] does.
+class _MappedListenable<S, T> extends ChangeNotifier implements ValueListenable<T> {
+  final ValueListenable<S> source;
+  final T Function(S) map;
+  _MappedListenable(this.source, this.map) {
+    source.addListener(notifyListeners);
+  }
+  @override
+  T get value => map(source.value);
+  @override
+  void dispose() {
+    source.removeListener(notifyListeners);
+    super.dispose();
+  }
+}
+
+/// A list of transactions, biggest first, in a sheet; tapping one swaps the
+/// list for the classification wizard's card in the same sheet (no dialog
+/// over the sheet). [ids] are the rows to list; when it changes (e.g. a row
+/// re-classified out of a Sankey node) the list follows.
+Future<void> showTransactionsSheet(
+  BuildContext context, {
+  required ValueListenable<List<int>> ids,
+  required String title,
+  required String locale,
+}) => showModalBottomSheet<void>(
+  context: context,
+  showDragHandle: true,
+  isScrollControlled: true,
+  builder: (_) => DraggableScrollableSheet(
+    expand: false,
+    initialChildSize: 0.6,
+    builder: (ctx, controller) => _NodeTransactionsSheet(ids: ids, title: title, locale: locale, controller: controller),
+  ),
+);
 
 /// A node's transactions, biggest first; tapping one swaps the list for the
 /// classification wizard's card in the same sheet (no dialog over the
 /// sheet). Back / Skip / Apply return to the list, which follows the ledger.
 class _NodeTransactionsSheet extends ConsumerStatefulWidget {
-  final ValueListenable<SpendingByCategoryData> spending;
-  final int year;
-
-  /// The node's rows in the given data.
-  final List<int> Function(SpendingByCategoryData) idsOf;
-  final String label;
+  final ValueListenable<List<int>> ids;
+  final String title;
   final String locale;
   final ScrollController controller;
-  const _NodeTransactionsSheet({
-    required this.spending,
-    required this.year,
-    required this.idsOf,
-    required this.label,
-    required this.locale,
-    required this.controller,
-  });
+  const _NodeTransactionsSheet({required this.ids, required this.title, required this.locale, required this.controller});
 
   @override
   ConsumerState<_NodeTransactionsSheet> createState() => _NodeTransactionsSheetState();
@@ -325,7 +341,7 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
             child: Row(
               children: [
                 IconButton(key: const Key('sankeySheetBack'), icon: const Icon(Icons.arrow_back), onPressed: _back),
-                Expanded(child: Text('${widget.label} · ${widget.year}', style: theme.textTheme.titleMedium)),
+                Expanded(child: Text(widget.title, style: theme.textTheme.titleMedium)),
               ],
             ),
           ),
@@ -347,12 +363,12 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
     }
 
     final txs = ref.watch(allTransactionsProvider).value ?? const <Transaction>[];
-    return ValueListenableBuilder<SpendingByCategoryData>(
-      valueListenable: widget.spending,
-      builder: (context, spending, _) {
-        // Exactly the rows summed into the node, biggest first (|amount| in
-        // the row's own currency); newest, then id, break ties.
-        final ids = widget.idsOf(spending).toSet();
+    return ValueListenableBuilder<List<int>>(
+      valueListenable: widget.ids,
+      builder: (context, idList, _) {
+        // Exactly the rows asked for, biggest first (|amount| in the row's own
+        // currency); newest, then id, break ties.
+        final ids = idList.toSet();
         final rows = txs.where((t) => ids.contains(t.id)).toList()
           ..sort((a, b) {
             final c = b.amount.abs().compareTo(a.amount.abs());
@@ -366,7 +382,7 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text('${widget.label} · ${widget.year} (${rows.length})', style: theme.textTheme.titleMedium),
+              child: Text('${widget.title} (${rows.length})', style: theme.textTheme.titleMedium),
             ),
             Expanded(
               child: ListView.builder(

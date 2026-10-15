@@ -108,6 +108,11 @@ class _MonthBucket {
   final int year, month;
   final double income, navChange, pensionContrib;
   final bool hasIncomeData;
+
+  /// The period [navChange] was measured over: from the end of [from]
+  /// (exclusive) to [to], as the saving total was read. Kept so the figure can
+  /// be explained from exactly the same boundaries.
+  final DateTime from, to;
   // Pension contributions inflate navChange without ever touching the
   // user's wallet (employer/state/severance redirect). Subtract them
   // so savings/expenses reflect personal cashflow only. Refunds are
@@ -123,6 +128,8 @@ class _MonthBucket {
     required this.month,
     required this.income,
     required this.navChange,
+    required this.from,
+    required this.to,
     this.pensionContrib = 0,
     this.hasIncomeData = false,
   });
@@ -131,6 +138,9 @@ class _MonthBucket {
 class _YearBucket {
   final int year, days;
   final double income, navChange, pensionContrib;
+
+  /// The period [navChange] was measured over (see [_MonthBucket.from]).
+  final DateTime from, to;
 
   /// Refund Income records of the year (not income, but inside [savings]).
   final double refunds;
@@ -151,6 +161,8 @@ class _YearBucket {
     required this.days,
     required this.income,
     required this.navChange,
+    required this.from,
+    required this.to,
     required this.months,
     this.pensionContrib = 0,
     this.refunds = 0,
@@ -174,12 +186,23 @@ class _IncomeExpenseData {
   /// had no rate to base on their value date: left out of [years] rather than
   /// converted 1:1, and counted here.
   final int rowsWithoutRate;
+
+  /// What the figures are made of, kept so any of them can be explained (see
+  /// explainCashFlowCell): the series the Saving total adds up, the income
+  /// records (not refunds, not pension contributions) and the pension
+  /// contributions taken out of savings, the latter two in base currency.
+  final List<ChartSeries> savingSeries;
+  final List<ExplainRecord> incomeRecords;
+  final List<ExplainRecord> pensionRecords;
   const _IncomeExpenseData({
     required this.years,
     required this.baseCurrency,
     required this.firstDate,
     this.pensionContribCumulativeSpots = const [],
     required this.rowsWithoutRate,
+    this.savingSeries = const [],
+    this.incomeRecords = const [],
+    this.pensionRecords = const [],
   });
 }
 

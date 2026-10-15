@@ -730,7 +730,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // record whose currency has no rate that day is left out rather than
   // mis-summed — and counted.
   var rowsWithoutRate = 0;
-  Future<List<(DateTime, double)>> incomeInBase(String sql, {bool Function(int? assetId)? keep}) async {
+  Future<List<(DateTime, double)>> incomeInBase(String sql, {bool Function(int? assetId)? keep, List<int>? ids}) async {
     final converted = <(DateTime, double)>[];
     for (final row in await db.customSelect(sql).get()) {
       if (keep != null && !keep(row.readNullable<int>('asset_id'))) continue;
@@ -742,6 +742,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         continue;
       }
       converted.add((dt, row.read<double>('amount') * rate));
+      ids?.add(row.read<int>('id'));
     }
     return converted;
   }
@@ -754,14 +755,19 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // only for import dedup, never for display/aggregation.
   final incomeByMonth = <(int, int), double>{};
   final monthsWithIncomeData = <(int, int)>{};
-  for (final (dt, amount) in await incomeInBase(
-    "SELECT value_date AS date, amount, currency FROM incomes "
+  final incomeRecords = <ExplainRecord>[];
+  final incomeIds = <int>[];
+  final incomeRows = await incomeInBase(
+    "SELECT id, value_date AS date, amount, currency FROM incomes "
     "WHERE type NOT IN ('refund', 'pensionContribution') "
     "ORDER BY value_date ASC",
-  )) {
+    ids: incomeIds,
+  );
+  for (final (i, (dt, amount)) in incomeRows.indexed) {
     final key = (dt.year, dt.month);
     incomeByMonth[key] = (incomeByMonth[key] ?? 0) + amount;
     monthsWithIncomeData.add(key);
+    incomeRecords.add((id: incomeIds[i], date: dt, amount: amount));
   }
 
   // 1b. Refund Income records: money received that is not personal income
@@ -803,10 +809,12 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
   // Only subtract contribution rows whose asset is actually included in
   // the resolved Saving total. If a pension fund is excluded from Saving,
   // subtracting its mirrored income rows here would double-exclude it.
+  final pensionIds = <int>[];
   final pensionRows = await incomeInBase(
-    "SELECT value_date AS date, amount, currency, asset_id FROM incomes "
+    "SELECT id, value_date AS date, amount, currency, asset_id FROM incomes "
     "WHERE type = 'pensionContribution' ORDER BY value_date ASC",
     keep: (assetId) => assetId != null && savingAssetIds.contains(assetId),
+    ids: pensionIds,
   );
   final pensionContribByMonth = <(int, int), double>{};
   for (final (dt, amount) in pensionRows) {
@@ -869,6 +877,8 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
           month: m,
           income: mIncome,
           navChange: lookupNAV(mEnd) - lookupNAV(mStartRef),
+          from: mStartRef,
+          to: mEnd,
           pensionContrib: mPensionContrib,
           hasIncomeData: monthsWithIncomeData.contains((y, m)),
         ),
@@ -881,6 +891,8 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
         days: days,
         income: yearIncome,
         navChange: lookupNAV(effectiveEnd) - lookupNAV(yStartRef),
+        from: yStartRef,
+        to: effectiveEnd,
         pensionContrib: yearPensionContrib,
         refunds: refundByYear[y] ?? 0,
         months: months,
@@ -912,6 +924,9 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
     firstDate: allSeriesData.firstDate,
     pensionContribCumulativeSpots: pensionContribSpots,
     rowsWithoutRate: rowsWithoutRate,
+    savingSeries: smartTotalSeries(_DashboardScreenState._seriesForRole('saving', userCharts, allSeriesData, activeAssets)),
+    incomeRecords: incomeRecords,
+    pensionRecords: [for (final (i, (dt, amount)) in pensionRows.indexed) (id: pensionIds[i], date: dt, amount: amount)],
   );
 });
 

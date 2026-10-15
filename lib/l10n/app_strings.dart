@@ -452,6 +452,40 @@ class AppStrings {
   String get accountNameHint => _it ? 'es. Fineco' : 'e.g. Fineco';
   String get noTransactionsYet => _it ? 'Nessuna transazione' : 'No transactions yet';
   String transactionCount(int n) => _it ? (n == 1 ? '1 transazione' : '$n transazioni') : (n == 1 ? '1 transaction' : '$n transactions');
+
+  // ── Cash Flow: why a figure is what it is ──────────────────
+  String get cfExplainTapHint => _it ? 'Tocca per vedere come è calcolato' : 'Tap to see how it is calculated';
+  String cfExplainTitle(String period, String figure) => '$period · $figure';
+  String get cfExplainFormulaIncome => _it
+      ? 'Entrate = i redditi registrati nel periodo (rimborsi e contributi pensione esclusi)'
+      : 'Income = the income records of the period (refunds and pension contributions excluded)';
+  String get cfExplainFormulaSavings => _it
+      ? 'Risparmi = quanto è cresciuto il totale Risparmio nel periodo − contributi pensione'
+      : 'Savings = how much the Saving total grew over the period − pension contributions';
+  String get cfExplainFormulaExpenses => _it ? 'Uscite = Entrate − Risparmi' : 'Expenses = Income − Savings';
+  String get cfExplainSectionIncome => _it ? 'Redditi registrati' : 'Income records';
+  String get cfExplainSectionTransactions => _it ? 'Movimenti sui conti' : 'Transactions on your accounts';
+  String get cfExplainSectionOpening =>
+      _it ? 'Saldo già presente quando il conto è entrato nel totale' : 'Balance already in the account when it entered the total';
+  String get cfExplainSectionInvestments => _it ? 'Investimenti' : 'Investments';
+  String get cfExplainSectionAdjustments => _it ? 'Rettifiche' : 'Adjustments';
+  String get cfExplainSectionPension => _it ? 'Contributi pensione' : 'Pension contributions';
+  String get cfExplainSectionUnexplained =>
+      _it ? 'Non spiegato dai movimenti (tassi di cambio)' : 'Not explained by the transactions (exchange rates)';
+  String get cfExplainNoIncomeRecords => _it ? 'Nessun reddito registrato in questo periodo.' : 'No income records in this period.';
+  String get cfExplainNothing => _it ? 'Nulla da spiegare in questo periodo.' : 'Nothing to explain in this period.';
+  String get cfExplainTotal => _it ? 'Totale' : 'Total';
+  String cfExplainMismatch(String cell) => _it
+      ? 'Le righe non tornano con la cella, che mostra $cell: segnalalo, è un errore del calcolo.'
+      : 'The rows do not add up to the cell, which shows $cell: please report it, the calculation is wrong.';
+  String get cfExplainRowTapHint => _it ? 'Tocca una riga per vedere da cosa è composta' : 'Tap a row to see what it is made of';
+  String get cfExplainRecordsTitle => _it ? 'Registrazioni' : 'Records';
+  String get cfExplainBalanceFrom => _it ? 'Inizio periodo' : 'Start of the period';
+  String get cfExplainBalanceTo => _it ? 'Fine periodo' : 'End of the period';
+  String get cfExplainChange => _it ? 'Variazione' : 'Change';
+  String get cfExplainEventsInPeriod => _it ? 'Eventi nel periodo' : 'Events in the period';
+  String get cfExplainNoEventsInPeriod =>
+      _it ? 'Nessun evento nel periodo: il valore è cambiato con il prezzo.' : 'No events in the period: the value moved with the price.';
   String since(String d) => _it ? 'Dal $d' : 'Since $d';
   String lastRecord(String d) => _it ? 'Ultimo record $d' : 'Last record $d';
 
