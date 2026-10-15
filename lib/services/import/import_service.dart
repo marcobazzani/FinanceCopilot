@@ -239,6 +239,11 @@ class TransactionImportPreview {
   final bool openingBalanceUnknown;
   final int rowsToReplace;
 
+  /// How many rows the account holds before the import. Null when not
+  /// counted (a preview built elsewhere): the file is then not taken for the
+  /// account's whole history.
+  final int? existingRows;
+
   /// The latest date touched by the file, on either timeline (booking or
   /// value date, whichever of the two is later for a given row). Null when
   /// no row parsed. Shown next to an "actual balance" input, so the user
@@ -253,8 +258,16 @@ class TransactionImportPreview {
     this.predictedBalance,
     this.openingBalanceUnknown = false,
     required this.rowsToReplace,
+    this.existingRows,
     this.lastDay,
   });
+
+  /// Whether the account holds nothing but the file's rows once it is
+  /// imported: it has no row yet, or the file reaches back far enough to
+  /// replace every one. Only then can a balance the user states be the
+  /// account's opening: with earlier rows kept, a difference from the bank is
+  /// a gap in them.
+  bool get replacesWholeHistory => existingRows != null && rowsToReplace == existingRows;
 }
 
 /// Generic file importer: applies user column mapping, hashes rows for dedup,
@@ -1169,7 +1182,12 @@ class ImportService {
       }
     }
 
-    // Count rows that would be deleted (replaced)
+    // Count rows that would be deleted (replaced), out of all the account holds.
+    final existingRows =
+        (await _db
+                .customSelect('SELECT COUNT(*) AS cnt FROM transactions WHERE account_id = ?', variables: [Variable.withInt(accountId)])
+                .getSingle())
+            .read<int>('cnt');
     var rowsToReplace = 0;
     double? predictedBalance;
     var openingBalanceUnknown = false;
@@ -1200,7 +1218,7 @@ class ImportService {
 
     _log.fine(
       'previewTransactionImport: parsed=$parsed, errors=$errorCount, sum=$importSum, '
-      'predicted=$predictedBalance, toReplace=$rowsToReplace',
+      'predicted=$predictedBalance, toReplace=$rowsToReplace of $existingRows',
     );
     return TransactionImportPreview(
       parsedRows: parsed,
@@ -1210,6 +1228,7 @@ class ImportService {
       predictedBalance: predictedBalance,
       openingBalanceUnknown: openingBalanceUnknown,
       rowsToReplace: rowsToReplace,
+      existingRows: existingRows,
       lastDay: lastDay,
     );
   }

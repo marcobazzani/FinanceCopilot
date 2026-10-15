@@ -1,8 +1,13 @@
-// The "Actual balance" field (opening balance — see
-// TransactionService.planOpeningBalance): visible only where a balance is a
-// running sum from 0 (cumulative, filtered); an unreadable number blocks
-// Import; the amount it implies is masked in privacy mode while the row
-// counts and the date stay readable.
+// The import preview's "Balance on <date>" field (opening balance — see
+// TransactionService.planOpeningBalance) is offered only when the account
+// holds nothing but the imported file afterwards: it is empty, or the file
+// replaces every row it has. On an account with earlier rows, or when the
+// import is re-run from the account's stored rows, it is absent: a
+// difference from the bank there is a gap in the history, not an opening.
+// It is also offered only where a balance is a running sum from 0
+// (cumulative, filtered). An unreadable number blocks Import; the amount it
+// implies is masked in privacy mode while the row counts and the date stay
+// readable.
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +28,7 @@ void main() {
   late ImportService importer;
   late int acct;
 
+  // The file starts on 2026-03-01.
   const statement = FilePreview(
     columns: ['Date', 'Amount'],
     rows: [
@@ -53,6 +59,19 @@ void main() {
     numberLocale: 'en_US',
   );
 
+  /// A row already in the account, hand-entered.
+  Future<void> existingRow(DateTime day, double amount) => db
+      .into(db.transactions)
+      .insert(
+        TransactionsCompanion.insert(
+          accountId: acct,
+          operationDate: day,
+          valueDate: day,
+          amount: amount,
+          description: const Value('Earlier row'),
+        ),
+      );
+
   Future<void> settle(WidgetTester tester) async {
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 60));
@@ -61,12 +80,19 @@ void main() {
 
   bool masked(Finder f) => find.ancestor(of: f, matching: find.byType(ImageFiltered)).evaluate().isNotEmpty;
 
-  Future<ProviderContainer> pumpQuickConfirm(WidgetTester tester, {bool private = false}) async {
+  /// The quick confirm of importing [statement] into the account, as after
+  /// picking the file; [fromStoredRows]: of re-running the import from the
+  /// account's stored rows instead.
+  Future<ProviderContainer> pumpConfirm(WidgetTester tester, {bool private = false, bool fromStoredRows = false}) async {
     tester.view.physicalSize = const Size(1200, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final preview = (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!;
-    final screen = ImportScreen(preselectedAccountId: acct, storedPreview: preview);
+    final screen = fromStoredRows
+        ? ImportScreen(
+            preselectedAccountId: acct,
+            storedPreview: (await importer.previewFromStoredRows(acct, numberLocale: 'en_US'))!,
+          )
+        : ImportScreen(preselectedAccountId: acct, testPreview: statement);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -78,6 +104,7 @@ void main() {
       ),
     );
     await settle(tester);
+    expect(find.widgetWithText(FilledButton, 'Import'), findsOneWidget, reason: 'the quick confirm is shown');
     return ProviderScope.containerOf(tester.element(find.byWidget(screen)));
   }
 
@@ -94,20 +121,21 @@ void main() {
     }
   }
 
-  group('field visibility by mode', () {
+  Future<void> tapImport(WidgetTester tester) async {
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Import'));
+    await settleImport(tester);
+  }
+
+  final field = find.byKey(const Key('actualBalanceField'));
+
+  group('field visibility by mode, on an empty account', () {
     for (final mode in ['cumulative', 'filtered']) {
       testWidgets('$mode: the field shows', (tester) async {
-        await importer.importTransactions(
-          preview: statement,
-          mappings: mappings,
-          accountId: acct,
-          balanceMode: mode,
-          numberLocaleOverride: 'en_US',
-        );
         await saveConfig(mode);
-        await pumpQuickConfirm(tester);
+        await pumpConfirm(tester);
         try {
-          expect(find.byKey(const Key('actualBalanceField')), findsOneWidget);
+          expect(field, findsOneWidget);
         } finally {
           await unmount(tester);
         }
@@ -116,17 +144,10 @@ void main() {
 
     for (final mode in ['column', 'none']) {
       testWidgets('$mode: the field is absent', (tester) async {
-        await importer.importTransactions(
-          preview: statement,
-          mappings: mappings,
-          accountId: acct,
-          balanceMode: mode,
-          numberLocaleOverride: 'en_US',
-        );
         await saveConfig(mode);
-        await pumpQuickConfirm(tester);
+        await pumpConfirm(tester);
         try {
-          expect(find.byKey(const Key('actualBalanceField')), findsNothing);
+          expect(field, findsNothing);
         } finally {
           await unmount(tester);
         }
@@ -134,21 +155,72 @@ void main() {
     }
   });
 
+  group('offered only when the file is the account\'s whole history', () {
+    testWidgets('an account with a row before the file starts: the field is absent', (tester) async {
+      await existingRow(DateTime(2026, 2, 15), 500);
+      await saveConfig('cumulative');
+      await pumpConfirm(tester);
+      try {
+        expect(field, findsNothing, reason: 'it used to be offered on any account');
+        expect(find.text('Predicted balance'), findsOneWidget, reason: 'the rest of the preview is unchanged');
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('a file that replaces every row: the field shows, and the typed balance becomes the opening', (tester) async {
+      await existingRow(DateTime(2026, 3, 2), 300);
+      await existingRow(DateTime(2026, 3, 4), -20);
+      await saveConfig('cumulative');
+      await pumpConfirm(tester);
+      try {
+        final replaced = find.ancestor(of: find.text('Rows to replace'), matching: find.byType(Row)).first;
+        expect(
+          find.descendant(of: replaced, matching: find.text('2')),
+          findsOneWidget,
+          reason: 'both earlier rows are replaced',
+        );
+        await tester.enterText(field, '560');
+        await tester.pump();
+        await tapImport(tester);
+
+        final rows = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
+        expect(rows.where((t) => t.description == 'Earlier row'), isEmpty, reason: 'the file replaced them');
+        final opening = rows.singleWhere((t) => t.description == 'Opening balance');
+        expect(opening.amount, 500, reason: '560 typed − 60 from the file');
+        expect(opening.operationDate, DateTime(2026, 2, 28));
+        expect(rows.last.balanceAfter, 560);
+      } finally {
+        await unmount(tester);
+      }
+    });
+
+    testWidgets('re-running the import from the account\'s stored rows: the field is absent', (tester) async {
+      await importer.importTransactions(
+        preview: statement,
+        mappings: mappings,
+        accountId: acct,
+        balanceMode: 'cumulative',
+        numberLocaleOverride: 'en_US',
+      );
+      await saveConfig('cumulative');
+      await pumpConfirm(tester, fromStoredRows: true);
+      try {
+        expect(field, findsNothing, reason: "the account's own history, not a first statement");
+      } finally {
+        await unmount(tester);
+      }
+    });
+  });
+
   testWidgets('a number the locale cannot read disables Import', (tester) async {
-    await importer.importTransactions(
-      preview: statement,
-      mappings: mappings,
-      accountId: acct,
-      balanceMode: 'cumulative',
-      numberLocaleOverride: 'en_US',
-    );
     await saveConfig('cumulative');
-    await pumpQuickConfirm(tester);
+    await pumpConfirm(tester);
     try {
       final importButton = find.widgetWithText(FilledButton, 'Import');
       expect(tester.widget<FilledButton>(importButton).onPressed, isNotNull, reason: 'enabled before anything is typed');
 
-      await tester.enterText(find.byKey(const Key('actualBalanceField')), 'not a number');
+      await tester.enterText(field, 'not a number');
       await tester.pump();
 
       expect(find.text('Invalid number'), findsOneWidget);
@@ -163,23 +235,16 @@ void main() {
   });
 
   testWidgets('the opening amount it implies is masked in privacy mode; the label and the date stay readable', (tester) async {
-    await importer.importTransactions(
-      preview: statement,
-      mappings: mappings,
-      accountId: acct,
-      balanceMode: 'cumulative',
-      numberLocaleOverride: 'en_US',
-    );
     await saveConfig('cumulative');
-    final container = await pumpQuickConfirm(tester);
+    final container = await pumpConfirm(tester);
     try {
-      // App history alone: 100 − 40 = 60. Typing 560 implies +500.
-      await tester.enterText(find.byKey(const Key('actualBalanceField')), '560');
+      // The file alone: 100 − 40 = 60. Typing 560 implies +500.
+      await tester.enterText(field, '560');
       await tester.pump();
 
       final openingRow = find.ancestor(of: find.text('Opening balance'), matching: find.byType(Row)).first;
       final value = find.descendant(of: openingRow, matching: find.byWidgetPredicate((w) => w is Text && w.data == '+500.00'));
-      expect(value, findsOneWidget, reason: 'the typed balance minus what the app shows');
+      expect(value, findsOneWidget, reason: 'the typed balance minus what the file adds up to');
       expect(masked(value), isFalse, reason: 'nothing is masked before privacy is on');
       expect(masked(find.text('Opening balance')), isFalse, reason: 'a label is no figure');
 
@@ -198,25 +263,16 @@ void main() {
 
   group('tapping Import with a typed balance', () {
     testWidgets('adds the opening-balance transaction and reports it, masked, on the result screen', (tester) async {
-      await importer.importTransactions(
-        preview: statement,
-        mappings: mappings,
-        accountId: acct,
-        balanceMode: 'cumulative',
-        numberLocaleOverride: 'en_US',
-      );
       await saveConfig('cumulative');
-      await pumpQuickConfirm(tester, private: true);
+      await pumpConfirm(tester, private: true);
       try {
-        await tester.enterText(find.byKey(const Key('actualBalanceField')), '560');
+        await tester.enterText(field, '560');
         await tester.pump();
-        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
-        await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-        await settleImport(tester);
+        await tapImport(tester);
 
         final rows = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
         final opening = rows.firstWhere((t) => t.description == 'Opening balance');
-        expect(opening.amount, 500, reason: "560 typed − 60 the app's own two rows show");
+        expect(opening.amount, 500, reason: '560 typed − 60 the two imported rows show');
         expect(opening.operationDate, DateTime(2026, 2, 28), reason: 'the day before the earliest imported row');
         expect(opening.currency, 'EUR');
         expect(opening.status, TransactionStatus.settled);
@@ -244,22 +300,13 @@ void main() {
       }
     });
 
-    testWidgets('typing the balance the app already shows adds nothing, and the result screen says nothing about it', (tester) async {
-      await importer.importTransactions(
-        preview: statement,
-        mappings: mappings,
-        accountId: acct,
-        balanceMode: 'cumulative',
-        numberLocaleOverride: 'en_US',
-      );
+    testWidgets('typing the balance the file already adds up to adds nothing, and the result screen says nothing about it', (tester) async {
       await saveConfig('cumulative');
-      await pumpQuickConfirm(tester);
+      await pumpConfirm(tester);
       try {
-        await tester.enterText(find.byKey(const Key('actualBalanceField')), '60');
+        await tester.enterText(field, '60');
         await tester.pump();
-        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Import'));
-        await tester.tap(find.widgetWithText(FilledButton, 'Import'));
-        await settleImport(tester);
+        await tapImport(tester);
 
         final rows = await db.select(db.transactions).get();
         expect(rows.any((t) => t.description == 'Opening balance'), isFalse);

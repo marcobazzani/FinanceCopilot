@@ -1,7 +1,8 @@
-// The Recalculate Balance dialog's "Actual balance" field (opening balance —
-// see TransactionService.planOpeningBalance), for accounts already
-// imported. Shown for cumulative and filtered; column mode already derives
-// its opening from the bank's own balance column, so it's absent there.
+// The Recalculate Balance dialog offers no "Balance on <date>" field (opening
+// balance — see TransactionService.planOpeningBalance): it is always on an
+// account that already has rows, where a difference from the bank is a gap
+// in those rows, not an opening. Only an import that is the account's whole
+// history offers the field.
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -11,8 +12,6 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/providers.dart';
-import 'package:finance_copilot/database/tables.dart';
-import 'package:finance_copilot/services/classification/category_service.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
 import 'package:finance_copilot/ui/screens/accounts/account_detail_screen.dart';
 
@@ -72,45 +71,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
   }
 
-  testWidgets('cumulative (the default selection): the field shows; column: it is absent', (tester) async {
-    await row(1, 100);
-    await openDialog(tester);
-    try {
-      expect(find.byKey(const Key('actualBalanceField')), findsOneWidget, reason: 'cumulative is pre-selected');
-
-      await tester.tap(find.text('Column'));
-      await settle(tester);
-      expect(find.byKey(const Key('actualBalanceField')), findsNothing);
-
-      await tester.tap(find.text('Filtered sum'));
-      await settle(tester);
-      expect(find.byKey(const Key('actualBalanceField')), findsOneWidget);
-    } finally {
-      await unmount(tester);
-    }
-  });
-
-  testWidgets('typing the bank balance adds an "Opening balance" transaction for the difference', (tester) async {
+  testWidgets('no bank-balance field, in any mode', (tester) async {
     await row(1, 100);
     await row(5, -40);
     await openDialog(tester);
     try {
-      await tester.enterText(find.byKey(const Key('actualBalanceField')), '560');
-      await settle(tester);
-      await tester.tap(find.widgetWithText(FilledButton, 'Recalculate'));
-      await settle(tester);
-
-      expect(find.textContaining('Opening balance added'), findsOneWidget);
-
-      final rows = await (db.select(db.transactions)..orderBy([(t) => OrderingTerm.asc(t.valueDate)])).get();
-      final opening = rows.firstWhere((t) => t.description == 'Opening balance');
-      expect(opening.amount, 500);
-      expect(opening.operationDate, DateTime(2026, 2, 28));
-      expect(opening.currency, 'EUR');
-      expect(opening.status, TransactionStatus.settled);
-      final cat = await CategoryService(db).getByKey(CategoryService.openingBalanceIncomeKey);
-      expect(opening.categoryId, cat!.id);
-      expect(rows.last.balanceAfter, 560);
+      expect(find.byKey(const Key('actualBalanceField')), findsNothing, reason: 'cumulative, pre-selected: it used to be offered');
+      for (final mode in ['Filtered sum', 'Column', 'Cumulative sum']) {
+        await tester.tap(find.text(mode));
+        await settle(tester);
+        expect(find.byKey(const Key('actualBalanceField')), findsNothing, reason: mode);
+      }
+      expect(find.textContaining('Balance on'), findsNothing);
     } finally {
       await unmount(tester);
     }

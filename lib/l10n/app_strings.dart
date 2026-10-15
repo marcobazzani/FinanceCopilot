@@ -1047,16 +1047,14 @@ class AppStrings {
   String get importAmountSum => _it ? 'Somma importi' : 'Import amount sum';
 
   // ── Opening balance (a bank export that doesn't start at the account's
-  // beginning): the user states the balance their bank shows, and the app
-  // works out an ordinary transaction that brings it there — see
-  // TransactionService.planOpeningBalance.
+  // beginning): importing it as the account's whole history, the user states
+  // the balance their bank shows, and the app works out an ordinary
+  // transaction that brings it there — see TransactionService.planOpeningBalance.
   String actualBalanceOn(String date) => _it ? 'Saldo al $date' : 'Balance on $date';
   String get actualBalanceHelp => _it
       ? 'Se l\'estratto conto non parte dall\'inizio del conto, inserisci qui il saldo mostrato dalla banca: verrà aggiunta una transazione "Saldo iniziale" per la differenza.'
       : 'If the statement doesn\'t start at the account\'s beginning, enter the balance your bank shows here: an "Opening balance" transaction is added for the difference.';
   String get openingBalanceLabel => _it ? 'Saldo iniziale' : 'Opening balance';
-  String openingBalancePreview(String amount) => _it ? 'Saldo iniziale: $amount' : 'Opening balance: $amount';
-  String openingBalanceAdded(String amount) => _it ? 'Saldo iniziale aggiunto: $amount' : 'Opening balance added: $amount';
 
   // ── Import amount-mode builder ──────────────────────────
   String get amountModeDirect => _it ? 'Diretto' : 'Direct';

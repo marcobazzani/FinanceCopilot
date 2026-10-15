@@ -429,6 +429,9 @@ class TransactionService {
   /// Read-only: the caller creates the transaction itself via [create], the
   /// same path "Add transaction" uses, so nothing downstream has to treat it
   /// specially — it is categorized, edited and deleted like any other row.
+  /// The import asks for one only when its file is the account's whole
+  /// history ([TransactionImportPreview.replacesWholeHistory]): with earlier
+  /// rows kept, a difference from the bank is a gap in them, not an opening.
   Future<OpeningBalancePlan?> planOpeningBalance({
     required int accountId,
     required BalanceMode balanceMode,

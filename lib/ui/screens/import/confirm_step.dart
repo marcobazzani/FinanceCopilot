@@ -609,12 +609,10 @@ extension _ConfirmStep on _ImportScreenState {
   /// A bank export rarely starts at the account's beginning. If the typed
   /// balance differs from [p.predictedBalance], the app adds an ordinary
   /// "Opening balance" transaction for the difference after the import (see
-  /// TransactionService.planOpeningBalance and _addOpeningBalance below) —
-  /// only for the balance modes that compute a running sum from 0: column
-  /// mode already derives its opening from the bank's own balance column,
-  /// and "none" computes no balance at all.
+  /// TransactionService.planOpeningBalance and _executeImport). Offered only
+  /// as [_offersActualBalance] says.
   List<Widget> _buildActualBalanceField(AppStrings s, String locale, TransactionImportPreview p) {
-    if ((_balance != BalanceMode.cumulative && _balance != BalanceMode.filtered) || p.lastDay == null) return const [];
+    if (!_offersActualBalance(p)) return const [];
     final value = _actualBalanceValue;
     final diff = value != null && p.predictedBalance != null ? value - p.predictedBalance! : null;
     return [
@@ -645,15 +643,36 @@ extension _ConfirmStep on _ImportScreenState {
     ];
   }
 
+  /// Whether the import offers to state the bank's balance as the account's
+  /// opening. Only when the account holds nothing but this file once it is
+  /// imported ([TransactionImportPreview.replacesWholeHistory]): with earlier
+  /// rows kept, a difference from the bank is a gap in them, not an opening —
+  /// and a re-run from the stored rows is the account's own history, not a
+  /// first statement. Only for the balance modes that compute a running sum
+  /// from 0: column mode already derives its opening from the bank's own
+  /// balance column, and "none" computes no balance at all.
+  bool _offersActualBalance(TransactionImportPreview p) =>
+      (_balance == BalanceMode.cumulative || _balance == BalanceMode.filtered) &&
+      !_fromStoredRows &&
+      p.lastDay != null &&
+      p.replacesWholeHistory;
+
+  /// The typed balance, while the field is offered: one typed earlier and
+  /// hidden since is neither applied nor blocking.
+  String get _actualBalanceText {
+    final p = _txPreview;
+    return p != null && _offersActualBalance(p) ? _actualBalanceCtrl.text.trim() : '';
+  }
+
   bool get _actualBalanceInvalid {
-    final text = _actualBalanceCtrl.text.trim();
+    final text = _actualBalanceText;
     if (text.isEmpty) return false;
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     return fmt.readOptionalNumber(text, locale: locale).invalid;
   }
 
   double? get _actualBalanceValue {
-    final text = _actualBalanceCtrl.text.trim();
+    final text = _actualBalanceText;
     if (text.isEmpty) return null;
     final locale = ref.read(appLocaleProvider).value ?? Platform.localeName;
     return fmt.readOptionalNumber(text, locale: locale).value;
@@ -712,6 +731,9 @@ extension _ConfirmStep on _ImportScreenState {
     final isinLookup = isAssetImport ? _maybeIsinLookupService() : null;
     final rateService = isAssetImport ? ref.read(exchangeRateServiceProvider) : null;
     final targetId = _targetId;
+    // The bank balance the user stated, read while the field is offered —
+    // before the import changes the account (see _offersActualBalance).
+    final statedBalance = _target == ImportTarget.transaction ? _actualBalanceValue : null;
     _setState(() {
       _importing = true;
       _importedSoFar = 0;
@@ -826,11 +848,10 @@ extension _ConfirmStep on _ImportScreenState {
             numberLocale: savedConfig?.numberLocale ?? fileLocale,
           );
           // A bank export that doesn't start at the account's beginning: the
-          // typed balance becomes an ordinary "Opening balance" transaction
+          // stated balance becomes an ordinary "Opening balance" transaction
           // for the difference — see TransactionService.planOpeningBalance.
-          final actual = _actualBalanceValue;
-          if (actual != null) {
-            final plan = await txSvc.planOpeningBalance(accountId: targetId, balanceMode: mode, actualBalance: actual);
+          if (statedBalance != null) {
+            final plan = await txSvc.planOpeningBalance(accountId: targetId, balanceMode: mode, actualBalance: statedBalance);
             if (plan != null) {
               final categoryId = await catService.openingBalanceCategoryFor(plan.amount);
               final account = await ref.read(accountServiceProvider).getById(targetId);
