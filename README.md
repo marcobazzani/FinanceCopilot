@@ -56,6 +56,10 @@ Saving vs moving-average chart, expenses vs MA & cash, and velocity. Configurabl
 |---|---|
 | ![Cash Flow](docs/screenshots/cashflow.png) | ![Cash Flow (mobile)](docs/screenshots/cashflow_mobile.png) |
 
+**Where the money goes**: a Sankey of the year (or a single month), from income through essential and discretionary spending and savings down to every expense category, each with its share. Tap a category to see its transactions and reclassify them.
+
+![Cash Flow — where the money goes](docs/screenshots/cashflow_sankey.png)
+
 ### Allocation
 Geographic, sector, asset class, instrument type, currency, and top-holdings donuts. Composition resolved automatically for ETFs and stocks; click any slice to drill into the contributing assets.
 
