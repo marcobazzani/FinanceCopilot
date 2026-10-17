@@ -219,14 +219,10 @@ extension _AccountDetailListBuilders on _AccountDetailScreenState {
       leading = CategoryAvatar(category: category);
       categoryLine = categoryText(categoryLabel(category, s));
     } else {
-      leading = CircleAvatar(
-        radius: 16,
-        backgroundColor: isPositive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
-        child: Icon(
-          isPositive ? Icons.arrow_downward : Icons.arrow_upward,
-          size: 16,
-          color: isPositive ? Colors.green : Colors.red,
-        ),
+      leading = RowIconBadge(
+        icon: isPositive ? Icons.arrow_downward : Icons.arrow_upward,
+        color: isPositive ? Colors.green : Colors.red,
+        tint: 0.1,
       );
       // Why it takes no category, unless a badge of the row already says so.
       final saidByBadge = role == LedgerRole.cancelled || (role == LedgerRole.adjustment && adjustedLabel != null);

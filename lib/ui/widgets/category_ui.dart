@@ -6,6 +6,7 @@ import '../../database/tables.dart';
 import '../../l10n/app_strings.dart';
 import '../../services/providers/providers.dart';
 import 'category_edit_dialog.dart';
+import 'row_icon_badge.dart';
 
 /// Single source of truth for how a [Category] is rendered anywhere in the
 /// app: label (l10n for seeded keys, custom name otherwise), icon and color.
@@ -131,7 +132,7 @@ class CategoryChip extends ConsumerWidget {
   }
 }
 
-/// A row's category as a round badge, the size of the other row icons of a
+/// A row's category as a [RowIconBadge], the size of the other row icons of a
 /// list: the category's icon in its color on a tint of it — the
 /// "uncategorized" one when [category] is null. With [onTap] it is a button,
 /// named by [tooltip].
@@ -143,22 +144,13 @@ class CategoryAvatar extends StatelessWidget {
   const CategoryAvatar({required this.category, this.onTap, this.tooltip, super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final color = categoryPaintOrNone(category, Theme.of(context).colorScheme);
-    final avatar = CircleAvatar(
-      radius: 16,
-      backgroundColor: color.withValues(alpha: 0.15),
-      child: Icon(categoryIconOrNone(category), size: 16, color: color),
-    );
-    if (onTap == null) return avatar;
-    // A 40-px target around the 32-px badge, rippling as a circle.
-    final button = InkResponse(
-      onTap: onTap,
-      radius: 20,
-      child: SizedBox.square(dimension: 40, child: Center(child: avatar)),
-    );
-    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
-  }
+  Widget build(BuildContext context) => RowIconBadge(
+    icon: categoryIconOrNone(category),
+    color: categoryPaintOrNone(category, Theme.of(context).colorScheme),
+    tint: 0.15,
+    onTap: onTap,
+    tooltip: tooltip,
+  );
 }
 
 /// Result of [showCategoryPicker]: `null` = dismissed; `CategoryPick(null)` =

@@ -101,11 +101,7 @@ class _PairTileState extends State<_PairTile> {
       children: [
         ListTile(
           dense: true,
-          leading: CircleAvatar(
-            radius: 16,
-            backgroundColor: accent.withValues(alpha: 0.12),
-            child: Icon(icon, size: 16, color: accent),
-          ),
+          leading: RowIconBadge(icon: icon, color: accent, tint: 0.12),
           title: Text(
             label,
             maxLines: 1,
@@ -193,11 +189,7 @@ class _AdjustmentTile extends StatelessWidget {
     final accent = scheme.tertiary;
     return ListTile(
       dense: true,
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: accent.withValues(alpha: 0.12),
-        child: Icon(Icons.savings_outlined, size: 16, color: accent),
-      ),
+      leading: RowIconBadge(icon: Icons.savings_outlined, color: accent, tint: 0.12),
       title: Row(
         children: [
           Flexible(
