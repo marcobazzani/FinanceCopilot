@@ -50,12 +50,6 @@ Period-selectable price-change table (1D/1W/1M/3M/6M/1Y/YTD/All) plus the Totals
 The global Wayback controls now let you pin the whole app to a historical date, last month-end, or last year-end so dashboards, assets, and pillars all render from the same point in time.
 
 ### Cash Flow
-Saving vs moving-average chart, expenses vs MA & cash, and velocity. Configurable MA window per chart.
-
-| Desktop | Mobile |
-|---|---|
-| ![Cash Flow](docs/screenshots/cashflow.png) | ![Cash Flow (mobile)](docs/screenshots/cashflow_mobile.png) |
-
 **Where the money goes**: a Sankey of the year (or a single month), from income through essential and discretionary spending and savings down to every expense category, each with its share. Tap a category to see its transactions and reclassify them.
 
 ![Cash Flow — where the money goes](docs/screenshots/cashflow_sankey.png)
