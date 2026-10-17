@@ -1517,6 +1517,11 @@ class AppStrings {
   String notCategorizableBecause(String role) => _it
       ? 'Non classificabile: $role. Questi movimenti sono già spiegati dal registro e non partecipano alla categorizzazione.'
       : 'Not categorizable: $role. These entries are already explained by the ledger and do not take part in categorization.';
+  // A ledger row's category badge opens the classification card on the row.
+  String get classifyTransaction => _it ? 'Classifica' : 'Classify';
+  String get transactionNotClassifiable => _it
+      ? 'Questa transazione non si può classificare: il registro la spiega già (trasferimento, storno, rettifica o annullata).'
+      : 'This transaction cannot be classified: the ledger already explains it (a transfer, no-op, adjustment or cancelled row).';
 
   // Spending by category chart
   String get spendingByCategoryTitle => _it ? 'Dove vanno i soldi' : 'Where the money goes';

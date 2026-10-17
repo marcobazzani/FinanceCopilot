@@ -84,6 +84,13 @@ Color categoryPaint(Category c, ColorScheme scheme) {
   return HSLColor.fromAHSL(1, hue.toDouble(), 0.55, 0.45).toColor();
 }
 
+/// The icon [category] is drawn with; the "uncategorized" one when null.
+IconData categoryIconOrNone(Category? category) => category == null ? Icons.help_outline : categoryIcon(category);
+
+/// The color [category] is painted with ([categoryPaint]); the muted one of
+/// "uncategorized" when null.
+Color categoryPaintOrNone(Category? category, ColorScheme scheme) => category == null ? scheme.outline : categoryPaint(category, scheme);
+
 /// Compact icon + label pill. Pass [category] = null for "Uncategorized".
 class CategoryChip extends ConsumerWidget {
   final Category? category;
@@ -97,9 +104,9 @@ class CategoryChip extends ConsumerWidget {
     final s = ref.watch(appStringsProvider);
     final scheme = Theme.of(context).colorScheme;
     final c = category;
-    final color = c == null ? scheme.outline : categoryPaint(c, scheme);
+    final color = categoryPaintOrNone(c, scheme);
     final label = c == null ? s.uncategorized : categoryLabel(c, s);
-    final icon = c == null ? Icons.help_outline : categoryIcon(c);
+    final icon = categoryIconOrNone(c);
     final child = Container(
       padding: EdgeInsets.symmetric(horizontal: dense ? 6 : 10, vertical: dense ? 2 : 5),
       decoration: BoxDecoration(
@@ -121,6 +128,36 @@ class CategoryChip extends ConsumerWidget {
       ),
     );
     return onTap == null ? child : InkWell(borderRadius: BorderRadius.circular(999), onTap: onTap, child: child);
+  }
+}
+
+/// A row's category as a round badge, the size of the other row icons of a
+/// list: the category's icon in its color on a tint of it — the
+/// "uncategorized" one when [category] is null. With [onTap] it is a button,
+/// named by [tooltip].
+class CategoryAvatar extends StatelessWidget {
+  final Category? category;
+  final VoidCallback? onTap;
+  final String? tooltip;
+
+  const CategoryAvatar({required this.category, this.onTap, this.tooltip, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = categoryPaintOrNone(category, Theme.of(context).colorScheme);
+    final avatar = CircleAvatar(
+      radius: 16,
+      backgroundColor: color.withValues(alpha: 0.15),
+      child: Icon(categoryIconOrNone(category), size: 16, color: color),
+    );
+    if (onTap == null) return avatar;
+    // A 40-px target around the 32-px badge, rippling as a circle.
+    final button = InkResponse(
+      onTap: onTap,
+      radius: 20,
+      child: SizedBox.square(dimension: 40, child: Center(child: avatar)),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
 

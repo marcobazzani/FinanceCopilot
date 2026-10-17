@@ -9,7 +9,7 @@ import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 import 'package:finance_copilot/database/database.dart';
 import 'package:finance_copilot/database/tables.dart';
 import 'package:finance_copilot/services/providers/providers.dart';
-import 'package:finance_copilot/services/classification/ledger_roles.dart' show ledgerDayKey;
+import 'package:finance_copilot/services/classification/ledger_roles.dart' show LedgerRole, ledgerDayKey;
 import 'package:finance_copilot/services/domain/entry_pairing.dart';
 import 'package:finance_copilot/services/domain/adjustment_items.dart';
 import 'package:finance_copilot/services/import/stored_import_data.dart';
@@ -20,6 +20,7 @@ import 'package:finance_copilot/ui/screens/import/import_screen.dart';
 import 'package:finance_copilot/ui/screens/events/transaction_edit_screen.dart';
 import 'package:finance_copilot/ui/screens/events/event_edit_screen.dart';
 import 'package:finance_copilot/ui/screens/classification/classification_wizard_screen.dart';
+import 'package:finance_copilot/ui/screens/classification/transaction_classify_card.dart' show showTransactionClassifySheet;
 import 'package:finance_copilot/ui/widgets/category_ui.dart';
 import 'package:finance_copilot/l10n/app_strings.dart';
 import 'package:finance_copilot/ui/widgets/empty_state.dart';
@@ -148,6 +149,10 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
     // single-account view too. Synthetic "Saving for X" spread rows have no
     // account and are materialized ONLY in the merged All-accounts view.
     final adjInputs = ref.watch(adjustmentInputsProvider).value;
+    // Each row's category, and which rows take one: the ledger's roles, null
+    // until they have loaded.
+    final categoriesById = ref.watch(categoriesByIdProvider);
+    final roles = ref.watch(ledgerRolesProvider).value;
 
     return ListenableBuilder(
       listenable: _selection,
@@ -353,6 +358,8 @@ class _AccountDetailScreenState extends ConsumerState<AccountDetailScreen> {
                               rowAmtFmt: rowAmtFmt,
                               dateFmt: dateFmt,
                               accountNameById: accountNameById,
+                              categoriesById: categoriesById,
+                              roles: roles,
                               s: s,
                               adjustedLabel: annotatedTxIds[tx.id],
                             );

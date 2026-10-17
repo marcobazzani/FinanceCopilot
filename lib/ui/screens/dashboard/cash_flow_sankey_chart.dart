@@ -316,14 +316,12 @@ class _NodeTransactionsSheet extends ConsumerStatefulWidget {
 }
 
 class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> {
-  ({MerchantGroup group, List<Transaction> rows})? _classifying;
+  ClassificationContext? _classifying;
   int? _loadingId;
 
   Future<void> _open(Transaction t) async {
     setState(() => _loadingId = t.id);
-    final base = ref.read(baseCurrencyProvider).value;
-    final rates = base == null ? null : CachedRateResolver(ref.read(exchangeRateServiceProvider), base);
-    final ctx = await ref.read(transactionClassifierServiceProvider).classificationContextFor(t.id, rate: rates?.getRate, baseCurrency: base);
+    final ctx = await loadClassificationContext(ref, t.id);
     if (!mounted) return;
     setState(() {
       _loadingId = null;
@@ -338,31 +336,12 @@ class _NodeTransactionsSheetState extends ConsumerState<_NodeTransactionsSheet> 
     final theme = Theme.of(context);
     final c = _classifying;
     if (c != null) {
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 16, 4),
-            child: Row(
-              children: [
-                IconButton(key: const Key('sankeySheetBack'), icon: const Icon(Icons.arrow_back), onPressed: _back),
-                Expanded(child: Text(widget.title, style: theme.textTheme.titleMedium)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              controller: widget.controller,
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-              child: TransactionClassifyCard(
-                key: ValueKey(('classify', c.rows.first.id)),
-                group: c.group,
-                samples: c.rows,
-                onSkip: _back,
-                onApplied: (_) => _back(),
-              ),
-            ),
-          ),
-        ],
+      return TransactionClassifyPane(
+        target: c,
+        title: widget.title,
+        leading: IconButton(key: const Key('sankeySheetBack'), icon: const Icon(Icons.arrow_back), onPressed: _back),
+        onDone: _back,
+        controller: widget.controller,
       );
     }
 
