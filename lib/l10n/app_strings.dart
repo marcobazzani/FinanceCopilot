@@ -1540,6 +1540,8 @@ class AppStrings {
   String get sankeyEssential => _it ? 'Essenziali' : 'Essential';
   String get sankeyDiscretionary => _it ? 'Non essenziali' : 'Discretionary';
   String get sankeySaved => _it ? 'Risparmiato' : 'Saved';
+  // The month selector's first choice: no month, the year picked.
+  String get sankeyWholeYear => _it ? 'Tutto l\'anno' : 'Whole year';
   String get sankeySource => _it
       ? 'Entrate, uscite e risparmi come nel grafico annuale; le categorie vengono dai movimenti'
       : 'Income, expenses and savings as in the yearly chart; categories come from the transactions';

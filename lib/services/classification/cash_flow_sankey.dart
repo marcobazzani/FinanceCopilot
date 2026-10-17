@@ -66,16 +66,16 @@ class CashFlowLink {
   String toString() => '$from->$to=$value';
 }
 
-/// One year of cash flow as a Sankey graph:
+/// One year — or one month of it — of cash flow as a Sankey graph:
 /// income (+ refunds, + untracked income, + from savings) → available → essential /
 /// discretionary / saving plans / uncategorized / untracked expenses / saved →
 /// expense categories.
 ///
-/// [income], [savings] and [expenses] are the yearly Income/Expense/Savings
+/// [income], [savings] and [expenses] are the period's Income/Expense/Savings
 /// figures (expenses = income − savings), so both charts always agree. The
 /// ledger splits the expenses into categorized, saving-plan and uncategorized
 /// spending (tracked all three), and the gap between ledger spending and the
-/// yearly expenses is always shown explicitly, never spread or dropped:
+/// period's expenses is always shown explicitly, never spread or dropped:
 /// ledger < expenses → the rest is "untracked expenses" (not in the ledger);
 /// ledger > expenses → the excess is "untracked income" (money spent that no
 /// Income record accounts for).
@@ -142,39 +142,41 @@ String cashFlowExpenseNodeId(int categoryId) => 'out:$categoryId';
 
 String cashFlowSavingPlanNodeId(int eventId) => 'plan:$eventId';
 
-/// [income] and [savings] come from the yearly Income/Expense/Savings bucket
-/// of [year]; [spending] supplies the category split of the expenses and the
-/// spread saving plans of the year.
+/// [income] and [savings] come from the Income/Expense/Savings bucket of
+/// [year] — of its [month] (1–12), when given; [spending] supplies the
+/// category split of that period's expenses and its spread saving plans.
 ///
 /// Refunds received come from two sources that never hold the same money:
 /// [recordedRefunds] (refund Income records — e.g. the part of a pay slip
 /// that reimburses expenses, booked in the ledger inside the salary row) and
-/// the ledger's refund inflows ([SpendingByCategoryData.refunds]). Both land
-/// in savings, so both explain spending the yearly expenses net out.
+/// the ledger's refund inflows ([SpendingPeriod.refunds]). Both land in
+/// savings, so both explain spending the period's expenses net out.
 CashFlowSankey buildCashFlowSankey({
   required int year,
+  int? month,
   required double income,
   required double savings,
   double recordedRefunds = 0,
   required SpendingByCategoryData spending,
   required Map<int, Category> categories,
 }) {
+  final period = spending.period(year, month);
   final named =
       <MapEntry<int, double>>[
-        for (final e in (spending.byYear[year] ?? const <int?, double>{}).entries)
+        for (final e in period.byCategory.entries)
           if (e.key != null && e.value >= _eps) MapEntry(e.key!, e.value),
       ]..sort((a, b) {
         final c = b.value.compareTo(a.value);
         return c != 0 ? c : a.key.compareTo(b.key);
       });
   final categorized = named.fold(0.0, (a, e) => a + e.value);
-  final uncategorized = spending.amount(year, null);
+  final uncategorized = period.amount(null);
   final plans = [
-    for (final p in spending.savingPlans(year))
+    for (final p in period.savingPlans)
       if (p.amount >= _eps) p,
   ];
   final savingPlans = plans.fold(0.0, (a, p) => a + p.amount);
-  final refunds = spending.refunds(year) + recordedRefunds;
+  final refunds = period.refunds + recordedRefunds;
   final expenses = income - savings;
 
   CashFlowSankey result(List<CashFlowNode> nodes, List<CashFlowLink> links) => CashFlowSankey(

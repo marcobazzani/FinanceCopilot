@@ -772,12 +772,15 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
 
   // 1b. Refund Income records: money received that is not personal income
   // but lands in the bank, so it is inside the savings change and lowers
-  // the derived expenses. Kept per year so the cash-flow Sankey can show it.
+  // the derived expenses. Kept per year and per month so the cash-flow
+  // Sankey can show it.
   final refundByYear = <int, double>{};
+  final refundByMonth = <(int, int), double>{};
   for (final (dt, amount) in await incomeInBase(
     "SELECT value_date AS date, amount, currency FROM incomes WHERE type = 'refund' ORDER BY value_date ASC",
   )) {
     refundByYear[dt.year] = (refundByYear[dt.year] ?? 0) + amount;
+    refundByMonth[(dt.year, dt.month)] = (refundByMonth[(dt.year, dt.month)] ?? 0) + amount;
   }
 
   // 2. Build total saving series — resolved from the user's configured
@@ -880,6 +883,7 @@ final _incomeExpenseDataProvider = FutureProvider<_IncomeExpenseData?>((ref) asy
           from: mStartRef,
           to: mEnd,
           pensionContrib: mPensionContrib,
+          refunds: refundByMonth[(y, m)] ?? 0,
           hasIncomeData: monthsWithIncomeData.contains((y, m)),
         ),
       );

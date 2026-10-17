@@ -109,6 +109,9 @@ class _MonthBucket {
   final double income, navChange, pensionContrib;
   final bool hasIncomeData;
 
+  /// Refund Income records of the month (not income, but inside [savings]).
+  final double refunds;
+
   /// The period [navChange] was measured over: from the end of [from]
   /// (exclusive) to [to], as the saving total was read. Kept so the figure can
   /// be explained from exactly the same boundaries.
@@ -132,6 +135,7 @@ class _MonthBucket {
     required this.to,
     this.pensionContrib = 0,
     this.hasIncomeData = false,
+    this.refunds = 0,
   });
 }
 

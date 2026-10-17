@@ -1,26 +1,39 @@
 part of 'dashboard_screen.dart';
 
-/// Yearly income and savings, exactly as the Income/Expense/Savings chart
-/// computes them (expenses = income − savings), plus the refund Income
-/// records the savings figure contains.
-typedef CashFlowYearTotals = ({double income, double savings, double refunds});
+/// A period's income and savings, exactly as the Income/Expense/Savings chart
+/// and the monthly table compute them (expenses = income − savings), plus the
+/// refund Income records the savings figure contains.
+typedef CashFlowTotals = ({double income, double savings, double refunds});
 
-/// "Where the money goes": one year of cash flow as a Sankey — income (+ from
-/// savings / untracked income) → available → essential / discretionary /
-/// saving plans / uncategorized / untracked expenses / saved
-/// → expense categories. The current year is year to date.
+/// [CashFlowTotals] of a year.
+typedef CashFlowYearTotals = CashFlowTotals;
+
+/// "Where the money goes": one year — or, optionally, one month of it — of
+/// cash flow as a Sankey: income (+ from savings / untracked income) →
+/// available → essential / discretionary / saving plans / uncategorized /
+/// untracked expenses / saved → expense categories. The current year is year
+/// to date, its current month month to date.
 ///
-/// Income, savings and expenses are [years] (the yearly chart's figures); the
-/// ledger in [spending] only splits the expenses by category and saving plan,
-/// and what it does not account for stays visible as untracked income /
-/// expenses. Privacy mode masks the amounts; band widths and percentages
+/// Income, savings and expenses are [years] — [months] for a month, by (year,
+/// month): the yearly chart's and the monthly table's figures; the ledger in
+/// [spending] only splits the expenses by category and saving plan, and what
+/// it does not account for stays visible as untracked income / expenses.
+/// Privacy mode masks the amounts; band widths, percentages and months
 /// (shape, not size) stay.
 class CashFlowSankeyCard extends ConsumerStatefulWidget {
   final SpendingByCategoryData spending;
   final Map<int, CashFlowYearTotals> years;
+  final Map<(int, int), CashFlowTotals> months;
   final int currentYear;
   final String locale;
-  const CashFlowSankeyCard({super.key, required this.spending, required this.years, required this.currentYear, required this.locale});
+  const CashFlowSankeyCard({
+    super.key,
+    required this.spending,
+    required this.years,
+    this.months = const {},
+    required this.currentYear,
+    required this.locale,
+  });
 
   @override
   ConsumerState<CashFlowSankeyCard> createState() => CashFlowSankeyCardState();
@@ -28,6 +41,9 @@ class CashFlowSankeyCard extends ConsumerStatefulWidget {
 
 class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
   int? _year;
+
+  /// The month picked, 1–12; null for the whole year.
+  int? _month;
 
   /// Live spending data for an open drill-down sheet: the sheet is its own
   /// route and is not rebuilt with this card, so it listens to this instead.
@@ -57,6 +73,10 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     return years.contains(widget.currentYear) ? widget.currentYear : years.last;
   }
 
+  /// Whether [t] (of a year or a month) has anything to show: income, a
+  /// change of savings, or spending in [spent].
+  static bool _hasFlow(CashFlowTotals t, SpendingPeriod spent) => t.income.abs() >= 0.005 || t.savings.abs() >= 0.005 || spent.total >= 0.005;
+
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(appStringsProvider);
@@ -67,7 +87,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
 
     final years = [
       for (final e in widget.years.entries)
-        if (e.value.income.abs() >= 0.005 || e.value.savings.abs() >= 0.005 || d.totalFor(e.key) >= 0.005) e.key,
+        if (_hasFlow(e.value, d.period(e.key))) e.key,
     ]..sort();
     if (years.isEmpty) {
       return Padding(
@@ -77,15 +97,24 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     }
 
     final year = _effectiveYear(years);
-    final totals = widget.years[year]!;
+    // The months of the year with something to show; the one picked stays
+    // picked across years that have it.
+    final months = [
+      for (var m = 1; m <= 12; m++)
+        if (widget.months[(year, m)] case final t? when _hasFlow(t, d.period(year, m))) m,
+    ];
+    final month = months.contains(_month) ? _month : null;
+    final totals = month == null ? widget.years[year]! : widget.months[(year, month)]!;
     final graph = buildCashFlowSankey(
       year: year,
+      month: month,
       income: totals.income,
       savings: totals.savings,
       recordedRefunds: totals.refunds,
       spending: d,
       categories: byId,
     );
+    final spent = d.period(year, month);
     final money = fmt.currencyFormat(widget.locale, currencySymbol(d.baseCurrency), decimalDigits: 0);
     final pct = NumberFormat.decimalPercentPattern(locale: widget.locale, decimalDigits: 1);
     String yearLabel(int y) => y == widget.currentYear ? '$y ${s.ytdSuffix}' : '$y';
@@ -155,6 +184,32 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
             ],
           ),
         ),
+        // Optional: a month of the year, the whole year by default.
+        if (months.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  key: const Key('sankeyMonth:all'),
+                  label: Text(s.sankeyWholeYear),
+                  selected: month == null,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _month = null),
+                ),
+                for (final m in months)
+                  ChoiceChip(
+                    key: Key('sankeyMonth:$m'),
+                    label: Text(monthAbbr(m, widget.locale)),
+                    selected: m == month,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => setState(() => _month = m),
+                  ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: Wrap(
@@ -191,7 +246,7 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
               key: const Key('cashFlowSankey'),
               nodes: specs,
               links: links,
-              onNodeTap: (id) => _onNodeTap(context, nodeById[id]!, year, labelOf(nodeById[id]!)),
+              onNodeTap: (id) => _onNodeTap(context, nodeById[id]!, year, month, labelOf(nodeById[id]!)),
               labelBuilder: (context, spec) {
                 final n = nodeById[spec.id]!;
                 final share = graph.scaleTotal == 0 ? 0.0 : n.value / graph.scaleTotal;
@@ -226,10 +281,10 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (d.transfersExcluded(year) >= 0.005)
+              if (spent.transfersExcluded >= 0.005)
                 // How much money was moved: position size, masked.
                 PrivacyText(
-                  s.sankeyTransfersExcluded(money.format(d.transfersExcluded(year))),
+                  s.sankeyTransfersExcluded(money.format(spent.transfersExcluded)),
                   key: const Key('sankeyTransfersExcluded'),
                   style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                 ),
@@ -245,20 +300,22 @@ class CashFlowSankeyCardState extends ConsumerState<CashFlowSankeyCard> {
     );
   }
 
-  Future<void> _onNodeTap(BuildContext context, CashFlowNode node, int year, String label) async {
+  /// [month] (1–12) of [year], or the whole year when null.
+  Future<void> _onNodeTap(BuildContext context, CashFlowNode node, int year, int? month, String label) async {
     // The rows summed into the node, from the live data.
     final List<int> Function(SpendingByCategoryData)? idsOf = switch (node.kind) {
-      CashFlowNodeKind.expense => (d) => d.ids(year, node.categoryId),
-      CashFlowNodeKind.uncategorized => (d) => d.ids(year, null),
-      CashFlowNodeKind.refunds => (d) => d.refundIds(year),
+      CashFlowNodeKind.expense => (d) => d.period(year, month).ids(node.categoryId),
+      CashFlowNodeKind.uncategorized => (d) => d.period(year, month).ids(null),
+      CashFlowNodeKind.refunds => (d) => d.period(year, month).refundIds,
       _ => null,
     };
     if (idsOf == null || idsOf(widget.spending).isEmpty) return;
     // The node's rows follow the ledger: a row re-classified out of the node
     // leaves the list.
     final ids = _MappedListenable(_spendingLive, idsOf);
+    final period = month == null ? '$year' : fmt.monthYearFormat(widget.locale).format(DateTime(year, month));
     try {
-      await showTransactionsSheet(context, ids: ids, title: '$label · $year', locale: widget.locale);
+      await showTransactionsSheet(context, ids: ids, title: '$label · $period', locale: widget.locale);
     } finally {
       ids.dispose();
     }

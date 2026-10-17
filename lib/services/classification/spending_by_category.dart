@@ -7,87 +7,118 @@ import 'package:finance_copilot/utils/visualization_clock.dart';
 /// midnight); null when no rate is known.
 typedef RateLookup = Future<double?> Function(String currency, int dayKey);
 
-/// What a spread saving plan set aside in a year, in base currency: the
+/// What a spread saving plan set aside in a period, in base currency: the
 /// ledger's "Saving for X" rows of event [eventId], summed.
 typedef SavingPlanSpending = ({int eventId, String name, double amount});
 
-/// Spending per year per category, in base currency (positive numbers).
+/// What one period — a year, or one month of it — spent per category, got
+/// back in refunds, moved between the user's own instruments and set aside in
+/// spread saving plans, in base currency (positive numbers). Category `null`
+/// = uncategorized.
+class SpendingPeriod {
+  /// (categoryId | null) → total spent.
+  final Map<int?, double> byCategory;
+
+  /// (categoryId | null) → ids of the transactions summed into that bucket.
+  /// The drill-down lists exactly these rows, so it can never disagree with
+  /// the figure it explains.
+  final Map<int?, List<int>> idsByCategory;
+
+  /// Refunds received, and the rows behind them.
+  final double refunds;
+  final List<int> refundIds;
+
+  /// Outflows in transfer-type categories: not spending.
+  final double transfersExcluded;
+
+  /// What each spread saving plan set aside, biggest first.
+  final List<SavingPlanSpending> savingPlans;
+
+  const SpendingPeriod({
+    this.byCategory = const {},
+    this.idsByCategory = const {},
+    this.refunds = 0,
+    this.refundIds = const [],
+    this.transfersExcluded = 0,
+    this.savingPlans = const [],
+  });
+
+  /// A period without any row.
+  static const none = SpendingPeriod();
+
+  double get total => byCategory.values.fold(0.0, (a, b) => a + b);
+
+  double amount(int? categoryId) => byCategory[categoryId] ?? 0.0;
+
+  List<int> ids(int? categoryId) => idsByCategory[categoryId] ?? const [];
+
+  double get savingPlansTotal => savingPlans.fold(0.0, (a, p) => a + p.amount);
+}
+
+/// Spending per category, per year and per month, in base currency (positive
+/// numbers): a [SpendingPeriod] each, the months of a year adding up to it.
 ///
 /// Every outflow is spending except money moved between the user's own
 /// instruments: transfer-type categories (transfers, investments) are left
-/// out but summed per year in [transfersExcludedByYear] so the chart can say
+/// out but summed in [SpendingPeriod.transfersExcluded] so the chart can say
 /// how much, and rows the ledger explains structurally ([excludedIds]:
 /// transfer pairs, no-ops, adjustments, cancelled) are left out entirely.
 /// An outflow in an income or reimbursement category is still money that
-/// left: it counts, under its category. Category `null` = uncategorized.
-/// Rows whose FX rate is unavailable are excluded and counted in
-/// [fxExcluded] so the chart can footnote them instead of silently
-/// mis-summing.
+/// left: it counts, under its category. Rows whose FX rate is unavailable are
+/// excluded and counted in [fxExcluded] so the chart can footnote them
+/// instead of silently mis-summing.
 ///
 /// Refunds received — inflows in a reimbursement or expense category (money
-/// coming back for something spent) — are summed per year in
-/// [refundsByYear]: spending above is gross, so a chart that compares it
+/// coming back for something spent) — are summed in
+/// [SpendingPeriod.refunds]: spending is gross, so a chart that compares it
 /// with net figures needs them as their own term, never folded in silently.
 /// Uncategorized inflows are not refunds: what they are is unknown.
 ///
 /// Spread saving plans — the ledger's synthetic "Saving for X" rows, the
 /// scheduled steps of a spread no transaction accounts for — are spending
-/// too, summed per year and plan in [savingPlansByYear]. They are no
-/// transactions, so they have no category and are not in [byYear].
+/// too, summed per plan in [SpendingPeriod.savingPlans]. They are no
+/// transactions, so they have no category and are not in
+/// [SpendingPeriod.byCategory].
 class SpendingByCategoryData {
-  /// Years ascending.
+  /// Years with spending, ascending.
   final List<int> years;
   final int currentYear;
-
-  /// year → (categoryId | null) → total.
-  final Map<int, Map<int?, double>> byYear;
-
-  /// year → (categoryId | null) → ids of the transactions summed into that
-  /// bucket. The drill-down lists exactly these rows, so it can never
-  /// disagree with the figure it explains.
-  final Map<int, Map<int?, List<int>>> idsByYear;
   final int fxExcluded;
   final String baseCurrency;
 
-  /// year → outflows in transfer-type categories (not spending), base currency.
-  final Map<int, double> transfersExcludedByYear;
+  /// year → what it spent.
+  final Map<int, SpendingPeriod> yearly;
+
+  /// (year, month) → what that month spent.
+  final Map<(int, int), SpendingPeriod> monthly;
 
   const SpendingByCategoryData({
     required this.years,
     required this.currentYear,
-    required this.byYear,
     required this.fxExcluded,
     required this.baseCurrency,
-    this.idsByYear = const {},
-    this.transfersExcludedByYear = const {},
-    this.refundsByYear = const {},
-    this.refundIdsByYear = const {},
-    this.savingPlansByYear = const {},
+    this.yearly = const {},
+    this.monthly = const {},
   });
 
-  double transfersExcluded(int year) => transfersExcludedByYear[year] ?? 0.0;
+  /// What [year] spent — or its [month] (1–12), when given.
+  SpendingPeriod period(int year, [int? month]) => (month == null ? yearly[year] : monthly[(year, month)]) ?? SpendingPeriod.none;
 
-  /// year → refunds received (base currency) and the rows behind them.
-  final Map<int, double> refundsByYear;
-  final Map<int, List<int>> refundIdsByYear;
+  double transfersExcluded(int year) => period(year).transfersExcluded;
 
-  double refunds(int year) => refundsByYear[year] ?? 0.0;
-  List<int> refundIds(int year) => refundIdsByYear[year] ?? const [];
+  double refunds(int year) => period(year).refunds;
+  List<int> refundIds(int year) => period(year).refundIds;
 
-  /// year → what each spread saving plan set aside in it (positive, base
-  /// currency), biggest first.
-  final Map<int, List<SavingPlanSpending>> savingPlansByYear;
+  List<SavingPlanSpending> savingPlans(int year) => period(year).savingPlans;
+  double savingPlansTotal(int year) => period(year).savingPlansTotal;
 
-  List<SavingPlanSpending> savingPlans(int year) => savingPlansByYear[year] ?? const [];
-  double savingPlansTotal(int year) => savingPlans(year).fold(0.0, (a, p) => a + p.amount);
+  bool get isEmpty => yearly.values.every((p) => p.byCategory.isEmpty);
 
-  bool get isEmpty => byYear.values.every((m) => m.isEmpty);
+  double totalFor(int year) => period(year).total;
 
-  double totalFor(int year) => (byYear[year] ?? const {}).values.fold(0.0, (a, b) => a + b);
+  double amount(int year, int? categoryId) => period(year).amount(categoryId);
 
-  double amount(int year, int? categoryId) => byYear[year]?[categoryId] ?? 0.0;
-
-  List<int> ids(int year, int? categoryId) => idsByYear[year]?[categoryId] ?? const [];
+  List<int> ids(int year, int? categoryId) => period(year).ids(categoryId);
 
   /// Share of the year's spending (0..1); 0 when the year has no spending.
   double share(int year, int? categoryId) {
@@ -98,8 +129,8 @@ class SpendingByCategoryData {
   /// Category ids (null included) ordered by all-years total, descending.
   List<int?> categoriesByTotal() {
     final totals = <int?, double>{};
-    for (final m in byYear.values) {
-      for (final e in m.entries) {
+    for (final p in yearly.values) {
+      for (final e in p.byCategory.entries) {
         totals[e.key] = (totals[e.key] ?? 0) + e.value;
       }
     }
@@ -124,6 +155,29 @@ bool isSpendingCategoryType(CategoryType? type) => type != CategoryType.transfer
 /// something spent.
 bool isRefundCategoryType(CategoryType? type) => type == CategoryType.reimbursement || type == CategoryType.expense;
 
+/// The running sums of one period while the rows are read.
+class _PeriodSums {
+  final byCategory = <int?, double>{};
+  final ids = <int?, List<int>>{};
+  var refunds = 0.0;
+  final refundIds = <int>[];
+  var transfers = 0.0;
+  final plans = <int, SavingPlanSpending>{};
+
+  SpendingPeriod build() => SpendingPeriod(
+    byCategory: byCategory,
+    idsByCategory: ids,
+    refunds: refunds,
+    refundIds: refundIds,
+    transfersExcluded: transfers,
+    savingPlans: plans.values.toList()
+      ..sort((a, b) {
+        final c = b.amount.compareTo(a.amount);
+        return c != 0 ? c : a.eventId.compareTo(b.eventId);
+      }),
+  );
+}
+
 /// [savingItems] are the ledger's "Saving for X" rows (see
 /// [SavingScheduleItem]): a negative one — a spread outflow setting money
 /// aside — is spending, like any outflow; a positive one brings money in
@@ -138,12 +192,14 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
   Set<int> excludedIds = const {},
   List<SavingScheduleItem> savingItems = const [],
 }) async {
-  final byYear = <int, Map<int?, double>>{};
-  final idsByYear = <int, Map<int?, List<int>>>{};
+  final years = <int, _PeriodSums>{};
+  final months = <(int, int), _PeriodSums>{};
+  // A row counts in its year and in its month (of its value date).
+  List<_PeriodSums> periodsOf(DateTime d) => [
+    years.putIfAbsent(d.year, _PeriodSums.new),
+    months.putIfAbsent((d.year, d.month), _PeriodSums.new),
+  ];
   var fxExcluded = 0;
-  final transfers = <int, double>{};
-  final refunds = <int, double>{};
-  final refundIds = <int, List<int>>{};
   // Every row of the as-of day counts, whatever its clock time: the bound is
   // the next midnight, as for the ledger's own as-of reads.
   final endExclusive = throughEndExclusive(through);
@@ -161,27 +217,23 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
     if (t.amount > 0 && !isRefundCategoryType(cat?.type)) continue;
     // A row pointing at a deleted category is treated as uncategorized.
     final catId = cat?.id;
-    final d = t.valueDate;
-    final r = await rateOn(t.currency, d);
+    final r = await rateOn(t.currency, t.valueDate);
     if (r == null) {
       fxExcluded++;
       continue;
     }
-    if (t.amount > 0) {
-      refunds[d.year] = (refunds[d.year] ?? 0) + t.amount * r;
-      (refundIds[d.year] ??= []).add(t.id);
-      continue;
+    for (final p in periodsOf(t.valueDate)) {
+      if (t.amount > 0) {
+        p.refunds += t.amount * r;
+        p.refundIds.add(t.id);
+      } else if (!isSpendingCategoryType(cat?.type)) {
+        p.transfers += t.amount.abs() * r;
+      } else {
+        p.byCategory[catId] = (p.byCategory[catId] ?? 0) + t.amount.abs() * r;
+        (p.ids[catId] ??= []).add(t.id);
+      }
     }
-    if (!isSpendingCategoryType(cat?.type)) {
-      transfers[d.year] = (transfers[d.year] ?? 0) + t.amount.abs() * r;
-      continue;
-    }
-    final m = byYear.putIfAbsent(d.year, () => <int?, double>{});
-    m[catId] = (m[catId] ?? 0) + t.amount.abs() * r;
-    (idsByYear.putIfAbsent(d.year, () => <int?, List<int>>{})[catId] ??= []).add(t.id);
   }
-  // year → event id → what the plan set aside.
-  final plans = <int, Map<int, SavingPlanSpending>>{};
   for (final item in savingItems) {
     if (item.amount >= 0 || afterCutoff(item.date)) continue;
     final r = await rateOn(item.currency, item.date);
@@ -189,26 +241,22 @@ Future<SpendingByCategoryData> aggregateSpendingByCategory({
       fxExcluded++;
       continue;
     }
-    final m = plans.putIfAbsent(item.date.year, () => {});
-    m[item.eventId] = (eventId: item.eventId, name: item.eventName, amount: (m[item.eventId]?.amount ?? 0) + item.amount.abs() * r);
+    for (final p in periodsOf(item.date)) {
+      p.plans[item.eventId] = (
+        eventId: item.eventId,
+        name: item.eventName,
+        amount: (p.plans[item.eventId]?.amount ?? 0) + item.amount.abs() * r,
+      );
+    }
   }
-  final years = byYear.keys.toList()..sort();
   return SpendingByCategoryData(
-    years: years,
+    years: [
+      for (final e in years.entries)
+        if (e.value.byCategory.isNotEmpty) e.key,
+    ]..sort(),
     currentYear: now.year,
-    byYear: byYear,
-    idsByYear: idsByYear,
-    transfersExcludedByYear: transfers,
-    refundsByYear: refunds,
-    refundIdsByYear: refundIds,
-    savingPlansByYear: {
-      for (final e in plans.entries)
-        e.key: e.value.values.toList()
-          ..sort((a, b) {
-            final c = b.amount.compareTo(a.amount);
-            return c != 0 ? c : a.eventId.compareTo(b.eventId);
-          }),
-    },
+    yearly: {for (final e in years.entries) e.key: e.value.build()},
+    monthly: {for (final e in months.entries) e.key: e.value.build()},
     fxExcluded: fxExcluded,
     baseCurrency: baseCurrency,
   );
